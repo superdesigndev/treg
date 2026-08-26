@@ -33,6 +33,20 @@ Deliberately not one tool per provider. A catalog of 2,600 endpoints exposed as 
 bury the client's tool list and force a re-connect every time the catalog grew. `catalog_search`
 plus `call` covers all of it and stays the same size.
 
+## Fixed surface — no change subscriptions
+
+The six-tool MCP surface is static. Weekly catalog refreshes change the DATA returned by
+`catalog_search` and `catalog_get`; they do not change `tools/list`. treg also publishes no tool,
+prompt or resource change events. `server/discover` therefore advertises
+`tools.listChanged=false`, `prompts.listChanged=false`, `resources.listChanged=false`, and
+`resources.subscribe=false`, and `subscriptions/listen` is refused with `METHOD_NOT_FOUND`.
+
+MCP SDK 2.0 installs `subscriptions/listen` and derives all four flags from its presence, with no
+public constructor switch to disable it. `_StaticSurfaceCapabilities` corrects both behaviors
+through the SDK's public server-middleware seam: it rewrites the discover result and vetoes listen.
+It deliberately does not mutate the SDK's private handler registry. This keeps clients from opening
+idle SSE streams which can never deliver useful work.
+
 `call` is annotated **destructive + open-world + non-idempotent**, which reads as pessimistic until
 you notice treg does not model the upstream: it relays to somebody else's API and cannot know whether
 that endpoint charges, writes or deletes. Claiming otherwise would be a guess presented as a fact.
@@ -185,13 +199,12 @@ middleware, so a credentialed request with a bad host or origin is still refused
 not mask the transport guard.
 
 `RequireAuthForProtectedTools` buffers the POST body only long enough to classify that request. It
-then replays the consumed request messages and delegates every later `receive()` call to the original ASGI
-channel; it never manufactures `http.disconnect`. That distinction is load-bearing for MCP
-2026-07-28 `subscriptions/listen`: the SDK keeps that response open and watches `receive()` for the
-client's real disconnect, so a synthetic one cancels the subscription before its 200 response and
-acknowledgment are sent. If the client genuinely disconnects while the middleware is reading the
-body, every observed partial-body message and the real disconnect are replayed unchanged without
-inventing completion.
+then replays the consumed request messages and delegates every later `receive()` call to the
+original ASGI channel; it never manufactures `http.disconnect`. That distinction is load-bearing
+for MCP 2026-07-28 `subscriptions/listen`, which exposed the bug before treg stopped advertising
+that unused method, and for any other long response: a synthetic disconnect cancels live downstream
+work. If the client genuinely disconnects while the middleware is reading the body, every observed
+partial-body message and the real disconnect are replayed unchanged without inventing completion.
 
 # treg as an authorization server
 

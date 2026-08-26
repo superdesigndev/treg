@@ -44,9 +44,11 @@ from urllib.parse import parse_qsl, urlsplit
 
 import httpx
 from mcp.server import MCPServer
+from mcp.server.context import CallNext, HandlerResult, ServerRequestContext
 from mcp.server.mcpserver import Context
 from mcp.server.transport_security import TransportSecuritySettings
-from mcp.types import ToolAnnotations
+from mcp.shared.exceptions import MCPError
+from mcp.types import METHOD_NOT_FOUND, ToolAnnotations
 
 from . import audit, catalog_store
 from .config import PUBLIC_HOST_ALIASES, get_settings
@@ -70,6 +72,40 @@ _CALLS = ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world
 _INTERNAL_BASE = "http://treg.internal"
 _TIMEOUT = httpx.Timeout(120.0, connect=5.0)
 
+
+class _StaticSurfaceCapabilities:
+    """Do not advertise or serve change subscriptions for treg's fixed MCP surface.
+
+    MCP SDK 2.0 currently installs subscriptions/listen unconditionally, then derives every
+    listChanged/resource-subscribe capability from that handler. treg never changes its six-tool
+    surface or publishes prompt/resource/tool events; weekly catalog changes are tool DATA, not a
+    tools/list change. Use the SDK's public middleware seam until it exposes a constructor switch —
+    never reach into its private handler registry.
+    """
+
+    async def __call__(
+        self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
+    ) -> HandlerResult:
+        if ctx.method == "subscriptions/listen":
+            raise MCPError(code=METHOD_NOT_FOUND, message="Method not found", data=ctx.method)
+
+        result = await call_next(ctx)
+        if ctx.method != "server/discover" or not isinstance(result, dict):
+            return result
+
+        result = dict(result)
+        capabilities = dict(result.get("capabilities") or {})
+        for name in ("tools", "prompts"):
+            capability = dict(capabilities.get(name) or {})
+            capability["listChanged"] = False
+            capabilities[name] = capability
+        resources = dict(capabilities.get("resources") or {})
+        resources.update({"listChanged": False, "subscribe": False})
+        capabilities["resources"] = resources
+        result["capabilities"] = capabilities
+        return result
+
+
 mcp = MCPServer(
     name="treg",
     title="treg — the tool catalog for your agent",
@@ -85,6 +121,7 @@ mcp = MCPServer(
         "catalog_get (params) → call. Multiple providers for one job? catalog_get ranks them by "
         "measured success, speed and price — you pick."
     ),
+    middleware=[_StaticSurfaceCapabilities()],
 )
 
 

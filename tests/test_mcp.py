@@ -15,7 +15,6 @@ import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-import anyio
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -38,6 +37,23 @@ async def _rpc(client: AsyncClient, method: str, params=None, token: str | None 
     # allow-list — see test_an_unknown_host_is_refused.
     r = await client.post("http://localhost/mcp/", json=body, headers=headers)
     return r
+
+
+async def _modern_rpc(client: AsyncClient, method: str, params=None, token: str = "opaque-test-token"):
+    body_params = dict(params or {})
+    body_params["_meta"] = {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "1"},
+    }
+    return await client.post("http://localhost/mcp/", json={
+        "jsonrpc": "2.0", "id": 1, "method": method, "params": body_params,
+    }, headers={
+        **MCP_HEADERS,
+        "Authorization": f"Bearer {token}",
+        "MCP-Protocol-Version": "2026-07-28",
+        "MCP-Method": method,
+    })
 
 
 async def _call_tool(client: AsyncClient, name: str, args: dict, token: str | None = None) -> dict:
@@ -622,67 +638,66 @@ async def test_a_notification_and_ping_pass_without_a_token(clients):
         assert r.status_code == 200, r.text
 
 
-async def test_subscription_listen_is_acknowledged_before_the_real_disconnect() -> None:
-    """Body inspection must not invent a disconnect after replaying the request.
+async def test_auth_body_replay_waits_for_the_real_disconnect_on_a_long_response() -> None:
+    """A completed request body is not a disconnect; long responses keep the live receive channel."""
+    from treg.mcp import RequireAuthForProtectedTools
 
-    MCP 2026-07-28's subscriptions/listen watches receive() for the real client disconnect while
-    its response remains open. A synthetic disconnect cancels the handler before it sends even
-    http.response.start, which Uvicorn translates into a 500 on a still-live connection.
-    """
-    from treg import mcp as _mcp
-
-    body = json.dumps({
-        "jsonrpc": "2.0", "id": 7, "method": "subscriptions/listen",
-        "params": {
-            "notifications": {"toolsListChanged": True},
-            "_meta": {
-                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-                "io.modelcontextprotocol/clientCapabilities": {},
-                "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "1"},
-            },
-        },
-    }).encode()
-    scope = {
-        "type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"},
-        "http_version": "1.1", "method": "POST", "scheme": "http",
-        "path": "/", "raw_path": b"/", "query_string": b"", "root_path": "",
-        "client": ("127.0.0.1", 50000), "server": ("localhost", 80),
-        "headers": [
-            (b"host", b"localhost"), (b"content-type", b"application/json"),
-            (b"accept", b"application/json, text/event-stream"),
-            (b"authorization", b"Bearer opaque-test-token"),
-            (b"mcp-protocol-version", b"2026-07-28"),
-            (b"mcp-method", b"subscriptions/listen"),
-            (b"content-length", str(len(body)).encode()),
-        ],
-    }
-    acknowledgment_sent = anyio.Event()
-    receive_calls = 0
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}).encode()
+    original_calls = 0
+    downstream_received = []
     sent = []
 
     async def receive():
-        nonlocal receive_calls
-        receive_calls += 1
-        if receive_calls == 1:
+        nonlocal original_calls
+        original_calls += 1
+        if original_calls == 1:
             return {"type": "http.request", "body": body, "more_body": False}
-        await acknowledgment_sent.wait()
-        return {"type": "http.disconnect"}
+        return {"type": "http.disconnect", "real": True}
 
     async def send(message):
         sent.append(message)
-        if (message["type"] == "http.response.body" and
-                b"notifications/subscriptions/acknowledged" in message.get("body", b"")):
-            acknowledgment_sent.set()
 
-    fresh = _mcp.build_mcp_app()
-    async with _mcp.mcp_lifespan(fresh):
-        with anyio.fail_after(2):
-            await fresh(scope, receive, send)
+    async def long_response(scope, receive, send):
+        downstream_received.append(await receive())
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"still open", "more_body": True})
+        downstream_received.append(await receive())
 
-    assert receive_calls == 2
-    assert sent[0]["type"] == "http.response.start"
-    assert sent[0]["status"] == 200
-    assert acknowledgment_sent.is_set()
+    scope = {"type": "http", "method": "POST", "headers": []}
+    await RequireAuthForProtectedTools(long_response)(scope, receive, send)
+
+    assert original_calls == 2
+    assert downstream_received == [
+        {"type": "http.request", "body": body, "more_body": False},
+        {"type": "http.disconnect", "real": True},
+    ]
+    assert sent[0] == {"type": "http.response.start", "status": 200, "headers": []}
+
+
+async def test_discover_disables_unused_change_capabilities(clients) -> None:
+    """A fixed tool surface must not make clients open an idle subscription stream."""
+    async with mcp_session(clients) as c:
+        r = await _modern_rpc(c, "server/discover")
+
+    assert r.status_code == 200, r.text
+    capabilities = r.json()["result"]["capabilities"]
+    assert capabilities["tools"]["listChanged"] is False
+    assert capabilities["prompts"]["listChanged"] is False
+    assert capabilities["resources"]["listChanged"] is False
+    assert capabilities["resources"]["subscribe"] is False
+
+
+async def test_subscription_listen_is_not_served(clients) -> None:
+    """SDK 2.0 registers listen by default; treg refuses it through the public middleware seam."""
+    async with mcp_session(clients) as c:
+        r = await _modern_rpc(c, "subscriptions/listen", {
+            "notifications": {"toolsListChanged": True},
+        })
+
+    assert r.status_code == 404, r.text
+    assert r.json()["error"] == {
+        "code": -32601, "message": "Method not found", "data": "subscriptions/listen",
+    }
 
 
 async def test_auth_middleware_preserves_a_real_mid_body_disconnect() -> None:
