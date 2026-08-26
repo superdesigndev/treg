@@ -953,15 +953,13 @@ class RequireAuthForProtectedTools:
             return await self.app(scope, receive, send)
 
         chunks: list[bytes] = []
-        received_request = False
+        consumed_messages = []
         body_complete = False
-        trailing_message = None
         while True:
             msg = await receive()
+            consumed_messages.append(msg)
             if msg["type"] != "http.request":
-                trailing_message = msg
                 break
-            received_request = True
             chunks.append(msg.get("body", b""))
             if not msg.get("more_body", False):
                 body_complete = True
@@ -979,17 +977,9 @@ class RequireAuthForProtectedTools:
         # those are exhausted, delegate to the original receive() — only the ASGI server knows when
         # the client disconnected. Fabricating http.disconnect here cancels long-lived requests such
         # as MCP 2026-07-28 subscriptions/listen before they can start their response.
-        cached_messages = []
-        if received_request:
-            cached_messages.append(
-                {"type": "http.request", "body": body, "more_body": not body_complete}
-            )
-        if trailing_message is not None:
-            cached_messages.append(trailing_message)
-
         async def replay():
-            if cached_messages:
-                return cached_messages.pop(0)
+            if consumed_messages:
+                return consumed_messages.pop(0)
             return await receive()
 
         return await self.app(scope, replay, send)

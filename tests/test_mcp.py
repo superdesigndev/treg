@@ -685,6 +685,36 @@ async def test_subscription_listen_is_acknowledged_before_the_real_disconnect() 
     assert acknowledgment_sent.is_set()
 
 
+async def test_auth_middleware_preserves_a_real_mid_body_disconnect() -> None:
+    """Authentication inspection replays each partial request message and the real disconnect."""
+    from treg.mcp import RequireAuthForProtectedTools
+
+    received = []
+
+    async def downstream(scope, receive, send):
+        received.append(await receive())
+        received.append(await receive())
+        received.append(await receive())
+
+    messages = [
+        {"type": "http.request", "body": b'{"jsonrpc":', "more_body": True},
+        {"type": "http.request", "body": b'"2.0"', "more_body": True},
+        {"type": "http.disconnect", "real": True},
+    ]
+
+    async def receive():
+        return messages.pop(0)
+
+    scope = {"type": "http", "method": "POST", "headers": []}
+    await RequireAuthForProtectedTools(downstream)(scope, receive, lambda message: None)
+
+    assert received == [
+        {"type": "http.request", "body": b'{"jsonrpc":', "more_body": True},
+        {"type": "http.request", "body": b'"2.0"', "more_body": True},
+        {"type": "http.disconnect", "real": True},
+    ]
+
+
 async def test_a_BAD_token_is_the_tool_s_business_not_the_transport_s(clients):
     """The challenge fires only when there is NO credential. Deciding whether a token is valid needs
     the database, and doing that in transport middleware would put a second authentication

@@ -185,12 +185,13 @@ middleware, so a credentialed request with a bad host or origin is still refused
 not mask the transport guard.
 
 `RequireAuthForProtectedTools` buffers the POST body only long enough to classify that request. It
-then replays the request body and delegates every later `receive()` call to the original ASGI
+then replays the consumed request messages and delegates every later `receive()` call to the original ASGI
 channel; it never manufactures `http.disconnect`. That distinction is load-bearing for MCP
 2026-07-28 `subscriptions/listen`: the SDK keeps that response open and watches `receive()` for the
 client's real disconnect, so a synthetic one cancels the subscription before its 200 response and
 acknowledgment are sent. If the client genuinely disconnects while the middleware is reading the
-body, the observed partial body and real disconnect are replayed without inventing completion.
+body, every observed partial-body message and the real disconnect are replayed unchanged without
+inventing completion.
 
 # treg as an authorization server
 

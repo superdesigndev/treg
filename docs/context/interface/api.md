@@ -49,7 +49,8 @@ automatically on a WAF 403 (see [cli](cli.md)), as does the local proxy for an i
 replay does not imply connection closure: after delivering the decoded request,
 `_BodyDecodeMiddleware` delegates later `receive()` calls to the original ASGI channel and forwards
 only a real `http.disconnect`. If the client disconnects before the encoded body is complete, the
-middleware skips decoding and replays the partial body followed by that real disconnect.
+middleware skips decoding and replays each consumed partial-body message followed by that real
+disconnect.
 
 ## `X-Treg-Error` — whose refusal is this?
 `_mark_treg_own_errors` (an `@app.exception_handler(StarletteHTTPException)`) tags treg's **own**

@@ -109,3 +109,38 @@ async def test_body_decode_delegates_to_the_real_receive_after_replay() -> None:
         {"type": "http.request", "body": b"decoded body", "more_body": False},
         {"type": "http.disconnect", "real": True},
     ]
+
+
+async def test_body_decode_preserves_a_real_mid_body_disconnect() -> None:
+    """An incomplete encoded body cannot be decoded or mistaken for a completed request."""
+    received = []
+
+    async def downstream(scope, receive, send):
+        received.append(await receive())
+        received.append(await receive())
+        received.append(await receive())
+
+    messages = [
+        {"type": "http.request", "body": b"first", "more_body": True},
+        {"type": "http.request", "body": b"second", "more_body": True},
+        {"type": "http.disconnect", "real": True},
+    ]
+
+    async def receive():
+        return messages.pop(0)
+
+    scope = {
+        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
+        "method": "POST", "scheme": "http", "path": "/call/example", "raw_path": b"/call/example",
+        "query_string": b"", "root_path": "",
+        "headers": [(b"host", b"localhost"), (b"x-treg-body-encoding", b"base64")],
+        "client": ("127.0.0.1", 50000), "server": ("127.0.0.1", 8000),
+    }
+
+    await _BodyDecodeMiddleware(downstream)(scope, receive, lambda message: None)
+
+    assert received == [
+        {"type": "http.request", "body": b"first", "more_body": True},
+        {"type": "http.request", "body": b"second", "more_body": True},
+        {"type": "http.disconnect", "real": True},
+    ]
