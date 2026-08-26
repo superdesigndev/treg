@@ -328,16 +328,41 @@ class _BodyDecodeMiddleware:
         if enc is None:
             return await self.app(scope, receive, send)
         chunks: list[bytes] = []
+        received_request = False
+        body_complete = False
+        trailing_message = None
         while True:
             msg = await receive()
             if msg["type"] == "http.request":
+                received_request = True
                 chunks.append(msg.get("body", b""))
                 if not msg.get("more_body", False):
+                    body_complete = True
                     break
-            elif msg["type"] == "http.disconnect":
+            else:
+                trailing_message = msg
                 break
+        raw = b"".join(chunks)
+
+        # A decoder needs the complete encoded payload. If the client disconnected mid-body, pass
+        # the messages already observed through unchanged so downstream sees the real disconnect.
+        if not body_complete:
+            cached_messages = []
+            if received_request:
+                cached_messages.append(
+                    {"type": "http.request", "body": raw, "more_body": True}
+                )
+            if trailing_message is not None:
+                cached_messages.append(trailing_message)
+
+            async def replay_incomplete():
+                if cached_messages:
+                    return cached_messages.pop(0)
+                return await receive()
+
+            return await self.app(scope, replay_incomplete, send)
         try:
-            decoded = _decode_request_body(b"".join(chunks), enc)
+            decoded = _decode_request_body(raw, enc)
         except Exception:  # noqa: BLE001 -- a malformed encoded body is a client error, not a 500
             return await JSONResponse({"detail": "invalid X-Treg-Body-Encoding body"}, status_code=400)(scope, receive, send)
         # Strip the marker, drop content-encoding, and fix content-length to the decoded size.
@@ -352,7 +377,7 @@ class _BodyDecodeMiddleware:
             if not delivered:
                 delivered = True
                 return {"type": "http.request", "body": decoded, "more_body": False}
-            return {"type": "http.disconnect"}
+            return await receive()
 
         return await self.app(new_scope, receive_decoded, send)
 

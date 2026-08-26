@@ -952,25 +952,45 @@ class RequireAuthForProtectedTools:
         if scope["type"] != "http" or scope.get("method") != "POST":
             return await self.app(scope, receive, send)
 
-        body, more = b"", True
-        while more:
+        chunks: list[bytes] = []
+        received_request = False
+        body_complete = False
+        trailing_message = None
+        while True:
             msg = await receive()
-            body += msg.get("body", b"")
-            more = msg.get("more_body", False)
+            if msg["type"] != "http.request":
+                trailing_message = msg
+                break
+            received_request = True
+            chunks.append(msg.get("body", b""))
+            if not msg.get("more_body", False):
+                body_complete = True
+                break
+        body = b"".join(chunks)
 
-        verdict = self._auth_verdict(scope, body)
+        # An incomplete request ended by a real disconnect has nothing useful to authenticate, and
+        # challenging it would try to write to a socket that is already gone. Let the transport see
+        # the exact request/disconnect sequence instead.
+        verdict = self._auth_verdict(scope, body) if body_complete else None
         if verdict is not None:
             return await self._challenge(send, invalid=(verdict == "invalid"))
 
-        # The body was consumed to inspect it, so hand the transport a receive() that replays it.
-        replayed = False
+        # The body was consumed to inspect it, so replay the messages we actually received. Once
+        # those are exhausted, delegate to the original receive() — only the ASGI server knows when
+        # the client disconnected. Fabricating http.disconnect here cancels long-lived requests such
+        # as MCP 2026-07-28 subscriptions/listen before they can start their response.
+        cached_messages = []
+        if received_request:
+            cached_messages.append(
+                {"type": "http.request", "body": body, "more_body": not body_complete}
+            )
+        if trailing_message is not None:
+            cached_messages.append(trailing_message)
 
         async def replay():
-            nonlocal replayed
-            if replayed:
-                return {"type": "http.disconnect"}
-            replayed = True
-            return {"type": "http.request", "body": body, "more_body": False}
+            if cached_messages:
+                return cached_messages.pop(0)
+            return await receive()
 
         return await self.app(scope, replay, send)
 

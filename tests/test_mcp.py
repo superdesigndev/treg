@@ -15,6 +15,7 @@ import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import anyio
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -615,10 +616,73 @@ async def test_a_notification_and_ping_pass_without_a_token(clients):
     async with mcp_session(clients) as c:
         r = await c.post("http://localhost/mcp/", headers=MCP_HEADERS,
                          json={"jsonrpc": "2.0", "method": "notifications/initialized"})
-        assert r.status_code != 401, r.text
+        assert r.status_code == 202, r.text
         r = await c.post("http://localhost/mcp/", headers=MCP_HEADERS,
                          json={"jsonrpc": "2.0", "id": 1, "method": "ping"})
-        assert r.status_code != 401, r.text
+        assert r.status_code == 200, r.text
+
+
+async def test_subscription_listen_is_acknowledged_before_the_real_disconnect() -> None:
+    """Body inspection must not invent a disconnect after replaying the request.
+
+    MCP 2026-07-28's subscriptions/listen watches receive() for the real client disconnect while
+    its response remains open. A synthetic disconnect cancels the handler before it sends even
+    http.response.start, which Uvicorn translates into a 500 on a still-live connection.
+    """
+    from treg import mcp as _mcp
+
+    body = json.dumps({
+        "jsonrpc": "2.0", "id": 7, "method": "subscriptions/listen",
+        "params": {
+            "notifications": {"toolsListChanged": True},
+            "_meta": {
+                "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+                "io.modelcontextprotocol/clientCapabilities": {},
+                "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "1"},
+            },
+        },
+    }).encode()
+    scope = {
+        "type": "http", "asgi": {"version": "3.0", "spec_version": "2.3"},
+        "http_version": "1.1", "method": "POST", "scheme": "http",
+        "path": "/", "raw_path": b"/", "query_string": b"", "root_path": "",
+        "client": ("127.0.0.1", 50000), "server": ("localhost", 80),
+        "headers": [
+            (b"host", b"localhost"), (b"content-type", b"application/json"),
+            (b"accept", b"application/json, text/event-stream"),
+            (b"authorization", b"Bearer opaque-test-token"),
+            (b"mcp-protocol-version", b"2026-07-28"),
+            (b"mcp-method", b"subscriptions/listen"),
+            (b"content-length", str(len(body)).encode()),
+        ],
+    }
+    acknowledgment_sent = anyio.Event()
+    receive_calls = 0
+    sent = []
+
+    async def receive():
+        nonlocal receive_calls
+        receive_calls += 1
+        if receive_calls == 1:
+            return {"type": "http.request", "body": body, "more_body": False}
+        await acknowledgment_sent.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message):
+        sent.append(message)
+        if (message["type"] == "http.response.body" and
+                b"notifications/subscriptions/acknowledged" in message.get("body", b"")):
+            acknowledgment_sent.set()
+
+    fresh = _mcp.build_mcp_app()
+    async with _mcp.mcp_lifespan(fresh):
+        with anyio.fail_after(2):
+            await fresh(scope, receive, send)
+
+    assert receive_calls == 2
+    assert sent[0]["type"] == "http.response.start"
+    assert sent[0]["status"] == 200
+    assert acknowledgment_sent.is_set()
 
 
 async def test_a_BAD_token_is_the_tool_s_business_not_the_transport_s(clients):
