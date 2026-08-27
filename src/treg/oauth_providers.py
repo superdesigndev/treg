@@ -2192,6 +2192,31 @@ META_AD_LIBRARY = OAuthProvider(
     probe_path='/ads_archive?search_terms=coffee&ad_reached_countries=%5B%22US%22%5D&limit=1&fields=id',
 )
 
+SEARCH1API = OAuthProvider(
+    service="search1api",
+    display_name="Search1API",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Search1API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.s1.dev",
+    setup_action_label="Get your Search1API key",
+    setup_steps=(
+        "Sign in at https://app.s1.dev.",
+        "Create an API key and copy it.",
+    ),
+    setup_note="Search, news, crawl, sitemap and trending cost 1 credit; screenshot 2; extract 10; deepcrawl 20. GET /usage is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Web search, news, crawl, screenshot and extract for AI agents, billed per credit.",
+    base_url="https://api.search1api.com",
+    docs_url="https://s1.dev/docs",
+    probe_path="/usage",  # free remaining-credits check; 401 on a bad Bearer
+)
+
 SERPAPI = OAuthProvider(
     service="serpapi",
     display_name="SerpApi",
@@ -2313,7 +2338,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
-        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT,
+        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, SEARCH1API,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, TOMBA, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,

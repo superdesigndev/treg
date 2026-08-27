@@ -1,0 +1,317 @@
+provider: search1api
+source:
+  docs: https://s1.dev/docs
+  openapi: https://api.search1api.com/openapi.json
+  curated: 2026-08-26
+
+# Prices transcribed from https://s1.dev/pricing (page last-updated 2026-08-22). Native unit is
+# credits. USD equivalent uses the Basic plan $19 / 25,000 credits ≈ $0.00076 per credit
+# (≈$0.76 per 1k one-credit requests). Vendor skipped live meter reconciliation; do not stamp
+# verified:. GET /health is unauthenticated and is NOT the probe — GET /usage is.
+#
+# Observed bad-key probe, 2026-08-26: GET /usage with Authorization: Bearer <garbage>
+# → HTTP 401, body {"error":"Unauthorized: Invalid bearer credential","ok":false}.
+#
+# Do not use OpenAPI x-payment-info MPP/x402 dollar prices; those are pay-per-request without
+# an account, not the credit plan a pasted key is billed on.
+
+limits: "concurrency scales with plan; Free is lower than Basic/Professional/Enterprise"
+pricing_url: https://s1.dev/pricing
+
+proposed_capabilities:
+  web.search: "Search the live public web and get ranked results"
+  news.search: "Search recent news articles"
+  web.crawl: "Fetch a URL and return readable page text"
+  web.screenshot: "Render a webpage as an image"
+  web.sitemap: "List sitemap or on-page URLs for a site"
+  web.extract: "Extract structured fields from a URL with a prompt"
+  web.trending: "List currently popular items on a supported platform"
+
+endpoints:
+  - id: search1api.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /usage
+    name: "Remaining Search1API credits"
+    summary: "Return the remaining credit balance for the authenticated key (free)"
+    input:
+      queryParams:
+        period: {type: string, required: false, note: "day | week | month | year", example: "month"}
+      note: "Free. Confirms the key works. This is the registry probe. Do not use GET /health — that route takes no credentials."
+    test_request:
+      queryParams: {}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      note: free — does not consume credits; registry health probe
+    docs_url: https://s1.dev/docs
+
+  - id: search1api.web.search
+    capability: web.search
+    platform: web
+    scope: any_account
+    method: POST
+    path: /search
+    name: "Search the live web across multiple engines"
+    summary: "Live web search with ranked title, URL and snippet across 13+ engines"
+    input:
+      body:
+        query: {type: string, required: true, note: "the search query", example: "example"}
+        search_service: {type: string, required: false, note: "google | bing | duckduckgo | yahoo | youtube | x | reddit | github | arxiv | wechat | bilibili | imdb | wikipedia | sogou | baidu | 360 | quark"}
+        max_results: {type: integer, required: false, note: "1-50, default 5", example: 1}
+        crawl_results: {type: integer, required: false, note: "0-50; each crawled page is billed as an extra crawl (1 credit). Keep 0 for the cheap test.", example: 0}
+        image: {type: boolean, required: false}
+        include_sites: {type: array, required: false}
+        exclude_sites: {type: array, required: false}
+        language: {type: string, required: false}
+        time_range: {type: string, required: false, note: "day | week | month | year"}
+      bodyType: json
+      note: "Answers in `results`. crawl_results>0 is Deep Search and costs 1+n credits; the test_request keeps it at 0."
+    test_request:
+      body: {query: "example", max_results: 1}
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://s1.dev/pricing
+      checked: "2026-08-26"
+      confidence: documented
+      note: 1 credit per call (≈$0.00076 at Basic $19/25k). Deep Search with crawl_results=n costs 1+n when pages succeed.
+    docs_url: https://s1.dev/docs
+
+  - id: search1api.news.search
+    capability: news.search
+    platform: web
+    scope: any_account
+    method: POST
+    path: /news
+    name: "Search recent news articles"
+    summary: "Recent news from verified publishers with title, URL and snippet"
+    input:
+      body:
+        query: {type: string, required: true, example: "example"}
+        search_service: {type: string, required: false, note: "google | bing | duckduckgo | yahoo | hackernews | reuters"}
+        max_results: {type: integer, required: false, example: 1}
+        crawl_results: {type: integer, required: false, example: 0}
+        image: {type: boolean, required: false}
+        include_sites: {type: array, required: false}
+        exclude_sites: {type: array, required: false}
+        language: {type: string, required: false}
+        time_range: {type: string, required: false}
+      bodyType: json
+    test_request:
+      body: {query: "example", max_results: 1}
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://s1.dev/pricing
+      checked: "2026-08-26"
+      confidence: documented
+      note: 1 credit per call (≈$0.00076 at Basic). crawl_results>0 adds 1 credit per successfully crawled page.
+    docs_url: https://s1.dev/docs
+
+  - id: search1api.web.crawl
+    capability: web.crawl
+    platform: web
+    scope: any_account
+    method: POST
+    path: /crawl
+    name: "Crawl a URL into readable text"
+    summary: "Fetch one public URL and return title and clean body text"
+    input:
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        enableFallback: {type: boolean, required: false, note: "default true"}
+      bodyType: json
+    test_request:
+      body: {url: "https://example.com"}
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://s1.dev/pricing
+      checked: "2026-08-26"
+      confidence: documented
+      note: 1 credit per call (≈$0.00076 at Basic)
+    docs_url: https://s1.dev/docs
+
+  - id: search1api.web.sitemap
+    capability: web.sitemap
+    platform: web
+    scope: any_account
+    method: POST
+    path: /sitemap
+    name: "Extract sitemap or on-page URLs"
+    summary: "Discover public URLs of a site from its sitemap, or links on one page"
+    input:
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        type: {type: string, required: false, note: "sitemap (default) | all", example: "sitemap"}
+      bodyType: json
+    test_request:
+      body: {url: "https://example.com", type: "sitemap"}
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://s1.dev/pricing
+      checked: "2026-08-26"
+      confidence: documented
+      note: 1 credit per call (≈$0.00076 at Basic). Does not fetch page content.
+    docs_url: https://s1.dev/docs
+
+  - id: search1api.web.trending
+    capability: web.trending
+    platform: web
+    scope: any_account
+    method: POST
+    path: /trending
+    name: "Trending topics from a supported platform"
+    summary: "List currently popular items on a platform such as GitHub or Hacker News"
+    input:
+      body:
+        search_service: {type: string, required: true, example: "github"}
+        max_results: {type: integer, required: false, example: 1}
+      bodyType: json
+    test_request:
+      body: {search_service: "github", max_results: 1}
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://s1.dev/pricing
+      checked: "2026-08-26"
+      confidence: documented
+      note: 1 credit per call (≈$0.00076 at Basic)
+    docs_url: https://s1.dev/docs
+
+  - id: search1api.web.screenshot
+    capability: web.screenshot
+    platform: web
+    scope: any_account
+    method: POST
+    path: /screenshot
+    name: "Render a webpage as PNG, JPEG or WebP"
+    summary: "Capture a public webpage as an image"
+    input:
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        format: {type: string, required: false, note: "png | jpeg | webp", example: "png"}
+        full_page: {type: boolean, required: false}
+      bodyType: json
+    test_request:
+      body: {url: "https://example.com", format: "png"}
+    cost:
+      type: per_call
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://s1.dev/pricing
+      checked: "2026-08-26"
+      confidence: documented
+      note: 2 credits per call (≈$0.00152 at Basic)
+    docs_url: https://s1.dev/docs
+
+  - id: search1api.web.extract
+    capability: web.extract
+    platform: web
+    scope: any_account
+    method: POST
+    path: /extract
+    name: "Extract structured fields from a URL"
+    summary: "Pull structured data from a page with a prompt and optional JSON schema"
+    input:
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        prompt: {type: string, required: false, example: "Extract the page title"}
+        response_format: {type: object, required: false}
+      bodyType: json
+    test_request:
+      body: {url: "https://example.com", prompt: "Extract the page title"}
+    cost:
+      type: per_call
+      value: 10
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://s1.dev/pricing
+      checked: "2026-08-26"
+      confidence: documented
+      note: 10 credits per call (≈$0.0076 at Basic)
+    docs_url: https://s1.dev/docs
+
+  - id: search1api.web.scrape.job.start
+    capability: web.scrape.job.start
+    platform: web
+    scope: any_account
+    method: POST
+    path: /deepcrawl
+    name: "Start an async whole-site crawl"
+    summary: "Queue a multi-page crawl and get a task id back immediately"
+    input:
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        type: {type: string, required: false, note: "sitemap | all", example: "sitemap"}
+      bodyType: json
+      note: "Returns HTTP 202 with taskId. Poll search1api.web.scrape.job.status. 20 credits for the start call."
+    test_request:
+      body: {url: "https://example.com", type: "sitemap"}
+    cost:
+      type: per_call
+      value: 20
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://s1.dev/pricing
+      checked: "2026-08-26"
+      confidence: documented
+      note: 20 credits per call (≈$0.0152 at Basic). Status polling is free.
+    docs_url: https://s1.dev/docs
+
+  - id: search1api.web.scrape.job.status
+    kind: utility
+    capability: web.scrape.job.status
+    platform: web
+    scope: any_account
+    method: GET
+    path: /deepcrawl/status/{taskId}
+    name: "Check a deepcrawl task"
+    summary: "Poll a deepcrawl task until it completes"
+    input:
+      pathParams:
+        taskId: {type: string, required: true, example: "task_id"}
+      note: "Free. A fake taskId may 404 — that is a correct unknown-id answer, not a failed probe. Labelled as a deliberate miss for verification."
+    test_request:
+      pathParams: {taskId: "task_id"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      note: free. test_request uses a placeholder id and may 404 (deliberate miss).
+    docs_url: https://s1.dev/docs
