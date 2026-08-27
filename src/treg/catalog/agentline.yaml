@@ -64,6 +64,7 @@ endpoints:
     docs_url: https://docs.agentline.cloud/api-reference/numbers/list-numbers
 
   - id: agentline.account.telephony.calls.list
+    kind: account
     capability: account.telephony.calls.list
     platform: account
     scope: own_account
@@ -83,6 +84,7 @@ endpoints:
     docs_url: https://docs.agentline.cloud/api-reference/calls/list-calls
 
   - id: agentline.account.telephony.messages.list
+    kind: account
     capability: account.telephony.messages.list
     platform: account
     scope: own_account
@@ -102,6 +104,7 @@ endpoints:
     docs_url: https://docs.agentline.cloud/api-reference/messages/list-messages
 
   - id: agentline.account.telephony.conversations.list
+    kind: account
     capability: account.telephony.conversations.list
     platform: account
     scope: own_account
@@ -117,6 +120,7 @@ endpoints:
     docs_url: https://docs.agentline.cloud/api-reference/messages/list-conversations
 
   - id: agentline.account.telephony.events.peek
+    kind: account
     capability: account.telephony.events.peek
     platform: account
     scope: own_account
