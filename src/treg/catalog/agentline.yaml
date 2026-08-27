@@ -1,0 +1,284 @@
+provider: agentline
+source:
+  docs: https://docs.agentline.cloud
+  openapi: https://api.agentline.cloud/openapi.json
+  curated: '2026-08-27'
+limits: "OTP routes publish per-email and per-IP limits; numeric limits for authenticated API routes are not currently published."
+pricing_url: https://agentline.cloud/pricing
+
+# AgentLine's core paid actions have real-world effects: provisioning buys a phone number, calls
+# dial a person, and messages send SMS. Their required agent/number/call IDs are account-specific,
+# so they cannot be replayed safely by treg's independent verifier. This curated core therefore
+# covers the useful, repeatable account inventory, history, event, voice and billing reads. The PR
+# surface map records every excluded action and why it is not a safe fixed test request.
+#
+# All rows are own-account data and intentionally BYOK-only. Serving them through treg's shared
+# platform key would expose one shared AgentLine account rather than the caller's agents, numbers,
+# calls and messages.
+
+proposed_capabilities:
+  account.telephony.agents.list: "List the AI phone agents on your account"
+  account.telephony.numbers.list: "List the phone numbers on your account"
+  account.telephony.calls.list: "List your AI agents' voice call history"
+  account.telephony.messages.list: "List your AI agents' SMS history"
+  account.telephony.conversations.list: "List your AI agents' SMS conversations"
+  account.telephony.events.peek: "Preview pending telephony events without consuming them"
+  account.telephony.webhooks.list: "List your telephony event webhooks"
+  account.telephony.voices.list: "List the available phone-agent voices"
+  account.telephony.voice.get: "Get your account's default phone-agent voice"
+  account.telephony.expenditure: "Break down telephony spending by category"
+  account.telephony.call_charges: "List individual voice-call charges"
+  account.telephony.number_charges: "List individual phone-number charges"
+  account.telephony.spending_summary: "Summarize telephony spending by month"
+  account.telephony.usage: "Summarize call, message and phone-number usage"
+
+endpoints:
+  - id: agentline.account.telephony.agents.list
+    kind: account
+    capability: account.telephony.agents.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/agents
+    name: "AI phone agents with prompts, voices and numbers"
+    summary: "List all AI voice agents configured on your account."
+    input:
+      note: "no parameters"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27."}
+    docs_url: https://docs.agentline.cloud/api-reference/agents/list-agents
+
+  - id: agentline.account.telephony.numbers.list
+    kind: account
+    capability: account.telephony.numbers.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/numbers
+    name: "Phone numbers by agent, country and status"
+    summary: "List all phone numbers provisioned on your account."
+    input:
+      note: "no parameters"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27; provisioning is billed separately."}
+    docs_url: https://docs.agentline.cloud/api-reference/numbers/list-numbers
+
+  - id: agentline.account.telephony.calls.list
+    capability: account.telephony.calls.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/calls
+    name: "Voice call history by agent or status"
+    summary: "List voice calls made by your AI agents."
+    input:
+      queryParams:
+        agent_id: {type: string, required: false, note: "AI agent ID from GET /v1/agents", example: "agt_xxx"}
+        status: {type: string, required: false, note: "initiated | in-progress | completed | failed", example: "completed"}
+        limit: {type: integer, required: false, note: "1-200; default 50", example: 20}
+        offset: {type: integer, required: false, note: "pagination offset, minimum 0", example: 0}
+    test_request:
+      queryParams: {limit: 1, offset: 0}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27; live voice minutes are billed separately."}
+    docs_url: https://docs.agentline.cloud/api-reference/calls/list-calls
+
+  - id: agentline.account.telephony.messages.list
+    capability: account.telephony.messages.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/messages
+    name: "SMS history by agent or conversation"
+    summary: "List SMS messages sent and received by your AI agents."
+    input:
+      queryParams:
+        agent_id: {type: string, required: false, note: "AI agent ID from GET /v1/agents", example: "agt_xxx"}
+        conversation_id: {type: string, required: false, note: "conversation ID from GET /v1/messages/conversations", example: "conv_xxx"}
+        limit: {type: integer, required: false, note: "1-200; default 50", example: 20}
+        offset: {type: integer, required: false, note: "pagination offset, minimum 0", example: 0}
+    test_request:
+      queryParams: {limit: 1, offset: 0}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27; SMS delivery is billed separately."}
+    docs_url: https://docs.agentline.cloud/api-reference/messages/list-messages
+
+  - id: agentline.account.telephony.conversations.list
+    capability: account.telephony.conversations.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/messages/conversations
+    name: "SMS conversations by AI phone agent"
+    summary: "List all SMS conversations for your AI agents."
+    input:
+      queryParams:
+        agent_id: {type: string, required: false, note: "AI agent ID from GET /v1/agents", example: "agt_xxx"}
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27."}
+    docs_url: https://docs.agentline.cloud/api-reference/messages/list-conversations
+
+  - id: agentline.account.telephony.events.peek
+    capability: account.telephony.events.peek
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/events/peek
+    name: "Pending call and SMS events without consuming them"
+    summary: "Peek at pending telephony events without consuming them."
+    input:
+      queryParams:
+        agent_id: {type: string, required: false, note: "AI agent ID from GET /v1/agents", example: "agt_xxx"}
+        event_type: {type: string, required: false, note: "for example call.completed or sms.received", example: "call.completed"}
+        limit: {type: integer, required: false, note: "1-200; default 50", example: 20}
+    test_request:
+      queryParams: {limit: 1}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27; peeking leaves every event pending."}
+    docs_url: https://docs.agentline.cloud/api-reference/events/peek-events
+
+  - id: agentline.account.telephony.webhooks.list
+    kind: account
+    capability: account.telephony.webhooks.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/webhooks
+    name: "Event webhooks by AI phone agent"
+    summary: "List the account's per-agent webhook configuration(s)."
+    input:
+      queryParams:
+        agent_id: {type: string, required: false, note: "AI agent ID from GET /v1/agents", example: "agt_xxx"}
+      note: "Webhook secrets are masked in this response."
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27."}
+    docs_url: https://docs.agentline.cloud/api-reference/webhooks/get-webhooks
+
+  - id: agentline.account.telephony.voices.list
+    kind: utility
+    capability: account.telephony.voices.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/voices
+    name: "Available phone-agent voice presets"
+    summary: "List all available voice presets for AI phone agents."
+    input:
+      note: "no parameters; this route is public but remains useful through a connected tool"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27."}
+    docs_url: https://docs.agentline.cloud/api-reference/voice/get-available-voices
+
+  - id: agentline.account.telephony.voice.get
+    kind: account
+    capability: account.telephony.voice.get
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/account/voice
+    name: "Default phone-agent voice for your account"
+    summary: "Get the current account-level default voice for AI phone agents."
+    input:
+      note: "no parameters"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27."}
+    docs_url: https://docs.agentline.cloud/api-reference/voice/get-account-voice
+
+  - id: agentline.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/billing/balance
+    name: "Telephony balance, live rates and affordability"
+    summary: "Get your AI telephony account balance and rate card."
+    input:
+      note: "no parameters; this is also the free credential probe"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27; this response also reported the live rate card."}
+    docs_url: https://docs.agentline.cloud/api-reference/billing/get-balance
+
+  - id: agentline.account.telephony.expenditure
+    kind: account
+    capability: account.telephony.expenditure
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/billing/expenditure
+    name: "Telephony spend by calls and phone numbers"
+    summary: "Get a detailed expenditure breakdown for AI telephony usage."
+    input:
+      queryParams:
+        period: {type: string, required: false, note: "current_month | last_month | all_time | YYYY-MM; default current_month", example: "current_month"}
+    test_request:
+      queryParams: {period: "current_month"}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27."}
+    docs_url: https://docs.agentline.cloud/api-reference/billing/get-expenditure
+
+  - id: agentline.account.telephony.call_charges
+    kind: account
+    capability: account.telephony.call_charges
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/billing/expenditure/calls
+    name: "Voice-call charges with duration and direction"
+    summary: "List individual call charges from AI agent phone calls."
+    input:
+      queryParams:
+        limit: {type: integer, required: false, note: "1-200; default 50", example: 20}
+        offset: {type: integer, required: false, note: "pagination offset, minimum 0", example: 0}
+    test_request:
+      queryParams: {limit: 1, offset: 0}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27."}
+    docs_url: https://docs.agentline.cloud/api-reference/billing/get-call-expenditure
+
+  - id: agentline.account.telephony.number_charges
+    kind: account
+    capability: account.telephony.number_charges
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/billing/expenditure/numbers
+    name: "Phone-number charges with country and status"
+    summary: "List phone number provisioning charges."
+    input:
+      queryParams:
+        limit: {type: integer, required: false, note: "1-200; default 50", example: 20}
+        offset: {type: integer, required: false, note: "pagination offset, minimum 0", example: 0}
+    test_request:
+      queryParams: {limit: 1, offset: 0}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27."}
+    docs_url: https://docs.agentline.cloud/api-reference/billing/get-number-expenditure
+
+  - id: agentline.account.telephony.spending_summary
+    kind: account
+    capability: account.telephony.spending_summary
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/billing/summary
+    name: "Monthly telephony spending trends"
+    summary: "Month-over-month spending summary."
+    input:
+      queryParams:
+        months: {type: integer, required: false, note: "1-24; default 6", example: 6}
+    test_request:
+      queryParams: {months: 1}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27."}
+    docs_url: https://docs.agentline.cloud/api-reference/billing/get-spending-summary
+
+  - id: agentline.account.telephony.usage
+    kind: account
+    capability: account.telephony.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/usage
+    name: "Call, message and phone-number usage by period"
+    summary: "Get usage statistics for your AI telephony account."
+    input:
+      queryParams:
+        period: {type: string, required: false, note: "current_month | last_month | all_time | YYYY-MM; default current_month", example: "current_month"}
+    test_request:
+      queryParams: {period: "current_month"}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: observed, source_url: https://agentline.cloud/pricing, checked: '2026-08-27', confidence: verified, note: "Observed with no balance change or billing-ledger entry on 2026-08-27."}
+    docs_url: https://api.agentline.cloud/docs

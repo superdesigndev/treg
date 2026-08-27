@@ -45,7 +45,7 @@ def test_every_provider_is_registered():
         # API-key providers (auth_kind="key")
         "apollo", "pdl", "akta", "hunter", "crunchbase", "tikhub", "brightdata", "semrush", "justoneapi",
         "scrapecreators",
-        "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
+        "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa", "agentline",
         "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
         "companyenrich", "oceanio", "tomba", "predictleads", "findymail", "branddev",
         "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato",
