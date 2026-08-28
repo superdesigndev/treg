@@ -96,6 +96,8 @@ services:
         sync: false
       - key: TREG_PLATFORM_KEY_HUNTER
         sync: false
+      - key: TREG_PLATFORM_KEY_SIGNALIZ       # Bearer key; Company Signals only
+        sync: false
       - key: TREG_PLATFORM_KEY_LEADMAGIC
         sync: false
       - key: TREG_PLATFORM_KEY_LUSHA
@@ -234,6 +236,11 @@ services:
           type: web
           name: treg
           envVarName: TREG_PLATFORM_KEY_HUNTER
+      - key: TREG_PLATFORM_KEY_SIGNALIZ
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_SIGNALIZ
       - key: TREG_PLATFORM_KEY_LEADMAGIC
         fromService:
           type: web
@@ -354,4 +361,3 @@ services:
           type: web
           name: treg
           envVarName: TREG_PLATFORM_KEY_TOMBA_SECRET
-

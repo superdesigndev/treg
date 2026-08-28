@@ -316,6 +316,14 @@ USD. Platform billing settles every call from the response's `costDollars.total`
 search or a contents call with three content types bills exactly what Exa charged, not the catalog
 base. Verified on the dev server before merge: reserve $0.007 → settle $0.009 on a 12-result search.
 
+## Signaliz Company Signals platform key (2026-08-28)
+
+`TREG_PLATFORM_KEY_SIGNALIZ` is a Bearer API key for the single curated Company Signals tool. Add
+`signaliz` to `TREG_PLATFORM_PROVIDERS` only after the vendor supplies and funds or entitles the
+production key. The catalog reserves the authenticated dry-run maximum of three credits ($0.03 on
+Pay As You Go), then settles from `credits_used`; cache hits and plan-included calls can settle at
+zero. No other Signaliz API is catalogued by this integration.
+
 ## Worker commands and the capacity cron (2026-08-28)
 
 `treg-worker` (console script, `[server]` extra) hosts the scheduled maintainer commands — today

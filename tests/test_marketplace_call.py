@@ -521,6 +521,12 @@ def test_observed_cost_only_trusts_a_real_number():
     assert call_settle._observed_cost_micro(_mk("akta"), b'{"credits_consumed": 0.5}') == 25_000
     assert call_settle._observed_cost_micro(_mk("akta"), b'{"credits_consumed": 0}') == 0, "a reported zero is honoured"
     assert call_settle._observed_cost_micro(_mk("akta"), b'{"credits_charged": 2}') is None, "wrong field name means we never learned it"
+    signaliz = _mk("signaliz", endpoint_id="signaliz.companies.news")
+    assert call_settle._observed_cost_micro(signaliz, b'{"credits_used": 2}') == 20_000
+    assert call_settle._observed_cost_micro(signaliz, b'{"credits_used": 0}') == 0
+    assert call_settle._observed_cost_micro(signaliz, b'{"credits_charged": 0}') == 0, "dry runs report the fallback field"
+    assert call_settle._observed_cost_micro(signaliz, b'{"credits_used": "2"}') is None
+    assert call_settle._observed_cost_micro(_mk("signaliz", endpoint_id="other"), b'{"credits_used": 2}') is None
 
 
 def test_crustdata_settles_from_the_response_credit_header():
@@ -884,6 +890,25 @@ def test_exa_catalog_is_platform_priced():
     assert len(rows) == 10
     assert all(cat.platform_eligible(ep) for ep in rows)
     assert all(cat.cost_view(ep["cost"], "exa")["usd"] > 0 for ep in rows)
+
+
+def test_signaliz_catalog_contains_only_company_signals_and_is_platform_priced():
+    cat = A.catalog_store.load()
+    rows = cat.for_provider("signaliz")
+    assert [ep["id"] for ep in rows] == ["signaliz.companies.news"]
+    assert cat.platform_eligible(rows[0])
+    assert cat.cost_view(rows[0]["cost"], "signaliz")["usd"] == 0.03
+
+
+def test_signaliz_platform_key_injects_as_bearer(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SIGNALIZ", "PLATFORM-SIGNALIZ-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "signaliz")
+    get_settings.cache_clear()
+    assert get_settings().platform_key_for("signaliz") == "PLATFORM-SIGNALIZ-KEY"
+    assert oauth_providers.platform_bindings(oauth_providers.get("signaliz")) == [
+        {"platform_setting": "platform_key_signaliz", "injector": "env", "location": "header",
+         "name": "Authorization", "format": "Bearer {secret}"}]
+    get_settings.cache_clear()
 
 
 def test_brightdata_estimate_counts_the_body_array():

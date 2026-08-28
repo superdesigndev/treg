@@ -18,7 +18,7 @@ from treg import oauth_providers as P
 def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,
     not shown as 'not configured' the way an unset OAuth provider is."""
-    for svc in ("apollo", "pdl", "akta", "hunter", "crunchbase", "tikhub", "brightdata", "semrush",
+    for svc in ("apollo", "pdl", "akta", "hunter", "signaliz", "crunchbase", "tikhub", "brightdata", "semrush",
                 "justoneapi", "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
                 "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
                 "companyenrich", "oceanio", "tomba", "predictleads", "findymail", "branddev",
@@ -43,6 +43,16 @@ def test_key_providers_appear_in_the_marketplace_listing():
     assert listing["coingecko"]["category"] == "Market data"
     assert "Enrichment" in P.CATEGORY_ORDER
     assert "Market data" in P.CATEGORY_ORDER
+
+
+def test_signaliz_uses_a_free_company_signals_dry_run_probe():
+    p = P.SIGNALIZ
+    assert p.base_url == "https://api.signaliz.com/functions/v1/api/v1"
+    assert p.probe_path == ""
+    assert p.probe_url == "https://api.signaliz.com/functions/v1/api/v1/company-signals"
+    assert p.probe_method == "POST"
+    assert p.probe_json == {"domain": "example.com", "dry_run": True}
+    assert p.token_header == "Authorization" and p.token_format == "Bearer {secret}"
 
 
 # ---- connect-by-key ----------------------------------------------------------------------
