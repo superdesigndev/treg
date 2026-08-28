@@ -20,6 +20,7 @@ sources:
   - src/treg/catalog/fx.yaml
   - src/treg/catalog/aviato.yaml
   - src/treg/catalog/crustdata.yaml
+  - src/treg/catalog/signaliz.yaml
   - src/treg/catalog/examples/aviato.companies.acquisitions.json
   - src/treg/catalog/examples/aviato.companies.employees.json
   - src/treg/catalog/examples/aviato.companies.enrich.bulk.json
@@ -85,6 +86,12 @@ The catalog adds that operations layer:
   compare TikHub vs JustOneAPI for one job, and a future router can fail over between them.
 - **verified example responses** → captured during live testing, because docs show request params
   but choosing an API comes down to what actually comes back.
+
+Signaliz is an intentional narrow vendor listing: its core catalog contains only
+`signaliz.companies.news` (`POST /company-signals`), mapped to the existing Company data signal/news
+capability. The submission excludes every other Signaliz product and version alias. A free dry run
+validates pasted keys and quotes a zero-to-three-credit range; live platform calls reserve the
+three-credit upper bound and settle from the response's `credits_used` field.
 
 Crustdata and Aviato support both BYOK and treg's platform-key tier. Their catalog costs stay in the
 vendors' native credits; `fx.yaml` converts the actual replacement rates treg pays ($0.30 per

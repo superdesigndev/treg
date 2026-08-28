@@ -345,8 +345,9 @@ are admin-scale windows over a bounded number of metered calls, the same tradeof
             → ledger.reserve_in_transaction (the UPDATE gate; 402 if short) → application commit
             → relay upstream
             → settle at the observed cost when the provider reports one
-              (dataforseo `cost`, scrapecreators `credits_charged`, akta `credits_consumed` —
-              the last is what makes akta's per-section enrich billable: the estimate is an
+              (dataforseo `cost`, scrapecreators `credits_charged`, akta `credits_consumed`,
+              Signaliz Company Signals `credits_used` —
+              Akta's field is what makes its per-section enrich billable: the estimate is an
               upper bound, the settle is the real charge; Crustdata reports `X-Credits-Used` in
               a response header; Exa reports dollars as `costDollars.total` on every body —
               the per-result rider beyond 10 and each contents type live only there), else at
@@ -414,6 +415,12 @@ with `reserve_only` on the documented but live-unbilled riders. The hold remains
 reports the complete answer directly: `_platform_settle` passes response headers to
 `_observed_cost_micro`, which converts `X-Credits-Used` through the same `fx.yaml` rate used by the
 catalog.
+
+Signaliz Company Signals follows that same reserve-then-observe contract in response JSON: the
+catalog holds the authenticated dry-run upper bound of three credits, and
+`application.call.settle._observed_cost_micro` settles the call from `credits_used` (or
+`credits_charged` on a dry run). A cache hit, negative-cache result, or plan-included call can
+therefore settle at zero without pretending that the PAYG upper bound is free.
 
 Closing the hold runs on its **own session** (the request's may be mid-rollback from the very error
 being released for) and **never raises** — the caller already has their answer, and a ledger hiccup

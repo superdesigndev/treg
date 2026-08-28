@@ -59,11 +59,12 @@ async def price_drift(
     """Per (endpoint, provider): what we estimated vs what the provider charged, since `since`.
 
     Only rows carrying BOTH numbers count, which restricts this to the providers that report their
-    own charge in-band — today `dataforseo` (top-level `cost`) and `scrapecreators`
-    (`credits_charged`), per `api._observed_cost_micro`. Everyone else settles at the estimate, so
-    there is no second opinion to compare against and their endpoints simply never appear here. That
-    is a real limit of the report, not a bug: drift on a silent provider is only visible on their
-    invoice (see `provider_spend`).
+    own charge in-band — including `dataforseo` (top-level `cost`), `scrapecreators`
+    (`credits_charged`) and Signaliz Company Signals (`credits_used`), per
+    `application.call.settle._observed_cost_micro`. Providers without an observed-cost rule settle
+    at the estimate, so there is no second opinion to compare against and their endpoints simply
+    never appear here. That is a real limit of the report, not a bug: drift on a silent provider is
+    only visible on their invoice (see `provider_spend`).
 
     `flagged` is the actionable bit: at least `min_calls` samples AND a mean observed cost more than
     `tolerance` away from the mean estimate — a single call can be an outlier (a `per_result` route

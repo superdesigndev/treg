@@ -1,0 +1,43 @@
+provider: signaliz
+source:
+  docs: https://signaliz.com/api-documentation
+  openapi: https://api.signaliz.com/functions/v1/openapi-spec
+  curated: '2026-08-28'
+pricing_url: https://signaliz.com/pricing
+
+# Intentional vendor-submission scope: this catalog exposes only Find Company Signals. Other
+# Signaliz API products and version aliases are outside this PR and are enumerated as excluded in
+# the PR's full-surface map.
+endpoints:
+  - id: signaliz.companies.news
+    domain: companies
+    capability: companies.news
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company-signals
+    name: "Find company signals"
+    summary: "Finds up to 10 dated, source-backed market signals for a company"
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: false, note: "company website domain without protocol; one of domain or company_name is required", example: "openai.com"}
+        company_name: {type: string, required: false, note: "company name; use domain when known for the least ambiguous match", example: "OpenAI"}
+        research_prompt: {type: string, required: false, note: "optional evidence focus; when omitted Signaliz uses its default Company Signals research prompt", example: "Recent product launches, partnerships, executive changes, hiring, and market expansion"}
+        lookback_days: {type: integer, required: false, note: "1-365 days; defaults to 365", example: 365}
+        dry_run: {type: boolean, required: false, note: "when true, returns a conservative credit estimate without provider calls, jobs, writes, or spend", example: true}
+      note: "Supply domain or company_name. A live response returns up to 10 signals with dates and source URLs plus credits_used, cache_hit, live_provider_called and result_returned_from provenance. This curated tool models one-company synchronous lookups; Signaliz batch/recovery inputs are intentionally not exposed here."
+    test_request:
+      body: {domain: "openai.com", lookback_days: 365}
+    cost:
+      type: per_success
+      value: 3
+      currency: credit
+      per: 1
+      unit: call
+      source: rate_card_api
+      source_url: https://signaliz.com/api-documentation
+      checked: '2026-08-28'
+      confidence: documented
+      note: "Conservative upper bound for one fresh lookup: the authenticated dry-run quote returned 0-3 credits. Platform billing reserves 3 credits, then settles from the response's actual credits_used (falling back to credits_charged for a dry run), so cache hits, negative-cache results, and plan-included calls can settle at 0. One Signaliz credit is $0.01 on Pay As You Go; Builder and Scale can include Company Signals."
+    docs_url: https://signaliz.com/api-documentation

@@ -108,7 +108,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     the reserved estimate's row assumption only implicitly (a bigger-than-asked response charges
     more, which `ledger.settle` handles as an overrun).
 
-    Three providers volunteer the number, in two different denominations:
+    Several providers volunteer the number, in different denominations:
       - dataforseo: a top-level `cost` in USD — including 0 when it decided not to charge (a free
         route, or a request it rejected before metering). That zero is real information and settles the
         call at zero, which is why the test is `>= 0` and not truthiness.
@@ -140,6 +140,10 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
 
       - exa: REPORTED in dollars, `costDollars.total` on every 2xx body (same contract as
         dataforseo's `cost`) — the only place the per-result and per-content riders exist.
+      - signaliz Company Signals: REPORTED in provider credits as `credits_used` (with
+        `credits_charged` on dry-run responses). A fresh PAYG lookup can use up to three credits,
+        while a cache hit or an included-plan call reports zero; settling the response is what
+        releases the conservative three-credit hold correctly.
 
     Everyone else settles at the estimate. This is the same signal the catalog's `observed_cost`
     harvests, which is what lets phase 5's drift detector compare the two numbers directly."""
@@ -209,6 +213,14 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     if provider in ("scrapecreators", "akta", "leadmagic"):
         credits = doc.get("credits_charged" if provider == "scrapecreators" else "credits_consumed")
         rate = catalog_store.load().credit_rates.get(provider)
+        if isinstance(credits, (int, float)) and not isinstance(credits, bool) and credits >= 0 and rate:
+            return int(credits * rate * 1_000_000 + 0.5)
+        return None
+    if provider == "signaliz" and mk.endpoint_id == "signaliz.companies.news":
+        credits = doc.get("credits_used")
+        if not isinstance(credits, (int, float)) or isinstance(credits, bool):
+            credits = doc.get("credits_charged")
+        rate = catalog_store.load().credit_rates.get("signaliz")
         if isinstance(credits, (int, float)) and not isinstance(credits, bool) and credits >= 0 and rate:
             return int(credits * rate * 1_000_000 + 0.5)
         return None

@@ -1055,6 +1055,39 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+SIGNALIZ = OAuthProvider(
+    service="signaliz",
+    display_name="Signaliz",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Signaliz API key",
+    # token_header / token_format default to Authorization: Bearer {secret}
+    setup_url="https://signaliz.com/settings",
+    setup_action_label="Get your Signaliz API key",
+    setup_steps=(
+        "Sign in to Signaliz and open Settings → API Keys.",
+        "Create a key and copy it.",
+    ),
+    setup_note=(
+        "Company Signals dry runs are free; on Pay As You Go a fresh live lookup uses up to 3 "
+        "credits and reports the actual usage in its response."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find dated, source-backed market signals for a company.",
+    base_url="https://api.signaliz.com/functions/v1/api/v1",
+    docs_url="https://signaliz.com/api-documentation",
+    # The dry-run plan proves the key without provider calls, jobs, writes or spend. A bad key
+    # returns 401 {"error":"unauthorized","message":"A valid Signaliz API key is required."}.
+    # Keep probe_path empty because provisioned-tool health checks are GET-only; probe_url is used
+    # for the POST connect-time verification without creating a permanently failing health check.
+    probe_url="https://api.signaliz.com/functions/v1/api/v1/company-signals",
+    probe_method="POST",
+    probe_json={"domain": "example.com", "dry_run": True},
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -2402,7 +2435,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
+        APOLLO, PDL, AKTA, HUNTER, SIGNALIZ, CRUNCHBASE, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA,
