@@ -15,7 +15,9 @@ sources:
   - .github/workflows/catalog-drift.yml
   - scripts/catalog_drift.py
   - scripts/catalog_ingest.py
+  - scripts/catalog_verify_extended.py
   - scripts/catalog_validate.py
+  - tests/test_catalog_verify_extended.py
   - src/treg/catalog/aliases.yaml
   - src/treg/catalog/fx.yaml
   - src/treg/catalog/aviato.yaml
@@ -766,6 +768,11 @@ goes CHEAPEST FIRST and stops before any call that would push the run past `--bu
 half-finished run has verified the cheap majority rather than an arbitrary slice. Results are
 written back into the yaml after every run and a re-run skips what already carries `verified`,
 which makes an interrupted run resumable instead of a repeat bill.
+
+HTTP success is not sufficient when an endpoint declares `expect`: the verifier resolves its
+`json_path` and requires the configured `equals` value before stamping `verified` or recording an
+observed price. This catches APIs such as DataForSEO that return HTTP 200 around a task-level
+business error; otherwise the error task's zero charge would be published as a verified free call.
 
 Three things to know before pointing it at a new provider:
 

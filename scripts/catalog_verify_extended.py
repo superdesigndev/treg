@@ -326,6 +326,12 @@ def call(client: httpx.Client, base: str, ep: dict, test: dict, headers: dict, q
         ok, detail = False, f"http {resp.status_code} body-code {doc['code']}"
     else:
         detail = f"http {resp.status_code}"
+    expect = ep.get("expect")
+    if ok and expect:
+        path = expect["json_path"]
+        got = dig(doc, path) if doc is not None else None
+        ok = got == expect.get("equals")
+        detail += f", {path}={got!r}"
     if not ok:
         if doc is None:
             msg = resp.text or ""

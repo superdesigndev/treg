@@ -2495,23 +2495,13 @@ endpoints:
   test_request:
     body:
     - title: vpn
-      description: vpn
-      categories:
-      - Tools
-      order_by:
-      - item.rating.value,desc
-      filters:
-      - - item.rating.value
-        - '>'
-        - 4.5
       limit: 2
     bodyType: json
   expect:
     json_path: tasks.0.status_code
     equals: 20000
-  verified: '2026-07-28'
-  example_response: examples/dataforseo.x.app-data-apple-app-listings-search-live.json
-  observed_cost: 0
+  unverified: previous verification returned tasks.0.status_code 40501; corrected request awaits replay
+  observed_cost: 0.102
 - id: dataforseo.x.app-data-apple-app-reviews-task-post
   tier: extended
   platform: app-store
