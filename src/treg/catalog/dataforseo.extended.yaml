@@ -2500,7 +2500,7 @@ endpoints:
   expect:
     json_path: tasks.0.status_code
     equals: 20000
-  unverified: previous verification returned tasks.0.status_code 40501; corrected request awaits replay
+  unverified: previous verifier request returned tasks.0.status_code 40501; a separate valid live call observed $0.102 on 2026-08-30, and the corrected verifier request awaits replay
   observed_cost: 0.102
 - id: dataforseo.x.app-data-apple-app-reviews-task-post
   tier: extended

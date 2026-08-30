@@ -19,6 +19,8 @@ class _Response:
         self.payload = payload
 
     def json(self):
+        if isinstance(self.payload, Exception):
+            raise self.payload
         return self.payload
 
 
@@ -35,12 +37,13 @@ class _NoThrottle:
         pass
 
 
-def _call(payload):
+def _call(payload, *, expect=True):
     endpoint = {
         "method": "POST",
         "path": "/search",
-        "expect": {"json_path": "tasks.0.status_code", "equals": 20000},
     }
+    if expect:
+        endpoint["expect"] = {"json_path": "tasks.0.status_code", "equals": 20000}
     return verify.call(
         _Client(payload), "https://example.com", endpoint, {}, {}, {}, _NoThrottle()
     )
@@ -58,3 +61,17 @@ def test_expected_business_status_passes_verification():
 
     assert ok is True
     assert "tasks.0.status_code=20000" in detail
+
+
+def test_non_json_http_success_fails_a_declared_expectation():
+    ok, detail, *_ = _call(ValueError("not json"))
+
+    assert ok is False
+    assert "tasks.0.status_code=None" in detail
+
+
+def test_endpoint_without_expect_keeps_http_success_behavior():
+    ok, detail, *_ = _call({"result": "ok"}, expect=False)
+
+    assert ok is True
+    assert detail == "http 200"
