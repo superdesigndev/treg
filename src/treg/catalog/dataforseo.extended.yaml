@@ -2350,7 +2350,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-info-task-post.json
   observed_cost: 0.0006
@@ -2429,7 +2429,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-list-task-post.json
   observed_cost: 0.0024
@@ -2575,7 +2575,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-reviews-task-post.json
   observed_cost: 0.006
@@ -2648,7 +2648,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-apple-app-searches-task-post.json
   observed_cost: 0.0024
@@ -3030,7 +3030,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.serp-baidu-organic-task-post.json
   observed_cost: 0.0012
@@ -3993,25 +3993,14 @@ endpoints:
     note: the POST body is an ARRAY of task objects with these fields — one object per task
   test_request:
     body:
-    - system_message: communicate as if we are in a business meeting
-      message_chain:
-      - role: user
-        message: Hello, what’s up?
-      - role: ai
-        message: Hello! I’m doing well, thank you. How can I assist you today? Are there any specific topics or projects you’d like to discuss in our meeting?
-      max_output_tokens: 200
+    - max_output_tokens: 50
       model_name: claude-opus-4-0
-      temperature: 0.3
-      web_search: true
-      web_search_country_iso_code: FR
-      user_prompt: provide information on how relevant the amusement park business is in France now
+      user_prompt: Say hello in one sentence.
     bodyType: json
   expect:
     json_path: tasks.0.status_code
     equals: 20000
-  verified: '2026-07-28'
-  example_response: examples/dataforseo.x.ai-optimization-claude-llm-responses-live.json
-  observed_cost: 0
+  unverified: previous verifier request returned tasks.0.status_code 40501; a minimized request using the currently documented model name awaits replay
   capability: ai-search.claude.answer
 - id: dataforseo.x.ai-optimization-gemini-llm-responses-live
   tier: extended
@@ -4227,7 +4216,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-extended-reviews-task-post.json
   observed_cost: 0.0015
@@ -4585,7 +4574,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-my-business-updates-task-post.json
   observed_cost: 0.00225
@@ -4731,7 +4720,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-google-reviews-task-post.json
   observed_cost: 0.00375
@@ -7325,7 +7314,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-google-product-info-task-post.json
   observed_cost: 0.001
@@ -7430,7 +7419,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-google-products-task-post.json
   observed_cost: 0.001
@@ -7540,7 +7529,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.merchant-google-sellers-task-post.json
   observed_cost: 0.001
@@ -7580,19 +7569,10 @@ endpoints:
         note: 'include source links in the summary optional field if set to true, the summary field in the API response will contain links to sources of the generated summary; default value: false'
         example: true
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  test_request:
-    body:
-    - task_id: 07031739-1535-0139-0000-9d1e639a5b7d
-      prompt: explain what DataForSEO is
-      include_links: true
-      fetch_content: true
-    bodyType: json
   expect:
     json_path: tasks.0.status_code
     equals: 20000
-  verified: '2026-07-28'
-  example_response: examples/dataforseo.x.serp-ai-summary.json
-  observed_cost: 0.01
+  untestable: needs a successful SERP task id created within the previous 30 days; the captured static id returned tasks.0.status_code 40401 (Task Not Found)
 - id: dataforseo.x.serp-google-ads-advertisers-task-post
   tier: extended
   platform: google
@@ -7649,7 +7629,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-ads-advertisers-task-post.json
   observed_cost: 0.0006
@@ -7739,7 +7719,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-ads-search-task-post.json
   observed_cost: 0.0006
@@ -7918,16 +7898,10 @@ endpoints:
         required: false
         note: <p><em>user-defined task identifier</em><p>optional field<p><em>the character limit is 255</em><p>you can use this parameter to identify the task and match it with the result<p>you will find the specified <code>tag</code> value in the <code>data</code> object of the response</p>
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  test_request:
-    body:
-    - dataset_id: L2cvMTFqbl85ZHN6MQ==
-    bodyType: json
   expect:
     json_path: tasks.0.status_code
     equals: 20000
-  verified: '2026-07-28'
-  example_response: examples/dataforseo.x.serp-google-dataset-info-live-advanced.json
-  observed_cost: 0.002
+  untestable: needs a current dataset_id from a successful Dataset Search result; the captured static id returned tasks.0.status_code 40102 (No Search Results)
 - id: dataforseo.x.serp-google-dataset-search-live-advanced
   tier: extended
   platform: google
@@ -8472,7 +8446,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-jobs-task-post.json
   observed_cost: 0.0006
@@ -8987,7 +8961,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.serp-google-search-by-image-task-post.json
   observed_cost: 0.0006
@@ -9029,17 +9003,10 @@ endpoints:
         required: false
         note: 'number of SERP pages optional field if depth in the corresponding Task POST request exceeds 10 results (or 1 SERP page), specify the number of SERP pages to screenshot; default value: 1'
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  test_request:
-    body:
-    - task_id: 06211235-0696-0139-1000-36727fbd3c90
-      browser_screen_scale_factor: 0.5
-    bodyType: json
   expect:
     json_path: tasks.0.status_code
     equals: 20000
-  verified: '2026-07-28'
-  example_response: examples/dataforseo.x.serp-screenshot.json
-  observed_cost: 0.004
+  untestable: needs a successful SERP task id created within the previous 7 days; the captured static id returned tasks.0.status_code 40403 (Results Expired)
 - id: dataforseo.x.app-data-google-app-info-task-post
   tier: extended
   platform: google-play
@@ -9103,7 +9070,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-info-task-post.json
   observed_cost: 0.0006
@@ -9184,7 +9151,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-list-task-post.json
   observed_cost: 0.0012
@@ -9344,7 +9311,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-reviews-task-post.json
   observed_cost: 0.00075
@@ -9417,7 +9384,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.app-data-google-app-searches-task-post.json
   observed_cost: 0.0012
@@ -9523,7 +9490,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.serp-naver-organic-task-post.json
   observed_cost: 0.0006
@@ -9727,7 +9694,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.serp-seznam-organic-task-post.json
   observed_cost: 0.0006
@@ -9836,7 +9803,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-tripadvisor-reviews-task-post.json
   observed_cost: 0.00075
@@ -9896,7 +9863,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-tripadvisor-search-task-post.json
   observed_cost: 0.00075
@@ -9950,7 +9917,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-trustpilot-reviews-task-post.json
   observed_cost: 0.0015
@@ -10000,7 +9967,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.business-data-trustpilot-search-task-post.json
   observed_cost: 0.0015
@@ -10103,14 +10070,11 @@ endpoints:
       - https://variety.com/
       - https://stackoverflow.com/
       - www.trustpilot.com
-      date_from: '2021-01-01'
     bodyType: json
   expect:
     json_path: tasks.0.status_code
     equals: 20000
-  verified: '2026-07-28'
-  example_response: examples/dataforseo.x.backlinks-bulk-new-lost-backlinks-live.json
-  observed_cost: 0
+  unverified: previous verifier request used a date outside the rolling one-year window and returned tasks.0.status_code 40501; the corrected request awaits replay
 - id: dataforseo.x.backlinks-bulk-new-lost-referring-domains-live
   tier: extended
   platform: web
@@ -10159,14 +10123,11 @@ endpoints:
       - https://variety.com/
       - https://stackoverflow.com/
       - www.trustpilot.com
-      date_from: '2023-09-01'
     bodyType: json
   expect:
     json_path: tasks.0.status_code
     equals: 20000
-  verified: '2026-07-28'
-  example_response: examples/dataforseo.x.backlinks-bulk-new-lost-referring-domains-live.json
-  observed_cost: 0
+  unverified: previous verifier request used a date outside the rolling one-year window and returned tasks.0.status_code 40501; the corrected request awaits replay
 - id: dataforseo.x.backlinks-bulk-pages-summary-live
   tier: extended
   platform: web
@@ -12548,17 +12509,10 @@ endpoints:
         required: false
         note: 'return page content as markdown optional field if set to true, the markdown-formatted content of the page will be returned in the page_as_markdown field of the response; default value: false'
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  test_request:
-    body:
-    - url: https://dataforseo.com/blog/a-versatile-alternative-to-google-trends-exploring-the-power-of-dataforseo-trends-api
-      id: 11161551-1535-0216-0000-500b3f307f92
-    bodyType: json
   expect:
     json_path: tasks.0.status_code
     equals: 20000
-  verified: '2026-07-28'
-  example_response: examples/dataforseo.x.on-page-content-parsing.json
-  observed_cost: 0
+  untestable: needs the id of a completed on_page crawl created with enable_content_parsing=true; the captured static id returned tasks.0.status_code 40403 (Results Expired)
 - id: dataforseo.x.on-page-content-parsing-live
   tier: extended
   platform: web
@@ -13469,7 +13423,7 @@ endpoints:
     bodyType: json
   expect:
     json_path: tasks.0.status_code
-    equals: 20000
+    equals: 20100
   verified: '2026-07-28'
   example_response: examples/dataforseo.x.on-page-task-post.json
   observed_cost: 0.018

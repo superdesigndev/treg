@@ -37,13 +37,13 @@ class _NoThrottle:
         pass
 
 
-def _call(payload, *, expect=True):
+def _call(payload, *, expect=True, equals=20000):
     endpoint = {
         "method": "POST",
         "path": "/search",
     }
     if expect:
-        endpoint["expect"] = {"json_path": "tasks.0.status_code", "equals": 20000}
+        endpoint["expect"] = {"json_path": "tasks.0.status_code", "equals": equals}
     return verify.call(
         _Client(payload), "https://example.com", endpoint, {}, {}, {}, _NoThrottle()
     )
@@ -61,6 +61,14 @@ def test_expected_business_status_passes_verification():
 
     assert ok is True
     assert "tasks.0.status_code=20000" in detail
+
+
+def test_task_created_status_passes_when_the_endpoint_declares_it():
+    ok, detail, *_ = _call({"tasks": [{"status_code": 20100, "cost": 0.001}]},
+                           equals=20100)
+
+    assert ok is True
+    assert "tasks.0.status_code=20100" in detail
 
 
 def test_non_json_http_success_fails_a_declared_expectation():
