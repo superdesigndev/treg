@@ -23,8 +23,10 @@ Bare `treg upload` does **both** sides of the dir; `treg upload env` / `treg upl
   each as a tool (+ recipe) or a recipe-only bundle — see "Skill directories" below.
 
 ## The provider catalog (`CATALOG`)
-~80 curated providers (`CATALOG_VERSION`, now **9** — added `probe` = a cheap authenticated GET path per
-provider so an imported tool self-validates, then a wave of `cli` local-run blocks plus the CLI-only
+~80 curated providers (`CATALOG_VERSION`, now **12** — Exa (`x-api-key`) joined on 2026-08-27; Crustdata and Aviato are included, and
+`required_headers` can describe a fixed protocol header such as Crustdata's API-version pin; `probe`
+remains the cheap authenticated GET path per provider so an imported tool self-validates, followed by
+a wave of `cli` local-run blocks plus the CLI-only
 providers Google Cloud, Azure, and Supabase, and per-CLI `deny` rules for leaky subcommands — see the `cli`
 block below),
 each `{provider, tokens, base_url, auth}`. `tokens` are
@@ -55,7 +57,7 @@ real machine test (docs lie — Vercel ships an env var it ignores, so it inject
 verified); `beta` marks an unverified entry. Several entries now carry **`deny`** patterns for subcommands
 that would print the injected key or run member code as the isolated runner (`gh extension`/`alias`/`auth
 token`/`--show-token`, `flyctl|turso auth token`, `doppler|infisical run`, …) — enforced by `check_deny` at
-grant (see [local-run](../architecture/local-run.md)). `CATALOG_VERSION` is now **9**. An `unsupported:true` block is first-class: it tells the analyzer
+grant (see [local-run](../architecture/local-run.md)). `CATALOG_VERSION` is now **12**. An `unsupported:true` block is first-class: it tells the analyzer
 WHY and what to do instead (e.g. **Azure** — device-login only → register a service principal as an HTTP tool).
 The catalog can never ENABLE a local run — only the owner's `tool.cli.enabled` does.
 
@@ -118,6 +120,10 @@ actually validates env-imported keys (else they'd be `unknown`) and onboarding's
 (`cli._testable_path`) hits a REAL endpoint (render→`services`, vercel→`v2/user`) instead of the base-URL
 root, which 404s and looks like a bad credential. `--dry-run` prints the plan with **no network
 and no values**. Errors (e.g. a sandbox cap) are reported per-tool, never fatal.
+When a matched entry carries `required_headers`, the detection and action retain them and registration
+adds constant-format header bindings that reuse the credential's secret id. Thus env-imported
+Crustdata tools send both `Authorization` and the pinned `x-api-version` through the same generic
+binding machinery; Aviato needs only its bearer binding.
 
 ## OAuth pairs — sequential consent (`_import_oauth_loop`)
 A complete `oauth_pair` whose provider has connect endpoints in the catalog (`oauth_ready`) is handled

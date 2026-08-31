@@ -5,7 +5,7 @@ reserves against a balance that only affords K yield exactly K successes — the
 conditional UPDATE exists for); a settle below the reserve refunding the difference; promotional
 credit burning before purchased; the stale-hold reaper; and the balance endpoint's auth gate.
 
-The invariant asserted throughout is the one from ledger.py:
+The invariant asserted throughout is the one from domain/money:
     org.balance_micro == sum(block.remaining_micro) - sum(open hold.amount_micro)
 """
 
@@ -19,10 +19,10 @@ from sqlmodel import select
 
 from conftest import make_upstream
 
-from treg import ledger
+from treg.domain import money as ledger
 from treg.api import app
 from treg.config import get_settings
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 from treg.models import CreditBlock, Hold, LedgerEntry, Org
 
 
@@ -85,7 +85,9 @@ async def test_topup_credits_purchased_and_is_idempotent_on_payment_ref(c: Async
     promo = get_settings().promo_grant_micro
     async with session_maker() as db:
         first = await ledger.topup(db, org_id, 5_000_000, "pi_test_1")
+        await db.commit()
         again = await ledger.topup(db, org_id, 5_000_000, "pi_test_1")
+        await db.commit()
     assert first.id == again.id and first.kind == "purchased"
     assert await _assert_invariant(org_id) == promo + 5_000_000
     async with session_maker() as db:
@@ -99,22 +101,99 @@ async def test_two_deliveries_of_one_payment_credit_once(c: AsyncClient):
     Stripe delivers at least once, retries after the 500 the webhook deliberately returns, and prod
     runs more than one instance. Both would SELECT nothing and both would credit.
 
+    THIS is the race proof for the caller-owned transaction (it runs against Postgres in CI): the
+    loser's flush blocks on the winner's uncommitted unique key until the winner's PROMPT commit,
+    and the loser's savepoint rollback preserves its own caller's transaction, so its re-SELECT
+    returns the winner's block instead of a 500.
+
+    Each task stages an UNRELATED row before calling topup, and every one of those rows must land:
+    that is what proves "preserves its own caller's transaction" - a loser recovered with a session
+    rollback instead of the savepoint would answer correctly and silently discard its caller's
+    staged work.
+
     Each task needs its OWN session: two coroutines sharing one AsyncSession is a different bug.
     """
+    from treg.models import AdConversion
+
     org_id, _ = await _org(c)
     promo = get_settings().promo_grant_micro
 
-    async def _deliver():
+    async def _deliver(n: int):
         async with session_maker() as db:
-            return await ledger.topup(db, org_id, 5_000_000, "pi_concurrent")
+            # Staged BEFORE topup, committed by the same caller commit: the losers' savepoint
+            # rollbacks must leave this pending row alive.
+            db.add(AdConversion(org_id=org_id, action=f"race-probe-{n}"))
+            block = await ledger.topup(db, org_id, 5_000_000, "pi_concurrent")
+            await db.commit()
+            return block
 
-    blocks = await asyncio.gather(_deliver(), _deliver(), _deliver(), return_exceptions=True)
+    blocks = await asyncio.gather(*(_deliver(n) for n in range(3)), return_exceptions=True)
     assert not [b for b in blocks if isinstance(b, Exception)], blocks   # none may error out
     assert len({b.id for b in blocks}) == 1                              # all three: the same block
 
     assert await _assert_invariant(org_id) == promo + 5_000_000          # credited ONCE
     async with session_maker() as db:
         assert len([e for e in await ledger.entries_of(db, org_id) if e.kind == "topup"]) == 1
+        staged = (await db.execute(select(AdConversion).where(
+            AdConversion.org_id == org_id))).scalars().all()
+    # BOTH losers' staged work survived their IntegrityError savepoint rollbacks, not just the winner's.
+    assert sorted(row.action for row in staged) == [f"race-probe-{n}" for n in range(3)]
+
+
+async def test_topup_stages_only_and_the_caller_owns_durability(c: AsyncClient):
+    """The durability probe that distinguishes caller ownership: nothing a topup stages is durable
+    until the CALLER commits, and the caller's rollback discards all of it. This is the test that
+    fails against an internally-committing topup, where block, balance and entry are durable the
+    moment the call returns."""
+    org_id, _ = await _org(c)
+    promo = get_settings().promo_grant_micro
+
+    async with session_maker() as db:
+        block = await ledger.topup(db, org_id, 5_000_000, "pi_staged_only")
+        assert block is not None
+        # Before this session commits, a SECOND session must see none of it: no block, no balance
+        # change, no ledger entry.
+        async with session_maker() as probe:
+            assert (await probe.execute(select(CreditBlock).where(
+                CreditBlock.stripe_payment_intent == "pi_staged_only"))).scalars().first() is None
+            assert await ledger.balance_of(probe, org_id) == promo
+            assert [e for e in await ledger.entries_of(probe, org_id) if e.kind == "topup"] == []
+        await db.rollback()
+
+    async with session_maker() as db:  # after the rollback, all three remain absent
+        assert (await db.execute(select(CreditBlock).where(
+            CreditBlock.stripe_payment_intent == "pi_staged_only"))).scalars().first() is None
+        assert await ledger.balance_of(db, org_id) == promo
+        assert [e for e in await ledger.entries_of(db, org_id) if e.kind == "topup"] == []
+    assert await _assert_invariant(org_id) == promo
+
+
+async def test_grant_stages_only_and_the_caller_owns_durability(c: AsyncClient):
+    """Same probe for grant. The E2E promo test intercepts a commit, but an internally-committing
+    grant would satisfy it too (the intercepted commit would just be grant's own) - visibility from
+    a second session before and after the caller's commit is what proves who owns the transaction."""
+    async with session_maker() as db:
+        org = Org(name="grant-staged", slug="grant-staged")
+        db.add(org)
+        await db.commit()
+        await db.refresh(org)
+        org_id = org.id
+
+    promo = get_settings().promo_grant_micro
+    async with session_maker() as db:
+        block = await ledger.grant(db, org_id)
+        assert block is not None
+        # Staged, not durable: a second session sees no block and no balance change yet.
+        async with session_maker() as probe:
+            assert await ledger.blocks_of(probe, org_id) == []
+            assert await ledger.balance_of(probe, org_id) == 0
+            assert await ledger.entries_of(probe, org_id) == []
+        await db.commit()
+
+    async with session_maker() as db:  # the caller's commit is what lands it
+        assert [b.kind for b in await ledger.blocks_of(db, org_id)] == ["promotional"]
+        assert [e.kind for e in await ledger.entries_of(db, org_id)] == ["grant"]
+    assert await _assert_invariant(org_id) == promo
 
 
 @pytest.mark.parametrize("amount,ref", [(0, "pi_x"), (-1, "pi_x"), (1_000, "")])
@@ -123,6 +202,310 @@ async def test_topup_rejects_nonsense(c: AsyncClient, amount, ref):
     async with session_maker() as db:
         with pytest.raises(ValueError):
             await ledger.topup(db, org_id, amount, ref)
+
+
+async def test_concurrent_sweeps_pay_a_referral_once(c: AsyncClient):
+    """Two instances sweep the same due referral at once. The claim UPDATE (qualified -> paid,
+    committed before any credit moves) is what arbitrates, so exactly one sweep pays and each side
+    is credited exactly once. Runs against Postgres in CI, where the race is real.
+    """
+    from datetime import timedelta
+
+    from treg.domain import referrals
+    from treg.models import Referral
+
+    r = await c.post("/users", json={"email": "referrer@superdesign.dev"})
+    referrer_org, referrer_user = r.json()["org_id"], r.json()["id"]
+    r = await c.post("/users", json={"email": "referee@superdesign.dev"})
+    referred_org, referred_user = r.json()["org_id"], r.json()["id"]
+    promo = get_settings().promo_grant_micro
+
+    async with session_maker() as db:
+        db.add(Referral(code="ref-sweep-race", referrer_user_id=referrer_user,
+                        referred_user_id=referred_user, referred_org_id=referred_org,
+                        status="qualified",
+                        qualified_at=referrals.hold_cutoff() - timedelta(days=1)))
+        await db.commit()
+
+    async def one_sweep() -> int:
+        async with session_maker() as db:
+            return await referrals.sweep(db)
+
+    results = await asyncio.gather(one_sweep(), one_sweep(), return_exceptions=True)
+    assert not [x for x in results if isinstance(x, Exception)], results
+    assert sum(results) == 1  # exactly one sweep won the claim and paid
+
+    async with session_maker() as db:
+        row = (await db.execute(select(Referral))).scalars().first()
+        assert row.status == "paid"
+        assert row.referrer_block_id and row.referred_block_id
+        referral_grants = [
+            e for org in (referrer_org, referred_org)
+            for e in await ledger.entries_of(db, org)
+            if e.kind == "grant" and e.meta.get("block_kind") == "referral"
+        ]
+    assert len(referral_grants) == 2  # referee + referrer, each paid exactly once
+    s = get_settings()
+    assert await _assert_invariant(referrer_org) == promo + s.referral_referrer_micro
+    assert await _assert_invariant(referred_org) == promo + s.referral_referred_micro
+
+
+async def test_sweep_grants_and_stamps_commit_together(c: AsyncClient, monkeypatch):
+    """Failure injection for the claim-then-grant saga: the REFERRER grant raises after the claim
+    commit, with the referee grant already STAGED. The new invariant is that the grants and the
+    block-id stamps commit together, so after the failure NEITHER a grant's ledger entry/block NOR
+    a stamp may exist. (The row staying claimed - paid with null block ids - is the deliberate
+    err-toward-paying-once design and is asserted as such, not changed.) The old non-atomic shape,
+    where each grant committed itself, leaves the referee's money durable with no stamp."""
+    from datetime import timedelta
+
+    from treg.domain import referrals
+    from treg.models import Referral
+
+    r = await c.post("/users", json={"email": "atomic-ref@superdesign.dev"})
+    referrer_org, referrer_user = r.json()["org_id"], r.json()["id"]
+    r = await c.post("/users", json={"email": "atomic-referee@superdesign.dev"})
+    referred_org, referred_user = r.json()["org_id"], r.json()["id"]
+    promo = get_settings().promo_grant_micro
+
+    async with session_maker() as db:
+        db.add(Referral(code="ref-atomic", referrer_user_id=referrer_user,
+                        referred_user_id=referred_user, referred_org_id=referred_org,
+                        status="qualified",
+                        qualified_at=referrals.hold_cutoff() - timedelta(days=1)))
+        await db.commit()
+
+    real_grant = ledger.grant
+
+    async def referrer_grant_boom(db, org_id, *a, **kw):
+        if (kw.get("meta") or {}).get("side") == "referrer":
+            raise RuntimeError("crashed after the claim commit, mid-payout")
+        return await real_grant(db, org_id, *a, **kw)  # the referee grant stages normally
+
+    monkeypatch.setattr(ledger, "grant", referrer_grant_boom)
+    async with session_maker() as db:
+        assert await referrals.sweep(db) == 0  # the failure is contained, and nothing counts as paid
+
+    async with session_maker() as db:
+        row = (await db.execute(select(Referral))).scalars().first()
+        assert row.status == "paid"  # the claim commit stands: visible, and errs toward paying once
+        assert row.referred_block_id is None and row.referrer_block_id is None  # no stamp...
+        for org_id in (referrer_org, referred_org):  # ...and no grant. They land or vanish together.
+            assert [e for e in await ledger.entries_of(db, org_id)
+                    if e.kind == "grant" and e.meta.get("block_kind") == "referral"] == []
+            assert [b for b in await ledger.blocks_of(db, org_id) if b.kind == "referral"] == []
+    assert await _assert_invariant(referrer_org) == promo
+    assert await _assert_invariant(referred_org) == promo
+
+
+async def test_referee_instant_grant_failure_after_staging_never_raises(
+        c: AsyncClient, monkeypatch, caplog):
+    """`_grant_referee`'s recovery rollback expires the Referral row, so its warning log must read
+    primitives copied beforehand - `row.id` off the expired row is implicit async I/O
+    (MissingGreenlet), which broke the never-raises contract exactly when it mattered."""
+    import logging as _logging
+
+    from treg.domain import referrals
+    from treg.models import Referral
+
+    r = await c.post("/users", json={"email": "ref-boom-a@superdesign.dev"})
+    referrer_user = r.json()["id"]
+    r = await c.post("/users", json={"email": "ref-boom-b@superdesign.dev"})
+    referred_org, referred_user = r.json()["org_id"], r.json()["id"]
+    async with session_maker() as db:
+        db.add(Referral(code="ref-instant-boom", referrer_user_id=referrer_user,
+                        referred_user_id=referred_user, referred_org_id=referred_org,
+                        status="qualified", qualified_at=referrals._now()))
+        await db.commit()
+
+    real_grant = ledger.grant
+
+    async def grant_then_boom(db, org_id, *a, **kw):
+        await real_grant(db, org_id, *a, **kw)  # SQL has staged, so the recovery rollback expires rows
+        raise RuntimeError("grant broke after staging")
+
+    monkeypatch.setattr(ledger, "grant", grant_then_boom)
+    # Alembic's fileConfig (disable_existing_loggers=True) elsewhere in the suite disables the
+    # "treg" logger; re-enable it so caplog sees the warning regardless of test order.
+    monkeypatch.setattr(_logging.getLogger("treg"), "disabled", False)
+    with caplog.at_level(_logging.WARNING, logger="treg"):
+        async with session_maker() as db:
+            row = (await db.execute(select(Referral))).scalars().first()
+            await referrals._grant_referee(db, row)  # must swallow, never raise
+    assert "instant referee grant failed" in caplog.text
+
+    async with session_maker() as db:  # nothing landed: no stamp, no money
+        row = (await db.execute(select(Referral))).scalars().first()
+        assert row.referred_block_id is None
+        assert [e for e in await ledger.entries_of(db, referred_org)
+                if e.meta.get("block_kind") == "referral"] == []
+
+
+async def test_sweep_grant_failure_after_staging_never_raises(c: AsyncClient, monkeypatch, caplog):
+    """The sweep's recovery path, same contract: a grant that fails after staging rolls the session
+    back, which expires EVERY due row - so the ids the warning logs must have been copied out before
+    the loop, or the second failure raises MissingGreenlet out of a webhook or a page load."""
+    import logging as _logging
+    from datetime import timedelta
+
+    from treg.domain import referrals
+    from treg.models import Referral
+
+    r = await c.post("/users", json={"email": "sweep-boom-ref@superdesign.dev"})
+    referrer_user = r.json()["id"]
+    rows = []
+    for i in range(2):  # TWO due rows: the second iteration's log is the one a loop-local copy misses
+        r = await c.post("/users", json={"email": f"sweep-boom-{i}@superdesign.dev"})
+        rows.append((r.json()["org_id"], r.json()["id"]))
+    async with session_maker() as db:
+        for i, (org_id, user_id) in enumerate(rows):
+            db.add(Referral(code=f"ref-sweep-boom-{i}", referrer_user_id=referrer_user,
+                            referred_user_id=user_id, referred_org_id=org_id, status="qualified",
+                            qualified_at=referrals.hold_cutoff() - timedelta(days=1)))
+        await db.commit()
+
+    real_grant = ledger.grant
+
+    async def grant_then_boom(db, org_id, *a, **kw):
+        await real_grant(db, org_id, *a, **kw)
+        raise RuntimeError("grant broke after staging")
+
+    monkeypatch.setattr(ledger, "grant", grant_then_boom)
+    monkeypatch.setattr(_logging.getLogger("treg"), "disabled", False)  # see the referee test
+    with caplog.at_level(_logging.WARNING, logger="treg"):
+        async with session_maker() as db:
+            paid = await referrals.sweep(db)  # must swallow both failures, never raise
+    assert paid == 0
+    assert caplog.text.count("payout failed, will retry") == 2
+
+    async with session_maker() as db:  # neither payout landed any money or stamps
+        for row in (await db.execute(select(Referral))).scalars().all():
+            assert row.referred_block_id is None and row.referrer_block_id is None
+        for org_id, _ in rows:
+            assert [e for e in await ledger.entries_of(db, org_id)
+                    if e.meta.get("block_kind") == "referral"] == []
+
+
+async def test_referrals_page_survives_a_sweep_rollback(c: AsyncClient, monkeypatch, caplog):
+    """The referrals-page journey logs around ensure_code and sweep; both logs must use the
+    `user_id` primitive the journey already holds, because a rollback inside either call expires
+    the user row and `user.id` in the handler would 500 the page it protects."""
+    import logging as _logging
+
+    from treg.domain import referrals
+    from treg.application import referrals as referrals_app
+
+    r = await c.post("/users", json={"email": "page-boom@superdesign.dev"})
+    user_id = r.json()["id"]
+
+    async def sweep_boom(db, **kw):
+        await db.execute(select(1))  # the real sweep's SELECT begins the transaction the rollback ends
+        await db.rollback()  # what the domain recovery path does; it expires every tracked object
+        raise RuntimeError("sweep broke")
+
+    monkeypatch.setattr(referrals, "sweep", sweep_boom)
+    monkeypatch.setattr(_logging.getLogger("treg"), "disabled", False)  # see the referee test
+    with caplog.at_level(_logging.WARNING, logger="treg"):
+        summary = await referrals_app.get_referral_summary(user_id)  # must not raise
+    assert "referral sweep failed for user" in caplog.text
+    assert summary["code"]  # the page still renders
+    """The one-transaction property, in both directions: a failed commit loses the grant AND the
+    queued ad conversion (and does not raise - the never-500-the-signup contract), and the retry
+    makes both durable in one commit."""
+    from sqlalchemy.ext.asyncio import AsyncSession as SAAsyncSession
+
+    from treg import adsconv
+    from treg.application import signup
+    from treg.models import AdConversion
+
+    monkeypatch.setattr(adsconv, "enabled", lambda: True)
+    async with session_maker() as db:
+        org = Org(name="promo-atomic", slug="promo-atomic", ad_gclid="CLICK_SIGNUP")
+        db.add(org)
+        await db.commit()
+        await db.refresh(org)
+        org_id = org.id
+
+    real_commit = SAAsyncSession.commit
+    state = {"failed": False}
+
+    async def failing_commit(self):
+        if not state["failed"]:
+            state["failed"] = True
+            raise RuntimeError("simulated commit failure")
+        return await real_commit(self)
+
+    monkeypatch.setattr(SAAsyncSession, "commit", failing_commit)
+    async with session_maker() as db:
+        await signup._grant_signup_promo(db, await db.get(Org, org_id))  # must not raise
+    assert state["failed"], "the promo commit was never attempted"
+
+    async with session_maker() as db:  # neither half survived the failed commit
+        assert [e for e in await ledger.entries_of(db, org_id) if e.kind == "grant"] == []
+        assert (await db.execute(select(AdConversion).where(
+            AdConversion.org_id == org_id))).scalars().all() == []
+    assert await _assert_invariant(org_id) == 0
+
+    async with session_maker() as db:  # the retry lands BOTH, in one commit
+        await signup._grant_signup_promo(db, await db.get(Org, org_id))
+    async with session_maker() as db:
+        assert [e.kind for e in await ledger.entries_of(db, org_id)] == ["grant"]
+        assert len((await db.execute(select(AdConversion).where(
+            AdConversion.org_id == org_id))).scalars().all()) == 1
+    assert await _assert_invariant(org_id) == get_settings().promo_grant_micro
+
+
+async def test_a_grant_failure_cannot_fail_signup(c: AsyncClient, monkeypatch):
+    """The promo is a nicety: a broken grant must cost the team its $1, never their signup."""
+    async def boom(*a, **kw):
+        raise RuntimeError("grant broke")
+
+    monkeypatch.setattr(ledger, "grant", boom)
+    r = await c.post("/users", json={"email": "promo-fails@superdesign.dev"})
+    assert r.status_code == 200, r.text
+    org_id = r.json()["org_id"]
+    async with session_maker() as db:
+        assert await db.get(Org, org_id) is not None
+        assert await ledger.balance_of(db, org_id) == 0
+        assert await ledger.blocks_of(db, org_id) == []
+
+
+async def test_a_grant_failure_after_staging_still_returns_the_signup(c: AsyncClient, monkeypatch):
+    """The sharper variant of the test above: the grant fails AFTER its SQL has staged, so the
+    recovery rollback expires every object the session tracks. Both signup doors must still answer
+    with the fields they promised, and the referral must still be attributed - the never-500-the-
+    signup contract does not stop at objects that now need a reload."""
+    from treg.routers.signup_cookies import REFERRAL_COOKIE
+    from treg.models import Referral
+
+    _, ann_token = await _org(c, "ref-ann@superdesign.dev")
+    code = (await c.post("/referrals/code", headers=_h(ann_token))).json()["code"]
+
+    real_grant = ledger.grant
+
+    async def grant_then_boom(db, org_id, *a, **kw):
+        await real_grant(db, org_id, *a, **kw)  # SQL has run, so the rollback below expires objects
+        raise RuntimeError("grant broke after staging")
+
+    monkeypatch.setattr(ledger, "grant", grant_then_boom)
+
+    r = await c.post("/users", json={"email": "promo-fails-late@superdesign.dev"},
+                     headers={"Cookie": f"{REFERRAL_COOKIE}={code}"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["email"] == "promo-fails-late@superdesign.dev"
+    assert body["id"] and body["org"] and body["org_id"] and body["token"]
+    org_id = body["org_id"]
+
+    r2 = await c.post("/orgs", json={"name": "second-team"}, headers=_h(body["token"]))
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["org"] and r2.json()["org_id"] and r2.json()["name"] == "second-team"
+
+    async with session_maker() as db:
+        assert await ledger.balance_of(db, org_id) == 0  # the credit is lost, never the signup
+        referred = (await db.execute(select(Referral).where(
+            Referral.referred_org_id == org_id))).scalars().all()
+    assert len(referred) == 1  # the failed grant did not cost the referral attribution either
 
 
 # ---- the call path -----------------------------------------------------------------------------
@@ -259,6 +642,7 @@ async def test_promotional_burns_before_purchased_then_oldest_purchased(c: Async
     async with session_maker() as db:
         old = await ledger.topup(db, org_id, 2_000_000, "pi_old")
         new = await ledger.topup(db, org_id, 2_000_000, "pi_new")
+        await db.commit()
     async with session_maker() as db:  # make the age order unambiguous regardless of clock resolution
         row = await db.get(CreditBlock, new.id)
         row.created_at = row.created_at.replace(year=row.created_at.year + 1)
@@ -325,6 +709,37 @@ async def test_reserve_reaps_stale_holds_first(c: AsyncClient):
     assert await _assert_invariant(org_id) == promo - 1_000
 
 
+async def test_reaped_refund_survives_a_following_application_owned_402(c: AsyncClient):
+    """Lazy reap is its own committed phase, not part of the new reservation transaction."""
+    from datetime import timedelta
+
+    org_id, _ = await _org(c)
+    promo = get_settings().promo_grant_micro
+    failed_call_id = "reserve-after-reap-402"
+    async with session_maker() as db:
+        stranded = await ledger.reserve(db, org_id, "e.crashed", promo)
+        row = await db.get(Hold, stranded)
+        row.created_at = row.created_at - timedelta(seconds=ledger.hold_ttl_s() + 5)
+        db.add(row)
+        await db.commit()
+
+    async with session_maker() as db:
+        with pytest.raises(ledger.InsufficientBalance):
+            await ledger.reserve_in_transaction(
+                db, org_id, "e.too-expensive", promo + 1, call_id=failed_call_id)
+        await db.rollback()
+
+    assert await _assert_invariant(org_id) == promo
+    async with session_maker() as db:
+        assert await ledger.open_holds_of(db, org_id) == []
+        entries = await ledger.entries_of(db, org_id)
+    releases = [entry for entry in entries if entry.kind == "release"]
+    assert len(releases) == 1
+    assert releases[0].call_id == stranded
+    assert releases[0].meta["reason"] == "stale_hold_reaped"
+    assert not [entry for entry in entries if entry.call_id == failed_call_id]
+
+
 # ---- margin ------------------------------------------------------------------------------------
 async def test_margin_is_applied_at_reserve_and_settle(c: AsyncClient, monkeypatch):
     """Margin lives in the ledger (not the call sites) and is recorded on every entry, so a later
@@ -353,6 +768,7 @@ async def test_every_movement_writes_exactly_one_entry(c: AsyncClient):
     org_id, _ = await _org(c)
     async with session_maker() as db:
         await ledger.topup(db, org_id, 1_000_000, "pi_1")
+        await db.commit()
         await ledger.settle(db, await ledger.reserve(db, org_id, "e.1", 500), 500)
         await ledger.release(db, await ledger.reserve(db, org_id, "e.2", 500))
         rows = (await db.execute(select(LedgerEntry).where(LedgerEntry.org_id == org_id))).scalars().all()
@@ -478,6 +894,6 @@ async def test_demo_orgs_get_no_promo_credit(c: AsyncClient):
         await ledger._add_balance(db, org_id, -org.balance_micro)  # zero it as a demo org would be
         await db.commit()
         # the hook is what enforces this — a demo org that somehow reaches it gets nothing
-        from treg.api import _grant_signup_promo
+        from treg.application.signup import _grant_signup_promo
         await _grant_signup_promo(db, await db.get(Org, org_id))
         assert await ledger.balance_of(db, org_id) == 0

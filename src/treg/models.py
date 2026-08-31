@@ -42,7 +42,7 @@ class Org(SQLModel, table=True):
     # Prepaid balance in micro-USD (1e-6 USD), MATERIALIZED as sum(CreditBlock.remaining) minus the
     # open Holds. It exists as a column, not a query, because it is the hot-path spend gate: one
     # conditional UPDATE against this integer is what stops concurrent agent calls racing past zero
-    # (see ledger.reserve). Only `ledger.py` may write it.
+    # (see ledger.reserve). Only `domain/money` may write it.
     balance_micro: int = Field(default=0)
 
     # ---- Stripe billing (see billing.py; NO card data ever lands here) ----------------------------
@@ -97,11 +97,29 @@ class Org(SQLModel, table=True):
     ad_click_id_type: str | None = Field(default=None)  # gclid | gbraid | wbraid
     ad_click_at: datetime | None = Field(default=None)
     ad_landing: str | None = Field(default=None)  # utm_content — the landing page id (p1…p5)
+    # ---- traffic-source attribution (see web/sitetrack.js) --------------------------------------
+    # First-touch `utm_*` + referring host, captured as the first-party `treg_utm` cookie on the
+    # visitor's FIRST page and persisted here at signup, in both signup doors. Answers "how many
+    # teams did campaign X bring, and did they call anything" — a question the Google-only
+    # `ad_*` columns above cannot. Set once, never overwritten; NULL = organic/unknown.
+    utm_source: str | None = Field(default=None)
+    utm_medium: str | None = Field(default=None)
+    utm_campaign: str | None = Field(default=None)
+    utm_term: str | None = Field(default=None)
+    utm_content: str | None = Field(default=None)
+    utm_referrer: str | None = Field(default=None)  # referring hostname, e.g. botdirectory.ai
     # Set ONCE, by a guarded UPDATE in the /call/ handler. Deliberately not derived from CallRecord:
     # audit.py sheds rows past its queue bound, so a derived value undercounts exactly under load.
     first_call_at: datetime | None = Field(default=None)
 
     created_at: datetime = Field(default_factory=_now)
+    # Opt-OUT of overflow (docs/context/ops/capacity.md): when treg's own account for a provider is
+    # out, a metered call may be served through a treg-owned aggregator account on the same endpoint.
+    # Default allowed (disclosed via X-Treg-Served-Via); a team that must not have its requests
+    # relayed through a third party sets this (`treg org overflow off`). Stored as the opt-out so the
+    # column default is the plain `false` in Python — and LAST in the class, because alembic's
+    # add_column appends, keeping create_all test schemas aligned with the migrated shape.
+    platform_overflow_disabled: bool = Field(default=False)
 
 
 class User(SQLModel, table=True):
@@ -222,7 +240,7 @@ class CallRecord(SQLModel, table=True):
     # ---- marketplace telemetry (NULL on a plain tool call) -------------------------------------
     # What a direct catalog call actually did: which endpoint, whose credential paid for it, what we
     # expected it to cost vs what the provider said it cost, and how big/slow the answer was. The
-    # money itself is NOT here — it landed synchronously in the ledger (see ledger.py); this table is
+    # money itself is NOT here — it landed synchronously in the ledger (see domain/money); this table is
     # analytics and is allowed to lose rows.
     endpoint_id: str | None = Field(default=None, index=True)
     provider: str | None = Field(default=None, index=True)
@@ -274,6 +292,16 @@ class CallRecord(SQLModel, table=True):
     budget_val: str = Field(default="", index=True)
     tags: dict | None = Field(default=None, sa_column=Column("tags", JSON, nullable=True))
     created_at: datetime = Field(default_factory=_now)
+    # True when the archive served this answer instead of the vendor (X-Treg-Cache: hit).
+    # Money columns stay identical to a live call on purpose — pricing a hit is a deferred
+    # founder decision (docs/context/architecture/archive.md). Declared LAST to match the
+    # migration's ALTER TABLE ADD COLUMN append position.
+    cached: bool = Field(default=False)
+    # Did the provider FIND something? Decided at settle from the response body by the endpoint's
+    # routing adapter (`catalog/adapters.yaml` `miss`), never stored as content — only the verdict.
+    # NULL = no adapter could tell (or the call failed). Feeds `stats.observed` `hit_rate`, the
+    # P(hit) of the router's expected-cost-per-hit ranking. Last column on purpose (alembic appends).
+    hit: bool | None = Field(default=None)
 
 
 class RunRecord(SQLModel, table=True):
@@ -417,11 +445,12 @@ class AdConversion(SQLModel, table=True):
     """One conversion owed to Google Ads — an OUTBOX row, not a log line.
 
     Written synchronously inside the transaction of the event it describes, so the event and its
-    pending conversion commit or fail together — true for `signup` (queued before `ledger.grant`,
-    whose own commit lands both) and `first_call` (queued and committed on its own dedicated
-    session). It is NOT true for `paid`: `ledger.topup()` commits internally before `billing._credit`
-    queues the conversion, so a crash between the two commits loses that conversion permanently. This
-    gap is a known, accepted trade-off (2026-08-17) rather than a reason to restructure `ledger.py` —
+    pending conversion commit or fail together — true for `signup` (queued alongside the grant;
+    `_grant_signup_promo`'s single commit lands both) and `first_call` (queued and committed on its
+    own dedicated session). It is NOT true for `paid`: `_credit` commits the credit immediately after
+    `ledger.topup()` stages it, before queueing the conversion, so a crash between the two commits
+    loses that conversion permanently. This
+    gap is a known, accepted trade-off (2026-08-17) rather than a reason to restructure `domain/money` —
     see `docs/context/architecture/ads-conversions.md`. A background worker uploads every row later;
     until then `uploaded_at` is NULL. The unique constraint on (org_id, action) is what makes every
     fire site idempotent — a webhook redelivery or a retried signup bounces off it instead of
@@ -626,7 +655,7 @@ class Hold(SQLModel, table=True):
 
 
 class TagSpend(SQLModel, table=True):
-    """What one call cost, attributed to ONE of its caller tags. Written by `ledger.py` only, inside
+    """What one call cost, attributed to ONE of its caller tags. Written by `domain/money` only, inside
     the same transaction as the money movement — never through `audit.py`, which drops rows.
 
     A builder reselling treg tags each call (`customer=cust_8123, workspace=ws_9`) and needs two
@@ -994,7 +1023,7 @@ class ToolRequest(SQLModel, table=True):
     query: str = Field(default="")
     note: str = Field(default="")
     contact: str = Field(default="")  # optional reach-back (email/handle); free text, unverified
-    source: str = Field(default="web", index=True)  # web | cli | mcp | api
+    source: str = Field(default="web", index=True)  # web | cli | mcp | claude-connector | api
     status: str = Field(default="open", index=True)  # open | done | dismissed — flipped by hand
     created_at: datetime = Field(default_factory=_now, index=True)
 
@@ -1014,5 +1043,202 @@ class SearchMiss(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     query: str  # the search text that matched nothing, capped by the writer
-    source: str = Field(default="api", index=True)  # api (HTTP /catalog/search: web + CLI) | mcp
+    # api (HTTP /catalog/search: web + CLI) | mcp | claude-connector
+    source: str = Field(default="api", index=True)
     created_at: datetime = Field(default_factory=_now, index=True)
+
+
+class CapacityPolicy(SQLModel, table=True):
+    """How one treg-owned provider account (tier 4) is funded and metered — written by the capacity
+    worker only (`treg-worker capacity sweep`), never by the call path.
+
+    One row per platform-key slot plus one per overflow aggregator (`overflow:orthogonal`, …): the
+    aggregators are prepaid accounts that run dry exactly like a vendor's. `capacity_type` says what
+    the provider meters (cash, credits, requests, a resetting quota, a flat subscription) and
+    `source` how we learn it (its free account API, response headers, a calculation, a hand entry,
+    nothing). `unknown`/`none` are honest defaults for a provider nobody has classified yet — a
+    sweep flags them rather than inventing a number. Numbers only: no key or payment detail lives
+    here. See docs/PROVIDER-CAPACITY-PLAN.md §2.2.
+    """
+
+    provider: str = Field(primary_key=True)
+    capacity_type: str = Field(default="unknown")  # cash | credits | requests | monthly_quota | subscription | unknown
+    source: str = Field(default="none")             # api | headers | calculated | manual | none
+    funding_mode: str = Field(default="unknown")    # auto_recharge | auto_upgrade | manual | quota_reset | unknown
+    auto_funding_enabled: bool = Field(default=False)
+    auto_funding_verified_at: datetime | None = Field(default=None)
+    auto_trigger_below: float | None = Field(default=None)  # in the provider's own unit
+    auto_amount: float | None = Field(default=None)
+    auto_ceiling: float | None = Field(default=None)
+    target_runway_days: int = Field(default=30)
+    warn_days: int = Field(default=14)
+    urgent_days: int = Field(default=7)
+    critical_days: int = Field(default=3)
+    # micro-USD per provider unit, NULL = unknown (never invent a dollar figure from it)
+    usd_per_unit_micro: int | None = Field(default=None)
+    owner_email: str = Field(default="")
+    dashboard_url: str = Field(default="")
+    runbook: str = Field(default="")
+    overflow_allowed: bool = Field(default=True)
+    # {"limit": int, "window_s": int, "source": "headers|docs|observed"} — the burst limit
+    rate_limit: dict | None = Field(default=None, sa_column=Column("rate_limit", JSON, nullable=True))
+    # {"limit": int, "period": "day|month|billing", "resets_at_rule": str} — the period allowance
+    quota: dict | None = Field(default=None, sa_column=Column("quota", JSON, nullable=True))
+    enabled: bool = Field(default=True)  # a slot with no key in the env is imported disabled
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class CapacitySnapshot(SQLModel, table=True):
+    """One observation of what a provider says treg's account has left. Appended by every sweep
+    (and later by header capture); never updated. `remaining`/`total` are in the provider's own
+    `unit` — only DataForSEO and TikHub speak dollars. A failed collector is still a row, with
+    `error` set and `confidence='stale'`, so an outage is visible as a gap in the curve rather than
+    as silence. Contains numbers and a short note only — never a credential or payment detail.
+    """
+
+    id: int | None = Field(default=None, primary_key=True)
+    provider: str = Field(index=True)
+    observed_at: datetime = Field(default_factory=_now, index=True)
+    remaining: float | None = Field(default=None)
+    total: float | None = Field(default=None)
+    unit: str = Field(default="")
+    resets_at: datetime | None = Field(default=None)
+    source: str = Field(default="api")           # api | headers | calculated | manual
+    confidence: str = Field(default="exact")     # exact | estimate | stale
+    note: str = Field(default="")
+    error: str = Field(default="")
+
+
+class OverflowRoute(SQLModel, table=True):
+    """One `(endpoint_id, aggregator)` pair: the same vendor endpoint served through a treg-owned
+    aggregator account (tier 4b, `platform-overflow`) when our direct account is out.
+
+    Filled by the worker's `treg-worker overflow sync` — never by hand, never by the call path.
+    `enabled` is DERIVED by `domain.capacity.routes.eligible` at sync time (same unit, ratio ≤ 4,
+    platform-eligible, policy allows, verified < 7 days ago); the call path only ever reads it.
+    Prices are the aggregator's list price in micro-USD: the caller pays exactly that, 0% markup,
+    disclosed in-band. See docs/PROVIDER-CAPACITY-PLAN.md §4.3.
+    """
+
+    endpoint_id: str = Field(primary_key=True)
+    aggregator: str = Field(primary_key=True)   # orthogonal | monid
+    provider: str = Field(index=True)
+    method: str
+    path: str
+    agg_slug: str            # the aggregator's name for the vendor (api slug / provider id)
+    agg_path: str            # the aggregator's spelling of the vendor path
+    agg_price_micro: int | None = Field(default=None)
+    agg_unit: str = Field(default="call")       # call | result
+    ratio: float | None = Field(default=None)   # agg price / our per-event price
+    single_result: bool | None = Field(default=None)  # a per-result aggregator route that returns ≤ 1 record
+    enabled: bool = Field(default=False, index=True)
+    disabled_reason: str = Field(default="")
+    matched_at: datetime | None = Field(default=None)
+    last_verified_at: datetime | None = Field(default=None)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class OverflowSpend(SQLModel, table=True):
+    """Per-aggregator, per-UTC-day overflow accounting: what the aggregator charged treg
+    (`cost_micro`) and the delta against what the caller would have paid direct (`delta_micro`,
+    may be negative). Written INSIDE the child's settle transaction (allowlist entry
+    `overflow_spend_in_settle`) and, in shadow mode, by the shadow probe — never anywhere else. The
+    $20/day/aggregator budget (`Settings.overflow_daily_budget_usd`) is checked against it before a
+    child hold is placed. Not money: balances move only through domain/money.
+    """
+
+    aggregator: str = Field(primary_key=True)
+    day: str = Field(primary_key=True)  # YYYY-MM-DD, UTC
+    calls: int = Field(default=0)
+    cost_micro: int = Field(default=0)
+    delta_micro: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class ArchiveKey(SQLModel, table=True):
+    """One logical question the platform has answered at least once — the archive's index row.
+
+    The key hash comes from `archive.cache_key`: method + endpoint + canonical URL/query/body,
+    credentials and transport noise excluded. One row carries everything the timer learner and the
+    refresh worker need about this question: when it was last fetched, how it has changed across
+    refetches, how often callers ask (heat), and which JSON paths turned out to be noise.
+
+    **Scoped to the platform, not to an org.** Only metered platform-tier calls are recorded (the
+    module docstring's gate 3): those run on treg's own vendor account, so the answer belongs to
+    the platform and one team's fetch may warm another team's hit. Own-key responses never enter
+    this table — that is the privacy line, drawn at write time, not filtered at read time.
+
+    Timer state is AIMD (grow slowly on stability, shrink fast on change): `ttl_s` is the current
+    per-key timer, adjusted by the learner on every refetch outcome. `change_seen` / `stable_seen`
+    count outcomes so the learner and the admin report can show their evidence. `volatile_paths`
+    holds the learned noisy JSON paths (request ids, server timestamps) excluded from change
+    detection — stored per key, applied before comparing, never applied to stored bytes.
+
+    PR 1 creates the shape only; nothing writes it until the recorder lands (PR 2).
+    """
+
+    __table_args__ = (UniqueConstraint("key_hash", name="uq_archive_key_hash"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    key_hash: str = Field(index=True)              # sha256 from archive.cache_key
+    endpoint_id: str = Field(index=True)           # catalog endpoint id — policy + report joins
+    provider: str = Field(default="", index=True)  # denormalized for per-provider budgets/reports
+    policy: str = Field(default="forbidden")       # effective policy when last written (see archive)
+    # --- timer (AIMD) ---
+    ttl_s: int = Field(default=0)                  # current per-key timer; 0 = no serving opinion yet
+    fetched_at: datetime = Field(default_factory=_now, index=True)  # newest snapshot's fetch time
+    # --- change statistics (the learner's evidence) ---
+    change_seen: int = Field(default=0)            # refetches whose stripped hash differed
+    stable_seen: int = Field(default=0)            # refetches whose stripped hash matched
+    last_changed_at: datetime | None = Field(default=None)
+    volatile_paths: list = Field(default_factory=list, sa_column=Column(JSON))
+    # --- demand (what earns a refresh) ---
+    heat: float = Field(default=0.0)               # decayed request rate, updated on each hit/miss
+    last_requested_at: datetime | None = Field(default=None)
+    created_at: datetime = Field(default_factory=_now)
+    # The pre-injection request shape, stored so the refresh worker can re-ask the exact question.
+    # Credentials cannot appear here: injection happens inside the relay, after this shape is
+    # fixed. Declared LAST to match the migration's ALTER TABLE append position.
+    req_method: str = Field(default="")
+    req_url: str = Field(default="")
+    req_body: bytes | None = Field(default=None)
+    # Only the headers that KEY (Accept / Accept-Language, when the caller sent them): the worker
+    # must replay them or its recording lands under a different key than the caller's question.
+    req_headers: dict = Field(default_factory=dict, sa_column=Column(JSON))
+
+
+class ArchiveSnapshot(SQLModel, table=True):
+    """One stored answer — a version in a key's history. The newest fresh one is the cache.
+
+    Bytes are kept VERBATIM: change detection strips noisy fields on a comparison copy, never on
+    what is stored, so a served hit replays exactly what the vendor sent (relay faithfulness,
+    extended through time). `content_hash` (sha256 of the raw body) deduplicates: consecutive
+    identical answers add a version row but reference the same bytes via `body_of` instead of
+    storing them again — the history of "asked on these dates, same answer" is itself data.
+
+    Bodies live in Postgres, the IdempotentCall precedent (a paid answer worth keeping is already
+    stored there today); `body` is NULL when `body_of` points at the row that carries the bytes.
+    Oversized bodies are skipped by the recorder, not truncated — a half answer is worse than none.
+
+    Old versions of a `transient`-policy key are prunable; an `archive`-policy key keeps its
+    history — that difference is enforced by the (future) worker's pruning pass, not by schema.
+    """
+
+    __table_args__ = (
+        UniqueConstraint("key_id", "version", name="uq_archive_snapshot_version"),
+        Index("ix_archive_snapshot_content", "content_hash"),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    key_id: int = Field(foreign_key="archivekey.id", index=True)
+    version: int = Field(default=1)                # 1..N within the key, newest = max
+    status_code: int = Field(default=200)
+    media_type: str = Field(default="")
+    content_hash: str                              # sha256 of the RAW body (dedup identity)
+    body: bytes | None = Field(default=None)       # verbatim bytes, or NULL when body_of is set
+    body_of: int | None = Field(default=None, foreign_key="archivesnapshot.id")
+    size_bytes: int = Field(default=0)             # of the raw body, even when deduplicated
+    fetched_at: datetime = Field(default_factory=_now, index=True)
+    # Who triggered the fetch: "caller" (a real request) | "refresh" (worker) | "sample" (learner).
+    origin: str = Field(default="caller")

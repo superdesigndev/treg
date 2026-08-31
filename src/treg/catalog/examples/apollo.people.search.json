@@ -1,0 +1,76 @@
+{
+  "total_entries": 57,
+  "people": [
+    {
+      "id": "60ed25b7f8062300014a5b87",
+      "first_name": "Kanchan",
+      "last_name_obfuscated": "Be***i",
+      "title": "Head of Marketing, India",
+      "last_refreshed_at": "2026-08-12T12:54:52.712+00:00",
+      "has_email": true,
+      "has_city": true,
+      "has_state": true,
+      "has_country": true,
+      "has_direct_phone": "Yes",
+      "organization": {
+        "name": "Stripe",
+        "has_industry": true,
+        "has_phone": true,
+        "has_city": true,
+        "has_state": true,
+        "has_country": true,
+        "has_zip_code": true,
+        "has_revenue": true,
+        "has_employee_count": true
+      }
+    },
+    {
+      "id": "610d25ae6dd50f0001c68107",
+      "first_name": "Satoshi",
+      "last_name_obfuscated": "Ok***o",
+      "title": "Head of Marketing Japan",
+      "last_refreshed_at": "2026-08-16T14:01:27.381+00:00",
+      "has_email": true,
+      "has_city": true,
+      "has_state": true,
+      "has_country": true,
+      "has_direct_phone": "Yes",
+      "organization": {
+        "name": "Stripe",
+        "has_industry": true,
+        "has_phone": true,
+        "has_city": true,
+        "has_state": true,
+        "has_country": true,
+        "has_zip_code": true,
+        "has_revenue": true,
+        "has_employee_count": true
+      }
+    },
+    {
+      "id": "622548594502710001e8ed22",
+      "first_name": "Rachelle",
+      "last_name_obfuscated": "Ts***g",
+      "title": "Head of Marketing Services",
+      "last_refreshed_at": "2026-07-13T09:47:56.229+00:00",
+      "has_email": true,
+      "has_city": true,
+      "has_state": true,
+      "has_country": true,
+      "has_direct_phone": "Yes",
+      "organization": {
+        "name": "Stripe",
+        "has_industry": true,
+        "has_phone": true,
+        "has_city": true,
+        "has_state": true,
+        "has_country": true,
+        "has_zip_code": true,
+        "has_revenue": true,
+        "has_employee_count": true
+      }
+    }
+  ],
+  "_scrubbed": true,
+  "_note": "captured live 2026-08-29 via treg (JSON body, not [] query keys); emails scrubbed, lists trimmed"
+}

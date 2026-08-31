@@ -1,11 +1,11 @@
 ---
 page_id: p1
 slug: /use-cases/seo-data-for-ai-agents/
-seo_title: "Real SEO Data for AI Agents — One Key, Per Call | treg.to"        # 57 chars
+seo_title: "SEO Data: Google Results, Keywords and Backlinks | treg.to"        # 54 chars
 meta_description: "Give your agent live Google results, keyword volume and backlink data through one key. Pay per call, not per seat. $1.00 free to start."  # 137
-h1: "Give Your Agent Real SEO Data — Without a Semrush Subscription"
+h1: "SEO Data: Google Results, Keywords and Backlinks"
 hub_title: "SEO & search results"
-hub_blurb: "Live Google results, keyword volume, difficulty and backlinks — priced per call."
+hub_blurb: "Live Google results, keyword volume, difficulty and backlinks, priced per call."
 price_old: "$214/mo"
 price_old_label: "Semrush + SerpApi, at list"
 price_new: "$0.012"
@@ -26,28 +26,29 @@ ad_keywords:                       # bid here; do NOT optimize the page for thes
   - "dataforseo alternative"
 capabilities: [google.keywords.volume, google.keywords.ideas, google.serp.organic, web.backlinks.summary]
 facts_used: [F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-20, F-30, F-31, F-32, F-90, F-92]
-hypothesis: "Highest traffic, worst cost per first successful call — SEO buyers already own a tool. Predict this page is the one we stop paying for. RE-POINTED 2026-08-17: telemetry shows keyword research is ~1.3% of real usage while SERP scraping is ~22%, so the second workflow now leads on recurring result monitoring."
+hypothesis: "Highest traffic, worst cost per first successful call: SEO buyers already own a tool. Predict this page is the one we stop paying for. RE-POINTED 2026-08-17: telemetry shows keyword research is ~1.3% of real usage while SERP scraping is ~22%, so the second workflow now leads on recurring result monitoring."
 verify_after: 2026-08-31
 status: proof populated from a real run 2026-08-17 ($0.012) · ready for build · revised against 30-day telemetry 2026-08-17
 ---
 
-# Page 1 — SEO and keyword intelligence
+# Page 1: SEO and keyword intelligence
 
 ---
 
 ## Hero
 
-### Give Your Agent Real SEO Data — Without a Semrush Subscription
+### SEO Data: Google Results, Keywords and Backlinks
 
-Your coding agent can pull live Google results, keyword volume, difficulty and backlink data through one
-key, and you pay for the calls it makes instead of a seat you use twice a month.
+```text
+Using treg, get keyword volume and difficulty for these 10 terms, then pull the
+top 10 organic results for the highest-volume one. Show me who ranks and why.
+```
 
-**[ Run This Workflow Free ]**   **[ See the Example ]**
+**Keyword volume from $0.0005/keyword** (Serpstat), **organic results from $0.002/call** (DataForSEO). No monthly minimum.
+
+**[ Start Free ]**   **[ Paste llms.txt ]**
 
 `S-TRUST-HERO`
-
-*Sub-line:* Live results — organic, news, maps — plus keyword data, backlinks, Search Console and GA4, all
-answering the same token. The organic results endpoint has served **2,075 calls at a 100% success rate**.
 
 ---
 
@@ -86,11 +87,11 @@ endpoints that do it, each with a price and whether treg.to can serve it without
 |---|---|---|---|---|
 | **Serpstat** | $0.0005 per keyword returned | 100% (77 calls) | 1.2 s | up to 1,000 keywords per call |
 | **SE Ranking** | $0.00179 per keyword returned | 92.3% (20 calls) | 1.7 s | up to 5,000 per call |
-| **DataForSEO** | $0.09 flat per call | 98.8% (165 calls) | 3.9 s | same price for 1 keyword or 1,000 — batch it |
-| **Google Ads** | free with a connected account | not yet measured | — | your own OAuth |
-| **Semrush** | 10 API units per row | not yet measured | — | own key only |
+| **DataForSEO** | $0.09 flat per call | 98.8% (165 calls) | 3.9 s | same price for 1 keyword or 1,000: batch it |
+| **Google Ads** | free with a connected account | not yet measured |: | your own OAuth |
+| **Semrush** | 10 API units per row | not yet measured |: | own key only |
 
-Those numbers are what treg.to has actually observed across real calls, sample size included — a 100%
+Those numbers are what treg.to has actually observed across real calls, sample size included: a 100%
 over 8 calls is weaker evidence than a 99% over 121, and the catalog shows you both so you can tell.
 
 **It calls, then joins the results.** Volume and difficulty for the list, live Google results for the
@@ -104,10 +105,10 @@ The results endpoints are the most-used tools in the whole catalog, so their rec
 | **Organic** | DataForSEO | $0.002 | **100% (2,075 calls)** | 5.5 s |
 | | ScrapeCreators | $0.00188 | 100% (343 calls) | 1.6 s |
 | | Serpstat | $0.0005 | 100% (77 calls) | 1.2 s |
-| | SerpApi | $0.015 | — | — |
+| | SerpApi | $0.015 |: |: |
 | **Maps / local** | DataForSEO | $0.002 | **100% (2,646 calls)** | 1.9 s |
 | **News** | DataForSEO | $0.002 | 100% (690 calls) | 9.0 s |
-| **Trends** | DataForSEO | — | 98% (462 calls) | 6.7 s |
+| **Trends** | DataForSEO |: | 98% (462 calls) | 6.7 s |
 
 ### What comes back
 
@@ -136,24 +137,24 @@ COST             $[from your run]
 ### The one teams actually run most
 
 Keyword research is a job you do once. Watching results is a job you do every week, and it is what the
-agents on treg.to overwhelmingly spend their calls on — the organic, maps and news result endpoints
+agents on treg.to overwhelmingly spend their calls on: the organic, maps and news result endpoints
 together serve more traffic than every other SEO tool in the catalog combined.
 
 ```text
 Every Monday, check where we and our top 3 competitors rank for these 20
-keywords — organic, news and maps. Report only what moved since last week,
+keywords: organic, news and maps. Report only what moved since last week,
 and for anything that dropped, show which page overtook us.
 ```
 
 **[ Copy Prompt ]**
 
 Twenty keywords across three result types is 60 calls, about **$0.12** at DataForSEO's $0.002. Run weekly
-for a year and it costs roughly $6 — against a rank tracker at $65/mo. And the week you skip it, it costs
+for a year and it costs roughly $6: against a rank tracker at $65/mo. And the week you skip it, it costs
 nothing, which is the part a subscription can never do.
 
 ---
 
-## Proof — from one real run
+## Proof from one real run
 
 *Run on treg.to, 17 Aug 2026. Every figure below is from the Activity log of that run.*
 
@@ -161,11 +162,11 @@ nothing, which is the part a subscription can never do.
 |---|---|
 | Providers considered | **5** for keyword volume, **5** for Google results |
 | Providers selected | `serpstat.google.keywords.volume` · `dataforseo.google.serp.organic` |
-| Why | Serpstat was the cheapest per keyword ($0.0005) **and** carried the best measured record of the five — 100% success over 77 calls, 1.2 s median. DataForSEO took the results call at $0.002 |
-| Total cost of the run | **$0.012** — 2 calls |
-| Subscription cost avoided | **$214/mo** at list — Semrush $139 + SerpApi $75 |
+| Why | Serpstat was the cheapest per keyword ($0.0005) **and** carried the best measured record of the five: 100% success over 77 calls, 1.2 s median. DataForSEO took the results call at $0.002 |
+| Total cost of the run | **$0.012**: 2 calls |
+| Subscription cost avoided | **$214/mo** at list: Semrush $139 + SerpApi $75 |
 | Time to completion | Under 15 seconds. The results call reported 10.4 s server-side |
-| Data freshness | Google results timestamped **2026-08-17 02:06:40 UTC** — live at call time. Keyword volume is the provider's monthly index |
+| Data freshness | Google results timestamped **2026-08-17 02:06:40 UTC**: live at call time. Keyword volume is the provider's monthly index |
 
 **What actually came back.** 20 keywords submitted, **13 returned with data**; seven had none, which is a
 real answer and worth more than an invented number.
@@ -190,7 +191,7 @@ And the live top 7 for `serp api`: serpapi.com, dataforseo.com, scrapfly.io, git
 searchapi.io, you.com.
 
 > **The honest read of this run:** `mcp server` at 60,500/mo with difficulty 8 is the kind of finding the
-> workflow exists to surface — but difficulty scores are a provider's model, not a fact. Treat the volume
+> workflow exists to surface: but difficulty scores are a provider's model, not a fact. Treat the volume
 > as data and the difficulty as an opinion you paid $0.0005 for.
 
 ---
@@ -204,7 +205,7 @@ month of Semrush.
 
 **Find out who actually earned the ranking.**
 For any keyword, the agent pulls the live results, then pulls authority and referring-domain data for each
-page that ranks. You learn whether the leader is winning on links or on the page — which decides whether
+page that ranks. You learn whether the leader is winning on links or on the page: which decides whether
 you write or go get links.
 
 **Watch a competitor's index without buying a rank tracker.**
@@ -219,7 +220,7 @@ pay per run, so a paused project costs nothing while it is paused.
   that is already writing the brief.
 - **Content marketers** who need volume and intent for a plan this week and cannot get a tool approved by
   then.
-- **Growth teams** doing keyword work in bursts — a launch, a new market — where a monthly subscription
+- **Growth teams** doing keyword work in bursts: a launch, a new market: where a monthly subscription
   sits idle between them.
 - **Developers building SEO agents or dashboards** who want one HTTP surface and one bill instead of five
   vendor SDKs and five renewal dates.
@@ -229,29 +230,56 @@ pay per run, so a paused project costs nothing while it is paused.
 ## Before you sign up
 
 **Why not just call the providers directly?**
-For one provider you already pay for, do — connect that key and those calls route through it, unmetered.
+For one provider you already pay for, do: connect that key and those calls route through it, unmetered.
 The arithmetic changes at the second provider. This workflow touches keyword data, live results and
 backlinks; buying that separately is three accounts, three contracts and three API shapes to learn, for
 research you might run twice a month. treg.to is closer to OpenRouter for agent tools than to a data
 vendor: one base URL, one token, many providers behind it.
 
-**How are credentials handled?** — `S-OBJ-CREDENTIALS`
+**How are credentials handled?**: `S-OBJ-CREDENTIALS`
 
-**Can I choose a specific provider?** — `S-OBJ-CHOOSE`
+**Can I choose a specific provider?**: `S-OBJ-CHOOSE`
 *(Vertical note: worth doing here. Keyword databases disagree, so if you have been reporting Semrush
 volumes to a client for a year, pin Semrush and keep the series consistent.)*
 
-**Can I use my existing provider key?** — `S-OBJ-OWN-KEY`
+**Can I use my existing provider key?**: `S-OBJ-OWN-KEY`
 
-**What happens if a provider fails?** — `S-OBJ-FAILURE`
+**What happens if a provider fails?**: `S-OBJ-FAILURE`
 
 **How much does a call cost?**
-Fractions of a cent for most SEO endpoints — Serpstat keyword volume at $0.0005 per keyword, DataForSEO
+Fractions of a cent for most SEO endpoints: Serpstat keyword volume at $0.0005 per keyword, DataForSEO
 organic results at $0.002 per call, Moz URL metrics at $0.006667, at the time of writing. The exact price
 is shown before the call, and treg.to adds no markup to what the provider charges. New teams start with
 $1.00 of free credit.
 
-**Which agents does it work with?** — `S-OBJ-AGENTS`
+**Is there a DataForSEO MCP or a Serpstat MCP?**
+This is one. treg.to is a single MCP server that carries DataForSEO, Serpstat, SE Ranking, SerpApi and
+Majestic behind one token: add it once and the agent calls whichever fits the job.
+
+**Is this a Semrush or Ahrefs alternative?**
+Not for the dashboards; it is the API half. Semrush's own data endpoints are in the catalog, priced in
+Semrush API units. Ahrefs is not in the catalog. What you replace is a stack of separate SEO API
+subscriptions, not the suite you read reports in.
+
+**Which agents does it work with?**: `S-OBJ-AGENTS`
+
+---
+
+## Next steps
+
+### Providers in the catalog
+
+- [Google Search Console](/tools/google-search-console)
+- [DataForSEO](/tools/dataforseo)
+- [Serpstat](/tools/serpstat)
+- [Moz](/tools/moz)
+
+### Individual jobs you can run now
+
+- [Keyword Volume, CPC and Competition](/use-cases/keyword-volume-cpc-and-competition)
+- [Google Results for a Keyword](/use-cases/google-results-for-a-keyword)
+- [Keywords a Domain Ranks For](/use-cases/keywords-a-domain-ranks-for)
+- [Backlink Profile of a Domain](/use-cases/backlink-profile-of-a-domain)
 
 ---
 
@@ -259,7 +287,7 @@ $1.00 of free credit.
 
 ### Your next keyword plan can be built by the agent that is already open
 
-**[ Run This Workflow Free ]**
+**[ Start Free ]**
 
 `S-FINAL-CTA-TRUST`
 
@@ -287,7 +315,7 @@ $1.00 of free credit.
 3. "Your agent can't do SEO because it can't see the data. Two-minute fix."
 
 ### X post hook
-`Your agent writes confident SEO briefs off keyword data it invented. Here's how to give it the real numbers — volume, difficulty, live SERPs — for a fraction of a cent per call.`
+`Your agent writes confident SEO briefs off keyword data it invented. Here's how to give it the real numbers: volume, difficulty, live SERPs: for a fraction of a cent per call.`
 
 ### High-intent keyword phrases
 `keyword volume api pay per call` · `serp api for claude code` · `seo data for ai agents` ·
@@ -303,7 +331,7 @@ terminal end to end, and run `treg balance` before and after so the audience see
 run rather than a claim about it.
 
 ### Measurable hypothesis
-Highest traffic of the five, worst cost per first successful call — SEO buyers usually already own a tool,
+Highest traffic of the five, worst cost per first successful call: SEO buyers usually already own a tool,
 so the pitch is a saving rather than a new capability. If day-14 CPFC is the worst of the five, stop
 paying for this page and move the budget to page 2 or 4. Secondary: Copy Prompt clicks predict first-call
 conversion better than account creations do.
@@ -313,5 +341,5 @@ conversion better than account creations do.
 ## Numbers used on this page
 
 `F-01` `F-02` `F-03` `F-04` `F-05` `F-06` `F-07` `F-08` `F-09` `F-10` `F-11` `F-13` `F-20` `F-30` `F-31`
-`F-32` — all defined in `_facts.md`, verified 2026-08-17. Re-verify with
+`F-32`: all defined in `_facts.md`, verified 2026-08-17. Re-verify with
 `treg catalog get <endpoint_id>` before publishing.

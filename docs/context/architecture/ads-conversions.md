@@ -3,6 +3,7 @@ title: Google Ads conversion tracking — capture, outbox, upload
 status: shipped
 sources:
   - src/treg/adsconv.py
+  - src/treg/application/signup.py
   - src/treg/web/adtrack.js
 related:
   - architecture/money.md
@@ -11,6 +12,12 @@ related:
   - architecture/proxy-model.md
   - ops/deploy.md
 ---
+
+> Scope note: this fragment is the **Google click-id** path (`treg_ad` → `Org.ad_*` → conversion
+> upload). Generic traffic-source attribution — `utm_*` and referrer for sponsor links, newsletters,
+> directories — is the separate `treg_utm` → `Org.utm_*` path in `web/sitetrack.js`, documented in
+> [data-model](data-model.md) and [api](../interface/api.md). The two are independent; a Google ad
+> click with utm tags populates both.
 
 # Google Ads conversion tracking
 
@@ -31,7 +38,7 @@ read-side Ads catalog calls (`oauth_providers.GOOGLE_ADS`), a separate credentia
    browser at any point. The cookie records the mutually-exclusive field name as well as its value
    (`gclid|…`, `gbraid|…`, or `wbraid|…`); the old `CLICK_ID|landing` shape remains readable as a
    legacy GCLID.
-2. **Store** (`api._ad_attribution_from`, read at BOTH signup doors — `register_user` (`POST /users`)
+2. **Store** (`application.signup._ad_attribution_from`, read at both signup doors: `register_user` (`POST /users`)
    and `create_org` (`POST /orgs`), since a browser visitor who clicked an ad can land on either).
    The cookie is decoded and persisted onto the new `Org`: `ad_gclid` (the historical column name,
    now holding any supported click id), `ad_click_id_type`, `ad_landing` (the use-case page slug or
@@ -41,7 +48,7 @@ read-side Ads catalog calls (`oauth_providers.GOOGLE_ADS`), a separate credentia
    `AdConversion` outbox row inside a `SAVEPOINT` (a nested transaction, not a bare flush or a
    `db.rollback()` — this runs inside the CALLER's transaction, and a plain rollback on a duplicate
    would roll back their work too, e.g. undoing a Stripe credit on a redelivered webhook):
-   - `api._grant_signup_promo` → `ACTION_SIGNUP`, queued BEFORE `ledger.grant()`.
+   - `application.signup._grant_signup_promo` calls `ACTION_SIGNUP` before `ledger.grant()`.
    - `api._record_first_call` → `ACTION_FIRST_CALL`, on the org's first successful `/call/`.
    - `billing._credit` → `ACTION_PAID`, on the org's first credited top-up, carrying `value_usd_micro`.
    `queue()` no-ops (returns `False`) when tracking is disabled or the org has no `ad_gclid` — most
@@ -117,24 +124,23 @@ a busy launch — so deriving the flag from `CallRecord` would undercount precis
 highest. `_record_first_call` runs on its **own session**, opened fresh via `session_maker()`, and
 never raises into the caller's response. This is deliberate: an earlier version committed on the
 request's own `db` session mid-settlement (the proxy call was still being billed) and broke 8 billing
-tests, because that reaches into the money transaction from outside `ledger.py` — the same rule
+tests, because that reaches into the money transaction from outside `domain/money` — the same rule
 `money.md` states for ledger writes applies here by extension, even though `adsconv.py` itself never
 touches balance.
 
 ## Atomicity: two of three fire sites are atomic with their event, one is not
 
-- **`signup`** — atomic. `adsconv.queue()` runs before `ledger.grant()` in `_grant_signup_promo`, and
-  `grant()`'s own commit lands both rows together.
+- **`signup`** — atomic. `adsconv.queue()` and `ledger.grant()` both stage in `_grant_signup_promo`,
+  and its one commit lands both rows together.
 - **`first_call`** — atomic. `_record_first_call` queues the conversion and commits once, on its own
   session.
-- **`paid`** — **not atomic**. `billing._credit` calls `ledger.topup()`, which commits internally
-  (`ledger.py`'s money-write rule), before it queues the `paid` conversion and commits that
-  separately. A crash between the two commits loses the conversion permanently: a Stripe webhook
-  redelivery finds the payment already credited (`fresh` is `False`), and the fire site that would
-  have queued the conversion never runs again.
+- **`paid`** — **not atomic**. `billing._credit` commits the credit first, then queues the `paid`
+  conversion and commits that separately. A crash between the two commits loses the conversion
+  permanently: a Stripe webhook redelivery finds the payment already credited (`fresh` is `False`),
+  and the fire site that would have queued the conversion never runs again.
 
   This gap was found in review and the decision (2026-08-17) was to **accept it and document it
-  honestly** rather than restructure `ledger.py` to make the credit and the conversion one
+  honestly** rather than restructure `domain/money` to make the credit and the conversion one
   transaction. The cheap fix, if the gap ever matters in practice: a reconciliation sweep over orgs
   that have a credited payment (a `CreditBlock`) and a `gclid` but no `paid` `AdConversion` row, in
   the shape of `reconcile.py`'s other read-only reports. Not built.
@@ -174,7 +180,8 @@ for the full four-places-at-once list and the two-failure-modes note (a dead ver
 
 ## Testing hazard: the shared test database
 
-The suite's default SQLite file is `./treg-test.db`, and `reset_db()` (test-only) drops and recreates
+The suite's default SQLite files live under `$TMPDIR/treg-tests/` (per-xdist-worker, out of the repo
+tree so file watchers stay quiet), and `reset_db()` (test-only) drops and recreates
 every table. Two pytest runs against the same file concurrently corrupt each other — one run's
 `reset_db()` mid-flight drops a table the other run is about to query — and the failure surfaces as a
 misleading `no such table` error that looks like a flake, not a concurrency bug. This cost this

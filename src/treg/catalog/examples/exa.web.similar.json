@@ -1,0 +1,27 @@
+{
+  "requestId": "cc211990a15bdf64040b26d28c0ece52",
+  "results": [
+    {
+      "id": "http://github.com/qdrant/qdrant",
+      "title": "qdrant/qdrant",
+      "url": "http://github.com/qdrant/qdrant",
+      "author": null,
+      "score": 0.8847360610961914
+    },
+    {
+      "id": "https://raw.githubusercontent.com/qdrant/qdrant/master/README.md",
+      "title": "",
+      "url": "https://raw.githubusercontent.com/qdrant/qdrant/master/README.md",
+      "author": null,
+      "score": 0.8817116022109985
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "costDollars": {
+    "total": 0.007,
+    "search": {
+      "neural": 0.007
+    }
+  },
+  "searchTime": 279.36948199989274
+}

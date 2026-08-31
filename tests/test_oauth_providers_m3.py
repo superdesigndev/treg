@@ -18,7 +18,7 @@ from sqlmodel import select
 from treg import oauth
 from treg import oauth_providers as P
 from treg.config import get_settings
-from treg.db import session_maker
+from treg.infra.db import session_maker
 from treg.models import PendingOAuth
 
 
@@ -39,16 +39,16 @@ def _q(payload: dict) -> dict:
 # ---- registry shape ----------------------------------------------------------------------
 def test_every_provider_is_registered():
     assert set(P.REGISTRY) == {
-        "google-search-console", "google-analytics", "google-business-profile",
+        "google-search-console", "google-analytics", "google-business-profile", "google-tag-manager",
         "google-ads", "youtube", "linkedin", "slack", "x", "tiktok",
         "facebook", "instagram", "meta-ads",
         # API-key providers (auth_kind="key")
         "apollo", "pdl", "akta", "hunter", "crunchbase", "tikhub", "brightdata", "semrush", "justoneapi",
         "scrapecreators",
-        "dataforseo", "seranking", "moz", "majestic", "serpstat",
+        "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
         "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
         "companyenrich", "oceanio", "tomba", "predictleads", "findymail", "branddev",
-        "icypeas", "leadsforge", "influencersclub",
+        "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato",
         "spyfu", "apify", "meta-ad-library", "serpapi",
         "parallel",
         "coingecko", "polygon", "finnhub", "twelvedata", "fmp", "eodhd", "marketstack", "tiingo",
@@ -62,6 +62,7 @@ def test_default_capability_is_the_broadest():
     assert P.GOOGLE_SEARCH_CONSOLE.default_capability == "write"
     assert P.X.default_capability == "write"
     assert P.GOOGLE_ADS.default_capability == "manage"  # it has no read-only mode
+    assert P.GOOGLE_TAG_MANAGER.default_capability == "manage"
     for provider in P.REGISTRY.values():
         caps = provider.capabilities
         if "read" in caps and "write" in caps:
@@ -167,7 +168,8 @@ def test_slack_is_bring_your_own_bot():
 
 
 async def test_each_provider_uses_its_own_client_credentials(clients: AsyncClient, all_apps):
-    for service, expected in (("google-search-console", "google-cid"), ("x", "x-cid")):
+    for service, expected in (("google-search-console", "google-cid"),
+                              ("google-tag-manager", "google-cid"), ("x", "x-cid")):
         q = _q((await clients.post("/oauth/start", json={"provider": service})).json())
         assert q["client_id"] == [expected], service
 
@@ -182,6 +184,24 @@ def test_satisfied_capabilities_detects_a_scope_gap():
     assert "write" not in gsc.satisfied_capabilities(read_only)
     both = read_only + gsc.scopes_for("write")
     assert set(gsc.satisfied_capabilities(both)) == {"read", "write"}
+
+
+def test_google_tag_manager_capabilities_are_cumulative_and_exclude_admin():
+    """GTM can audit, prepare and publish without authority to delete an entire container or
+    administer the account's users. Each wider tier must still satisfy every narrower tier."""
+    gtm = P.GOOGLE_TAG_MANAGER
+    assert set(gtm.scopes_for("read")) < set(gtm.scopes_for("write")) < set(gtm.scopes_for("manage"))
+    assert gtm.default_capability == "manage"
+    requested = {scope for scopes in gtm.scopes.values() for scope in scopes}
+    assert not {
+        "https://www.googleapis.com/auth/tagmanager.delete.containers",
+        "https://www.googleapis.com/auth/tagmanager.manage.users",
+        "https://www.googleapis.com/auth/tagmanager.manage.accounts",
+    } & requested
+    assert gtm.probe_path == gtm.discover_path == "/tagmanager/v2/accounts"
+    assert gtm.discover_key == "account"
+    assert gtm.discover_id_field == "path"
+    assert gtm.discover_label_field == "name"
 
 
 async def test_unconfigured_providers_are_listed_but_flagged(clients: AsyncClient, monkeypatch):

@@ -1,0 +1,97 @@
+{
+ "status": 200,
+ "body": {
+  "runId": "01M0Y4NCH0FZAFW39C8W31ZAR5",
+  "provider": "hunterio",
+  "endpoint": "/domain-search",
+  "status": "COMPLETED",
+  "output": {
+   "data": {
+    "domain": "stripe.com",
+    "disposable": false,
+    "webmail": false,
+    "accept_all": true,
+    "pattern": "{first}{last}",
+    "organization": "Stripe",
+    "linked_domains": [],
+    "emails": [
+     {
+      "value": "email:1b17ee04b7",
+      "type": "personal",
+      "source_type": "found",
+      "confidence": 85,
+      "sources": [
+       {
+        "domain": "linkedin.com",
+        "uri": "https://www.google.com/search?q=site:linkedin.com%20aylin%20orakcal%20stripe",
+        "extracted_on": "phone:49e9ac6b28",
+        "last_seen_on": "phone:35c3fa061a",
+        "still_on_page": true
+       }
+      ],
+      "first_name": "Aylin",
+      "last_name": "Orakcal",
+      "position": "Head of Engineering",
+      "position_raw": "Head of Engineering | Financial Connections",
+      "seniority": "executive",
+      "department": "management",
+      "decision_maker": true,
+      "linkedin": "https://www.linkedin.com/in/aylinturhan",
+      "twitter": null,
+      "phone_number": null,
+      "verification": {
+       "date": "phone:10aaa1ebea",
+       "status": "valid"
+      }
+     }
+    ]
+   },
+   "meta": {
+    "results": 2198,
+    "limit": 1,
+    "offset": 0,
+    "params": {
+     "domain": "stripe.com",
+     "company": null,
+     "type": null,
+     "seniority": null,
+     "department": null,
+     "decision_maker": null
+    }
+   }
+  },
+  "providerResponse": {
+   "httpStatus": 200
+  },
+  "price": {
+   "type": "PER_RESULT",
+   "amount": {
+    "value": 0.02392,
+    "currency": "USD"
+   }
+  },
+  "billing": {
+   "reportedCost": {
+    "currency": "USD",
+    "value": 23920,
+    "unit": "MICRO_DOLLAR"
+   }
+  },
+  "resultCount": 1,
+  "billedUnits": 1,
+  "createdAt": "phone:10aaa1ebeaT04:18:43.620Z",
+  "completedAt": "phone:10aaa1ebeaT04:18:44.834Z",
+  "hints": {
+   "retrieve the response later": "curl http://api.monid.ai/v1/runs/01M0Y4NCH0FZAFW39C8W31ZAR5 -H 'Authorization: Bearer <API_KEY>'",
+   "verify an address before sending": "curl -X POST http://api.monid.ai/v1/run -H 'Authorization: Bearer <API_KEY>' -H 'Content-Type: application/json' -d '{\"provider\":\"hunterio\",\"endpoint\":\"/email-verifier\",\"input\":{\"body\":<BODY>,\"queryParams\":<QUERY_PARAMS>,\"pathParams\":<PATH_PARAMS>}}'  # pass the email address to check deliverability"
+  }
+ },
+ "expect": {
+  "upstream_status": 200,
+  "price": {
+   "value": 0.02392,
+   "currency": "USD"
+  },
+  "ok": true
+ }
+}

@@ -6,7 +6,8 @@ Usage (credential comes ONLY from the environment — never from a file or argv)
     TREG_CATALOG_CRED='<secret>' uv run python scripts/catalog_verify.py <service> --extended [--id …]
 
 For each endpoint in src/treg/catalog/<service>.yaml it sends `test_request` to base_url+path with
-the provider's auth shape (taken from treg.oauth_providers — token_header/format/location/encode),
+the provider's auth shape and required protocol headers (taken from treg.oauth_providers —
+token_header/format/location/encode/required_headers),
 checks `expect` (default: HTTP 2xx), and with --write saves a truncated example response to
 src/treg/catalog/examples/<endpoint-id>.json. Prints one PASS/FAIL line per endpoint.
 
@@ -125,6 +126,7 @@ def main() -> int:
             base_query[prov.token_param] = prov.token_format.format(secret=secret)
         else:
             headers[prov.token_header or "Authorization"] = (prov.token_format or "Bearer {secret}").format(secret=secret)
+        headers.update(dict(prov.required_headers))
 
     failures = 0
     today = date.today().isoformat()

@@ -3,7 +3,7 @@
 ![treg — the tool catalog for your agent](docs/assets/treg-hero.png)
 
 **OpenRouter, but for agent tools instead of models.** Point an agent at one base URL with one token
-and it can do the job: **~2,850 catalogued endpoints across ~57 providers** — SEO and backlinks,
+and it can do the job: **2,896 catalogued endpoints across 60 providers** — SEO and backlinks,
 social and trends, people and company enrichment, ads, scraping — **priced per call, from a cent**,
 with no provider signup. Plus your own team's keys, skills and CLIs, callable by every teammate's
 agent without the credential ever leaving the server.
@@ -80,7 +80,17 @@ Installs with no token and no configuration. The skill loads as `treg:treg` and,
 walks your agent through the rest — the CLI, sign-in, then `treg mcp install` — so you end up with
 the command line **and** treg's tools. Other agents: `npx skills add superdesigndev/treg -s treg`
 (the `-s` matters — without it you also get this repo's internal dev skills).
-See [docs/CLAUDE-PLUGIN.md](docs/CLAUDE-PLUGIN.md).
+See [docs/CLAUDE-PLUGIN.md](docs/CLAUDE-PLUGIN.md). MiniMax Code / MiniMax Agent users: the same
+skill ships via the MiniMax Plugin Marketplace ([docs/MINIMAX-PLUGIN.md](docs/MINIMAX-PLUGIN.md)).
+
+### Claude.ai connector
+
+The Claude Connectors Directory surface is `https://treg.to/mcp/v2/`. It exposes only curated
+catalog endpoints and separates read calls from write calls so Claude receives accurate safety
+signals. The existing `/mcp/` surface remains available for catalog endpoints, team-owned tools,
+and imported skills. See the [MCP and OAuth architecture](docs/context/architecture/mcp-oauth.md)
+for the boundary and implementation, and the
+[submission runbook](docs/CLAUDE-CONNECTOR-SUBMISSION.md) for release gates.
 
 ## Call a tool you don't have a key for
 
@@ -105,7 +115,9 @@ Your own credential always beats treg's, so connecting a key you already pay for
 free of the balance rather than duplicating them. An endpoint treg has no published price for is
 **refused**, not served free — you are told to connect your own key instead. Where several providers
 serve one capability, `treg catalog search` shows them side by side with prices; **choosing is
-yours** — treg does not silently pick or fail over for you.
+yours** — treg does not silently pick or fail over between providers for you. (When treg's own
+account for a provider is out it may serve the *same* endpoint through a treg-owned relay account,
+disclosed on the response; a team can opt out.) The exception you opt into: `treg.<capability>` routed endpoints, where treg picks the provider for you and names it.
 
 ```bash
 treg balance          # credit left, calls in flight, recent spend
@@ -257,6 +269,7 @@ Or run the server directly, without tmux:
 
 ```bash
 uv sync                        # create the venv from uv.lock (pulls the server deps for dev)
+uv run python -m treg upgrade  # prepare schema + run idempotent release tasks without serving
 uv run python -m treg          # serve on 0.0.0.0:18790 (add --reload for dev)
 uv run python -m treg keygen   # print a fresh Fernet key for TREG_SECRET_KEY
 ```

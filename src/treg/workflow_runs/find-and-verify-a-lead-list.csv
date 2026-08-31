@@ -1,0 +1,51 @@
+company,domain,person_found,email_source,verify,catch_all,latest_news,note
+Apty,apty.ai,yes,tomba,valid,false,,
+Avoma,avoma.com,yes,tomba,valid,false,integrates with (2025-03-29),
+Blavity Inc.,blavityinc.com,yes,tomba,valid,false,launches (2025-12-15),
+COGNNA,cognna.com,yes,tomba,valid,false,integrates with (2026-01-25),
+Conversion,conversion.ai,yes,tomba,valid,false,receives financing (2025-07-31),
+Cranium AI,cranium.ai,yes,tomba,valid,false,partners with (2026-05-21),
+DiligenceVault,diligencevault.com,yes,hunter,valid,false,launches (2026-07-28),
+Efficient Capital Labs,ecaplabs.com,yes,hunter,valid,false,launches (2026-03-17),
+Elucidata,elucidata.io,yes,tomba,valid,false,is developing (2026-01-23),
+Eqvista,eqvista.com,yes,hunter,valid,false,identified as competitor of (2026-07-17),
+FLORA,flora.ai,yes,tomba,valid,false,identified as competitor of (2026-02-14),
+FlutterFlow,flutterflow.io,yes,tomba,valid,false,launches (2026-07-29),
+LiveSwitch,liveswitch.com,yes,tomba,valid,false,promotes (2026-08-13),
+LlamaIndex,llamaindex.ai,yes,tomba,valid,false,integrates with (2026-08-11),
+Loop AI,loopai.com,yes,tomba,valid,false,invests into (2026-02-04),
+Lucidity,lucidity.cloud,yes,tomba,valid,false,launches (2026-08-21),
+OpenArt AI,openart.ai,yes,hunter,valid,false,identified as competitor of (2026-08-09),
+Passion.io,passion.io,yes,tomba,valid,false,launches (2022-11-01),
+PaxeraHealth,paxerahealth.com,yes,tomba,valid,false,integrates with (2026-06-10),
+RepeatMD,repeatmd.com,yes,hunter,valid,false,launches (2025-10-23),
+rePurpose Global,repurpose.global,yes,tomba,valid,false,partners with (2026-08-24),
+Reveal HealthTech,revealhealthtech.com,yes,hunter,valid,false,invests into (2025-09-04),
+Sauce,getsauce.com,yes,tomba,valid,false,launches (2026-05-14),
+Shipday,shipday.com,yes,tomba,valid,false,,
+Spendflo,spendflo.com,yes,tomba,valid,false,launches (2026-05-13),
+SuperAGI,superagi.com,yes,tomba,valid,false,launches (2026-01-18),
+TrueFan AI,truefan.ai,yes,tomba,valid,false,invests into (2026-06-04),
+AdPushup,adpushup.com,yes,hunter,invalid,false,integrates with (2025-10-01),
+Borneo (Acquired by Atlassian),borneo.io,yes,hunter,invalid,false,acquires (2025-07-02),
+Goldcast,goldcast.io,yes,tomba,invalid,false,acquires (2025-12-15),
+Process Street,process.st,yes,hunter,invalid,false,launches (2026-08-10),
+Clari Groove,,no,,,,,no domain on the Apollo row
+Conduit,conduitpay.com,no,,,,,no matching person at either provider
+Convo,convo.com,yes,,,,,no email found by either finder
+ElectroNeek,electroneek.com,yes,,,,,no email found by either finder
+Ema,ema.ai,no,,,,,no matching person at either provider
+Files.com,files.com,yes,,,,,no email found by either finder
+FinancialForce,,no,,,,,no domain on the Apollo row
+Fireflies.ai,fireflies.ai,no,,,,,no matching person at either provider
+Hyperbots Inc.,hyperbots.com,no,,,,,no matching person at either provider
+inFeedo AI,infeedo.ai,yes,,,,,no email found by either finder
+Lavender 💜🔮,lavender.ai,yes,,,,,no email found by either finder
+Legal.io,legal.io,yes,,,,,no email found by either finder
+Lingopal,lingopal.ai,yes,,,,,no email found by either finder
+procol ai,procol.in,no,,,,,no matching person at either provider
+Redrob,redrob.io,yes,,,,,no email found by either finder
+"Slintel, a 6sense company",,no,,,,,no domain on the Apollo row
+StackAI,stackai.com,no,,,,,no matching person at either provider
+TestFit,testfit.io,no,,,,,no matching person at either provider
+Trekea Mobile,fieldlogs.com,yes,,,,,no email found by either finder

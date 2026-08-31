@@ -185,6 +185,15 @@ def test_catalog_grew_and_versioned():
     assert len(names) == len(set(names))
 
 
+def test_required_provider_headers_reach_planned_action(tmp_path):
+    env = _write_env(tmp_path, "CRUSTDATA_API_KEY=x\n")
+    crust = _by_var(prov.scan_env(env))["CRUSTDATA_API_KEY"]
+    assert crust.required_headers == {"x-api-version": "2025-11-01"}
+
+    [action] = prov.plan_actions([crust])
+    assert action.required_headers == {"x-api-version": "2025-11-01"}
+
+
 def test_env_values_reads_only_requested(tmp_path):
     env = _write_env(tmp_path, 'A_KEY="v1"\nexport B_KEY=v2\nC_KEY=v3\n# comment\nD_KEY=\n')
     vals = prov.env_values(env, ["A_KEY", "B_KEY"])

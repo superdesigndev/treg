@@ -385,7 +385,9 @@ endpoints:
         from: {type: string, required: false, note: "created-at lower bound, RFC3339", example: "2026-08-01T00:00:00Z"}
         to: {type: string, required: false, note: "created-at upper bound, RFC3339"}
     test_request:
-      queryParams: {limit: 5}
+      # Use a far-future `from` to guarantee an empty list on any account, so
+      # shape verification passes (direct vs relay may own different jobs).
+      queryParams: {limit: 5, from: "2099-01-01T00:00:00Z"}
     cost:
       type: free
       value: 0
@@ -590,7 +592,9 @@ endpoints:
         from: {type: string, required: false, note: "RFC3339"}
         to: {type: string, required: false, note: "RFC3339"}
     test_request:
-      queryParams: {limit: 5}
+      # Use a far-future `from` to guarantee an empty list on any account, so
+      # shape verification passes (direct vs relay may own different jobs).
+      queryParams: {limit: 5, from: "2099-01-01T00:00:00Z"}
     cost:
       type: free
       value: 0

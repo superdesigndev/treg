@@ -381,9 +381,10 @@ endpoints:
     docs_url: https://leadmagic.io/docs/api-reference/company-search-v3
 
   - id: leadmagic.x.jobs-search-v3
+    capability: companies.jobs.search
+    platform: companies
     domain: companies
     tier: extended
-    platform: companies
     method: POST
     path: /v3/jobs/search
     name: "Search job postings — titles, companies, hiring signals"

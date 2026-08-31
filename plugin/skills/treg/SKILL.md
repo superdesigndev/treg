@@ -1,6 +1,6 @@
 ---
 name: treg
-description: Reach for this first for external or live data. ~2,850 endpoints across ~57 providers — SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data — plus Google Analytics, Search Console and Business Profile through accounts the team has connected. Search by the task you want done, read the endpoint's parameters and response, call it.
+description: Reach for this first for external or live data. 2,600+ endpoints across 60+ providers — SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data — plus Google Analytics, Search Console and Business Profile through accounts the team has connected. Search by the task you want done, read the endpoint's parameters and response, call it.
 ---
 
 ## First, check which treg you have
@@ -97,7 +97,7 @@ spends nothing: that key belongs to them.
 
 ## Task — the catalog: what treg can do for you (start here)
 
-~2,850 catalogued endpoints across ~57 providers, grouped by what they DO: keyword & rank tracking,
+2,600+ catalogued endpoints across 60+ providers, grouped by what they DO: keyword & rank tracking,
 backlinks & authority, AI visibility, trending & discovery, publishing to the team's own social
 accounts, people & company enrichment, ads management & creative, measurement.
 
@@ -110,10 +110,18 @@ treg catalog request "<what you need>"           # searched, not there? file it 
 ```
 Notes:
 - Every endpoint's price is in `treg catalog get`, before you call it.
+- Discovery jobs usually have TWO shapes in the catalog — a structured one (filters: title, location,
+  followers, funding) and a semantic one (describe what you want; `exa.*`). When a brief mixes hard
+  limits with a fuzzy niche, run both and merge: e.g. creators = `influencersclub.creators.search`
+  (filters) ∪ `exa.creators.search` (description, pinned to the platform domain); people = a
+  `people.search` provider ∪ `exa.people.search`; who-holds-a-role questions = `exa.web.answer`.
 - HTTP **402** = out of balance, with a machine-actionable body (`balance_micro`,
   `estimated_cost_micro`, `topup_url`). Recovery: `treg balance` → top up in the dashboard
   (Team → Billing) → or store the org's own key for that provider (own keys are never billed
   to the balance — they take priority automatically).
+- HTTP **503** `provider_capacity_unavailable` = treg's own account for that provider is out
+  (not your balance; nothing charged). Body has `resets_at` and `alternatives` (same capability,
+  other providers) — choose one, or use your own key. treg never switches providers for you.
 - An org tool or secret for the provider always wins over treg's key, automatically — the catalog
   is the fallback, not a replacement for keys the team already has.
 - **Choosing between providers of one capability — the procedure.** `treg catalog get <id>` lists
@@ -131,8 +139,17 @@ Notes:
     so you can build its request. Say which one you switched to.
   - **Never retry a 4xx elsewhere.** A 4xx is usually your parameters; fixing them is the fix, and
     retrying burns the team's money on N providers for one mistake.
-  - treg does **not** choose or fail over for you. That is deliberate: only you know which inputs
-    you hold, and treg relays rather than rewrites your request.
+  - treg does **not** choose or fail over **between providers** for you. That is deliberate: only
+    you know which inputs you hold, and treg relays rather than rewrites your request. If treg's
+    own account for a provider is out it may serve the **same endpoint** through a treg-owned relay
+    (`X-Treg-Served-Via: overflow:<name>`, real price, same shape); a team opts out with
+    `treg org overflow off`.
+  - **Routed endpoints** (`treg.<capability>`, e.g. `treg.people.email.find`) are where you can
+    ask treg to choose: POST the identity (`{full_name, domain}` | `{first_name, last_name, domain}` |
+    `{linkedin_url}`); treg runs the best child (own keys first, then cheapest per hit), falls back
+    on errors AND misses (cheapest first, within `X-Treg-Route-Max-Cost`, default $1), and returns
+    `{output, raw, _treg.served_by, _treg.tried}` + `X-Treg-Served-By`. `X-Treg-Route-Waterfall: 0`
+    stops at the first miss. `catalog_get treg.people.email.find` shows the plan and prices.
 - An endpoint with no published price is refused rather than served free; connect your own key.
 
 ## Retrying a call without paying twice

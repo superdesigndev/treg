@@ -1,9 +1,9 @@
 ---
 page_id: p5
 slug: /use-cases/company-research-for-ai-agents/
-seo_title: "Company Data and Funding for AI Agents | treg.to"           # 54
+seo_title: "Company Research: Funding, Headcount and Leadership | treg.to"           # 57
 meta_description: "Let your agent search companies and pull funding, headcount and leadership through one key. Eleven providers, from free to $0.38 a record."  # 145
-h1: "Research Any Company List Without Buying a Database"
+h1: "Company Research: Funding, Headcount and Leadership"
 hub_title: "Company data & funding"
 hub_blurb: "Search companies, then pull funding, headcount and leadership. Eleven providers, free to $0.38 a record."
 price_old: "$398/mo"
@@ -25,28 +25,29 @@ ad_keywords:
   - "buying intent data api"
 capabilities: [companies.search, companies.enrich, people.enrich]
 facts_used: [F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-21, F-42, F-50, F-51, F-80, F-92]
-hypothesis: "Sits on the catalog's strongest data — 11 providers, 200x spread. Predict the highest week-2 repeat-call rate of the five."
+hypothesis: "Sits on the catalog's strongest data: 11 providers, 200x spread. Predict the highest week-2 repeat-call rate of the five."
 verify_after: 2026-08-31
 status: proof populated from real runs 2026-08-17 ($0.10188) · funding proven, activity signals blocked by a platform bug · revised against 30-day telemetry 2026-08-17
 ---
 
-# Page 5 — Company and buying-signal intelligence
+# Page 5: Company and buying-signal intelligence
 
 ---
 
 ## Hero
 
-### Research Any Company List Without Buying a Database
+### Company Research: Funding, Headcount and Leadership
 
-Your agent can find companies by size, industry, tech or funding, then pull funding history, headcount
-and leadership across eleven providers — paying per record instead of buying a database.
+```text
+Using treg, find 50 AI infrastructure companies that raised a Series A in the last
+12 months. Pull their funding history, headcount and leadership team.
+```
 
-**[ Run This Workflow Free ]**   **[ See the Example ]**
+**Company search from free to $0.38/record** (11 providers), **funding history from $0.10/company**. Pay per lookup.
+
+**[ Start Free ]**   **[ Paste llms.txt ]**
 
 `S-TRUST-HERO`
-
-*Sub-line:* Company search alone has eleven providers behind it, from free to $0.38 a record. Your agent
-sees that before it calls.
 
 ---
 
@@ -82,27 +83,27 @@ in the catalog:
 | Provider | Cost per company | Success rate | Median |
 |---|---|---|---|
 | **Akta** | free | 100% (248 calls) | 3.2 s |
-| **Coresignal** | free — returns ids; cost lands on the read | not yet measured | — |
+| **Coresignal** | free: returns ids; cost lands on the read | not yet measured |: |
 | **Hunter Discover** | free | 100% (24 calls) | 1.7 s |
 | **The Companies API** | $0.0019, or free with `simplified=true` | 100% (339 calls) | 0.3 s |
-| **Lusha** | $0.004992 per 25 results | not yet measured | — |
+| **Lusha** | $0.004992 per 25 results | not yet measured |: |
 | **LeadMagic** | $0.025 | 70% (10 calls) | 3.2 s |
-| **Apollo** | $0.026 per page | not yet measured | — |
+| **Apollo** | $0.026 per page | not yet measured |: |
 | **Diffbot** | $0.0299 | 100% (5 calls) | 0.7 s |
-| **PDL** | $0.38 | not yet measured | — |
-| **Crunchbase** | own key only, no per-call price | not yet measured | — |
+| **PDL** | $0.38 | not yet measured |: |
+| **Crunchbase** | own key only, no per-call price | not yet measured |: |
 
 **A 200× spread for the same job, and three of the eleven are free.** That table does not exist anywhere
 else, because building it means holding accounts with all eleven.
 
 **It pulls the detail.** Funding history at $0.10 a company with LeadMagic; company enrichment at
-$0.026 with Apollo or $0.392 with Coresignal; the LinkedIn company page — headcount, leadership, location —
+$0.026 with Apollo or $0.392 with Coresignal; the LinkedIn company page: headcount, leadership, location,
 at $0.00188.
 
 **It finds the people attached to the signal.** Person enrichment from $0.025, so the output is a
 company, a reason to talk to them, and who to talk to.
 
-> **Read this before you build on it.** Coverage differs sharply by provider and by company size — see the
+> **Read this before you build on it.** Coverage differs sharply by provider and by company size: see the
 > funding results in the evidence below, where two small recently-funded startups returned nothing and
 > Stripe returned a full history. Test coverage on your own list first; the misses are free.
 
@@ -118,8 +119,8 @@ COMPANY        HEADCOUNT   SIGNAL                              STRENGTH   DECISI
 ...
 
 RANKED SIGNALS
- 1. <signal type> — <n> companies, most recent <date>
- 2. <signal type> — <n> companies
+ 1. <signal type>: <n> companies, most recent <date>
+ 2. <signal type>: <n> companies
  ...
 
 PROVIDERS USED   <provider> (search) · <provider> (funding) · <provider> (people)
@@ -132,7 +133,7 @@ COST             $[from your run]
 
 ---
 
-## Proof — from one real run
+## Proof from one real run
 
 *Run on treg.to, 17 Aug 2026. Every figure is from the Activity log of that run.*
 
@@ -141,26 +142,26 @@ COST             $[from your run]
 | Providers considered | **11** for company search |
 | Providers selected | `hunter.x.discover-companies` (free) · `scrapecreators.x.v1-linkedin-company` |
 | Why | Hunter Discover is free, takes a plain-English brief and resolved it into explicit funding and headcount filters. LinkedIn company data at $0.00188 was the cheapest way to add headcount and leadership |
-| Total cost of the run | **$0.10188** — discovery free, one enrichment, one funding lookup (two further funding lookups missed and cost nothing) |
-| Subscription cost avoided | **$398/mo** at list — Crunchbase $99 + Diffbot $299 |
+| Total cost of the run | **$0.10188**: discovery free, one enrichment, one funding lookup (two further funding lookups missed and cost nothing) |
+| Subscription cost avoided | **$398/mo** at list: Crunchbase $99 + Diffbot $299 |
 | Time to completion | Under 5 seconds |
 | Data freshness | Live at call time |
-| Companies returned | **9**, filtered to recently funded AI infrastructure at 20–200 employees |
+| Companies returned | **9**, filtered to recently funded AI infrastructure at 20 to 200 employees |
 | Cost per company researched | **$0.00** for discovery; $0.00188 per company enriched |
 
-**What the free call returned.** Nine companies with domains and contactable-address counts — Daloopa,
+**What the free call returned.** Nine companies with domains and contactable-address counts: Daloopa,
 ZincFive, Ethernovia, RunPod, AttoTude, Netris, Bobyard, Normal Computing, Arycs Technologies. Hunter
 translated the brief into filters and showed its working: headcount `20-50` and `51-200`, funding series
 pre-seed through series C+.
 
 > **The honest read of this run, and it is the most useful thing in it.** The LinkedIn enrichment returned
 > **the wrong company**. Asked for `linkedin.com/company/runpod`, it correctly returned a 2-person retail
-> partnership in Sligo, Ireland — because that is what lives at that URL. The AI infrastructure company is
+> partnership in Sligo, Ireland: because that is what lives at that URL. The AI infrastructure company is
 > at `/company/runpod-io`. The provider answered exactly what was asked, and a confident wrong answer cost
 > $0.00188.
 >
 > This is the catalog's first selection rule in practice: **match the inputs you actually hold**, ahead of
-> price. It is also why treg.to relays your request rather than rewriting it — a system that silently
+> price. It is also why treg.to relays your request rather than rewriting it: a system that silently
 > "corrected" that URL would have guessed, and guessed inside your research.
 
 **The funding leg, run separately.** LeadMagic's funding endpoint was tried on three companies:
@@ -169,9 +170,9 @@ pre-seed through series C+.
 |---|---|---|
 | runpod.io | no funding data | **$0.00** |
 | daloopa.com | no funding data | **$0.00** |
-| stripe.com | full history — $9.8B total raised, revenue, last round, named investors | $0.10 |
+| stripe.com | full history: $9.8B total raised, revenue, last round, named investors | $0.10 |
 
-> **This is the finding that should change how you use this page.** The endpoint works, and works well —
+> **This is the finding that should change how you use this page.** The endpoint works, and works well.
 > Stripe came back with founding year, headquarters, revenue, total funding, the most recent round and the
 > investor list. But **it found nothing for either small recently-funded startup**, which is precisely the
 > segment the example prompt targets. Coverage is strongest where public reporting is strongest.
@@ -180,7 +181,7 @@ pre-seed through series C+.
 > nothing until it works. Test before you build a workflow on it.
 
 **What this page does not cover.** Activity and hiring signals are a different job from the one above,
-and this workflow does not do them — everything shown here is company search, funding, headcount and
+and this workflow does not do them: everything shown here is company search, funding, headcount and
 leadership. If your work depends on hiring or intent signals, check the catalog for what serves that
 capability before you build on it.
 
@@ -193,7 +194,7 @@ Company search starts free. Before anyone signs a data contract, run the filters
 count what comes back.
 
 **Build a research brief on a company in one prompt.**
-Funding history, headcount, leadership and the LinkedIn page, pulled together — for well
+Funding history, headcount, leadership and the LinkedIn page, pulled together: for well
 under a cent when the cheap providers cover it.
 
 **Watch a list for changes rather than re-researching it.**
@@ -216,29 +217,48 @@ new leadership. A quiet month costs almost nothing.
 
 **Why not just call the providers directly?**
 Because the answer to "which company data provider should I buy" is genuinely unknown until you test it
-against your own market — coverage differs far more than price does, and the price differs by 200×. Buying
+against your own market: coverage differs far more than price does, and the price differs by 200×. Buying
 one to find out is the expensive way. Testing all eleven for a few cents is not. If you already pay for
 one, connect it and those calls route through your key, unmetered. treg.to is closer to OpenRouter for
 agent tools than to a data vendor: one base URL, one token, many providers behind it.
 
-**How are credentials handled?** — `S-OBJ-CREDENTIALS`
+**How are credentials handled?**: `S-OBJ-CREDENTIALS`
 
-**Can I choose a specific provider?** — `S-OBJ-CHOOSE`
+**Can I choose a specific provider?**: `S-OBJ-CHOOSE`
 *(Vertical note: the point of this page. Test broadly first, then pin the one that covered your market, so
 the whole team's numbers stay consistent.)*
 
-**Can I use my existing provider key?** — `S-OBJ-OWN-KEY`
-*(Crunchbase is own-key only here — if your team has a licence, connect it and those calls cost nothing on
+**Can I use my existing provider key?**: `S-OBJ-OWN-KEY`
+*(Crunchbase is own-key only here: if your team has a licence, connect it and those calls cost nothing on
 treg.to.)*
 
-**What happens if a provider fails?** — `S-OBJ-FAILURE`
+**What happens if a provider fails?**: `S-OBJ-FAILURE`
 
 **How much does a call cost?**
 Company search is free with three of the eleven providers and $0.38 a record at the top end. Funding
 history is $0.10 a company; person enrichment from $0.025. The exact price is
 shown before the call, and treg.to adds no markup. New teams start with $1.00 of free credit.
 
-**Which agents does it work with?** — `S-OBJ-AGENTS`
+**Is there a Crunchbase MCP?**
+This is one. treg.to is a single MCP server that carries Crunchbase alongside ten other company-search
+providers: one token, and the agent compares them by price before it calls.
+
+**Is this a Crunchbase or PitchBook alternative?**
+For per-company lookups, yes: pay per record instead of a seat. For analyst tooling and valuation
+models, no.
+
+**Which agents does it work with?**: `S-OBJ-AGENTS`
+
+---
+
+## Next steps
+
+### Individual jobs you can run now
+
+- [Build a Company List by Industry, Size or Tech](/use-cases/build-a-company-list-by-industry-size-or-tech)
+- [Enrich a Company From Its Domain](/use-cases/enrich-a-company)
+- [Employee Reviews of a Company](/use-cases/employee-reviews-of-a-company)
+- [Job Postings Across Companies](/use-cases/job-postings-across-companies)
 
 ---
 
@@ -246,7 +266,7 @@ shown before the call, and treg.to adds no markup. New teams start with $1.00 of
 
 ### Research a market this afternoon, without buying a database
 
-**[ Run This Workflow Free ]**
+**[ Start Free ]**
 
 `S-FINAL-CTA-TRUST`
 
@@ -274,7 +294,7 @@ shown before the call, and treg.to adds no markup. New teams start with $1.00 of
 3. "I asked my agent which AI companies raised or hired this quarter, and who to talk to."
 
 ### X post hook
-`"Search companies by size and funding" is one job with 11 providers behind it — free, $0.0019, $0.026, $0.38 a record. Same job, 200x spread. Most people buy the first one they hear of.`
+`"Search companies by size and funding" is one job with 11 providers behind it: free, $0.0019, $0.026, $0.38 a record. Same job, 200x spread. Most people buy the first one they hear of.`
 
 ### High-intent keyword phrases
 `company data api pay per record` · `funding data api` · `firmographic api for developers` ·
@@ -285,7 +305,7 @@ shown before the call, and treg.to adds no markup. New teams start with $1.00 of
 `annual report` · `credit score` · `whois` · `business plan`
 
 ### Demonstration a creator can reproduce
-Run `treg catalog get apollo.companies.search` on camera and let the sibling table render — eleven
+Run `treg catalog get apollo.companies.search` on camera and let the sibling table render: eleven
 providers, prices, success rates, sample sizes. That single screen is the most persuasive thing treg.to
 has, and no competitor can film it.
 
@@ -300,4 +320,4 @@ half the signups and a second call in week two.
 ## Numbers used on this page
 
 `F-01` `F-02` `F-03` `F-04` `F-05` `F-06` `F-07` `F-08` `F-09` `F-10` `F-11` `F-13` `F-21` `F-42` `F-50`
-`F-51` `F-80` — defined in `_facts.md`, verified 2026-08-17.
+`F-51` `F-80`: defined in `_facts.md`, verified 2026-08-17.

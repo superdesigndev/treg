@@ -66,3 +66,16 @@ e2e.db*
 
 # Scratch file used to compose commit messages (heredocs are blocked in this harness).
 /.git-commit-msg
+
+# Loopany loop specs and run records live on the machines that run the loops,
+# not in the product repo (Jason, 2026-08-25).
+/loopany/
+.DS_Store
+
+# Never in git, never in the sdist (see [tool.hatch.build.targets.sdist])
+docs/evidence/
+.import_linter_cache/
+body.json
+
+# Test screenshots — regenerated on demand, not versioned.
+tests/screenshots/

@@ -4,7 +4,22 @@ status: shipped
 sources:
   - src/treg/models.py
   - src/treg/api.py
-  - src/treg/db.py
+  - src/treg/caller_metadata.py
+  - src/treg/application/auth.py
+  - src/treg/application/signup.py
+  - src/treg/domain/governance/access.py
+  - src/treg/domain/governance/budgets.py
+  - src/treg/domain/governance/publicdemo.py
+  - src/treg/domain/governance/teams.py
+  - src/treg/domain/governance/usage.py
+  - src/treg/domain/identity/access.py
+  - src/treg/domain/identity/session.py
+  - src/treg/routers/auth.py
+  - src/treg/routers/orgs.py
+  - src/treg/routers/resources.py
+  - src/treg/domain/tools/bundles.py
+  - src/treg/infra/db.py
+  - tests/test_router_dependencies.py
 related:
   - architecture/data-model.md
   - architecture/proxy-model.md
@@ -40,7 +55,7 @@ pair, so every list/create/mutation and the proxy are scoped to the caller's org
 - **`Project`** — an OPTIONAL sub-scope inside an org (`org_id`, `name`, `slug`, unique `(org_id, slug)`).
   The org stays the hard isolation boundary; a project is a softer grouping on top. Deliberately a
   **label + ACL scope, NOT a namespace**: `Tool.name` stays unique per `(org_id, name)`, so no unique
-  constraint had to be rebuilt (`_fix_tool_uniqueness` had to do that once already, and SQLite cannot
+  constraint had to be rebuilt (the flat-to-orgs migration had to do that once already, and SQLite cannot
   alter constraints portably). `Tool.project_id` NULL = **org-wide**, which is every tool that predates
   projects — so this shipped purely additive. Secrets stay org-level on purpose: one shared credential
   legitimately backs tools in several projects.
@@ -56,7 +71,7 @@ pair, so every list/create/mutation and the proxy are scoped to the caller's org
   (creator email) is kept for audit + the member role gate. `Tool.name` is unique **per `(org_id, name)`**
   (`UniqueConstraint("org_id", "name")`), so two orgs may reuse a name.
 
-## Enforcement (`api.py`)
+## Enforcement (`domain.identity.access` and `domain.governance.access`)
 - **`require_member`** resolves `X-Treg-Token` → a `Membership` → a `Caller` (`membership, user, org`,
   with `org_id`/`email`/`role` properties). 401 if the token matches no membership.
 - **`_role_at_least` + `_can_manage`**: admin/owner may manage any resource in the org; a member only
@@ -74,7 +89,8 @@ pair, so every list/create/mutation and the proxy are scoped to the caller's org
   to NULL** so a fully-checked member keeps auto-getting new tools. It's an **explicit allow-list**: a
   *customized* member does NOT auto-get a newly-registered tool (the dashboard toasts a reminder). `Invite`
   carries `tool_access`/`local_run_enabled` (validated at `create_invite`) → copied onto the membership at
-  both accept doors. `list_members` returns both fields.
+  both accept doors. `list_members` returns both fields. ACL refusal details originate as
+  `AccessPolicyError`; call, run, and resource HTTP surfaces translate them to the same 403 response.
 - **Agents (`create_agent` / `list_agents` / `revoke_agent`, `/orgs/{id}/agents`, admin+).** Mints a
   member identity for a machine caller, reusing the `create_public_token` recipe (re-POST the same name
   **rotates** — the old token dies there; revoke deletes the membership). Three invariants, each closing
@@ -131,8 +147,12 @@ pair, so every list/create/mutation and the proxy are scoped to the caller's org
 - Every list filters by `caller.org_id`; every create stamps `org_id = caller.org_id` +
   `owner = caller.email`; `_resolve_call` scopes **both** the named lookup and the host/longest-prefix
   passthrough to the org; `call_tool` loads only same-org secrets. See [proxy-model](proxy-model.md).
-- **Registration is shared across doors:** `_find_or_create_user(db, email)` finds a user or creates them
-  — **the user ONLY, no auto personal org** (as of the no-personal-org change). Every identity door calls
+
+`domain.identity.access` is the shared identity/access boundary: `Caller`, token/session/org resolution,
+dependencies, role comparison, and machine classification. Session signing and validation live in
+`domain.identity.session`.
+- **Registration is shared across doors:** `application.signup.find_or_create_user(db, email)` finds a user or creates them
+  — **the user ONLY, no auto personal org**. Every identity door calls
   it (GitHub / Google callbacks, email OTP), so "first proof = registration" is identical. A brand-new
   user therefore lands with **zero teams** and must name + create their first one (the dashboard's
   mandatory welcome, or `treg org create`); their identity token is user-scoped so it works before any
@@ -144,7 +164,7 @@ pair, so every list/create/mutation and the proxy are scoped to the caller's org
 - **Org management endpoints:** `register_user` (`POST /users`, legacy open-registration, used by the
   test fixture) still creates the user + an org + owner membership via `_make_org_membership` (mints the
   token) — NOT reached by the dashboard/CLI login doors, which no longer auto-make an org. Both this door
-  and `create_org` below now also read the first-party ad-click cookie (`api._ad_attribution_from`) and,
+  and `create_org` read the first-party ad-click cookie (`application.signup._ad_attribution_from`) and,
   when enabled and present, stamp `Org.ad_gclid`/`ad_click_id_type`/`ad_landing`/`ad_click_at` on the
   new org — preserving whether the click was a GCLID, GBRAID or WBRAID — see
   [ads-conversions](ads-conversions.md). `create_org`
@@ -188,45 +208,10 @@ pair, so every list/create/mutation and the proxy are scoped to the caller's org
 - **Slug vs id.** `_resolve_org` resolves `X-Treg-Org` by slug first (an all-digit slug like `2024` is
   producible and must not be reinterpreted as a primary key).
 
-## Startup migration (`db.py`)
-`init_db()` runs `_migrate_to_orgs` inside its `begin()` block — **guarded + idempotent**. It (A) adds
-`org_id` columns to legacy resource tables (`ALTER TABLE ADD COLUMN`), and (B), only when the `org` table
-is empty and a legacy `user.token_hash` column exists, creates the default `superdesign` org, turns each
-flat-era user's token into an **owner Membership**, backfills `org_id` on all resources, relaxes the
-global `tool.name` unique index to the composite (`_fix_tool_uniqueness`), and rebuilds the `user` table
-identity-only (`_rebuild_user_table`, since SQLite can't drop columns portably). A fresh DB (create_all
-already the new shape) short-circuits. **`_rebuild_user_table` must preserve every current-schema column**
-(`is_superadmin`/`suspended` from `_ensure_bool_col`, plus `token_version` — the additive `ALTER "user"
-ADD COLUMN token_version` at (A9)) when it copies rows — recreating `user` with only `(id,email,created_at)`
-silently drops them and, because a re-run short-circuits, permanently 500s every User load on a legacy
-upgrade. (`"user"` is quoted in the `ALTER` — a reserved word in Postgres, where this runs in-place.)
-(A12) adds `tool_access` (JSON, nullable) + `local_run_enabled` (`BOOLEAN NOT NULL DEFAULT true`) to
-**both** `membership` and `invite`; the legacy owner-backfill INSERT names `local_run_enabled` explicitly
-(create_all builds it NOT NULL with no server default). Verified in-place on Postgres. Later additive steps
-follow the same guarded pattern: (A14) `invite.landing`, (A15) `org.public_demo`, (A16) the seven `secret`
-connection-metadata columns (`provider`/`granted_scopes`/`resource_ref`/`resource_name`/`expires_at`/
-`last_refresh_at`/`last_error`), (A17–A20) the eight `pendingoauth` OAuth-marketplace/quirk columns
-(`provider`/`code_verifier`/`auth_params`/`token_endpoint_auth_method`/`client_id_param`/`scope_separator`/
-`long_lived_exchange`/`replaces_secret_id`). **Postgres BOOLEAN default fix (PR #22):** every boolean added
-in-place uses `DEFAULT false`, never `DEFAULT 0` — Postgres rejects an integer default on a `BOOLEAN`
-column (SQLite accepts both, so the test suite alone cannot catch it); `pendingoauth.long_lived_exchange`
-is spelled `BOOLEAN NOT NULL DEFAULT false`, and the legacy `INSERT INTO org (…)` backfill names
-`public_demo` explicitly with a `false` literal. **(A35) OAuth grant authority** backfills the new
-`oauthgrant` table from each refresh family's oldest row with a portable, idempotent
-`INSERT … SELECT … WHERE NOT EXISTS`; future team moves update that family row and leave historical
-token `org_id` values untouched. Because a rolling deploy can run an old binary after A35 and create
-only `OAuthRefresh`, request-time `_ensure_grant` repeats that oldest-row reconstruction with a
-concurrency-safe upsert before refresh, grant listing, or a team move. **(A21) PROJECTS** follows the
-same shape: the `project` table itself needs no ALTER (a brand-new table is created by `create_all`),
-so the step only adds the three
-columns that hang off it — `tool.project_id` (INTEGER, nullable) plus `project_access` (JSON, nullable) on
-**both** `membership` and `invite`. Every one is nullable and NULL means *org-wide / unrestricted*, so an
-existing deployment behaves exactly as before until someone creates a project; and because none of them is a
-BOOLEAN, the Postgres integer-default trap does not apply here. Note what (A21) deliberately does NOT do:
-`Tool.name` keeps its `(org_id, name)` unique constraint, because projects are a **label + ACL scope, not a
-namespace** — making them a namespace would have meant rebuilding that constraint, which `_fix_tool_uniqueness`
-already had to do once and which SQLite cannot express portably. **`DenyRule`** (policy) needs no migration
-step at all for the same new-table reason.
+## Schema ownership
+Alembic owns the multi-tenant schema. The 0.14.x adoption release converted and stamped legacy
+databases; current releases refuse a non-empty unstamped database and direct the operator through that
+floor. `db.verify_db()` checks revision compatibility without creating or repairing tenancy tables.
 
 > Health (`run_all`) takes an `org_id` filter so `/health/run` never leaks other orgs' credentials, and
 > alerts resolve the owner's per-org membership webhook. See [auth-secrets](auth-secrets.md).
@@ -253,6 +238,7 @@ Two consequences worth stating plainly:
 
 - **`TagBudget` never grows a balance column.** One org, one balance. Budgets are ceilings on a shared
   pot, not sub-accounts; per-user balances would be a second money authority and are out of scope.
-- **`TagSpend` and `TagBudget` are org-scoped** and registered in `api._ORG_SCOPED_MODELS`, `TagSpend`
+- **`TagSpend` and `TagBudget` are org-scoped** and registered in
+  `routers.orgs._ORG_SCOPED_MODELS`, `TagSpend`
   ahead of `LedgerEntry`/`Hold` because it references them. `tests/test_orgs.py` walks the models and
   fails if a new `org_id` table is missed.

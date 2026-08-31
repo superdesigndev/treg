@@ -21,7 +21,7 @@ from conftest import make_upstream
 
 from treg import crypto
 from treg.api import app
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 from treg.models import CallRecord, Membership, Org, User
 
 
@@ -140,8 +140,9 @@ def test_detect_runtime_ignores_config_location_vars(monkeypatch):
     'executing inside Codex' marker. Treating it as one tagged every plain terminal on that machine
     as codex (found on a real machine)."""
     from treg.cli import _detect_runtime
-    for var in ("TREG_CLIENT", "CLAUDECODE", "CODEX_SANDBOX", "CURSOR_AGENT", "CURSOR_TRACE_ID",
-                "GEMINI_CLI", "GITHUB_COPILOT_AGENT"):
+    for var in ("TREG_CLIENT", "CLAUDECODE", "CODEX_SANDBOX", "CODEX_SANDBOX_NETWORK_DISABLED",
+                "CURSOR_AGENT", "CURSOR_TRACE_ID", "GEMINI_CLI", "PI_CODING_AGENT",
+                "GITHUB_COPILOT_AGENT"):
         monkeypatch.delenv(var, raising=False)
     monkeypatch.setenv("CODEX_HOME", "/Users/someone/.codex")
     assert _detect_runtime() == "cli"

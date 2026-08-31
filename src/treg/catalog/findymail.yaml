@@ -95,8 +95,10 @@ endpoints:
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.domain
+    example_response: examples/findymail.search.domain.json
+    verified: '2026-08-28'
     domain: contacts
-    capability: people.email.find
+    capability: people.search
     platform: people
     scope: any_account
     method: POST
@@ -126,6 +128,8 @@ endpoints:
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.employees
+    example_response: examples/findymail.search.employees.json
+    verified: '2026-08-28'
     domain: contacts
     capability: people.search
     platform: people
@@ -157,6 +161,7 @@ endpoints:
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.company
+    test_request: {"body": {"domain": "stripe.com"}}
     domain: companies
     capability: companies.enrich
     platform: companies
@@ -171,7 +176,6 @@ endpoints:
         name: {type: string, required: false, note: "company name, if you have no domain"}
         linkedin_url: {type: string, required: false, note: "the company's public professional-network page URL"}
       note: "supply at least one of domain / name / linkedin_url. Returns {name, domain, company_size, industry, linkedin_url, description}"
-    test_request:
       body: {domain: "stripe.com"}
     cost:
       type: per_success
@@ -217,6 +221,8 @@ endpoints:
     docs_url: https://app.findymail.com/docs/
 
   - id: findymail.search.reverse-email
+    example_response: examples/findymail.search.reverse-email.json
+    verified: '2026-08-28'
     domain: contacts
     capability: people.identity.resolve
     platform: people

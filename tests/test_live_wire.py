@@ -11,7 +11,9 @@ from __future__ import annotations
 from httpx import AsyncClient
 
 import treg.api as api_mod
-from treg import pubfeed, sandbox
+from treg import sandbox
+from treg.application.onboard import pubfeed
+from treg.domain.governance import publicdemo as publicdemo_policy
 
 ENV_KEY = "rk_test_ENV_ONLY_KEY"
 
@@ -155,7 +157,7 @@ async def test_other_sandbox_tools_still_synthesize(clients: AsyncClient, monkey
 
 async def test_live_calls_are_rate_limited_per_ip(clients: AsyncClient, monkeypatch):
     _enable_live(monkeypatch)
-    monkeypatch.setattr(api_mod, "PUBLIC_DEMO_RATE_MAX", 2)
+    monkeypatch.setattr(publicdemo_policy, "PUBLIC_DEMO_RATE_MAX", 2)
     m = await _mint(clients)
     for _ in range(2):
         assert (await clients.post("/call/https://api.stripe.com/v1/charges", headers=_h(m["token"]),

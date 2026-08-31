@@ -22,6 +22,14 @@ TUTORIAL = (Path(api.__file__).parent / "web" / "tutorial.html").read_text(encod
 SHARED_DIALOGS = ["tokenAsk", "capAsk", "resPick"]
 
 
+def test_oauth_entry_opens_the_existing_sign_in_modal_without_minting_a_sandbox():
+    assert "qs.get('signin')==='oauth'" in INDEX
+    assert "else if(oauthSignin) this.demo.signin=true" in INDEX
+    assert "Sign in to continue connecting Treg" in INDEX
+    assert "After sign-in, review the requested access before you approve it." in INDEX
+    assert '<details v-if="!oauthSignin" style="margin-top:12px;text-align:left">' in INDEX
+
+
 # Every <template> open/close, because only a balanced count locates the view boundaries: the file
 # nests plain `v-if`/`v-for` templates inside views, and each of those closes with a `</template>`
 # that would otherwise be read as closing the view. (Corollary: don't write a literal `<template`
@@ -110,7 +118,7 @@ def test_the_tab_bar_is_all_plus_the_catalog_categories_plus_platform():
     # categories themselves are whatever the catalog rows carry, so this list may not gate them.
     order = INDEX[INDEX.index("platCategories(){") :][:900]
     assert (
-        "['SEO/AEO','Social','Advertising','Enrichment','E-commerce','Reviews & Apps',"
+        "['Enrichment','SEO/AEO','Social','Advertising','E-commerce','Reviews & Apps',"
         "'Community']" in order
     )
 
@@ -371,7 +379,7 @@ def test_sections_are_domains_with_other_pinned_last():
     """`other` is the junk drawer: it is the one section whose position carries meaning, and it
     can't be allowed to outrank a real subject just because it is large. The order is decided
     server-side so the API, the CLI and this page can't disagree about it."""
-    src = (Path(api.__file__).parent / "catalog_store.py").read_text(encoding="utf-8")
+    src = (Path(api.__file__).parent / "domain" / "catalog" / "store.py").read_text(encoding="utf-8")
     fn = src[src.index("def domain_rows("):]
     assert "key=lambda d: (d == DOMAIN_OTHER, -len(sections[d]), d)" in fn
     # ...and the page renders that order rather than re-sorting it.
@@ -382,7 +390,7 @@ def test_sections_are_domains_with_other_pinned_last():
 def test_merged_rows_come_before_single_rows_in_a_section():
     """A job several providers do is the comparison the catalog exists to make, so it leads its
     section; the endpoints only one provider offers follow."""
-    src = (Path(api.__file__).parent / "catalog_store.py").read_text(encoding="utf-8")
+    src = (Path(api.__file__).parent / "domain" / "catalog" / "store.py").read_text(encoding="utf-8")
     fn = src[src.index("def domain_rows("):]
     assert 'section.sort(key=lambda r: (r["kind"] != "merged"' in fn
 
@@ -461,7 +469,7 @@ def test_a_single_row_is_led_by_a_short_title_never_a_paragraph():
     assert "lastIndexOf(' ')" in clip, "clip at a word boundary, not mid-token"
     assert ".lsum b{display:-webkit-box;-webkit-line-clamp:2" in INDEX
     # ...and the server picks name-over-summary before it ever reaches the row.
-    src = (Path(api.__file__).parent / "catalog_store.py").read_text(encoding="utf-8")
+    src = (Path(api.__file__).parent / "domain" / "catalog" / "store.py").read_text(encoding="utf-8")
     fn = src[src.index("def domain_rows("):]
     assert '"description": e["name"] or e["summary"] or title' in fn
     assert '"description": view["name"] or view["summary"]' in fn
@@ -818,6 +826,25 @@ def test_the_run_actions_lead_the_expansion_tab_bar():
     assert ".ltabs-r .btn.primary{background:var(--inverse)" in INDEX
 
 
+def test_try_it_post_snippets_carry_the_method_and_shell_safe_body():
+    """The drawer must copy the request shown in Manual, not silently turn every endpoint into GET."""
+    block = INDEX[INDEX.index("epTryShellBody(){") : INDEX.index("epTrySetupLine(){")]
+    assert "replace(/'/g,\"'\\\"'\\\"'\")" in block
+    assert "if(method!=='GET') s+=` --method ${method}`" in block
+    assert "--data ${this.epTryShellBody}" in block
+    assert "curl -X ${method}" in block
+    assert '-H "Content-Type: application/json"' in block
+
+
+def test_try_it_get_snippets_keep_query_and_auth_without_a_body():
+    """GET stays explicit in curl, keeps query and org selection, and does not gain body options."""
+    block = INDEX[INDEX.index("epTryQuery(){") : INDEX.index("epTrySetupLine(){")]
+    assert "const q=this.epTryQuery" in block and "${q?'?'+q:''}" in block
+    assert "curl -X ${method}" in block
+    assert "if(this.sessionMode && this.activeSlugNow)" in block
+    assert block.count("method!=='GET' && this.epTryBody.trim()") == 2
+
+
 def test_provider_page_links_into_the_catalog():
     """Navigation runs both ways: an integration page names the platforms its catalog covers."""
     assert _enclosing_views('v-for="pl in mkPlatforms"') == ["provider"]
@@ -979,3 +1006,26 @@ def test_the_referral_preset_helper_null_guards_before_reading_the_offer():
     body = INDEX[at : INDEX.index("},", at)]
     assert "if(!o) return 0;" in body
     assert body.index("if(!o) return 0;") < body.index("o.remaining_micro")
+
+
+def test_the_topup_modal_offers_four_presets_plus_other_and_an_auto_toggle():
+    """The amount, its bonus and auto top-up are one decision in one modal. The toggle's label is the
+    mandate text and names the amount being chosen (`topupUsd`), never a config default the payer
+    did not see; consent is posted BEFORE the Checkout that saves the card."""
+    at = INDEX.index('v-if="topupOpen&&billing"')
+    modal = INDEX[at : INDEX.index('v-if="capAsk"', at)]
+    assert 'v-for="p in billing.topup.presets"' in modal
+    assert "pickOther()" in modal and 'topupPick===\'other\'' in modal
+    assert 'v-model="topupAuto"' in modal
+    assert "I authorize treg to charge my saved card <b>${{autoAmount}}</b>" in modal
+    assert "Processing fee" not in modal, "treg charges no fee; do not copy one from elsewhere"
+    js = INDEX[INDEX.index("async payTopup("):]
+    js = js[: js.index("autoToggled(")]
+    assert js.index("/billing/autotopup") < js.index("/billing/topup"), "consent must precede Checkout"
+    assert "consent:true" in js and "setup_url:false" in js
+
+
+def test_the_topup_modal_defaults_auto_on_only_without_a_mandate():
+    js = INDEX[INDEX.index("openTopup(){"):]
+    js = js[: js.index("tierBonus(")]
+    assert "this.topupAuto=!(this.billing.autotopup.enabled||this.billing.autotopup.consented_at)" in js

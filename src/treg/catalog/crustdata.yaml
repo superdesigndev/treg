@@ -1,0 +1,266 @@
+provider: crustdata
+source:
+  docs: https://docs.crustdata.com
+  openapi: null
+  curated: '2026-08-25'
+limits: "Current pay-as-you-go defaults: company/person enrich 15 requests/minute; company/person/job search and company identify 30/minute; company/person autocomplete 300/minute. The account dashboard is authoritative if a plan changes."
+pricing_url: https://docs.crustdata.com/general/pricing
+
+# Crustdata is available through BYOK and treg's platform key. The configured pay-as-you-go
+# replacement rate is $0.30/credit in fx.yaml. Every request is pinned to x-api-version: 2025-11-01
+# by provider metadata. Platform calls reserve the documented upper bound and settle from the
+# response's X-Credits-Used header. All eight curated endpoints were live verified. Batch and
+# sales-enabled routes are intentionally omitted.
+
+proposed_capabilities:
+  companies.jobs.search: "Search indexed job listings across companies"
+  companies.autocomplete: "Autocomplete company-search field values"
+  people.autocomplete: "Autocomplete person-search field values"
+
+endpoints:
+  - id: crustdata.companies.search
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company/search
+    name: "Search companies by firmographics or signals"
+    summary: "Search the indexed company dataset with structured filters"
+    input:
+      bodyType: json
+      body:
+        filters: {type: object, required: false, note: "one condition {field,type,value} or a nested {op:'and'|'or',conditions:[...]} group", example: {field: "basic_info.primary_domain", type: "=", value: "stripe.com"}}
+        fields: {type: "array[string]", required: false, note: "dot-path fields to return; specifying these keeps responses small", example: ["basic_info.name", "basic_info.primary_domain", "social_profiles.twitter_url"]}
+        sorts: {type: "array[object]", required: false, note: "each item is {column, order:'asc'|'desc'}"}
+        limit: {type: integer, required: false, note: "results per page, max 1000; this is the price dial", example: 1}
+        cursor: {type: string, required: false, note: "next_cursor from the previous response"}
+    test_request:
+      body:
+        filters: {field: "basic_info.primary_domain", type: "=", value: "stripe.com"}
+        fields: ["basic_info.name", "basic_info.primary_domain"]
+        limit: 1
+    verified: '2026-08-25'
+    example_response: examples/crustdata.companies.search.json
+    cost:
+      type: per_result
+      value: 0.03
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://docs.crustdata.com/general/pricing
+      checked: '2026-08-24'
+      confidence: documented
+      note: "0.03 Crustdata credits per company returned; no result is free."
+    docs_url: https://docs.crustdata.com/company-docs/search/introduction
+
+  - id: crustdata.companies.autocomplete
+    domain: companies
+    capability: companies.autocomplete
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company/search/autocomplete
+    name: "Autocomplete company search values"
+    summary: "Return valid values for one indexed company-search field"
+    input:
+      bodyType: json
+      body:
+        field: {type: string, required: true, note: "supported company-search field in dot notation", example: "basic_info.industries"}
+        query: {type: string, required: true, note: "partial text; an empty string returns common values", example: "tech"}
+        limit: {type: integer, required: false, note: "1-100, default 20", example: 5}
+        filters: {type: object, required: false, note: "optional company-search condition or nested condition group"}
+    test_request:
+      body: {field: "basic_info.industries", query: "tech", limit: 5}
+    verified: '2026-08-25'
+    example_response: examples/crustdata.companies.autocomplete.json
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call}
+    docs_url: https://docs.crustdata.com/company-docs/autocomplete/introduction
+
+  - id: crustdata.companies.identify
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company/identify
+    name: "Resolve a company from a domain, URL or name"
+    summary: "Identify companies and return ranked candidate matches"
+    input:
+      bodyType: json
+      body:
+        domains: {type: "array[string]", required: false, note: "company domains to resolve", example: ["stripe.com"]}
+        names: {type: "array[string]", required: false, note: "company names to resolve when a domain is unavailable"}
+        professional_network_profile_urls: {type: "array[string]", required: false, note: "company profile URLs"}
+      note: "supply at least one supported identifier collection; domains are the least ambiguous"
+    test_request:
+      body: {domains: ["stripe.com"]}
+    verified: '2026-08-24'
+    example_response: examples/crustdata.companies.identify.json
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call}
+    docs_url: https://docs.crustdata.com/company-docs/identify/introduction
+
+  - id: crustdata.companies.enrich
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company/enrich
+    name: "Enrich companies by domain, profile URL or id"
+    summary: "Return detailed company profiles with firmographics, funding and hiring data"
+    input:
+      bodyType: json
+      body:
+        domains: {type: "array[string]", required: false, note: "company domains", example: ["stripe.com"]}
+        professional_network_profile_urls: {type: "array[string]", required: false, note: "company profile URLs"}
+        names: {type: "array[string]", required: false, note: "company names; use a stronger identifier when possible"}
+        fields: {type: "array[string]", required: false, note: "field groups to return; technographics adds 2 credits when data is returned"}
+      note: "supply one identifier family. Base enrichment is 2 credits per matched company; technographics can raise it to 4."
+    test_request:
+      body: {domains: ["stripe.com"]}
+    verified: '2026-08-25'
+    example_response: examples/crustdata.companies.enrich.json
+    cost:
+      type: per_result
+      value: 4
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://docs.crustdata.com/general/pricing
+      checked: '2026-08-25'
+      confidence: documented
+      note: "Maximum 4 credits per matched company: base enrichment is 2; technographics adds 2 only when requested data is returned. A two-company live call charged 4 credits total. The current platform key returned 403 for a technographics request, so that optional rider remains documented. Platform billing settles the exact X-Credits-Used response header."
+    docs_url: https://docs.crustdata.com/company-docs/enrichment/introduction
+
+  - id: crustdata.people.search
+    domain: contacts
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    path: /person/search
+    name: "Search people by role, company or location"
+    summary: "Search indexed professional profiles with structured filters"
+    input:
+      bodyType: json
+      body:
+        filters: {type: object, required: false, note: "one condition or nested and/or group", example: {field: "basic_profile.name", type: "=", value: "Satya Nadella"}}
+        fields: {type: "array[string]", required: false, note: "dot-path fields to return"}
+        sorts: {type: "array[object]", required: false, note: "each item is {column, order:'asc'|'desc'}"}
+        limit: {type: integer, required: false, note: "results per page; this is the price dial", example: 1}
+        cursor: {type: string, required: false, note: "next_cursor from the prior response"}
+    test_request:
+      body:
+        filters: {field: "basic_profile.name", type: "=", value: "Satya Nadella"}
+        limit: 1
+    verified: '2026-08-25'
+    example_response: examples/crustdata.people.search.json
+    cost:
+      type: per_result
+      value: 0.03
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://docs.crustdata.com/general/pricing
+      checked: '2026-08-24'
+      confidence: documented
+      note: "0.03 Crustdata credits per profile returned; no result is free."
+    docs_url: https://docs.crustdata.com/person-docs/search/introduction
+
+  - id: crustdata.people.autocomplete
+    domain: contacts
+    capability: people.autocomplete
+    platform: people
+    scope: any_account
+    method: POST
+    path: /person/search/autocomplete
+    name: "Autocomplete people search values"
+    summary: "Return valid values for one indexed person-search field"
+    input:
+      bodyType: json
+      body:
+        field: {type: string, required: true, note: "supported person-search field in dot notation", example: "experience.employment_details.current.title"}
+        query: {type: string, required: true, note: "partial text; an empty string returns common values", example: "VP"}
+        limit: {type: integer, required: false, note: "1-100, default 20", example: 5}
+        filters: {type: object, required: false, note: "optional person-search condition or nested condition group"}
+    test_request:
+      body: {field: "experience.employment_details.current.title", query: "VP", limit: 5}
+    verified: '2026-08-25'
+    example_response: examples/crustdata.people.autocomplete.json
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call}
+    docs_url: https://docs.crustdata.com/person-docs/autocomplete/introduction
+
+  - id: crustdata.people.enrich
+    domain: contacts
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /person/enrich
+    name: "Enrich people by profile URL or business email"
+    summary: "Return full professional profiles with optional contact and developer data"
+    input:
+      bodyType: json
+      body:
+        professional_network_profile_urls: {type: "array[string]", required: false, note: "public professional profile URLs", example: ["https://www.linkedin.com/in/satyanadella"]}
+        business_emails: {type: "array[string]", required: false, note: "business emails for reverse lookup"}
+        fields: {type: "array[string]", required: false, note: "optional field groups; email, phone and developer data add credits"}
+      note: "supply profile URLs or business emails. Base profile costs 1 credit; all add-ons can bring one record to 7."
+    test_request:
+      body: {professional_network_profile_urls: ["https://www.linkedin.com/in/satyanadella"]}
+    verified: '2026-08-25'
+    example_response: examples/crustdata.people.enrich.json
+    cost:
+      type: per_result
+      value: 7
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://docs.crustdata.com/general/pricing
+      checked: '2026-08-25'
+      confidence: documented
+      note: "Maximum 7 credits per matched person: base profile 1, business email +1, personal email +2, phone +2 and developer-platform data +1. Live calls confirmed the base, business-email, personal-email and developer riders. Phone requests with no returned phone charged only the base; the paid phone rider remains data-dependent and unobserved. Platform billing settles the exact X-Credits-Used response header."
+    docs_url: https://docs.crustdata.com/person-docs/enrichment/introduction
+
+  - id: crustdata.companies.jobs.search
+    domain: jobs
+    capability: companies.jobs.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /job/search
+    name: "Search indexed job listings"
+    summary: "Search jobs by company, title, location, funding and posting metadata"
+    input:
+      bodyType: json
+      body:
+        filters: {type: object, required: false, note: "one condition or nested condition group"}
+        fields: {type: "array[string]", required: false, note: "dot-path fields to include; always specify in production", example: ["job_details.title", "job_details.url", "company.basic_info.name"]}
+        sorts: {type: "array[object]", required: false, note: "each item is {column,order}"}
+        limit: {type: integer, required: false, note: "0-1000 rows; use 0 for aggregation-only requests", example: 1}
+        cursor: {type: string, required: false}
+        aggregations: {type: "array[object]", required: false, note: "count or group_by requests"}
+    test_request:
+      body:
+        filters: {field: "company.basic_info.name", type: "=", value: "Stripe"}
+        fields: ["job_details.title", "job_details.url", "company.basic_info.name"]
+        limit: 1
+    verified: '2026-08-25'
+    example_response: examples/crustdata.companies.jobs.search.json
+    cost:
+      type: per_result
+      value: 0.03
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://docs.crustdata.com/general/pricing
+      checked: '2026-08-24'
+      confidence: documented
+      note: "0.03 Crustdata credits per job returned; aggregation-only and empty results consume no row credits."
+    docs_url: https://docs.crustdata.com/job-docs/search/introduction

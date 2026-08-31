@@ -8,11 +8,19 @@ useDefault = true
 
 [allowlist]
 description = "Fake, non-secret placeholders used by tests and the demo sandbox"
+regexTarget = "line"
 regexes = [
   '''sk_live_DEMO0000PLACEHOLDER''',      # src/treg/sandbox.py — demo starter (credential to nothing)
   '''phx_DEMO0000PLACEHOLDER''',          # src/treg/sandbox.py — demo starter (credential to nothing)
   '''sk_live_ABCDEFGHIJKLMNOP1234''',     # tests/test_localrun.py — proves output redaction masks a key
   '''sk_test_123''',                      # tests/*.py — generic fake test key
+  # IndexNow site keys are PUBLIC BY DESIGN: the protocol requires publishing the key at
+  # https://<site>/<key>.txt, so anyone can read it — proving site ownership is its whole job.
+  # The scanner reads every fetched branch, so the seo branch carrying treg's key as a constant
+  # turned the WHOLE repository's CI red. Shape-anchored to the IndexNow names/context only — a
+  # random new high-entropy constant elsewhere still fails the scan.
+  '''INDEXNOW_KEY\s*=''',
+  '''KEY\s*=\s*"[A-Za-z0-9-]{8,64}"\s*#\s*must match INDEXNOW_KEY''',
   # (sk_live_9f2a7c41… lived here for tests/test_error_capture.py. That test now reuses the
   # sk_live_ABCDEFGHIJKLMNOP1234 placeholder two lines up — one entry serving both tests that need a
   # key-shaped string — and the old value is purged from history, so the entry had nothing to guard.)
@@ -34,6 +42,12 @@ regexes = [
 id = "generic-api-key"
 [rules.allowlist]
 paths = ['''src/treg/catalog/examples/.*\.json''']
+# The IndexNow key (scripts/indexnow_submit.py, routers/web.py) is PUBLIC by design: the protocol
+# proves domain ownership by serving the key at https://<host>/<key>.txt, so anyone can read it and
+# it authorises nothing but "submit URLs for this host". Matched by the line, not the value, so a
+# real credential on the same line shape elsewhere still fires.
+regexTarget = "line"
+regexes = ['''INDEXNOW_KEY\s*=|#\s*must match INDEX''']
 # (An allowlist entry for a real dev/e2e Fernet key lived here as a stopgap while
 # `feat/error-capture` carried it in `e2e-server.sh`. That branch now generates a fresh key per run
 # — the harness deletes its database between runs, so it never needed a constant — and the value has

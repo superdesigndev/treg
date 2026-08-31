@@ -1,0 +1,51 @@
+[
+  {
+    "matched_on": "https://www.linkedin.com/in/satyanadella",
+    "match_type": "professional_network_profile_url",
+    "matches": [
+      {
+        "confidence_score": 1.0,
+        "person_data": {
+          "basic_profile": {
+            "current_title": "Chairman and CEO",
+            "first_name": "Satya",
+            "headline": "Chairman and CEO at Microsoft",
+            "languages": [],
+            "last_name": "Nadella",
+            "location": {
+              "city": "Redmond",
+              "continent": "North America",
+              "country": "United States",
+              "full_location": null,
+              "raw": "Redmond, Washington, United States",
+              "state": "Washington"
+            },
+            "name": "Satya Nadella",
+            "normalized_title": {
+              "confident": true,
+              "department": "Executive Leadership",
+              "matched_title": "Chairman & CEO",
+              "similarity": 0.9990000128746033,
+              "sub_department": "Board Governance & Advisory"
+            },
+            "professional_network_name": "Satya Nadella",
+            "profile_picture_permalink": "https://crustdata-media.s3.us-east-2.amazonaws.com/person/06c3d2dbd276cd6760533b551c36d36f8224213f8fb2600ffe6b71f8b2e10289.jpg",
+            "summary": "As chairman and CEO of Microsoft, I define my mission and that of my company as empowering every person and every organization on the planet to achieve more."
+          },
+          "social_handles": {
+            "dev_platform_identifier": {
+              "profile_url": null
+            },
+            "professional_network_identifier": {
+              "profile_url": "https://www.linkedin.com/in/satyanadella"
+            },
+            "twitter_identifier": {
+              "slug": ""
+            }
+          },
+          "crustdata_person_id": 97185
+        }
+      }
+    ]
+  }
+]

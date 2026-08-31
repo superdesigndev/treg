@@ -39,6 +39,23 @@ async def _rpc(client: AsyncClient, method: str, params=None, token: str | None 
     return r
 
 
+async def _modern_rpc(client: AsyncClient, method: str, params=None, token: str = "opaque-test-token"):
+    body_params = dict(params or {})
+    body_params["_meta"] = {
+        "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "1"},
+    }
+    return await client.post("http://localhost/mcp/", json={
+        "jsonrpc": "2.0", "id": 1, "method": method, "params": body_params,
+    }, headers={
+        **MCP_HEADERS,
+        "Authorization": f"Bearer {token}",
+        "MCP-Protocol-Version": "2026-07-28",
+        "MCP-Method": method,
+    })
+
+
 async def _call_tool(client: AsyncClient, name: str, args: dict, token: str | None = None) -> dict:
     await _rpc(client, "initialize", {
         "protocolVersion": "2025-06-18", "capabilities": {},
@@ -82,10 +99,15 @@ async def mcp_session(client: AsyncClient):
     host = FastAPI()
     host.mount("/mcp", fresh)
     client.headers.pop("X-Treg-Token", None)
-    async with _mcp.mcp_lifespan(fresh):
-        async with _AC(transport=ASGITransport(app=host), base_url="http://localhost") as mc:
-            mc.headers.update({k: v for k, v in client.headers.items() if k.lower() == "cookie"})
-            yield mc
+    reader = app.state.endpoint_observation_reader
+    _mcp.configure_endpoint_observation_reader(reader)
+    try:
+        async with _mcp.mcp_lifespan(fresh):
+            async with _AC(transport=ASGITransport(app=host), base_url="http://localhost") as mc:
+                mc.headers.update({k: v for k, v in client.headers.items() if k.lower() == "cookie"})
+                yield mc
+    finally:
+        _mcp.clear_endpoint_observation_reader(reader)
 
 
 async def test_the_server_lists_exactly_the_six_tools(clients):
@@ -135,7 +157,7 @@ async def test_search_says_so_when_nothing_matches(clients):
     from sqlmodel import select
 
     from treg import audit
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import SearchMiss
 
     await audit.drain()
@@ -150,7 +172,7 @@ async def test_catalog_request_files_the_gap_with_attribution(clients):
     and the stored row says who asked (the bearer), not just that someone did."""
     from sqlmodel import select
 
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import ToolRequest
 
     token = (await clients.post("/users", json={"email": "wisher@superdesign.dev"})).json()["token"]
@@ -330,6 +352,7 @@ async def test_every_tool_declares_what_it_can_do(clients):
     ann = {t.name: t.annotations for t in await server.list_tools()}
     assert set(ann) == {"catalog_search", "catalog_get", "call", "balance", "my_tools",
                         "catalog_request"}
+    assert all(a.title is None for a in ann.values())
     for name in ("catalog_search", "catalog_get", "balance", "my_tools"):
         a = ann[name]
         assert a and a.read_only_hint is True, name
@@ -615,10 +638,102 @@ async def test_a_notification_and_ping_pass_without_a_token(clients):
     async with mcp_session(clients) as c:
         r = await c.post("http://localhost/mcp/", headers=MCP_HEADERS,
                          json={"jsonrpc": "2.0", "method": "notifications/initialized"})
-        assert r.status_code != 401, r.text
+        assert r.status_code == 202, r.text
         r = await c.post("http://localhost/mcp/", headers=MCP_HEADERS,
                          json={"jsonrpc": "2.0", "id": 1, "method": "ping"})
-        assert r.status_code != 401, r.text
+        assert r.status_code == 200, r.text
+
+
+async def test_auth_body_replay_waits_for_the_real_disconnect_on_a_long_response() -> None:
+    """A completed request body is not a disconnect; long responses keep the live receive channel."""
+    from treg.mcp import RequireAuthForProtectedTools
+
+    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "ping"}).encode()
+    original_calls = 0
+    downstream_received = []
+    sent = []
+
+    async def receive():
+        nonlocal original_calls
+        original_calls += 1
+        if original_calls == 1:
+            return {"type": "http.request", "body": body, "more_body": False}
+        return {"type": "http.disconnect", "real": True}
+
+    async def send(message):
+        sent.append(message)
+
+    async def long_response(scope, receive, send):
+        downstream_received.append(await receive())
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"still open", "more_body": True})
+        downstream_received.append(await receive())
+
+    scope = {"type": "http", "method": "POST", "headers": []}
+    await RequireAuthForProtectedTools(long_response)(scope, receive, send)
+
+    assert original_calls == 2
+    assert downstream_received == [
+        {"type": "http.request", "body": body, "more_body": False},
+        {"type": "http.disconnect", "real": True},
+    ]
+    assert sent[0] == {"type": "http.response.start", "status": 200, "headers": []}
+
+
+async def test_discover_disables_unused_change_capabilities(clients) -> None:
+    """A fixed tool surface must not make clients open an idle subscription stream."""
+    async with mcp_session(clients) as c:
+        r = await _modern_rpc(c, "server/discover")
+
+    assert r.status_code == 200, r.text
+    capabilities = r.json()["result"]["capabilities"]
+    assert capabilities["tools"]["listChanged"] is False
+    assert capabilities["prompts"]["listChanged"] is False
+    assert capabilities["resources"]["listChanged"] is False
+    assert capabilities["resources"]["subscribe"] is False
+
+
+async def test_subscription_listen_is_not_served(clients) -> None:
+    """SDK 2.0 registers listen by default; treg refuses it through the public middleware seam."""
+    async with mcp_session(clients) as c:
+        r = await _modern_rpc(c, "subscriptions/listen", {
+            "notifications": {"toolsListChanged": True},
+        })
+
+    assert r.status_code == 404, r.text
+    assert r.json()["error"] == {
+        "code": -32601, "message": "Method not found", "data": "subscriptions/listen",
+    }
+
+
+async def test_auth_middleware_preserves_a_real_mid_body_disconnect() -> None:
+    """Authentication inspection replays each partial request message and the real disconnect."""
+    from treg.mcp import RequireAuthForProtectedTools
+
+    received = []
+
+    async def downstream(scope, receive, send):
+        received.append(await receive())
+        received.append(await receive())
+        received.append(await receive())
+
+    messages = [
+        {"type": "http.request", "body": b'{"jsonrpc":', "more_body": True},
+        {"type": "http.request", "body": b'"2.0"', "more_body": True},
+        {"type": "http.disconnect", "real": True},
+    ]
+
+    async def receive():
+        return messages.pop(0)
+
+    scope = {"type": "http", "method": "POST", "headers": []}
+    await RequireAuthForProtectedTools(downstream)(scope, receive, lambda message: None)
+
+    assert received == [
+        {"type": "http.request", "body": b'{"jsonrpc":', "more_body": True},
+        {"type": "http.request", "body": b'"2.0"', "more_body": True},
+        {"type": "http.disconnect", "real": True},
+    ]
 
 
 async def test_a_BAD_token_is_the_tool_s_business_not_the_transport_s(clients):
@@ -732,7 +847,7 @@ async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch)
     from sqlmodel import select
 
     from treg.config import get_settings
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import Org
 
     monkeypatch.setenv("TREG_PLATFORM_KEY_TIKHUB", "PLATKEY")
@@ -772,7 +887,7 @@ async def test_an_EXPIRED_access_token_gets_401_invalid_token(clients):
     refresh grant. Our first challenge only covered the missing-header case, so an expired token
     sailed through to the tool's friendly prose in a 200 — and Claude Code, told nothing, gave up
     with "requires re-authorization" instead of refreshing."""
-    from treg import mcp_oauth
+    from treg.domain.identity import mcp_oauth
     dead = mcp_oauth.make_access_token(user_id=7, org_id=3, audience=mcp_oauth.mcp_resource_url(),
                                        scope="treg:call", ttl=-60)  # born expired
     async with mcp_session(clients) as c:
@@ -790,7 +905,7 @@ async def test_an_EXPIRED_access_token_gets_401_invalid_token(clients):
 async def test_a_wrong_audience_access_token_gets_401_invalid_token(clients):
     """A grant consented to a DIFFERENT resource must not be honoured here — and the refusal should
     still be the machine-readable 401, not tool prose."""
-    from treg import mcp_oauth
+    from treg.domain.identity import mcp_oauth
     other = mcp_oauth.make_access_token(user_id=7, org_id=3,
                                         audience="https://evil.example/mcp/", scope="treg:call")
     async with mcp_session(clients) as c:
@@ -856,7 +971,7 @@ async def test_the_same_key_through_MCP_bills_once(clients, monkeypatch):
     from sqlmodel import select
 
     from treg.config import get_settings
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import Org
 
     monkeypatch.setenv("TREG_PLATFORM_KEY_TIKHUB", "PLATKEY")
@@ -1057,7 +1172,7 @@ async def test_catalog_query_arrays_use_the_endpoints_declared_wire_encoding(mon
     team tool keeps the longstanding repeated-key default. This goes through `call`, not only
     `_query_values`: the first version stayed green if the MCP call site stopped using the helper.
     """
-    from treg import catalog_store as cs
+    from treg.domain.catalog import store as cs
     from treg import mcp as _mcp
 
     cat = cs.load()
@@ -1111,7 +1226,7 @@ async def test_search_survives_missing_a_few_words_of_an_agent_sentence(clients)
     endpoints matched 6 of its 7 words — the only miss was "linkedin" on rows shelved under
     `companies`, or "open" on the one shelved under `linkedin`. A query may now miss one word in
     three, and idf weighting keeps the order on the rare words rather than the filler."""
-    from treg import catalog_store as cs
+    from treg.domain.catalog import store as cs
     cat = cs.load()
     # the two logged SearchMiss queries, verbatim
     rows, total = cs.search("company job postings hiring open jobs linkedin", cat, 8)
@@ -1128,6 +1243,8 @@ async def test_search_survives_missing_a_few_words_of_an_agent_sentence(clients)
     _, all_tiktok = cs.search("tiktok", cat, 1)
     assert 0 < both < all_tiktok
     for ep, _ in cs.search("tiktok comments", cat, 10**6)[0]:
+        if ep.get("kind") == "routed":
+            continue  # a routed parent rides in on a matched child; its own text need not match
         fields = cs._haystacks(ep, cat)
         assert any("tiktok" in t for _, t in fields) and any("comment" in t for _, t in fields)
     # aliases.yaml bridges the agent's word into the catalog's word at the same weight: the catalog
@@ -1159,7 +1276,7 @@ async def test_search_breaks_ties_on_what_treg_has_MEASURED(clients):
     """Token scoring ties by the dozen — every "ad library" match scores 6 — so with a default limit
     of 8 the rows an agent saw were decided by file order: seven tikhub rows, one of them
     uncallable, and the cheapest endpoint with a perfect record cut off below the fold."""
-    from treg import catalog_store as cs
+    from treg.domain.catalog import store as cs
     cat = cs.load()
     ranked, _, truncated = cs.rank_band("ad library", cat, 8)
     assert not truncated, "24 matches sit well inside the band"
@@ -1199,7 +1316,7 @@ async def test_the_tie_band_covers_the_WHOLE_equal_scoring_group(clients, monkey
     band therefore keeps taking while the score stays equal — and when a query ties so broadly that
     even the ceiling can't hold the group, it SAYS so rather than presenting an unranked tail as a
     ranked answer."""
-    from treg import catalog_store as cs
+    from treg.domain.catalog import store as cs
     cat = cs.load()
     rows, total, truncated = cs.rank_band("ad library", cat, 8)
     scores = [s for _, s in rows]
@@ -1234,7 +1351,7 @@ async def test_a_near_miss_never_suggests_a_DIFFERENT_provider(clients):
     `hunter.people.email.find` — it is another vendor, another price and another credential, so on a
     path that spends money that is provider routing wearing a spellcheck's clothes. treg compares
     providers and the caller chooses."""
-    from treg import catalog_store as cs
+    from treg.domain.catalog import store as cs
     cat = cs.load()
     assert cs.near_ids("lusha.companies-signals", cat) == ["lusha.x.companies-signals"]
     for crossing in ("apollo.people.email.find", "fake.companies-signals", "hunter.tiktok.video.comments"):
@@ -1274,8 +1391,8 @@ async def test_the_SEARCH_TOOL_itself_ranks_on_evidence_not_just_the_helper(clie
     """The helpers were tested; the wiring was not. `rerank()` could have been dropped from both
     call sites and every ranking test would still have passed, because they call the helper
     directly. This one goes through the MCP tool with real rows in the database."""
-    from treg import endpoint_stats
-    from treg.db import session_maker
+    from treg.domain.catalog import stats as endpoint_stats
+    from treg.infra.db import session_maker
     from treg.models import CallRecord
 
     broken = "apify.meta-ads.library.search"  # earlier in file order: rerank must move it
@@ -1292,6 +1409,8 @@ async def test_the_SEARCH_TOOL_itself_ranks_on_evidence_not_just_the_helper(clie
 
     token = (await clients.post("/users", json={"email": "ranker@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
+        await _call_tool(c, "catalog_search", {"query": "ad library", "limit": 25}, token=token)
+        await app.state.endpoint_observation_reader.wait_for_idle()
         out = await _call_tool(c, "catalog_search", {"query": "ad library", "limit": 25}, token=token)
     ids = [r["endpoint_id"] for r in out["results"]]
     assert ids.index(good) < ids.index(broken), ids

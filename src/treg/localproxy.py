@@ -7,8 +7,8 @@ it on the way out (`HTTPS_PROXY` + a certificate authority generated on this mac
 **registry server** adds the credential. No vendor key ever lands here. Spec:
 docs/LOCAL-PROXY-PLAN.md.
 
-**Not `proxy.py`.** That one is the SERVER relay (`relay()`), the thing that injects. This one is the
-local catcher that feeds it. They are two ends of the same call and the names are close on purpose —
+**Not `infra/upstream/relay.py`.** That one is the SERVER relay (`relay()`), the thing that injects.
+This one is the local catcher that feeds it. They are two ends of the same call and the names are close on purpose —
 the module is named for `localrun.py`, its neighbour in "code that runs on the member's machine".
 
 Shipped here: **P0** (listen, authenticate, blind-tunnel every byte), **P1** (the certificate
@@ -638,7 +638,7 @@ async def _forward_plain(cfg: ProxyConfig, client_r, client_w, head: bytes, targ
 
 
 # ---- P2 · intercept an allow-listed host and forward it to treg -----------------------------
-# Rebuilt per hop or the stream corrupts — the same list `proxy.relay()` keeps on the server side.
+# Rebuilt per hop or the stream corrupts — the same list `infra.upstream.relay.relay()` keeps on the server side.
 _HOP_BY_HOP = frozenset({
     "connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "proxy-connection",
     "te", "trailer", "trailers", "transfer-encoding", "upgrade", "host", "content-length",

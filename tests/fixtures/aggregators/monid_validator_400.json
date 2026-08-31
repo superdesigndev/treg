@@ -1,0 +1,12 @@
+{
+ "status": 400,
+ "body": {
+  "code": 400,
+  "message": "Invalid input for /people/match: queryParams: At least one person identifier is required."
+ },
+ "expect": {
+  "upstream_status": null,
+  "price": null,
+  "ok": false
+ }
+}

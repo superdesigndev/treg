@@ -24,6 +24,7 @@ services:
     plan: starter
     branch: main
     buildCommand: pip install ".[server]"
+    preDeployCommand: python -m treg upgrade
     startCommand: python -m treg
     healthCheckPath: /meta
     autoDeploy: true
@@ -132,6 +133,12 @@ services:
         sync: false
       - key: TREG_PLATFORM_KEY_INFLUENCERSCLUB    # influencers.club dashboard API key, a JWT (Authorization: Bearer)
         sync: false
+      - key: TREG_PLATFORM_KEY_CRUSTDATA          # Crustdata API key; x-api-version is injected from provider metadata
+        sync: false
+      - key: TREG_PLATFORM_KEY_AVIATO             # Aviato API key (Authorization: Bearer)
+        sync: false
+      - key: TREG_PLATFORM_KEY_EXA                # Exa API key (x-api-key); every response reports costDollars
+        sync: false
       - key: TREG_PLATFORM_KEY_FIBER_AI           # Fiber AI key (x-api-key)
         sync: false
       - key: TREG_PLATFORM_KEY_TOMBA              # Tomba API key ta_… (X-Tomba-Key)
@@ -140,3 +147,211 @@ services:
         sync: false
       - key: TREG_PLATFORM_PROVIDERS           # e.g. "tikhub,dataforseo,scrapecreators"; "" = tier 4 off
         value: ""
+      # Overflow (docs/context/ops/capacity.md): treg-owned aggregator accounts serving the SAME vendor
+      # endpoint when our own account is out. MODE is the switch: off (default) | shadow | on.
+      - key: TREG_OVERFLOW_MODE
+        value: "off"
+      - key: TREG_OVERFLOW_DAILY_BUDGET_USD
+        value: "20"
+      - key: TREG_OVERFLOW_KEY_ORTHOGONAL
+        sync: false
+      - key: TREG_OVERFLOW_KEY_MONID
+        sync: false
+  # Worker profile: the hourly capacity sweep (docs/context/ops/capacity.md). Same code, same env
+  # as the web service (fromService — add a platform key in the web service only), no HTTP.
+  - type: cron
+    name: treg-capacity-sweep
+    runtime: python
+    region: oregon
+    plan: starter
+    branch: main
+    schedule: "17 * * * *"
+    buildCommand: pip install ".[server]"
+    startCommand: treg-worker capacity sweep
+    envVars:
+      - key: TREG_DATABASE_URL
+        fromDatabase:
+          name: treg-db
+          property: connectionString
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: TREG_SECRET_KEY
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_SECRET_KEY
+      - key: TREG_OVERFLOW_KEY_ORTHOGONAL
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_OVERFLOW_KEY_ORTHOGONAL
+      - key: TREG_OVERFLOW_KEY_MONID
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_OVERFLOW_KEY_MONID
+      - key: TREG_PLATFORM_KEY_TIKHUB
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_TIKHUB
+      - key: TREG_PLATFORM_KEY_DATAFORSEO
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_DATAFORSEO
+      - key: TREG_PLATFORM_KEY_SCRAPECREATORS
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_SCRAPECREATORS
+      - key: TREG_PLATFORM_KEY_BRIGHTDATA
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_BRIGHTDATA
+      - key: TREG_PLATFORM_KEY_JUSTONEAPI
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_JUSTONEAPI
+      - key: TREG_PLATFORM_KEY_SERPAPI
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_SERPAPI
+      - key: TREG_PLATFORM_KEY_MOZ
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_MOZ
+      - key: TREG_PLATFORM_KEY_SERANKING
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_SERANKING
+      - key: TREG_PLATFORM_KEY_HUNTER
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_HUNTER
+      - key: TREG_PLATFORM_KEY_LEADMAGIC
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_LEADMAGIC
+      - key: TREG_PLATFORM_KEY_LUSHA
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_LUSHA
+      - key: TREG_PLATFORM_KEY_PDL
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_PDL
+      - key: TREG_PLATFORM_KEY_DIFFBOT
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_DIFFBOT
+      - key: TREG_PLATFORM_KEY_AKTA
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_AKTA
+      - key: TREG_PLATFORM_KEY_APIFY
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_APIFY
+      - key: TREG_PLATFORM_KEY_SERPSTAT
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_SERPSTAT
+      - key: TREG_PLATFORM_KEY_SPYFU
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_SPYFU
+      - key: TREG_PLATFORM_KEY_CORESIGNAL
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_CORESIGNAL
+      - key: TREG_PLATFORM_KEY_THECOMPANIESAPI
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_THECOMPANIESAPI
+      - key: TREG_PLATFORM_KEY_COMPANYENRICH
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_COMPANYENRICH
+      - key: TREG_PLATFORM_KEY_OCEANIO
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_OCEANIO
+      - key: TREG_PLATFORM_KEY_PREDICTLEADS
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_PREDICTLEADS
+      - key: TREG_PLATFORM_KEY_FINDYMAIL
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_FINDYMAIL
+      - key: TREG_PLATFORM_KEY_BRANDDEV
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_BRANDDEV
+      - key: TREG_PLATFORM_KEY_ICYPEAS
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_ICYPEAS
+      - key: TREG_PLATFORM_KEY_LEADSFORGE
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_LEADSFORGE
+      - key: TREG_PLATFORM_KEY_INFLUENCERSCLUB
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_INFLUENCERSCLUB
+      - key: TREG_PLATFORM_KEY_CRUSTDATA
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_CRUSTDATA
+      - key: TREG_PLATFORM_KEY_AVIATO
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_AVIATO
+      - key: TREG_PLATFORM_KEY_EXA
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_EXA
+      - key: TREG_PLATFORM_KEY_FIBER_AI
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_FIBER_AI
+      - key: TREG_PLATFORM_KEY_TOMBA
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_TOMBA
+      - key: TREG_PLATFORM_KEY_TOMBA_SECRET
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_TOMBA_SECRET

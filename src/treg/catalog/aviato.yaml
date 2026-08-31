@@ -1,0 +1,784 @@
+provider: aviato
+source:
+  docs: https://docs.data.aviato.co
+  openapi: null
+  curated: '2026-08-25'
+limits: "Current team limits are per route: company enrich 500/5s and 360,000/hour; company bulk enrich 50/5s and 36,000/hour; company search 10/minute and 300/hour; employees 20/minute and 1,000/hour; founders and funding rounds 150/5s and 20,000/hour; acquisitions and both investment routes 120/minute and 5,000/hour; person enrich 500/5s and 360,000/hour; person bulk enrich 50/5s and 36,000/hour; contact-info and phone 100/5s and 72,000/hour; DSL person search 600/minute and 36,000/hour; each social route 60/minute and 1,000/hour. Numeric limits are not published for person/email or simple search."
+pricing_url: https://docs.data.aviato.co/api-reference/billing/get-balance
+
+# Aviato is available through BYOK and treg's platform key. Our automatic recharge and paid receipt
+# establish $0.01/credit in fx.yaml. Endpoint credit counts come from the authenticated Limits &
+# Pricing page; the differently named company-investments and person-email routes were also checked
+# against live balance deltas. Preview-mode company/person enrichment is free. All 21 endpoints were
+# live verified on 2026-08-25, with captured and reviewed example responses. Live balance deltas
+# are authoritative where the authenticated price page and the API's actual billing differ.
+
+proposed_capabilities:
+  companies.employees: "List a company's employees"
+  companies.founders: "List a company's founders"
+  companies.funding_rounds: "List a company's funding rounds"
+  companies.acquisitions: "List acquisitions made by a company"
+  companies.investments: "List investments received by a company"
+  companies.outbound_investments: "List investments made by a company"
+  people.contact.get: "Get a person's contact information"
+
+endpoints:
+  - id: aviato.companies.enrich
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /company/enrich
+    name: "Enrich a company by website or profile URL"
+    summary: "Get enriched company firmographics, financing, traffic, technology and hiring data"
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Aviato company id"}
+        linkedinID: {type: string, required: false, note: "LinkedIn slug"}
+        linkedinNumID: {type: string, required: false, note: "numeric LinkedIn company id"}
+        linkedinURL: {type: string, required: false, note: "company LinkedIn URL"}
+        website: {type: string, required: false, note: "company domain or URL", example: "stripe.com"}
+        preview: {type: boolean, required: false, note: "return minimal id/name/URLs without charging a credit"}
+        full: {type: boolean, required: false, note: "include funding rounds, investments, acquisitions, founders and funds"}
+        rescrape: {type: boolean, required: false, note: "refresh stale data; use with maxDataAgeDays"}
+        maxDataAgeDays: {type: integer, required: false}
+        require: {type: "array[string]", required: false, note: "repeat for fields that must be non-empty; a miss returns 404 without charge"}
+      note: "supply at least one identifier. Start with preview=true to resolve the entity for free, then request the full record."
+    test_request:
+      queryParams: {website: "stripe.com", preview: true}
+    verified: '2026-08-24'
+    example_response: examples/aviato.companies.enrich.json
+    cost:
+      type: per_success
+      value: 15
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://data.aviato.co/
+      checked: '2026-08-25'
+      confidence: verified
+      settle: modifiers
+      modifiers:
+        preview: {location: query, when: truthy, set_credits: 0}
+        rescrape: {location: query, when: truthy, add_credits: 5, reserve_only: true}
+      note: "15 credits per successful enrichment; preview=true and a require-driven miss are free. Two live rescrape=true probes on different companies each charged 15 credits, not the documented 20. Treg holds the documented 20-credit maximum and settles the observed 15-credit charge."
+    docs_url: https://docs.data.aviato.co/api-reference/company/enrich
+
+  - id: aviato.companies.enrich.bulk
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company/bulk-enrich
+    name: "Bulk enrich companies"
+    summary: "Enrich up to 100 companies in one synchronous request"
+    input:
+      bodyType: json
+      body:
+        lookups: {type: "array[object]", required: true, note: "1-100 lookup objects; each can use Aviato company identifiers such as website or linkedinURL", example: [{website: "stripe.com"}]}
+        rescrape: {type: boolean, required: false, note: "refresh records older than maxDataAgeDays"}
+        maxDataAgeDays: {type: integer, required: false, note: "stale-data threshold; requires rescrape=true"}
+        require: {type: "array[string]", required: false, note: "top-level fields that must be present; failed gates are not billed"}
+      note: "this is synchronous bulk enrichment. Each successful lookup returns the normal company object. Public docs do not offer company preview mode."
+    test_request:
+      body: {lookups: [{website: "stripe.com"}], require: ["name"]}
+    verified: '2026-08-25'
+    example_response: examples/aviato.companies.enrich.bulk.json
+    cost:
+      type: per_success
+      value: 15
+      currency: credit
+      per: 1
+      unit: record
+      source: observed
+      source_url: https://data.aviato.co/
+      checked: '2026-08-25'
+      confidence: verified
+      settle: modifiers
+      modifiers:
+        rescrape: {location: body, when: truthy, add_credits: 5, reserve_only: true}
+      note: "15 credits per successfully enriched company. Live one-row and mixed two-row rescrape=true probes charged 15 credits per successful row, not the documented 20. Treg holds 20 per input and settles 15 per successful row. A failed lookup is free."
+    docs_url: https://docs.data.aviato.co/api-reference/company/bulk-enrich
+
+  - id: aviato.companies.search
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company/search
+    name: "Search companies with Aviato DSL"
+    summary: "Search companies using nested filters, text queries and relational fields"
+    input:
+      bodyType: json
+      body:
+        dsl: {type: object, required: true, note: "{filters,limit,offset,sort?,nameQuery?}; filters use {columnPath:{operation,value,quantifier?}} and support AND/OR groups", example: {filters: [{name: {operation: "fts", value: "Stripe"}}], limit: 1, offset: 0, sort: []}}
+      note: "DSL limit is at most 250 and offset at most 10,000. Use a one-row query while developing because the public docs do not publish search credit counts."
+    test_request:
+      body:
+        dsl: {filters: [{name: {operation: "fts", value: "Stripe"}}], limit: 10, offset: 0, sort: []}
+    verified: '2026-08-25'
+    example_response: examples/aviato.companies.search.json
+    cost:
+      type: per_success
+      value: 0.25
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://data.aviato.co/
+      checked: '2026-08-24'
+      confidence: documented
+      note: "0.25 credits per successful search call; the result limit changes the response size, not this fixed route price."
+    docs_url: https://docs.data.aviato.co/api-reference/company/search
+
+  - id: aviato.companies.employees
+    domain: people
+    capability: companies.employees
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /company/employees
+    name: "List a company's employees"
+    summary: "Get employees associated with a company"
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Aviato company id"}
+        linkedinID: {type: string, required: false}
+        linkedinURL: {type: string, required: false}
+        website: {type: string, required: false, note: "company domain", example: "stripe.com"}
+        perPage: {type: integer, required: true, note: "0-100; keep this small while evaluating cost", example: 1}
+        page: {type: integer, required: true, note: "page number", example: 0}
+      note: "supply one company identifier plus page and perPage"
+    test_request:
+      queryParams: {website: "stripe.com", perPage: 1, page: 0}
+    verified: '2026-08-25'
+    example_response: examples/aviato.companies.employees.json
+    cost:
+      type: per_success
+      value: 0.5
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://data.aviato.co/
+      checked: '2026-08-24'
+      confidence: documented
+      note: "0.5 credits per successful call. Current route limit: 20 requests/minute and 1,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/company/get-employees
+
+  - id: aviato.companies.founders
+    domain: people
+    capability: companies.founders
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /company/founders
+    name: "List a company's founders"
+    summary: "Get founders associated with a company"
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Aviato company id"}
+        linkedinURL: {type: string, required: false}
+        website: {type: string, required: false, note: "company domain", example: "stripe.com"}
+        perPage: {type: integer, required: true, note: "0-100", example: 1}
+        page: {type: integer, required: true, example: 0}
+      note: "supply one company identifier plus page and perPage"
+    test_request:
+      queryParams: {website: "stripe.com", perPage: 1, page: 0}
+    verified: '2026-08-25'
+    example_response: examples/aviato.companies.founders.json
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://data.aviato.co/
+      checked: '2026-08-24'
+      confidence: documented
+      note: "1 credit per successful call. Current route limit: 150 requests/5 seconds and 20,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/company/get-company-founders
+
+  - id: aviato.companies.funding_rounds
+    domain: funding
+    capability: companies.funding_rounds
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /company/funding-rounds
+    name: "List a company's funding rounds"
+    summary: "Get funding rounds raised by a company"
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Aviato company id"}
+        linkedinURL: {type: string, required: false}
+        website: {type: string, required: false, note: "company domain", example: "stripe.com"}
+        perPage: {type: integer, required: true, note: "0-100", example: 1}
+        page: {type: integer, required: true, example: 0}
+      note: "supply one company identifier plus page and perPage"
+    test_request:
+      queryParams: {website: "stripe.com", perPage: 1, page: 0}
+    verified: '2026-08-25'
+    example_response: examples/aviato.companies.funding_rounds.json
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://data.aviato.co/
+      checked: '2026-08-24'
+      confidence: documented
+      note: "1 credit per successful call. Current route limit: 150 requests/5 seconds and 20,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/company/get-company-funding-rounds
+
+  - id: aviato.companies.acquisitions
+    domain: funding
+    capability: companies.acquisitions
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /company/acquisitions
+    name: "List acquisitions made by a company"
+    summary: "Get companies acquired by the specified company"
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Aviato company id"}
+        linkedinURL: {type: string, required: false}
+        website: {type: string, required: false, note: "company domain", example: "stripe.com"}
+        perPage: {type: integer, required: true, note: "0-100", example: 1}
+        page: {type: integer, required: true, example: 0}
+      note: "supply one company identifier plus page and perPage"
+    test_request:
+      queryParams: {website: "stripe.com", perPage: 1, page: 0}
+    verified: '2026-08-25'
+    example_response: examples/aviato.companies.acquisitions.json
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://data.aviato.co/
+      checked: '2026-08-24'
+      confidence: documented
+      note: "2 credits per successful call. Current route limit: 120 requests/minute and 5,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/company/get-acquisitions
+
+  - id: aviato.companies.investments
+    domain: funding
+    capability: companies.investments
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /company/investments
+    name: "List investments in a company"
+    summary: "Get investment records associated with a company"
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Aviato company id"}
+        linkedinID: {type: string, required: false}
+        linkedinNumID: {type: string, required: false}
+        linkedinURL: {type: string, required: false}
+        website: {type: string, required: false, note: "company domain", example: "stripe.com"}
+        perPage: {type: integer, required: true, note: "0-100", example: 1}
+        page: {type: integer, required: true, note: "starts at 0", example: 0}
+      note: "supply one company identifier plus page and perPage"
+    test_request:
+      queryParams: {website: "stripe.com", perPage: 1, page: 0}
+    verified: '2026-08-25'
+    example_response: examples/aviato.companies.investments.json
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      checked: '2026-08-25'
+      confidence: verified
+      note: "1 credit per successful call, confirmed from a 1-credit live balance delta on 2026-08-25. The authenticated rate card names this operation /company/investments/funds. Current route limit: 120 requests/minute and 5,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/company/get-company-investments
+
+  - id: aviato.companies.outbound_investments
+    domain: funding
+    capability: companies.outbound_investments
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /company/investments/outbound
+    name: "List company outbound investments"
+    summary: "Get investments made by the specified company"
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Aviato company id"}
+        linkedinID: {type: string, required: false}
+        linkedinNumID: {type: string, required: false}
+        linkedinURL: {type: string, required: false}
+        website: {type: string, required: false, note: "company domain", example: "stripe.com"}
+        perPage: {type: integer, required: true, note: "0-100", example: 1}
+        page: {type: integer, required: true, note: "starts at 0", example: 0}
+      note: "supply one company identifier plus page and perPage"
+    test_request:
+      queryParams: {website: "stripe.com", perPage: 1, page: 0}
+    verified: '2026-08-25'
+    example_response: examples/aviato.companies.outbound_investments.json
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://data.aviato.co/
+      checked: '2026-08-25'
+      confidence: documented
+      note: "1 credit per successful call. Current route limit: 120 requests/minute and 5,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/company/get-company-outbound-investments
+
+  - id: aviato.people.enrich
+    domain: contacts
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: GET
+    path: /person/enrich
+    name: "Enrich a person by profile URL or email"
+    summary: "Get a person's work history, education, skills, investments and social identities"
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Aviato person id"}
+        linkedinID: {type: string, required: false}
+        linkedinEntityId: {type: string, required: false}
+        linkedinURL: {type: string, required: false, note: "public, Sales Navigator or Recruiter URL", example: "https://www.linkedin.com/in/satyanadella"}
+        email: {type: string, required: false}
+        preview: {type: boolean, required: false, note: "return minimal id/name/URLs without charging a credit"}
+        full: {type: boolean, required: false, note: "include company/fund investments and founded companies"}
+        rescrape: {type: boolean, required: false, note: "refresh stale data; use with maxDataAgeDays"}
+        maxDataAgeDays: {type: integer, required: false}
+        require: {type: "array[string]", required: false, note: "fields that must be present or a free 404 is returned"}
+      note: "supply one identifier. Use preview=true to resolve the person without spending a credit."
+    test_request:
+      queryParams: {linkedinURL: "https://www.linkedin.com/in/satyanadella", preview: true}
+    verified: '2026-08-24'
+    example_response: examples/aviato.people.enrich.json
+    cost:
+      type: per_success
+      value: 5
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://data.aviato.co/
+      checked: '2026-08-25'
+      confidence: verified
+      settle: modifiers
+      modifiers:
+        preview: {location: query, when: truthy, set_credits: 0}
+        email: {location: query, when: present, add_credits: 3}
+        rescrape: {location: query, when: truthy, add_credits: 2, reserve_only: true}
+      note: "5 credits for profile-based enrichment; an email lookup costs 8 credits; preview=true and a require-driven miss are free. Live profile and email rescrape probes stayed at 5 and 8 credits. Treg holds the documented 2-credit rescrape rider and releases it during settlement."
+    docs_url: https://docs.data.aviato.co/api-reference/person/enrich
+
+  - id: aviato.people.enrich.bulk
+    domain: contacts
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /person/bulk/enrich
+    name: "Bulk enrich people"
+    summary: "Enrich up to 20 people in one synchronous request"
+    input:
+      bodyType: json
+      body:
+        lookups: {type: "array[object]", required: true, note: "1-20 lookup objects; each can use identifiers such as linkedinURL or email", example: [{linkedinURL: "https://www.linkedin.com/in/satyanadella"}]}
+        rescrape: {type: boolean, required: false, note: "refresh records older than maxDataAgeDays"}
+        maxDataAgeDays: {type: integer, required: false, note: "stale-data threshold; requires rescrape=true"}
+        preview: {type: boolean, required: false, note: "return minimal identification data without charging credits", example: true}
+        require: {type: "array[string]", required: false, note: "top-level fields required for billing; ignored in preview mode"}
+      note: "this is synchronous bulk enrichment. Use preview=true first for a free identifier check."
+    test_request:
+      body: {lookups: [{linkedinURL: "https://www.linkedin.com/in/satyanadella"}], preview: true}
+    verified: '2026-08-25'
+    example_response: examples/aviato.people.enrich.bulk.json
+    cost:
+      type: per_success
+      value: 5
+      currency: credit
+      per: 1
+      unit: record
+      source: observed
+      source_url: https://data.aviato.co/
+      checked: '2026-08-25'
+      confidence: verified
+      settle: modifiers
+      modifiers:
+        preview: {location: body, when: truthy, set_credits: 0}
+        email: {location: lookups, when: present, add_credits: 3, reserve_only: true}
+        rescrape: {location: body, when: truthy, add_credits: 2}
+      note: "5 credits per successfully enriched person; rescrape=true adds 2 per successful row and preview=true is free. Live email-only bulk probes charged 5 credits per success, not the documented 8, while rescrape probes charged 7. Treg holds the documented email rider and releases it during settlement. Failed rows are free."
+    docs_url: https://docs.data.aviato.co/api-reference/person/bulk-enrich
+
+  - id: aviato.people.contact.get
+    domain: contacts
+    capability: people.contact.get
+    platform: people
+    scope: any_account
+    method: GET
+    path: /person/contact-info
+    name: "Get person contact information"
+    summary: "Get all known email addresses for a person"
+    input:
+      queryParams:
+        type: {type: string, required: false, note: "personal, work or student"}
+        id: {type: string, required: false, note: "Aviato person id"}
+        linkedinID: {type: string, required: false}
+        linkedinEntityId: {type: string, required: false}
+        linkedinURL: {type: string, required: false, note: "public, Sales Navigator or Recruiter URL", example: "https://www.linkedin.com/in/satyanadella"}
+        twitterID: {type: string, required: false}
+        crunchbaseID: {type: string, required: false}
+        angelListID: {type: string, required: false}
+        signalNfxID: {type: string, required: false}
+        polyworkID: {type: string, required: false}
+        email: {type: string, required: false}
+      note: "supply one person identifier. Omit type to return all available email types."
+    test_request:
+      queryParams: {linkedinURL: "https://www.linkedin.com/in/satyanadella", type: "work"}
+    verified: '2026-08-25'
+    example_response: examples/aviato.people.contact.get.json
+    cost:
+      type: per_success
+      value: 8
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://data.aviato.co/
+      checked: '2026-08-25'
+      confidence: verified
+      note: "8 credits per successful hit, confirmed by a live two-email response and an 8-credit balance delta. A miss is free. Current route limit: 100 requests/5 seconds and 72,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/person/pull-contact-info
+
+  - id: aviato.people.email.find
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: GET
+    path: /person/email
+    name: "Find a person's email"
+    summary: "Get person email addresses using a profile or social identifier"
+    input:
+      queryParams:
+        type: {type: string, required: false, note: "personal, work or student"}
+        id: {type: string, required: false, note: "Aviato person id"}
+        linkedinID: {type: string, required: false}
+        linkedinEntityId: {type: string, required: false}
+        linkedinURL: {type: string, required: false, note: "public, Sales Navigator or Recruiter URL", example: "https://www.linkedin.com/in/satyanadella"}
+        twitterID: {type: string, required: false}
+        crunchbaseID: {type: string, required: false}
+        angelListID: {type: string, required: false}
+        signalNfxID: {type: string, required: false}
+        polyworkID: {type: string, required: false}
+        email: {type: string, required: false}
+      note: "supply one person identifier"
+    test_request:
+      queryParams: {linkedinURL: "https://www.linkedin.com/in/satyanadella", type: "work"}
+    verified: '2026-08-25'
+    example_response: examples/aviato.people.email.find.json
+    cost:
+      type: per_success
+      value: 8
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      checked: '2026-08-25'
+      confidence: verified
+      note: "8 credits per successful call, confirmed from an 8-credit live balance delta on 2026-08-25. This route returns email values; /person/email-hash is a different privacy-safe hash operation. No numeric route limit is published."
+    docs_url: https://docs.data.aviato.co/api-reference/person/get-email
+
+  - id: aviato.people.phone.find
+    domain: contacts
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: GET
+    path: /person/phone
+    name: "Find a person's phone number"
+    summary: "Get person phone numbers using a profile or social identifier"
+    input:
+      queryParams:
+        id: {type: string, required: false, note: "Aviato person id"}
+        linkedinID: {type: string, required: false}
+        linkedinEntityId: {type: string, required: false}
+        linkedinURL: {type: string, required: false, note: "public, Sales Navigator or Recruiter URL", example: "https://www.linkedin.com/in/williamhgates"}
+        twitterID: {type: string, required: false}
+        crunchbaseID: {type: string, required: false}
+        angelListID: {type: string, required: false}
+        signalNfxID: {type: string, required: false}
+        polyworkID: {type: string, required: false}
+        email: {type: string, required: false}
+      note: "supply one person identifier"
+    test_request:
+      queryParams: {linkedinURL: "https://www.linkedin.com/in/williamhgates"}
+    verified: '2026-08-25'
+    example_response: examples/aviato.people.phone.find.json
+    cost:
+      type: per_success
+      value: 8
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://data.aviato.co/
+      checked: '2026-08-25'
+      confidence: verified
+      note: "8 credits per successful hit, confirmed by a live two-phone response and an 8-credit balance delta. Three live misses each cost 0. Current route limit: 100 requests/5 seconds and 72,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/person/get-phone
+
+  - id: aviato.people.search
+    domain: contacts
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    path: /person/search
+    name: "Search people with Aviato DSL"
+    summary: "Search people using nested role, company, location and relationship filters"
+    input:
+      bodyType: json
+      body:
+        dsl: {type: object, required: true, note: "{filters,limit,offset,sort?}; filter objects use column paths and {operation,value,quantifier?}", example: {filters: [{country: {operation: "eq", value: "United States"}}, {headline: {operation: "fts", value: "software engineer"}}], limit: 1, offset: 0}}
+      note: "DSL limit is at most 250 and offset at most 10,000."
+    test_request:
+      body:
+        dsl: {filters: [{headline: {operation: "fts", value: "software engineer"}}], limit: 10, offset: 0, sort: []}
+    verified: '2026-08-25'
+    example_response: examples/aviato.people.search.json
+    cost:
+      type: per_success
+      value: 0.25
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://data.aviato.co/
+      checked: '2026-08-24'
+      confidence: documented
+      note: "0.25 credits per successful DSL search call. Current route limit: 600 requests/minute and 36,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/person/search
+
+  - id: aviato.people.search.simple
+    domain: contacts
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: GET
+    path: /person/simple/search
+    name: "Search people with simple query parameters"
+    summary: "Search people without constructing Aviato DSL"
+    input:
+      queryParams:
+        page: {type: integer, required: true, note: "page number", example: 1}
+        perPage: {type: integer, required: true, note: "maximum 100", example: 1}
+        enrich: {type: boolean, required: false, note: "when true, enriches and charges 1 person credit per result; false returns minimal rows", example: false}
+        fullName: {type: string, required: false, note: "fuzzy name query", example: "Satya Nadella"}
+        headline: {type: string, required: false, note: "headline keyword search"}
+        country: {type: "array[string]", required: false}
+        currentTitles: {type: "array[string]", required: false}
+        currentCompanyNames: {type: "array[string]", required: false}
+        skills: {type: "array[string]", required: false, note: "all specified skills must be present"}
+      note: "Use enrich=false for discovery. Aviato documents enrich=true at +1 credit/result, but repeat live probes returned id-only rows and charged only the base."
+    test_request:
+      queryParams: {page: 1, perPage: 1, enrich: false, fullName: "Satya Nadella"}
+    verified: '2026-08-25'
+    example_response: examples/aviato.people.search.simple.json
+    cost:
+      type: per_success
+      value: 0.25
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      checked: '2026-08-25'
+      confidence: verified
+      settle: base
+      modifiers:
+        enrich: {location: query, when: truthy, add_credits_per_result: 1}
+      note: "0.25 credits per successful search call. Aviato documents enrich=true at +1 credit/result, so treg keeps that rider in the reserve. Live 5-row and 3-row enrich=true probes on 2026-08-25 returned unenriched id-only rows and each charged only the 0.25-credit base; treg therefore settles at the base and releases the rider. No numeric route limit is published."
+    docs_url: https://docs.data.aviato.co/api-reference/person/simple-search
+
+  - id: aviato.linkedin.company.posts
+    domain: posts
+    capability: linkedin.company.posts
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /social/company/posts
+    name: "Get company LinkedIn posts"
+    summary: "List recent LinkedIn posts for a company"
+    input:
+      queryParams:
+        linkedinNumID: {type: string, required: false, note: "preferred numeric LinkedIn company id", example: "2135371"}
+        linkedinID: {type: string, required: false, note: "LinkedIn company slug"}
+        page: {type: integer, required: false, note: "default 1", example: 1}
+        perPage: {type: integer, required: false, note: "0-100, default 10", example: 1}
+      note: "supply linkedinNumID or linkedinID"
+    test_request:
+      queryParams: {linkedinNumID: "2135371", page: 1, perPage: 1}
+    verified: '2026-08-25'
+    example_response: examples/aviato.linkedin.company.posts.json
+    cost:
+      type: per_success
+      value: 5
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://data.aviato.co/
+      checked: '2026-08-25'
+      confidence: documented
+      note: "5 credits per successful call. Current route limit: 60 requests/minute and 1,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/social/get-company-posts
+
+  - id: aviato.linkedin.user.posts
+    domain: posts
+    capability: linkedin.user.posts
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /social/person/posts
+    name: "Get person LinkedIn posts"
+    summary: "List recent LinkedIn posts for a person"
+    input:
+      queryParams:
+        linkedinEntityID: {type: string, required: false, note: "preferred LinkedIn entity id"}
+        linkedinID: {type: string, required: false, note: "LinkedIn profile slug", example: "satyanadella"}
+        perPage: {type: integer, required: false, note: "0-100, default 10", example: 1}
+        paginationToken: {type: string, required: false, note: "token returned by the prior page"}
+      note: "supply linkedinEntityID or linkedinID"
+    test_request:
+      queryParams: {linkedinID: "satyanadella", perPage: 1}
+    verified: '2026-08-25'
+    example_response: examples/aviato.linkedin.user.posts.json
+    cost:
+      type: per_success
+      value: 5
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://data.aviato.co/
+      checked: '2026-08-25'
+      confidence: documented
+      note: "5 credits per successful call. Current route limit: 60 requests/minute and 1,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/social/get-person-posts
+
+  - id: aviato.linkedin.post.reactions
+    domain: engagement
+    capability: linkedin.post.reactions
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /social/post/{postUrn}/reactions
+    name: "Get LinkedIn post reactions"
+    summary: "List people who reacted to a LinkedIn post"
+    input:
+      pathParams:
+        postUrn: {type: string, required: true, note: "LinkedIn post URN returned by a posts endpoint", example: "urn:li:ugcPost:7496332962049933312"}
+      queryParams:
+        page: {type: integer, required: false, note: "default 1", example: 1}
+        perPage: {type: integer, required: false, note: "0-100, default 10", example: 1}
+        reactionType: {type: string, required: false, note: "LIKE, EMPATHY, INTEREST, PRAISE or APPRECIATION"}
+    test_request:
+      pathParams: {postUrn: "urn:li:ugcPost:7496332962049933312"}
+      queryParams: {page: 1, perPage: 1}
+    verified: '2026-08-25'
+    example_response: examples/aviato.linkedin.post.reactions.json
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      checked: '2026-08-25'
+      confidence: verified
+      note: "2 credits confirmed by a live balance change from 935.75 to 933.75 on 2026-08-25. The public post returned 1 of 104 reactors; identity values are replaced with placeholders in the example. Current route limit: 60 requests/minute and 1,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/social/get-post-reactions
+
+  - id: aviato.linkedin.post.reposts
+    domain: engagement
+    capability: linkedin.post.reposts
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /social/post/{postUrn}/reshares
+    name: "Get LinkedIn post reshares"
+    summary: "List reshares of a LinkedIn post"
+    input:
+      pathParams:
+        postUrn: {type: string, required: true, note: "LinkedIn post URN returned by a posts endpoint", example: "urn:li:ugcPost:7496332962049933312"}
+      queryParams:
+        page: {type: integer, required: false, note: "default 1", example: 1}
+        perPage: {type: integer, required: false, note: "0-100, default 10", example: 1}
+        paginationToken: {type: string, required: false, note: "token returned by the prior page"}
+    test_request:
+      pathParams: {postUrn: "urn:li:ugcPost:7496332962049933312"}
+      queryParams: {page: 1, perPage: 1}
+    verified: '2026-08-25'
+    example_response: examples/aviato.linkedin.post.reposts.json
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      checked: '2026-08-25'
+      confidence: verified
+      note: "2 credits confirmed by a live balance change from 933.75 to 931.75 on 2026-08-25. A later response returned 1 of 9 reshares; identity and content values are replaced with placeholders in the example. Aviato calls these reshares; the shared capability calls the same job reposts. Current route limit: 60 requests/minute and 1,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/social/get-post-reshares
+
+  - id: aviato.linkedin.post.comments
+    domain: engagement
+    capability: linkedin.post.comments
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /social/post/{postUrn}/comments
+    name: "Get LinkedIn post comments"
+    summary: "List comments and selected replies for a LinkedIn post"
+    input:
+      pathParams:
+        postUrn: {type: string, required: true, note: "LinkedIn post URN returned by a posts endpoint", example: "urn:li:ugcPost:7496332962049933312"}
+      queryParams:
+        page: {type: integer, required: false, note: "default 1", example: 1}
+        perPage: {type: integer, required: false, note: "0-100, default 10", example: 1}
+        numReplies: {type: integer, required: false, note: "0-100 replies per comment, default 1", example: 1}
+        sortOrder: {type: string, required: false, note: "CHRONOLOGICAL or RELEVANCE; relevance can return a curated subset", example: "CHRONOLOGICAL"}
+    test_request:
+      pathParams: {postUrn: "urn:li:ugcPost:7496332962049933312"}
+      queryParams: {page: 1, perPage: 1, numReplies: 1, sortOrder: "CHRONOLOGICAL"}
+    verified: '2026-08-25'
+    example_response: examples/aviato.linkedin.post.comments.json
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      checked: '2026-08-25'
+      confidence: verified
+      note: "2 credits confirmed by a live balance change from 931.75 to 929.75 on 2026-08-25. A later response returned 1 of 7 comments; identity and content values are replaced with placeholders in the example. Current route limit: 60 requests/minute and 1,000/hour."
+    docs_url: https://docs.data.aviato.co/api-reference/social/get-post-comments

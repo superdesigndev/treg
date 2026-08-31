@@ -1,0 +1,421 @@
+{
+  "companies": [
+    {
+      "about": {
+        "businessType": "privately-held",
+        "industries": [
+          "digital-payments",
+          "cryptocurrency-trading",
+          "mobile-payments",
+          "online-transactions-processing",
+          "banking",
+          "… 32 more item(s) truncated"
+        ],
+        "industry": "financial-services",
+        "languages": [
+          "eng_Latn"
+        ],
+        "name": "PayPal",
+        "nameAlts": [
+          "PayPal.com"
+        ],
+        "nameLegal": "PayPal Inc.",
+        "totalEmployees": "over-10k",
+        "totalEmployeesExact": 36250,
+        "yearFounded": 1999,
+        "yearFoundedPlace": "San Jose, California"
+      },
+      "analytics": {
+        "monthlyVisitors": "10m-50m"
+      },
+      "assets": {
+        "colorPrimary": "#012169",
+        "cover": {
+          "height": 1260,
+          "src": "https://thecompaniesapi.s3.fr-par.scw.cloud/companies/covers/paypal.com.jpg",
+          "width": 2400
+        },
+        "logoSquare": {
+          "height": 200,
+          "src": "https://thecompaniesapi.s3.fr-par.scw.cloud/companies/logos/square/paypal.com.jpg",
+          "width": 200
+        }
+      },
+      "codes": {
+        "naics": [
+          "53121"
+        ],
+        "sic": [
+          "62499"
+        ]
+      },
+      "companies": {
+        "acquisitions": [
+          {
+            "domain": "curv.co",
+            "name": "Curv"
+          }
+        ],
+        "subsidiaries": [
+          {
+            "description": "We provide the global commerce tools people need to build businesses, accept payments, and enable commerce for their users.",
+            "domain": "braintreepayments.com",
+            "name": "Braintree"
+          },
+          {
+            "description": "Founded in 2012 and based in Downtown, Los Angeles, Honey is the easiest way to save when shopping online! We currently have a coupon applying browser extension (available on Google Chrome, Safari, Firefox, etc.",
+            "domain": "joinhoney.com",
+            "name": "Honey"
+          },
+          {
+            "description": "At Venmo, we're working to build a payment experience that's simple, delightful and connected.",
+            "domain": "venmo.com",
+            "name": "Venmo"
+          },
+          {
+            "description": "Xoom is a leading digital money transfer provider that enables consumers to send money, pay international bills, or reload phones for family and friends around the world.",
+            "domain": "xoom.com",
+            "name": "Xoom, A PayPal Service"
+          }
+        ]
+      },
+      "descriptions": {
+        "primary": "HELP US REIMAGINE MONEY. At PayPal, we believe that now is the time to democratize financial services so that moving and managing money is a right for all citizens, not just the affluent. We are driven by this purpose, and we uphold our cultural values of collaboration, innovation, wellness and incl",
+        "tagline": "Pay, send and save money with PayPal",
+        "website": "From paying friends to saving money or getting cash back when you shop, explore what the new PayPal app has to offer."
+      },
+      "domain": {
+        "alias": "www.paypal.com",
+        "domain": "paypal.com",
+        "domainName": "paypal",
+        "registrar": "MarkMonitor Inc.",
+        "state": "operating",
+        "status": 200,
+        "tld": "com"
+      },
+      "finances": {
+        "revenue": "over-1b",
+        "stockExchange": "NASDAQ",
+        "stockSymbol": "PYPL"
+      },
+      "locations": {
+        "headquarters": {
+          "address": {
+            "geopoint": {
+              "lat": 37.3361663,
+              "lon": -121.890591
+            },
+            "raw": "San Jose, Santa Clara County, California, United States"
+          },
+          "city": {
+            "code": "san-jose|california|us",
+            "geopoint": {
+              "lat": 37.3361905,
+              "lon": -121.890583
+            },
+            "name": "San Jose"
+          },
+          "continent": {
+            "code": "na",
+            "geopoint": {
+              "lat": 51.0000002,
+              "lon": -109
+            },
+            "name": "North America"
+          },
+          "country": {
+            "code": "us",
+            "geopoint": {
+              "lat": 39.7837304,
+              "lon": -100.4458825
+            },
+            "name": "United States"
+          },
+          "county": {
+            "code": "santa-clara-county|us",
+            "geopoint": {
+              "lat": 37.2333253,
+              "lon": -121.6846349
+            },
+            "name": "Santa Clara County"
+          },
+          "state": {
+            "code": "california|us",
+            "geopoint": {
+              "lat": 36.7014631,
+              "lon": -118.755997
+            },
+            "name": "California"
+          }
+        }
+      },
+      "meta": {
+        "mysqlId": 16743525,
+        "score": 84,
+        "similarity": null,
+        "syncedAt": "phone:3c4638d3beT16:47:02.240Z"
+      },
+      "secondaries": {
+        "emailPatterns": [
+          {
+            "pattern": "[F1][L]",
+            "usagePercentage": 95.1558
+          },
+          {
+            "pattern": "[F].[L]",
+            "usagePercentage": 3.4849
+          },
+          {
+            "pattern": "[F][L]",
+            "usagePercentage": 0.4555
+          },
+          {
+            "pattern": "[L1][F]",
+            "usagePercentage": 0.3687
+          },
+          {
+            "pattern": "[F]",
+            "usagePercentage": 0.3326
+          },
+          "… 6 more item(s) truncated"
+        ]
+      },
+      "socials": {
+        "facebook": {
+          "id": "paypalturkiye",
+          "url": "https://www.facebook.com/paypalturkiye"
+        },
+        "linkedin": {
+          "idNumeric": "1482",
+          "url": "https://www.linkedin.com/company/1482"
+        },
+        "twitter": {
+          "id": "paypal",
+          "url": "https://twitter.com/paypal"
+        },
+        "wellfound": {
+          "id": "paypal",
+          "url": "http://angel.co/paypal"
+        }
+      },
+      "urls": {
+        "registrar": "http://www.markmonitor.com/"
+      }
+    },
+    {
+      "about": {
+        "businessType": "public-company",
+        "industries": [
+          "telecommunications-carriers",
+          "mobile-network-operator",
+          "technology-information-and-internet",
+          "digital-services",
+          "fintech",
+          "… 21 more item(s) truncated"
+        ],
+        "industry": "telecommunications",
+        "languages": [
+          "eng_Latn"
+        ],
+        "name": "MTN Group",
+        "nameAlts": [
+          "ayoba"
+        ],
+        "nameLegal": "MTN Group Management Services (Pty) Ltd",
+        "totalEmployees": "over-10k",
+        "totalEmployeesExact": 42880,
+        "yearFounded": 1994,
+        "yearFoundedPlace": "South Africa"
+      },
+      "analytics": {
+        "monthlyVisitors": "over-1b"
+      },
+      "assets": {
+        "cover": {
+          "height": 630,
+          "src": "https://thecompaniesapi.s3.fr-par.scw.cloud/companies/covers/mtn.com.jpg",
+          "width": 1200
+        },
+        "logoSquare": {
+          "height": 200,
+          "src": "https://thecompaniesapi.s3.fr-par.scw.cloud/companies/logos/square/mtn.com.jpg",
+          "width": 200
+        }
+      },
+      "companies": {
+        "subsidiaries": [
+          {
+            "description": "Lonestar Cell is the leading GSM communication company in Liberia that has been operating since June 2001.",
+            "descriptionShort": "Lonestar Cell is the leading GSM communication company in Liberia that has been operating since June 2001.",
+            "domain": "lonestarcell.com",
+            "name": "Lonestar Cell MTN"
+          },
+          {
+            "description": "Launched in 1994, the MTN Group is a multinational telecommunications group, operating in 22 countries in Africa, Asia and the Middle East.",
+            "descriptionShort": "Launched in 1994, the MTN Group is a multinational telecommunications group, operating in 22 countries in Africa, Asia and the Middle East.",
+            "domain": "mtn.com.af",
+            "name": "MTN Afghanistan"
+          },
+          {
+            "description": "Welcome to MTN Benin.",
+            "descriptionShort": "Welcome to MTN Benin.",
+            "domain": "mtn.bj",
+            "name": "MTN Bénin"
+          },
+          {
+            "description": "Launched in 1994, the MTN Group is a multinational telecommunications group, operating in 22 countries in Africa, Asia and the Middle East.",
+            "descriptionShort": "Launched in 1994, the MTN Group is a multinational telecommunications group, operating in 22 countries in Africa, Asia and the Middle East.",
+            "domain": "mtn.ci",
+            "name": "MTN Côte d'Ivoire"
+          },
+          {
+            "description": "MTN Congo, entreprise de téléphonie Mobile est née du rachat le 9 décembre 2005 de LIBERTIS Telecom qui avait déjà 6 années d’existence au Congo.",
+            "descriptionShort": "MTN Congo, entreprise de téléphonie Mobile est née du rachat le 9 décembre 2005 de LIBERTIS Telecom qui avait déjà 6 années d’existence au Congo.",
+            "domain": "mtn.cg",
+            "name": "MTN CONGO"
+          },
+          "… 11 more item(s) truncated"
+        ]
+      },
+      "descriptions": {
+        "primary": "MTN Group Limited entered the telecommunications scene at the dawn of South Africa's democracy, in 1994. In 1998, we began our expansion by acquiring licences in Rwanda, Uganda and Swaziland. Since then, we continued to grow, with a view of bringing world-class telecommunications and digital service",
+        "tagline": "MTN Group",
+        "website": "MTN is Africa's largest mobile network operator, sharing the benefits of a modern connected life with 288m customers in 18 markets across Africa"
+      },
+      "domain": {
+        "alias": "www.mtn.com",
+        "domain": "mtn.com",
+        "domainName": "mtn",
+        "registrar": "Lexsynergy Limited",
+        "state": "operating",
+        "status": 200,
+        "tld": "com"
+      },
+      "finances": {
+        "revenue": "over-1b",
+        "stockSymbol": "MTN"
+      },
+      "locations": {
+        "headquarters": {
+          "address": {
+            "geopoint": {
+              "lat": -33.973749784437,
+              "lon": 18.461498093311278
+            },
+            "raw": "Main Street, Newlands, Cape Town, City of Cape Town, Western Cape, 7700, South Africa"
+          },
+          "city": {
+            "code": "cape-town|western-cape|za",
+            "geopoint": {
+              "lat": -33.928992,
+              "lon": 18.417396
+            },
+            "name": "Cape Town",
+            "postcode": "8001"
+          },
+          "continent": {
+            "code": "af",
+            "geopoint": {
+              "lat": 11.5024338,
+              "lon": 17.7578122
+            },
+            "name": "Africa"
+          },
+          "country": {
+            "code": "za",
+            "geopoint": {
+              "lat": -28.8166236,
+              "lon": 24.991639
+            },
+            "name": "South Africa"
+          },
+          "state": {
+            "code": "western-cape|za",
+            "geopoint": {
+              "lat": -33.546977,
+              "lon": 20.72753
+            },
+            "name": "Western Cape"
+          }
+        }
+      },
+      "meta": {
+        "mysqlId": 49334,
+        "score": 80,
+        "similarity": null,
+        "syncedAt": "phone:0adfa4b2dfT22:00:12.571Z"
+      },
+      "secondaries": {
+        "emailPatterns": [
+          {
+            "pattern": "[F].[L]",
+            "usagePercentage": 99.7036
+          },
+          {
+            "pattern": "[F]",
+            "usagePercentage": 0.1431
+          },
+          {
+            "pattern": "[L]",
+            "usagePercentage": 0.0511
+          },
+          {
+            "pattern": "[F][L]",
+            "usagePercentage": 0.0204
+          },
+          {
+            "pattern": "[F1][L]",
+            "usagePercentage": 0.0204
+          },
+          "… 5 more item(s) truncated"
+        ]
+      },
+      "socials": {
+        "facebook": {
+          "id": "mtnloaded",
+          "url": "http://www.facebook.com/mtnloaded"
+        },
+        "linkedin": {
+          "id": "mtn",
+          "idNumeric": "165065",
+          "salesNavigatorUrl": "https://www.linkedin.com/sales/company/165065",
+          "url": "https://linkedin.com/company/mtn"
+        },
+        "twitter": {
+          "id": "MTNGroup",
+          "url": "https://x.com/MTNGroup"
+        },
+        "youtube": {
+          "id": "mtngroup",
+          "url": "https://youtube.com/c/mtngroup"
+        }
+      },
+      "urls": {
+        "registrar": "http://www.lexsynergy.com/"
+      }
+    }
+  ],
+  "meta": {
+    "cost": 2,
+    "credits": 49787,
+    "currentPage": 1,
+    "firstPage": 1,
+    "freeRequest": false,
+    "lastPage": 4186,
+    "perPage": 2,
+    "total": 8372,
+    "maxScrollResultsReached": false
+  },
+  "query": [
+    {
+      "attribute": "about.industries",
+      "operator": "or",
+      "sign": "equals",
+      "values": [
+        "fintech"
+      ]
+    }
+  ],
+  "_scrubbed": true,
+  "_note": "captured live 2026-08-28 via treg; emails/phones hashed, lists trimmed"
+}

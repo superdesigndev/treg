@@ -27,10 +27,12 @@ from sqlmodel import select
 
 from conftest import make_upstream
 
-from treg import billing, ledger, referrals
+from treg.application import billing
+from treg.domain import money as ledger
+from treg.domain import referrals
 from treg.api import app
 from treg.config import get_settings
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 from treg.models import CreditBlock, Org, Referral, User
 
 WHSEC = "whsec_referral_suite"
@@ -69,7 +71,7 @@ async def _signup(c: AsyncClient, email: str, *, ref: str = "") -> tuple[int, st
 
 
 def referrals_cookie() -> str:
-    from treg.api import REFERRAL_COOKIE
+    from treg.routers.signup_cookies import REFERRAL_COOKIE
     return REFERRAL_COOKIE
 
 

@@ -8,16 +8,23 @@ from datetime import datetime, timezone
 
 import pytest
 from fastapi import HTTPException
-from fastapi.responses import StreamingResponse
 from httpx import AsyncClient
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 from starlette.requests import Request
 
-from treg import api as A, audit, crypto, ledger, localproxy
+from treg import audit, crypto, localproxy
+from treg.domain import money as ledger
+from treg.application.call import idempotency as call_idem
+from treg.application.call import reserve as call_reserve
+from treg.application.call import service as call_service
+from treg.application.call.intake import CallMeta
+from treg.application.call.types import UpstreamResponse
+from treg.routers import call as call_routes
 from treg.config import get_settings
-from treg.db import session_maker
+from treg.infra.db import session_maker
+from treg.domain.governance import budgets as budget_policy
 from treg.models import CallRecord, CreditBlock, Hold, LedgerEntry, Membership, Org, TagSpend, User
 
 
@@ -45,6 +52,7 @@ async def _make_org(name: str, slug: str, *, grant_micro: int = 100_000) -> int:
         await db.commit()
         await db.refresh(org)
         await ledger.grant(db, org.id, amount_micro=grant_micro, once=False)
+        await db.commit()
         return org.id
 
 
@@ -60,7 +68,7 @@ def _request_with_meta(value: str) -> Request:
 
 def _assert_meta_rejected(value: str) -> None:
     with pytest.raises(HTTPException) as exc:
-        A._parse_call_meta(_request_with_meta(value))
+        call_routes._parse_call_meta(_request_with_meta(value))
     assert exc.value.status_code == 422
 
 
@@ -83,12 +91,12 @@ async def test_attack_1_all_ingress_paths_reject_storage_key_delimiters(
     # Characters whose NFKC form contains punctuation, plus a combining sequence, must be rejected
     # before either TagSpend or the scoped idempotency key can receive them.
     for value in ("a，b", "a．b", "e\u0301"):
-        with pytest.raises(HTTPException) as exc:
-            A._validate_tag_pair("customer", value)
+        with pytest.raises(budget_policy.BudgetPolicyError) as exc:
+            budget_policy._validate_tag_pair("customer", value)
         assert exc.value.status_code == 422
 
-    meta = A._parse_call_meta(_request_with_meta("customer=safe_value"))
-    stored_key = A._scoped_idempotency_key("retry-1", meta)
+    meta = call_routes._parse_call_meta(_request_with_meta("customer=safe_value"))
+    stored_key = call_idem._scoped_idempotency_key("retry-1", meta)
     assert stored_key == "safe_value\x1fretry-1"
     assert all(bad not in meta.primary_val for bad in ("\x1f", "\n", ","))
 
@@ -201,7 +209,7 @@ async def test_attack_4_concurrent_prechecks_overshoot_is_bounded_not_exact(
         f"/orgs/{org_id}/budgets/customer/race", json={"daily_cap_micro": cap_micro})
     assert budget.status_code == 200, budget.text
 
-    original = A._enforce_tag_budgets
+    original = call_reserve._enforce_tag_budgets
     ready = 0
     all_prechecked = asyncio.Event()
 
@@ -214,7 +222,7 @@ async def test_attack_4_concurrent_prechecks_overshoot_is_bounded_not_exact(
                 all_prechecked.set()
             await asyncio.wait_for(all_prechecked.wait(), timeout=5)
 
-    monkeypatch.setattr(A, "_enforce_tag_budgets", synchronized_precheck)
+    monkeypatch.setattr(call_service, "_enforce_tag_budgets", synchronized_precheck)
     responses = await asyncio.gather(*(
         clients.get(
             f"/call/{EP}?aweme_id=race-{index}",
@@ -240,7 +248,7 @@ async def test_attack_4_concurrent_prechecks_overshoot_is_bounded_not_exact(
     # because the balance is a materialized column it can gate on with one conditional UPDATE, while
     # a per-tag total is an aggregate with no such column. Tightening it would need a second
     # materialized authority on spend (reset daily, decremented on release, corrected on settle
-    # divergence) — four new ways to disagree with ledger.py, which is the only module allowed to
+    # divergence) — four new ways to disagree with domain/money, which is the only module allowed to
     # move money. The hard gates (org balance, per-org daily cap) sit behind this one.
     #
     # What must hold: the overshoot is bounded and every committed call is accounted for. Never
@@ -377,8 +385,8 @@ async def test_review_pin_bypass_matrix_never_attributes_a_different_value(
         assert response.status_code == expected, (headers, response.status_code, response.text)
         successes += response.status_code == 200
     # Exercise a non-ASCII lookalike through the shared pin/header validator.
-    with pytest.raises(HTTPException) as exc:
-        A._validate_tag_pair("customer", "cust_\u00c0")
+    with pytest.raises(budget_policy.BudgetPolicyError) as exc:
+        budget_policy._validate_tag_pair("customer", "cust_\u00c0")
     assert exc.value.status_code == 422
     async with session_maker() as db:
         assert await ledger.tag_invoice_since(
@@ -407,14 +415,19 @@ async def test_review_distinct_memberships_never_share_idempotent_bodies(
 
     async def relay_by_token(request, upstream_url, tool, secrets, client, drop_params=None,
                              force_identity=False):
-        body = request.headers["X-Treg-Token"].encode()
+        body = next(
+            value for name, value in request.raw_headers if name.lower() == b"x-treg-token")
 
         async def stream():
             yield body
 
-        return StreamingResponse(stream(), status_code=200, media_type="text/plain")
+        async def close():
+            return None
 
-    monkeypatch.setattr(A, "relay", relay_by_token)
+        return UpstreamResponse(
+            200, ((b"content-type", b"text/plain; charset=utf-8"),), stream(), close)
+
+    monkeypatch.setattr(call_service, "relay", relay_by_token)
     common = {"X-Treg-Meta": "customer=same", "Idempotency-Key": "same-key"}
     first_a = await clients.get(f"/call/{EP}?aweme_id=idem", headers={**common, "X-Treg-Token": token_a})
     first_b = await clients.get(f"/call/{EP}?aweme_id=idem", headers={**common, "X-Treg-Token": token_b})
@@ -436,15 +449,15 @@ async def test_review_replay_keeps_the_original_call_id(clients: AsyncClient, pl
 
 def test_review_idempotency_separator_and_post_fingerprint_are_unambiguous():
     scoped = {
-        A._scoped_idempotency_key(key, A.CallMeta(tags={"customer": customer}))
+        call_idem._scoped_idempotency_key(key, CallMeta(tags={"customer": customer}))
         for customer in ("A", "AB", "A-B", "A:B")
-        for key in ("C", f"B{A._IDEM_SCOPE_SEP}C", f"{A._IDEM_SCOPE_SEP}C")
+        for key in ("C", f"B{call_idem._IDEM_SCOPE_SEP}C", f"{call_idem._IDEM_SCOPE_SEP}C")
     }
     assert len(scoped) == 12
-    original = A._request_fingerprint("POST", "endpoint", b'{"amount":1}', "mode=fast")
-    assert original == A._request_fingerprint("post", "endpoint", b'{"amount":1}', "mode=fast")
-    assert original != A._request_fingerprint("POST", "endpoint", b'{"amount":2}', "mode=fast")
-    assert original != A._request_fingerprint("POST", "endpoint", b'{"amount":1}', "mode=slow")
+    original = call_idem._request_fingerprint("POST", "endpoint", b'{"amount":1}', "mode=fast")
+    assert original == call_idem._request_fingerprint("post", "endpoint", b'{"amount":1}', "mode=fast")
+    assert original != call_idem._request_fingerprint("POST", "endpoint", b'{"amount":2}', "mode=fast")
+    assert original != call_idem._request_fingerprint("POST", "endpoint", b'{"amount":1}', "mode=slow")
 
 
 @pytest.mark.anyio
@@ -490,8 +503,10 @@ async def test_review_every_ledger_writer_overrides_false_provenance(clients: As
         grant = await ledger.grant(
             db, org_id, amount_micro=10, kind=f"promo-{suffix}", once=False,
             meta={"block_kind": "spoofed"})
+        await db.commit()
         topup = await ledger.topup(
             db, org_id, 10, f"payment-{suffix}", meta={"payment_ref": "spoofed"})
+        await db.commit()
         call_id = await ledger.reserve(
             db, org_id, EP, 10, call_id=f"settle-{suffix}",
             meta={"estimated_micro": -1, "charged_micro": -1, "margin": "spoofed"})

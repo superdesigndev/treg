@@ -1,0 +1,38 @@
+{
+  "investments": [
+    {
+      "id": 3815632,
+      "totalAmountRaised": 2821812,
+      "date": "2022-11-30T00:00:00.000Z",
+      "createdBy": "company",
+      "companyID": "otWwpYOa4hsvF0pQGV2zbvieHQZAND2",
+      "companyInvestorID": "OYClaZ4jscaMd-JHzdbItcb2o3wRHoY",
+      "company": {
+        "id": "otWwpYOa4hsvF0pQGV2zbvieHQZAND2",
+        "name": "Upollo",
+        "description": "Developer of a conversion rate optimization platform intended to help businesses convert, retain, expand, and understand their customers. The company's platform provides real-time insights on whether users are account sharing, have already had a trial, or are using false or disposable phone numbers and emails, enabling users to have positive interactions with potential customers who may be on the fence about whether to purchase a subscription.",
+        "country": "Australia",
+        "region": "New South Wales",
+        "locality": "Sydney",
+        "URLs": {
+          "golden": "golden.com/wiki/Upollo-DZAXPYB",
+          "twitter": "twitter.com/UpolloAI",
+          "website": "upollo.ai",
+          "linkedin": "linkedin.com/company/upollo",
+          "pitchbook": "pitchbook.com/profiles/company/515370-25",
+          "crunchbase": "crunchbase.com/organization/upollo"
+        },
+        "industryList": [
+          "Data & Analytics",
+          "Software & SaaS",
+          "… 1 more item(s) truncated"
+        ],
+        "linkedinIndustries": [
+          "Software Development"
+        ]
+      }
+    }
+  ],
+  "pages": 55,
+  "totalResults": 55
+}

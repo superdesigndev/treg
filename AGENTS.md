@@ -16,12 +16,15 @@ This file orients an AI agent (Claude Code, Codex, Cursor, …) working in this 
 - Run `uv run pytest -q` before and after changes; keep it green (add tests for new behavior).
 - Keep changes minimal and scoped; match the surrounding style.
 - When you change a subsystem, update its `docs/context/` fragment in the same change.
+- When `/mcp/`, `/mcp/v2/`, or shared MCP code changes, review both MCP surfaces. Preserve the
+  documented differences, run the paired MCP contract tests, and update
+  `docs/context/architecture/mcp-oauth.md` when the contract changes.
 - Commits follow Conventional Commits (`feat(scope): …`, `fix: …`, `docs: …`); one logical change per
   commit. PRs should say what changed and why, and note which fragments were updated.
 
 ## Do not touch (without reading the fragment first)
 
-- **The faithful-relay contract** (`src/treg/proxy.py`): the proxy alters only hop-by-hop headers, treg's
+- **The faithful-relay contract** (`src/treg/infra/upstream/relay.py`): the proxy alters only hop-by-hop headers, treg's
   own control headers, and the injected credential — never add upstream-specific modeling or buffering.
 - **Security guards that look redundant on purpose**: the `expose_dev_code` double-guard (dev OTP only on
   local sqlite), the call-time SSRF check, the fail-loud missing-Fernet-key startup check, and the

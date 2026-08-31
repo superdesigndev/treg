@@ -16,7 +16,7 @@ async def test_org_delete_clears_EVERY_org_scoped_table(clients):
     from sqlmodel import SQLModel
 
     from treg import models as m
-    from treg.api import _ORG_SCOPED_MODELS
+    from treg.routers.orgs import _ORG_SCOPED_MODELS
 
     covered = {model.__name__ for model in _ORG_SCOPED_MODELS}
     missing = []
@@ -63,16 +63,17 @@ async def test_a_team_with_oauth_family_authority_can_be_deleted(clients):
     from datetime import datetime
     from sqlmodel import select
 
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import OAuthGrant, OAuthRefresh
 
+    former = (await clients.post("/orgs", json={"name": "former-oauth-family-team"})).json()
     made = (await clients.post("/orgs", json={"name": "oauth-family-team"})).json()
     async with session_maker() as db:
         db.add(OAuthGrant(family_id="delete-family", current_org_id=made["org_id"]))
         # Provenance can name a PREVIOUS team. Deleting current family authority still revokes and
         # removes the whole family; otherwise this historical row is orphaned from its authority.
         db.add(OAuthRefresh(token_hash="delete-token", family_id="delete-family", client_id="c",
-                            user_id=1, org_id=made["org_id"] + 999,
+                            user_id=1, org_id=former["org_id"],
                             expires_at=datetime(2026, 9, 1)))
         await db.commit()
     gone = await clients.request("DELETE", f"/orgs/{made['org_id']}",
@@ -95,7 +96,7 @@ async def test_deleting_a_former_grant_team_removes_the_whole_family(clients):
     from datetime import datetime, timedelta, timezone
     from sqlmodel import select
 
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import OAuthGrant, OAuthRefresh, User
 
     former = (await clients.post("/orgs", json={"name": "former-grant-team"})).json()

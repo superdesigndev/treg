@@ -94,7 +94,7 @@ class Settings(BaseSettings):
     run_cpu_seconds: int = 300          # CPU time a single server run may burn (backstop to the wall timeout)
     run_fsize_mb: int = 100             # largest single file a server run may write (disk-fill guard)
 
-    # ---- prepaid balance (ledger.py) -----------------------------------------------------------
+    # ---- prepaid balance (domain/money) -----------------------------------------------------------
     # Platform markup on a call served by a PLATFORM key, applied to the estimate at reserve time and
     # to the observed cost at settle time. 0.0 = we charge exactly what the provider charges us.
     # It lives in config (rather than being hardcoded) so turning margin on is a deploy setting, not
@@ -181,17 +181,44 @@ class Settings(BaseSettings):
     platform_key_tomba_secret: str = ""   # the API secret (ts_…); X-Tomba-Secret — BOTH must be set
     # (tomba's data routes need the header pair; TOMBA.platform_extra_setting names this second slot)
     platform_key_influencersclub: str = ""  # Bearer key (dashboard JWT); creator discovery + enrichment, fx.yaml $0.598/credit (our $299/500 plan)
+    platform_key_crustdata: str = ""  # Bearer key; every call also needs the pinned x-api-version header
+    platform_key_aviato: str = ""     # Bearer key; $10 auto-top-up buys 1,000 credits
+    platform_key_exa: str = ""        # x-api-key; dollar-metered ($7/1k searches, $1/1k pages); settles from costDollars.total
+    # Overflow aggregators (docs/PROVIDER-CAPACITY-PLAN.md §4.3): treg-owned accounts that serve the
+    # SAME vendor endpoint when our direct account is out. Env only, never a Secret row, never logged.
+    # Not platform_key_* on purpose: they are a credential RUNG (platform-overflow), not a provider.
+    overflow_key_orthogonal: str = ""
+    overflow_key_monid: str = ""
+    # off (default) | shadow | on. Shadow: on a tier-4 capacity failure, call the aggregator anyway,
+    # log status/shape/cost, still return the vendor's own error and charge the caller nothing —
+    # treg pays the probe, bounded by the daily budget. On: the child cycle serves the caller.
+    overflow_mode: str = "off"
+    overflow_daily_budget_usd: float = 20.0  # per aggregator, per UTC day; crossing it skips overflow
     # The KILL SWITCH, and the reason a key alone isn't enough: a provider serves tier 4 only if it is
     # named here AND its key is set. Empty (the default) = tier 4 is entirely off, so a deploy that
     # happens to hold a key can't start spending it by accident. `TREG_PLATFORM_PROVIDERS=""` in the
     # Render dashboard turns the whole feature off without a redeploy.
     platform_providers: str = ""
+    # Whether DISCOVERY steers to routed rows: `treg.<capability>` first in search, and a routed
+    # parent pulled in whenever one of its children matched. `off` leaves every routed endpoint
+    # callable and priced — only the steering stops, and search looks as it did before routing
+    # shipped. Same runtime-switch shape as `platform_providers`: flip it in the dashboard, no
+    # redeploy. It exists because "does the router answer well" and "should every agent be led to
+    # it by default" are separate questions, and the second one is answered by traffic, not by
+    # argument.
+    routed_discovery: str = "on"
     # Per-org, per-UTC-day ceiling on tier-4 spend, and the CEILING a team may raise its own
     # `Org.daily_cap_micro` to. Enforced FAIL-CLOSED (unlike the soft per-user call cap): a query
     # error refuses the call rather than letting an unbounded amount of our money out. It is a
     # blast-radius limit on a runaway agent or a mispriced catalog entry, not a billing control —
     # the balance is what a team actually spends against.
-    platform_daily_cap_usd: float = 100.0
+    #
+    # Raised 100 -> 500 on 2026-08-29. At 100 an ordinary day's work tripped it: a benchmark agent
+    # exploring the catalog spends ~$0.10 a query, and 26 of 32 briefs came back empty because every
+    # call after the ceiling 429'd — the team had $92 of balance and could not use it. The rail is
+    # still here, and it is still ours to raise per team; it just should not fire before a real
+    # workload does.
+    platform_daily_cap_usd: float = 500.0
     # OAuth providers whose UPSTREAM bill lands on treg's developer app rather than the connected
     # user (X moved to pay-per-use in Feb 2026: the app owner is billed per resource read / per post
     # written, whoever's token made the call). Calls through a registry connect of a provider named
@@ -211,15 +238,25 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = ""
     # Top-up amounts, in whole USD (the ONLY place dollars appear — billing.py converts to micro-USD
     # for the ledger and to integer cents for Stripe at the boundaries, and nothing in between sees a
-    # float). $5 minimum is fee math, not policy: at 2.9% + $0.30 a $1 top-up loses 33% to fees.
-    topup_min_usd: int = 5
+    # float). The $10 minimum is fee math, not policy: at 2.9% + $0.30 a $5 top-up loses 9% to fees,
+    # and the referral offer's qualifying amount is $10 already.
+    topup_min_usd: int = 10
     topup_default_usd: int = 10
-    topup_presets: list[int] = [5, 10, 25, 50]
+    # Four presets plus "Other" (any whole amount ≥ min). Deliberately few and skewed big: with eight
+    # cards from $5 up nobody ever picked $100+, and repeat payers stayed flat ($10 → $10).
+    topup_presets: list[int] = [10, 50, 100, 200]
+    # Bonus credit on a MANUAL top-up, as {min_usd: percent}: the highest key ≤ the amount applies.
+    # It is promotional credit (a separate block that burns first and is never refundable), never
+    # purchased balance — see billing.bonus_for_topup. Automatic refills get no bonus.
+    topup_bonus_tiers: dict[int, int] = {10: 0, 50: 5, 100: 10, 200: 15}
+    # After each manual top-up the dashboard's preselected amount steps one preset up, but never past
+    # this — the ladder nudges $10 payers toward $50 without preselecting $200 at anyone.
+    topup_default_cap_usd: int = 50
     # Auto-top-up defaults, applied when an org enables it without naming its own numbers. The
     # threshold is deliberately above the $1 promo grant's tail: at agent call rates a $2 floor is one
     # burst away from empty, and an off-session charge takes seconds to land.
     autotopup_default_threshold_usd: int = 5
-    autotopup_default_amount_usd: int = 10
+    autotopup_default_amount_usd: int = 20
     # Hard guardrails on the off-session charge — the difference between "convenient" and "a runaway
     # agent bills a card all night". Cap is per calendar month, cooldown is between attempts, and
     # max_attempts counts CONSECUTIVE failures before auto-top-up disables itself.
@@ -230,6 +267,34 @@ class Settings(BaseSettings):
     # Call-time SSRF guard on the proxy: resolve the upstream host and refuse an internal target. On by
     # default; the test suite disables it (its upstream is an in-process ASGI transport, not real DNS).
     proxy_ssrf_check: bool = True
+
+    # The archive's rollout switch (see treg/archive.py): "off" (default) | "shadow" (record +
+    # learn from metered platform responses, serve nothing) | "serve" (shadow + answer eligible
+    # fresh hits from the store). Any other value degrades to "off" — a typo must disable, never
+    # enable. Staged deliberately so production can sit in "shadow" while phase 0 measures.
+    archive_mode: str = "off"
+    # Bodies above this size are hash-counted but never stored (skipped whole, not truncated):
+    # the archive is for API JSON answers, not downloads. Statistics still record size_bytes.
+    archive_max_body_bytes: int = 2_000_000
+    # What happens to an endpoint WITHOUT a judged `cache:` field (the founder's 2026-08-29
+    # decision): "transient" keeps every answer body as short-lived cache; "forbidden" is the old
+    # keep-nothing posture. A judged forbidden (a licence that was read and says no) is always
+    # respected, and actions are never stored, whatever this says.
+    archive_default_policy: str = "transient"
+    # The refresh worker (serve mode only): how often it scans for due keys, and how many
+    # refresh calls ONE provider may spend per UTC day. A refresh is treg's own vendor spend with
+    # no caller attached, so the cap is the brake — 0 disables refreshing without touching serving.
+    archive_refresh_interval_s: int = 300
+    archive_refresh_daily_cap: int = 50
+
+    # Additive Claude directory MCP. Default OFF so deploying code cannot publish a new connector
+    # surface before its production Inspector and custom-connector gates have passed.
+    claude_connector_enabled: bool = False
+
+    # Browser-only OAuth/MCP test harness. It handles real grants and therefore belongs on local
+    # and staging deployments, not on the public product surface. Explicitly enable it where an
+    # engineer is testing the protocol end to end.
+    connect_demo_enabled: bool = False
 
     # treg's own public base URL — used to build the OAuth callback (must be whitelisted in the
     # provider's OAuth app). Self-hosting? Set TREG_PUBLIC_URL to your deployment's URL.
@@ -379,6 +444,13 @@ class Settings(BaseSettings):
     @property
     def platform_daily_cap_micro(self) -> int:
         return int(round(self.platform_daily_cap_usd * 1_000_000))
+
+    @property
+    def overflow_daily_budget_micro(self) -> int:
+        return int(round(self.overflow_daily_budget_usd * 1_000_000))
+
+    def overflow_key_for(self, aggregator: str) -> str | None:
+        return getattr(self, f"overflow_key_{aggregator}", "") or None
 
     @property
     def oauth_billed_set(self) -> frozenset[str]:

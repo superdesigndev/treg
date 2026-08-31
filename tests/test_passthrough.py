@@ -8,7 +8,40 @@ our control token, and the injected credential.
 
 from __future__ import annotations
 
+import asyncio
+
+import httpx
+import pytest
 from httpx import AsyncClient
+
+from treg.api import app
+
+
+class _CloseTrackingStream(httpx.AsyncByteStream):
+    def __init__(self, chunks: int = 1000) -> None:
+        self.chunks = chunks
+        self.close_calls = 0
+        self.chunks_yielded = 0
+        self.exhausted = False
+
+    async def __aiter__(self):
+        for _ in range(self.chunks):
+            self.chunks_yielded += 1
+            yield b"chunk"
+            await asyncio.sleep(0)
+        self.exhausted = True
+
+    async def aclose(self) -> None:
+        self.close_calls += 1
+
+
+class _CloseTrackingTransport(httpx.AsyncBaseTransport):
+    def __init__(self, stream: _CloseTrackingStream) -> None:
+        self.stream = stream
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"Content-Type": "application/json"},
+                              stream=self.stream, request=request)
 
 
 async def _register(c: AsyncClient, name: str, base_url: str, value: str = "SEK") -> None:
@@ -24,6 +57,105 @@ async def test_passthrough_resolves_by_url_and_injects(clients: AsyncClient):
     d = r.json()
     assert d["auth"] == "Bearer SEK"          # credential injected by treg
     assert d["query"]["per_page"] == "5"      # caller's real query preserved
+
+
+async def test_completed_relay_closes_the_upstream_response(clients: AsyncClient):
+    """A downstream disconnect must run the close task before httpx exhausts its own iterator."""
+    stream = _CloseTrackingStream()
+    tracked = AsyncClient(transport=_CloseTrackingTransport(stream), base_url="http://tracked")
+    original = app.state.http
+    app.state.http = tracked
+    try:
+        await _register(clients, "tracked", "http://tracked")
+        response_started = asyncio.Event()
+        five_chunks_sent = asyncio.Event()
+        body_chunks = 0
+        request_delivered = False
+
+        async def receive():
+            nonlocal request_delivered
+            if not request_delivered:
+                request_delivered = True
+                return {"type": "http.request", "body": b"", "more_body": False}
+            await response_started.wait()
+            await five_chunks_sent.wait()
+            return {"type": "http.disconnect"}
+
+        async def send(message):
+            nonlocal body_chunks
+            if message["type"] == "http.response.start":
+                assert message["status"] == 200
+                response_started.set()
+            elif message["type"] == "http.response.body" and message.get("body"):
+                body_chunks += 1
+                if body_chunks == 5:
+                    five_chunks_sent.set()
+
+        token = clients.headers["X-Treg-Token"].encode("latin-1")
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0", "spec_version": "2.3"},
+            "http_version": "1.1",
+            "method": "GET",
+            "scheme": "http",
+            "path": "/call/tracked/resource",
+            "raw_path": b"/call/tracked/resource",
+            "query_string": b"",
+            "root_path": "",
+            "headers": [(b"host", b"registry"), (b"x-treg-token", token)],
+            "client": ("127.0.0.1", 50000),
+            "server": ("registry", 80),
+        }
+        async with asyncio.timeout(2):
+            await app(scope, receive, send)
+
+        assert body_chunks >= 5
+        assert stream.exhausted is False
+        assert stream.chunks_yielded < 1000
+        assert stream.close_calls == 1
+    finally:
+        app.state.http = original
+        await tracked.aclose()
+
+
+async def test_fully_consumed_relay_closes_the_upstream_response_once(clients: AsyncClient):
+    stream = _CloseTrackingStream(chunks=3)
+    tracked = AsyncClient(transport=_CloseTrackingTransport(stream), base_url="http://tracked-full")
+    original = app.state.http
+    app.state.http = tracked
+    try:
+        await _register(clients, "tracked-full", "http://tracked-full")
+        response = await clients.get("/call/tracked-full/resource")
+
+        assert response.status_code == 200
+        assert response.content == b"chunk" * 3
+        assert stream.exhausted is True
+        assert stream.close_calls == 1
+    finally:
+        app.state.http = original
+        await tracked.aclose()
+
+
+async def test_interrupted_relay_closes_the_upstream_response_once(clients: AsyncClient):
+    class InterruptedStream(_CloseTrackingStream):
+        async def __aiter__(self):
+            self.chunks_yielded += 1
+            yield b"partial"
+            raise httpx.ReadError("provider stream interrupted")
+
+    stream = InterruptedStream()
+    tracked = AsyncClient(transport=_CloseTrackingTransport(stream), base_url="http://tracked-error")
+    original = app.state.http
+    app.state.http = tracked
+    try:
+        await _register(clients, "tracked-error", "http://tracked-error")
+        with pytest.raises(httpx.ReadError, match="provider stream interrupted"):
+            await clients.get("/call/tracked-error/resource")
+
+        assert stream.close_calls == 1
+    finally:
+        app.state.http = original
+        await tracked.aclose()
 
 
 async def test_duplicate_query_params_preserved(clients: AsyncClient):

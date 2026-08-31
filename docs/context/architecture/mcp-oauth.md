@@ -2,9 +2,18 @@
 title: MCP — the front door for assistants, and treg as an OAuth authorization server
 status: shipped
 sources:
+  - src/treg/application/auth.py
   - src/treg/mcp.py
-  - src/treg/mcp_oauth.py
+  - src/treg/domain/identity/health.py
+  - src/treg/domain/identity/mcp_oauth.py
+  - src/treg/domain/identity/session.py
+  - src/treg/routers/auth.py
+  - src/treg/web/claude-connector.html
   - src/treg/web/connect-demo.html
+  - docs/CLAUDE-CONNECTOR-SUBMISSION.md
+  - tests/test_mcp.py
+  - tests/test_mcp_directory.py
+  - tests/test_marketplace_call.py
 related:
   - architecture/auth-secrets.md
   - architecture/proxy-model.md
@@ -14,11 +23,80 @@ related:
 
 # MCP
 
-Everything else in treg is reached by a CLI or an HTTP call. This is the door an **assistant** comes
-through: ChatGPT, Claude Code, Cursor, or anything else that speaks the Model Context Protocol. It is
-mounted at `/mcp/` on the same app, so there is one deployment, one database and one set of rules.
+Everything else in treg is reached by a CLI or an HTTP call. These are the doors an **assistant**
+comes through: ChatGPT, Claude, Claude Code, Cursor, or anything else that speaks the Model Context
+Protocol. Both use one deployment, database, and enforcement layer:
 
-## Six tools, and why only six
+- `/mcp/` is the team MCP surface. It keeps its catalog, team-tool, and imported-skill behavior.
+- `/mcp/v2/` is the catalog-only Claude directory surface. It cannot list or call arbitrary
+  team-owned tools, including a team tool whose name matches a catalog endpoint.
+
+## Why V2 exists
+
+The team `/mcp/` must keep its general `call` tool because existing users use it for catalog
+endpoints, team-owned tools, and imported skills. Treg cannot reliably classify the side effects of
+an arbitrary private tool, so that surface cannot give Claude a precise read-versus-write safety
+signal without breaking its existing contract.
+
+V2 keeps `/mcp/` unchanged and exposes a narrower directory boundary. It accepts only curated
+catalog ids and splits calls by the HTTP method stored in the catalog. Claude can therefore treat
+GET, HEAD, and OPTIONS as reads and request approval for POST, PUT, PATCH, and DELETE. Both surfaces
+still use the same internal credential, policy, metering, audit, and relay machinery.
+
+The two version labels describe different things. `/mcp/v2/` is Treg's second MCP transport
+surface. **Connector release V1** is the first product release submitted to Claude's directory.
+
+`NormalizeDirectoryMCPPath` makes `/mcp/v2` and `/mcp/v2/` the same V2 resource. This is required
+because a real Claude custom-connector flow removed the trailing slash. Without normalization, the
+request can fall through to the team `/mcp` mount and receive the wrong OAuth resource identity.
+
+## Claude connector feature flag
+
+`TREG_CLAUDE_CONNECTOR_ENABLED` defaults to `false`. When false, V2 is not mounted, its lifespan does
+not start, V2 resource metadata and new V2 grants are refused, and the catalog-only call route returns
+404. The team `/mcp/` surface does not depend on this flag.
+
+## MCP surface maintenance contract
+
+The two public surfaces have different contracts, but they must not have different implementations
+of shared behavior.
+
+| Area | Must stay shared | Intentional difference |
+|---|---|---|
+| catalog search | loading, ranking, price view, near misses, and the same process observation cache and refresh Task used by HTTP | next-call guidance and event source |
+| endpoint details | the `/catalog/endpoints/{id}` route and error shape | client attribution |
+| calls | request assembly, credentials, policy, limits, idempotency, relay, errors, metering, audit | team MCP accepts team tools; V2 accepts catalog ids only and splits read/write methods |
+| balance | team selection, grant labels, balance route, error shape | client attribution |
+| catalog requests | `/tool-requests`, rate limit, field limits, caller IP | event source and client attribution |
+| transport | host checks, compression, cache headers, eager auth, static capabilities | V2 has a separate audience, metadata path, scope marker, and Claude browser origin |
+| lifecycle | the transport factory and `mcp_lifespan` | V2 mount and lifespan depend on its feature flag |
+
+`_SurfacePolicy` contains the small set of values that can differ inside shared tool behavior. Public
+tool registrations remain separate because their names, descriptions, input schemas, and safety
+annotations are public contracts. `build_mcp_app` refuses a server and OAuth resource-version pair
+that names different surfaces.
+
+When either MCP surface or shared MCP code changes, review both surfaces. The tests must compare the
+shared behavior and must also prove the listed differences. Keep these V2 properties fixed unless a
+new directory review approves a contract change:
+
+- `/mcp/v2/` is the stable URL, and `/mcp/v2` resolves to the same resource.
+- The tool list has exactly six tools.
+- V2 accepts catalog ids only. It does not list or call arbitrary team tools or passthrough paths.
+- Read and write calls stay separate, and their annotations match their method classes.
+- V1 and V2 OAuth audiences do not cross.
+- The feature flag controls the V2 mount, metadata, new grants, call route, and lifespan.
+- V2 directory titles, descriptions, schemas, annotations, and neutral review copy stay under test.
+  Each tool repeats its exact display title in `annotations.title`; Anthropic's submission portal
+  validates the annotation title independently of the top-level tool title.
+
+`tests/test_mcp.py` protects team MCP behavior. `tests/test_mcp_directory.py` protects the V2 surface
+and calls both public URLs with the same inputs to compare search results and prices, endpoint
+details, balance, catalog-call results, errors, catalog-only hints, and client attribution.
+`tests/test_marketplace_call.py` proves that the catalog-only API route cannot be shadowed by a
+same-named team tool. A change is incomplete if only one relevant MCP test file is reviewed.
+
+## Team MCP at `/mcp/`: six tools
 
 | Tool | Job |
 |---|---|
@@ -33,6 +111,20 @@ Deliberately not one tool per provider. A catalog of 2,600 endpoints exposed as 
 bury the client's tool list and force a re-connect every time the catalog grew. `catalog_search`
 plus `call` covers all of it and stays the same size.
 
+## Fixed surface — no change subscriptions
+
+The six-tool MCP surface is static. Weekly catalog refreshes change the DATA returned by
+`catalog_search` and `catalog_get`; they do not change `tools/list`. treg also publishes no tool,
+prompt or resource change events. `server/discover` therefore advertises
+`tools.listChanged=false`, `prompts.listChanged=false`, `resources.listChanged=false`, and
+`resources.subscribe=false`, and `subscriptions/listen` is refused with `METHOD_NOT_FOUND`.
+
+MCP SDK 2.0 installs `subscriptions/listen` and derives all four flags from its presence, with no
+public constructor switch to disable it. `_StaticSurfaceCapabilities` corrects both behaviors
+through the SDK's public server-middleware seam: it rewrites the discover result and vetoes listen.
+It deliberately does not mutate the SDK's private handler registry. This keeps clients from opening
+idle SSE streams which can never deliver useful work.
+
 `call` is annotated **destructive + open-world + non-idempotent**, which reads as pessimistic until
 you notice treg does not model the upstream: it relays to somebody else's API and cannot know whether
 that endpoint charges, writes or deletes. Claiming otherwise would be a guess presented as a fact.
@@ -42,8 +134,9 @@ nothing upstream, nothing spent), so it stays closed-world and non-destructive. 
 `X-Forwarded-For` — the in-process relay would otherwise collapse every MCP caller into one
 rate-limit bucket. `catalog_search`'s zero-result hint names it, so an agent that just searched
 and found nothing can file the gap in the same session — and the miss itself is logged as a
-`SearchMiss` row (`audit.record_search_miss`, `source="mcp"`): this tool reads the catalog
-in-process, so the HTTP route's own miss logging never sees an MCP agent's empty search.
+`SearchMiss` row (`audit.record_search_miss`, `source="mcp"` on the team MCP and
+`source="claude-connector"` on V2): this tool reads the catalog in-process, so the HTTP route's own
+miss logging never sees an MCP agent's empty search.
 
 ## In-process, not over the network
 
@@ -51,8 +144,9 @@ Tools reach the rest of treg through `httpx.ASGITransport` against our own app �
 through the real routes, without a socket. That matters because the enforcement rules (deny rules,
 capability pins, per-member tool access, the credential ladder, metering) live in those routes. A
 second path that "just read the database" would be a second implementation of every one of them,
-drifting quietly. The in-process client stamps `X-Treg-Client: mcp` (attribution, never a gate), so
-MCP traffic is distinguishable from unreported CLI traffic in the audit trail and analytics.
+drifting quietly. The in-process client stamps `X-Treg-Client: mcp` for the team MCP and
+`X-Treg-Client: claude-connector` for V2 (attribution, never a gate), so each MCP surface is
+distinguishable from unreported CLI traffic and from the other MCP surface.
 
 The catalog is the one exception: read straight from `catalog_store`, which is already parsed in
 memory, so a search answers in about a millisecond. That is a **speed** choice, not a permission one.
@@ -184,13 +278,25 @@ The transport's own DNS-rebinding host check (421) and Origin check (403) sit *b
 middleware, so a credentialed request with a bad host or origin is still refused by them — auth does
 not mask the transport guard.
 
+`RequireAuthForProtectedTools` buffers the POST body only long enough to classify that request. It
+then replays the consumed request messages and delegates every later `receive()` call to the
+original ASGI channel; it never manufactures `http.disconnect`. That distinction is load-bearing
+for MCP 2026-07-28 `subscriptions/listen`, which exposed the bug before treg stopped advertising
+that unused method, and for any other long response: a synthetic disconnect cancels live downstream
+work. If the client genuinely disconnects while the middleware is reading the body, every observed
+partial-body message and the real disconnect are replayed unchanged without inventing completion.
+
 # treg as an authorization server
 
 Elsewhere treg speaks OAuth as a **client** (`oauth.py` signs in with GitHub, connects a provider
 account). Here it is the thing that **issues** tokens. Different direction, different module.
 
-Built refusal-first: the metadata and the `aud` check landed before anything could issue a token, so
-there was never a window where the server accepted credentials it had not learned to check.
+`routers.auth` owns OAuth HTTP translation and consent rendering. `application.auth` sequences client
+registration, authorization, code exchange, refresh rotation/replay response, revocation, and grant-team
+changes; it opens each session and owns every commit. The identity leaf owns token/resource validation and
+grant-family primitives in `domain.identity.mcp_oauth`.
+Its client-metadata fetch imports `health` lazily, and `domain.identity.health` aliases the root
+credential-network safety module so both paths retain one module object and monkeypatch target.
 
 ## The `aud` claim carries the weight
 
@@ -206,16 +312,21 @@ A test asserts that calling without it raises rather than defaulting to permissi
 that is valid, well-formed and silently useless — the failure then surfaces at the first tool call as
 "not signed in", pointing the reader at authentication when the problem was the audience.
 
-**The audience set is canonical + legacy** (`mcp_resource_audiences()`: `public_url` plus
-`config.PUBLIC_HOST_ALIASES` — the treg.superdesign.dev → treg.to move, SYMMETRIC so grants
-minted on either name survive a `TREG_PUBLIC_URL` flip in either direction). A pre-move grant carries
-the old resource URL as its audience for its whole lifetime, because refresh reissues the audience
-that was consented to (`row.resource`); validating against the canonical URL alone would 401 every
-pre-move grant with refresh unable to recover. The transport validates via `read_access_token_any`,
-and `/oauth/token` treats the two names as the same resource (`api._same_mcp_resource`).
-Slash-variant spellings are healed by `normalize_resource()` at every store/mint/compare site:
-authorize accepts `…/mcp` via a forgiving compare, and a token whose audience kept that spelling
-would fail the exact audience match forever.
+V2 advertises `treg:directory` as a fallback resource marker. Hosted Claude can preserve the V2
+challenge scopes while omitting the RFC 8707 `resource` parameter. In that case,
+`_effective_mcp_resource` selects the V2 audience. An explicit resource always wins, and all other
+requests keep the V1 default.
+
+**Each MCP version has its own audience set.** `mcp_resource_audiences(version)` includes the
+configured `public_url` plus `config.PUBLIC_HOST_ALIASES` for that version. This is symmetric so a
+grant survives a host change or rollback. Host and trailing-slash aliases can normalize within V1 or
+within V2, but they never cross versions. A V1 token fails on `/mcp/v2/`, and a V2 token fails on
+`/mcp/`.
+
+A grant keeps its consented audience for its lifetime because refresh reissues `row.resource`.
+`read_access_token_any` validates against the selected version, `_same_mcp_resource` accepts aliases
+only when both values resolve to that version, and `normalize_resource()` heals slash spellings at
+each store, mint, and comparison point.
 
 ## Two doors in, one row out
 
@@ -332,18 +443,25 @@ perfectly while every tool still forwarded the raw bearer and got "not signed in
 
 ## Sign-in mid-authorization
 
-A signed-out visitor to `/oauth/authorize` has the destination parked in a short-lived cookie and
-resumed at the **dashboard**, which is the one point every browser sign-in door ends at. It stores a
-relative path and honours only `/oauth/authorize`, so it cannot become a general "send me anywhere
-after login" primitive.
+A signed-out visitor to `/oauth/authorize` has the destination parked in a short-lived HttpOnly
+cookie and is redirected to `/?signin=oauth`. The dashboard opens the existing sign-in modal with
+generic connection copy, removes the query parameter from the visible URL, and does not create a
+sandbox session. The query parameter is only a UI cue; it contains no OAuth request data. Google,
+GitHub, and email-code sign-in all return to the dashboard, which resumes the parked authorization
+request. The cookie stores a relative path and honours only `/oauth/authorize`, so it cannot become a
+general "send me anywhere after login" primitive.
 
 ## `/connect-demo`
 
 A page that pretends to be someone else's app and runs the whole flow — register, consent popup,
 token exchange, tool calls. It uses only public endpoints; being served from treg's domain gives it
-nothing. It exists because a failure inside ChatGPT surfaces as a shrug, and it earned itself
-immediately: it found that browsers were refused outright (`"*"` is not a wildcard in the SDK's
-origin check) and that consent failed intermittently on `Origin: null`.
+nothing. `TREG_CONNECT_DEMO_ENABLED` gates both the page and its callback and defaults to `false`, so
+production should return 404. The local development script enables it; staging can enable it
+explicitly for tests. The browser holds working tokens in tab-local session storage for the demo,
+but the visible log shows only `[received]` and never displays a token prefix. Disconnect revokes the
+grant and clears the stored tokens. The page exists because a failure inside an agent client surfaces
+as a shrug, and it earned itself immediately: it found that browsers were refused outright (`"*"` is
+not a wildcard in the SDK's origin check) and that consent failed intermittently on `Origin: null`.
 
 ## What is deliberately NOT here
 

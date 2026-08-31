@@ -1,0 +1,27 @@
+{
+  "companies": [
+    {
+      "lookupSuccessful": true,
+      "company": {
+        "id": "OYClaZ4…",
+        "name": "Stripe",
+        "description": "Stripe …",
+        "country": "United …",
+        "region": "Califor…",
+        "locality": "South S…",
+        "URLs": {
+          "golden": "golden.…",
+          "contact": "stripe.…",
+          "twitter": "twitter…",
+          "website": "stripe.…",
+          "facebook": "www.fac…",
+          "linkedin": "linkedi…",
+          "pitchbook": "pitchbo…",
+          "angelList": "angel.c…",
+          "crunchbase": "crunchb…"
+        },
+        "headcount": 0
+      }
+    }
+  ]
+}

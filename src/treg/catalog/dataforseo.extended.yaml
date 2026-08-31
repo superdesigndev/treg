@@ -2066,8 +2066,9 @@ endpoints:
   example_response: examples/dataforseo.x.dataforseo-labs-amazon-related-keywords-live.json
   observed_cost: 0.0126
 - id: dataforseo.x.merchant-amazon-asin-live-advanced
-  tier: extended
+  capability: amazon.product.variants
   platform: amazon
+  tier: extended
   method: POST
   path: /merchant/amazon/asin/live/advanced
   name: "Amazon ASINs for all variations of a product, live"
@@ -2227,8 +2228,9 @@ endpoints:
   observed_cost: 0.0033
   observed_time: 23.64
 - id: dataforseo.x.merchant-amazon-sellers-live-advanced
-  tier: extended
+  capability: amazon.product.sellers
   platform: amazon
+  tier: extended
   method: POST
   path: /merchant/amazon/sellers/live/advanced
   name: "Amazon sellers of a product by ASIN, live"
@@ -7752,8 +7754,9 @@ endpoints:
   example_response: examples/dataforseo.x.serp-google-ads-search-task-post.json
   observed_cost: 0.0006
 - id: dataforseo.x.serp-google-ai-mode-live-advanced
-  tier: extended
+  capability: google.serp.ai_mode
   platform: google
+  tier: extended
   method: POST
   path: /serp/google/ai_mode/live/advanced
   name: "Google AI Mode results for a keyword, live"
@@ -8484,8 +8487,9 @@ endpoints:
   example_response: examples/dataforseo.x.serp-google-jobs-task-post.json
   observed_cost: 0.0006
 - id: dataforseo.x.serp-google-local-finder-live-advanced
-  tier: extended
+  capability: google.serp.local
   platform: google
+  tier: extended
   method: POST
   path: /serp/google/local_finder/live/advanced
   name: "Google Local Finder results for a keyword, live"
@@ -8577,8 +8581,9 @@ endpoints:
   docs_url: https://docs.dataforseo.com/v3/serp/google/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.serp-google-maps-live-advanced
-  tier: extended
+  capability: google.serp.maps
   platform: google
+  tier: extended
   method: POST
   path: /serp/google/maps/live/advanced
   name: "Google Maps results for a keyword and location, live"
@@ -8663,8 +8668,9 @@ endpoints:
   example_response: examples/dataforseo.x.serp-google-maps-live-advanced.json
   observed_cost: 0.002
 - id: dataforseo.x.serp-google-news-live-advanced
-  tier: extended
+  capability: google.serp.news
   platform: google
+  tier: extended
   method: POST
   path: /serp/google/news/live/advanced
   name: "Google News results for a keyword, live"
@@ -8753,8 +8759,9 @@ endpoints:
   example_response: examples/dataforseo.x.serp-google-news-live-advanced.json
   observed_cost: 0.002
 - id: dataforseo.x.serp-google-organic-live-advanced
-  tier: extended
+  capability: google.serp.organic
   platform: google
+  tier: extended
   method: POST
   path: /serp/google/organic/live/advanced
   name: "Google organic results for a keyword — full SERP features"
@@ -12319,8 +12326,9 @@ endpoints:
   example_response: examples/dataforseo.x.keywords-data-dataforseo-trends-demography-live.json
   observed_cost: 0.0024
 - id: dataforseo.x.keywords-data-dataforseo-trends-explore-live
+  capability: google.keywords.trends
+  platform: google
   tier: extended
-  platform: web
   method: POST
   path: /keywords_data/dataforseo_trends/explore/live
   name: "DataForSEO Trends keyword popularity over time"

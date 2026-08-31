@@ -1,0 +1,13 @@
+{
+  "name": "Stripe",
+  "domain": "stripe.com",
+  "company_size": "phone:0a67cdc892",
+  "industry": "Computer Software",
+  "linkedin_url": "https://www.linkedin.com/company/stripe/",
+  "description": "Stripe builds programmable financial services. Millions of companies—from the world’s largest enterprises to the most ambitious startups—use Stripe to accept payments, grow their revenue, and accelerate new business opportunities. Headquartered in San Francisco and Dublin, the company aims to increa",
+  "city": "South San Francisco",
+  "region": "California",
+  "country": "us",
+  "_scrubbed": true,
+  "_note": "captured live 2026-08-28 via treg; emails/phones hashed, lists trimmed"
+}

@@ -17,7 +17,7 @@ from sqlmodel import select
 
 from treg import crypto, health, oauth
 from treg.config import get_settings
-from treg.db import session_maker
+from treg.infra.db import session_maker
 from treg.models import Secret
 
 

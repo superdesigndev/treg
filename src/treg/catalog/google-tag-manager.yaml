@@ -1,0 +1,164 @@
+# unverified — endpoints require a connected OAuth account; verify via a treg connection later.
+#
+# The OAuth capabilities are deliberately cumulative:
+#   read   → tagmanager.readonly
+#   write  → read + tagmanager.edit.containers
+#   manage → write + tagmanager.edit.containerversions + tagmanager.publish
+#
+# treg intentionally does not request tagmanager.delete.containers, tagmanager.manage.users, or
+# tagmanager.manage.accounts. A connected agent can inspect configuration, prepare changes in a
+# workspace, create versions, and publish or roll back by publishing an earlier version, but it
+# cannot delete whole containers or administer account/container access.
+provider: google-tag-manager
+source:
+  docs: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2
+  openapi: https://tagmanager.googleapis.com/$discovery/rest?version=v2
+  curated: 2026-08-27
+
+limits: "Google Tag Manager API project and per-user quotas apply"
+pricing_url: https://developers.google.com/tag-platform/tag-manager/api/v2/limits-quotas
+endpoints:
+  - id: google-tag-manager.accounts
+    capability: google-tag-manager.accounts
+    platform: google-tag-manager
+    scope: own_account
+    method: GET
+    path: /tagmanager/v2/accounts
+    name: "List your Tag Manager accounts"
+    summary: "List the Google Tag Manager accounts you can access"
+    input:
+      queryParams:
+        pageToken: {type: string, required: false}
+      note: "Returns {account: [{path, accountId, name, shareData, fingerprint}]}; `path` (for example accounts/123456) is the resource id used by container calls. This is also the connection health probe and account picker"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "no per-call charge; billed against the API's project and per-user quota"}
+    docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts/list
+
+  - id: google-tag-manager.containers
+    capability: google-tag-manager.containers
+    platform: google-tag-manager
+    scope: own_account
+    method: GET
+    path: /tagmanager/v2/accounts/{account_id}/containers
+    name: "List containers in a Tag Manager account"
+    summary: "List the web, server, Android and iOS containers in an account"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "digits from the account resource path (accounts/123456)", example: "123456"}
+      queryParams:
+        pageToken: {type: string, required: false}
+      note: "Use each container's `path` in the workspace and live-version calls"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "no per-call charge; platform quotas apply"}
+    docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts.containers/list
+
+  - id: google-tag-manager.workspaces
+    capability: google-tag-manager.workspaces
+    platform: google-tag-manager
+    scope: own_account
+    method: GET
+    path: /tagmanager/v2/accounts/{account_id}/containers/{container_id}/workspaces
+    name: "List workspaces in a container"
+    summary: "List the draft workspaces available in a Tag Manager container"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "digits from the account resource path", example: "123456"}
+        container_id: {type: string, required: true, note: "digits from the container resource path", example: "789"}
+      queryParams:
+        pageToken: {type: string, required: false}
+      note: "A workspace isolates draft tags, triggers and variables before a version is created"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "no per-call charge; platform quotas apply"}
+    docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts.containers.workspaces/list
+
+  - id: google-tag-manager.tags
+    capability: google-tag-manager.tags
+    platform: google-tag-manager
+    scope: own_account
+    method: GET
+    path: /tagmanager/v2/accounts/{account_id}/containers/{container_id}/workspaces/{workspace_id}/tags
+    name: "List tags in a workspace"
+    summary: "Inspect the tags configured in a Tag Manager workspace"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, example: "123456"}
+        container_id: {type: string, required: true, example: "789"}
+        workspace_id: {type: string, required: true, note: "digits from the workspace resource path", example: "1"}
+      queryParams:
+        pageToken: {type: string, required: false}
+      note: "Tag parameters are schema-driven and vary by tag type; read triggers and variables as related workspace resources before proposing changes"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "no per-call charge; platform quotas apply"}
+    docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts.containers.workspaces.tags/list
+
+  - id: google-tag-manager.live-version
+    capability: google-tag-manager.live_version
+    platform: google-tag-manager
+    scope: own_account
+    method: GET
+    path: /tagmanager/v2/accounts/{account_id}/containers/{container_id}/versions:live
+    name: "Get a container's live version"
+    summary: "Inspect the configuration currently published from a Tag Manager container"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, example: "123456"}
+        container_id: {type: string, required: true, note: "digits from the container resource path", example: "789"}
+      note: "Compare the returned live version with a workspace before creating or publishing a replacement"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "no per-call charge; platform quotas apply"}
+    docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts.containers.versions/live
+
+  - id: google-tag-manager.workspace-sync
+    kind: action
+    capability: google-tag-manager.workspace.sync
+    platform: google-tag-manager
+    scope: own_account
+    method: POST
+    path: /tagmanager/v2/accounts/{account_id}/containers/{container_id}/workspaces/{workspace_id}:sync
+    name: "Sync a workspace"
+    summary: "Merge the latest container version into a draft workspace and report conflicts"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, example: "123456"}
+        container_id: {type: string, required: true, example: "789"}
+        workspace_id: {type: string, required: true, note: "digits from the workspace resource path", example: "1"}
+      note: "This changes the draft workspace when upstream changes can be merged; inspect mergeConflict[] before continuing"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "no per-call charge; platform quotas apply"}
+    docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts.containers.workspaces/sync
+
+  - id: google-tag-manager.version-create
+    kind: action
+    capability: google-tag-manager.version.create
+    platform: google-tag-manager
+    scope: own_account
+    method: POST
+    path: /tagmanager/v2/accounts/{account_id}/containers/{container_id}/workspaces/{workspace_id}:create_version
+    name: "Create a container version from a workspace"
+    summary: "Snapshot a validated draft workspace as a new container version"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, example: "123456"}
+        container_id: {type: string, required: true, example: "789"}
+        workspace_id: {type: string, required: true, note: "digits from the workspace resource path", example: "1"}
+      body:
+        name: {type: string, required: false, example: "Add GA4 purchase event"}
+        notes: {type: string, required: false, example: "Reviewed in workspace 1 before publishing"}
+      bodyType: json
+      note: "Requires the manage capability. Creating a version does not publish it; inspect compilerError and the returned containerVersion before publishing"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "no per-call charge; platform quotas apply"}
+    docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts.containers.workspaces/create_version
+
+  - id: google-tag-manager.version-publish
+    kind: action
+    capability: google-tag-manager.version.publish
+    platform: google-tag-manager
+    scope: own_account
+    method: POST
+    path: /tagmanager/v2/accounts/{account_id}/containers/{container_id}/versions/{container_version_id}:publish
+    name: "Publish a container version"
+    summary: "Make a selected Tag Manager container version live"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, example: "123456"}
+        container_id: {type: string, required: true, example: "789"}
+        container_version_id: {type: string, required: true, note: "digits from the container-version resource path", example: "4"}
+      queryParams:
+        fingerprint: {type: string, required: false, note: "optimistic-lock fingerprint returned with the version"}
+      note: "Requires the manage capability and changes the live site/app configuration. Confirm the exact version and inspect compilerError before publishing. Rollback is performed by publishing an earlier version"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "no per-call charge; platform quotas apply"}
+    docs_url: https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2/accounts.containers.versions/publish

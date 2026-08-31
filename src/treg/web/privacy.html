@@ -205,6 +205,10 @@
   after a sign-in detour (a few minutes). The second holds a referral code if you arrived through
   someone's invite link, so we can credit them when you create a team (30 days). Neither identifies
   you, and neither is used for advertising.</p>
+  <p><code>treg_utm</code>: set by our own <code>/sitetrack.js</code> on your first page — if the link
+  you arrived by carried campaign tags (<code>utm_*</code>) or a referring site, it remembers that source
+  so we can tell which links bring people to treg, retained for <b>90 days</b>. It holds no identifier
+  and is never sent to a third party.</p>
   <p><code>treg_ad</code>: set by our own <code>/adtrack.js</code>, not a Google script — if you arrive
   from a Google Ads click, it records which ad click led to your visit (the click id and the landing
   page), retained for <b>90 days</b>. It exists to tell us whether an ad turned into a signup, an active

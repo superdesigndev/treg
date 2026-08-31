@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Treg connector for Claude</title>
+<meta name="description" content="Connect Claude to Treg's curated catalog of live data and APIs without sharing API keys with Claude."/>
+<link rel="canonical" href="{BASE}/connectors/claude"/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist+Pixel&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/legal.css"/>
+</head>
+<body>
+<div class="topbar"><div class="in">
+  <a class="brand" href="/"><span class="glyph">▚</span> treg</a>
+  <span class="sp"></span>
+  <a class="nav on" href="/connectors/claude">Claude connector</a>
+  <a class="nav" href="/pricing">pricing</a>
+  <a class="nav" href="/support">support</a>
+</div></div>
+
+<div class="page"><div class="doc">
+  <div class="eyebrow">Community connector</div>
+  <h1>Treg for Claude</h1>
+  <div class="stamp"><span>Published by Superdesign</span><span>Connector release V1</span></div>
+
+  <div class="summary">
+    <h2>Live data and APIs for Claude, without API keys</h2>
+    <p>Treg lets Claude find and call endpoints from Treg's curated catalog. It is a third-party
+    community connector published by Superdesign; it is not an Anthropic product or a claim of
+    Anthropic verification.</p>
+  </div>
+
+  <h2 class="sec" id="setup"><span class="n">01</span>Connect</h2>
+  <ol>
+    <li>In Claude, open <b>Settings → Connectors</b> and choose Treg from the directory.</li>
+    <li>Choose <b>Connect</b>. Claude opens Treg's OAuth consent page.</li>
+    <li>Sign in to Treg, select the team Claude may use, review the requested access, and approve.</li>
+  </ol>
+  <p>While the directory listing is under review, the same connector can be tested as a custom
+  connector using <code>{BASE}/mcp/v2/</code>. Authentication uses OAuth with PKCE; do not paste a
+  Treg token or provider API key into Claude. The <code>v2</code> in this URL identifies Treg's
+  restricted MCP transport; it is separate from connector release V1.</p>
+
+  <h2 class="sec" id="scope"><span class="n">02</span>Connector V1 scope and tools</h2>
+  <p>This version exposes the curated Treg catalog only. It cannot list or invoke team-owned tools,
+  imported skills, arbitrary URLs, or arbitrary HTTP methods.</p>
+  <ul>
+    <li><code>catalog_search</code> and <code>catalog_get</code> find endpoints and show their input,
+    authentication, method, and price.</li>
+    <li><code>catalog_call_read</code> invokes only catalog entries declared as GET, HEAD, or OPTIONS.</li>
+    <li><code>catalog_call_write</code> invokes only catalog entries declared as POST, PUT, PATCH, or
+    DELETE. Claude controls its confirmation experience for these potentially mutating calls.</li>
+    <li><code>balance</code> reports the selected team's prepaid balance and daily usage.</li>
+    <li><code>catalog_request</code> records a request for a missing capability; it does not call a
+    provider or change provider data.</li>
+  </ul>
+
+  <h2 class="sec" id="pricing"><span class="n">03</span>Pricing and limits</h2>
+  <p>Searching and inspecting the catalog is free. Before a metered call, Treg returns the endpoint's
+  USD price. Calls served with Treg's platform credential debit the selected team's prepaid balance;
+  calls using your own connected provider credential follow the provider's own billing as well.
+  Your team's balance and daily cap are enforced before calls. See the current <a href="/pricing">pricing</a>
+  page and the endpoint detail shown in Claude before proceeding.</p>
+
+  <h2 class="sec" id="data"><span class="n">04</span>Data flow and security</h2>
+  <p>Claude sends the chosen endpoint id and request inputs to Treg. Treg resolves the curated entry,
+  applies the selected team's access rules and spending limits, injects the applicable credential
+  server-side, and relays the request to that endpoint's provider. The provider response is returned
+  to Claude without reshaping it. Provider credentials are never returned to Claude.</p>
+  <p>Treg records call metadata needed for metering, audit, reliability, and support. Provider request
+  and response data necessarily pass through Treg to complete the call. Read the full
+  <a href="/privacy">privacy policy</a> for retention, processors, and account-data rights.</p>
+
+  <h2 class="sec" id="disconnect"><span class="n">05</span>Disconnect and revoke</h2>
+  <p>Disconnect Treg from Claude in <b>Settings → Connectors</b>. To revoke the underlying authorization
+  from Treg as well, sign in to Treg and remove the Claude grant from the connected-apps area, or ask
+  <a href="/support">support</a> to revoke it. Disconnecting does not delete your Treg team, balance,
+  provider connections, or audit history.</p>
+
+  <h2 class="sec" id="support"><span class="n">06</span>Support</h2>
+  <p>For setup, billing, privacy, security, or endpoint problems, visit <a href="/support">Treg support</a>
+  or email <a href="mailto:jason@superdesign.dev">jason@superdesign.dev</a>. Include the endpoint id,
+  approximate time, and the error text, but never send passwords, OAuth codes, tokens, or API keys.</p>
+</div>
+
+<nav class="toc">
+  <a href="#setup">Connect</a><a href="#scope">Connector V1 scope</a><a href="#pricing">Pricing</a>
+  <a href="#data">Data flow</a><a href="#disconnect">Disconnect</a><a href="#support">Support</a>
+</nav></div>
+
+<footer><div class="foot-in">
+  <span class="brand"><span class="glyph">▚</span> treg</span><span class="muted">— by Superdesign</span>
+  <span class="sp"></span><a href="/support">support</a><a href="/privacy">privacy</a>
+  <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">github ↗</a>
+</div></footer>
+</body>
+</html>

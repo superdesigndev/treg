@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
 
@@ -13,8 +12,9 @@ from conftest import make_upstream
 from treg import adsconv
 from treg.api import app
 from treg.config import get_settings
-from treg.db import _migrate_to_orgs, reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 from treg.models import AdConversion, Org
+from treg.timeutil import utcnow_naive
 
 
 def _h(token: str) -> dict:
@@ -141,20 +141,6 @@ def test_tracking_is_disabled_when_any_required_setting_is_missing(
 ):
     monkeypatch.setattr(ads_enabled, setting_name, "", raising=False)
     assert adsconv.enabled() is False
-
-
-def test_existing_ads_tables_receive_additive_state_columns():
-    engine = create_engine("sqlite://")
-    with engine.begin() as conn:
-        conn.execute(text("CREATE TABLE org (id INTEGER PRIMARY KEY)"))
-        conn.execute(text("INSERT INTO org (id) VALUES (1)"))
-        conn.execute(text("CREATE TABLE adconversion (id INTEGER PRIMARY KEY)"))
-
-        _migrate_to_orgs(conn)
-
-        assert "ad_click_id_type" in {c["name"] for c in inspect(conn).get_columns("org")}
-        conversion_columns = {c["name"] for c in inspect(conn).get_columns("adconversion")}
-        assert {"next_attempt_at", "failed_at"} <= conversion_columns
 
 
 async def test_ad_conversion_is_unique_per_org_and_action(clients):
@@ -440,14 +426,14 @@ async def test_drain_sends_every_pending_row_in_one_batch(clients, ads_enabled):
 
     async with session_maker() as db:
         org = Org(name="t", slug="t-drain", ad_gclid="C",
-                  ad_click_at=datetime.now(timezone.utc) - timedelta(days=1))
+                  ad_click_at=utcnow_naive() - timedelta(days=1))
         db.add(org)
         await db.commit()
         await db.refresh(org)
         old = AdConversion(org_id=org.id, action=adsconv.ACTION_SIGNUP,
-                           created_at=datetime.now(timezone.utc) - timedelta(hours=12))
+                           created_at=utcnow_naive() - timedelta(hours=12))
         fresh = AdConversion(org_id=org.id, action=adsconv.ACTION_PAID,
-                             created_at=datetime.now(timezone.utc))
+                             created_at=utcnow_naive())
         db.add(old); db.add(fresh)
         await db.commit()
 
@@ -469,13 +455,13 @@ async def _seed_upload_rows(db, *, actions, attempts=0):
     anymore — the uploader authenticates with treg's own platform refresh token, not a per-org
     connection (see `ads_enabled`, which sets it)."""
     org = Org(name="t", slug="t-upload-batch", ad_gclid="CLICK_BATCH",
-              ad_click_at=datetime.now(timezone.utc) - timedelta(days=1))
+              ad_click_at=utcnow_naive() - timedelta(days=1))
     db.add(org)
     await db.commit()
     await db.refresh(org)
     rows = [
         AdConversion(org_id=org.id, action=action, attempts=attempts,
-                     created_at=datetime.now(timezone.utc) - timedelta(hours=12))
+                     created_at=utcnow_naive() - timedelta(hours=12))
         for action in actions
     ]
     db.add_all(rows)
@@ -664,13 +650,13 @@ async def test_access_token_is_cached_and_not_re_exchanged_within_its_lifetime(c
     client = FakeAdsClient(FakeAdsResponse({"requestId": "req-cache-1"}))
     async with session_maker() as db:
         org = Org(name="t", slug="t-token-cache", ad_gclid="C",
-                  ad_click_at=datetime.now(timezone.utc) - timedelta(days=1))
+                  ad_click_at=utcnow_naive() - timedelta(days=1))
         db.add(org)
         await db.commit()
         await db.refresh(org)
 
         row_a = AdConversion(org_id=org.id, action=adsconv.ACTION_SIGNUP,
-                             created_at=datetime.now(timezone.utc) - timedelta(hours=12))
+                             created_at=utcnow_naive() - timedelta(hours=12))
         db.add(row_a)
         await db.commit()
         first = await adsconv.drain_once(db, client)
@@ -678,7 +664,7 @@ async def test_access_token_is_cached_and_not_re_exchanged_within_its_lifetime(c
         assert len(client.token_calls) == 1  # first drain: exchanged once
 
         row_b = AdConversion(org_id=org.id, action=adsconv.ACTION_FIRST_CALL,
-                             created_at=datetime.now(timezone.utc) - timedelta(hours=12))
+                             created_at=utcnow_naive() - timedelta(hours=12))
         db.add(row_b)
         await db.commit()
         second = await adsconv.drain_once(db, client)
@@ -731,6 +717,35 @@ async def test_every_public_landing_surface_loads_the_capture_script(clients):
         if "/adtrack.js" not in r.text:
             missing.append(path)
     assert not missing, f"pages that do not load the capture script: {missing}"
+
+
+async def test_capture_script_runs_in_head_before_spa_can_redirect(clients):
+    """The capture script must load in <head>, before any app code can navigate away.
+
+    An ad click arriving at /?gclid=... falls through to index.html (the SPA) because of the query
+    string. The SPA's boot then redirects logged-out visitors via `location.replace('/')`, dropping
+    the query string. The capture script must run during HTML parsing — before the Vue app mounts
+    and calls that redirect — or the click ID is lost. Placing it in <head> guarantees this.
+
+    This test pins the ORDERING guarantee. The presence test above catches a missing tag; this one
+    catches a tag that would lose the race against the redirect.
+    """
+    # The SPA is served at /app, but also at /?gclid=... (any query string falls through to it)
+    r = await clients.get("/app")
+    assert r.status_code == 200
+    html = r.text
+    # The script must appear in <head>, not after the Vue app's inline script
+    head_end = html.find("</head>")
+    body_start = html.find("<body")
+    script_pos = html.find('src="/adtrack.js"')
+    assert script_pos != -1, "/adtrack.js not found in SPA"
+    assert script_pos < head_end, (
+        f"adtrack.js must be in <head> to run before the SPA redirects (found at {script_pos}, "
+        f"</head> at {head_end})"
+    )
+    assert script_pos < body_start, (
+        f"adtrack.js must load before <body> to guarantee it runs before Vue mounts"
+    )
 
 
 def test_transaction_id_is_never_purely_numeric():

@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from treg import catalog_store as cs  # noqa: E402
+from treg.domain.catalog import store as cs  # noqa: E402
 
 
 # ---- the frozen pre-change engine (every token must match; score = sum of field weights) --------

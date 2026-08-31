@@ -28,6 +28,7 @@ async def test_probe_marks_ok(clients: AsyncClient):
     health = {h["name"]: h for h in (await clients.get("/health")).json()}
     assert health["k"]["status"] == "ok"
     assert "HTTP 200" in health["k"]["detail"]
+    assert "+00:00" not in health["k"]["checked_at"]
 
 
 async def test_probe_failure_marks_invalid(clients: AsyncClient):
@@ -111,7 +112,7 @@ async def test_malformed_health_check_does_not_500_the_batch(clients: AsyncClien
     crash the whole batch — run_all isolates each tool and marks it 'unknown'. Regression: prod
     `treg health --run` 500'd batch-wide on one weird tool."""
     from sqlmodel import update
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import Tool
     good = (await clients.post("/secrets", json={"name": "good", "value": "V"})).json()["id"]
     bad = (await clients.post("/secrets", json={"name": "weird", "value": "V"})).json()["id"]

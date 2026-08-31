@@ -123,7 +123,7 @@ endpoints:
 
   - id: predictleads.companies.job_openings
     domain: companies
-    capability: companies.jobs
+    capability: companies.jobs.search
     platform: companies
     scope: any_account
     method: GET

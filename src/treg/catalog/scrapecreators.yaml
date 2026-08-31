@@ -314,3 +314,28 @@ endpoints:
     verified: '2026-07-28'
     example_response: examples/scrapecreators.reddit.search.posts.json
     docs_url: https://docs.scrapecreators.com/reddit/search
+
+  # --- Cross-platform ---------------------------------------------------------------------------
+  - id: scrapecreators.creators.socials.connected
+    capability: creators.socials.connected
+    platform: creators
+    scope: any_account
+    method: GET
+    path: /v1/find-social-profiles
+    name: "Find a creator's other social profiles from one handle"
+    summary: "Give one handle on Instagram, TikTok, YouTube, X or Facebook and get back the creator's verified profiles on the other platforms, with a confidence score and the evidence for each link (bio links, link-in-bio pages, shared website, reciprocal links, verified Google candidates). Deterministic, no AI; handles only, not URLs. Same-handle guesses that could not be corroborated are returned separately in same_handle_candidate_urls."
+    input:
+      queryParams:
+        platform: {type: string, required: true, note: "Source platform: instagram | tiktok | youtube | x | twitter | facebook", example: "x"}
+        handle: {type: string, required: true, note: "Creator handle, no URL; leading @ optional. YouTube also accepts 24-char channel ids.", example: "adrian_horning_"}
+        cache_max_age: {type: string, required: false, note: "Return a cached result if one is at most this old (0 credits): 1d | 3d | 7d | 14d | 30d", example: "7d"}
+    test_request:
+      queryParams: {platform: "x", handle: "adrian_horning_"}
+    cost: {type: per_call, value: 10, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-08-27', confidence: verified}
+    call_note: "Uncharged 503 when every declared link-in-bio page fails and nothing else resolves — retry later rather than treating it as a miss."
+    verified: '2026-08-27'
+    example_response: examples/scrapecreators.creators.socials.connected.json
+    docs_url: https://docs.scrapecreators.com/v1/find-social-profiles
+
+proposed_capabilities:
+  creators.socials.connected: "List a creator's accounts on other platforms"

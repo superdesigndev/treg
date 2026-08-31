@@ -1,0 +1,16 @@
+{
+  "results": [
+    {
+      "reactionType": "LIKE",
+      "reactor": {
+        "linkedinID": "example-person",
+        "linkedinURL": "https://www.linkedin.com/in/example-person",
+        "name": "Example Person",
+        "image": "https://example.com/avatar.jpg"
+      }
+    }
+  ],
+  "pages": 104,
+  "totalResults": 104,
+  "_note": "Live response returned one reactor on this page; all identity values are placeholders."
+}

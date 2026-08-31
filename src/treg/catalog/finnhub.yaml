@@ -8,6 +8,14 @@ source:
 # licensing table). No fx rate -> usd null -> platform_eligible FALSE by construction. A team pasting
 # its own Finnhub key gets everything at their own tier's limits.
 pricing_url: https://finnhub.io/pricing
+# Archive/cache judgment: a JUDGED forbidden, distinct from unjudged-absent. Finnhub's terms bar
+# sharing data or derived results with any third party without written approval, and serving one
+# team's cached fetch to another team is exactly that. Live relaying stays as-is; storage is out.
+cache:
+  mode: forbidden
+  license_quote: "You hereby agree to not redistribute or share access to data or derived results from the data obtained from Finnhub with anyone or any 3rd party without written approval from Finnhub."
+  source_url: https://finnhub.io/terms-of-service
+  checked: "2026-08-27"
 endpoints:
   - id: finnhub.quote
     domain: stocks

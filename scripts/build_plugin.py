@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate every plugin's SKILL.md from the one source: `src/treg/web/skill.md`.
 
-Four shop windows, three bootstraps, one source:
+Five shop windows, four bootstraps, one source:
 
 - **codex**  -> `plugin/skills/treg/SKILL.md` — ships an MCP connector, so its bootstrap points at
   the five tools and tells the reader NOT to reach for a terminal.
@@ -15,6 +15,8 @@ Four shop windows, three bootstraps, one source:
   connector AND the CLI path in one install: the MCP row is disabled until `TREG_TOKEN` exists, so
   its bootstrap has to cover both states and steer away from `treg mcp install`, which cannot write
   a dsh profile. See docs/DSH-PLUGIN.md.
+- **minimax** -> `plugins/minimax/skills/treg/SKILL.md` — skills-only (MiniMax forbids credentials in the
+  package), CLI bootstrap with NO `treg mcp install` step. See docs/MINIMAX-PLUGIN.md.
 
 The Claude variant sits at the REPO ROOT rather than under `plugin/` because that one path is
 simultaneously what Claude Code's plugin loader auto-discovers, what `npx skills add` resolves, and
@@ -66,6 +68,11 @@ CURSOR_TARGET = ROOT / "plugins" / "treg" / "skills" / "treg" / "SKILL.md"
 # `dsh.bundle`, and `dsh/cordis.patch.yml` mounts `dsh/index.js` as a `ctx.skills` provider over
 # this tree. See docs/DSH-PLUGIN.md.
 DSH_TARGET = ROOT / "dsh" / "skills" / "treg" / "SKILL.md"
+# MiniMax (MiniMax Code desktop + MiniMax Agent cloud) prescribes `.minimax-plugin/plugin.json` at
+# the plugin root and forbids credentials anywhere in the package, so it ships skills-only from its
+# own root — submitted as the GitHub subdirectory `plugins/minimax/`, or zipped from inside it. See
+# docs/MINIMAX-PLUGIN.md.
+MINIMAX_TARGET = ROOT / "plugins" / "minimax" / "skills" / "treg" / "SKILL.md"
 
 CODEX_BOOTSTRAP = """
 ## First, check which treg you have
@@ -104,6 +111,49 @@ is the thing treg exists to avoid. (Registering treg's MCP server into Codex is 
 
 If the connector is present but the tools error, it has no token yet: the human sets `TREG_TOKEN`
 (from {BASE} → sign in → copy token) for this plugin.
+
+Either way, the rest of this page is the part that matters — **when** treg is the right move, and
+**how to choose** between providers.
+
+---
+"""
+
+# Cursor now ships MCP alongside the skill, so its bootstrap is closer to Codex: check for the tools
+# first, and fall back to CLI only if they are not there. The MCP config uses `${env:TREG_TOKEN}` for
+# the bearer token, so the tools will 401 until the user sets that env var — which is what the
+# bootstrap explains. Unlike Codex (where `bearer_token_env_var` works the same way), Cursor's
+# variable syntax (`${env:...}`) is documented and standard.
+CURSOR_BOOTSTRAP = """
+## First, check which treg you have
+
+This plugin ships MCP tools alongside the skill. **Look at your tools before you do anything else.**
+
+**If you can see `catalog_search`, `catalog_get`, `call`, `balance` and `my_tools`** — treg is
+connected. Use those; there is nothing to install. The rest of this page is written around the `treg`
+command line, so read `treg catalog search` as `catalog_search`, `treg call` as `call`, and so on.
+
+**If the tools error or you cannot see them**, the plugin needs a token. The human sets `TREG_TOKEN`:
+
+1. Sign in at {BASE} (GitHub / Google / email code)
+2. Copy the token from Settings → API Token
+3. Set `TREG_TOKEN` in the environment Cursor reads (or add it in Cursor's plugin configuration)
+4. Restart the agent — the tools will appear
+
+A new team starts with **$1.00 of free balance**, so there is nothing to pay before the first call.
+If sign-in is needed, say so plainly and stop — never ask the human for a provider's API key, which
+is the thing treg exists to avoid.
+
+---
+
+## When the tools ARE there
+
+| tool | use it for |
+|---|---|
+| `catalog_search` | find an endpoint by WHAT YOU WANT TO DO — "work email", "backlinks", "tiktok comments" |
+| `catalog_get` | one endpoint's parameters and its exact price, **before** you spend |
+| `call` | make the call; treg injects the credential and relays the answer |
+| `balance` | the team's prepaid balance |
+| `my_tools` | what this team registered and you can call without holding the key |
 
 Either way, the rest of this page is the part that matters — **when** treg is the right move, and
 **how to choose** between providers.
@@ -182,11 +232,39 @@ a directory dsh also scans. Harmless, but redundant with this bundle.
 ---
 """
 
-# variant -> (target, bootstrap, stamp_version). One source, four shop windows.
+# MiniMax forbids any credential in the package and gates authenticated MCP behind its own
+# App/Connector program, so this plugin is skills-only — and unlike Claude Code / Cursor there is no
+# step 3: `treg mcp install` writes configs for Claude Code, Cursor and opencode, none of which is a
+# MiniMax profile, so telling the agent to run it would be a silent no-op. CLI only.
+MINIMAX_BOOTSTRAP = """
+## First run: install the CLI
+
+This plugin ships the skill, so you have this page — but not yet the `treg` command. Set it up
+**once**:
+
+```bash
+curl -fsSL {BASE}/install.sh | sh   # 1. the CLI (skip if `treg --version` already works)
+treg login                                   # 2. sign in — opens a browser
+```
+
+A new team starts with **$1.00 of free balance**, so there is nothing to pay before the first call.
+If sign-in is needed, say so plainly and stop — never ask the human for a provider's API key, which
+is the thing treg exists to avoid.
+
+Do **not** run `treg mcp install` here: it writes configs for other agents, not for MiniMax.
+Everything on this page works through the CLI.
+
+Step 1 also installs this same skill into the agent's own skills directory, which duplicates what
+the plugin already gives you — worth mentioning to the human, who can remove it.
+
+---
+"""
+
+# variant -> (target, bootstrap, stamp_version). One source, five shop windows.
 #
-# Claude Code and Cursor share CLI_BOOTSTRAP: both give the agent a terminal, neither ships a
-# connector, and `treg mcp install` writes a verified config for both (mcp_install.py). Keeping one
-# string rather than two near-identical ones is what stops them drifting.
+# Claude Code uses CLI_BOOTSTRAP: it gives the agent a terminal, does not ship a connector, and
+# `treg mcp install` writes a verified config for it. Cursor now ships MCP alongside the skill, so it
+# gets CURSOR_BOOTSTRAP which checks for the tools first and falls back to CLI if not.
 #
 # dsh gets its OWN bootstrap rather than sharing either: it is the only surface that ships the
 # connector and the CLI path in one install (the row is disabled until there is a token), and it is
@@ -195,8 +273,9 @@ a directory dsh also scans. Harmless, but redundant with this bundle.
 VARIANTS = {
     "codex": (CODEX_TARGET, CODEX_BOOTSTRAP, False),
     "claude": (CLAUDE_TARGET, CLI_BOOTSTRAP, True),
-    "cursor": (CURSOR_TARGET, CLI_BOOTSTRAP, True),
+    "cursor": (CURSOR_TARGET, CURSOR_BOOTSTRAP, True),
     "dsh": (DSH_TARGET, DSH_BOOTSTRAP, False),
+    "minimax": (MINIMAX_TARGET, MINIMAX_BOOTSTRAP, True),
 }
 
 
@@ -223,6 +302,11 @@ def render(variant: str) -> str:
         # stamping it here is what lets one generated file satisfy both registries.
         fm = f"{fm.rstrip()}\nversion: {package_version()}\n"
     out = f"---{fm}---\n{bootstrap}\n{body.lstrip(chr(10))}"
+    # 4. `<!--routed-->` / `<!--/routed-->` delimit the section the SERVER strips when a deployment
+    #    sets TREG_ROUTED_DISCOVERY=off. A plugin copy is static and cannot know a deployment's
+    #    setting, so it keeps the content — but the markers themselves must never ship, or the
+    #    product's most-read page starts with visible HTML comments.
+    out = out.replace("<!--routed-->\n", "").replace("\n<!--/routed-->", "")
     return out.replace("{BASE}", PUBLIC_BASE)
 
 

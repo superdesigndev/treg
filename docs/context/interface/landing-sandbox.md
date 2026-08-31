@@ -3,8 +3,14 @@ title: Landing sandbox studio — anonymous try-it, hosted skills, CLI installer
 status: shipped
 sources:
   - src/treg/sandbox.py
-  - src/treg/pubfeed.py
+  - src/treg/sandbox_identity.py
+  - src/treg/application/onboard/pubfeed.py
+  - src/treg/application/onboard/sandbox.py
+  - src/treg/application/onboard/__init__.py
+  - src/treg/domain/governance/sandbox.py
   - src/treg/api.py
+  - src/treg/routers/onboard.py
+  - src/treg/routers/web.py
   - src/treg/web/index.html
   - src/treg/web/install.sh
 related:
@@ -15,7 +21,7 @@ related:
 
 # Landing sandbox studio
 
-> **Where this lives now.** `/` serves `landing.html`, not the SPA — `landing()` in `api.py` only
+> **Where this lives now.** `/` serves `landing.html`, not the SPA — `landing()` in `routers.web` only
 > falls through to `index.html` when the request carries a query string (invite links, OAuth
 > returns, tour deep-links). The sandbox studio described below is that fall-through branch of
 > `index.html`, so it is reached from the SPA rather than from the front page. See
@@ -23,11 +29,12 @@ related:
 
 The logged-out SPA is not a login box — it's a **landing page with a live, no-login sandbox
 studio** (the `v-if="!authed"` branch of `index.html`, `.lp` container). A visitor builds a real
-mini-registry in the browser and keeps using it from their terminal, all without an account. The
-engine is `src/treg/sandbox.py` + a handful of `api.py` endpoints; the front-end drives it with `sbx*`
-Vue methods (`sbxInit`/`startSandbox`/`refreshSandbox`/`sbxAddSecret`/`sbxAddTool`/`runTool`).
+mini-registry in the browser and keeps using it from their terminal, all without an account.
+Provisioning, export, samples, and garbage collection live in `application/onboard/sandbox.py`;
+the call-side sandbox engine remains in `sandbox.py`. The routes in `routers/onboard.py` drive them
+from the front-end's `sbx*` Vue methods.
 
-## The throwaway team (`sandbox.py`)
+## The throwaway team (`application/onboard/sandbox.py`)
 `mint(db)` creates a login-free team: a `visitor-<hex>@sandbox.treg.local` `User` (can never sign in),
 a `demo` `Org` slugged `sbx-<hex>`, a member `Membership` whose **token is returned** (unlike
 onboarding's `demo.py`, which discards it), plus seeded starters from `DEFAULTS` — real-brand names,
@@ -62,7 +69,7 @@ The visitor holds that token and calls the **same product endpoints** the dashbo
 `POST /secrets`, `POST /tools`, `/call/*` — so it is a genuine registry, not a mock.
 
 ## Safety: sandbox calls never touch the network (except the one live wire)
-`call_tool` in `api.py` checks `demo_sandbox.is_sandbox(caller.org)` and, for a sandbox, short-circuits to
+`application.call.service` checks `demo_sandbox.is_sandbox(caller.org)` and, for a sandbox, short-circuits to
 `sandbox.synthesize(...)` instead of `relay()`. `synthesize` runs the **real** `injectors.inject` to
 compute exactly what treg would send upstream (the injected header/query), then returns a **labelled
 dummy** response — brand-shaped via `SAMPLE_BODIES` (Stripe charge list / PostHog events). So the
@@ -73,7 +80,7 @@ sandbox token from reaching any tool it didn't register.
 ## The one live wire (real Stripe test charges)
 There is a single deliberate exception, gated on env `TREG_DEMO_STRIPE_KEY` (`settings.demo_stripe_key`,
 a Stripe **restricted test key** limited to Charges). When it is set, a sandbox call to the exact seeded
-stripe tool relays for real. `call_tool` matches the tool with `demo_sandbox.is_live_tool(tool)` — a strict
+stripe tool relays for real. The call use case matches the tool with `demo_sandbox.is_live_tool(tool)` — a strict
 fingerprint (`LIVE_HOST == "api.stripe.com"` and `base_url.rstrip("/") == LIVE_BASE
 == "https://api.stripe.com/v1/charges"`) — and, for `GET`/`POST` only, calls `_relay_live_demo(...)`. That
 helper is intentionally narrower than `relay()`: form-encoded only, the `Authorization: Bearer` header is
@@ -83,15 +90,15 @@ feed is always ours. Because the match is exact, editing the tool (base_url, bin
 stop matching and **fall through to `synthesize`** — there is no key in the sandbox org to exfiltrate.
 Two guards keep the demo intact: `_require_not_live_demo_tool` / `_require_not_live_demo_secret` refuse edits
 or deletes of the seeded `stripe` tool and its `STRIPE_KEY` while the wire is on (visitor-created tools stay
-fully editable). `visitor_name` and `is_live_tool` live in `sandbox.py`; the wordlists (`ADJECTIVES`/
-`ANIMALS`) are imported from `pubfeed.py` (leaf module, no import cycle). `mint()` returns the visitor name;
+fully editable). `is_live_tool` lives in `sandbox.py`; `visitor_name` and its wordlists (`ADJECTIVES`/
+`ANIMALS`) live in the neutral `sandbox_identity.py` leaf. `mint()` returns the visitor name;
 `POST /demo/sandbox` adds `"live"` and `GET /demo/sandbox/live` (`demo_sandbox_live`) reports `{live, visitor}`
 for a reused sandbox (the browser keeps one across reloads via `localStorage`, so it may predate the mint that
 carried these facts). The front-end live pane (`liveSnippets`, the `SBX` state) shows the visitor a copyable
 `curl` that hits their OWN sandbox token.
 
-## The public payments feed (`pubfeed.py`)
-`pubfeed.py` is the landing page's **live payments ticker**: a stranger's live-wire charge appears on the
+## The public payments feed (`application/onboard/pubfeed.py`)
+The feed is the landing page's **live payments ticker**: a stranger's live-wire charge appears on the
 page within seconds, no refresh, as skeptic-proof that the proxy really injected a real key. The path:
 visitor `curl` → live wire relays a Stripe test charge → Stripe fires `charge.succeeded` at
 `POST /stripe/webhook` (`stripe_webhook`) → `pubfeed.push_charge(...)` → `GET /landing/stripe-feed`
@@ -113,11 +120,10 @@ a deploy without the secret exposes no unauthenticated POST surface. Design poin
   `KEEPALIVE_S`; a subscriber that lags past `_MAX_SUBSCRIBER_LAG` is dropped rather than buffered forever. The
   SSE response sets `X-Accel-Buffering: no` so a reverse proxy does not buffer it. `reset()` is a test hook.
 
-Bounds: `MAX_TOOLS`/`MAX_SECRETS` (3) enforced by `_enforce_sandbox_cap` on `POST /tools|/secrets`;
-`SANDBOX_TTL_MIN` (60) + `gc(db)` reaps expired visitors (their org + all org-scoped rows), run
-opportunistically on each mint; a per-IP in-memory limiter (`_SANDBOX_HITS`, `SANDBOX_RATE_MAX`, via the
-shared `_rate_limit`/`_rate_sweep` sliding window — which now also evicts cold IP keys so the map can't
-grow unbounded) guards `POST /demo/sandbox` (`demo_sandbox_mint`). The browser reuses one sandbox across reloads via
+Bounds: `MAX_TOOLS`/`MAX_SECRETS` (3) are enforced by `domain/governance/sandbox.py` on
+`POST /tools|/secrets`; `SANDBOX_TTL_MIN` (60) + `gc(db)` reaps expired visitors (their org + all
+org-scoped rows), run opportunistically on each mint. A DB-backed `ratestore` window keyed by client
+IP and `SANDBOX_RATE_MAX` guards `POST /demo/sandbox`. The browser reuses one sandbox across reloads via
 `localStorage['treg-sbx']`. **Skill import is disabled in a sandbox org** — `POST /skills` (register),
 `POST /skills/analyze`, and `POST /skills/import` all check `is_sandbox(caller.org)` and 403 ("skill
 import is disabled in the sandbox"), because a skill package could register unlimited tools/secrets past

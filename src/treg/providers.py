@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 # `auth` is the provider's DEFAULT shape; a per-variable form (CLIENT_ID/SECRET → oauth2) can override
 # it. Served at GET /providers.json so the CLI can refresh centrally (bundled copy = offline fallback);
 # bump CATALOG_VERSION whenever entries change so a cache can tell it's stale.
-CATALOG_VERSION = 10  # v10 2026-08-15: the Market data eight (auth shapes live-verified that day)
+CATALOG_VERSION = 12  # v12 2026-08-27: Exa (x-api-key)
 # `skills` (optional) matches a SKILL FOLDER name for file-credential skills that have no env var to
 # key on (OAuth token files etc.) — see `match_skill`. Such providers carry `tokens: []` so the env
 # scanner never mis-detects them as a simple bearer key (their real auth is OAuth + extra headers).
@@ -134,6 +134,11 @@ CATALOG: list[dict] = [
     {"provider": "Ahrefs",      "tokens": ["AHREFS"],              "base_url": "https://api.ahrefs.com/v3",                       "auth": {"shape": "bearer"}},
     {"provider": "Apify",       "tokens": ["APIFY"],               "base_url": "https://api.apify.com/v2",                        "auth": {"shape": "bearer"}, "probe": "users/me"},
     {"provider": "ScrapeCreators", "tokens": ["SCRAPECREATORS"],   "base_url": "https://api.scrapecreators.com",                  "auth": {"shape": "api_key_header", "header": "x-api-key"}},
+    {"provider": "Crustdata", "tokens": ["CRUSTDATA"], "base_url": "https://api.crustdata.com",
+     "auth": {"shape": "bearer"}, "probe": "account/credits",
+     "required_headers": {"x-api-version": "2025-11-01"}},
+    {"provider": "Aviato", "tokens": ["AVIATO"], "base_url": "https://data.api.aviato.co",
+     "auth": {"shape": "bearer"}, "probe": "billing/balance"},
     {"provider": "AgentMail",   "tokens": ["AGENTMAIL"],           "base_url": "https://api.agentmail.to/v0",                     "auth": {"shape": "bearer"}, "probe": "inboxes"},
     {"provider": "Cloudflare",  "tokens": ["CLOUDFLARE"],          "base_url": "https://api.cloudflare.com/client/v4",            "auth": {"shape": "bearer"},
      "skills": ["wrangler", "cloudflare", "cloudflare-workers"],
@@ -303,6 +308,7 @@ class Detection:
     base_url: str | None = None
     auth: dict | None = None           # resolved auth shape (see module docstring)
     probe: str | None = None           # a cheap GET path (relative to base_url) that validates the key
+    required_headers: dict[str, str] = field(default_factory=dict)  # fixed protocol headers on every call
     note: str | None = None
 
 
@@ -496,7 +502,8 @@ def scan_env(env_path: str, catalog: list[dict] | None = None) -> list[Detection
                 detections.append(Detection(
                     kind="matched", vars=[name], provider=provider["provider"],
                     base_url=provider["base_url"], auth=dict(provider["auth"]),
-                    probe=provider.get("probe")))
+                    probe=provider.get("probe"),
+                    required_headers=dict(provider.get("required_headers") or {})))
         elif _is_internal(upper):
             detections.append(Detection(kind="app_internal", vars=[name], note="app's own secret — never a tool"))
         elif comps & SECRET_HINTS:
@@ -562,6 +569,7 @@ class Action:
     tool_name: str | None = None
     base_url: str | None = None
     binding: dict | None = None     # binding template; secret_id is filled in at register time
+    required_headers: dict[str, str] = field(default_factory=dict)  # constant bindings using same secret ref
     combine: tuple | None = None    # (username_var, password_var) for basic pairs → base64 at register
     health: dict | None = None      # {path, expect_status} probe from the catalog, so the tool self-validates
     reason: str | None = None       # why unsupported
@@ -577,6 +585,7 @@ def plan_actions(detections: list[Detection]) -> list[Action]:
             actions.append(Action(
                 detection=d, supported=binding is not None, secret_name=d.vars[0],
                 tool_name=_slug(d.provider or d.vars[0]), base_url=d.base_url, binding=binding,
+                required_headers=dict(d.required_headers),
                 health={"path": d.probe, "expect_status": 200} if d.probe else None,
                 reason=None if binding else f"auth shape {d.auth.get('shape') if d.auth else '?'} not auto-registered yet"))
         elif d.kind == "oauth_pair":

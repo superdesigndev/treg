@@ -1,0 +1,46 @@
+{
+  "exception_handlers": [
+    {
+      "exception": "starlette.exceptions.HTTPException",
+      "handler": "treg.api._mark_treg_own_errors"
+    },
+    {
+      "exception": "fastapi.exceptions.RequestValidationError",
+      "handler": "fastapi.exception_handlers.request_validation_exception_handler"
+    },
+    {
+      "exception": "fastapi.exceptions.WebSocketRequestValidationError",
+      "handler": "fastapi.exception_handlers.websocket_request_validation_exception_handler"
+    },
+    {
+      "exception": "builtins.OverflowError",
+      "handler": "treg.api._id_out_of_range"
+    },
+    {
+      "exception": "sqlalchemy.exc.TimeoutError",
+      "handler": "treg.api._pool_saturated"
+    }
+  ],
+  "middleware": [
+    {
+      "args": [],
+      "class": "treg.mcp.NormalizeDirectoryMCPPath",
+      "kwargs": {}
+    },
+    {
+      "args": [],
+      "class": "treg.api._BodyDecodeMiddleware",
+      "kwargs": {}
+    },
+    {
+      "args": [],
+      "class": "treg.api._SecurityHeadersMiddleware",
+      "kwargs": {}
+    },
+    {
+      "args": [],
+      "class": "treg.api._LegacyHostRedirectMiddleware",
+      "kwargs": {}
+    }
+  ]
+}

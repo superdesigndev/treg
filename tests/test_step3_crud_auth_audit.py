@@ -8,7 +8,7 @@ from __future__ import annotations
 from httpx import ASGITransport, AsyncClient
 
 from treg.api import app
-from treg.db import reset_db
+from treg.infra.db import reset_db
 
 
 # ---- registration + auth ------------------------------------------------------------------

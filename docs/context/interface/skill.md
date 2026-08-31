@@ -3,6 +3,7 @@ title: The shippable tools-registry skill (3 personas)
 status: shipped
 sources:
   - src/treg/web/skill.md
+  - src/treg/routers/web.py
   - src/treg/mcp_install.py
   - scripts/build_plugin.py
   - .claude-plugin/plugin.json
@@ -12,6 +13,8 @@ sources:
   - package.json
   - dsh/cordis.patch.yml
   - dsh/index.js
+  - plugins/minimax/.minimax-plugin/plugin.json
+  - scripts/minimax_plugin.py
 related:
   - interface/cli.md
   - interface/api.md
@@ -33,8 +36,8 @@ One skill, three personas:
 - **admin** — inventory + monitor: `treg tool/secret/skill ls`, `treg calls`, and `treg health [--run]`
   (with the per-tool `health_check` probe).
 
-**Distribution:** the file is `{BASE}`-templated and served at **`GET /skill.md`** (`skill_md` in
-`api.py`, via `_serve_md`), and `install.sh` best-effort drops it into
+**Distribution:** the file is `{BASE}`-templated and served at **`GET /skill.md`**
+(`routers.web.skill_md`, via `_serve_md`), and `install.sh` best-effort drops it into
 `~/.claude/skills/treg/SKILL.md` right after installing the CLI — so `curl {BASE}/install.sh | sh`
 gives a machine both the `treg` command AND the skill that teaches an agent to use it. It restates the
 invariants (secrets are write-only, use-without-hold, the proxy relays the upstream's truth) and links
@@ -53,6 +56,7 @@ served**, because a second copy of the product's most-read page is a copy that r
 | Codex/ChatGPT plugin | `plugin/.codex-plugin/` + generated `plugin/skills/treg/SKILL.md` | the directory ChatGPT and Codex share |
 | Cursor plugin | `.cursor-plugin/marketplace.json` + generated `plugins/treg/skills/treg/SKILL.md` | the Cursor marketplace (plugin root is never the repo root) |
 | DeepSeek Harness bundle | root `package.json` (`dsh.bundle`) + `dsh/cordis.patch.yml` + generated `dsh/skills/treg/SKILL.md` | `dsh plugin --profile <name> add github:superdesigndev/treg` |
+| MiniMax plugin | `plugins/minimax/.minimax-plugin/plugin.json` + generated `plugins/minimax/skills/treg/SKILL.md`; `scripts/minimax_plugin.py` pre-runs their validator and builds the ZIP | the MiniMax Plugin Marketplace (MiniMax Code + MiniMax Agent), submitted by form as GitHub subdir `plugins/minimax`; skills-only because the package may hold no credential and the bootstrap omits `treg mcp install`, which cannot write a MiniMax config. See [docs/MINIMAX-PLUGIN.md](../../MINIMAX-PLUGIN.md) |
 | the domain itself | `GET /.well-known/skills/index.json` + `/.well-known/skills/treg/SKILL.md` | anything speaking the agentskills.io convention (Hermes reads this directly) |
 
 `scripts/build_plugin.py` renders every plugin copy from the one source and `--check` fails if any is

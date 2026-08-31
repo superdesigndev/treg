@@ -16,7 +16,7 @@ import json
 import pytest
 from httpx import AsyncClient
 
-from treg.api import _decode_request_body
+from treg.bootstrap_http import _decode_request_body
 
 
 # ---- the pure decoder --------------------------------------------------------------------

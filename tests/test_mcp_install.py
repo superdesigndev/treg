@@ -115,3 +115,57 @@ def test_cmd_mcp_install_REFUSES_a_bad_token_before_writing(tmp_path, monkeypatc
                             {"token": "K", "base_url": "https://treg.to"})
     assert "rejected" in str(e.value)
     assert not (tmp_path / ".config" / "opencode" / "opencode.json").exists()  # nothing written
+
+
+def test_cmd_mcp_install_retries_transient_ssl_errors(tmp_path, monkeypatch):
+    """The SSL: WRONG_VERSION_NUMBER bug from the repro: first mcp install attempt gets an SSL
+    error, but a retry succeeds. The command must retry transient errors instead of failing."""
+    import ssl
+    import time as time_module
+    from types import SimpleNamespace
+
+    import httpx
+
+    from treg import cli
+
+    attempts = []
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url):
+            attempts.append(url)
+            if len(attempts) == 1:
+                raise ssl.SSLError(1, "[SSL: WRONG_VERSION_NUMBER] wrong version number (_ssl.c:1029)")
+            return httpx.Response(200, json={"email": "test@x.dev"},
+                                  request=httpx.Request("GET", "http://t/auth/me"))
+
+    monkeypatch.setattr(cli, "_client", lambda cfg, **k: FakeClient())
+    monkeypatch.setattr(mcp_install, "HOME", tmp_path)
+    monkeypatch.setattr(mcp_install, "install_mcp", lambda **k: {"results": [], "manual": [], "mcp_url": k["base_url"] + "/mcp/"})
+    monkeypatch.setattr(time_module, "sleep", lambda s: None)
+
+    cli.cmd_mcp_install(SimpleNamespace(name=None), {"token": "K", "base_url": "https://treg.to"})
+    assert len(attempts) == 2  # first failed, second succeeded
+
+
+def test_is_transient_network_error_detects_ssl_and_connection_errors():
+    """_is_transient_network_error classifies errors so mcp install knows what to retry."""
+    import ssl
+    import httpx
+    from treg import cli
+
+    # Create an SSL error the same way Python's ssl module does
+    ssl_err = ssl.SSLError(1, "[SSL: WRONG_VERSION_NUMBER] wrong version number")
+    assert cli._is_transient_network_error(ssl_err)
+    assert cli._is_transient_network_error(ConnectionRefusedError())
+    assert cli._is_transient_network_error(TimeoutError("connection timed out"))
+    assert cli._is_transient_network_error(httpx.ConnectError("connection failed"))
+    assert cli._is_transient_network_error(OSError("network unreachable"))
+    assert cli._is_transient_network_error(Exception("SSL: WRONG_VERSION_NUMBER"))
+    assert not cli._is_transient_network_error(ValueError("bad value"))
+    assert not cli._is_transient_network_error(KeyError("missing key"))

@@ -14,13 +14,17 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
-from fastapi.responses import StreamingResponse
 from httpx import AsyncClient
 from sqlmodel import select
 
-from treg import api as A, audit, crypto, ledger
+from treg import audit, crypto
+from treg.domain import money as ledger
+from treg.application.call import service as call_service
+from treg.application.call import settle as call_settle
+from treg.application.call.types import UpstreamResponse
+from treg.routers import call as call_routes
 from treg.config import get_settings
-from treg.db import session_maker
+from treg.infra.db import session_maker
 from treg.models import Membership, Org, TagSpend, User
 
 EP = "tikhub.tiktok.video.comments"
@@ -165,7 +169,11 @@ def _fake_relay(status_code: int, body: bytes = b"{}"):
                      force_identity=False):
         async def _stream():
             yield body
-        return StreamingResponse(_stream(), status_code=status_code)
+
+        async def _close():
+            return None
+
+        return UpstreamResponse(status_code, (), _stream(), _close)
     return _relay
 
 
@@ -205,7 +213,7 @@ async def test_untagged_metered_calls_write_no_tag_rows(clients: AsyncClient, pl
 async def test_a_released_call_bills_no_tag(clients: AsyncClient, platform_on, monkeypatch):
     """A provider 5xx releases the hold in full, so the builder's user must not be billed for it —
     and the tag rows go with it rather than lingering as phantom spend."""
-    monkeypatch.setattr(A, "relay", _fake_relay(503, b"nope"))
+    monkeypatch.setattr(call_service, "relay", _fake_relay(503, b"nope"))
     org_id = await _org_id(clients)
     await clients.get(f"/call/{EP}?aweme_id=7", headers={"X-Treg-Meta": "customer=cust_A"})
     async with session_maker() as db:
@@ -754,7 +762,7 @@ async def test_a_provider_credential_refusal_is_never_billed(clients: AsyncClien
     before = (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"]
 
     for status in (401, 402, 403, 407, 408, 429):
-        monkeypatch.setattr(A, "relay", _fake_relay(status, b'{"message":"out of credits"}'))
+        monkeypatch.setattr(call_service, "relay", _fake_relay(status, b'{"message":"out of credits"}'))
         r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"X-Treg-Meta": "customer=cust_A"})
         assert r.status_code == status, r.text
         assert r.headers.get("X-Treg-Cost-Micro") == "0", f"{status} was billed"
@@ -769,14 +777,14 @@ async def test_a_caller_input_4xx_is_still_billed_on_a_per_call_endpoint(clients
     """The other half of the rule stays: the provider DOES charge for accepting a malformed request,
     so a caller's own bad input is on the caller."""
     org_id = await _org_id(clients)
-    monkeypatch.setattr(A, "relay", _fake_relay(400, b'{"error":"bad param"}'))
+    monkeypatch.setattr(call_service, "relay", _fake_relay(400, b'{"error":"bad param"}'))
     r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"X-Treg-Meta": "customer=cust_A"})
     assert r.status_code == 400
     # tikhub comments is per_success, so 400 releases; assert the RULE directly for per_call.
-    assert A._platform_billable(400, "per_call") is True
-    assert A._platform_billable(404, "per_call") is True
-    assert A._platform_billable(402, "per_call") is False
-    assert A._platform_billable(401, "per_result") is False
+    assert call_settle._platform_billable(400, "per_call") is True
+    assert call_settle._platform_billable(404, "per_call") is True
+    assert call_settle._platform_billable(402, "per_call") is False
+    assert call_settle._platform_billable(401, "per_result") is False
 
 
 # ---- per-dimension defaults with overrides -------------------------------------------------------

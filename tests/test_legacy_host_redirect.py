@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from treg import session as sess
+from treg.domain.identity import session as sess
 from treg.api import app
 from treg.config import get_settings
 
@@ -43,6 +43,12 @@ async def test_query_string_survives_the_redirect(raw_client):
     r = await raw_client.get("/?utm_source=x", headers=LEGACY)
     assert r.status_code == 301
     assert r.headers["location"] == "https://treg.to/?utm_source=x"
+
+
+async def test_head_uses_the_same_redirect_contract(raw_client):
+    r = await raw_client.head("/support?from=head", headers=LEGACY)
+    assert r.status_code == 301
+    assert r.headers["location"] == "https://treg.to/support?from=head"
 
 
 async def test_a_session_holder_is_never_bounced_off_their_cookies(raw_client):
@@ -99,7 +105,8 @@ async def test_canonical_host_is_untouched(raw_client):
 async def test_legacy_mcp_host_and_oauth_audience_stay_valid():
     # The transport allow-list and the token-audience set must both keep honouring the legacy name —
     # every pre-move .mcp.json and OAuth grant depends on it.
-    from treg import mcp, mcp_oauth
+    from treg import mcp
+    from treg.domain.identity import mcp_oauth
 
     # List MEMBERSHIP (exact strings), not substring checks — .count() keeps CodeQL from reading
     # these as URL-substring sanitization.
@@ -130,7 +137,7 @@ async def test_canonical_and_legacy_resources_are_the_same_server(raw_client):
     # A grant consented on one name must stay exchangeable/refreshable by a client re-based onto
     # the other — in BOTH directions, and regardless of slash spelling. (Round-2's refactor of
     # this helper silently dropped the cross-name rule; round-3 review caught it.)
-    from treg.api import _same_mcp_resource
+    from treg.routers.auth import _same_mcp_resource
     canon, legacy = "https://treg.to/mcp/", "https://treg.superdesign.dev/mcp/"
     assert _same_mcp_resource(canon, legacy)
     assert _same_mcp_resource(legacy, canon)
@@ -145,7 +152,7 @@ async def test_login_round_trip_is_anchored_to_the_host_it_started_on(raw_client
     # its callback exchange must keep naming that host, not public_url.
     from starlette.requests import Request as StarletteRequest
 
-    from treg.api import _login_callback_base
+    from treg.routers.auth import _login_callback_base
 
     def req(host: str) -> StarletteRequest:
         return StarletteRequest({"type": "http", "method": "GET", "path": "/",
@@ -163,8 +170,10 @@ async def test_env_revert_is_a_complete_rollback(monkeypatch):
     treg.to is never a redirect SOURCE, so a browser-cached old→new 301 meets no new→old answer."""
     from httpx import ASGITransport, AsyncClient
 
-    from treg import mcp, mcp_oauth
-    from treg.api import _login_callback_base, app
+    from treg import mcp
+    from treg.domain.identity import mcp_oauth
+    from treg.api import app
+    from treg.routers.auth import _login_callback_base
 
     monkeypatch.setenv("TREG_PUBLIC_URL", "https://treg.superdesign.dev")
     get_settings.cache_clear()

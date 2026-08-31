@@ -15,10 +15,11 @@ from fastapi import FastAPI, Request
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from treg import audit, crypto, oauth, session as sess
+from treg import audit, crypto, oauth
+from treg.domain.identity import session as sess
 from treg.api import app
 from treg.config import get_settings
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 from treg.models import Secret, User
 
 
@@ -113,7 +114,7 @@ async def test_session_key_not_hardcoded_constant():
 
 # ---- OTP brute-force ----------------------------------------------------------------------
 async def test_otp_code_dies_after_max_wrong_attempts(c):
-    from treg.api import MAX_OTP_ATTEMPTS
+    from treg.routers.auth import MAX_OTP_ATTEMPTS
     good = (await c.post("/auth/email/start", json={"email": "trinity@matrix.io"})).json()["dev_code"]
     for _ in range(MAX_OTP_ATTEMPTS):
         bad = await c.post("/auth/email/verify", json={"email": "trinity@matrix.io", "code": "000001"})
@@ -198,15 +199,15 @@ async def test_security_headers_on_api(c):
     assert "max-age" in r.headers.get("strict-transport-security", "")  # HSTS pins https
 
 
-async def test_init_db_refuses_ephemeral_key_on_real_db():
-    from treg import db as dbmod
+async def test_verify_db_refuses_ephemeral_key_on_real_db():
+    from treg.infra import db as dbmod
     s = get_settings()
     prev = (s.secret_key, s.database_url)
     object.__setattr__(s, "secret_key", "")
     object.__setattr__(s, "database_url", "postgresql+asyncpg://u:p@host/db")
     try:
         with pytest.raises(RuntimeError, match="TREG_SECRET_KEY"):
-            await dbmod.init_db()
+            await dbmod.verify_db()
     finally:
         object.__setattr__(s, "secret_key", prev[0])
         object.__setattr__(s, "database_url", prev[1])
@@ -382,7 +383,7 @@ async def test_bad_binding_format_rejected_at_create(c):
 
 
 async def test_numeric_slug_resolves_as_slug_not_id():
-    from treg.api import _resolve_org
+    from treg.domain.identity.access import _resolve_org
     from treg.models import Org
     await reset_db()
     async with session_maker() as db:
@@ -637,13 +638,14 @@ def crypto_encrypt(v):
 
 def test_prune_handshakes_evicts_stale():
     from datetime import timedelta
-    import treg.api as api
-    old = api._utcnow_naive() - timedelta(seconds=api.HANDSHAKE_TTL + 60)
-    api._cli_states["stale"] = ("lid", old)
-    api._cli_results["lidX"] = ({"token": "T"}, old)
-    api._cli_pending["lidP"] = ("CODE", 8, old)  # (pairing_code, attempts_left, created_at)
-    api._prune_handshakes()
-    assert "stale" not in api._cli_states and "lidX" not in api._cli_results and "lidP" not in api._cli_pending
+    from treg.routers import auth as auth_routes
+    from treg.timeutil import utcnow_naive
+    old = utcnow_naive() - timedelta(seconds=auth_routes.HANDSHAKE_TTL + 60)
+    auth_routes._cli_states["stale"] = ("lid", old)
+    auth_routes._cli_results["lidX"] = ({"token": "T"}, old)
+    auth_routes._cli_pending["lidP"] = ("CODE", 8, old)  # (pairing_code, attempts_left, created_at)
+    auth_routes._prune_handshakes()
+    assert "stale" not in auth_routes._cli_states and "lidX" not in auth_routes._cli_results and "lidP" not in auth_routes._cli_pending
 
 
 # ---- more invite / admin / health coverage ------------------------------------------------

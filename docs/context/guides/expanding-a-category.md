@@ -3,7 +3,8 @@ title: Expanding a marketplace category — the add-a-provider playbook
 status: guide
 sources:
   - src/treg/oauth_providers.py
-  - src/treg/api.py
+  - src/treg/application/connect.py
+  - src/treg/routers/connections.py
   - src/treg/config.py
 related:
   - architecture/auth-secrets.md
@@ -21,7 +22,8 @@ reconciled against the provider's own credit meter.
 
 Everything lives in **`oauth_providers.py`** (the `REGISTRY` of `OAuthProvider` entries). Connecting,
 verifying and auto-provisioning a pasted-key provider is **`connect_with_token`** (`POST /connections/token`)
-in `api.py`. Both are documented in [auth-secrets](../architecture/auth-secrets.md) + [api](../interface/api.md);
+in `routers.connections`, backed by `application.connect`. Both are documented in
+[auth-secrets](../architecture/auth-secrets.md) + [api](../interface/api.md);
 this fragment is the *process*, not the mechanics reference.
 
 ## The two kinds of provider
@@ -69,6 +71,7 @@ this fragment is the *process*, not the mechanics reference.
 | HTTP Basic with a RAW token after `Basic ` | `token_format="Basic {secret}"`, **no** `token_encode` | The Companies API |
 | Cheapest check on a DIFFERENT host | `probe_url` (absolute) | Semrush (balance host), Diffbot (account host) |
 | Probe needs a POST body | `probe_method="POST"` + `probe_json` | Serpstat, Moz, Coresignal |
+| No free route at all — the cheapest PAID call is the probe | `probe_method="POST"` + `probe_json` on the cheapest cached call; say the price in `setup_note` | Exa `/contents` on example.com, $0.001; `/v0/teams/me` 404s on every key (2026-08-27) |
 | 200 on a bad key; a truthy field = valid | `token_verify_field` | Slack `ok`, Apollo `is_logged_in` |
 | 200 on a bad key; a field == a value = valid | `token_ok_field` + `token_ok_value` | Majestic `Code=="OK"` |
 | 200 on a bad key; an error object present = invalid | `token_reject_field` | Serpstat `error` |
@@ -137,7 +140,7 @@ rejects on HTTP status by default.
    `token_endpoint_auth_method="client_secret_basic"` (X, Pinterest — ALSO persisted into the token blob
    so refresh speaks the same dialect), `extra_tools` for a vendor that splits one product across hosts
    (GA4's admin/data split — each extra host provisions a companion Tool on the same secret; the
-   generic `_backfill_provider_extra_tools` startup pass gives existing connections newly-added
+   generic `_backfill_provider_extra_tools` release-upgrade pass gives existing connections newly-added
    companions automatically), and
    `resource_example` to stamp a ready-made call onto the tool once the user picks their resource.
 5. **NON-STANDARD OAuth is not free.** TikTok Ads (`app_id`/`auth_code`, JSON-body token exchange, `code==0`

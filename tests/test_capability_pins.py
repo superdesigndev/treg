@@ -140,7 +140,7 @@ async def test_two_admins_pinning_at_once_leave_one_row(clients: AsyncClient):
     capability, caused by a policy row. The database is what says no."""
     import asyncio
     from sqlmodel import select
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import CapabilityPin
 
     org = await _org_id(clients)

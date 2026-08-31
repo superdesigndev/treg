@@ -433,6 +433,7 @@ async def test_run_report_marks_credential_invalid(clients: AsyncClient):
     health = {h["name"]: h for h in (await clients.get("/health")).json()}
     assert health["stripe-key"]["status"] == "invalid"
     assert "local run" in health["stripe-key"]["detail"]
+    assert "+00:00" not in health["stripe-key"]["checked_at"]
     reports = [x for x in (await clients.get("/calls")).json() if x["method"] == "REPORT"]
     assert reports and "credential_invalid" in reports[0]["path"]
 

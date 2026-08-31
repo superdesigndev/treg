@@ -8,7 +8,7 @@ SEPARATE session — if the state were still a per-process dict, the second sess
 from __future__ import annotations
 
 from treg import ratestore
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 from treg.models import Ephemeral
 
 

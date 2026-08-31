@@ -1,0 +1,19 @@
+{
+  "contact": {
+    "id": 0,
+    "name": "Patrick Collison",
+    "email": "person@example.com",
+    "domain": "stripe.com",
+    "company": "Stripe",
+    "linkedin_url": "https://www.linkedin.com/in/patrickcollison",
+    "job_title": "",
+    "company_city": "",
+    "company_region": "",
+    "company_country": "",
+    "city": null,
+    "region": null,
+    "country": null
+  },
+  "_scrubbed": true,
+  "_note": "shape recorded live 2026-08-26 (overflow mapping run, direct call on treg's key); values replaced"
+}

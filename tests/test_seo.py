@@ -316,12 +316,12 @@ async def test_widening_head_did_not_leak_into_the_public_schema(clients: AsyncC
 def test_no_shelf_is_published_that_the_app_grid_hides():
     """Adding a platform is a data-only change — drop the YAML in and it appears on both sides. The
     one way that breaks: `catalog_store` auto-registers a platform with no `platforms:` entry in
-    capabilities.yaml as `category: "Other"` (catalog_store.py, `platforms.setdefault`), and the
+    capabilities.yaml as `category: "Other"` (domain/catalog/store.py, `platforms.setdefault`), and the
     dashboard's `platCategories` skips `Other` outright (`if(c==='Other') continue`). The shelf page
     would still render and the sitemap would still publish it — but nothing in the app's own grid
     would link to it. Give the new platform a label and category in capabilities.yaml.
     """
-    from treg.api import _platform_rows
+    from treg.routers.catalog import _platform_rows
     orphans = [r["slug"] for r in _platform_rows() if r["category"] == "Other"]
     assert not orphans, (
         f"{orphans} have endpoints but no capabilities.yaml `platforms:` entry — the sitemap will "
@@ -333,7 +333,7 @@ def test_no_shelf_is_published_that_the_app_grid_hides():
 # suite reads as text (see tests/test_dashboard_markup.py). Both were reported from the browser.
 
 def _spa() -> str:
-    from treg.api import _WEB_DIR
+    from treg.routers.web import _WEB_DIR
     return (_WEB_DIR / "index.html").read_text(encoding="utf-8")
 
 
@@ -343,7 +343,7 @@ def test_public_catalog_drops_the_workspace_chrome():
     spa = _spa()
     assert '<div class="pubnav" v-if="publicCatalog">' in spa      # marketing nav instead
     assert '<div class="top" role="banner" v-else>' in spa          # app bar only for members
-    assert '<nav class="side" v-if="!publicCatalog">' in spa        # no sidebar in public mode
+    assert '<nav class="side"' in spa and 'v-if="!publicCatalog">' in spa  # no sidebar in public mode
     assert '.layout.solo{grid-template-columns:minmax(0,1fr)}' in spa   # main spans the full width
 
 
@@ -377,3 +377,98 @@ async def test_no_page_ships_an_unsubstituted_base(clients: AsyncClient):
     """`{BASE}` reaching a browser means a canonical or og:url is pointing at nothing."""
     for path in ("/", "/support", "/terms", "/privacy", "/tutorial", "/catalog"):
         assert "{BASE}" not in (await clients.get(path)).text, path
+
+
+# ----------------------------------------------------------------------------------------- brand
+
+@pytest.mark.parametrize("path,ctype", [("/media/brand/logo.png", "image/png"),
+                                        ("/media/brand/logotype.png", "image/png"),
+                                        ("/media/brand/mark-white.svg", "image/svg+xml")])
+async def test_brand_files_are_hot_linkable(clients: AsyncClient, path: str, ctype: str):
+    """Directories and partners embed these URLs; the landing's JSON-LD `logo` is one of them."""
+    r = await clients.get(path)
+    assert r.status_code == 200, path
+    assert r.headers["content-type"].startswith(ctype)
+
+
+async def test_favicon_is_the_mono_mark(clients: AsyncClient):
+    body = (await clients.get("/favicon.svg")).text
+    assert 'fill="#000000"' in body and 'fill="#ffffff"' in body
+
+
+# ---- discovery: the hubs are linked from pages Google already crawls -----------------------
+#
+# Before these links existed the 38 job pages and both workflow pages answered "URL is unknown
+# to Google" (Search Console URL inspection, 2026-08-27): they were listed in the sitemap and
+# linked from nothing. Every server-rendered page, the landing and the public catalog now carry
+# the three hubs, /catalog names them in its crawlable prerender, a provider page names the jobs
+# it serves, and a job page names the workflows that chain it.
+
+HUBS = ('href="/use-cases"', 'href="/workflows"', 'href="/agents"')
+
+
+async def test_every_surface_links_the_three_hubs(clients: AsyncClient):
+    for path in ("/", "/catalog", "/tools/hunter", "/use-cases/verify-an-email",
+                 "/workflows/find-and-verify-a-lead-list", "/agents/grok-bot"):
+        html = (await clients.get(path)).text
+        for hub in HUBS:
+            assert hub in html, f"{path} does not link {hub}"
+
+
+async def test_hub_links_stay_off_a_self_hosted_registry(monkeypatch):
+    """The job, workflow and agent pages exist on treg.to only (`_hosted`), so a self-hosted
+    registry's footer and catalog must not point at three 404s. The IndexNow key file is generic
+    and stays available everywhere."""
+    from httpx import ASGITransport
+    from treg.api import app
+    from treg.routers.web import INDEXNOW_KEY
+    monkeypatch.setenv("TREG_PUBLIC_URL", "https://registry.example.internal")
+    get_settings.cache_clear()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
+            for path in ("/", "/catalog", "/tools/hunter"):
+                html = (await c.get(path)).text
+                for hub in HUBS:
+                    assert hub not in html, f"{path} links {hub} off-host"
+            assert (await c.get(f"/{INDEXNOW_KEY}.txt")).status_code == 200
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_provider_page_names_the_jobs_it_serves(clients: AsyncClient):
+    html = (await clients.get("/tools/hunter")).text
+    assert 'id="used-in"' in html
+    assert 'href="/use-cases/verify-an-email"' in html
+    assert 'href="/use-cases/find-professional-emails"' in html
+
+
+async def test_job_page_names_the_workflows_that_chain_it(clients: AsyncClient):
+    html = (await clients.get("/use-cases/verify-an-email")).text
+    assert 'href="/workflows/find-and-verify-a-lead-list"' in html
+
+
+async def test_compare_titles_carry_the_cheapest_price(clients: AsyncClient):
+    html = (await clients.get("/use-cases/verify-an-email")).text
+    title = re.search(r"<title>(.*?)</title>", html, re.S).group(1)
+    assert "$" in title and len(title) <= 65, title
+
+
+async def test_provider_title_leads_with_pricing(clients: AsyncClient):
+    html = (await clients.get("/tools/hunter")).text
+    title = re.search(r"<title>(.*?)</title>", html, re.S).group(1)
+    assert title.startswith("Hunter API pricing") and "$" in title, title
+    assert len(title) <= 65, title
+
+
+async def test_indexnow_key_is_served_from_the_root(clients: AsyncClient):
+    from treg.routers.web import INDEXNOW_KEY
+    r = await clients.get(f"/{INDEXNOW_KEY}.txt")
+    assert r.status_code == 200 and r.text == INDEXNOW_KEY
+
+
+async def test_agent_pages_name_the_workflows(clients: AsyncClient):
+    html = (await clients.get("/agents/grok-bot")).text
+    assert 'id="workflows"' in html
+    assert 'href="/workflows/find-and-verify-a-lead-list"' in html
+    md = (await clients.get("/agents/grok-bot.md")).text
+    assert "/workflows/find-and-verify-a-lead-list" in md

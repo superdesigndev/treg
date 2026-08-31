@@ -183,8 +183,9 @@ endpoints:
     unit: call
   docs_url: https://hunter.io/api-documentation/v2#discover
 - id: hunter.x.domain-finder
-  tier: extended
+  capability: companies.domain.find
   platform: companies
+  tier: extended
   method: GET
   path: /domain-finder
   name: "Find a company's domain from its name"

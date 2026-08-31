@@ -1,0 +1,23 @@
+{
+  "founders": [
+    {
+      "id": "person-id-redacted",
+      "fullName": "Example Founder",
+      "firstName": "Example",
+      "lastName": "Founder",
+      "entityType": "person",
+      "location": "Redacted",
+      "URLs": {
+        "golden": "golden.com/wiki/example-founder",
+        "twitter": "twitter.com/example_founder",
+        "website": "example.com",
+        "facebook": "facebook.com/example.founder",
+        "github": "github.com/example-founder",
+        "linkedin": "linkedin.com/in/example-founder",
+        "crunchbase": "crunchbase.com/person/example-founder"
+      }
+    }
+  ],
+  "pages": 4,
+  "totalResults": 4
+}

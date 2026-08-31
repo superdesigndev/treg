@@ -1,0 +1,82 @@
+{
+  "breadcrumbs": [
+    {
+      "label": "Company Domains",
+      "signal_field_name": "q_organization_domains_list",
+      "value": [
+        "stripe.com"
+      ],
+      "display_name": "stripe.com"
+    }
+  ],
+  "partial_results_only": false,
+  "has_join": false,
+  "disable_eu_prospecting": false,
+  "partial_results_limit": 10000,
+  "pagination": {
+    "page": 1,
+    "per_page": 1,
+    "total_entries": 1,
+    "total_pages": 1
+  },
+  "accounts": [],
+  "organizations": [
+    {
+      "id": "5d0a0fbff6512580bf33a120",
+      "name": "Stripe",
+      "website_url": "http://www.stripe.com",
+      "angellist_url": "http://angel.co/stripe",
+      "linkedin_url": "http://www.linkedin.com/company/stripe",
+      "twitter_url": "http://twitter.com/stripe",
+      "facebook_url": "https://www.facebook.com/StripeHQ",
+      "languages": [
+        "English",
+        "Spanish",
+        "French",
+        "Japanese"
+      ],
+      "alexa_ranking": 200,
+      "phone": "phone:4bfe7b83d2",
+      "linkedin_uid": "2135371",
+      "founded_year": 2010,
+      "publicly_traded_symbol": null,
+      "publicly_traded_exchange": null,
+      "logo_url": "https://zenprospect-production.s3.amazonaws.com/uploads/pictures/69a4886fcf5bc40001d6a14c/picture",
+      "crunchbase_url": null,
+      "primary_domain": "stripe.com",
+      "sic_codes": [
+        "7375",
+        "7374",
+        "7389"
+      ],
+      "naics_codes": [
+        "54151",
+        "522320",
+        "518210"
+      ],
+      "primary_phone": {
+        "number": "phone:4bfe7b83d2",
+        "sanitized_number": "phone:4b56a69098"
+      },
+      "sanitized_phone": "phone:4b56a69098",
+      "owned_by_organization_id": null,
+      "num_languages": 4,
+      "organization_revenue_printed": "6.9B",
+      "organization_revenue": 6935000000.0,
+      "intent_strength": null,
+      "show_intent": true,
+      "has_intent_signal_account": false,
+      "intent_signal_account": null,
+      "organization_headcount_six_month_growth": 0.07199458832624661,
+      "organization_headcount_twelve_month_growth": 0.1879417434140073,
+      "organization_headcount_twenty_four_month_growth": 0.4369170984455958
+    }
+  ],
+  "model_ids": [
+    "5d0a0fbff6512580bf33a120"
+  ],
+  "num_fetch_result": null,
+  "derived_params": null,
+  "_scrubbed": true,
+  "_note": "captured live 2026-08-28 via treg; emails/phones hashed, lists trimmed"
+}

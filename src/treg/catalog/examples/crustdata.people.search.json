@@ -1,0 +1,234 @@
+{
+  "profiles": [
+    {
+      "basic_profile": {
+        "current_title": "Chairman and CEO",
+        "headline": "Chairman and CEO at Microsoft",
+        "location": {
+          "city": "Redmond",
+          "continent": "North America",
+          "country": "United States",
+          "full_location": "Redmond, Washington, United Sta…",
+          "raw": "Redmond, Washington, United Sta…",
+          "state": "Washington"
+        },
+        "name": "Satya Nadella",
+        "normalized_title": {
+          "matched_title": "Chairman & CEO",
+          "department": "Executive Leadership",
+          "sub_department": "Board Governance & Advisory",
+          "similarity": 0.999,
+          "confident": true
+        },
+        "professional_network_name": "Satya Nadella",
+        "profile_picture_permalink": "https://crustdata-media.s3.us-e…"
+      },
+      "contact": {
+        "has_business_email": false
+      },
+      "crustdata_person_id": 97185,
+      "education": {
+        "schools": [
+          {
+            "degree": "",
+            "description": "",
+            "end_year": 1996,
+            "institute_logo_permalink": "https://crustdata-media.s3.us-e…",
+            "location": {
+              "city": "Chicago",
+              "continent": "North America",
+              "country": "United States",
+              "raw": "Chicago, Illinois, United State…",
+              "state": "Illinois"
+            },
+            "professional_network_id": "8398",
+            "school": "The University of Chicago Booth…",
+            "start_year": 1994
+          },
+          {
+            "degree": "Bachelor’s Degree",
+            "description": "",
+            "end_year": null,
+            "institute_logo_permalink": "https://crustdata-media.s3.us-e…",
+            "location": {
+              "city": "",
+              "continent": "Asia",
+              "country": "India",
+              "raw": "Manipal H.O, Dist. Offices Comp…",
+              "state": "Karnātaka"
+            },
+            "professional_network_id": "577550",
+            "school": "Manipal Institute of Technology",
+            "start_year": null
+          },
+          "… 1 more item(s) truncated"
+        ]
+      },
+      "experience": {
+        "employment_details": {
+          "current": [
+            {
+              "business_email_verified": true,
+              "company_headcount_latest": 233092,
+              "company_headcount_range": "10001+",
+              "company_headquarters_country": "USA",
+              "company_hq_location": "Redmond, Washington, United Sta…",
+              "company_hq_location_address_components": [
+                "Redmond",
+                "King County",
+                "… 2 more item(s) truncated"
+              ],
+              "company_industries": [
+                "Software Development",
+                "Technology, Information and Int…",
+                "… 1 more item(s) truncated"
+              ],
+              "company_professional_network_industry": "Software Development",
+              "company_professional_network_profile_url": "https://www.linkedin.com/compan…",
+              "company_profile_picture_permalink": "https://crustdata-media.s3.us-e…",
+              "company_type": "Public Company",
+              "company_website": "https://news.microsoft.com/",
+              "crustdata_company_id": 2110301,
+              "employment_type": "",
+              "end_date": null,
+              "function_category": "",
+              "is_default": true,
+              "location": {
+                "raw": "Greater Seattle Area"
+              },
+              "name": "Microsoft",
+              "position_id": 505656746,
+              "professional_network_id": "1035",
+              "seniority_level": "CXO",
+              "start_date": "2014-02-01T00:00:00",
+              "title": "Chairman and CEO",
+              "years_at_company": "More than 10 years",
+              "years_at_company_raw": 12
+            },
+            {
+              "business_email_verified": false,
+              "company_headcount_latest": 18476,
+              "company_headcount_range": "10001+",
+              "company_headquarters_country": "USA",
+              "company_hq_location": "Chicago, Illinois, United State…",
+              "company_hq_location_address_components": [
+                "Chicago",
+                "Cook County",
+                "… 2 more item(s) truncated"
+              ],
+              "company_industries": [
+                "Higher Education",
+                "Education"
+              ],
+              "company_professional_network_industry": "Higher Education",
+              "company_professional_network_profile_url": "https://www.linkedin.com/compan…",
+              "company_profile_picture_permalink": "https://crustdata-media.s3.us-e…",
+              "company_type": "Educational Institution",
+              "company_website": "https://www.uchicago.edu/",
+              "crustdata_company_id": 1529132,
+              "employment_type": "",
+              "end_date": null,
+              "function_category": "",
+              "is_default": false,
+              "name": "University of Chicago",
+              "position_id": 1441746490,
+              "professional_network_id": "3881",
+              "seniority_level": "Entry Level",
+              "start_date": "2018-01-01T00:00:00",
+              "title": "Member Board Of Trustees",
+              "years_at_company": "6 to 10 years",
+              "years_at_company_raw": 8
+            }
+          ],
+          "past": [
+            {
+              "business_email_verified": false,
+              "company_headcount_latest": 194092,
+              "company_headcount_range": "10001+",
+              "company_headquarters_country": "USA",
+              "company_hq_location": "Seattle, Washington, United Sta…",
+              "company_hq_location_address_components": [
+                "Seattle",
+                "King County",
+                "… 2 more item(s) truncated"
+              ],
+              "company_industries": [
+                "Retail"
+              ],
+              "company_professional_network_industry": "Retail",
+              "company_professional_network_profile_url": "https://www.linkedin.com/compan…",
+              "company_profile_picture_permalink": "https://crustdata-media.s3.us-e…",
+              "company_type": "Public Company",
+              "company_website": "http://www.starbucks.com/career…",
+              "crustdata_company_id": 681121,
+              "employment_type": "",
+              "end_date": "2024-01-01T00:00:00",
+              "function_category": "",
+              "is_default": false,
+              "name": "Starbucks",
+              "position_id": 1441745760,
+              "professional_network_id": "2271",
+              "seniority_level": "Entry Level",
+              "start_date": "2017-01-01T00:00:00",
+              "title": "Board Member",
+              "years_at_company": "6 to 10 years",
+              "years_at_company_raw": 7
+            },
+            {
+              "business_email_verified": false,
+              "company_headcount_latest": 12,
+              "company_headcount_range": "2-10",
+              "company_headquarters_country": "USA",
+              "company_hq_location": "Washington, District of Columbi…",
+              "company_hq_location_address_components": [
+                "Washington",
+                "District of Columbia",
+                "… 2 more item(s) truncated"
+              ],
+              "company_industries": [
+                "Non-profit Organizations",
+                "Consumer Services"
+              ],
+              "company_professional_network_industry": "Non-profit Organizations",
+              "company_professional_network_profile_url": "https://www.linkedin.com/compan…",
+              "company_profile_picture_permalink": "https://crustdata-media.s3.us-e…",
+              "company_type": "Nonprofit",
+              "company_website": "http://www.thebusinesscouncil.o…",
+              "crustdata_company_id": 1142994,
+              "employment_type": "",
+              "end_date": "2023-01-01T00:00:00",
+              "function_category": "",
+              "is_default": false,
+              "name": "The Business Council U.S.",
+              "position_id": 2057886223,
+              "professional_network_id": "5301945",
+              "seniority_level": "Entry Level",
+              "start_date": "2021-01-01T00:00:00",
+              "title": "Chairman",
+              "years_at_company": "1 to 2 years",
+              "years_at_company_raw": 2
+            },
+            "… 1 more item(s) truncated"
+          ]
+        }
+      },
+      "metadata": {
+        "updated_at": "2026-08-24T00:11:00+00:00"
+      },
+      "social_handles": {
+        "dev_platform_identifier": {
+          "profile_url": null
+        },
+        "professional_network_identifier": {
+          "profile_url": "https://www.linkedin.com/in/sat…"
+        },
+        "twitter_identifier": {
+          "slug": ""
+        }
+      }
+    }
+  ],
+  "next_cursor": "H4sIAHi5jGoC_xXMywrCMBBA0V8pWbt…",
+  "total_count": 15,
+  "total_count_relation": null
+}

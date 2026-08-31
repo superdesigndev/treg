@@ -141,14 +141,19 @@ pre.call{margin:9px 0 0;background:var(--panel);border-radius:var(--rb);padding:
   padding:1px 6px;color:var(--ink)}
 
 /* ---------- footer ---------- */
-footer{border-top:1px solid var(--line);margin-top:46px;padding:26px 0 40px}
-.foot-in{max-width:1160px;margin:0 auto;padding:0 28px;display:flex;align-items:center;gap:18px;
-  flex-wrap:wrap;font-size:13px}
+footer{border-top:1px solid var(--line);margin-top:46px;padding:34px 0 44px}
+.foot-in{max-width:1160px;margin:0 auto;padding:0 28px;display:flex;align-items:flex-start;
+  justify-content:space-between;gap:32px 56px;flex-wrap:wrap;font-size:13px}
 .foot-in .brand{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-weight:500}
 .foot-in .brand .glyph{width:20px;height:20px;border-radius:6px;background:var(--inverse);
   color:var(--inverse-ink);display:grid;place-items:center;font-size:12px}
-.foot-in .sp{margin-left:auto}
+.foot-brand{display:flex;flex-direction:column;gap:8px}
+.foot-brand .note{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.foot-cols{display:flex;gap:56px;flex-wrap:wrap}
+.foot-col{display:flex;flex-direction:column;gap:8px;min-width:104px}
+.foot-col .lab{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
 .foot-in a{color:var(--muted)}
+.foot-in a:hover{color:var(--ink)}
 
 @media (max-width:640px){
   .wrap,.foot-in{padding:0 18px}

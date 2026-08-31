@@ -2,8 +2,33 @@
 title: The proxy — faithful credential-injecting relay + tool resolution
 status: shipped
 sources:
-  - src/treg/proxy.py
+  - src/treg/infra/upstream/relay.py
+  - src/treg/infra/upstream/ssrf.py
   - src/treg/api.py
+  - src/treg/application/call/authorize.py
+  - src/treg/application/call/idempotency.py
+  - src/treg/application/call/intake.py
+  - src/treg/application/call/resolve.py
+  - src/treg/application/call/reserve.py
+  - src/treg/application/call/settle.py
+  - src/treg/application/call/evidence.py
+  - src/treg/application/call/service.py
+  - src/treg/application/call/types.py
+  - src/treg/client_identity.py
+  - src/treg/sandbox_identity.py
+  - src/treg/domain/governance/access.py
+  - src/treg/domain/governance/publicdemo.py
+  - src/treg/domain/governance/usage.py
+  - src/treg/routers/call.py
+  - tests/test_call_application_contract.py
+  - tests/test_call_cancellation.py
+  - tests/test_error_capture.py
+  - tests/test_marketplace_call.py
+  - tests/test_oauth_billed.py
+  - tests/test_passthrough.py
+  - tests/test_tag_billing.py
+  - tests/test_tag_billing_adversarial.py
+  - tests/test_call_architecture.py
 related:
   - architecture/data-model.md
   - architecture/auth-secrets.md
@@ -13,8 +38,10 @@ related:
 
 # The proxy (the whole product in one function)
 
-The relay is `relay()` in `src/treg/proxy.py`. The API resolves which tool a request targets and loads
-its secrets; `relay()` injects and streams. It runs no business logic and never buffers the body.
+The relay is `relay()` in `src/treg/infra/upstream/relay.py`.
+`application.call.resolve` resolves which tool or
+marketplace endpoint a request targets, and the call path loads its secrets; `relay()` injects and
+streams. It runs no business logic and never buffers the body.
 
 ## The faithful-relay contract
 `relay()` alters **only three things**; everything else is verbatim (method, path, all query params
@@ -33,7 +60,8 @@ incl. duplicates, headers, cookies, body bytes):
 > — is the exception: `CallRecord.error_request` / `error_response` retain a redacted, truncated copy
 > of what the caller sent and what the provider (or treg-side 502) answered. Without it a failure is a
 > bare status code: `path` holds the catalog URL rather than the caller's parameters and `params_hash`
-> is one-way. Metered responses are already buffered by `_buffer_response`; `_peek_stream_head` reads
+> is one-way. `application.call.settle` buffers metered responses with `_buffer_response`, while
+> `_peek_stream_head` reads
 > only the first 8 KiB of a failed unmetered response and replays every consumed byte before the rest
 > of the original iterator, preserving status, raw headers, streaming, and the upstream-close task.
 > Caller bodies on unmetered paths are cached only when `Content-Length` is declared and at most 64
@@ -41,9 +69,10 @@ incl. duplicates, headers, cookies, body bytes):
 > [data-model](data-model.md) for the redaction order, admin-only access, and retention.
 
 Faithfulness mechanics inside `relay()`:
-- request headers rebuilt from `request.headers.raw` into an `httpx.Headers` multidict (preserves
+- request headers rebuilt from `UpstreamRequest.raw_headers` into an `httpx.Headers` multidict (preserves
   duplicate headers / cookies); injection (`headers[name] = v`) overwrites only the named one.
-- query as a list from `request.query_params.multi_items()` (keeps duplicate keys like `?tag=a&tag=b`).
+- query as the router-captured ordered pairs in `UpstreamRequest.query_items` (keeps duplicate keys
+  like `?tag=a&tag=b`).
 - path rebuilt from `request.scope["raw_path"]` (in `call_tool`), not Starlette's URL-decoded path
   param — percent-encoding survives to the upstream (npm's scoped publish `PUT /@scope%2fname` 404s
   if `%2f` is decoded to a literal slash).
@@ -53,23 +82,31 @@ Faithfulness mechanics inside `relay()`:
   still forwards the real plaintext bytes verbatim upstream. See [api](../interface/api.md).
 - upstream call uses the **shared** `client` (the long-lived `httpx.AsyncClient` at `app.state.http`,
   created in `lifespan` — keepalive is the biggest latency win).
-- response streamed back with `StreamingResponse(upstream_resp.aiter_raw(), …)`; every upstream response
-  header (incl. multiple `Set-Cookie`) is re-attached via `response.raw_headers` minus `_DROP_RESPONSE`,
-  and cleaned up with `BackgroundTask(upstream_resp.aclose)`.
+- the infra relay returns framework-neutral `UpstreamResponse(status, raw_headers, body_stream, close)`.
+  The router wraps it in `StreamingResponse` and copies every upstream response header (incl. multiple
+  `Set-Cookie`) minus `_DROP_RESPONSE`. Its body wrapper and background task share the same idempotent
+  close operation, so full reads, partial disconnects, stream errors, and cancellation close the upstream
+  response exactly once.
 
 A request may carry several credentials: `relay()` loops `tool.bindings` and calls
 `injectors.inject(headers, params, binding, crypto.decrypt(secret.value))` per binding.
+Bindings can also stamp provider protocol constants: a format with no `{secret}` renders literally
+(Crustdata's required API-version header is the first registry use). It still carries the same secret
+reference for binding validation and lifecycle, and the assignment overwrites a caller-supplied value.
+This is generic binding behavior, not an upstream-specific branch in the relay.
 
 **Platform bindings — injecting treg's OWN credential.** A binding with a `platform_setting` key (instead
 of a `secret_id`) injects one of treg's own credentials read from `get_settings()` — the Google Ads
 developer token is the case that exists. The value never lives in the org's secret store, so a tenant
 can't read it or extract it through a local run; a missing setting is a clean `502`
 (`this server has no <setting> configured`). Used by the OAuth-marketplace auto-provisioner for a provider
-that needs a second credential treg holds centrally (see [api](../interface/api.md)).
+that needs a second credential treg holds centrally, and by tier-4 catalog calls. Tier 4 also copies
+the provider's constant `required_headers` bindings, so Crustdata's `x-api-version: 2025-11-01` pin is
+identical on BYOK and platform-key calls (see [api](../interface/api.md)).
 
 A separate case that looks similar but is NOT a platform binding: the Google Ads **conversion**
 uploader (`adsconv.py`) also spends treg's own platform connection, but it is not a caller-issued
-`/call/` request at all, so it never reaches `relay()` or `injectors.py` — it reads the platform org's
+`/call/` request at all, so it never reaches `relay()` or `infra/upstream/injectors.py` — it reads the platform org's
 stored OAuth secret directly and builds its own headers. See [ads-conversions](ads-conversions.md).
 
 **Accept-Encoding is normalized to `identity`** when the caller sent none. `relay()` streams the upstream
@@ -77,12 +114,54 @@ body raw (`aiter_raw`), so if the caller doesn't ask for compression httpx would
 `Accept-Encoding: gzip` and hand a plain HTTP client / agent compressed bytes it never requested. Asking
 for `identity` keeps what the caller receives matching what the caller requested.
 
-## Tool resolution (`_resolve_call` in api.py)
-`* /call/{rest:path}` → `call_tool()` → `_resolve_call(rest, caller, db)` returns
-`(tool, upstream_url)`. **Both shapes are scoped to the caller's org** (`Tool.org_id == org_id`), so two
-orgs resolve independently and may reuse a tool name or upstream host; `call_tool` then loads only
-same-org secrets. After resolution `call_tool` runs `_enforce_daily_cap` (the per-user daily usage cap —
-429 when over; `-1`/default is a no-op, so the hot path adds no query for unmetered members). Two shapes:
+## Connection discipline: a call in flight holds no DB connection
+`application.call.reserve` owns and closes the short reservation session. The staged use case commits
+its secret-loading session before opening that transaction and again immediately before `relay()` (and
+before `_relay_live_demo()`), so from the moment the upstream is called until the settle, the call
+holds **zero** pooled connections. `application.call.settle` owns the short settlement or release
+transaction after the relay; `_record_first_call`
+`_store_idempotent` — already runs on its own short-lived session, and the request session is
+`expire_on_commit=False`, so `tool`, `secrets` and `caller.org` stay usable without a reload.
+
+Why this is load-bearing: secret loads auto-begin a transaction on the request session, while OAuth refresh
+uses separate short read and CAS-write phases around connection-free token-endpoint I/O. SQLAlchemy keeps
+an open transaction's connection checked out until the next commit; carrying that transaction through the
+upstream round trip would make `_platform_settle` need a second connection. Two per in-flight call
+against the 15-slot pool (`infra/db.py`: 5 + 10 overflow) deadlocked at 15 concurrent calls: every settle
+waited on a slot that only another waiting call could free, until `pool_timeout` killed one (a bare
+500, or a settle that forfeited its charge and left the hold to the reaper) and the rest cascaded — so
+every call in a burst "took 30 s" while the provider had answered in under a second. Reproduced live
+2026-08-24 from a customer's parallel-agent workload (13–29 calls per `Promise.all`), and the pool is
+per instance and shared by every org, so one team's burst stalled everyone's settles. The pool now
+bounds concurrent DB *phases* (milliseconds), not concurrent calls; there is no per-token or per-team
+concurrency limit, and `llms.txt` says so. `tests/test_call_pool_discipline.py` pins the invariant
+(`_engine.pool.checkedout() == 0` at relay time, metered and own-key) and a 20-call burst.
+
+The dataplane's derived writes are an explicit allowlist: an auto-top-up check may create its
+own-session task, public-demo and sandbox live-wire limits may persist ratestore hits, a first
+successful call may enqueue one AdConversion outbox row, and reserve may lazily reap stale holds.
+The main reserve, settle, release, audit, and idempotency writes remain the staged call's synchronous
+bookkeeping. Architecture tests pin every derived-write anchor so adding another requires an explicit
+contract decision.
+
+## Tool resolution (`application.call.resolve`)
+`* /call/{rest:path}` → `routers.call.call_tool()` → `application.call.service.execute_call()`
+→ `resolve_call_target(...)` returns a framework-neutral
+`ResolvedTarget(tool, upstream)`. Each resolution use case owns and closes its read session.
+**Both shapes are scoped to the caller's org** (`Tool.org_id == org_id`), so two
+orgs resolve independently and may reuse a tool name or upstream host; the use case then loads only
+same-org secrets. After resolution `application.call.authorize` runs tool/project ACL, deny, member-cap,
+and public-demo gates in that order, with no money hold or upstream access. Its short session closes before
+the reserve stage; `-1`/default member caps add no query. Two resolution shapes:
+
+`* /catalog/call/{rest:path}` is the narrower entrance used by catalog-only MCP surfaces.
+`routers.call.call_catalog_endpoint` sets `request.state.catalog_only` (gated on
+`claude_connector_enabled`) and then enters the same `call_tool` handler; the flag travels on
+`CallInput` into `execute_call`. Resolution accepts only an exact catalog endpoint id and never calls
+`resolve_call_target`, so a private team tool or arbitrary passthrough path cannot shadow the catalog
+entry. Everything after catalog resolution stays shared: credentials, ACLs, deny rules, caps,
+cancellation cleanup, metering, audit, idempotency, and faithful relay.
+
 - **URL-passthrough (agent-native):** `rest` is the real upstream URL (`/call/https://api.intercom.io/me`).
   `_normalize_scheme()` restores the `https://` a path param collapses to `https:/`. The tool is resolved
   by **host** (`_host_of()` = `urlsplit(...).netloc`, matched against the indexed `Tool.host`) then the
@@ -166,7 +245,10 @@ each is NULL-means-any.
 (`_mark_treg_own_errors`, see [api](../interface/api.md)) — status and body unchanged. A caller cannot
 otherwise tell treg's 404 ("no tool registered for that host") from the vendor's own; the
 [local proxy](local-proxy.md) uses the marker to explain a failure without ever rewriting a real vendor
-response.
+response. Resolution raises a mechanism-keyed `ResolutionFailed`; one mapping assigns its
+`caller | treg | upstream | org_connection` blame, and the router translates status and detail without
+changing either. Provider responses, including 4xx and 5xx, remain response data and never become a
+typed resolution failure.
 
 `call_tool()` loads every bound secret (running `oauth.ensure_fresh` on oauth secrets first — see
 [auth-secrets](auth-secrets.md)), calls `relay()`, then fires `audit.record_call(...)` off the response
@@ -199,16 +281,117 @@ frame on a GET), and honors headers a peer marks hop-by-hop via its `Connection`
 `injectors._token_from_json` rejects a non-string field value instead of injecting garbage.
 
 **Call-time SSRF guard (DNS-rebinding defence).** Just before the upstream `send`, `relay()`
-re-resolves the upstream host (`health.host_is_public`, gated by the `proxy_ssrf_check` setting) and
+re-resolves the upstream host (`infra.upstream.ssrf.host_is_public`, gated by the `proxy_ssrf_check` setting) and
 refuses with a `502` if any resolved address is internal (loopback/private/link-local/reserved/multicast).
 This catches the case where a `base_url` was public at **registration** but its DNS now points at an
 internal target like `169.254.169.254` or localhost — the registration-time check alone can't stop a name
-that resolves differently later. Registration itself (`health.safe_webhook_url`, reused for `base_url`)
+that resolves differently later. Registration itself (`infra.upstream.ssrf.safe_webhook_url`, re-exported
+by `health` and reused for `base_url`)
 also rejects numeric IP encodings — decimal/hex/octal/short forms like `2130706433` / `0x7f000001` /
 `127.1` are normalized via `inet_aton` and re-checked, so they can't sneak past the literal-IP block.
 (A narrow resolve-vs-connect race remains; pinning the resolved IP would need a custom transport.)
 
 > Why relay instead of modeling the upstream: [foundation/charter.md](../foundation/charter.md).
+
+## Routed endpoints — the resolve stage short-circuit
+
+A catalog row with `kind: routed` (`treg.<capability>`, generated — `architecture/catalog.md`
+§ Routing) never reaches the credential ladder itself. `service._execute_call` hands it to
+`application/call/route.py`, which builds the plan and runs each child endpoint through **this same
+use case** as a child `CallContext` (`call_ref` `{parent}:r{n}`), so every rule below — ladder,
+reserve, relay faithfulness, capacity, overflow, settle, audit, cancellation — applies per child
+unchanged. The parent only assembles `{output, raw, _treg}` and owns the idempotency label.
+
+## Platform capacity: refuse before reserve (plan step D)
+
+Tier 4 spends treg's own vendor account, and that account can be empty. `_resolve_marketplace_call`
+asks two questions after `_platform_offer` says yes: is the provider marked **exhausted** in the
+in-process capacity view (`domain.capacity.view`, loaded from ratestore `capacity:state:<provider>` on a
+60 s TTL by `resolve_marketplace_target` before its session opens)? If so it raises
+`CallFailure("provider_capacity", 503, blame="treg")` — **before any hold exists** — whose body carries
+`resets_at` when known and the same-capability alternatives from `_capability_alternatives`. treg still
+does not choose for the caller (charter): it names the options. The audit row is `refused_by="capacity"`,
+`X-Treg-Error: 1`, cost 0. A stale, empty or "ok" view never refuses; only a confirmed signal does.
+
+The signal comes from the call path itself as well as from the worker's sweep: after a tier-4 answer
+≥ 400, `settle._note_capacity_signal` runs `domain.capacity.signatures.classify` on the vendor's
+status/headers/body. A `balance` or `quota` signature (findymail "Not enough credits", lusha's "Daily"
+429, hunter's "per billing period" 429, any bare 402, …) writes the exhausted mark through
+`domain.capacity.marks.mark_exhausted` — its own short session, **after** the settle closed the hold,
+never during flight — and the next call is refused without waiting for a sweep. A burst 429
+(`retry-after ≤ 60 s`) or an unknown one only logs; step D′ smooths those. That mark is the single
+dataplane write this feature adds (`capacity_exhausted_mark` in `tests/test_call_architecture.py`).
+Tiers 1/2 resolve earlier and never consult the view: an org's own key running dry is the org's own
+answer, relayed unchanged. The vendor's 402 on THIS call is also relayed unchanged — the protection is
+for the next caller.
+
+## Burst smoothing on treg's own keys (plan step D′)
+
+Many callers share one platform key, so tier 4 makes its own bursts: leadsforge 429'd 27% of its
+calls, crustdata 34%, with `retry-after` headers nobody downstream could act on. Two bounded
+mechanisms in `service._execute_call`, both **after the DB phase ended and before the relay** (the
+pool-discipline rule holds through the wait; proven by test), both platform-tier only, neither ever a
+refusal:
+
+1. **Spacer** — `infra/upstream/limiter.py`: one call per `window_s / limit` per provider (a token
+   bucket of capacity one — a burst of `limit` at t=0 is legal for a classic bucket and exactly what a
+   sliding-window provider 429s). A call that would exceed the rate waits ≤ 2 s (`DEFAULT_MAX_WAIT_MS`),
+   then proceeds regardless; the hold is already placed, so the org pays latency, never money. The
+   limit comes from the capacity view (`view.rate_limit`: published by the sweep from
+   `CapacityPolicy.rate_limit`, with the verified defaults — leadsforge 120/min, leadmagic 300/min,
+   crustdata 30/min, tikhub 30/s — before the first sweep). In-process on purpose: a second replica
+   doubles the effective rate, and the `rate_pressure` alert (step C) is the answer to that, not a
+   shared counter on the request path.
+2. **One bounded `retry-after` re-send** — on a tier-4 **429** classified `burst` with
+   `retry-after ≤ 5 s` (`SMOOTHING_RETRY_MAX_S`), for a **body-less GET/HEAD only**: close the first
+   response, sleep, send the identical `UpstreamRequest` once more on the same hold, settle on the
+   second answer. A quota-429 (lusha "Daily", hunter "per billing period", any `retry-after` > 60 s), an
+   unknown 429, a POST, or a second 429 are relayed as is. The "no retries" rule for 401/402/5xx stands.
+
+Both are visible: `X-Treg-Smoothed: wait=<ms>` and/or `retry=1` on the response (metered exit only).
+No audit column yet — `smoothed_ms` would be an ALTER on the hot `callrecord` table, a migration-class
+change kept out of this behaviour PR.
+
+## Overflow — the child cycle (plan step E; off by default)
+
+**Overflow = the same vendor endpoint, another account of ours.** When a tier-4 call fails on treg's
+own key for a treg-side reason — a balance/quota signature, a burst-429 smoothing could not absorb —
+and the worker has an enabled `OverflowRoute` for the endpoint, `application.call.overflow.
+maybe_overflow` runs a **child cycle** after the primary's settle released its hold:
+
+1. Route from the in-process route view (`domain.capacity.routes_view`, Orthogonal first), skipping
+   an aggregator marked unhealthy (`overflow:<name>` in the capacity view) or without a key; budget
+   check against `OverflowSpend` (`overflow_daily_budget_usd`, $20/aggregator/day) on a short session.
+2. **Child hold**, own id `{call_ref}:overflow`, through the ordinary `_platform_reserve` (tag
+   budgets, daily cap, trial allowance apply; an empty balance is the normal 402). Never the parent's
+   id: release-by-id is a conditional claim and `_finish_cancelled_call` releases both ids exactly once.
+3. One aggregator run with **no DB open**: `infra.upstream.aggregators.<name>.build` wraps the
+   caller's original query + buffered body; the key comes from `Settings.overflow_key_<name>` and is
+   never logged. Monid's async runs are polled (bounded).
+4. `parse` → vendor status + body + the real in-band cost. `_platform_settle(child,
+   observed_override=cost, overflow_spend=(aggregator, cost − treg's direct price))` charges **exactly
+   the aggregator's price, 0% markup**, and folds the day's spend delta into the same transaction —
+   the one allowlisted overflow write (`overflow_spend_in_settle`).
+5. The vendor's body goes back as the answer, `X-Treg-Served-Via: overflow:<name>`, `X-Treg-Cost-Micro`
+   the child's charge, `X-Treg-Call-Id` the parent's. Two audit rows share the `call_ref`: the primary
+   attempt with its real status and the child with `credential_tier="platform-overflow"`.
+
+When the resolver already knows the account is out (the exhausted view) **and** a route is on, the
+ladder skips the direct attempt entirely (`MarketplaceCall.skip_direct`): no parent hold, no vendor
+402, straight to the child — the plan's tier 4b.
+
+**An aggregator failure is data.** Its own 401/402/403 (or a vendor 402 relayed through it — seen live)
+releases the child hold, marks `overflow:<name>` unhealthy for 15 minutes, and answers the typed
+`provider_capacity` 503 with alternatives; a second aggregator is never tried on the same call. Its
+stricter-schema refusal (`contract`) releases the child and lets the vendor's own answer stand.
+
+**Shadow mode** (`TREG_OVERFLOW_MODE=shadow`): the aggregator is called, status / shape / cost logged
+and the probe's cost recorded in `OverflowSpend` (treg pays, budget-bounded) — the caller still gets
+the vendor's own error and is charged nothing. This is the week the plan requires before routes serve.
+
+Never on tiers 1/2, a caller-caused 4xx, a 401, a timeout, PUT/PATCH/DELETE, a route the worker has
+not enabled, or a team that opted out (`Org.platform_overflow_disabled`, `treg org overflow off`) —
+checked before any aggregator is contacted, on both entry points.
 
 ## treg's own headers never reach the upstream — by PREFIX, not by name
 

@@ -12,6 +12,15 @@ source:
 # The demo host answers 200 to anything and demo keys ride a different header; neither is served
 # here. Verified live 2026-08-15 on treg's own Basic key; examples captured the same day.
 pricing_url: https://www.coingecko.com/en/api/pricing
+# Archive/cache judgment (applies to every endpoint below; see docs/context/architecture/archive.md).
+# CoinGecko PERMITS caching with a mandatory refresh ceiling; §6.2 forbids anything longer-lived
+# ("duplicate, reproduce, copy, store"), so this is transient with a hard 24h cap, never archive.
+cache:
+  mode: transient
+  max_age_s: 86400
+  license_quote: "We do not encourage caching or storage of Data. However, if you must cache or store Data: You should refresh the cache at least every 24 hours"
+  source_url: https://www.coingecko.com/en/api_terms
+  checked: "2026-08-27"
 endpoints:
   - id: coingecko.simple.price
     domain: crypto

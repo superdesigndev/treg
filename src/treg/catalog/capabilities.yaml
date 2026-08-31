@@ -88,6 +88,7 @@ platforms:
   # --- Advertising: ad platforms & creator marketplaces ----------------------------------------
   google-ads: {label: "Google Ads", category: "Advertising", featured: 1, summary: "Query your own Google Ads accounts with GAQL, and manage campaign budgets."}
   meta-ads: {label: "Meta Ads (Facebook & Instagram)", category: "Advertising", featured: 2, summary: "Your Meta ad accounts, campaigns and insights across Facebook and Instagram."}
+  google-tag-manager: {label: "Google Tag Manager", category: "Advertising", featured: 3, summary: "Audit and manage tags, triggers, variables, workspaces and published container versions in your own GTM account."}
   douyin-xingtu: {label: "Xingtu — Douyin's creator marketplace (influencer rates, audience data)", category: "Advertising", summary: "Influencer rates, audience breakdowns and campaign performance."}
   xiaohongshu-pugongying: {label: "Pugongying — Xiaohongshu's creator marketplace", category: "Advertising", summary: "Creator pricing, audience and note performance from Xiaohongshu's creator marketplace."}
   qq-huxuan: {label: "QQ Huxuan — Tencent's creator marketplace", category: "Advertising", summary: "Creator and placement data from Tencent's Huxuan marketplace."}
@@ -119,8 +120,14 @@ platforms:
   stocks: {label: "Stock Market Data", category: "Market data", featured: 2, summary: "End-of-day and intraday stock prices, tickers, splits and dividends across global exchanges."}
 
 capabilities:
+  creators.search: "Find influencers & creators by niche, country, followers & engagement on Instagram, TikTok, YouTube"
   # --- SEO / search -----------------------------------------------------------------------------
   google.serp.organic: "Get organic search results for a keyword"
+  google.serp.maps: "Get Google Maps results for a keyword and location"
+  google.serp.local: "Get Google Local Finder (local pack) results for a keyword"
+  google.serp.news: "Get Google News results for a keyword"
+  google.serp.ai_mode: "Get Google AI Mode results for a keyword"
+  google.keywords.trends: "Keyword popularity over time (Google Trends or a trends index)"
   google.keywords.volume: "Keyword volume, CPC & competition"
   google.keywords.ideas: "Get related keyword ideas"
   google.domain.ranked_keywords: "Keywords a domain already ranks for"
@@ -142,6 +149,7 @@ capabilities:
   tiktok.user.profile: "Get a user's public profile"
   tiktok.user.videos: "List a user's recent videos"
   tiktok.video.detail: "Get a video's metadata & stats"
+  tiktok.video.captions: "Get a video's captions or transcript"
   tiktok.video.comments: "List a video's comments"
   tiktok.search.videos: "Search videos by keyword"
   tiktok.hashtag.videos: "List videos under a hashtag"
@@ -174,6 +182,14 @@ capabilities:
   google-analytics.metadata: "List available dimensions & metrics"
   google-analytics.realtime: "Realtime visitors on your site"
   google-analytics.report: "Run a traffic or behaviour report"
+  google-tag-manager.accounts: "List the Tag Manager accounts you can access"
+  google-tag-manager.containers: "List containers in an account"
+  google-tag-manager.live_version: "Inspect a container's live version"
+  google-tag-manager.tags: "List tags in a workspace"
+  google-tag-manager.version.create: "Create a version from a workspace"
+  google-tag-manager.version.publish: "Publish a container version"
+  google-tag-manager.workspace.sync: "Sync a workspace with the latest container version"
+  google-tag-manager.workspaces: "List workspaces in a container"
   google-business.accounts: "List the accounts you manage"
   google-business.locations: "Your listings with hours & categories"
   google-business.review.reply: "Reply to a customer review"
@@ -190,11 +206,11 @@ capabilities:
 
   # --- Enrichment (B2B data) --------------------------------------------------------------------
   companies.enrich: "Enrich a company from its domain or name"
-  companies.search: "Search companies by industry, size or tech"
-  people.enrich: "Enrich a person from email or LinkedIn"
-  people.search: "Search people by role, company or location"
-  people.email.find: "Find someone's work email"
-  people.email.verify: "Verify an email address"
+  companies.search: "Search companies by industry, size or tech — account lists for lead generation"
+  people.enrich: "Fill in a person's profile from a LinkedIn URL or other identifier you already hold — job title, employer, seniority, location"
+  people.search: "Find people by role, company or location — lead lists and prospects (sales leads)"
+  people.email.find: "Get, find or look up a person's work email address from their name, company domain or LinkedIn profile"
+  people.email.verify: "Check an email address you ALREADY have is real and deliverable — not for finding one"
 
   # --- Ad platforms & libraries -----------------------------------------------------------------
   meta-ads.library.search: "Search publicly running ads"
@@ -251,6 +267,8 @@ capabilities:
   companies.headcount_trend: "Headcount growth over time & by department"
   companies.industry.resolve: "Map free text to industry codes"
   companies.jobs: "A company's open job postings"
+  companies.domain.find: "Find a company's website domain from its name"
+  companies.jobs.search: "Search indexed job listings across companies"
   companies.news: "Recent news & signals about a company"
   companies.reviews: "Read employee reviews of a company"
   google-play.search.apps: "Search apps by keyword"
@@ -285,6 +303,8 @@ capabilities:
   amazon.bestsellers.list: "List best sellers in a category"
   amazon.product.detail: "Get a product's detail by ASIN"
   amazon.search.products: "Search products by keyword"
+  amazon.product.sellers: "List the sellers offering a product by ASIN"
+  amazon.product.variants: "List every ASIN variation of a product"
 
   bilibili.comment.replies: "List replies to a comment"
   bilibili.dynamic.detail: "Get a dynamic post's detail"

@@ -10,6 +10,7 @@ from __future__ import annotations
 from httpx import AsyncClient
 
 from treg import api
+from treg.routers import web
 
 
 SKILL = {
@@ -83,7 +84,7 @@ async def test_detail_page_title_is_replaced_not_duplicated(clients: AsyncClient
 async def test_og_meta_survives_a_title_rename(clients: AsyncClient, monkeypatch, tmp_path):
     """A rename in the dashboard's title must not be able to switch link previews off again."""
     (tmp_path / "index.html").write_text("<html><head><title>Something Else Entirely</title></head></html>")
-    monkeypatch.setattr(api, "_WEB_DIR", tmp_path)
+    monkeypatch.setattr(web, "_WEB_DIR", tmp_path)
     r = await clients.get("/app/skills/intercom")
     assert 'og:title' in r.text and "Something Else Entirely" not in r.text
 

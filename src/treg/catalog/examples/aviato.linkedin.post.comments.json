@@ -1,0 +1,21 @@
+{
+  "results": [
+    {
+      "commentary": "Example comment",
+      "commenter": {
+        "image": "https://example.com/avatar.jpg",
+        "linkedinURL": "https://www.linkedin.com/in/example-person",
+        "name": "Example Person"
+      },
+      "numReactions": 0,
+      "numComments": 0,
+      "reactionTypeCounts": [],
+      "comments": [],
+      "createdAt": "2026-01-01T00:00:00Z"
+    }
+  ],
+  "totalResults": 7,
+  "pages": 7,
+  "paginationToken": "example-token",
+  "_note": "Live response returned one comment on this page; all identity and content values are placeholders."
+}

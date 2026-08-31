@@ -13,7 +13,8 @@ from sqlalchemy import select
 from conftest import make_upstream
 
 from treg.api import app
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
+from treg.domain.identity import session as sess
 from treg.models import CallRecord, Membership, Org, Secret, Tool, User
 
 ADMIN = "ENV-ADMIN-SECRET"
@@ -107,8 +108,18 @@ async def test_seed_tool_and_accept_teammate(c):
     # the dashboard narrative: the user creates a REAL team, seeds the echo tool, and invites a
     # demo teammate that auto-joins. Use an IDENTITY token (like the dashboard session) so X-Treg-Org
     # resolves the active team across orgs — a per-org token is bound to one org.
-    code = (await c.post("/auth/email/start", json={"email": "builder@x.io"})).json()["dev_code"]
-    tok = (await c.post("/auth/email/verify", json={"email": "builder@x.io", "code": code})).json()["token"]
+    started = (await c.post("/auth/email/start", json={"email": "builder@x.io"})).json()
+    if code := started.get("dev_code"):
+        tok = (await c.post(
+            "/auth/email/verify", json={"email": "builder@x.io", "code": code})).json()["token"]
+    else:
+        # Postgres correctly suppresses the SQLite-only dev OTP. This journey needs an identity token,
+        # not an OTP assertion, so establish the already-proven identity directly for that engine.
+        async with session_maker() as s:
+            user = User(email="builder@x.io")
+            s.add(user)
+            await s.commit()
+        tok = sess.make(user.id)
     org = (await c.post("/orgs", json={"name": "Acme"}, headers=_h(tok))).json()  # first team: identity token only, no org yet
     oh = {**_h(tok), "X-Treg-Org": org["org"]}
     # seed the tool
@@ -125,6 +136,14 @@ async def test_seed_tool_and_accept_teammate(c):
     await c.post(f"/orgs/{org['org_id']}/invites", json={"email": "real@person.com", "role": "member"}, headers=oh)
     bad = await c.post("/onboard/accept-teammate", json={"email": "real@person.com"}, headers=oh)
     assert bad.status_code == 400
+    assert bad.json() == {"detail": "onboarding auto-accept is for demo teammates only"}
+    missing = await c.post(
+        "/onboard/accept-teammate",
+        json={"email": "missing@demo.treg.local"},
+        headers=oh,
+    )
+    assert missing.status_code == 404
+    assert missing.json() == {"detail": "no pending invite for that email"}
 
 
 async def test_demo_footprint_excluded_from_admin_stats(c):

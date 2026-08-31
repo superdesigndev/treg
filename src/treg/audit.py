@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from .db import session_maker
+from .infra.db import session_maker
 from .models import CallRecord, RunRecord, SearchMiss
 
 _pending: set[asyncio.Task] = set()
@@ -131,5 +131,13 @@ async def _write(model, **fields) -> None:
 async def drain() -> None:
     # Loop until quiescent, not a one-shot snapshot: a call finishing DURING shutdown enqueues a new
     # record_call after we'd have gathered, and that audit write would otherwise be dropped.
+    #
+    # Drain must remove what it gathered ITSELF. A finished task leaves `_pending` through a
+    # call_soon'd done-callback — and awaiting a gather whose tasks are all already complete never
+    # suspends, so a loop keyed only on the callback spins synchronously forever while that callback
+    # (and every timer on the loop) starves. Latent since the first import; a CI Postgres runner hit
+    # the window deterministically and wedged whole 15-minute jobs on it.
     while _pending:
-        await asyncio.gather(*list(_pending), return_exceptions=True)
+        tasks = list(_pending)
+        await asyncio.gather(*tasks, return_exceptions=True)
+        _pending.difference_update(tasks)

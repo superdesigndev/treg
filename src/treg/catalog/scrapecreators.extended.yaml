@@ -4850,8 +4850,9 @@ endpoints:
       url: https://www.tiktok.com/@stoolpresidente/video/7623818255903329566
   skipped: not called — $1.0000 would exceed this run's $45.00 budget
 - id: scrapecreators.x.v1-tiktok-video-transcript
-  tier: extended
+  capability: tiktok.video.captions
   platform: tiktok
+  tier: extended
   method: GET
   path: /v1/tiktok/video/transcript
   name: "TikTok video transcript by URL — captions, subtitles"

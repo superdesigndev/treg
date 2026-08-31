@@ -2,13 +2,31 @@
 title: Data model — the registry tables, async DB, audit writer
 status: shipped
 sources:
+  - alembic.ini
+  - src/treg/alembic/env.py
+  - src/treg/alembic/versions/0001_baseline_current_schema.py
+  - src/treg/alembic/versions/0002_archive_tables.py
+  - src/treg/alembic/versions/0003_callrecord_cached.py
+  - src/treg/alembic/versions/0004_archivekey_request_shape.py
+  - src/treg/alembic/versions/0005_capacity_policy_snapshot.py
+  - src/treg/alembic/versions/0006_overflow_route.py
+  - src/treg/alembic/versions/0007_overflow_spend.py
+  - src/treg/alembic/versions/0008_org_platform_overflow_disabled.py
+  - src/treg/alembic/versions/0009_callrecord_hit.py
+  - src/treg/maintenance.py
+  - src/treg/web/sitetrack.js
   - src/treg/models.py
-  - src/treg/db.py
-  - src/treg/referrals.py
+  - src/treg/timeutil.py
+  - src/treg/infra/db.py
+  - src/treg/domain/referrals.py
   - src/treg/audit.py
   - src/treg/analytics.py
   - src/treg/ratestore.py
+  - src/treg/application/auth.py
+  - tests/test_postgres_reset.py
+  - tests/test_alembic_expand_safety.py
 related:
+  - architecture/archive.md
   - architecture/proxy-model.md
   - architecture/auth-secrets.md
   - architecture/ads-conversions.md
@@ -23,11 +41,18 @@ SQLModel tables in `src/treg/models.py`. Kept minimal on purpose. Org multi-tena
 - **`Org`** — the tenant that owns resources: `id, name, slug` (unique), `suspended` (admin lock),
   `demo` (a sandbox team seeded by [onboarding](../interface/onboarding.md) — labeled + removable),
   `public_demo` (a team whose member token is PUBLISHED, e.g. on the landing page — non-admin members
-  are locked to `/call` + reads and may never act as a user; gated in `api.require_member` /
-  `require_identity`), `created_at`. **`ad_gclid`/`ad_click_id_type`/`ad_click_at`/`ad_landing`**
+  are locked to `/call` + reads and may never act as a user; gated in
+  `domain.identity.access.require_member` / `require_identity`), `created_at`.
+  **`ad_gclid`/`ad_click_id_type`/`ad_click_at`/`ad_landing`**
   (migration A37, all nullable) — set once, at signup, from the first-party `treg_ad` cookie; never
   overwritten. The historically named `ad_gclid` holds the click value; `ad_click_id_type` says
-  `gclid`/`gbraid`/`wbraid`, with NULL meaning a legacy GCLID. **`first_call_at`** (same migration) —
+  `gclid`/`gbraid`/`wbraid`, with NULL meaning a legacy GCLID. **`utm_source`/`utm_medium`/
+  `utm_campaign`/`utm_term`/`utm_content`/`utm_referrer`** (migration A40, all nullable) — first-touch
+  traffic source from the first-party `treg_utm` cookie (`web/sitetrack.js`, set on the visitor's
+  FIRST page, first touch wins, 90 days), persisted once at signup in both doors. This is the column
+  set that answers "how many teams did campaign X bring" — the `ad_*` columns only know Google
+  clicks. `utm_referrer` is the referring hostname, kept even when no `utm_*` tag was present.
+  **`first_call_at`** (same migration as `ad_*`) —
   set once by a guarded UPDATE in the `/call/` handler,
   deliberately NOT derived from `CallRecord` (which `audit.py` sheds under load, undercounting exactly
   when traffic is highest). Both feed [ads-conversions](ads-conversions.md).
@@ -130,12 +155,14 @@ SQLModel tables in `src/treg/models.py`. Kept minimal on purpose. Org multi-tena
 - **`ToolRequest`** — a "the catalog doesn't have X" report (`POST /tool-requests`, open + per-IP
   rate-limited): `capability` (the headline, ≤200 chars), `query` (the search that came up empty —
   auto-filled by agents, the dedup/priority signal), `note`, `contact`, `source` (`web` | `cli` |
-  `mcp` | `api`), `status` (`open` | `done` | `dismissed`, flipped by hand), and **nullable**
+  `mcp` | `claude-connector` | `api`), `status` (`open` | `done` | `dismissed`, flipped by hand), and
+  **nullable**
   `org_id`/`user_email` — identity is attribution when the caller happens to have one, never a
   requirement, because the usual filer is an agent with zero results and no token. Reviewed by
   querying the table; a Slack notifier may hang off the insert later, but the row is the record.
 - **`SearchMiss`** — a catalog search that returned **nothing**: `query` (capped to 300 chars),
-  `source` (`api` — the HTTP route serving web + CLI + raw API — or `mcp`), `created_at`. The demand
+  `source` (`api` for the HTTP route that serves web + CLI + raw API; `mcp` for the team MCP; or
+  `claude-connector` for V2), `created_at`. The demand
   signal one step before a `ToolRequest`: most agents that miss never file, so the query text is all
   they leave. Written fire-and-forget through `audit.record_search_miss` (dropped rows cost
   analytics, never a search) from both search paths — `GET /catalog/search` and the in-process MCP
@@ -160,10 +187,11 @@ SQLModel tables in `src/treg/models.py`. Kept minimal on purpose. Org multi-tena
   instances**: the emailed OTP code + its brute-force counter, and the auth rate-limit sliding windows.
   Keyed by `(ns, k)` — a namespace (`otp` | `otp_start` | `sandbox_hit`) plus the key within it — with an
   opaque JSON `v` and an `expires_at` (rows are swept lazily). This is the DB home for what used to be
-  per-process dicts in `api.py` (backlog #3): counters can no longer be reset by a redeploy, and a per-IP
-  / per-email cap can't be weakened by running more than one instance. The access helpers live in
+  per-process dicts in the auth HTTP layer (backlog #3): counters can no longer be reset by a redeploy,
+  and a per-IP / per-email cap can't be weakened by running more than one instance. The access helpers live in
   `ratestore.py` (`kv_put`/`kv_get`/`kv_pop`, `rate_check` sliding-window, `sweep`). NOT the CLI-login
-  handshake — that is deliberately still in-process (`api._cli_pending`, short-lived, self-heals on retry).
+  handshake — that is deliberately still in-process (`application.auth._cli_pending`, short-lived,
+  self-heals on retry).
 
 - **`DenyRule`** — org policy over what may be CALLED: `org_id`, nullable `user_id` (NULL = the whole
   org, set = one member/agent), nullable `project_id` (NULL = any tool, set = only calls **through**
@@ -179,6 +207,21 @@ SQLModel tables in `src/treg/models.py`. Kept minimal on purpose. Org multi-tena
   (member, runtime), the auto-captured half of the agents story. `Membership.created_by` (same
   step) names the admin who minted an agent; `''` for door/invite joins.
 
+- **`CapacityPolicy` / `CapacitySnapshot`** — what each treg-owned vendor account (tier 4) meters and
+  how it is funded, and the append-only observations of what it has left. Written by the worker's
+  `treg-worker capacity sweep` only, never by the call path; the sweep also publishes a per-provider
+  latest state into `Ephemeral` under `capacity:state:<provider>`, which the dataplane will read on a
+  TTL from plan step D. Numbers only — never a credential. See `ops/capacity.md`. Alembic revision
+  `0005` creates these two tables.
+- **`OverflowRoute`** — one `(endpoint_id, aggregator)` pair: the same vendor endpoint served through a
+  treg-owned aggregator account, with the aggregator's price, the price ratio, verification stamp and a
+  DERIVED `enabled`. Filled by `treg-worker overflow sync` only (Alembic `0006`); read-only for the call
+  path. See `ops/capacity.md`.
+- `Org.platform_overflow_disabled` - the team's overflow opt-out (Alembic `0008`). See `ops/capacity.md`.
+- **`OverflowSpend`** — per aggregator per UTC day: calls, the aggregator's charge, the delta against
+  treg's direct price. Written inside the overflow child's settle transaction (and by the shadow probe);
+  the $20/day budget reads it. Alembic `0007`. Not a balance.
+
 ## Bindings (the multi-credential shape)
 `Tool.bindings` is a JSON list; each entry is
 `{secret_id, injector, location, name, format, secret_field}` — one credential injection. A request
@@ -186,21 +229,48 @@ applies **all** of a tool's bindings (e.g. google-ads = an oauth bearer + a `dev
 The API builds a single-binding tool from flat fields via `_flat_binding()`; injection is in
 [auth-secrets](auth-secrets.md).
 
-## Async DB (`db.py`)
-One async SQLAlchemy engine (`_engine`) + a public `session_maker` (the audit writer opens its own
-session here). `init_db()` creates tables **and runs the guarded orgs migration** (`_migrate_to_orgs` —
-see [multi-tenancy](multi-tenancy.md)); that migration also does the small additive `ADD COLUMN` steps for
-columns added after a table shipped (e.g. `tool.examples`, `tool.cli` for local runs, `org.public_demo`
-(A15), the seven `secret` connection-metadata columns (A16), and the eight `pendingoauth` marketplace/quirk
-columns (A17–A20) — guarded by a column-existence check, so it is idempotent on both SQLite and Postgres).
-**Postgres BOOLEAN default fix:** boolean columns added here use `DEFAULT false`, never `DEFAULT 0` —
-Postgres rejects an integer default on a `BOOLEAN` column (SQLite accepts both, so the test suite alone
-cannot catch it), which is why `pendingoauth.long_lived_exchange` is spelled `BOOLEAN NOT NULL DEFAULT
-false`. `reset_db()` is test-only (drop +
-recreate); `get_session()` is the FastAPI dependency. SQLite locally (`aiosqlite`), Postgres on Render, same code. **Timestamps are
+## Async DB (`src/treg/infra/db.py`)
+One async SQLAlchemy engine (`_engine`, Postgres pool 5 + 10 overflow per instance, `pool_timeout=5`)
++ a public `session_maker` (the audit writer opens its own session here; so do the post-relay
+bookkeeping steps of `/call/` — the request session is committed before the relay so none of them
+ever waits on it, see [proxy-model](proxy-model.md) § Connection discipline). The public
+`dispose_engine()` closes pooled connections before an explicit maintenance event loop exits, so a
+later server loop cannot inherit connections bound to the closed loop. `verify_db()` is the read-only
+lifespan and worker guard: it keeps the missing-Fernet-key refusal, requires a stamp at head, refuses a
+known older revision, and warns but serves on an unknown-newer revision for additive-era rollback.
+`reset_db()` is test-only: it disposes the loop-bound pool, recreates the SQLite schema or truncates
+application tables on Postgres, then writes the Alembic head stamp. Avoiding per-test Alembic runs and
+Postgres DDL keeps the suite fast without weakening the autogenerate drift guard. `get_session()` is the FastAPI
+dependency. SQLite locally (`aiosqlite`), Postgres on Render, same code. **Timestamps are
 naive UTC:** `_now()` (the `created_at` default) drops tzinfo because the columns are `TIMESTAMP WITHOUT
-TIME ZONE` and asyncpg rejects tz-aware values on Postgres; the app compares naive UTC throughout
-(`api._utcnow_naive` / `_as_naive`).
+TIME ZONE` and asyncpg rejects tz-aware values on Postgres; the app compares naive UTC throughout.
+Shared request-time conversions live in `timeutil.utcnow_naive` and `timeutil.as_naive`, re-exported
+temporarily as `api._utcnow_naive` and `api._as_naive` during the staged router migration. Query
+parameters compared with timestamp columns follow the same constraint as inserted or updated values.
+
+## Alembic execution and the adoption floor
+
+Alembic owns all production schema execution through `maintenance._upgrade_schema`. An empty or stamped
+database runs `alembic upgrade head`. A non-empty unstamped database is refused without inspection or
+writes and must pass through adoption release 0.14.x. Explicit upgrade also refuses an unknown-newer
+revision because it cannot safely migrate across a rollback floor.
+
+Migration scripts live under `src/treg/alembic/`, inside the shipped wheel. The repo-root
+`alembic.ini` points there for developer CLI use, while `maintenance._alembic_config` resolves the
+installed package resource and supplies the configured database URL. Alembic commands run through
+`asyncio.to_thread` because the environment owns its own `asyncio.run`. On Postgres, `env.py` sets
+`lock_timeout = 5s` before migrations so lock contention fails the deploy cleanly.
+
+The authoritative drift guard upgrades to head, runs Alembic autogenerate against
+`SQLModel.metadata`, and requires an empty diff. Tests keep fast `create_all` fixtures through
+`reset_db()`, which stamps head in the same transaction. The drift guard runs on SQLite in the full
+suite and Postgres in `test-postgres` CI.
+
+`test_alembic_expand_safety.py` parses only each revision's `upgrade()` body and permits a closed
+set of additive Alembic operations. Any ALTER, DROP, raw execution, or unknown operation must set
+module-level `contract = True` and name its rollback floor in the module docstring. Revisions 0003,
+0004, and 0008 declare theirs: each adds a NOT NULL column and drops its server default, so older
+code can no longer insert rows.
 
 ## Audit writer (`audit.py`)
 `record_call(**fields)` (a `CallRecord`, now including `org_id`) and `record_run(**fields)` (a
@@ -227,7 +297,7 @@ same PostHog person/group the SPA identifies. Emitters: `call_tool`'s `_audit` f
 with the catalog `provider` as vendor or the upstream host for own tools), `billing_topup`
 (`topup_started`), and `billing._credit` (`topup_completed`, gated on `fresh`). Drained in the lifespan
 `finally` after `audit.drain()`. The engine adds Postgres pool
-hygiene (`pool_pre_ping`/`pool_recycle`/sizing) for non-SQLite URLs, and `init_db` refuses to start with
+hygiene (`pool_pre_ping`/`pool_recycle`/sizing) for non-SQLite URLs, and `verify_db` refuses to start with
 no `TREG_SECRET_KEY` on a real DB (an ephemeral key would lose every stored secret on restart).
 
 > **Tenancy:** every resource noun carries `org_id`; access is scoped to the caller's org. Details:
@@ -274,7 +344,7 @@ lives in [money](money.md); this is the shape.
 
 | Table | Row means | Written by |
 |---|---|---|
-| `TagSpend` | what one call cost, attributed to ONE of its tags | `ledger.py` only, in the money transaction |
+| `TagSpend` | what one call cost, attributed to ONE of its tags | `domain/money` only, in the money transaction |
 | `TagBudget` | one builder-set limit on one `(dim, val)`, and the registry entry that bounds cardinality | `api.py` (auto-created on first sighting) |
 
 `CallRecord` gains `call_ref` (the `X-Treg-Call-Id` echoed to the caller and used as the ledger's
@@ -293,14 +363,12 @@ records), `budget_dim`/`budget_val` (the indexed copy of the primary pair) and `
 idempotency) and `daily_cap_micro` (the team's own spend ceiling, 0 = follow the deployment default).
 `Membership` gains `pinned_tags`.
 
-Migrations `A30`-`A32` in `db.py` add the columns, guarded as usual; `TagSpend` and `TagBudget` are new
-tables and need no DDL. Note `A31` also required adding the two new NOT NULL `org` columns to the raw
-`INSERT INTO org` in the legacy `(B)` backfill: a column `create_all` builds from a SQLModel default is
-NOT NULL with **no server default**, so raw SQL must supply it (ops/deploy.md §migration portability).
+The columns are part of the Alembic baseline schema (the legacy startup migrations that once added
+them are deleted); `TagSpend` and `TagBudget` are ordinary baseline tables.
 
 ## `Referral` — one invitation, and what it owes
 
-Written by `referrals.py`; the money it results in is granted through `ledger.grant`. See
+Written by `domain/referrals.py`; the money it results in is granted through `ledger.grant`. See
 [money](money.md) for the policy and the gates. Two things about the SHAPE belong here:
 
 **Two UNIQUE columns do the arbitration, not application code.** `referred_org_id` (an org can be

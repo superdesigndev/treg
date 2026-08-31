@@ -9,6 +9,7 @@
      canonical pointing at someone else's domain tells a crawler the real page is not here. -->
 <link rel="canonical" href="{BASE}/"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<link rel="apple-touch-icon" href="/media/brand/logo.png"/>
 <meta property="og:type" content="website"/>
 <meta property="og:site_name" content="treg"/>
 <meta property="og:url" content="{BASE}/"/>
@@ -446,10 +447,15 @@ p.sub b{color:var(--ink);font-weight:600}
 .trustline b{color:var(--muted);font-weight:500}
 
 footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overflow:hidden;background:var(--panel)}
-.foot-in{display:flex;align-items:center;gap:26px;flex-wrap:wrap;padding:44px 28px 150px;position:relative;z-index:1;
-  max-width:1160px;margin:0 auto}
+.foot-in{display:flex;align-items:flex-start;justify-content:space-between;gap:40px 64px;flex-wrap:wrap;
+  padding:44px 28px 150px;position:relative;z-index:1;max-width:1160px;margin:0 auto}
+.foot-brand{display:flex;flex-direction:column;gap:10px}
+.foot-brand .note{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.foot-cols{display:flex;gap:64px;flex-wrap:wrap}
+.foot-col{display:flex;flex-direction:column;gap:9px;min-width:112px}
+.foot-col .lab{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
 .foot-in a{color:var(--muted);font-size:14px} .foot-in a:hover{color:var(--ink)}
-.foot-in .sp{flex:1}
+@media (max-width:640px){ .foot-cols{gap:36px} .foot-col{min-width:40%} }
 .watermark{position:absolute;bottom:-.28em;left:50%;transform:translateX(-50%);
   font-family:var(--display);font-size:clamp(120px,22vw,300px);line-height:1;color:#26262309;
   white-space:nowrap;pointer-events:none;user-select:none;letter-spacing:-.02em}
@@ -544,11 +550,12 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
   "@type": "Organization",
   "name": "treg",
   "url": "{BASE}/",
-  "logo": "{BASE}/media/og.png",
+  "logo": "{BASE}/media/brand/logo.png",
   "description": "The tool catalog for AI agents — one key for 2,630 API endpoints, plus your own keys and skills.",
   "sameAs": ["https://github.com/superdesigndev/treg"]
 }
 </script>
+<script src="/adtrack.js"></script>
 </head>
 <body>
 
@@ -869,10 +876,18 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
 
 <footer>
   <div class="foot-in">
-    <div class="brand"><span class="glyph">▚</span> treg</div>
-    <span style="font-family:var(--mono);font-size:12px">— 100% open source</span>
-    <span class="sp"></span>
-    <a href="/catalog">catalog</a><a href="/resources">resources</a><a href="/tutorial">docs</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">github ↗</a><a href="/docs">api</a><a href="/terms">terms</a><a href="/privacy">privacy</a>
+    <div class="foot-brand">
+      <div class="brand"><span class="glyph">▚</span> treg</div>
+      <div class="note">100% open source</div>
+    </div>
+    <nav class="foot-cols" aria-label="Site">
+      <div class="foot-col"><div class="lab">Explore</div>
+        <a href="/catalog">Catalog</a><!--hosted--><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><a href="/agents">Agents</a><!--/hosted--></div>
+      <div class="foot-col"><div class="lab">Build</div>
+        <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
+      <div class="foot-col"><div class="lab">Company</div>
+        <a href="/resources">Resources</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/privacy">Privacy</a></div>
+    </nav>
   </div>
   <div class="watermark">treg</div>
 </footer>
@@ -1279,6 +1294,6 @@ async function emailVerify(){
   }).catch(function(){});
 })();
 </script>
-<script src="/adtrack.js"></script>
+<script src="/sitetrack.js"></script>
 </body>
 </html>

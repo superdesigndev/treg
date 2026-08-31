@@ -1,15 +1,15 @@
 ---
 page_id: p2
 slug: /use-cases/lead-enrichment-for-ai-agents/
-seo_title: "Find and Verify Work Emails from One Agent Prompt | treg.to"      # 59
-meta_description: "Let your agent find companies, identify decision-makers and verify work emails through one key. Pay per lookup, not per seat. $1.00 free to start."  # 146
-h1: "Find and Verify Decision-Makers from One Agent Prompt"
+seo_title: "Waterfall Enrichment: Find and Verify Work Emails | treg.to"      # 53
+meta_description: "Waterfall enrichment for AI agents: find companies, identify decision-makers and verify work emails through one key. Replace Clay workflows. $1.00 free."  # 149
+h1: "Waterfall Enrichment: Find and Verify Work Emails"
 hub_title: "Lead enrichment"
 hub_blurb: "Find companies, identify the decision-maker, verify the work email. Misses are free."
 price_old: "$142/mo"
 price_old_label: "Apollo + Hunter + Lusha, at list"
-price_new: "$0.0245"
-price_new_label: "what our run actually cost"
+price_new: "$3.62"
+price_new_label: "50 companies found, verified and enriched, from a real run"
 seo_terms:
   primary: "lead enrichment for ai agents"
   secondary:
@@ -27,26 +27,28 @@ capabilities: [people.email.find, people.email.verify, people.enrich, companies.
 facts_used: [F-01, F-02, F-03, F-04, F-05, F-06, F-07, F-08, F-09, F-10, F-11, F-13, F-21, F-40, F-41, F-42, F-50, F-80, F-90, F-92, F-43]
 hypothesis: "Highest commercial intent of the five. Predict the lowest cost per first successful call."
 verify_after: 2026-08-31
-status: proof populated from a real run 2026-08-17 ($0.0245) · ready for build · revised against 30-day telemetry 2026-08-17
+status: proof populated from the 50-company workflow run 2026-08-26 ($3.62) · ready for build · revised against 30-day telemetry 2026-08-17
 ---
 
-# Page 2 — Lead enrichment
+# Page 2: Lead enrichment
 
 ---
 
 ## Hero
 
-### Find and Verify Decision-Makers from One Agent Prompt
+### Waterfall Enrichment: Find and Verify Work Emails
 
-Describe the companies you want and who you need inside them; your agent finds them, enriches the
-profiles and verifies the work emails, paying per lookup instead of per seat.
+```text
+Using treg, build me a lead list: 50 US software companies with 51 to 200 staff
+that raised a Series A. For each one find the VP or Head of Marketing, find their
+work email, verify it, and pull the latest news so I have an opener.
+```
 
-**[ Run This Workflow Free ]**   **[ See the Example ]**
+**$3.62 for 50 companies** ([from a real run](/workflows/find-and-verify-a-lead-list)). Email finder from $0.0245/found, verification from $0.00625/call.
+
+**[ Start Free ]**   **[ Paste llms.txt ]**
 
 `S-TRUST-HERO`
-
-*Sub-line:* Eleven providers answer company search alone, and your agent sees what each one costs before it
-calls. Email verification has run **963 times at a 100% success rate**.
 
 ---
 
@@ -58,7 +60,7 @@ calls. Email verification has run **963 times at a 100% success rate**.
 | **Keys** | One account, one login and one API key per provider, spread across machines and `.env` files | One treg token. Every tool in the catalog answers to it |
 | **Picking a provider** | You use whichever tool the team bought last year | `catalog get` lists all eleven company-search providers with price, measured success rate and median speed |
 | **Commitment** | Seat minimums and annual contracts before you know whether the data covers your market | No subscription. Test the coverage for cents, then decide |
-| **The workflow** | Export from the prospecting tool, paste into the enrichment tool, upload to the verifier, reconcile three CSVs | One agent run: find, enrich, verify, deduplicate — in one pass |
+| **The workflow** | Export from the prospecting tool, paste into the enrichment tool, upload to the verifier, reconcile three CSVs | One agent run: find, enrich, verify, deduplicate: in one pass |
 
 ---
 
@@ -67,7 +69,7 @@ calls. Email verification has run **963 times at a 100% success rate**.
 ### Copy this into Claude Code, Cursor, Codex or opencode
 
 ```text
-Find 50 recently funded AI companies with 20–200 employees. Identify their
+Find 50 recently funded AI companies with 20 to 200 employees. Identify their
 head of growth or VP of marketing and verify their work email.
 ```
 
@@ -76,32 +78,32 @@ head of growth or VP of marketing and verify their work email.
 ### What happens when you run it
 
 **The agent finds the companies.** `catalog_search "search companies by size and funding"` returns
-eleven providers for that one job — and this is the sharpest price spread in the whole catalog:
+eleven providers for that one job: and this is the sharpest price spread in the whole catalog:
 
 | Provider | Cost per company | Success rate | Median |
 |---|---|---|---|
 | **Akta** | free | 100% (248 calls) | 3.2 s |
 | **Hunter Discover** | free | 100% (24 calls) | 1.7 s |
 | **The Companies API** | $0.0019 | 100% (339 calls) | 0.3 s |
-| **Lusha** | $0.004992 per 25 results | not yet measured | — |
+| **Lusha** | $0.004992 per 25 results | not yet measured |: |
 | **LeadMagic** | $0.025 | 70% (10 calls) | 3.2 s |
-| **Apollo** | $0.026 per page | not yet measured | — |
+| **Apollo** | $0.026 per page | not yet measured |: |
 | **Diffbot** | $0.0299 | 100% (5 calls) | 0.7 s |
-| **PDL** | $0.38 | not yet measured | — |
-| **Crunchbase** | own key only | — | — |
+| **PDL** | $0.38 | not yet measured |: |
+| **Crunchbase** | own key only |: |: |
 
 Same job. **A 200× spread, and the cheapest option is free.** Coverage differs, which is exactly why the
-price is not the only column — but nobody should pay $0.38 a record without knowing $0.0019 was on the
+price is not the only column: but nobody should pay $0.38 a record without knowing $0.0019 was on the
 table.
 
 **It finds the people.** Two routes, and the cheaper one is usually the right one. If you want everyone
-at a company, `hunter.companies.emails` returns the known addresses at a domain in a single call —
+at a company, `hunter.companies.emails` returns the known addresses at a domain in a single call,
 **100% success across 597 calls, 0.4 s median**, the fastest endpoint in this whole workflow. If you want
 one named person, `hunter.people.email.find` costs $0.0245 and **only charges when it finds someone**
 (100% across 582 calls, 1.4 s). Enrichment fills thin profiles: Hunter $0.0245 (356 calls, 0.3 s),
 Apollo $0.026 (263 calls, 0.3 s), LeadMagic $0.025, Coresignal $0.392.
 
-**It verifies before you send — and this is the step that matters most.** Verification is the single
+**It verifies before you send: and this is the step that matters most.** Verification is the single
 most-called enrichment endpoint on treg.to: **963 calls at 100% success**. It runs at $0.00625 with
 LeadMagic or $0.01225 with Hunter. Finding an address is cheap; sending to a dead one costs you a domain
 reputation, which is why the teams already doing this at volume verify more than they search.
@@ -109,12 +111,12 @@ reputation, which is why the teams already doing this at volume verify more than
 ### What comes back
 
 ```text
-50 companies · 20–200 employees · funded in the window · pulled [date]
+50 companies · 20 to 200 employees · funded in the window · pulled [date]
 
 COMPANY          SIZE   LAST ROUND      CONTACT              TITLE              EMAIL          STATUS
 <company>        84     <round, date>   <name>               VP Marketing       <email>        verified
 <company>        142    <round, date>   <name>               Head of Growth     <email>        verified
-<company>        37     <round, date>   <name>               Head of Growth     —              no match
+<company>        37     <round, date>   <name>               Head of Growth    :              no match
 ...
 
 SUMMARY   50 companies · 47 contacts identified · 41 emails verified · 6 no match
@@ -127,35 +129,31 @@ COST      $[from your run]   (misses were not charged)
 
 ---
 
-## Proof — from one real run
+## Proof from one real run
 
-*Run on treg.to, 17 Aug 2026. Every figure below is from the Activity log of that run.*
+*Run on treg.to, 26 Aug 2026: the full 50-company workflow, one prompt, one key. Every figure is
+from that run's receipt, published with its CSV at
+[/workflows/find-and-verify-a-lead-list](/workflows/find-and-verify-a-lead-list).*
 
 | Field | Value |
 |---|---|
-| Providers considered | **11** for company search, **3** for finding a work email |
-| Providers selected | `hunter.x.discover-companies` (free) · `hunter.people.email.find` |
-| Why | Discovery is free on Hunter and takes a plain-English brief. For the email, Hunter's finder carries one of the longest records in the catalog — **582 calls, 100% success, 1.4 s median** — and it only charges when it finds one |
-| Total cost of the run | **$0.0245** — company discovery was free, one email was found and charged |
-| Subscription cost avoided | **$142/mo** at list — Apollo $59/seat + Hunter $34 + Lusha $49 |
-| Time to completion | Under 5 seconds across both calls |
-| Data freshness | The address came back **verified `valid` on 2026-08-17**, sourced from a page last seen 2026-07-30 |
-| Companies returned | 9, all matching "AI infrastructure, recently funded, 20–200 employees" |
-| Emails found and verified | 1 of 1 attempted, confidence score 80 |
+| Companies matched | **746** on Apollo; the first page of 50 taken, one charge of $0.026 |
+| Rows with a usable domain | **47 of 50** |
+| A named marketing lead found | **40 of 47** (27 by Findymail, 13 by LeadMagic's role finder) |
+| Work email found | **31 of 40** (22 by Tomba, 9 by Hunter on Tomba's misses) |
+| Verified deliverable | **27 of 31**; 4 invalid; 0 unknown or catch-all |
+| A news event for the opener | **29 of 31** (PredictLeads) |
+| Wall clock, one call at a time | about 21 minutes |
+| Total metered | **$3.62** for 50 companies, or **$0.13 per deliverable lead** |
 
-**What the discovery call returned, for $0.00:** nine companies with their domains and a count of known
-addresses at each — Daloopa (223), ZincFive (64), Ethernovia (51), RunPod (33), AttoTude (19), Netris (17),
-Bobyard (16), Normal Computing (9), Arycs Technologies (4). Hunter resolved the plain-English brief into
-explicit filters and returned them: headcount bands `20-50` and `51-200`, funding series pre-seed through
-series C+.
+**Where misses were free, and where they were not.** Hunter and LeadMagic charge only on success,
+so their misses settled at $0.00. Findymail and Tomba list a free miss too, but neither reports the
+charge in its response, so treg.to settled their calls at the list rate, misses included: $0.56 of
+the $3.62. The receipt is the real total, not the rate card.
 
-**One call in this run failed and cost nothing.** A company-search request was rejected for sending a
-boolean as a string — HTTP 400, `$0.00` charged. Your parameter mistakes are free; only answers are billed.
-
-> **The honest read of this run:** one verified email is a demonstration, not a benchmark. Hunter's 100%
-> over 582 calls is the measured **success rate of the endpoint**, not a promise that it finds every
-> person you ask for. The number that matters for your list is the hit rate on *your* market, which is
-> what the free tier is for — and misses cost nothing either way.
+> **The honest read of this run:** 27 deliverable leads from 50 companies is one market on one day,
+> not a benchmark. The hit rate on *your* market is what the $1.00 free credit is for: run ten rows
+> first and read your own receipt before you commit to a list.
 
 ---
 
@@ -171,7 +169,7 @@ emails, and marks the rows it could not resolve rather than guessing.
 
 **Stop paying for bounces.**
 Verify every address before it enters the sequence. At $0.00625 a check, verifying a 2,000-row list costs
-about $12.50 — and Hunter's finder does not charge you for the ones it cannot find.
+about $12.50: and Hunter's finder does not charge you for the ones it cannot find.
 
 ---
 
@@ -189,31 +187,59 @@ about $12.50 — and Hunter's finder does not charge you for the ones it cannot 
 
 **Why not just call the providers directly?**
 Because this workflow is not one provider. Finding companies, identifying people and verifying email are
-three different products, and the vendor that is best at one is rarely best at the others — the table
+three different products, and the vendor that is best at one is rarely best at the others: the table
 above is 200× wide for a single job. Holding accounts with all of them to find out is the expensive way
 to learn it. If you already pay for one, connect it and those calls route through your key, unmetered.
 treg.to is closer to OpenRouter for agent tools than to a data vendor: one base URL, one token, many
 providers behind it.
 
-**How are credentials handled?** — `S-OBJ-CREDENTIALS`
+**How are credentials handled?**: `S-OBJ-CREDENTIALS`
 
-**Can I choose a specific provider?** — `S-OBJ-CHOOSE`
+**Can I choose a specific provider?**: `S-OBJ-CHOOSE`
 *(Vertical note: often the right call here. Coverage varies by region and company size far more than it
 varies by price, so once you find the provider that covers your market, pin it.)*
 
-**Can I use my existing provider key?** — `S-OBJ-OWN-KEY`
+**Can I use my existing provider key?**: `S-OBJ-OWN-KEY`
 *(If your team already pays for Apollo or Hunter, this is the first thing to do. Those calls stop costing
 you anything on treg.to.)*
 
-**What happens if a provider fails?** — `S-OBJ-FAILURE`
+**What happens if a provider fails?**: `S-OBJ-FAILURE`
 
 **How much does a call cost?**
 A found work email is $0.0245 with Hunter and a miss is free. Verification is $0.00625. Company search
 ranges from free to $0.38 a record depending on provider. The exact price is shown before the call, and
-treg.to adds no markup to what the provider charges. New teams start with $1.00 of free credit — enough
+treg.to adds no markup to what the provider charges. New teams start with $1.00 of free credit: enough
 for roughly 40 verified email lookups before you spend anything.
 
-**Which agents does it work with?** — `S-OBJ-AGENTS`
+**Which agents does it work with?**: `S-OBJ-AGENTS`
+
+**How does this compare to Clay?**
+Clay is a visual table for GTM workflows. treg.to is a catalog of the same data providers Clay calls,
+exposed as tools your agent can use directly. If you already think in prompts rather than spreadsheet
+formulas, you skip the table and get the same waterfall enrichment in one paste. The providers are the
+same (Apollo, Hunter, Clearbit, etc.); the interface is your agent. Clay is not in the treg.to catalog
+because it is a workflow tool, not a data API.
+
+**Is there an Apollo MCP or Hunter MCP?**
+Yes. The treg.to MCP server gives your agent access to Apollo, Hunter and the other enrichment providers
+through one connection. Install once, and every provider in the catalog answers to it. See `/llms.txt`
+for the setup line.
+
+---
+
+## Next steps
+
+### The full workflow: 50 companies, verified emails, $3.62
+
+Run the complete lead generation workflow that produced the numbers on this page:
+
+- [Build a Verified Lead List](/workflows/find-and-verify-a-lead-list) ($3.62 for 50 companies, from a real run)
+
+### Individual jobs this workflow calls
+
+- [Find Professional Emails](/use-cases/find-professional-emails)
+- [Verify an Email Before You Send](/use-cases/verify-an-email)
+- [Build a Company List](/use-cases/build-a-company-list-by-industry-size-or-tech)
 
 ---
 
@@ -221,7 +247,7 @@ for roughly 40 verified email lookups before you spend anything.
 
 ### Your next list can be built, enriched and verified in one prompt
 
-**[ Run This Workflow Free ]**
+**[ Start Free ]**
 
 `S-FINAL-CTA-TRUST`
 
@@ -249,7 +275,7 @@ for roughly 40 verified email lookups before you spend anything.
 3. "Stop paying for leads you never contact. Pay for the lookups that found someone."
 
 ### X post hook
-`Same job — "find companies matching this profile" — priced across 11 providers: free, $0.0019, $0.025, $0.38 a record. Your agent can see that table before it calls. Most sales tools can't.`
+`Same job: "find companies matching this profile": priced across 11 providers: free, $0.0019, $0.025, $0.38 a record. Your agent can see that table before it calls. Most sales tools can't.`
 
 ### High-intent keyword phrases
 `work email finder api` · `company search api pay per record` · `email verification api pricing` ·
@@ -267,11 +293,11 @@ list. The strongest beat is the miss: show a lookup that found nothing and cost 
 Highest commercial intent of the five, so this page should produce the **lowest cost per first successful
 call** at day 14. If it does, it is the vertical to concentrate spend on. Watch the second-order signal
 too: enrichment buyers are the most likely to connect their own existing key, which lowers revenue per
-account while raising retention — worth knowing before scaling.
+account while raising retention: worth knowing before scaling.
 
 ---
 
 ## Numbers used on this page
 
 `F-01` `F-02` `F-03` `F-04` `F-05` `F-06` `F-07` `F-08` `F-09` `F-10` `F-11` `F-13` `F-21` `F-40` `F-41`
-`F-42` `F-50` `F-80` — defined in `_facts.md`, verified 2026-08-17.
+`F-42` `F-50` `F-80`: defined in `_facts.md`, verified 2026-08-17.

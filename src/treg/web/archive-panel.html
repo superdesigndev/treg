@@ -1,0 +1,422 @@
+<meta charset="utf-8">
+<title>Archive Panel</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --ground:#FBFAF7; --surface:#FFFFFF; --sunk:#F3F0E9;
+    --ink:#1A1815; --muted:#645E57; --faint:#8C857B;
+    --rule:#E4DFD5; --rule-2:#D3CCBF;
+    --accent:#9C5D18; --accent-soft:#F3E7D6; --accent-line:#E0C9A6;
+    --ok:#2E6B4E; --ok-soft:#E2EFE7;
+    --warn:#93382B; --warn-soft:#F7E4E0;
+    --info:#3A5E80; --info-soft:#E4ECF3;
+    --shadow:0 1px 2px rgba(26,24,21,.05), 0 8px 24px -12px rgba(26,24,21,.16);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --ground:#100F0D; --surface:#191714; --sunk:#141210;
+      --ink:#ECE7DE; --muted:#9E968B; --faint:#736C63;
+      --rule:#282520; --rule-2:#37332C;
+      --accent:#E0A94E; --accent-soft:#2A2318; --accent-line:#4A3C22;
+      --ok:#6FBF8E; --ok-soft:#17241C;
+      --warn:#E08272; --warn-soft:#2B1B18;
+      --info:#7FA7C9; --info-soft:#182027;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -14px rgba(0,0,0,.55);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#100F0D; --surface:#191714; --sunk:#141210;
+    --ink:#ECE7DE; --muted:#9E968B; --faint:#736C63;
+    --rule:#282520; --rule-2:#37332C;
+    --accent:#E0A94E; --accent-soft:#2A2318; --accent-line:#4A3C22;
+    --ok:#6FBF8E; --ok-soft:#17241C;
+    --warn:#E08272; --warn-soft:#2B1B18;
+    --info:#7FA7C9; --info-soft:#182027;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 12px 30px -14px rgba(0,0,0,.55);
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--ground); color:var(--ink);
+    font-family:"Atkinson Hyperlegible", ui-sans-serif, system-ui, sans-serif;
+    font-size:15px; line-height:1.5; -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1400px; margin:0 auto; padding:0 22px 60px}
+  h1,h2{font-family:"Bricolage Grotesque",sans-serif; margin:0; text-wrap:balance}
+  .mono{font-family:"IBM Plex Mono", ui-monospace, monospace}
+  :focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  header.top{border-bottom:1px solid var(--rule); background:var(--surface); position:sticky; top:0; z-index:5}
+  .band{max-width:1400px; margin:0 auto; padding:12px 22px; display:flex; align-items:center; gap:14px; flex-wrap:wrap}
+  .wordmark{font-family:"Bricolage Grotesque",sans-serif; font-weight:700; font-size:1rem}
+  .wordmark em{font-style:normal; color:var(--accent)}
+  .chip{font-family:"IBM Plex Mono",monospace; font-size:.64rem; letter-spacing:.06em;
+    border:1px solid var(--rule-2); border-radius:99px; padding:3px 10px; color:var(--muted)}
+  .chip.mock{border-color:var(--accent-line); color:var(--accent); background:var(--accent-soft)}
+  .mode{margin-left:auto; display:flex; align-items:center; gap:8px; font-family:"IBM Plex Mono",monospace; font-size:.72rem}
+  .mode .dot{width:8px; height:8px; border-radius:99px; background:var(--ok); animation:pulse 2s infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  @media (prefers-reduced-motion: reduce){ .mode .dot{animation:none} }
+  .mode b{color:var(--ok); letter-spacing:.08em}
+
+  /* totals strip */
+  .totals{display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr)); gap:2px;
+    background:var(--rule); border:1px solid var(--rule); border-radius:12px; overflow:hidden; margin:22px 0}
+  .t1{background:var(--surface); padding:12px 16px 14px; min-width:0}
+  .t1 .l{font-family:"IBM Plex Mono",monospace; font-size:.58rem; letter-spacing:.12em; text-transform:uppercase; color:var(--faint); white-space:nowrap}
+  .t1 .v{font-family:"Bricolage Grotesque",sans-serif; font-weight:700; font-size:1.3rem; line-height:1.25;
+    margin-top:2px; font-variant-numeric:tabular-nums; white-space:nowrap; display:flex; align-items:baseline; gap:4px}
+  .t1 .v .u{font-size:.8rem; color:var(--muted); font-weight:600}
+  .t1 .s{font-size:.72rem; color:var(--muted); white-space:nowrap}
+
+  .cols{display:grid; grid-template-columns:minmax(0,1fr) minmax(300px,360px); gap:18px; align-items:start}
+  @media (max-width:980px){ .cols{grid-template-columns:1fr} }
+
+  .card{background:var(--surface); border:1px solid var(--rule); border-radius:12px; box-shadow:var(--shadow)}
+  .card .head{padding:13px 16px; border-bottom:1px solid var(--rule); display:flex; align-items:baseline; gap:10px}
+  .card .head h2{font-size:1.02rem; font-weight:700}
+  .card .head .n{font-family:"IBM Plex Mono",monospace; font-size:.68rem; color:var(--faint)}
+
+  /* endpoints table */
+  .tablewrap{overflow-x:auto}
+  table{border-collapse:collapse; width:100%; min-width:760px}
+  th{font-family:"IBM Plex Mono",monospace; font-size:.56rem; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--faint); text-align:left; font-weight:500; padding:8px 10px; border-bottom:1px solid var(--rule); white-space:nowrap}
+  th:first-child, td:first-child{padding-left:16px}
+  th:last-child, td:last-child{padding-right:16px}
+  td{padding:9px 10px; border-bottom:1px solid var(--rule); font-size:.8rem; color:var(--muted);
+    vertical-align:middle; font-variant-numeric:tabular-nums; white-space:nowrap}
+  tr:last-child td{border-bottom:0}
+  tbody tr{cursor:pointer}
+  tbody tr:hover td{background:var(--sunk)}
+  tr.sel td, tr.sel:hover td{background:var(--accent-soft)}
+  tr.sel td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+  tr.sel .ep{color:var(--accent)}
+  td .ep{font-family:"IBM Plex Mono",monospace; font-size:.72rem; color:var(--ink); font-weight:600}
+  td .prov{font-size:.72rem; color:var(--faint)}
+  .pill{font-family:"IBM Plex Mono",monospace; font-size:.58rem; font-weight:600; letter-spacing:.04em;
+    border-radius:5px; padding:2px 7px}
+  .p-transient{background:var(--info-soft); color:var(--info)}
+  .p-archive{background:var(--ok-soft); color:var(--ok)}
+  .p-forbidden{background:var(--sunk); color:var(--faint)}
+  .p-never{background:var(--warn-soft); color:var(--warn)}
+  .bar{display:inline-block; width:56px; height:7px; border-radius:4px; background:var(--sunk);
+    position:relative; vertical-align:middle; margin-right:7px; overflow:hidden}
+  .bar i{position:absolute; inset:0 auto 0 0; border-radius:4px}
+  .b-warn i{background:var(--warn)} .b-ok i{background:var(--ok)} .b-acc i{background:var(--accent)}
+  td .num{font-family:"IBM Plex Mono",monospace; font-size:.74rem; color:var(--ink)}
+  .hitrate{color:var(--ok); font-weight:700}
+
+  /* inspector */
+  .inspector .body{padding:14px 18px 16px; display:grid; gap:16px}
+  .kv{display:flex; justify-content:space-between; gap:10px; font-size:.8rem; color:var(--muted); min-width:0}
+  .kv .mono{color:var(--ink); font-size:.72rem; text-align:right; overflow-wrap:anywhere}
+  .freshness{display:grid; gap:6px}
+  .freshness .lab{display:flex; justify-content:space-between; gap:8px; font-family:"IBM Plex Mono",monospace; font-size:.6rem; color:var(--faint); white-space:nowrap}
+  .track{height:12px; border-radius:6px; background:var(--sunk); position:relative; overflow:hidden}
+  .track .fill{position:absolute; inset:0 auto 0 0; background:linear-gradient(90deg, var(--ok), var(--accent)); border-radius:6px}
+  .track .mark{position:absolute; top:0; bottom:0; left:80%; width:2px; background:var(--warn); opacity:.85}
+  .versions{display:flex; align-items:center; gap:5px; flex-wrap:wrap}
+  .v{width:24px; height:24px; flex:0 0 24px; border-radius:6px; display:grid; place-items:center;
+    font-family:"IBM Plex Mono",monospace; font-size:.6rem; font-weight:700; border:1px solid var(--rule-2); color:var(--muted)}
+  .v.full{background:var(--accent); border-color:var(--accent); color:var(--ground)}
+  .v.ref{background:transparent; border-style:dashed; color:var(--faint)}
+  .v.refresh{background:var(--ok); border-color:var(--ok); color:var(--ground)}
+  .legend{font-family:"IBM Plex Mono",monospace; font-size:.6rem; color:var(--faint)}
+  .volatile{display:flex; gap:6px; flex-wrap:wrap}
+  .vp{font-family:"IBM Plex Mono",monospace; font-size:.66rem; background:var(--sunk); border:1px dashed var(--rule-2);
+    border-radius:5px; padding:2px 7px; color:var(--muted)}
+  .sec{font-family:"IBM Plex Mono",monospace; font-size:.6rem; letter-spacing:.13em; text-transform:uppercase; color:var(--faint)}
+
+  /* feed */
+  .feed{list-style:none; margin:0; padding:4px 0 8px; max-height:296px; overflow-y:hidden;
+    -webkit-mask-image:linear-gradient(#000 82%, transparent); mask-image:linear-gradient(#000 82%, transparent)}
+  .feed li{display:flex; gap:9px; align-items:baseline; padding:6px 16px; font-size:.76rem; border-bottom:1px dashed var(--rule)}
+  .feed li:last-child{border-bottom:0}
+  .feed .t{font-family:"IBM Plex Mono",monospace; font-size:.64rem; color:var(--faint); min-width:52px}
+  .feed .tag{font-family:"IBM Plex Mono",monospace; font-size:.58rem; font-weight:600; border-radius:4px; padding:1px 6px; min-width:52px; text-align:center}
+  .g-hit{background:var(--accent-soft); color:var(--accent)}
+  .g-live{background:var(--sunk); color:var(--muted)}
+  .g-refresh{background:var(--ok-soft); color:var(--ok)}
+  .g-learn{background:var(--info-soft); color:var(--info)}
+  .feed .w{color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .feed .w b{color:var(--ink); font-weight:700; font-family:"IBM Plex Mono",monospace; font-size:.72rem}
+
+  /* explain-on-hover: any element with data-tip grows a dotted underline and a popover.
+     Popovers are the panel's memory — every metric explains itself. */
+  [data-tip]{position:relative; cursor:help; border-bottom:1px dotted var(--rule-2)}
+  [data-tip]::after{
+    content:attr(data-tip); position:absolute; left:50%; bottom:calc(100% + 8px);
+    transform:translateX(-50%); width:max-content; max-width:260px; white-space:normal;
+    background:var(--ink); color:var(--ground); font-family:"Atkinson Hyperlegible",sans-serif;
+    font-size:.74rem; line-height:1.45; letter-spacing:0; text-transform:none; font-weight:400;
+    padding:8px 11px; border-radius:8px; box-shadow:var(--shadow);
+    opacity:0; pointer-events:none; transition:opacity .12s ease .25s; z-index:30}
+  [data-tip]::before{
+    content:""; position:absolute; left:50%; bottom:calc(100% + 3px); transform:translateX(-50%);
+    border:5px solid transparent; border-top-color:var(--ink);
+    opacity:0; pointer-events:none; transition:opacity .12s ease .25s; z-index:30}
+  [data-tip]:hover::after, [data-tip]:hover::before,
+  [data-tip]:focus-visible::after, [data-tip]:focus-visible::before{opacity:1}
+  th[data-tip]{cursor:help}
+  td [data-tip], .kv [data-tip]{border-bottom-color:transparent}
+  @media (prefers-reduced-motion: reduce){ [data-tip]::after, [data-tip]::before{transition:none} }
+
+  /* token gate */
+  .gate{position:fixed; inset:0; display:grid; place-items:center; background:var(--ground); z-index:50}
+  .gate .box{background:var(--surface); border:1px solid var(--rule); border-radius:12px;
+    box-shadow:var(--shadow); padding:26px 28px; width:min(420px, 92vw)}
+  .gate h2{font-size:1.1rem; margin-bottom:6px}
+  .gate p{color:var(--muted); font-size:.85rem; margin:0 0 14px}
+  .gate input{width:100%; padding:10px 12px; border:1px solid var(--rule-2); border-radius:8px;
+    background:var(--ground); color:var(--ink); font-family:"IBM Plex Mono",monospace; font-size:.8rem}
+  .gate button{margin-top:12px; width:100%; padding:10px; border:0; border-radius:8px;
+    background:var(--accent); color:var(--ground); font-weight:700; font-size:.9rem; cursor:pointer}
+  .gate .err{color:var(--warn); font-size:.78rem; margin-top:8px; min-height:1em}
+  .hidden{display:none}
+  .empty{padding:28px 16px; text-align:center; color:var(--faint); font-size:.85rem}
+
+  /* stored-body viewer */
+  .viewer{position:fixed; inset:0; background:rgba(0,0,0,.45); display:grid; place-items:center; z-index:40}
+  .viewer .vbox{background:var(--surface); border:1px solid var(--rule); border-radius:12px;
+    box-shadow:var(--shadow); width:min(760px, 94vw); max-height:82vh; display:flex; flex-direction:column}
+  .viewer .vhead{padding:12px 16px; border-bottom:1px solid var(--rule); display:flex; align-items:baseline; gap:10px}
+  .viewer .vhead h2{font-size:.98rem}
+  .viewer .vhead .n{font-family:"IBM Plex Mono",monospace; font-size:.66rem; color:var(--faint)}
+  .viewer .vhead button{margin-left:auto; border:1px solid var(--rule-2); background:var(--sunk);
+    color:var(--ink); border-radius:7px; padding:4px 12px; font-size:.78rem; cursor:pointer}
+  .viewer pre{margin:0; padding:16px; overflow:auto; font-family:"IBM Plex Mono",monospace;
+    font-size:.74rem; line-height:1.55; color:var(--ink); background:var(--ground);
+    border-radius:0 0 12px 12px; flex:1}
+</style>
+<div class="gate" id="gate">
+  <div class="box">
+    <h2>Archive panel</h2>
+    <p>This page shows no data until it can ask the server. Paste the admin token; it stays in this browser only.</p>
+    <input id="tok" type="password" placeholder="TREG_ADMIN_TOKEN" autocomplete="off">
+    <button id="go">Open the panel</button>
+    <div class="err" id="gate-err"></div>
+  </div>
+</div>
+
+<header class="top hidden" id="hdr">
+  <div class="band">
+    <span class="wordmark">treg · <em>Archive</em></span>
+    <span class="chip" data-tip="The panel re-reads the server every 5 seconds. Nothing on this page is ever older than that.">live · refreshes every 5s</span>
+    <div class="mode"><span class="dot"></span><span data-tip="The archive's master switch on the server. off = feature dormant. shadow = watch and learn, serve nothing. serve = answer repeats from the store.">mode</span>&nbsp;<b id="h-mode">…</b>&nbsp;<span id="h-worker" style="color:var(--faint)"></span></div>
+  </div>
+</header>
+
+<div class="wrap hidden" id="main">
+  <div class="totals">
+    <div class="t1"><div class="l" data-tip="One key = one exact question: endpoint + parameters. Two different questions to the same endpoint are two keys.">Keys tracked</div><div class="v" id="t-keys">–</div><div class="s">distinct questions</div></div>
+    <div class="t1"><div class="l" data-tip="Every answer observed, including repeats of the same key. Each is one version in a key's history.">Snapshots</div><div class="v" id="t-snaps">–</div><div class="s">versions, all time</div></div>
+    <div class="t1"><div class="l" data-tip="Bytes actually written to the database. Identical repeated answers are stored once and referenced, so this is smaller than what was seen.">Stored</div><div class="v" id="t-bytes">–</div><div class="s">bodies after dedup</div></div>
+    <div class="t1"><div class="l" data-tip="How much storage the dedup avoided: identical answers point at the first copy instead of storing again.">Dedup saved</div><div class="v" id="t-saved">–</div><div class="s">of logical bytes</div></div>
+    <div class="t1"><div class="l" data-tip="Calls answered from the store today. The vendor was not called; the caller was billed exactly like a live call.">Hits today</div><div class="v" id="t-hits">–</div><div class="s">vendor not called</div></div>
+    <div class="t1"><div class="l" data-tip="Worker fetches today: the system re-asking vendors on its own, before hot answers expire. Bounded per provider per day.">Refreshes today</div><div class="v" id="t-refr">–</div><div class="s" id="t-cap">of cap</div></div>
+  </div>
+
+  <div class="cols">
+    <div class="card">
+      <div class="head"><h2>Endpoints</h2><span class="n" id="ep-n">loading…</span></div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr>
+            <th data-tip="The catalog endpoint. Only metered platform calls are observed — own-key traffic never enters the archive.">Endpoint</th>
+            <th data-tip="Storage policy. transient/archive = stored and servable (unjudged providers default to transient under the keep-all setting). forbidden (judged) = the licence was read and it says no; never stored.">Policy</th>
+            <th data-tip="How long an answer is served before the vendor is asked again. Learned per key: unchanged answers stretch it ×1.5, changed answers halve it. Range = coldest to hottest key.">Learned TTL</th>
+            <th data-tip="Of the times we re-asked the same question, how often the answer had actually changed. 0 = frozen data. 1 = changes every time (such keys mark themselves never-cache).">Change ratio</th>
+            <th data-tip="Distinct questions observed for this endpoint.">Keys</th>
+            <th data-tip="Repeat observations of an existing key — the raw material the timer learns from.">Refetches</th>
+            <th data-tip="Calls answered from the store instead of the vendor. Billed identically to live; only faster.">Hits</th>
+            <th data-tip="Bytes stored for this endpoint after dedup. 0 for forbidden policies: counted, never kept.">Stored</th>
+          </tr></thead>
+          <tbody id="eptable"><tr><td colspan="8" class="empty">waiting for the first report…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div style="display:grid; gap:18px">
+      <div class="card inspector">
+        <div class="head"><h2>Key inspector</h2><span class="n" id="i-title">click an endpoint row</span></div>
+        <div class="body" id="i-body">
+          <div class="empty">Select an endpoint on the left to open its hottest key.</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="head"><h2>Live</h2><span class="n" id="livecount">recent calls · selected endpoint</span></div>
+        <ul class="feed" id="feed"><li class="empty" style="border:0">no endpoint selected</li></ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const TOK_KEY = "treg_admin_token";
+  let token = localStorage.getItem(TOK_KEY) || "";
+  let selected = null;
+  let timer = null;
+
+  const fmtBytes = n => n >= 1048576 ? (n/1048576).toFixed(1) + " MB" : n >= 1024 ? (n/1024).toFixed(1) + " KB" : n + " B";
+  const fmtS = s => s == null ? "—" : s >= 3600 ? Math.floor(s/3600) + "h " + Math.floor(s%3600/60) + "m"
+                    : s >= 60 ? Math.floor(s/60) + "m " + (s%60 ? s%60 + "s" : "") : s + "s";
+  const ago = iso => { const s = Math.max(0, Math.floor((Date.now() - new Date(iso + "Z")) / 1000)); return fmtS(s) + " ago"; };
+
+  async function api(path) {
+    const r = await fetch(path, { headers: { "X-Treg-Token": token } });
+    if (r.status === 401 || r.status === 403) throw new Error("auth");
+    if (!r.ok) throw new Error("http " + r.status);
+    return r.json();
+  }
+
+  function policyPill(pol, judged) {
+    if (pol === "transient" || pol === "archive")
+      return '<span class="pill p-transient" data-tip="The licence was read and allows storing. transient = short-lived cache; archive = long-term history too.">' + pol + '</span>';
+    if (judged)
+      return '<span class="pill p-never" data-tip="The licence was read and it forbids storing or sharing. Counted for statistics, never kept, never served.">forbidden (judged)</span>';
+    return '<span class="pill p-forbidden" data-tip="Nobody has judged this provider\'s licence yet. Under the keep-all default these are still stored as transient; only a judged forbidden blocks storage.">forbidden (unjudged)</span>';
+  }
+
+  function renderReport(d) {
+    $("h-mode").textContent = d.mode.toUpperCase();
+    $("h-mode").style.color = d.mode === "serve" ? "var(--ok)" : d.mode === "shadow" ? "var(--accent)" : "var(--faint)";
+    $("h-worker").textContent = " · worker " + (d.worker_on ? "on" : "off") + " · cap " + d.refresh_daily_cap + "/provider/day";
+    $("t-keys").textContent = d.keys.toLocaleString();
+    $("t-snaps").textContent = d.snapshots.toLocaleString();
+    $("t-bytes").textContent = fmtBytes(d.kept_bytes);
+    const logical = d.endpoints.reduce((a, e) => a, null);
+    $("t-saved").textContent = d.snapshots ? Math.round((1 - d.bodies_kept / d.snapshots) * 100) + "%" : "–";
+    $("t-hits").textContent = d.hits_today.toLocaleString();
+    $("t-refr").textContent = d.refreshes_today.toLocaleString();
+    $("t-cap").textContent = "of " + d.refresh_daily_cap + " per-provider cap";
+    $("ep-n").textContent = d.endpoints.length + " tracked · sorted by traffic";
+
+    const tb = $("eptable");
+    if (!d.endpoints.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">nothing observed yet — make a metered platform call with mode shadow or serve</td></tr>'; return; }
+    tb.innerHTML = d.endpoints.map(e => {
+      const ratio = e.change_ratio;
+      const barCls = ratio == null ? "b-acc" : ratio < 0.15 ? "b-ok" : ratio < 0.5 ? "b-acc" : "b-warn";
+      const judged = e.policy === "forbidden" ? null : true;
+      const stored = (e.policy === "transient" || e.policy === "archive");
+      return '<tr data-ep="' + e.endpoint_id + '" tabindex="0"' + (e.endpoint_id === selected ? ' class="sel"' : '') + '>' +
+        '<td><div class="ep">' + e.endpoint_id + '</div><div class="prov">' + e.provider + '</div></td>' +
+        '<td>' + policyPill(e.policy, false) + '</td>' +
+        '<td class="num" id="ttl-' + e.endpoint_id + '">…</td>' +
+        '<td><span class="bar ' + barCls + '"><i style="width:' + Math.round((ratio || 0) * 100) + '%"></i></span><span class="num">' + (ratio == null ? "—" : ratio.toFixed(2)) + '</span></td>' +
+        '<td class="num">' + e.keys + '</td><td class="num">' + e.refetches + '</td>' +
+        '<td class="num ' + (e.hits ? "hitrate" : "") + '">' + (stored ? e.hits : '<span style="color:var(--faint)">counted only</span>') + '</td>' +
+        '<td class="num">' + (e.kept_bytes ? fmtBytes(e.kept_bytes) : "0") + '</td></tr>';
+    }).join("");
+    tb.querySelectorAll("tr[data-ep]").forEach(r => {
+      r.addEventListener("click", () => select(r.dataset.ep));
+      r.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); select(r.dataset.ep); } });
+    });
+  }
+
+  const VTIP = {body: "The bytes are stored in this version.",
+                ref: "Identical to an earlier answer — stored once, referenced here.",
+                hash: "Only counted: the licence (or the size cap) did not allow keeping the bytes."};
+  function renderKeys(d) {
+    const k = d.keys[0];
+    const body = $("i-body");
+    if (!k) { body.innerHTML = '<div class="empty">no keys recorded for this endpoint yet</div>'; renderFeed(d); return; }
+    const win = k.ttl_s;
+    const ageS = Math.max(0, Math.floor((Date.now() - new Date(k.fetched_at + "Z")) / 1000));
+    const winTxt = win > 0 ? "WINDOW " + fmtS(win) : win === -1 ? "NEVER-CACHE" : "NOT SERVED";
+    const pct = win > 0 ? Math.min(100, ageS / win * 100) : 0;
+    $("i-title").textContent = d.endpoint_id + " · " + d.keys.length + " key(s), hottest shown";
+    body.innerHTML =
+      '<div class="kv"><span data-tip="The stored question: method and vendor URL as sent, before the credential is added. The worker replays exactly this.">Question</span><span class="mono">' + (k.question || "—") + '</span></div>' +
+      '<div class="freshness"><div class="lab"><span data-tip="How old the newest stored answer is.">AGE ' + fmtS(ageS) + '</span><span data-tip="This key\'s learned serving window. Inside it, repeats are answered from the store. -1 means the key marked itself never-cache.">' + winTxt + '</span></div>' +
+      '<div class="track"><span class="fill" style="width:' + pct + '%"></span><span class="mark" data-tip="At 80% of the window the refresh worker may re-ask the vendor early — only if someone demanded this key since its last fetch."></span></div></div>' +
+      '<div><div class="sec" data-tip="Every saved version of this key\'s answer, oldest left. Solid amber = bytes stored. Dashed = identical, stored by reference. Green = the worker fetched it, not a caller." style="margin-bottom:6px">Version history · newest right</div>' +
+      '<div class="versions">' + k.versions.map(v =>
+        '<span class="v ' + (v.origin === "refresh" ? "refresh" : v.stored === "body" ? "full" : "ref") + '" role="button" tabindex="0" data-key="' + k.key_hash + '" data-ver="' + v.version + '" data-tip="v' + v.version + " · " + v.origin + " · " + fmtBytes(v.size_bytes) + " · " + VTIP[v.stored] + ' Click to view the stored answer.">' + v.version + '</span>').join("") + '</div></div>' +
+      '<div class="kv"><span data-tip="stable = re-asked and the answer had not changed (timer grows ×1.5). changed = it had (timer halves).">Stable / changed</span><span class="mono">' + k.stable + ' / ' + k.changed + '</span></div>' +
+      '<div><div class="sec" data-tip="Fields the learner found changing on every fetch in the same shape — request ids, server timestamps. Ignored when deciding whether data really changed. Stored bytes are never altered." style="margin-bottom:6px">Learned noise</div>' +
+      '<div class="volatile">' + ((k.volatile_paths && k.volatile_paths.length) ? k.volatile_paths.map(v => '<span class="vp">' + v + '</span>').join("") : '<span class="vp" style="border-style:solid; opacity:.6">none learned yet</span>') + '</div></div>' +
+      '<div class="kv"><span data-tip="The last time a real caller asked this question. A key is refreshed early only if this is newer than its last fetch.">Last demanded</span><span class="mono">' + (k.last_requested_at ? ago(k.last_requested_at) : "never") + '</span></div>';
+    body.querySelectorAll(".v[data-key]").forEach(ch => {
+      const open = () => openBody(ch.dataset.key, ch.dataset.ver);
+      ch.addEventListener("click", open);
+      ch.addEventListener("keydown", ev => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); open(); } });
+    });
+    renderFeed(d);
+  }
+
+  async function openBody(keyHash, ver) {
+    let d;
+    try { d = await api("/admin/archive/body?key_hash=" + keyHash + "&version=" + ver); }
+    catch (e) { return; }
+    const overlay = document.createElement("div");
+    overlay.className = "viewer";
+    let text = d.body_text == null ? (d.note || "no bytes kept for this version") : d.body_text;
+    if (d.body_text != null) { try { text = JSON.stringify(JSON.parse(d.body_text), null, 2); } catch (e) {} }
+    const carried = d.carried_by_version ? " · bytes carried by v" + d.carried_by_version : "";
+    overlay.innerHTML = '<div class="vbox"><div class="vhead"><h2>Stored answer · v' + d.version + '</h2>' +
+      '<span class="n">' + d.origin + " · " + fmtBytes(d.size_bytes) + " · " + new Date(d.fetched_at + "Z").toLocaleString() + carried + '</span>' +
+      '<button type="button">Close</button></div><pre></pre></div>';
+    overlay.querySelector("pre").textContent = text;
+    const close = () => overlay.remove();
+    overlay.querySelector("button").addEventListener("click", close);
+    overlay.addEventListener("click", e => { if (e.target === overlay) close(); });
+    document.addEventListener("keydown", function esc(e) { if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc); } });
+    document.body.appendChild(overlay);
+  }
+
+  function renderFeed(d) {
+    $("livecount").textContent = d.endpoint_id + " · newest first";
+    const feed = $("feed");
+    if (!d.events.length) { feed.innerHTML = '<li class="empty" style="border:0">no calls recorded yet</li>'; return; }
+    feed.innerHTML = d.events.slice(0, 12).map(e => {
+      const tag = e.cached ? '<span class="tag g-hit" data-tip="Answered from the store. The vendor was not called; the caller was billed like a live call.">HIT</span>'
+                          : '<span class="tag g-live" data-tip="A real vendor call, observed and recorded.">LIVE</span>';
+      const cost = e.charged_micro != null ? " · " + e.charged_micro.toLocaleString() + "µ$" : "";
+      return '<li><span class="t">' + new Date(e.at + "Z").toTimeString().slice(0, 8) + '</span>' + tag +
+             '<span class="w">HTTP ' + e.status + cost + '</span></li>';
+    }).join("");
+  }
+
+  async function select(ep) {
+    selected = ep;
+    document.querySelectorAll("#eptable tr[data-ep]").forEach(r => r.classList.toggle("sel", r.dataset.ep === ep));
+    try { renderKeys(await api("/admin/archive/keys?endpoint_id=" + encodeURIComponent(ep))); }
+    catch (e) { $("i-body").innerHTML = '<div class="empty">could not load keys: ' + e.message + '</div>'; }
+  }
+
+  async function tick() {
+    try {
+      const d = await api("/admin/archive");
+      renderReport(d);
+      // fill learned-TTL cells from the keys endpoint lazily for judged endpoints only
+      for (const e of d.endpoints) {
+        const cell = document.getElementById("ttl-" + e.endpoint_id);
+        if (!cell) continue;
+        if (e.policy !== "transient" && e.policy !== "archive") { cell.textContent = "—"; continue; }
+        api("/admin/archive/keys?endpoint_id=" + encodeURIComponent(e.endpoint_id) + "&limit=100")
+          .then(kd => {
+            const ttls = kd.keys.map(x => x.ttl_s).filter(x => x > 0);
+            cell.textContent = ttls.length ? (ttls.length > 1 && Math.min(...ttls) !== Math.max(...ttls)
+              ? fmtS(Math.min(...ttls)) + " – " + fmtS(Math.max(...ttls)) : fmtS(ttls[0])) : "—";
+          }).catch(() => { cell.textContent = "—"; });
+      }
+      if (selected) select(selected);
+    } catch (e) {
+      if (e.message === "auth") { stop(); openGate("That token was refused. Paste the current TREG_ADMIN_TOKEN."); }
+    }
+  }
+  function start() { $("gate").classList.add("hidden"); $("hdr").classList.remove("hidden"); $("main").classList.remove("hidden"); tick(); timer = setInterval(tick, 5000); }
+  function stop() { if (timer) clearInterval(timer); $("hdr").classList.add("hidden"); $("main").classList.add("hidden"); }
+  function openGate(msg) { $("gate").classList.remove("hidden"); $("gate-err").textContent = msg || ""; }
+
+  $("go").addEventListener("click", async () => {
+    token = $("tok").value.trim();
+    if (!token) { $("gate-err").textContent = "The token is empty."; return; }
+    try { await api("/admin/archive"); localStorage.setItem(TOK_KEY, token); start(); }
+    catch (e) { $("gate-err").textContent = e.message === "auth" ? "The server refused this token." : "Could not reach the server: " + e.message; }
+  });
+  $("tok").addEventListener("keydown", e => { if (e.key === "Enter") $("go").click(); });
+
+  if (token) { api("/admin/archive").then(() => start()).catch(() => openGate()); }
+})();
+</script>

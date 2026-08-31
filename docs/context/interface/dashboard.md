@@ -2,6 +2,7 @@
 title: The web dashboard (Ledger, served from FastAPI)
 status: shipped
 sources:
+  - src/treg/web/sitetrack.js
   - src/treg/web/index.html
   - src/treg/web/vendor/README.md
   - src/treg/web/vendor/vue-3.5.41.global.prod.js
@@ -10,7 +11,8 @@ sources:
   - src/treg/web/tour/tour.js
   - src/treg/web/tour/index.html
   - src/treg/api.py
-  - src/treg/session.py
+  - src/treg/routers/web.py
+  - src/treg/domain/identity/session.py
 related:
   - interface/api.md
   - interface/landing-sandbox.md
@@ -23,13 +25,13 @@ related:
 # Web dashboard (Phase 1)
 
 A single-file Vue 3 dashboard in `src/treg/web/index.html`, served **same-origin** by the API
-(`GET /` → `FileResponse`, `dashboard()` in `api.py`, via `_WEB_DIR`). Same origin = no CORS and it
+(`GET /app` → `FileResponse`, `dashboard()` in `routers.web`, via `_WEB_DIR`). Same origin = no CORS and it
 ships with the server (Render/Fly). Design language: **Ledger** (warm charcoal + clay accent,
 mono-forward, dark default + light toggle) — see `docs/style-board.html` / `docs/DASHBOARD-PLAN.md`.
 
 ### Vue is vendored, not fetched from a CDN
 There is no bundler, so Vue arrives as a plain `<script src>` — but from **`/vendor/`**, served off
-`src/treg/web/vendor/` by an `_ImmutableStatic` mount in `api.py`, never from unpkg. It used to come
+`src/treg/web/vendor/` by an `_ImmutableStatic` mount in `bootstrap.py`, never from unpkg. It used to come
 from `unpkg.com/vue@3`, and a visitor whose network could not reach unpkg got a **blank signed-in
 dashboard with no error** ([#137](https://github.com/superdesigndev/treg/issues/137): mainland-China
 `ERR_CONNECTION_CLOSED`, then `Vue is not defined`). The landing has no external scripts at all, so
@@ -49,9 +51,17 @@ template until Vue mounts, which is precisely what made #137 silent — so the g
 `#app` is still cloaked ~1.5s after `load` and, if it is, replaces the blank with a readable message,
 a reload button, and the issues link. Anything that stops Vue mounting now says so on screen.
 
-`index.html`'s closing `<script src="/adtrack.js">` loads the first-party ad-click capture script on
-every page render (dashboard included, since a visitor can arrive on `/app` from an ad) — no Google
-tag, first-party cookie only; see [ads-conversions](../architecture/ads-conversions.md).
+`index.html`'s closing `<script src="/sitetrack.js">` (also on `landing.html`, every `usecase-*.html`,
+`resources.html`, `tutorial.html`) sets the first-touch `treg_utm` cookie and initialises PostHog with
+pageviews on; `initAnalytics()` in the SPA defers to it (`window.__phInit`) and only identifies, keeping
+its inline init as the fallback for a stale bundle. Landing-page visitors used to be invisible to
+analytics — PostHog first met them on `/app` after OAuth, as `$direct` — so this ordering is the whole
+point. `<script src="/adtrack.js">` — the first-party ad-click capture — loads **in `<head>`** on every
+page, guaranteed to run during HTML parsing before any app code can navigate away. An ad click landing
+on `/?gclid=…` falls through to the SPA (because of the query string), whose boot redirects logged-out
+visitors via `location.replace('/')`. Placing capture in `<head>` ensures the click id is stored before
+that redirect can drop the query string. No Google tag, first-party cookie only; see
+[ads-conversions](../architecture/ads-conversions.md).
 
 ## Shell & design system (2026 rework)
 The design tokens are now **shared across every served page** (`index.html`, `tutorial.html`,
@@ -59,6 +69,13 @@ The design tokens are now **shared across every served page** (`index.html`, `tu
 loaded, so this makes rendering consistent for everyone), `--r:14 / --rb:9`, a `14px` base, and one
 shared `.btn` / `.iconbtn` height so controls align. The logged-out `/` is now the **landing + sandbox
 studio** (see [landing-sandbox](landing-sandbox.md)), not a login box; sign-in is a modal.
+
+An OAuth authorization that needs sign-in redirects to `/?signin=oauth`. The dashboard reads this as
+a UI cue, removes it from the visible URL, and opens the same modal with generic connection copy. It
+does not create a sandbox session. During this flow the modal hides the agent/CLI token fallback,
+because that token does not create the browser session required to resume authorization. The
+protected OAuth return path stays in an HttpOnly cookie, so GitHub, Google, and email-code sign-in all
+resume the same authorization flow without putting OAuth request data in the URL.
 
 The **authed** shell is sidebar-first. The **top bar** is just brand + search. The **left sidebar**
 stacks: (top) an **org block** — role + team name — that on click opens a switcher **dropdown** where
@@ -76,7 +93,7 @@ account controls are gone.
 ## Auth — three doors
 Two are **session** (cookie) paths, one is a token fallback:
 - **GitHub (`githubLogin`):** `Continue with GitHub` → `/auth/github` → callback sets a signed HttpOnly
-  cookie (`session.py` HMAC). (Note: the button routes through a `githubLogin()` method — a Vue template
+  cookie (`domain.identity.session` HMAC). (Note: the button routes through a `githubLogin()` method — a Vue template
   expression can't reference the `location` global.)
 - **Google (`googleLogin`):** `Continue with Google` → `/auth/google` → callback, same cookie session as
   GitHub. The button shows when `/meta` reports `google:true`.
@@ -138,8 +155,9 @@ chat, which is also what `landing.html`/`support.html` do with a tiny `/meta`-ga
 `switchOrg`/team-create call `intercomUpdate()` so the company tracks the active team; `logout()`
 calls `Intercom('shutdown')` so the next user on the machine can't read the previous conversations.
 
-Server side (`api.py`): `require_identity` (who, from token OR session), `require_member` (a Caller in a
-specific org — token bakes the org in; a session picks it via `X-Treg-Org`), and `require_superadmin`
+Server side (`domain.identity.access`): `require_identity` (who, from token OR session),
+`require_member` (a Caller in a specific org — token bakes the org in; a session picks it via
+`X-Treg-Org`), and `require_superadmin`
 (env token, or a token/session whose user `is_superadmin`). Every fetch also sends
 `ngrok-skip-browser-warning: 1`.
 
@@ -203,14 +221,33 @@ specific org — token bakes the org in; a session picks it via `X-Treg-Org`), a
     argv deny patterns with their source (skill vs catalog), under a line naming all three deny
     layers — HTTP rules, argv patterns, OS sandbox — so the whole "what is blocked" picture is one
     screen.
-  - **Billing** (admin+) — balance, the top-up presets, the auto-top-up toggle with its verbatim
-    PSD2/SCA mandate text, and below them **Payment history**: date, amount, an `auto` marker, and one
-    link per row — *Invoice* when Stripe issued one (manual top-ups do; automatic ones can't), else
+  - **Billing** (admin+) — balance, a **Top up** button that opens the top-up modal, the auto-top-up
+    toggle with its verbatim PSD2/SCA mandate text, and below them **Payment history**: date, amount, an
+    `auto` marker, the `+$X bonus` the payment earned, and one link per row — *Invoice* when Stripe issued one (manual top-ups do; automatic
+    ones can't), else
     *Receipt*, else an em dash. Amounts come from our own ledger and the links from Stripe, so when
     Stripe is unreachable the table still renders and a line under it says the links, not the numbers,
     are missing. A **Manage billing** button opens Stripe's hosted portal (card, billing address, tax
     ID, the full invoice archive); it is hidden until `billing.portal` is true, which needs a Stripe
     customer, which a team gets on its first payment — so a new team never sees a button that errors.
+
+    The **top-up modal** (`topupOpen`) is one decision, not three: the four preset cards from
+    `billing.topup.presets` plus **Other** (a whole-dollar input bounded by `topup.min_usd`/`max_usd`),
+    each card naming the tier bonus it earns (`tierBonus`, from `topup.bonus_tiers`; the referral
+    bonus stacks via `refPresetBonus`), a summary box (credit + bonus, total due = the amount — treg
+    charges no fee, so there is no fee line), and an **auto top-up toggle that defaults ON** for a
+    team with no mandate yet. The toggle's label is the mandate text with the refill amount and
+    threshold (the server defaults, $20 when below $5 — not the top-up amount: a $200 buyer does
+    not want $200 refills), shown in full so what is agreed is what will be charged; the billing
+    page's **Edit** link on a running policy reopens the same panel to change them (Save re-stamps
+    consent). The monthly cap is
+    not in the copy: it is a server-side runaway guardrail, and the modal sets it to `topup.max_usd`
+    (effectively unlimited) so a big payer is never locked out by a default sized for $10 refills. Pay with the toggle on POSTs `/billing/autotopup`
+    (`consent: true`, those numbers, `setup_url: false` because the top-up Checkout saves the card
+    itself) **before** `/billing/topup`, so consent exists before the card that will be charged under
+    it; the setup webhook then arms the policy. A team that already has a mandate sees a read-only
+    "auto top-up is on" line instead. The preselected card is `topup.default_usd`, which is per-org:
+    one preset above the last manual top-up, capped at $50 (see [money](../architecture/money.md)).
   - **Team settings** — deliberately JUST the **Danger zone** (leave / delete), visible to EVERY role
     (leaving is self-service, and `loadOrgAdmin` lands a non-admin here). New team / Join by code /
     Paste token live only in the sidebar picker — cut from this tab on founder review; a personal
@@ -306,7 +343,7 @@ specific org — token bakes the org in; a session picks it via `X-Treg-Org`), a
 
 ## Marketplace — the in-browser OAuth-connect UI (`view==='connections'` / `'provider'`)
 The dashboard now runs the whole **hosted connect flow** in the browser, so a member can attach a
-provider account (Google Analytics, Search Console, Google Ads, Slack, Meta/Facebook/Instagram, X,
+provider account (Google Analytics, Search Console, Google Tag Manager, Google Ads, Slack, Meta/Facebook/Instagram, X,
 TikTok, LinkedIn, YouTube, …) without touching the CLI. `loadConnections` fetches **`GET /oauth/providers`**
 (server route `oauth_providers_list` → `oauth_providers.listing()`, each row carrying `service`,
 `display_name`, `category`, `summary`, `capabilities`, `scope_detail`, `auth_kind`, `supports_discovery`,
@@ -334,6 +371,11 @@ still opens the provider page (`openProvider(service)`); each row has `id="prov-
 Rows show the **provider logo** served by convention from
 **`/logos/<service>.svg`** (`.plogo-tile`/`.plogo`, `@error` hides a missing file) — the `StaticFiles`
 mount `_LOGO_DIR` (`src/treg/web/logos/`). `connCount` labels how many accounts are already connected.
+Google Tag Manager follows that same generic UI: its capability picker offers cumulative
+read/write/manage access, account discovery labels each `accounts/{id}` resource by name, and the
+selected account stamps a runnable containers-list path into the provisioned tool. Its provider and
+platform logo assets both carry the Google Tag Manager mark, so the catalog tile, platform header,
+provider page, and expanded endpoint rows resolve to the same identity.
 The tab bar itself is `v-if`'d on `plats.list.length` and `mkTabActive` collapses to `'platform'` when
 the catalog is absent, so a build that predates `/catalog` renders exactly the old marketplace.
 
@@ -393,6 +435,15 @@ page (Connect looked dead).
 > There is no second implementation of any of this; see [seo](seo.md) for why, and for the `#prerender`
 > fallback that carries the text to crawlers that run no scripts. `index.html`'s own `robots: noindex`
 > is stripped on those two URLs only.
+>
+> **The Platform tab fills for signed-out visitors too.** The public-catalog boot branch calls
+> `loadConnections()`, not just `loadPlatforms()` — `/oauth/providers` is an open endpoint, and the
+> `/connections` half fails and is caught. (It once called only `loadPlatforms()`, and an incognito
+> visitor who reached the tab saw "Platform 0" and a blank shelf.) In public mode the shelf's
+> actions swap: "Add key"/"Connect" opens the sign-in dialog, and a provider row navigates to the
+> server-rendered public page at `/tools/<service>` via `goPublicTool` — a real method, because a
+> Vue template expression cannot reach the `location` global (not on the expression allowlist; an
+> inline `location.href=` fails silently).
 
 The marketplace's second browse surface answers "what data can I actually pull?" rather than "whose
 account can I attach?" — see `architecture/catalog.md` for the data behind it, and it is the marketplace's
@@ -638,8 +689,11 @@ and in a merged row's provider sub-row, because both paths share the one `.lep` 
 one-line setup (`epTrySetupLine`, with team + token embedded **here only**, a copy-and-run-now context;
 the setup line everywhere else stays clean) plus a ready "Use treg to call `<id>` — `<summary>`" prompt
 (`epTryAgentUse`); **CLI** — install/login, `treg catalog get <id>`, and the filled `treg call <id>
---query …` (`epTryCliCall`); **API** — the `curl {BASE}/call/<id>?<query>` passthrough with the token
-header (`epTryCurl`, adding `X-Treg-Org` in session mode since the minted token is an identity token);
+--query …` (`epTryCliCall`), with `--method` and a shell-quoted `--data` JSON body for non-GET
+requests; **API** — the `curl -X <method> {BASE}/call/<id>?<query>` passthrough with the token header
+(`epTryCurl`, adding `X-Treg-Org` in session mode since the minted token is an identity token), plus
+`Content-Type: application/json` and the same shell-quoted, editable `epTryBody` for a non-GET request
+that has a body;
 and **Manual** — the live test form (params + `❯ Run`, disabled with a reason when the access dry-run
 says this org can't call it) that the drawer used to be by itself.
 

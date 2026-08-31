@@ -6,8 +6,9 @@ source:
   - https://serpapi.com/search-api
 endpoints:
 - id: serpapi.x.google-maps
-  tier: extended
+  capability: google.serp.maps
   platform: google
+  tier: extended
   method: GET
   path: /search
   name: "Google Maps place results for a query — rating, address"
@@ -147,8 +148,9 @@ endpoints:
   example_response: examples/serpapi.x.google-scholar.json
   observed_time: 6.55
 - id: serpapi.x.google-trends
-  tier: extended
+  capability: google.keywords.trends
   platform: google
+  tier: extended
   method: GET
   path: /search
   name: "Google Trends interest over time for search terms"
@@ -201,8 +203,9 @@ endpoints:
   example_response: examples/serpapi.x.google-trends.json
   observed_time: 7.14
 - id: serpapi.x.google-news
-  tier: extended
+  capability: google.serp.news
   platform: google
+  tier: extended
   method: GET
   path: /search
   name: "Google News results for a query or topic"
@@ -560,8 +563,9 @@ endpoints:
   example_response: examples/serpapi.x.google-hotels.json
   observed_time: 7.59
 - id: serpapi.x.google-local
-  tier: extended
+  capability: google.serp.local
   platform: google
+  tier: extended
   method: GET
   path: /search
   name: "Google local pack results for a query and location"
@@ -826,8 +830,9 @@ endpoints:
   example_response: examples/serpapi.x.google-light.json
   observed_time: 0.75
 - id: serpapi.x.google-ai-mode
-  tier: extended
+  capability: google.serp.ai_mode
   platform: google
+  tier: extended
   method: GET
   path: /search
   name: "Google AI Mode answer for a query"

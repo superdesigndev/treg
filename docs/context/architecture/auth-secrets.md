@@ -2,11 +2,22 @@
 title: Auth & secrets — injectors, encryption, OAuth freshness, health
 status: shipped
 sources:
-  - src/treg/injectors.py
+  - src/treg/infra/upstream/injectors.py
+  - src/treg/infra/upstream/ssrf.py
   - src/treg/crypto.py
   - src/treg/oauth.py
+  - src/treg/domain/connections/__init__.py
+  - src/treg/domain/connections/refresh.py
+  - src/treg/infra/oauth_refresh.py
   - src/treg/oauth_providers.py
   - src/treg/health.py
+  - src/treg/application/connect.py
+  - src/treg/routers/connections.py
+  - src/treg/routers/resources.py
+  - src/treg/domain/tools/__init__.py
+  - src/treg/domain/tools/bindings.py
+  - src/treg/domain/tools/bundles.py
+  - tests/test_oauth_refresh.py
 related:
   - architecture/proxy-model.md
   - architecture/data-model.md
@@ -18,7 +29,7 @@ related:
 The hard part: match every credential shape a real skill uses, keep it encrypted, and keep OAuth tokens
 alive, without the proxy ever branching on shape.
 
-## Injectors — the seam (`injectors.py`)
+## Injectors — the seam (`infra/upstream/injectors.py`)
 The proxy calls `inject(headers, params, binding, secret)`, which dispatches on `binding["injector"]`
 through the `INJECTORS` registry (populated by the `@register(name)` decorator). Four shapes, two
 mechanics:
@@ -37,21 +48,24 @@ restart — a loud signal to set the key). `new_key()` mints one. Caller tokens:
 (urlsafe random) + `hash_token()` (SHA-256); the DB stores only the hash. Values are never returned to
 clients.
 
-## OAuth freshness (`oauth.py`)
+## OAuth freshness (`domain/connections/refresh.py`)
 Two modes, detected by `is_refreshable(blob)` (has `refresh_token` + `client_id` + `client_secret`):
 - **auto:** `ensure_fresh(secret, db, client)` — if `is_stale()` (past `expires_at`/`expiry` minus
-  `_SKEW=60s`), `refresh()` POSTs `token_uri` (default `_DEFAULT_TOKEN_URI`), re-encrypts + persists the
-  new blob, then returns. A **single-flight** `asyncio.Lock` per secret id (`_locks`) plus a
+  `_SKEW=60s`), the `OAuthRefreshPort` POSTs `token_uri` (default `_DEFAULT_TOKEN_URI`), then the domain
+  command re-encrypts and persists the new blob. The read transaction commits before token-endpoint I/O,
+  and the conditional write opens a new short transaction, so provider latency holds no pooled connection.
+  A **single-flight** `asyncio.Lock` per secret id (`_locks`) plus a
   `db.refresh()` re-check under the lock prevents a refresh stampede. The `_locks` map is now **bounded**:
   before a stale refresh, if it holds more than 512 entries the idle (unheld) locks are dropped — a fresh
   lock is created on next need — so a long-lived worker can't accumulate one lock per secret forever.
-  `refresh()` updates both `access_token` and `token` keys so either binding `secret_field` stays fresh.
+  The HTTP adapter updates both `access_token` and `token` keys so either binding `secret_field` stays fresh.
 - **manual:** a bare uploaded token (not refreshable) is injected as-is; the user re-uploads on expiry.
 
-`ensure_fresh` is called by `call_tool()` before injecting, and by the health runner. The injector
+`treg.oauth` re-exports the refresh family for compatibility with connect, health, call, and lazy local-run
+consumers. `ensure_fresh` is called by `call_tool()` before injecting, and by the health runner. The injector
 stays dumb; one refresh function serves both. Its write-back is **conditional on the prior ciphertext**
 (`UPDATE … WHERE value = old`) then reloads the row — so under multiple workers a second refresh can't
-clobber a refresh_token the first already rotated (the in-process lock alone doesn't cross processes). `refresh` always stamps a fallback `expires_at` (so a
+clobber a refresh_token the first already rotated (the in-process lock alone doesn't cross processes). The adapter always stamps a fallback `expires_at` (so a
 provider that omits `expires_in` doesn't force a refresh on every call), coerces a null `expires_in`,
 and raises a clear error when a 200 body carries no `access_token`; `_expires_at` treats a naive ISO
 `expiry` as UTC.
@@ -87,7 +101,7 @@ unrenewable one earns a warning (`EXPIRING_SOON_DAYS=7`). `connection_view()` is
 ## Curated OAuth provider registry (`oauth_providers.py`)
 Two ways to connect a provider. **Bring-your-own (BYO):** `POST /oauth/start` takes a caller-supplied
 `client_id`/`client_secret`/URIs — works for any OAuth2 provider. **Curated:** for the providers where
-**treg itself holds the approved app** (Google Search Console/Analytics/Business Profile/Ads, YouTube,
+**treg itself holds the approved app** (Google Search Console/Analytics/Business Profile/Tag Manager/Ads, YouTube,
 LinkedIn, X, TikTok, Facebook, Instagram, Meta Ads — added PRs #20/#21), the user picks a provider and
 consents, supplying nothing. The asymmetry is the point of a hosted registry: the gating cost on these
 platforms is the *approval* (a Google Ads developer token, Meta App Review), not the OAuth dance — treg
@@ -100,6 +114,15 @@ bundle; `default_capability` is the broadest tier by design, so a plain Connect 
 Google Search Console's hand-written tool example calls out its distinct direct-tool convention:
 substitute `{site_url}` with a value encoded exactly once (`sc-domain%3Aexample.com`), and never encode
 again a property identifier returned by the sites list.
+
+Google Tag Manager shares the standard Google client credentials and exposes three cumulative tiers:
+`read` grants `tagmanager.readonly`; `write` adds `tagmanager.edit.containers`; `manage` adds
+`tagmanager.edit.containerversions` and `tagmanager.publish`. The account list is both the health probe
+and resource picker, with the selected `accounts/{id}` path stamped into the tool example. treg
+deliberately does **not** request `tagmanager.delete.containers`, `tagmanager.manage.users`, or
+`tagmanager.manage.accounts`: agents can audit configuration, prepare workspace changes, create
+versions, and publish (including rollback by publishing an earlier version), but cannot delete whole
+containers or administer access.
 
 Each entry is a frozen `OAuthProvider` dataclass; `REGISTRY` is the `{service: provider}` map. Key
 module symbols:
@@ -169,13 +192,28 @@ module symbols:
   rebuilds the tool with BOTH bindings — the primary half comes from `_provider_bindings`, so it follows
   the provider's own auth shape rather than assuming OAuth). Tomba's probe (`/v1/usage`) deliberately
   answers the key alone, so connect-time verification works before the secret is bound.
+  `required_headers` carries fixed provider protocol headers that must accompany the credential on
+  every request (Crustdata pins `x-api-version: 2025-11-01`). The connect probe sends them too, and
+  `_provider_bindings` turns each into an ordinary constant-format binding over the same secret
+  reference. The generic injector therefore overwrites a stale caller value without teaching the
+  proxy which provider it is relaying. `_platform_bindings` mirrors the same constants when tier 4
+  is enabled, so a platform key cannot silently lose a required protocol header. The metadata alone
+  still does not opt a provider into tier 4; pricing, a configured platform-key setting, and the
+  deployment allow-list remain separate gates. Secret-evidence scrubbing ignores a binding whose
+  format has no `{secret}` placeholder. This keeps a protocol constant such as `2025-11-01` out of
+  the secret-spelling set while the real credential and its rendered authorization value remain
+  scrubbed.
   **Split-host vendors get one extra Tool per host** (`extra_tools`): GA4 runs reports on
   `analyticsdata` but lists the property ids those reports need on `analyticsadmin` — one scope covers
   both, but `/call/` resolution is per-HOST, so without a second row the agent is walled off (admin
   path on the data host → Google 404; admin host → treg "no registered tool"; 13 calls/7 orgs observed
   stuck there). The extra (`<connection>-admin`) binds the SAME secret, upserts idempotently on
-  connect/reconnect, and `_backfill_provider_extra_tools` runs after `init_db()` on every startup to
-  heal older connections automatically. The backfill is registry-generic: it scans provider-attributed
+  connect/reconnect, and `_backfill_provider_extra_tools` runs after the schema phase in the ordered
+  release upgrade to heal older connections automatically. The schema phase uses Alembic directly for
+  empty or stamped databases and refuses a non-empty unstamped database with the 0.14.x adoption remedy.
+  The default `python -m treg` serve command runs
+  that phase before Uvicorn; raw ASGI deployments run `python -m treg upgrade` once per release. The
+  backfill is registry-generic: it scans provider-attributed
   Secrets, requires the corresponding main Tool to be bound to that Secret, then calls the same extra
   upsert, so adding a future `extra_tools` entry needs no one-off migration. Revoke already sweeps the
   companions (any tool whose only binding was the deleted credential goes). `resource_example` closes the loop from the
@@ -253,7 +291,9 @@ member: on Linux the CLI runs as a dedicated `treg-run` user, so the credential 
 (unreadable by the member's uid), not on the member's own account. A deliberate, narrow exception.
 
 **Ownership boundary (who may use which secret).** A member may only **bind/inject a secret they own**
-(`_validate_bindings` / `_validate_cli_secrets`, both calling `_require_secret_ownership`); admins/owners
+(`domain/tools/bindings.py` — `validate_bindings` / `validate_cli_secrets`, both calling
+`require_secret_ownership`; `routers/resources.py` keeps same-named wrappers that translate the
+domain's `ToolConfigError`/`SecretOwnershipError` into 422/403); admins/owners
 may wire up shared-key tools. This stops a
 member laundering a teammate's key into a tool they control (then exfiltrating it via the proxy's
 `base_url` or via `/grant`). Editing a tool **grandfathers** the secrets already on it — only a
@@ -263,4 +303,5 @@ shared-key tool they may run but not read) requires the **runner proof** (`X-Tre
 `TREG_RUN_PROOF`, held only by the root-installed `treg-run` runner) — so a direct member call can't read
 someone else's key value. A tool's `base_url` is validated against the internal-address block-list (loopback/private/link-local/
 metadata, incl. numeric IP encodings) at registration AND the proxy re-resolves the host at call time
-(`health.host_is_public`, gated by `proxy_ssrf_check`) — no SSRF, even via DNS rebinding.
+(`infra.upstream.ssrf.host_is_public`, also re-exported by `health`, gated by `proxy_ssrf_check`) — no
+SSRF, even via DNS rebinding.

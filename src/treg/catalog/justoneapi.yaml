@@ -9,6 +9,12 @@ source:
 # Response convention: HTTP 200 always; the business result is `code` (0 = success, and only a
 # code-0 response is billed). Hence every endpoint expects code == 0.
 pricing_url: https://www.justoneapi.com/
+# Provider-wide success rule. Just One API answers HTTP 200 for everything and puts the
+# business result in `code` (0 = success); only a code-0 response is billed, so a body
+# with any other code is a vendor-side failure that must not settle. Endpoints may still
+# override it; this is the default for those that do not state one.
+expect: {json_path: code, equals: 0}
+
 endpoints:
   - id: justoneapi.tiktok.user.profile
     capability: tiktok.user.profile

@@ -1,7 +1,7 @@
 # treg — the tool catalog for your agent
 
 > **OpenRouter, but for agent tools instead of models.** Point an agent at ONE base URL with ONE
-> token and it can do the *job*: 2,856 catalogued endpoints across 57 providers (SEO and SERP
+> token and it can do the *job*: 2,600+ catalogued endpoints across 60+ providers (SEO and SERP
 > data, backlinks, social and trends, people and company enrichment, ads, scraping) — plus your
 > own team's keys, skills and CLIs. Every credential is injected **server-side**; nothing
 > sensitive lands on the agent's machine, and every call is audited.
@@ -10,6 +10,12 @@
 social and trends, enrichment, ads, scraping. Ask for the task, not the tool: you do not need to
 know which vendor sells backlink data, or to hold an account with them. Search the catalog for what
 you want to do, read the price, call it.
+
+Three readable indexes, each also served as Markdown by appending `.md`: `{BASE}/use-cases`
+(one page per job, every provider that does it compared on price, measured success rate and
+speed), `{BASE}/workflows` (several jobs chained into one prompt, each step priced, with the
+receipt from a real run) and `{BASE}/tools/<provider>` (one provider's endpoints and per-call
+prices). Start there when you want the comparison rather than one endpoint.
 
 Why this exists: the tools an agent needs for real work are behind subscriptions nobody buys for a
 single run (Semrush $139/mo, Moz $99/mo, Crunchbase $99/mo, Apollo $59/seat), behind signup walls,
@@ -60,6 +66,11 @@ resolves the tool by host and injects the credential:
   treg sees it, base64-encode the body and add `X-Treg-Body-Encoding: base64` (also `gzip` or
   `base64+gzip`); treg decodes it server-side, so the upstream still gets the real bytes. The
   `treg` CLI does this automatically on a WAF 403 - you only need it over raw HTTP.
+- **Concurrency:** there is no per-token or per-team concurrency limit - fire calls in parallel
+  (`Promise.all`, `asyncio.gather`); a call in flight holds nothing on treg's side. The only limits
+  are the provider's own rate limits, relayed verbatim. If treg itself is saturated you get a
+  `503` with `{"treg_saturated": true}` and a `Retry-After` header - wait that long and retry the
+  same request; nothing was billed. A bare 5xx with no JSON `detail` is never treg's own answer.
 
 ### Retrying a call: `Idempotency-Key`
 
@@ -120,7 +131,7 @@ ledger.
 
 ## The catalog — tools you do not have a key for
 
-Curated endpoints across 47 providers, grouped by what they DO: keyword and rank tracking,
+Curated endpoints across 60+ providers, grouped by what they DO: keyword and rank tracking,
 backlinks and authority, AI visibility, trending and discovery, publishing to socials, people and
 company enrichment, ads management and creative, measurement. Ask for the task; the catalog tells
 you which endpoints serve it, what each costs, and how you would be served. Exact live counts:
@@ -182,9 +193,26 @@ you can build its request; tell the human which one you switched to. **Never ret
 elsewhere**: that is usually your parameters, and retrying burns the team's money on N providers for
 one mistake.
 
-treg does **not** choose or fail over for you, by design: only you know which inputs you hold, and
-treg relays your request rather than rewriting it.
+treg does **not** choose or fail over **between providers** for you, by design: only you know which
+inputs you hold, and treg relays your request rather than rewriting it. One thing it may do, and
+tells you when it does: if treg's OWN account for the provider is out, it can serve the **same
+endpoint** through a treg-owned relay account — same request, same response shape, the relay's
+real price — with `X-Treg-Served-Via: overflow:<name>` on the response (a team can opt out with
+`treg org overflow off`). Your own keys are never relayed.
 
+<!--routed-->
+**Routed endpoints — when you WANT treg to choose.** `treg.<capability>` rows (today:
+`treg.people.email.find`) are first-party endpoints generated from the providers of one capability.
+`POST /call/treg.people.email.find` with `{full_name, domain}` (or `first_name`+`last_name`+`domain`,
+or `linkedin_url`) and treg runs the best child — your own keys first, then cheapest per hit — and
+answers `{output, raw, _treg: {served_by, tried, charged_micro}}` with `X-Treg-Served-By`. A
+provider error OR a miss falls through to the next provider, cheapest first, within
+`X-Treg-Route-Max-Cost` (default $1 per call; misses on per-success providers are free) — send
+`X-Treg-Route-Waterfall: 0` to stop at the first miss. `catalog_get` on the routed id shows the
+ranked plan and prices before you spend.
+Call a specific provider's endpoint when you need a particular one.
+
+<!--/routed-->
 Money notes for agents:
 - The price is visible before you call (`treg catalog get`, or `estimated_cost_usd` in
   `GET {BASE}/catalog/endpoints/<id>/access`). No confirmation ritual — costs are fractions
@@ -193,6 +221,10 @@ Money notes for agents:
   `estimated_cost_micro`, `topup_url`. Recovery: `treg balance` (ledger), top up in the
   dashboard (Team → Billing), or connect the org's own key for that provider - own keys
   are never billed to the balance.
+- HTTP **503** with `error: provider_capacity_unavailable` → treg's OWN account for that
+  provider is out right now (not your balance, nothing charged). The body names `resets_at`
+  when known and `alternatives` — other providers for the same capability; pick one, or use
+  your own key for the provider (never affected). treg does not switch providers for you.
 - `treg balance` shows the prepaid balance and recent charges; the dashboard Activity page
   shows the exact settled cost of every call.
 
@@ -289,9 +321,9 @@ key - share access.
 
 ## MCP — connect an assistant
 
-Using ChatGPT? The plugin is in ChatGPT's Plugins directory (search "treg" → Install); the page
-{BASE}/agents/chatgpt lists what it can do by job, with prices, and {BASE}/agents/chatgpt.md is the
-same page as Markdown.
+Using ChatGPT? The install is the same one line every agent uses — paste
+`set up treg — {BASE}/llms.txt` into the chat; the page {BASE}/agents/chatgpt lists what it can do
+by job, with prices, and {BASE}/agents/chatgpt.md is the same page as Markdown.
 
 
 treg is also an **MCP server** at `{BASE}/mcp/`, two ways to authenticate it:
@@ -486,7 +518,7 @@ skills` restrict it (`--dir` sets the location).
 8. **Report the outcome as a doorway, not an install log.** Nobody signed up to read which
    Python version uv picked. Open with ONE line about what they just gained, e.g.:
 
-       treg is live — your agent can now call 2,800+ tools across 57 providers (market data, SEO &
+       treg is live — your agent can now call 2,800+ tools across 60 providers (market data, SEO &
        keywords, social & trends, people/company enrichment, ads, scraping), with $1.00
        of free credit to spend.
 

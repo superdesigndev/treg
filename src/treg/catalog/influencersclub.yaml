@@ -46,18 +46,18 @@ endpoints:
     scope: any_account
     method: POST
     path: /public/v1/discovery/
-    name: "Search creators by filters or a plain-language brief"
+    name: "Find Instagram/TikTok/YouTube influencers by niche & size"
     summary: "Search and discover creators across multiple platforms using advanced filtering and search."
     input:
       body:
         platform: {type: string, required: true, note: "one of instagram | youtube | tiktok | twitter | twitch | onlyfans — the filter set changes with it", example: "instagram"}
         paging: {type: object, required: true, note: "{limit, page}; page is 0-indexed. THIS IS THE PRICE DIAL — 0.01 credit per creator returned", example: {limit: 10, page: 0}}
-        filters: {type: object, required: true, note: "platform-specific filter object (send {} to rely on nlp_search alone). Instagram keys include location, profile_language, keywords_in_bio, hashtags, keywords_in_captions, number_of_followers {min,max}, engagement_percent {min,max}, average_likes, follower_growth, last_post, is_verified, brands, audience {age, gender, location, interests}, has_done_brand_deals, promotes_affiliate_links, exclude_handles, exclude_list. Use the dictionary routes for valid location / language / brand / interest values", example: {keywords_in_bio: ["astronomy"], number_of_followers: {min: 100000}}}
-        nlp_search: {type: string, required: false, note: "a plain-language brief ('fitness creators in New York with over 100k followers') that the API maps onto filters; combinable with explicit filters. The response adds applied_filters and an nlp_search block explaining what was inferred or dropped. An uninterpretable brief 400s and costs nothing", example: "astronomy and space creators with over 100k followers"}
+        filters: {type: object, required: true, note: "platform-specific filter object (send {} to rely on nlp_search alone). Instagram keys include location, profile_language, keywords_in_bio, hashtags, keywords_in_captions, number_of_followers {min,max}, engagement_percent {min,max}, average_likes, follower_growth, last_post, is_verified, brands, audience {age, gender, location, interests}, has_done_brand_deals, promotes_affiliate_links, exclude_handles, exclude_list. TRAPS learned live (2026-08-27): `location` is COUNTRY-level and must be a dictionary value ([\"Brazil\"]) — a city string ('Belo Horizonte, MG') is accepted and silently matches nothing; `profile_language` is a LIST of ISO codes from creators.filters.values ([\"pt\"], not \"portuguese\" → 400); a required brand goes in `brands: [\"nitto\"]` (lowercase), NOT keywords_in_bio (\"Nitto tires\" in a bio matches nothing); keywords_in_bio wants short single words in the creators' own language (\"cabelo\", not \"queda de cabelo\")", example: {keywords_in_bio: ["astronomy"], number_of_followers: {min: 100000}}}
+        nlp_search: {type: string, required: false, note: "a plain-language brief ('fitness creators in New York with over 100k followers') that the API maps onto filters; combinable with explicit filters. The response adds applied_filters and an nlp_search block explaining what was inferred or dropped. An uninterpretable brief 400s and costs nothing. It DROPS constraints it cannot map (a 'Brazilian hair-loss creators' brief came back without the country or topic) — put every hard limit in `filters` and use nlp_search only for the soft part", example: "astronomy and space creators with over 100k followers"}
         sort: {type: object, required: false, note: "{sort_by: relevancy | engagement_rate | number_of_followers | growth_rate, sort_order: asc | desc}", example: {sort_by: number_of_followers, sort_order: desc}}
       queryParams:
         return_filter_values: {type: boolean, required: false, note: "PREMIUM: adds a matched_filters object per creator showing which of your filter values it matched — triples the price to 0.03 per creator", example: false}
-      note: "returns {total, limit, accounts: [{user_id, profile: {full_name, username, picture, followers, engagement_percent, …}}]}. Instagram creators over 10k followers also carry audience demographics. Every request that returns creators is billed, even an identical repeat — page deliberately, and keep `limit` small while you tune filters (a 0-creator page costs 0)"
+      note: "returns {total, limit, accounts: [{user_id, profile: {full_name, username, picture, followers, engagement_percent, …}}]}. Instagram creators over 10k followers also carry audience demographics. Every request that returns creators is billed, even an identical repeat — page deliberately, and keep `limit` small while you tune filters (a 0-creator page costs 0). This is the STRUCTURED shape of creator discovery (exact follower/engagement/location/language filters, audience data); the SEMANTIC shape is exa.creators.search (describe the creators, pinned to the platform's domain). For a brief with both hard limits and a fuzzy niche, run both and merge on username — on the LessieAI people-search-bench influencer track (2026-08-27) the union scored 55 vs 38 for this route alone."
     test_request:
       body: {platform: "instagram", filters: {keywords_in_bio: ["astronomy"], number_of_followers: {min: 100000}}, sort: {sort_by: "number_of_followers", sort_order: "desc"}, paging: {limit: 2, page: 0}}
     cost:
@@ -481,7 +481,6 @@ endpoints:
     docs_url: https://docs.influencers.club/openapi/account-credits-and-usage/account_credits_usage_retrieve
 
 proposed_capabilities:
-  creators.search: "Search creators by filters or a plain-language brief"
   creators.lookalike: "Find creators similar to a reference creator"
   creators.audience.overlap: "Compare audience overlap between creators"
   creators.filters.values: "Look up valid filter values (locations, languages, interests)"

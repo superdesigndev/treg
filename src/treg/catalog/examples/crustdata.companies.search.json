@@ -1,0 +1,12 @@
+{
+  "companies": [
+    {
+      "basic_info": {
+        "name": "Stripe",
+        "primary_domain": "stripe.com"
+      }
+    }
+  ],
+  "next_cursor": "H4sIAHa5jGoC_xXMMQ7CMAxA0atUmRnsODg2V0GoiltHHRARbTpUiLtT1v-k_wnv3ddjXMq2hNsQyuwoGImjI08eQXSGTERmVNXZCkBCqEXN1S1b1msVJXHjGAXDZQhbW_v5ujMhaXqcpbdenuPU9tcfOH1_NV5RXHcAAAA=",
+  "total_count": 64
+}

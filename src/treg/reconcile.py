@@ -1,5 +1,5 @@
 """Three query-time reports that answer "is the money real?" — asked of the rows phase 3 started
-writing, never of a scheduler. Nothing here mutates anything: `ledger.py` owns every write, and this
+writing, never of a scheduler. Nothing here mutates anything: `domain/money` owns every write, and this
 module is the read side that checks its work against the outside world.
 
 The three questions, and why each one needs its own source of truth:
@@ -17,7 +17,7 @@ The three questions, and why each one needs its own source of truth:
   decision instead of a guess.
 
 Units are integer micro-USD (`*_micro`) with a display-only `*_usd` twin, same contract as
-`ledger.py`: never compute against the USD field.
+`domain/money`: never compute against the USD field.
 
 Two aggregations deliberately happen in Python rather than SQL: the ledger's provenance lives in a
 JSON `meta` column (portable JSON extraction across SQLite and Postgres is not worth a report), and
@@ -305,6 +305,6 @@ async def shared_plan_recovery(db: AsyncSession, since: datetime) -> dict:
 def _catalog():
     """Deferred so reconcile stays importable without the catalog package in odd contexts, and so
     tests can monkeypatch the module in one obvious place."""
-    from . import catalog_store
+    from .domain.catalog import store as catalog_store
 
     return catalog_store

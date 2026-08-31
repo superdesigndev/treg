@@ -1,0 +1,345 @@
+{
+  "person": {
+    "id": "674aphone:932c7c9e06bdc579",
+    "first_name": "Patrick",
+    "last_name": "Collison",
+    "name": "Patrick Collison",
+    "linkedin_url": "http://www.linkedin.com/in/patrickcollison",
+    "title": "Co-Founder & Chief Executive Officer",
+    "photo_url": "https://media.licdn.com/dms/image/v2/D5603AQF87s-bD1PjDw/profile-displayphoto-shrink_200_200/profile-displayphoto-shrink_200_200/0/phone:a3e1152137?e=phone:7587866430&v=beta&t=jUv3UkwJI6smUQ2w8f2ucjn2MmGtL0JwZGt--GjOGKM",
+    "twitter_url": null,
+    "github_url": null,
+    "facebook_url": null,
+    "extrapolated_email_confidence": null,
+    "headline": "Stripe CEO",
+    "organization_id": "5d0a0fbff6512580bf33a120",
+    "employment_history": [
+      {
+        "_id": "6a90a52a889d6a0001983b18",
+        "created_at": null,
+        "current": true,
+        "degree": null,
+        "description": null,
+        "emails": null,
+        "end_date": null,
+        "grade_level": null,
+        "kind": null,
+        "major": null,
+        "org_matched_by_name": false,
+        "organization_id": "5d0a0fbff6512580bf33a120",
+        "organization_name": "Stripe",
+        "raw_address": null,
+        "start_date": "phone:324d6329a3",
+        "title": "Co-Founder & Chief Executive Officer",
+        "updated_at": null,
+        "id": "6a90a52a889d6a0001983b18",
+        "key": "6a90a52a889d6a0001983b18"
+      },
+      {
+        "_id": "6a90a52a889d6a0001983b19",
+        "created_at": null,
+        "current": true,
+        "degree": null,
+        "description": null,
+        "emails": null,
+        "end_date": null,
+        "grade_level": null,
+        "kind": null,
+        "major": null,
+        "org_matched_by_name": false,
+        "organization_id": "61bb3c8f4bbaa500daf591d4",
+        "organization_name": "Arc Institute",
+        "raw_address": null,
+        "start_date": "phone:37b4f5e215",
+        "title": "Cofounder",
+        "updated_at": null,
+        "id": "6a90a52a889d6a0001983b19",
+        "key": "6a90a52a889d6a0001983b19"
+      },
+      {
+        "_id": "6a90a52a889d6a0001983b1b",
+        "created_at": null,
+        "current": false,
+        "degree": null,
+        "description": null,
+        "emails": null,
+        "end_date": "phone:4381f34da1",
+        "grade_level": null,
+        "kind": null,
+        "major": null,
+        "org_matched_by_name": false,
+        "organization_id": "55922bbbphone:a7974b79c6e00",
+        "organization_name": "Auctomatic",
+        "raw_address": null,
+        "start_date": "phone:d43572ba2a",
+        "title": "Cofounder",
+        "updated_at": null,
+        "id": "6a90a52a889d6a0001983b1b",
+        "key": "6a90a52a889d6a0001983b1b"
+      }
+    ],
+    "street_address": "",
+    "city": "San Francisco",
+    "state": "California",
+    "country": "United States",
+    "postal_code": null,
+    "formatted_address": "San Francisco, CA, USA",
+    "time_zone": "America/Los_Angeles",
+    "email": "email:5631957e10",
+    "email_status": null,
+    "organization": {
+      "id": "5d0a0fbff6512580bf33a120",
+      "name": "Stripe",
+      "website_url": "http://www.stripe.com",
+      "angellist_url": "http://angel.co/stripe",
+      "linkedin_url": "http://www.linkedin.com/company/stripe",
+      "twitter_url": "http://twitter.com/stripe",
+      "facebook_url": "https://www.facebook.com/StripeHQ",
+      "languages": [
+        "English",
+        "Spanish",
+        "French",
+        "Japanese"
+      ],
+      "alexa_ranking": 200,
+      "phone": "phone:4bfe7b83d2",
+      "linkedin_uid": "2135371",
+      "founded_year": 2010,
+      "publicly_traded_symbol": null,
+      "publicly_traded_exchange": null,
+      "logo_url": "https://zenprospect-production.s3.amazonaws.com/uploads/pictures/69a4886fcf5bc40001d6a14c/picture",
+      "crunchbase_url": null,
+      "primary_domain": "stripe.com",
+      "sic_codes": [
+        "7375",
+        "7374",
+        "7389"
+      ],
+      "naics_codes": [
+        "54151",
+        "522320",
+        "518210"
+      ],
+      "primary_phone": {
+        "number": "phone:4bfe7b83d2",
+        "sanitized_number": "phone:4b56a69098"
+      },
+      "sanitized_phone": "phone:4b56a69098",
+      "industry": "information technology & services",
+      "estimated_num_employees": 8000,
+      "keywords": [
+        "payments",
+        "developer tools",
+        "cloud infrastructure",
+        "credit cards",
+        "consumer internet",
+        "… 143 more item(s) truncated"
+      ],
+      "organization_revenue_printed": "6.9B",
+      "organization_revenue": 6935000000.0,
+      "industries": [
+        "information technology & services",
+        "financial services",
+        "computer software",
+        "internet"
+      ],
+      "secondary_industries": [
+        "financial services",
+        "computer software",
+        "internet"
+      ],
+      "snippets_loaded": true,
+      "industry_tag_id": "5567cdphone:dfdb76e720b10b0000",
+      "industry_tag_hash": {
+        "information technology & services": "5567cdphone:dfdb76e720b10b0000",
+        "financial services": "5567cdd67369643e64020000",
+        "computer software": "5567cd4e7369643b70010000",
+        "internet": "5567cd4dphone:11b367f776e020000"
+      },
+      "retail_location_count": 0,
+      "raw_address": "354 Oyster Point Blvd, South San Francisco, California 94080, US",
+      "street_address": "354 Oyster Point Blvd",
+      "city": "South San Francisco",
+      "state": "California",
+      "postal_code": "phone:c4d75ffcd7",
+      "country": "United States",
+      "owned_by_organization_id": null,
+      "short_description": "Stripe, Inc. is a global financial technology company that provides economic infrastructure for the internet. Founded in 2010 by Patrick and John Collison, Stripe has grown into a comprehensive financial platform serving millions of businesses worldwide. With headquarters in South San Francisco, Cal",
+      "suborganizations": [
+        {
+          "id": "55921e1cphone:5236c01c14ee21200",
+          "name": "Touchtech Payments (acquired by Stripe)",
+          "website_url": "http://www.touchtechpayments.com",
+          "industries": [
+            "information technology & services"
+          ],
+          "estimated_num_employees": 1,
+          "country": "Ireland"
+        },
+        {
+          "id": "5a9d33fda6da98d97e743773",
+          "name": "Paystack",
+          "website_url": "http://www.paystack.com",
+          "industries": [
+            "information technology & services",
+            "financial services",
+            "internet"
+          ],
+          "estimated_num_employees": 320,
+          "country": "United States"
+        },
+        {
+          "id": "5a9f2bd4a6da98d99780e5b0",
+          "name": "Indie Hackers",
+          "website_url": "http://www.indiehackers.com",
+          "industries": [
+            "online media"
+          ],
+          "estimated_num_employees": 14,
+          "country": "United States"
+        },
+        {
+          "id": "5d135a941b8b76095acb6e22",
+          "name": "Recko | A Stripe company",
+          "website_url": "http://www.recko.io",
+          "industries": [
+            "information technology & services",
+            "computer software"
+          ],
+          "estimated_num_employees": 14,
+          "country": "United States"
+        },
+        {
+          "id": "54a1293d69702d979c0d9501",
+          "name": "TOTEMS | Data Analytics",
+          "website_url": "http://www.totems.co",
+          "industries": [
+            "marketing & advertising"
+          ],
+          "estimated_num_employees": 2,
+          "country": "United States"
+        },
+        "… 17 more item(s) truncated"
+      ],
+      "num_suborganizations": 22,
+      "annual_revenue_printed": "6.9B",
+      "annual_revenue": 6935000000.0,
+      "total_funding": 9443867423,
+      "total_funding_printed": "9.4B",
+      "latest_funding_round_date": "phone:9e3616bea9T00:00:00.000+00:00",
+      "latest_funding_stage": "Venture (Round not Specified)",
+      "funding_events": [
+        {
+          "id": "6aphone:0666749af0a21000119ce70",
+          "date": "phone:9e3616bea9T00:00:00.000+00:00",
+          "news_url": null,
+          "type": "Venture (Round not Specified)",
+          "investors": "",
+          "amount": "14.6M",
+          "currency": "$"
+        },
+        {
+          "id": "6965fc56f8c3e8000102cb6f",
+          "date": "phone:7267ff634aT00:00:00.000+00:00",
+          "news_url": "https://www.ft.com/content/ba8c698b-3d47-405e-ae21-7a1f2bd796a1",
+          "type": "Venture (Round not Specified)",
+          "investors": "",
+          "currency": "$"
+        },
+        {
+          "id": "669742ecf0b51c0001290e27",
+          "date": "phone:b6d75d49d1T00:00:00.000+00:00",
+          "news_url": null,
+          "type": "Other",
+          "investors": "Sequoia Capital, Brookfield Asset Management, Foresite Capital Management, LLC, Paradigm, Founders Circle Capital",
+          "amount": "694.2M",
+          "currency": "$"
+        },
+        {
+          "id": "6430aa5922d3bphone:0610760530f",
+          "date": "phone:7849c34baeT00:00:00.000+00:00",
+          "news_url": "https://stripe.com/en-in/newsroom/news/stripe-series-i-employee-liquidity",
+          "type": "Venture (Round not Specified)",
+          "investors": "Founders Fund, Temasek, Goldman Sachs Asset Management, GIC, Thrive Capital, MSD Partners, General Catalyst, Baillie Gifford, Andreessen Horowitz",
+          "amount": "6.5B",
+          "currency": "$"
+        },
+        {
+          "id": "6a74e67a0917ad00018bbf3a",
+          "date": "phone:a1683320d4T00:00:00.000+00:00",
+          "news_url": null,
+          "type": "Other",
+          "investors": "Shopify",
+          "amount": "350M",
+          "currency": "$"
+        },
+        "… 12 more item(s) truncated"
+      ],
+      "technology_names": [
+        ".NET",
+        "1Password",
+        "3M 360 Encompass - Health Analytics Suite",
+        "AI",
+        "ANGEL LMS",
+        "… 416 more item(s) truncated"
+      ],
+      "current_technologies": [
+        {
+          "uid": "net",
+          "name": ".NET",
+          "category": "Frameworks and Programming Languages"
+        },
+        {
+          "uid": "1password",
+          "name": "1Password",
+          "category": "Security"
+        },
+        {
+          "uid": "3m_360_encompass_health_analytics_suite",
+          "name": "3M 360 Encompass - Health Analytics Suite",
+          "category": "Analytics and Tracking"
+        },
+        {
+          "uid": "ai",
+          "name": "AI",
+          "category": "Other"
+        },
+        {
+          "uid": "angel_lms",
+          "name": "ANGEL LMS",
+          "category": "Education Management Software"
+        },
+        "… 416 more item(s) truncated"
+      ],
+      "org_chart_root_people_ids": [
+        "674aphone:932c7c9e06bdc579"
+      ],
+      "org_chart_sector": "OrgChart::SectorHierarchy::Rules::IT",
+      "org_chart_removed": false,
+      "org_chart_show_department_filter": true,
+      "is_placeholder_organization": null,
+      "organization_headcount_six_month_growth": 0.07199458832624661,
+      "organization_headcount_twelve_month_growth": 0.1879417434140073,
+      "organization_headcount_twenty_four_month_growth": 0.4369170984455958
+    },
+    "departments": [
+      "c_suite"
+    ],
+    "subdepartments": [
+      "executive",
+      "founder"
+    ],
+    "seniority": "founder",
+    "functions": [
+      "entrepreneurship"
+    ],
+    "intent_strength": null,
+    "show_intent": false,
+    "email_domain_catchall": null,
+    "email_domain_catchall_verdict": null,
+    "revealed_for_current_team": true
+  },
+  "request_id": 9205287058681810846,
+  "_scrubbed": true,
+  "_note": "captured live 2026-08-28 via treg; emails/phones hashed, lists trimmed"
+}

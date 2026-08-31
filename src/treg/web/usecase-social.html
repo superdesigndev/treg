@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Social and Creator Trend Data for AI Agents | treg.to</title>
-<meta name="description" content="Let your agent research posts, creators and conversations across TikTok, Reddit, YouTube, X and Instagram through one key. Pay per call. $1.00 free."/>
-<link rel="canonical" href="https://treg.to/use-cases/social-trend-research-for-ai-agents"/>
-<meta property="og:title" content="Social and Creator Trend Data for AI Agents | treg.to"/>
-<meta property="og:description" content="Let your agent research posts, creators and conversations across TikTok, Reddit, YouTube, X and Instagram through one key. Pay per call. $1.00 free."/>
-<meta property="og:url" content="https://treg.to/use-cases/social-trend-research-for-ai-agents"/>
+<title>Social Data MCP: Reddit, Instagram, TikTok, YouTube | treg.to</title>
+<meta name="description" content="Social data for AI agents via MCP: Reddit posts, Instagram creators, TikTok trends, YouTube transcripts. One connection, pay per call. $1.00 free."/>
+<link rel="canonical" href="{BASE}/use-cases/social-trend-research-for-ai-agents"/>
+<meta property="og:title" content="Social Data MCP: Reddit, Instagram, TikTok, YouTube | treg.to"/>
+<meta property="og:description" content="Social data for AI agents via MCP: Reddit posts, Instagram creators, TikTok trends, YouTube transcripts. One connection, pay per call. $1.00 free."/>
+<meta property="og:url" content="{BASE}/use-cases/social-trend-research-for-ai-agents"/>
 <meta property="og:type" content="website"/>
 <meta name="twitter:card" content="summary_large_image"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
@@ -16,11 +16,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&family=Inter:wght@400;450;500;600;650;700&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/usecase.css"/>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"treg.to","item":"{BASE}/"},{"@type":"ListItem","position":2,"name":"Social Trends","item":"{BASE}/use-cases"},{"@type":"ListItem","position":3,"name":"Social Data MCP: Reddit, Instagram, TikTok, YouTube","item":"{BASE}/use-cases/social-trend-research-for-ai-agents"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Why not just call the providers directly?","acceptedAnswer":{"@type":"Answer","text":"On this vertical, usually because you cannot. TikTok's API is invite-only, Instagram's needs app review,\nLinkedIn's is partner-only, YouTube's is quota-capped, and X's is $200/mo. Getting approved on four\nplatforms to answer one research question is weeks of work, and some of those doors do not open for a\nsmall team at all.\nThere is also a result here we did not expect. treg.to carries both X's official API and an\nindependent route, and has measured both: the official search endpoint returns a usable answer on\n62% of calls, while the independent route has returned one on 100% of 3,311 calls. Paying $200 a\nmonth is not buying you the more reliable option. We would not have known that either without measuring\nit, and it is the reason the catalog shows a record rather than a logo.\ntreg.to is closer to OpenRouter for agent tools than to a data vendor: one base URL, one token, many\nproviders behind it."}},{"@type":"Question","name":"How are credentials handled?","acceptedAnswer":{"@type":"Answer","text":"The credential is injected on the server. Your agent makes the real upstream request through treg.to's\n/call/ endpoint; treg.to adds the key and relays the provider's answer back verbatim. No provider key\nis ever written to your machine, your repo or your agent's context. Every call is recorded and attributed\nto the token that made it."}},{"@type":"Question","name":"Can I choose a specific provider?","acceptedAnswer":{"@type":"Answer","text":"Yes. Every endpoint has an id, and calling it by id calls that provider. If you want the choice made once\nfor the whole team, treg org pin &lt;capability&gt; --provider &lt;provider&gt; refuses calls to any other provider\nof that capability.\n(Providers differ more on field coverage than on price here: one returns comments,\nanother does not. Read the endpoint before you pin one.)"}},{"@type":"Question","name":"Can I use my existing provider key?","acceptedAnswer":{"@type":"Answer","text":"Yes, and it takes precedence. Register the key once and every call to that provider routes through it;\nthose calls are never metered against your treg.to balance. Your key always wins over treg.to's."}},{"@type":"Question","name":"What happens if a provider fails?","acceptedAnswer":{"@type":"Answer","text":"treg.to does not silently reroute you. That is deliberate: only you know which inputs you actually hold,\nso treg.to relays your request rather than rewriting it. Failed calls are not billed. If a call\nsucceeded upstream but the answer was lost coming back, an Idempotency-Key returns the stored result\nwithout paying twice.\n(Social endpoints are the most likely place you will see this, because they sit on top of platforms that\nchange. The catalog's last OK column tells you which ones have answered recently.)"}},{"@type":"Question","name":"How much does a call cost?","acceptedAnswer":{"@type":"Answer","text":"Most social endpoints are $0.001 a call. Reddit search runs $0.001 to $0.01476 depending on provider. The\nexact price is shown before the call, and treg.to adds no markup. New teams start with $1.00 of free\ncredit: around a thousand posts' worth of calls."}},{"@type":"Question","name":"Which agents does it work with?","acceptedAnswer":{"@type":"Answer","text":"The installer registers treg.to's MCP server into Claude Code, Cursor and opencode automatically. Any MCP\nclient that supports the authorization spec can connect with OAuth. Anything that can run a shell command,\nCodex included, can use the treg CLI or plain HTTP."}},{"@type":"Question","name":"Is there a Reddit MCP?","acceptedAnswer":{"@type":"Answer","text":"Yes. The treg.to MCP server exposes Reddit search, subreddit posts, comments and trending topics\nthrough providers like ScrapeCreators and Bright Data. One MCP connection gives your agent access\nto Reddit data without a Reddit API approval."}},{"@type":"Question","name":"Is there an Instagram MCP or TikTok MCP?","acceptedAnswer":{"@type":"Answer","text":"Yes. Instagram profiles, posts, hashtags and comments; TikTok profiles, videos, hashtags and trends.\nAll through the same treg.to MCP connection, no platform approval required."}},{"@type":"Question","name":"What about Twitter MCP?","acceptedAnswer":{"@type":"Answer","text":"The catalog has both the official X API (requires your own $200/mo key) and independent providers\nthat answer the same queries at $0.001 per call. Connect via MCP and your agent sees both options."}},{"@type":"Question","name":"Can I scrape Reddit or other platforms?","acceptedAnswer":{"@type":"Answer","text":"The catalog providers handle the scraping. Your agent calls a structured endpoint and gets structured\ndata back. You are not running a scraper; you are calling an API that has one."}},{"@type":"Question","name":"Is there a Grok MCP?","acceptedAnswer":{"@type":"Answer","text":"Grok is an AI model, not a data source. If you are using Grok and want it to call social data tools,\npaste the setup line from /llms.txt into Grok and it can use the treg.to catalog."}}]}</script>
 </head>
 <body data-page="p3">
 
 <div class="navwrap"><nav class="nav">
-  <a class="brand" href="/"><span class="glyph">&#9626;</span> treg</a>
+  <a class="brand" href="/"><span class="glyph">&#9626;</span> treg.to</a>
   <div class="links">
     <a class="hidem" href="/tutorial">docs</a>
     <a class="hidem" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">repo</a>
@@ -29,14 +31,13 @@
 </nav></div>
 
 <header class="hero"><div class="wrap">
-  <div class="kicker">2,600+ tools · 40+ providers · one key</div>
-  <h1>Research Today&#x27;s Social Trends from One Prompt</h1>
-  <div class="lede"><p>Your agent can read real posts, creators, videos and comment threads across TikTok, Reddit, YouTube, X and
-Instagram through one key — no platform developer account, no app review, no invite.</p></div>
-  <div class="ctas"><a class="candy" href="/app?ref=p3" data-ev="lp_cta_primary" data-page="p3">Run This Workflow Free</a><a class="ghostbtn" href="#workflow" data-ev="lp_cta_secondary" data-page="p3">See the Example</a></div>
+  <div class="kicker">2,600+ tools · 60+ providers · one key</div>
+  <h1>Social Data MCP: Reddit, Instagram, TikTok, YouTube</h1>
+  <div class="lede"><div class="promptbox"><div class="ph"><span>the prompt</span><button class="copybtn" data-copy="#heroprompt" data-ev="lp_copy_hero" data-page="p3">copy</button></div><pre id="heroprompt">Using treg, find 20 TikTok creators posting about home espresso with 50k to 500k
+followers. For the top 3 by engagement, pull their recent videos and comments.</pre></div></div>
+  <div class="ctas"><a class="candy" href="/app?ref=p3" data-ev="lp_cta_primary" data-page="p3">Start Free</a><a class="ghostbtn" href="/llms.txt" data-ev="lp_cta_secondary" data-page="p3">Paste llms.txt</a></div>
   <div class="trust">$1.00 of free credit on every new team. No provider signup, no credit card.</div>
-  <div class="subline"><p>X post search is the most-called tool on treg.to — <strong>3,311 calls at a 100% success rate</strong>,
-2.6 s median. TikTok, Instagram, Reddit and YouTube answer the same token, most of them at $0.001 a call.</p></div>
+  <div class="subline"><p><strong>Most social endpoints $0.001/call.</strong> Reddit, Instagram, TikTok, YouTube, X. No platform approval required.</p></div>
   <div class="provstrip"><span class="pl">compared on this page</span><span class="ptiles"><span class="ptile"><img src="/logos/scrapecreators.svg" alt="" loading="lazy" width="22" height="22"></span><span class="ptile"><img src="/logos/tikhub.svg" alt="" loading="lazy" width="22" height="22"></span></span></div>
 </div></header>
 <section><div class="wrap"><div class="seclab">The economics</div><h2>The old way vs. the treg.to way</h2><div class="tablewrap"><table class="compare">
@@ -49,7 +50,7 @@ Instagram through one key — no platform developer account, no app review, no i
 </thead>
 <tbody>
 <tr><td><strong>What you pay for</strong></td><td data-label="The old way">X API at $200/mo, plus a social listening seat, to answer a question you have once a week</td><td data-label="With treg">One prepaid balance. Most social calls are $0.001</td></tr>
-<tr><td><strong>Keys</strong></td><td data-label="The old way">A developer account per platform — and TikTok's is invite-only, Instagram's needs app review, LinkedIn's is partner-only</td><td data-label="With treg">One treg token. Every tool in the catalog answers to it</td></tr>
+<tr><td><strong>Keys</strong></td><td data-label="The old way">A developer account per platform: and TikTok's is invite-only, Instagram's needs app review, LinkedIn's is partner-only</td><td data-label="With treg">One treg token. Every tool in the catalog answers to it</td></tr>
 <tr><td><strong>Picking a provider</strong></td><td data-label="The old way">Whichever platform approved you</td><td data-label="With treg"><code>catalog get</code> lists every provider serving that platform with price, measured success rate and median speed</td></tr>
 <tr><td><strong>Commitment</strong></td><td data-label="The old way">Monthly platform fees and quota tiers before you know if the data answers your question</td><td data-label="With treg">No subscription. Ask one question for a fraction of a cent</td></tr>
 <tr><td><strong>The workflow</strong></td><td data-label="The old way">Five browser tabs, manual scrolling, screenshots into a doc</td><td data-label="With treg">One agent run across five platforms, deduplicated into one brief</td></tr>
@@ -66,7 +67,7 @@ over.</p><hr /><div class="pricewall">
 <section id="workflow"><div class="wrap"><div class="seclab">Try it</div><h2>A real workflow</h2><h3>Copy this into Claude Code, Cursor, Codex or opencode</h3><div class="steplabel"><span class="n">1</span><b>Set treg up in your agent</b>
   <span class="once">first time only</span></div>
 <p class="stephint">Paste this into the same agent. It installs the CLI, signs you in and registers the
-tools. One line, once &mdash; already set up? Skip to step 2.</p>
+tools. One line, once. Already set up? Skip to step 2.</p>
 <div class="promptbox">
   <div class="ph"><span>setup</span>
     <button class="copybtn" data-copy="#setup" data-ev="lp_copy_setup" data-page="p3">copy</button>
@@ -99,13 +100,13 @@ so the records behind them are long:</p><div class="tablewrap"><table class="dat
 <tr><td data-label="Platform"><strong>Instagram</strong></td><td data-label="Endpoint"><img class="plogo" src="/logos/scrapecreators.svg" alt="" loading="lazy" width="18" height="18">ScrapeCreators Reels</td><td data-label="Cost">$0.00188</td><td data-label="Success rate">100% (300 calls)</td><td data-label="Median">3.9 s</td></tr>
 </tbody>
 </table></div><p>Note the Reddit row: the cheaper provider is also the faster one by eight seconds and has the better
-record. That is not a coincidence you could have guessed — it is what the measurements say, and it is
+record. That is not a coincidence you could have guessed: it is what the measurements say, and it is
 visible before you call.</p><p>A 200-call sweep across four platforms is well under a dollar.</p><p><strong>It reads engagement, not just text.</strong> Views, likes, comments and posting dates come back with each
 post, so the agent can rank by velocity rather than by how loud a post sounds.</p><p><strong>It clusters and reports.</strong> Repeated hooks, the questions that keep appearing in comments, and where
 the conversation is thin enough to enter.</p><blockquote>
 <p><strong>What treg.to does and does not do here.</strong> It returns real posts with real engagement numbers. The
 ranking of "fastest-growing" is your agent's analysis of that data, not a metric a provider hands over.
-Coverage also differs per platform — check what an endpoint actually returns before you build a
+Coverage also differs per platform: check what an endpoint actually returns before you build a
 reporting workflow on it.</p>
 </blockquote><h3>What comes back</h3><div class="sample"><div class="sbar">what comes back</div><pre>Topic: AI agents · 4 platforms · [window] · pulled [date]
 
@@ -117,13 +118,13 @@ CONVERSATION CLUSTERS
 ...
 
 FIVE CONTENT OPPORTUNITIES
- 1. &lt;angle&gt; — asked 40+ times across Reddit and YouTube comments, no video covers it directly
- 2. &lt;angle&gt; — the hook that works on TikTok has not been tried on X
+ 1. &lt;angle&gt;: asked 40+ times across Reddit and YouTube comments, no video covers it directly
+ 2. &lt;angle&gt;: the hook that works on TikTok has not been tried on X
  ...
 
 PLATFORMS   tiktok · reddit · youtube · x
 COST        $[from your run]</pre></div><p><em>Structure is illustrative. Post data is the platforms', relayed unchanged.</em></p><div class="ctas"><button class="candy" data-copy="#prompt" data-ev="lp_copy_prompt" data-page="p3">Copy Prompt</button></div><hr /></div></section>
-<section id="proof"><div class="wrap"><div class="seclab">Evidence</div><h2>Proof — from one real run</h2><p><em>Run on treg.to, 17 Aug 2026, on the topic "AI agents". Every figure is from the Activity log of that run.</em></p><div class="tablewrap"><table class="data">
+<section id="proof"><div class="wrap"><div class="seclab">Evidence</div><h2>Proof from one real run</h2><p><em>Run on treg.to, 17 Aug 2026, on the topic "AI agents". Every figure is from the Activity log of that run.</em></p><div class="tablewrap"><table class="data">
 <thead>
 <tr>
 <th>Field</th>
@@ -134,11 +135,11 @@ COST        $[from your run]</pre></div><p><em>Structure is illustrative. Post d
 <tr><td data-label="Field">Providers considered</td><td data-label="Value">4 for Reddit search, 4 for TikTok search, 4 for YouTube search, 3 for X</td></tr>
 <tr><td data-label="Field">Providers selected</td><td data-label="Value"><code>scrapecreators.reddit.search.posts</code> · <code>tikhub.tiktok.search.videos</code> · <code>tikhub.youtube.search.videos</code> · <code>tikhub.x.twitter-web-fetch-search-timeline</code></td></tr>
 <tr><td data-label="Field">Why</td><td data-label="Value"><img class="plogo" src="/logos/tikhub.svg" alt="" loading="lazy" width="18" height="18">tikhub was the cheapest on both video platforms ($0.001 and $0.002 against $0.015 from SerpApi and $0.01476 from JustOneAPI)</td></tr>
-<tr><td data-label="Field">Total cost of the run</td><td data-label="Value"><strong>$0.00588</strong> — four platforms, four calls</td></tr>
+<tr><td data-label="Field">Total cost of the run</td><td data-label="Value"><strong>$0.00588</strong>: four platforms, four calls</td></tr>
 <tr><td data-label="Field">Subscription cost avoided</td><td data-label="Value">X API alone lists at <strong>$200/mo</strong>. TikTok's API is invite-only and YouTube's is quota-capped, so parts of this are not purchasable at any price by a small team</td></tr>
 <tr><td data-label="Field">Time to completion</td><td data-label="Value">Under 10 seconds across all four</td></tr>
 <tr><td data-label="Field">Data freshness</td><td data-label="Value">Provider responses stamped <strong>2026-08-16 19:07:31</strong> and <strong>19:08:30</strong>; results included a YouTube video published 11 hours earlier and one published the previous day</td></tr>
-<tr><td data-label="Field">Platforms covered</td><td data-label="Value"><strong>4 of 4</strong> — Reddit, TikTok, YouTube, X</td></tr>
+<tr><td data-label="Field">Platforms covered</td><td data-label="Value"><strong>4 of 4</strong>: Reddit, TikTok, YouTube, X</td></tr>
 <tr><td data-label="Field">Posts retrieved</td><td data-label="Value">29 Reddit posts · 10 TikTok videos · 19 YouTube videos + 25 Shorts · X search timeline</td></tr>
 <tr><td data-label="Field">Cost per 100 items</td><td data-label="Value">roughly <strong>$0.007</strong></td></tr>
 </tbody>
@@ -146,10 +147,10 @@ COST        $[from your run]</pre></div><p><em>Structure is illustrative. Post d
 video (top result 9,704 plays / 863 likes); YouTube returned view counts and publish age (4.7M views on the
 leading video, 2.3M on the leading Short); Reddit returned scores and comment counts.</p><blockquote>
 <p><strong>The honest read of this run, and you should know it before you rely on this page.</strong> The Reddit search
-for "ai agents" returned <strong>poor relevance</strong> — the top-scoring results included an unrelated r/lol post
+for "ai agents" returned <strong>poor relevance</strong>: the top-scoring results included an unrelated r/lol post
 and a news item about the Corporate Transparency Act. Ranking is the provider's, and on this query it was
 bad. The fix is cheap and it is the workflow the catalog is built for: search a named subreddit instead
-of the whole site, or switch provider. The measurements point at the same answer — the tikhub route is
+of the whole site, or switch provider. The measurements point at the same answer: the tikhub route is
 half the price, eight seconds faster and carries a 100% record over 384 calls against this one's 98%
 over 283. We used the wrong one, and the catalog would have told us so before the call.</p>
 </blockquote><hr /></div></section>
@@ -174,32 +175,37 @@ is ever written to your machine, your repo or your agent's context. Every call i
 to the token that made it.</p></div></details><details data-ev="lp_objection_open" data-q="Can I choose a specific provider?"><summary>Can I choose a specific provider?</summary><div class="body"><p>Yes. Every endpoint has an id, and calling it by id calls that provider. If you want the choice made once
 for the whole team, <code>treg org pin &lt;capability&gt; --provider &lt;provider&gt;</code> refuses calls to any other provider
 of that capability.
-<em>(Providers differ more on field coverage than on price here — one returns comments,
-another does not. Read the endpoint before you pin one.)</em></p></div></details><details data-ev="lp_objection_open" data-q="Can I use my existing provider key?"><summary>Can I use my existing provider key?</summary><div class="body"><p>Yes, and it takes precedence. Register the key once and every call to that provider routes through it —
+<em>(Providers differ more on field coverage than on price here: one returns comments,
+another does not. Read the endpoint before you pin one.)</em></p></div></details><details data-ev="lp_objection_open" data-q="Can I use my existing provider key?"><summary>Can I use my existing provider key?</summary><div class="body"><p>Yes, and it takes precedence. Register the key once and every call to that provider routes through it;
 those calls are never metered against your treg.to balance. Your key always wins over treg.to's.</p></div></details><details data-ev="lp_objection_open" data-q="What happens if a provider fails?"><summary>What happens if a provider fails?</summary><div class="body"><p>treg.to does not silently reroute you. That is deliberate: only you know which inputs you actually hold,
-so treg.to relays your request rather than rewriting it. What your agent gets instead is the information
-to recover — it already knows the alternatives and their parameters, so on a 429, a 5xx or a timeout it
-can try the next provider and tell you which one it switched to. Failed calls are not billed. If a call
+so treg.to relays your request rather than rewriting it. Failed calls are not billed. If a call
 succeeded upstream but the answer was lost coming back, an <code>Idempotency-Key</code> returns the stored result
 without paying twice.
 <em>(Social endpoints are the most likely place you will see this, because they sit on top of platforms that
 change. The catalog's <code>last OK</code> column tells you which ones have answered recently.)</em></p></div></details><details data-ev="lp_objection_open" data-q="How much does a call cost?"><summary>How much does a call cost?</summary><div class="body"><p>Most social endpoints are $0.001 a call. Reddit search runs $0.001 to $0.01476 depending on provider. The
 exact price is shown before the call, and treg.to adds no markup. New teams start with $1.00 of free
-credit — around a thousand posts' worth of calls.</p></div></details><details data-ev="lp_objection_open" data-q="Which agents does it work with?"><summary>Which agents does it work with?</summary><div class="body"><p>The installer registers treg.to's MCP server into Claude Code, Cursor and opencode automatically. Any MCP
-client that supports the authorization spec can connect with OAuth. Anything that can run a shell command —
-Codex included — can use the <code>treg</code> CLI or plain HTTP.</p>
+credit: around a thousand posts' worth of calls.</p></div></details><details data-ev="lp_objection_open" data-q="Which agents does it work with?"><summary>Which agents does it work with?</summary><div class="body"><p>The installer registers treg.to's MCP server into Claude Code, Cursor and opencode automatically. Any MCP
+client that supports the authorization spec can connect with OAuth. Anything that can run a shell command,
+Codex included, can use the <code>treg</code> CLI or plain HTTP.</p></div></details><details data-ev="lp_objection_open" data-q="Is there a Reddit MCP?"><summary>Is there a Reddit MCP?</summary><div class="body"><p>Yes. The treg.to MCP server exposes Reddit search, subreddit posts, comments and trending topics
+through providers like ScrapeCreators and Bright Data. One MCP connection gives your agent access
+to Reddit data without a Reddit API approval.</p></div></details><details data-ev="lp_objection_open" data-q="Is there an Instagram MCP or TikTok MCP?"><summary>Is there an Instagram MCP or TikTok MCP?</summary><div class="body"><p>Yes. Instagram profiles, posts, hashtags and comments; TikTok profiles, videos, hashtags and trends.
+All through the same treg.to MCP connection, no platform approval required.</p></div></details><details data-ev="lp_objection_open" data-q="What about Twitter MCP?"><summary>What about Twitter MCP?</summary><div class="body"><p>The catalog has both the official X API (requires your own $200/mo key) and independent providers
+that answer the same queries at $0.001 per call. Connect via MCP and your agent sees both options.</p></div></details><details data-ev="lp_objection_open" data-q="Can I scrape Reddit or other platforms?"><summary>Can I scrape Reddit or other platforms?</summary><div class="body"><p>The catalog providers handle the scraping. Your agent calls a structured endpoint and gets structured
+data back. You are not running a scraper; you are calling an API that has one.</p></div></details><details data-ev="lp_objection_open" data-q="Is there a Grok MCP?"><summary>Is there a Grok MCP?</summary><div class="body"><p>Grok is an AI model, not a data source. If you are using Grok and want it to call social data tools,
+paste the setup line from <code>/llms.txt</code> into Grok and it can use the treg.to catalog.</p>
 <hr /></div></details></div></section>
+<section class="related"><div class="wrap"><div class="seclab">Next steps</div><h2>Next steps</h2><ul class="related-list"><li><a href="/use-cases/find-creators-by-keyword">Find Creators by Keyword</a></li><li><a href="/use-cases/youtube-channel-stats">YouTube Channel Stats</a></li><li><a href="/use-cases/search-posts-by-keyword">Search Posts by Keyword</a></li><li><a href="/use-cases/mine-the-comments">Mine the Comments</a></li></ul></div></section>
 <section class="final"><div class="wrap">
   <h2>Ask what the internet is saying today, and get real posts back</h2>
-  <div class="ctas"><a class="candy" href="/app?ref=p3" data-ev="lp_cta_primary" data-page="p3">Run This Workflow Free</a></div>
+  <div class="ctas"><a class="candy" href="/app?ref=p3" data-ev="lp_cta_primary" data-page="p3">Start Free</a></div>
   <div class="trust"><p>$1.00 of free credit on every new team. No credit card, no provider signup. treg.to is open source
 (AGPL).</p></div>
 </div></section>
 
 <footer>
   <div class="foot-in">
-    <a class="brand" href="/"><span class="glyph">&#9626;</span> treg</a>
-    <span class="note">&mdash; 100% open source</span>
+    <a class="brand" href="/"><span class="glyph">&#9626;</span> treg.to</a>
+    <span class="note">100% open source</span>
     <span class="sp"></span>
     <a href="/resources">resources</a><a href="/tutorial">docs</a><a href="/llms.txt">llms.txt</a>
     <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">github &#8599;</a>
@@ -265,6 +271,7 @@ Codex included — can use the <code>treg</code> CLI or plain HTTP.</p>
   }
 })();
 </script>
+<script src="/sitetrack.js"></script>
 <script src="/adtrack.js"></script>
 </body>
 </html>

@@ -27,7 +27,7 @@ from conftest import make_upstream
 from treg import api, crypto
 from treg.api import LOCAL_ORG_NAME, LOCAL_USER_EMAIL, app
 from treg.config import Settings
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 from treg.models import DenyRule, Membership, Org, Tool, User
 
 

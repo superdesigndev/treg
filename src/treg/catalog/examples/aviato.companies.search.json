@@ -1,0 +1,24 @@
+{
+  "count": {
+    "value": "1503",
+    "isEstimate": false
+  },
+  "items": [
+    {
+      "id": "OYClaZ4jscaMd-JHzdbItcb2o3wRHoY",
+      "name": "Stripe",
+      "country": "United States",
+      "region": "California",
+      "locality": "South San Francisco",
+      "URLs": {
+        "twitter": "twitter.com/stripe",
+        "website": "stripe.com",
+        "linkedin": "linkedin.com/company/stripe"
+      },
+      "industryList": [
+        "Payments & Fintech",
+        "Software & SaaS"
+      ]
+    }
+  ]
+}

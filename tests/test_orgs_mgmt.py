@@ -16,7 +16,7 @@ from sqlalchemy import text
 from conftest import make_upstream
 
 from treg.api import app
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 
 
 def _h(token: str) -> dict:

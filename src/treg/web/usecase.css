@@ -207,15 +207,20 @@ details .body em{color:var(--muted2)}
 .final .trust a{color:#d9d9d6}
 
 /* ---------- footer ---------- */
-footer{padding:34px 0;background:var(--inverse)}
-.foot-in{max-width:1160px;margin:0 auto;padding:0 28px;display:flex;align-items:center;
-  gap:18px;flex-wrap:wrap;font-family:var(--mono);font-size:12px}
+footer{padding:40px 0 48px;background:var(--inverse)}
+.foot-in{max-width:1160px;margin:0 auto;padding:0 28px;display:flex;align-items:flex-start;
+  justify-content:space-between;gap:32px 56px;flex-wrap:wrap;font-size:13px}
 .foot-in .brand{color:var(--inverse-ink);font-size:14px}
 .foot-in .brand .glyph{background:#ffffff1f}
-.foot-in .sp{flex:1}
+.foot-brand{display:flex;flex-direction:column;gap:8px}
+.foot-brand .note{font-family:var(--mono);font-size:12px;color:#6e6e6a}
+.foot-cols{display:flex;gap:56px;flex-wrap:wrap}
+.foot-col{display:flex;flex-direction:column;gap:8px;min-width:104px}
+.foot-col .lab{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#6e6e6a;margin-bottom:2px}
 .foot-in a{color:#8a8a86}
 .foot-in a:hover{color:var(--inverse-ink);text-decoration:none}
 .foot-in .note{color:#6e6e6a}
+@media (max-width:640px){ .foot-cols{gap:32px} .foot-col{min-width:40%} }
 
 /* ---------- the two steps ----------
    Both are the same shape — numbered label, optional hint, dark block. An earlier version put a

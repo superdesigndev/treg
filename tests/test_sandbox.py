@@ -15,9 +15,10 @@ from sqlalchemy import select
 
 from conftest import make_upstream
 
-from treg import api, sandbox
+from treg import sandbox
+from treg.routers.onboard import SANDBOX_RATE_MAX
 from treg.api import app
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 from treg.models import Secret, Tool, User
 
 
@@ -84,13 +85,18 @@ async def test_caps(anon):
     # secrets: seeded=n_secrets, add up to MAX, then reject
     for i in range(sandbox.MAX_SECRETS - n_secrets):
         assert (await anon.post("/secrets", json={"name": f"S{i}", "value": "v"}, headers=_h(tok))).status_code == 200
-    assert (await anon.post("/secrets", json={"name": "OVER", "value": "v"}, headers=_h(tok))).status_code == 422
+    over_secret = await anon.post(
+        "/secrets", json={"name": "OVER", "value": "v"}, headers=_h(tok))
+    assert over_secret.status_code == 422
+    assert over_secret.json()["detail"] == "the sandbox is limited to 3 secrets — sign up for more"
     # endpoints: seeded=n_tools, add up to MAX, then reject
     for i in range(sandbox.MAX_TOOLS - n_tools):
         assert (await anon.post("/tools", json={"name": f"t{i}", "base_url": f"https://h{i}.io"},
                                 headers=_h(tok))).status_code == 200
-    assert (await anon.post("/tools", json={"name": "over", "base_url": "https://x.io"},
-                            headers=_h(tok))).status_code == 422
+    over_tool = await anon.post(
+        "/tools", json={"name": "over", "base_url": "https://x.io"}, headers=_h(tok))
+    assert over_tool.status_code == 422
+    assert over_tool.json()["detail"] == "the sandbox is limited to 3 endpoints — sign up for more"
 
 
 async def test_call_still_org_scoped(anon):
@@ -136,9 +142,11 @@ async def test_export_skill_rejects_non_sandbox(anon):
 
 
 async def test_rate_limited_per_ip(anon):
-    for _ in range(api.SANDBOX_RATE_MAX):
+    for _ in range(SANDBOX_RATE_MAX):
         assert (await anon.post("/demo/sandbox")).status_code == 200
-    assert (await anon.post("/demo/sandbox")).status_code == 429
+    rejected = await anon.post("/demo/sandbox")
+    assert rejected.status_code == 429
+    assert rejected.json()["detail"] == "too many demo sandboxes from here — try again later"
 
 
 async def test_gc_reaps_expired_sandboxes(anon):

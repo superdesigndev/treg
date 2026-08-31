@@ -8,6 +8,7 @@ The `clients` fixture also registers a user and authes the client by default.
 from __future__ import annotations
 
 import os
+import tempfile
 
 # Isolate the test DB from any .env / running dev server BEFORE importing treg (the engine is
 # built at import time). A real env var overrides the .env file in pydantic-settings.
@@ -18,12 +19,19 @@ import os
 # one sqlite file drop each other's tables mid-test (1,022 errors on the first parallel run). An
 # explicit TREG_TEST_DB_URL wins untouched, for single-process runs against something specific.
 _worker = os.environ.get("PYTEST_XDIST_WORKER", "")
-_default = f"sqlite+aiosqlite:///./treg-test{'-' + _worker if _worker else ''}.db"
+# The files live under the system temp dir, NOT the repo root: sixteen 600 KB databases rewritten
+# on every run kept editors' file watchers busy re-indexing the working tree.
+_db_dir = os.path.join(tempfile.gettempdir(), "treg-tests")
+os.makedirs(_db_dir, exist_ok=True)
+_default = f"sqlite+aiosqlite:///{_db_dir}/treg-test{'-' + _worker if _worker else ''}.db"
 os.environ["TREG_DATABASE_URL"] = os.environ.get("TREG_TEST_DB_URL", _default)
 os.environ["TREG_EMAIL_DEV_MODE"] = "true"  # tests need the returned OTP code (prod default is now False)
 os.environ["TREG_RESEND_API_KEY"] = ""  # never fire a real Resend send from the test suite (send_otp/send_invite skip when empty)
 os.environ["TREG_RUN_ALLOWED_BINS"] = "sh,echo,true,false,cat,sleep,treg-nonexistent-bin-xyz"  # allow the test CLIs for --server run tests
 os.environ["TREG_PROXY_SSRF_CHECK"] = "false"
+# The production default is OFF. The established connector tests and committed route snapshots test
+# the enabled product surface; dedicated tests below also prove the disabled deployment shape.
+os.environ["TREG_CLAUDE_CONNECTOR_ENABLED"] = "true"
 # Blank every registry credential so the suite NEVER inherits a developer's real .env. Settings
 # reads .env, and a real env var beats it — so without this, a machine with Google/X/LinkedIn
 # credentials configured runs a different suite than CI, and provider tests pass or fail depending
@@ -47,8 +55,10 @@ from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 
+from treg import audit  # noqa: E402
 from treg.api import app  # noqa: E402
-from treg.db import reset_db  # noqa: E402
+from treg import archive  # noqa: E402
+from treg.infra.db import reset_db  # noqa: E402
 
 
 # The OTP-start + sandbox throttles (and the OTP codes) now live in the DB's `ephemeral` table, not in
@@ -176,6 +186,15 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
             return JSONResponse({"message": "field is required"}, status_code=400)
         return {"ok": True}
 
+    @up.get("/requires-version")
+    async def requires_version(request: Request):
+        # Crustdata requires this protocol header on every route, including its free credential
+        # probe. The provisioner must stamp it without asking each caller to remember it.
+        if request.headers.get("x-api-version") != "2025-11-01":
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"message": "x-api-version is required"}, status_code=400)
+        return {"ok": True, "version": request.headers["x-api-version"]}
+
     @up.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     async def echo(request: Request) -> dict:
         body = (await request.body()).decode()
@@ -193,15 +212,57 @@ def make_upstream(hook_hits: list | None = None) -> FastAPI:
 
 @pytest.fixture
 async def clients():
+    # Postgres needs a session-scoped event loop so asyncpg can safely pool connections. That also
+    # lets fire-and-forget audit writes survive between tests, so drain both sides of reset_db():
+    # before it, to keep an old write out of the new schema, and after the test, to finish its own.
+    await audit.drain()
+    # Same discipline for the archive's fire-and-forget recordings: a still-open recording
+    # transaction from the PREVIOUS test blocks reset_db's DROP TABLE on Postgres (sqlite
+    # forgives it) — the serial CI job hung exactly here, 5-minute faulthandler timeouts on
+    # whichever archive test ran next (2026-08-28, twice).
+    await archive.drain()
     await reset_db()
+    await app.state.endpoint_observation_reader.reset()
     app.state.hook_hits = []  # webhook POSTs the upstream received (for alerting assertions)
     app.state.http = AsyncClient(transport=ASGITransport(app=make_upstream(app.state.hook_hits)), base_url="http://upstream")
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        r = await c.post("/users", json={"email": "tim@superdesign.dev"})  # open registration
-        assert r.status_code == 200, r.text
-        c.headers["X-Treg-Token"] = r.json()["token"]  # authed by default from here on
-        yield c
-    await app.state.http.aclose()
+    try:
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
+            r = await c.post("/users", json={"email": "tim@superdesign.dev"})  # open registration
+            assert r.status_code == 200, r.text
+            c.headers["X-Treg-Token"] = r.json()["token"]  # authed by default from here on
+            yield c
+    finally:
+        await audit.drain()
+        await archive.drain()
+        await app.state.http.aclose()
+
+
+@pytest.fixture(autouse=True)
+def _reset_call_path_caches():
+    """The call path keeps in-process copies of ratestore state (the capacity view: 'provider X is
+    exhausted' for 60 s), the overflow route view and per-provider rate buckets. `reset_db()` wipes
+    the tables, not process memory — so a test that relays a vendor 402 would otherwise leave the
+    NEXT test's tier-4 call refused with a 503 it never asked for (CI, xdist worker gw3, 2026-08-28).
+    Each cache is optional: the modules land in successive PRs of the capacity stack."""
+    def _clear() -> None:
+        try:
+            from treg.domain.capacity.view import view as capacity_view
+            capacity_view.invalidate(); capacity_view._states = {}
+        except ImportError:
+            pass
+        try:
+            from treg.domain.capacity.routes_view import view as routes_view
+            routes_view.invalidate(); routes_view._routes = []
+        except ImportError:
+            pass
+        try:
+            from treg.infra.upstream.limiter import limiter
+            limiter.reset()
+        except ImportError:
+            pass
+    _clear()
+    yield
+    _clear()
 
 
 @pytest.fixture(autouse=True)

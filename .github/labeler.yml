@@ -7,15 +7,15 @@
 
 "area:proxy":
   - changed-files:
-      - any-glob-to-any-file: 'src/treg/proxy.py'
+      - any-glob-to-any-file: 'src/treg/infra/upstream/relay.py'
 
 "area:auth-secrets":
   - changed-files:
       - any-glob-to-any-file:
-          - 'src/treg/injectors.py'
+          - 'src/treg/infra/upstream/injectors.py'
           - 'src/treg/crypto.py'
           - 'src/treg/oauth.py'
-          - 'src/treg/session.py'
+          - 'src/treg/domain/identity/session.py'
           - 'src/treg/email.py'
           - 'src/treg/health.py'
           - 'src/treg/ratestore.py'

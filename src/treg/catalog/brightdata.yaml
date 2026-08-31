@@ -94,7 +94,7 @@ endpoints:
     test_request:
       queryParams: {dataset_id: "gd_l1vikfch901nx3by4"}
       body: [{"url": "https://www.instagram.com/instagram"}]
-    cost: {type: per_result, value: 0.0015, currency: USD, per: 1, unit: record, source: docs, source_url: 'https://brightdata.com/pricing', checked: '2026-07-28', confidence: documented, note: '$1.50 per 1000 records delivered, pay-per-success; the trigger call itself is free — the job''s records are what bill'}
+    cost: {type: per_result, value: 0.0015, currency: USD, per: 1, unit: record, source: docs, source_url: 'https://brightdata.com/pricing', checked: '2026-07-28', confidence: documented, note: '$1.50 per 1000 records delivered, pay-per-success; the trigger call itself settles at zero — the job''s records are billed when brightdata.web.scrape.job.results downloads them'}
     verified: 2026-07-28
     example_response: examples/brightdata.web.scrape.job.start.json
     docs_url: https://docs.brightdata.com/api-reference/web-scraper-api/asynchronous-requests
@@ -139,7 +139,7 @@ endpoints:
     test_request:
       pathParams: {snapshot_id: "sd_ms4lyair2704eraq24"}
       queryParams: {format: "json"}
-    cost: {type: free, value: 0, currency: USD, unit: call, note: management API — re-downloading a snapshot is not billed; the records were charged when the job ran}
+    cost: {type: per_result, value: 0.0015, currency: USD, per: 1, unit: record, source: docs, source_url: 'https://brightdata.com/pricing', checked: '2026-08-24', confidence: documented, note: 'THIS is where an async job''s records are billed to the caller — the trigger and the >60s sync fallback settle at zero, and treg counts the rows this download returns ($1.50 per 1000 records, pay-per-success). Bright Data itself charged the records when the job ran, so RE-downloading the same snapshot bills the caller again: download once, or use batch_size/part to fetch each slice once'}
     verified: 2026-07-28
     example_response: examples/brightdata.web.scrape.job.results.json
     docs_url: https://docs.brightdata.com/api-reference/scrapers/delivery-apis/download-snapshot

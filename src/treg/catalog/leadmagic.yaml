@@ -196,6 +196,8 @@ endpoints:
     docs_url: https://leadmagic.io/docs/v1/reference/search-company
 
   - id: leadmagic.people.search
+    example_response: examples/leadmagic.people.search.json
+    verified: '2026-08-28'
     domain: contacts
     capability: people.search
     platform: people

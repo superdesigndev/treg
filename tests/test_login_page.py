@@ -8,10 +8,11 @@ from __future__ import annotations
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from treg import crypto, session as sess
+from treg import crypto
+from treg.domain.identity import session as sess
 from treg.api import app
 from treg.config import get_settings
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 from treg.models import Membership, Org, Tool, User
 
 LID = "abcDEF123-_x"  # a valid login_id shape (only for page-render tests; approve needs a started one)
@@ -267,7 +268,7 @@ async def test_approve_requires_a_started_login_and_matching_code(web):
 async def test_wrong_code_attempts_are_capped(web):
     """Brute-forcing the short code is bounded: after CLI_APPROVE_MAX_TRIES misses the pending login is
     discarded, so the real code can no longer be ground down (and the correct code then also fails)."""
-    from treg.api import CLI_APPROVE_MAX_TRIES
+    from treg.routers.auth import CLI_APPROVE_MAX_TRIES
     uid = await _seed_user()
     web.cookies.set("treg_session", sess.make(uid))
     lid, code = await _start(web)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from treg.injectors import inject
+from treg.infra.upstream.injectors import inject
 
 
 def _b(**kw) -> dict:

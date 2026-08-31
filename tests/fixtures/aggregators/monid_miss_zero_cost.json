@@ -1,0 +1,74 @@
+{
+ "status": 200,
+ "body": {
+  "runId": "01M0Y4N8PFF459870MK0NJNH4V",
+  "provider": "hunterio",
+  "endpoint": "/email-finder",
+  "status": "COMPLETED",
+  "output": {
+   "data": {
+    "first_name": null,
+    "last_name": null,
+    "email": null,
+    "score": null,
+    "domain": "stripe.com",
+    "accept_all": null,
+    "position": null,
+    "twitter": null,
+    "linkedin_url": null,
+    "phone_number": null,
+    "company": null,
+    "source_type": null,
+    "sources": [],
+    "verification": {
+     "date": null,
+     "status": null
+    }
+   },
+   "meta": {
+    "params": {
+     "first_name": null,
+     "last_name": null,
+     "full_name": "Patrick Collison",
+     "domain": "stripe.com",
+     "company": null,
+     "linkedin_handle": null,
+     "max_duration": null
+    }
+   }
+  },
+  "providerResponse": {
+   "httpStatus": 200
+  },
+  "price": {
+   "type": "PER_RESULT",
+   "amount": {
+    "value": 0.02392,
+    "currency": "USD"
+   }
+  },
+  "billing": {
+   "reportedCost": {
+    "currency": "USD",
+    "value": 0,
+    "unit": "MICRO_DOLLAR"
+   }
+  },
+  "resultCount": 0,
+  "billedUnits": 0,
+  "createdAt": "phone:10aaa1ebeaT04:18:39.675Z",
+  "completedAt": "phone:10aaa1ebeaT04:18:42.140Z",
+  "hints": {
+   "retrieve the response later": "curl http://api.monid.ai/v1/runs/01M0Y4N8PFF459870MK0NJNH4V -H 'Authorization: Bearer <API_KEY>'",
+   "list every address on the company's domain": "curl -X POST http://api.monid.ai/v1/run -H 'Authorization: Bearer <API_KEY>' -H 'Content-Type: application/json' -d '{\"provider\":\"hunterio\",\"endpoint\":\"/domain-search\",\"input\":{\"body\":<BODY>,\"queryParams\":<QUERY_PARAMS>,\"pathParams\":<PATH_PARAMS>}}'  # pass the domain to enumerate all published addresses"
+  }
+ },
+ "expect": {
+  "upstream_status": 200,
+  "price": {
+   "value": 0.02392,
+   "currency": "USD"
+  },
+  "ok": true
+ }
+}

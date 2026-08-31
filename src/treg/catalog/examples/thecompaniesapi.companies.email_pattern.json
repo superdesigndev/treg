@@ -1,0 +1,31 @@
+{
+  "meta": {
+    "cost": 8,
+    "credits": 49789
+  },
+  "patterns": [
+    {
+      "pattern": "[F]",
+      "usagePercentage": 59.1934
+    },
+    {
+      "pattern": "[F1][L]",
+      "usagePercentage": 28.2325
+    },
+    {
+      "pattern": "[F][L]",
+      "usagePercentage": 3.5587
+    },
+    {
+      "pattern": "[F].[L]",
+      "usagePercentage": 2.7284
+    },
+    {
+      "pattern": "[L]",
+      "usagePercentage": 2.4911
+    },
+    "… 3 more item(s) truncated"
+  ],
+  "_scrubbed": true,
+  "_note": "captured live 2026-08-28 via treg; emails/phones hashed, lists trimmed"
+}

@@ -5,14 +5,14 @@
     "email": "jason@superdesign.dev"
   },
   "metadata": {
-    "description": "OpenRouter for tools - 2,600 agent-friendly tools, pay for the usage, not subscription",
-    "version": "0.12.0"
+    "description": "OpenRouter for tools - 2,896 agent-friendly tools, pay for the usage, not subscription",
+    "version": "0.14.0"
   },
   "plugins": [
     {
       "name": "treg",
       "source": "./plugins/treg",
-      "description": "Give your agent 2,600+ external API endpoints across ~40 providers — SEO, SERP, backlinks, social, enrichment, ads, web data — searchable by task, with the price and parameters shown before you call."
+      "description": "OpenRouter for tools — 2,896 agent-callable endpoints across 60 providers: SEO and SERP data, backlinks, social and trends, people and company enrichment, ads, scraping. Search by the task, see the price, then call it. Credentials are injected server-side, so the agent never holds a key. Pay per call, not per subscription."
     }
   ]
 }

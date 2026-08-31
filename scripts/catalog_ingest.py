@@ -224,7 +224,7 @@ def write_extended(provider: str, source: dict, endpoints: list[dict], notes: li
         "# `capability` mappings (with their platform correction) are added later and carried across",
         f"# re-ingests by id via carry_verification. Routes curated in core {provider}.yaml are excluded here.",
     ]
-    header += [f"# {n}" for n in notes]
+    header += [f"# {n}" if n else "#" for n in notes]
     body = yaml.safe_dump(
         {"provider": provider, "source": source, "endpoints": endpoints},
         sort_keys=False,
@@ -1125,7 +1125,44 @@ def google_entry(
     return entry
 
 
-FREE_QUOTA = {"type": "free", "value": 0.0, "currency": "USD",
+def google_flat_path_params(entry: dict) -> dict:
+    """Align Discovery parameters with the atomic placeholders in Google's ``flatPath``.
+
+    Discovery describes hierarchical routes semantically as one ``parent``/``path``/``name``
+    resource, while ``flatPath`` expands that resource into placeholders such as ``accountsId`` and
+    ``containersId``. treg intentionally percent-encodes each catalog placeholder as one path
+    segment, so advertising the semantic resource name would both generate an unusable command and
+    encode its hierarchy as ``%2F``. Keep the flattened route and expose its atomic ids instead.
+
+    This helper is initially applied only to GTM. Analytics and Business Profile have older
+    generated metadata with the same mismatch; repairing and regenerating those catalogs belongs in
+    a separate change rather than silently broadening the GTM provider diff.
+    """
+    names = list(dict.fromkeys(re.findall(r"{([A-Za-z0-9_]+)}", str(entry.get("path") or ""))))
+    if not names:
+        return entry
+    inp = entry.get("input")
+    if not isinstance(inp, dict):
+        inp = {}
+        entry["input"] = inp
+    current = inp.get("pathParams")
+    if isinstance(current, dict) and set(current) == set(names):
+        return entry
+    inp["pathParams"] = {
+        name: {
+            "type": "string",
+            "required": True,
+            "note": (
+                f"Atomic {name} path segment from Google's expanded resource name; "
+                "do not pass a slash-delimited parent/path value"
+            ),
+        }
+        for name in names
+    }
+    return entry
+
+
+FREE_QUOTA = {"type": "free", "value": 0.0, "currency": "USD", "unit": "call",
               "note": "no per-call charge; billed against the API's daily quota"}
 
 
@@ -1215,6 +1252,49 @@ def ingest_google_analytics(refresh: bool) -> tuple[Path, dict]:
         ["https://analyticsdata.googleapis.com/$discovery/rest?version=v1beta",
          "https://analyticsadmin.googleapis.com/$discovery/rest?version=v1beta"],
     ), endpoints, notes), {"scope_gaps": gaps, "admin": admin}
+
+
+# --- google-tag-manager ------------------------------------------------------------------------
+
+def ingest_google_tag_manager(refresh: bool) -> tuple[Path, dict]:
+    provider = "google-tag-manager"
+    granted = {
+        "https://www.googleapis.com/auth/tagmanager.readonly",
+        "https://www.googleapis.com/auth/tagmanager.edit.containers",
+        "https://www.googleapis.com/auth/tagmanager.edit.containerversions",
+        "https://www.googleapis.com/auth/tagmanager.publish",
+    }
+    skip = core_route_keys(provider)
+    endpoints, gaps = [], 0
+    for m in google_methods(google_discovery("tagmanager", "v2", refresh)):
+        e = google_entry(
+            provider,
+            m,
+            platform="google-tag-manager",
+            granted=granted,
+            cost=FREE_QUOTA,
+            docs_url="https://developers.google.com/tag-platform/tag-manager/api/reference/rest/v2",
+        )
+        google_flat_path_params(e)
+        if _route_key(e["method"], e["path"]) in skip:
+            continue
+        gaps += bool(e.get("scope_gap"))
+        endpoints.append(e)
+    notes = [
+        "",
+        "ONE HOST. Every path is relative to https://tagmanager.googleapis.com, the OAuth",
+        "provider's base_url. treg's cumulative read/write/manage capabilities grant readonly,",
+        "edit.containers, edit.containerversions, and publish respectively.",
+        "",
+        "Methods that require tagmanager.delete.containers, tagmanager.manage.users, or",
+        "tagmanager.manage.accounts remain listed with `scope_gap:` for discoverability, but are",
+        "intentionally unavailable: treg does not request destructive container deletion or account",
+        "administration access.",
+    ]
+    return write_extended(provider, _oauth_source(
+        "google discovery document",
+        ["https://tagmanager.googleapis.com/$discovery/rest?version=v2"],
+    ), endpoints, notes), {"scope_gaps": gaps}
 
 
 # --- google-business-profile -------------------------------------------------------------------
@@ -2000,6 +2080,7 @@ def ingest_meta(service: str, refresh: bool) -> tuple[Path, dict]:
 INGESTERS.update({
     "google-search-console": ingest_google_search_console,
     "google-analytics": ingest_google_analytics,
+    "google-tag-manager": ingest_google_tag_manager,
     "google-business-profile": ingest_google_business_profile,
     "youtube": ingest_youtube,
     "google-ads": ingest_google_ads,

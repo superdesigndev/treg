@@ -174,6 +174,36 @@ Out of balance is an HTTP **402** carrying `balance_micro`, `estimated_cost_micr
 so an agent can act on it without reading prose. There is also a per-day ceiling on spend against
 treg's keys, so a runaway agent has a bounded blast radius.
 
+If treg's **own** account for a provider is out, a metered call is refused with HTTP **503**
+`provider_capacity_unavailable` before anything is reserved — nothing is charged, the body names
+`resets_at` when known and `alternatives` (other providers for the same capability). Your own key
+for the provider is never affected, and treg does not switch providers on your behalf.
+
+Where the deployment has the overflow relay on, treg may instead serve the **same endpoint** through a
+treg-owned aggregator account — same request, same response shape, the relay's real price (0% markup),
+`X-Treg-Served-Via: overflow:<name>` on the response. `treg org overflow off` opts your team out (calls
+then get the 503 above); `treg org overflow` shows the setting. Own keys are never relayed.
+
+### Routed endpoints — let treg choose the provider
+
+`treg.<capability>` endpoints (today `treg.people.email.find`) are generated from the providers of one
+capability whose adapters passed verification. Call one like any endpoint:
+
+```bash
+treg call treg.people.email.find --body '{"full_name": "Patrick Collison", "domain": "stripe.com"}'
+treg call treg.people.email.find --body '{"linkedin_url": "https://www.linkedin.com/in/patrickcollison"}' \
+  --header "X-Treg-Route-Max-Cost: 0.05"     # cap the per-call spend (default ceiling $1)
+treg catalog get treg.people.email.find      # the ranked plan with prices — spends nothing
+```
+
+treg runs the best child — your own keys first, then the cheapest expected cost per hit — and
+returns `{output, raw, _treg: {served_by, tried, charged_micro}}` plus `X-Treg-Served-By` and
+`X-Treg-Providers-Tried`. A provider error falls back to the next candidate (at most two extra); a
+vendor 4xx is your request's fault and stops. A **miss** tries the next provider too (the waterfall,
+on by default), cheapest first, within `X-Treg-Route-Max-Cost` (default $1 per call); every
+attempt settles at its real price and misses on per-success providers are free. `X-Treg-Route-Waterfall: 0`
+stops at the first miss. `X-Treg-Route-Prefer` / `X-Treg-Route-Exclude` name providers. Vendor endpoints are still relayed verbatim; only `treg.*` rows model an API.
+
 ## Calling
 
 | Command | Options | What it does |

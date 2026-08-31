@@ -58,12 +58,14 @@ _JSON_OVERRIDE: bool = False
 
 
 # ---- config (identity-first: one bearer token + an active org slug) -----------------------
+PRODUCTION_BASE_URL = "https://treg.to"
+
 def _load_config() -> dict:
     try:
         raw = json.loads(CONFIG_PATH.read_text()) if CONFIG_PATH.exists() else {}
     except (json.JSONDecodeError, OSError):
         raw = {}  # a corrupt/half-written config must not brick every command (incl. login/logout)
-    base = raw.get("base_url", "http://localhost:18790")
+    base = raw.get("base_url", PRODUCTION_BASE_URL)
     if "orgs" in raw:  # migrate legacy multi-org config → the active org's token as the bearer
         active = raw.get("active_org")
         tok = (raw.get("orgs", {}).get(active) or {}).get("token")
@@ -149,6 +151,13 @@ def _pin_token_to_active_org(cfg: dict) -> None:
 
 def _effective_org(cfg: dict) -> str | None:
     return _ORG_OVERRIDE or os.environ.get("TREG_ORG") or cfg.get("active_org")
+
+
+def _is_loopback_url(url: str) -> bool:
+    """True if the URL points to a loopback address (localhost, 127.x.x.x, [::1]).
+    Used to detect a misconfigured first-run where the CLI defaults to a local dev server that isn't running."""
+    host = urlsplit(url).hostname or ""
+    return host in ("localhost", "127.0.0.1", "::1") or host.startswith("127.")
 
 
 class _RegistryClient(httpx.Client):
@@ -373,22 +382,37 @@ def cmd_login(args, cfg) -> None:
     # /login?cli=… link — can't be approved into a token for them. If the server is too old to know
     # /start, fall back to a locally-minted id (no code) so login still works.
     code = None
+    start_exc = None
     try:
         st = httpx.post(f"{base}/auth/cli/start", headers={"ngrok-skip-browser-warning": "1"}, timeout=10)
         if st.status_code == 200:
             j = st.json(); lid = j["login_id"]; code = j.get("code")
         else:
             lid = _secrets.token_urlsafe(18)
-    except Exception:
+    except Exception as exc:
+        start_exc = exc
         lid = _secrets.token_urlsafe(18)
+    # Detect localhost-with-nothing-listening: the install.sh sets base_url but if that failed, the
+    # default is production treg.to. If someone explicitly points at localhost (for local dev) and
+    # nothing is there, fail early with a helpful message rather than opening a dead browser page.
+    if start_exc and _is_loopback_url(base):
+        sys.exit(
+            f"Cannot reach {base} — is a local treg server running?\n"
+            f"  If you meant to use the production registry, run:\n"
+            f"    treg config --base-url {PRODUCTION_BASE_URL}\n"
+            f"  then retry `treg login`.\n"
+            f"  (error: {start_exc})"
+        )
     # The code rides in the URL FRAGMENT (never sent to the server, so it stays out of request logs):
     # the /login page displays it for a visual match against this terminal instead of making the user
     # type it. The server still validates the code at approve time — the guard itself is unchanged.
     url = f"{base}/login?cli={lid}" + (f"#code={code}" if code else "")
-    print(f"Opening your browser to sign in…\nIf it doesn't open, visit:\n  {url}\n")
+    # flush=True for non-TTY agent shells where stdout is block-buffered — the pairing code must
+    # appear immediately so an agent driving a browser can see and verify it.
+    print(f"Opening your browser to sign in…\nIf it doesn't open, visit:\n  {url}\n", flush=True)
     if code:
-        print(f"  The sign-in page shows this code — check it matches:  {_B}{_TEAL}{code}{_R}\n")
-    print("Waiting for authorization…")
+        print(f"  The sign-in page shows this code — check it matches:  {_B}{_TEAL}{code}{_R}\n", flush=True)
+    print("Waiting for authorization…", flush=True)
     try:
         webbrowser.open(url)
     except Exception:
@@ -1624,7 +1648,12 @@ def _import_env(args, cfg, env_path: str) -> None:
                     print(f"  ✗ {a.tool_name}: secret failed ({rs.status_code}) {rs.text[:100]}"); continue
                 sid = rs.json().get("id") or rs.json().get("secret_id")
                 binding = {**a.binding, "secret_id": sid}
-                tool_body = {"name": a.tool_name, "base_url": a.base_url, "bindings": [binding]}
+                bindings = [binding] + [
+                    {"secret_id": sid, "injector": "env", "location": "header",
+                     "name": name, "format": value}
+                    for name, value in a.required_headers.items()
+                ]
+                tool_body = {"name": a.tool_name, "base_url": a.base_url, "bindings": bindings}
                 if a.health:  # a catalog probe → the tool self-validates on `health --run` + gives a real test path
                     tool_body["health_check"] = a.health
                 rt = c.post("/tools", json=tool_body)
@@ -3429,6 +3458,20 @@ def cmd_mcp_use_team(args, cfg) -> None:
     _dim(f"  {body.get('note', '')}")
 
 
+def _is_transient_network_error(exc: Exception) -> bool:
+    """True if the exception looks like a transient SSL/connection error that a retry might fix.
+    Covers SSL handshake failures, connection refused, timeouts, and similar network glitches."""
+    import ssl
+    if isinstance(exc, ssl.SSLError):
+        return True
+    if isinstance(exc, (ConnectionError, TimeoutError, OSError)):
+        return True
+    if isinstance(exc, httpx.TransportError):
+        return True
+    exc_str = str(exc).lower()
+    return any(s in exc_str for s in ("ssl", "connection", "timeout", "refused", "reset"))
+
+
 def cmd_mcp_install(args, cfg) -> None:
     """Register the treg MCP server into every supported agent on this machine, header-authed with
     the logged-in token (which bakes in the team, so no org to pass). The MCP sibling of
@@ -3444,11 +3487,29 @@ def cmd_mcp_install(args, cfg) -> None:
     # whichever agent tries a call — looking like a provider problem, not a setup one. `_client`
     # applies the same TREG_TOKEN-beats-config precedence used above, so this validates exactly the
     # token that would be written.
-    try:
-        with _client(cfg) as c:
-            who = c.get("/auth/me")
-    except Exception as exc:  # noqa: BLE001 — network/DNS: report, don't write a maybe-bad token
-        sys.exit(f"Could not reach {cfg['base_url']} to verify the token: {exc}")
+    #
+    # Retry transient SSL/connection errors: the SSL: WRONG_VERSION_NUMBER bug often clears on a
+    # second attempt (TLS handshake race, proxy hiccup). Max 3 tries with 1s/2s backoff.
+    who = None
+    last_exc = None
+    for attempt in range(3):
+        try:
+            with _client(cfg) as c:
+                who = c.get("/auth/me")
+            break  # success
+        except Exception as exc:  # noqa: BLE001 — network/DNS: report, don't write a maybe-bad token
+            last_exc = exc
+            if attempt < 2 and _is_transient_network_error(exc):
+                time.sleep(1 << attempt)  # 1s, 2s
+                continue
+            break
+    if who is None:
+        base = cfg.get("base_url") or PRODUCTION_BASE_URL
+        sys.exit(
+            f"Could not reach {base} to verify the token: {last_exc}\n"
+            f"  If this is an SSL or connection error, retry in a moment.\n"
+            f"  If it persists, check your network or try: curl -I {base}"
+        )
     if who.status_code == 401:
         sys.exit("That token was rejected (401 invalid token) — nothing was written. It's expired "
                  "or from a different server; run `treg login` (or copy a fresh token from the "
@@ -3624,6 +3685,20 @@ def _billing_autotopup(cfg: dict) -> dict | None:
         return None
 
 
+def _bonus_tiers_from_server(cfg: dict) -> dict[int, int]:
+    """`{min_usd: percent}` from GET /billing, or {} when unavailable. Same never-raises posture as
+    `_billing_autotopup`: this decorates the top-up output."""
+    try:
+        with _client(cfg) as c:
+            r = c.get("/billing")
+        if r.status_code >= 400:
+            return {}
+        tiers = ((r.json().get("topup") or {}).get("bonus_tiers")) or {}
+        return {int(k): int(v) for k, v in tiers.items()}
+    except Exception:
+        return {}
+
+
 def cmd_topup(args, cfg) -> None:
     """Add funds (prints a Stripe Checkout URL), or configure auto top-up.
 
@@ -3642,6 +3717,17 @@ def cmd_topup(args, cfg) -> None:
         return
     out = r.json()
     print(f"\n  {_A}Add {_usd(out['amount_micro'])} to your balance{_R}")
+    # The bonus this size earns, and the next tier up if it earns more — the one nudge that changes
+    # what people pay. Comes from GET /billing; silence when it can't be fetched.
+    tiers = _bonus_tiers_from_server(cfg)
+    if tiers:
+        usd = out["amount_micro"] // 1_000_000
+        pct = max([v for k, v in tiers.items() if usd >= k], default=0)
+        if pct:
+            print(f"  {_G}+{pct}% bonus credit{_R} ({_usd(out['amount_micro'] * pct // 100)}) added when it lands")
+        nxt = [(k, v) for k, v in sorted(tiers.items()) if k > usd and v > pct]
+        if nxt:
+            print(f"  {_M}top up ${nxt[0][0]} or more for +{nxt[0][1]}% bonus credit{_R}")
     print(f"\n  Pay on Stripe's secure page:\n\n    {_TEAL}{out['url']}{_R}")
     print(f"\n  {_M}Your balance updates as soon as Stripe confirms the payment "
           f"(seconds). Check it with `treg balance`.{_R}\n")
@@ -3967,6 +4053,28 @@ def cmd_org_budgets(args, cfg) -> None:
           f"hard limit.{_R}\n")
 
 
+def cmd_org_overflow(args, cfg) -> None:
+    """Allow or refuse the overflow relay for this team: when treg's own account for a provider is
+    out, a metered call may be served through a treg-owned aggregator account on the SAME endpoint
+    (disclosed via X-Treg-Served-Via, the aggregator's real price). Off = the call is refused
+    (503) instead. Own keys are never relayed either way."""
+    with _client(cfg) as c:
+        org_id = _active_org_id(cfg, c)
+        if org_id is None:
+            sys.exit("no active org")
+        if args.state is None:
+            r = c.get(f"/orgs/{org_id}/settings")
+        else:
+            r = c.patch(f"/orgs/{org_id}/settings", json={"platform_overflow": args.state == "on"})
+    if _JSON_OVERRIDE or r.status_code >= 400:
+        _show(r)
+        return
+    on = r.json().get("platform_overflow", True)
+    print(f"\n  overflow relay: {_A if on else _AM}{'on' if on else 'off'}{_R}"
+          f"  {_M}(when treg's own account is out, serve the same endpoint via a treg-owned "
+          f"aggregator account — disclosed, real price){_R}\n")
+
+
 def cmd_org_budget_set(args, cfg) -> None:
     """Set (or update) one tag's limit. Unsent fields are left alone, so `--block` keeps the caps."""
     body: dict = {}
@@ -4269,6 +4377,15 @@ def cmd_admin_rm_org(args, cfg) -> None:
         _show(c.delete(f"/admin/orgs/{args.org_id}"))
 
 
+def cmd_admin_credit(args, cfg) -> None:
+    with _admin_client(cfg) as c:
+        _show(c.post(f"/admin/orgs/{args.org_id}/credit", json={
+            "amount_usd": args.amount_usd,
+            "ref": args.ref,
+            "reason": args.reason,
+        }))
+
+
 def cmd_oauth_providers(args, cfg) -> None:
     with _client(cfg) as c:
         _show(c.get("/oauth/providers"))
@@ -4339,6 +4456,16 @@ def _pinned_provider(cfg: dict, capability: str | None) -> str | None:
             return next((x["provider"] for x in r.json() if x["capability"] == capability), None)
     except Exception:  # noqa: BLE001 — a comparison table is not worth a traceback
         return None
+
+
+def _hit_cell(obs: dict | None) -> str:
+    """How often the provider found something — the router's P(hit). Blank below the floor."""
+    rate = (obs or {}).get("hit_rate")
+    if rate is None:
+        return f"{_M}—{_R}"
+    pct = rate * 100
+    colour = _G if pct >= 70 else (_AM if pct >= 40 else _A)
+    return f"{colour}{pct:.0f}%{_R}"
 
 
 def _observed_cell(obs: dict | None) -> str:
@@ -4465,13 +4592,19 @@ def cmd_catalog(args, cfg) -> None:
                 _print_catalog_endpoint(e, connected)
 
 
-def _print_catalog_endpoint(e: dict, connected: set = frozenset()) -> None:
+def _print_catalog_endpoint(e: dict, connected: set = frozenset(), idw: int = 46) -> None:
     # ● = this org holds a credential for the provider, so the endpoint is callable right now.
     # Verified dates and core/extended tier are maintenance metadata (`treg catalog get <id>`),
-    # not decision data — a user picking an endpoint needs works-now?/price, nothing else.
+    # not decision data — a user picking an endpoint needs the ID to call, works-now?, price.
+    # The ID leads: it is the thing `treg call` takes, and a row without it named a provider an
+    # agent could not actually choose (2026-08-28).
     mark = "●" if e["provider"] in connected else " "
-    # method pads to 7 — "OPTIONS"/"DELETE" must not push the path column out of line
-    print(f"  {e['provider']:<12} {e['method']:<7} {e['path']:<52} {_cost_label(e.get('cost')):<16} {mark}")
+    if e.get("kind") == "routed":
+        print(f"  ▸ {_clip(e['id'], idw):<{idw}} {'ROUTED':<7} {_cost_usd(e.get('cost')):<16} {mark}  "
+              f"treg picks among {len(e.get('routed_children') or [])} providers below — own keys first, then cheapest per hit")
+        return
+    # unified USD only (`_cost_usd`); the provider's own credits/CNY live in `treg catalog get`
+    print(f"    {_clip(e['id'], idw):<{idw}} {e['method']:<7} {_cost_usd(e.get('cost')):<16} {mark}  {_clip(e.get('name') or e.get('summary') or '', 60)}")
 
 
 def _cost_usd(cost: dict | None) -> str:
@@ -4518,13 +4651,39 @@ def _catalog_search(query: str, args, cfg) -> None:
         return
 
     idw = min(max(len(e["id"]) for e in rows), 46)
-    print(f"\n{body['total']} matches for \"{query}\"" + (f" — showing {len(rows)}" if body["total"] > len(rows) else ""))
+    print(f"\n{body['total']} matches for \"{query}\""
+          + (f" — showing {len(rows)} (--limit {min(body['total'], 100)} for more)" if body["total"] > len(rows) else ""))
     connected = _connected_providers(cfg)
-    print(f"\n  {'ENDPOINT':<{idw}} {'PLATFORM':<11} {'PROVIDER':<11} {'COST':<16} ●  SUMMARY")
+    # No PLATFORM/PROVIDER columns: the id spells both (`hunter.people.email.find`), and the width
+    # is better spent on the summary an agent actually reads.
+    print(f"\n  {'ENDPOINT':<{idw}} {'COST':<16} ●  SUMMARY")
+    # The server groups a capability that has a ROUTED row: the parent first, its children right
+    # under it. Draw that as a hierarchy — "let treg choose" leads, the specific providers indent.
+    routed_caps = {e["capability"] for e in rows if e.get("kind") == "routed"}
+    open_group: dict | None = None  # the routed parent whose children are printing
+
+    def _close_group() -> None:
+        # the server shows the best few children; the rest are one `catalog get` away
+        if open_group and open_group.get("children_hidden"):
+            _dim(f"    + {open_group['children_hidden']} more do this job — treg catalog get {open_group['id']} lists them all "
+                 f"(routed and by-id)")
+
     for e in rows:
-        print(f"  {_clip(e['id'], idw):<{idw}} {_clip(e['platform'], 11):<11} {_clip(e['provider'], 11):<11} "
-              f"{_clip(_cost_usd(e.get('cost')), 16):<16} {'●' if e['provider'] in connected else ' '}  "
-              f"{_clip(e.get('summary', ''), 54)}")
+        if e.get("kind") == "routed":
+            _close_group()
+            open_group = e
+            print(f"▸ {_clip(e['id'], idw):<{idw}} {_clip(_cost_usd(e.get('cost')), 16):<16} "
+                  f"{'●' if e['provider'] in connected else ' '}  ROUTED — {_clip(e.get('summary', ''), 70)}")
+            _dim(f"    treg picks among {len(e.get('routed_children') or [])} providers (own keys first, then cheapest "
+                 f"per hit) and names the one that served. To choose the provider yourself, call a child id:")
+            continue
+        if open_group and e.get("capability") != open_group.get("capability"):
+            _close_group()
+            open_group = None
+        indent = "    " if e.get("capability") in routed_caps else "  "
+        print(f"{indent}{_clip(e['id'], idw):<{idw}} {_clip(_cost_usd(e.get('cost')), 16):<16} "
+              f"{'●' if e['provider'] in connected else ' '}  {_clip(e.get('summary', ''), 78)}")
+    _close_group()
     _dim(f"\ntreg catalog get {rows[0]['id']}   # params, cost, example response")
 
 
@@ -4596,7 +4755,10 @@ def _catalog_get(endpoint_id: str, cfg) -> None:
     ])))
     if cost.get("note"):
         _line("", _clip(cost["note"], 96))
-    _line("verified", e.get("verified") or "not verified against the live API")
+    if e.get("kind") == "routed":
+        _line("verified", "generated from its children's verified adapters — not a live route itself")
+    else:
+        _line("verified", e.get("verified") or "not verified against the live API")
     _line("tier", e.get("tier", "core"))
     _line("limits", prov.get("limits", ""))
     _line("pricing", prov.get("pricing_url", ""))
@@ -4605,7 +4767,29 @@ def _catalog_get(endpoint_id: str, cfg) -> None:
     if e.get("capability"):
         print(f"\n{_B}CAPABILITY{_R}  {e['capability']}"
               + (f" — {e['capability_description']}" if e.get("capability_description") else ""))
+    routing = body.get("routing")
+    if routing and routing.get("plan"):
+        # The QUOTE: what `treg call` on this routed id will try, in order, at treg's prices. Own
+        # keys jump to the front at call time (this route is open, so it cannot know yours).
+        # The QUOTE, kept short: order, what each child accepts, and its price — the number a
+        # max-cost decision needs. Hit rates and expected cost per hit are in --json.
+        print(f"\n{_A}ROUTES AMONG{_R}  {_M}in this order; a key of yours for a provider goes first, free{_R}")
+        for i, c in enumerate(routing["plan"], 1):
+            accepts = " | ".join("+".join(v) for v in (c.get("accepts") or []))
+            price = f"${c['usd']:.4g}" if c.get("usd") is not None else "—"
+            flag = f"  {_AM}exhausted{_R}" if c.get("exhausted") else ""
+            print(f"  {i:<3}{_clip(c['endpoint_id'], 38):<38} {price:<9} {accepts}{flag}")
+        _dim("  a miss tries the next one (ceiling $1 per call by default); --header 'X-Treg-Route-Max-Cost: 0.05' to cap it,")
+        _dim("  --header 'X-Treg-Route-Waterfall: 0' to stop at the first miss")
+        also = routing.get("also") or []
+        if also:
+            print(f"\n{_A}ALSO{_R}  {_M}the same job from providers treg does not route to (yet) — call them by id{_R}")
+            for a in also:
+                price = "free" if a.get("usd") == 0 else (f"${a['usd']:.4g}" if a.get("usd") is not None else "—")
+                print(f"     {_clip(a['endpoint_id'], 38):<38} {price}")
     sibs = body.get("siblings") or []
+    if routing and routing.get("plan"):
+        sibs = []  # the plan above IS the comparison; the sibling table would repeat it
     if sibs:
         connected = _connected_providers(cfg)
         pinned = _pinned_provider(cfg, e.get("capability"))
@@ -4613,13 +4797,14 @@ def _catalog_get(endpoint_id: str, cfg) -> None:
         # one you asked about is somewhere above is how you pick the wrong row.
         rows = [dict(e, id=e["id"], provider=e["provider"], observed=e.get("observed"), _me=True)] + \
                [dict(x, _me=False) for x in sibs]
-        print(f"  {'PROVIDER':<12} {'ENDPOINT':<38} {'COST':<15} {'WORKS':<11} {'SPEED':<7} {'LAST OK':<8} ●")
+        print(f"  {'ENDPOINT':<40} {'COST':<15} {'WORKS':<11} {'HIT':<6} {'SPEED':<7} {'LAST OK':<8} ●")
         for s in rows:
             mark = f"{_A}▸{_R}" if s.get("_me") else " "
             if pinned and s["provider"] != pinned:
                 continue          # the team pinned this job elsewhere; these are not callable
-            print(f" {mark}{_clip(s['provider'], 12):<12} {_clip(s['id'], 38):<38} "
+            print(f" {mark}{_clip(s['id'], 40):<40} "
                   f"{_clip(_cost_usd(s.get('cost')), 15):<15} {_pad(_observed_cell(s.get('observed')), 11)} "
+                  f"{_pad(_hit_cell(s.get('observed')), 6)} "
                   f"{_pad(_speed_cell(s.get('observed')), 7)} {_pad(_last_ok_cell(s), 8)} "
                   f"{'●' if s['provider'] in connected else ' '}")
         if pinned:
@@ -4627,10 +4812,11 @@ def _catalog_get(endpoint_id: str, cfg) -> None:
             _dim(f"  only theirs are listed (admin: treg org unpin {e.get('capability')}).")
         else:
             _dim("  the same job from another provider.")
-        _dim("  WORKS/SPEED are what treg has actually observed; a ✓ age is the catalog's own")
+        _dim("  WORKS/SPEED are what treg has actually observed; HIT is how often the provider FOUND")
+        _dim("  something (per-success providers bill only on a hit); a ✓ age is the catalog's own")
         _dim("  verification stamp, not live traffic. Pick the one whose inputs match what you")
         _dim("  HAVE, then weigh reliability against price.")
-    elif e.get("capability"):
+    elif e.get("capability") and not routing:
         _dim("  the only provider offering this capability")
 
     _print_params(e.get("input") or {})
@@ -4689,10 +4875,19 @@ def _print_params(inp: dict) -> None:
             note = spec.get("note") or ""
             if spec.get("example") not in (None, ""):
                 note = f"{note} (e.g. {spec['example']})".strip()
+            # The note is the contract ("one of domain | company", "THIS IS THE PRICE DIAL") — never
+            # clipped: an agent reading this table to build a call must see the whole rule. Long
+            # notes wrap under the NOTE column instead.
+            import textwrap
+            lines = textwrap.wrap(note, width=72) or [""]
             print(f"  {where:<6} {_clip(name, 26):<26} {_clip(str(spec.get('type') or '-'), 9):<9} "
-                  f"{'yes' if spec.get('required') else '·':<4} {_clip(note, 60)}")
+                  f"{'yes' if spec.get('required') else '·':<4} {lines[0]}")
+            for cont in lines[1:]:
+                print(f"  {'':<6} {'':<26} {'':<9} {'':<4} {cont}")
     if inp.get("note"):
-        print(f"  {_M}note{_R}   {inp['note']}")
+        import textwrap
+        for i, line in enumerate(textwrap.wrap(inp["note"], width=90)):
+            print(f"  {_M}{'note' if i == 0 else '':<6}{_R} {line}")
 
 
 def cmd_connections_ls(args, cfg) -> None:
@@ -4984,6 +5179,10 @@ def build_parser() -> argparse.ArgumentParser:
     orv = mk(og, "revoke", "Revoke a pending invite before it's used.", "treg org revoke 3")
     orv.add_argument("invite_id", type=int, help="the invite id (from `org invites`)"); orv.set_defaults(fn=cmd_org_revoke)
     mk(og, "members", "List the active team's members and their roles.", "treg org members").set_defaults(fn=cmd_org_members)
+    oov = mk(og, "overflow", "Show or set whether a metered call may be served through treg's overflow "
+                             "relay when treg's own account is out (admin+).",
+             "treg org overflow", "treg org overflow off")
+    oov.add_argument("state", nargs="?", choices=["on", "off"], help="omit to show"); oov.set_defaults(fn=cmd_org_overflow)
     osr = mk(og, "set-role", "Change a member's role (owner only).", "treg org set-role 5 admin")
     osr.add_argument("user_id", type=int, help="the member's user id (from `org members`)")
     osr.add_argument("role", choices=["viewer", "member", "admin", "owner"], help="the new role"); osr.set_defaults(fn=cmd_org_set_role)
@@ -5414,8 +5613,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     tu = mk(sub, "topup", "Add funds to your team's balance, or set up automatic top-ups.",
             "treg topup                                     # a Checkout link for the default amount",
-            "treg topup 25                                  # …for $25",
-            "treg topup --auto on --threshold 5 --amount 10 # refill $10 whenever it drops below $5",
+            "treg topup 100                                 # …for $100 (+10% bonus credit)",
+            "treg topup --auto on --threshold 5 --amount 20 # refill $20 whenever it drops below $5",
             "treg topup --auto off")
     tu.add_argument("amount", nargs="?", type=float, default=None,
                     help="how many US dollars to add (whole dollars; default from the server)")
@@ -5519,6 +5718,13 @@ def build_parser() -> argparse.ArgumentParser:
     aso.add_argument("org_id", type=int, help="the org id"); aso.add_argument("--undo", action="store_true", help="un-suspend instead"); aso.set_defaults(fn=cmd_admin_suspend_org)
     aro = mk(ad, "rm-org", "Delete an org platform-wide.", "treg admin rm-org 2")
     aro.add_argument("org_id", type=int, help="the org id"); aro.set_defaults(fn=cmd_admin_rm_org)
+    acr = mk(ad, "credit", "Credit an org promotional balance (HTTP equivalent of scripts/manual_grant.py).",
+             "treg admin credit 2867 --amount-usd 100 --ref hs-1234 --reason 'goodwill comp'")
+    acr.add_argument("org_id", type=int, help="the org id to credit")
+    acr.add_argument("--amount-usd", dest="amount_usd", required=True, help="amount in USD (e.g. '100', '50.50')")
+    acr.add_argument("--ref", required=True, help="dedupe key (ticket id) — a repeat with the same ref refuses")
+    acr.add_argument("--reason", required=True, help="human explanation recorded on the ledger")
+    acr.set_defaults(fn=cmd_admin_credit)
     return p
 
 

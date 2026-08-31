@@ -1,0 +1,27 @@
+{
+  "requestId": "6ffe69aeb1fade605821e70c9c627ceb",
+  "results": [
+    {
+      "id": "https://en.wikipedia.org/wiki/Hierarchical_navigable_small_world",
+      "title": "Hierarchical navigable small world",
+      "url": "https://en.wikipedia.org/wiki/Hierarchical_navigable_small_world",
+      "author": null,
+      "text": "Hierarchical navigable small world\n\nHierarchical navigable small world (HNSW) is an algorithm for approximate nearest neighbor search. It is used to find items that are similar to a query item in a large collection, without comparing the query with every item one by one.\n\nThe algorithm is commonly used for searching vector data. In these systems, an item such as a document, image, song, or user profile is represented by a list of numbers called a vector. Items with similar vectors are treated as… [2000 chars total]",
+      "image": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Internet_map_1024.jpg/250px-Internet_map_1024.jpg?utm_source=en.wikipedia.org&utm_campaign=parser&utm_content=thumbnail"
+    }
+  ],
+  "statuses": [
+    {
+      "id": "https://en.wikipedia.org/wiki/Hierarchical_navigable_small_world",
+      "status": "success",
+      "source": "cached"
+    }
+  ],
+  "costDollars": {
+    "total": 0.001,
+    "contents": {
+      "text": 0.001
+    }
+  },
+  "searchTime": 11.709653999656439
+}

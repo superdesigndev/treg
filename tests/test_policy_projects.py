@@ -21,7 +21,7 @@ from conftest import make_upstream
 
 from treg import crypto
 from treg.api import app
-from treg.db import reset_db, session_maker
+from treg.infra.db import reset_db, session_maker
 from treg.models import DenyRule, Membership, Org, User
 
 

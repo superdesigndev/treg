@@ -5,6 +5,7 @@ in place before the call, so the upstream always sees a live token. The upstream
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 
@@ -60,6 +61,61 @@ async def test_refresh_persists_so_next_call_is_free(clients: AsyncClient):
     # second call: token is now fresh + persisted (expires_in 3600), still serves the refreshed one
     second = await clients.get("/call/gsc/echo")
     assert second.json()["auth"] == "Bearer REFRESHED"
+
+
+async def test_token_endpoint_io_holds_no_database_connection(
+    clients: AsyncClient, monkeypatch,
+):
+    """The provider may take seconds; the refresh transaction must release its pool slot first."""
+    from treg.api import app
+    from treg.infra.db import _engine
+
+    await _register_oauth_tool(clients, "pool-free-refresh", _oauth_blob("OLD", expires_at=0))
+    checked_out: list[int] = []
+    original_post = app.state.http.post
+
+    async def _post(*args, **kwargs):
+        checked_out.append(_engine.pool.checkedout())
+        return await original_post(*args, **kwargs)
+
+    monkeypatch.setattr(app.state.http, "post", _post)
+    response = await clients.get("/call/pool-free-refresh/echo")
+
+    assert response.status_code == 200, response.text
+    assert checked_out == [0]
+
+
+async def test_concurrent_stale_calls_keep_one_refresh_winner(
+    clients: AsyncClient, monkeypatch,
+):
+    from treg.api import app
+
+    await _register_oauth_tool(clients, "single-flight-refresh", _oauth_blob("OLD", expires_at=0))
+    calls = 0
+    first_arrived = asyncio.Event()
+    release = asyncio.Event()
+    original_post = app.state.http.post
+
+    async def _post(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        first_arrived.set()
+        await release.wait()
+        return await original_post(*args, **kwargs)
+
+    monkeypatch.setattr(app.state.http, "post", _post)
+    first = asyncio.create_task(clients.get("/call/single-flight-refresh/echo"))
+    await first_arrived.wait()
+    second = asyncio.create_task(clients.get("/call/single-flight-refresh/echo"))
+    await asyncio.sleep(0)
+    release.set()
+    responses = await asyncio.gather(first, second)
+
+    assert [response.status_code for response in responses] == [200, 200]
+    assert [response.json()["auth"] for response in responses] == [
+        "Bearer REFRESHED", "Bearer REFRESHED",
+    ]
+    assert calls == 1
 
 
 # ---- token-endpoint client authentication (X / Pinterest demand HTTP Basic) ---------------------

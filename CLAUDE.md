@@ -5,7 +5,7 @@ job — without owning the API keys.
 
 Two halves answer the same token, through the same `/call/`:
 
-- **The catalog** — ~2,850 curated external endpoints across ~57 providers (SEO and backlinks, social
+- **The catalog** — 2,896 curated external endpoints across 60 providers (SEO and backlinks, social
   and trends, people and company enrichment, ads, scraping). treg can serve eligible ones **on its own
   key**, metered per call from the team's prepaid balance ($1.00 free per new team). No provider signup.
 - **Your own tools** — what a teammate registered: a paid API account, an OAuth connection, a vendor
@@ -76,8 +76,9 @@ uv run --frozen python -m treg          # the server
 
 ## Money code
 
-`ledger.py` is the **only** code path that moves money; `billing.py` is the only one that talks to
-Stripe; `reconcile.py` is read-only. Everything is **integer micro-USD** — never floats, never cents.
+The ledger lives inside `domain/money` and is the **only** code path that moves money; the Stripe SDK
+lives only in `infra/stripe.py`, with orchestration in `application/billing.py`; `reconcile.py` is
+read-only. Everything is **integer micro-USD** — never floats, never cents.
 Never route a ledger write through `audit.py`: it drops rows past its queue bound, which is right for
 analytics and fatal for money. See `docs/context/architecture/money.md`.
 

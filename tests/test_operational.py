@@ -15,7 +15,7 @@ def test_dev_code_exposed_only_on_local_sqlite():
 
 async def test_audit_writes_are_capped_but_all_recorded(clients: AsyncClient):
     from treg import audit
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import CallRecord
     assert audit._MAX_CONCURRENT_WRITES <= 8   # bounded — can't grab the whole DB pool
     for _ in range(25):  # a burst: far more than the concurrent cap

@@ -11,7 +11,7 @@ from httpx import ASGITransport, AsyncClient
 
 from treg.api import app
 from treg.config import get_settings
-from treg.db import reset_db
+from treg.infra.db import reset_db
 
 
 @pytest.fixture
@@ -59,7 +59,7 @@ async def test_code_is_one_time(client):
 
 
 async def test_start_is_rate_limited_per_email(client):
-    from treg.api import OTP_START_MAX_PER_EMAIL
+    from treg.routers.auth import OTP_START_MAX_PER_EMAIL
     email = "flood@matrix.io"
     for _ in range(OTP_START_MAX_PER_EMAIL):
         assert (await client.post("/auth/email/start", json={"email": email})).status_code == 200
@@ -68,7 +68,7 @@ async def test_start_is_rate_limited_per_email(client):
 
 
 async def test_start_rate_limit_is_per_email_not_global(client):
-    from treg.api import OTP_START_MAX_PER_EMAIL
+    from treg.routers.auth import OTP_START_MAX_PER_EMAIL
     for _ in range(OTP_START_MAX_PER_EMAIL + 2):  # drive one inbox past its cap
         await client.post("/auth/email/start", json={"email": "victim@matrix.io"})
     other = await client.post("/auth/email/start", json={"email": "bystander@matrix.io"})
@@ -76,7 +76,7 @@ async def test_start_rate_limit_is_per_email_not_global(client):
 
 
 async def test_start_is_rate_limited_per_ip(client):
-    from treg.api import OTP_START_MAX_PER_IP
+    from treg.routers.auth import OTP_START_MAX_PER_IP
     for i in range(OTP_START_MAX_PER_IP):  # distinct emails so the per-email cap never trips first
         assert (await client.post("/auth/email/start", json={"email": f"u{i}@matrix.io"})).status_code == 200
     blocked = await client.post("/auth/email/start", json={"email": "late@matrix.io"})

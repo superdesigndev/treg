@@ -14,7 +14,7 @@ from sqlmodel import select
 
 from treg import audit
 from treg.api import TOOLREQ_RATE_MAX, app
-from treg.db import session_maker
+from treg.infra.db import session_maker
 from treg.models import SearchMiss, ToolRequest
 
 

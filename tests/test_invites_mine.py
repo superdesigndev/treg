@@ -9,7 +9,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from treg.api import app
-from treg.db import reset_db
+from treg.infra.db import reset_db
 
 
 @pytest.fixture
@@ -172,7 +172,7 @@ async def test_email_link_post_signs_in_once_and_lands_on_invite_org(client, sen
 async def test_email_link_post_refuses_suspended_user(client, sent_invites):
     from sqlmodel import select as _select
 
-    from treg.db import session_maker
+    from treg.infra.db import session_maker
     from treg.models import User
 
     await _otp(client, "bob@x.io")  # user exists…

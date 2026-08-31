@@ -81,6 +81,52 @@ def test_load_config_default(tmp_path, monkeypatch):
     assert cfg["token"] is None and cfg["active_org"] is None and cfg["base_url"].startswith("http")
 
 
+def test_load_config_defaults_to_production_not_localhost(tmp_path, monkeypatch):
+    """A fresh CLI (no ~/.treg/config.json) must default to https://treg.to, NOT localhost.
+    The first-run bug was: install.sh's `treg config --base-url` failed silently, so login
+    opened Chrome to http://localhost:18790/login — nothing listening, connection refused."""
+    monkeypatch.setattr(cli, "CONFIG_PATH", tmp_path / "missing" / "config.json")
+    cfg = cli._load_config()
+    assert cfg["base_url"] == cli.PRODUCTION_BASE_URL
+    assert "localhost" not in cfg["base_url"]
+    assert "127.0.0.1" not in cfg["base_url"]
+
+
+def test_is_loopback_url_detects_localhost_variants():
+    """_is_loopback_url recognises localhost, 127.x.x.x, and [::1] so the login flow can warn
+    when pointed at a local server that isn't running."""
+    assert cli._is_loopback_url("http://localhost:18790") is True
+    assert cli._is_loopback_url("http://127.0.0.1:8000") is True
+    assert cli._is_loopback_url("http://127.0.0.42/path") is True
+    assert cli._is_loopback_url("https://[::1]/") is True  # IPv6 needs brackets in URLs
+    assert cli._is_loopback_url("https://[::1]:8000/") is True
+    assert cli._is_loopback_url("https://treg.to") is False
+    assert cli._is_loopback_url("https://api.example.com:443/v1") is False
+    assert cli._is_loopback_url("") is False  # empty URL shouldn't crash
+
+
+def test_login_exits_with_helpful_message_when_localhost_unreachable(monkeypatch):
+    """When base_url is localhost and the server can't be reached, login must fail early with
+    a message that tells the user how to fix it (point at production), not silently open a
+    dead browser page."""
+    import httpx
+
+    def fake_post(url, **kw):
+        raise httpx.ConnectError("Connection refused")
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    args = type("A", (), {"token": None, "email": None})()
+    cfg = {"base_url": "http://localhost:18790", "token": None}
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.cmd_login(args, cfg)
+
+    error_msg = str(exc_info.value)
+    assert "localhost" in error_msg.lower() or "Cannot reach" in error_msg
+    assert "treg config --base-url" in error_msg
+    assert cli.PRODUCTION_BASE_URL in error_msg
+
+
 def test_token_org_claim_reads_a_team_pinned_token():
     """`_token_org_claim` decodes the org slug a team-pinned identity token carries — without the
     signature check (the server still authorizes), and returning None on anything else."""

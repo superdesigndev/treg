@@ -157,10 +157,10 @@ endpoints:
     summary: "Enrich a person from their email — name, role, seniority, location, social profiles"
     input:
       queryParams:
-        email: {type: string, required: true, note: "the person's email address", example: "steli@close.io"}
-        linkedin_handle: {type: string, required: false, note: "alternative identifier when you have no email"}
+        email: {type: string, required: false, note: "the person's email address — or pass linkedin_handle instead", example: "steli@close.io"}
+        linkedin_handle: {type: string, required: false, note: "alternative identifier when you have no email, e.g. 'stelieffendy' from linkedin.com/in/stelieffendy"}
         clearbit_format: {type: boolean, required: false, note: "return the payload in Clearbit's response shape, for drop-in migration"}
-      note: "one of email | linkedin_handle. To go the other way (name → email) use hunter.people.email.find, which costs a full search credit. GET /combined/find?email=… returns the person AND their company in one call at the same 0.2 rate"
+      note: "one of email | linkedin_handle is required (Hunter answers 400 when neither is sent; treg does not pre-check this). To go the other way (name → email) use hunter.people.email.find, which costs a full search credit. GET /combined/find?email=… returns the person AND their company in one call at the same 0.2 rate"
     test_request:
       queryParams: {email: "steli@close.io"}
     cost:

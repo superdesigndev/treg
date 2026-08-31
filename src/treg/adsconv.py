@@ -72,9 +72,9 @@ async def queue(db: AsyncSession, org: Org, action: str, *,
 
     Call this INSIDE the caller's transaction: the event and its pending conversion must commit
     together, or a crash between them loses a conversion with no trace. The `paid` caller
-    (`billing._credit`) cannot honour this — `ledger.topup()` has already committed by the time
-    `_credit` gets here, so that one path is a known, accepted two-commit gap rather than a bug (see
-    `docs/context/architecture/ads-conversions.md`).
+    (`billing._credit`) deliberately does not honour this: it commits the credit before calling
+    queue, so the paid conversion is a second, separate commit: a known, accepted trade-off
+    (2026-08-17; see `docs/context/architecture/ads-conversions.md`).
 
     A no-op when the team has no click to attribute to, which is most teams. Duplicate fires are
     absorbed by the unique constraint rather than checked for first — the check-then-insert race
@@ -82,15 +82,20 @@ async def queue(db: AsyncSession, org: Org, action: str, *,
     """
     if not enabled() or not org.ad_gclid:
         return False
+    # A SAVEPOINT, not a bare flush: this runs inside the CALLER's transaction (the signup grant,
+    # the Stripe credit), and a plain `db.rollback()` on the duplicate would roll back THEIR work
+    # too — a redelivered webhook would undo a credit. The savepoint is deliberately HELD OPEN
+    # rather than released here: SQLite's driver defers BEGIN, so a savepoint opened as the
+    # transaction's first statement IS the transaction, and releasing it would COMMIT the row even
+    # if the caller later rolls back. Held open, the row lands or vanishes with the caller's own
+    # commit or rollback, on both backends (the caller's commit releases it implicitly).
+    nested = await db.begin_nested()
     try:
-        # A SAVEPOINT, not a bare flush: this runs inside the CALLER's transaction (the signup
-        # grant, the Stripe credit), and a plain `db.rollback()` on the duplicate would roll back
-        # THEIR work too — a redelivered webhook would undo a credit. The nested block confines the
-        # rollback to this insert.
-        async with db.begin_nested():
-            db.add(AdConversion(org_id=org.id, action=action, dedupe_key=dedupe_key,
-                                value_usd_micro=value_usd_micro))
+        db.add(AdConversion(org_id=org.id, action=action, dedupe_key=dedupe_key,
+                            value_usd_micro=value_usd_micro))
+        await db.flush()
     except IntegrityError:
+        await nested.rollback()
         return False
     return True
 
@@ -261,7 +266,8 @@ async def _auth_headers(client) -> dict[str, str]:
     account is expressed per-destination as `loginAccount` in the request BODY instead (see
     `_payload_and_rows`). Do not resurrect either header here.
 
-    This does NOT go through proxy.relay/injectors.py — the uploader is not a caller-issued
+    This does NOT go through `infra/upstream/relay.py` or `infra/upstream/injectors.py` — the uploader
+    is not a caller-issued
     `/call/` request, it's treg spending its OWN platform connection, so there is no Tool/bindings
     row (and no per-tenant Secret) to resolve credentials from. It exchanges treg's OWN long-lived
     `settings.ads_conv_refresh_token` for an access token directly against Google's token endpoint,

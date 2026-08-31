@@ -1,0 +1,17 @@
+{
+  "job_listings": [
+    {
+      "company": {
+        "basic_info": {
+          "name": "Stripe"
+        }
+      },
+      "job_details": {
+        "title": "Global Partnerships Lead — Greater China, Hong Kong & Singapore",
+        "url": "https://www.linkedin.com/jobs/view/4458157702"
+      }
+    }
+  ],
+  "next_cursor": "H4sIAHq5jGoC_xXMSwrDIBAA0KuI6yyc0fnYq5QSJqJkUSpNzCKU3r3p_vE-_n3U7ZxX21d_c56gai7KCaFE1hCsFQjAZtGkNYsiRJoAsjQqWHWBIpVZchNBXPzk_N63cV13EBWKiimHECbHRJEQ4HGR0Yc959KP118CMOP3B7SogKqLAAAA",
+  "total_count": 11662
+}

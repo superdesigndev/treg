@@ -9,67 +9,19 @@ The runner reuses the SAME refresh path as the live call (oauth.ensure_fresh) �
 
 from __future__ import annotations
 
-import ipaddress
-import socket
-from datetime import datetime, timedelta, timezone
-from urllib.parse import urlsplit
+from datetime import datetime, timedelta
 
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from . import crypto, injectors, oauth
+from . import crypto, oauth
+from .infra.upstream import injectors
+from .infra.upstream.ssrf import host_is_public, safe_webhook_url
 from .models import Invite, Membership, PendingOAuth, Secret, Tool, User
+from .timeutil import utcnow_naive
 
 OAUTH_PENDING_TTL_MIN = 30  # an in-flight OAuth connect (holds an encrypted client_secret + a CSRF state) expires after this
-
-
-def safe_webhook_url(url: str | None) -> bool:
-    """A webhook_url is user-set and treg POSTs to it server-side — reject non-http(s) and internal
-    targets (loopback/private/link-local/reserved literal IPs, localhost/*.local) so it can't be used
-    as a blind-SSRF primitive against the metadata endpoint or internal services."""
-    if not url:
-        return False
-    try:
-        u = urlsplit(url)
-    except ValueError:
-        return False
-    if u.scheme not in ("http", "https") or not u.hostname:
-        return False
-    host = u.hostname.lower()
-    if host == "localhost" or host.endswith(".local") or host.endswith(".internal"):
-        return False
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        # Not a standard literal — but decimal/hex/octal/short forms (2130706433, 0x7f000001, 127.1) still
-        # resolve to an IP and would reach loopback/internal. Normalize via inet_aton and re-check; a real
-        # DNS name fails inet_aton and gets the best-effort allow (call-time resolution catches rebinding).
-        try:
-            ip = ipaddress.ip_address(socket.inet_aton(host))
-        except (OSError, ValueError):
-            return True  # a genuine DNS name
-    return not (ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast)
-
-
-def host_is_public(host: str) -> bool:
-    """Call-time SSRF guard: RESOLVE `host` and require every address to be public. Defeats DNS
-    rebinding — a name that passed the registration check but now points at an internal IP. (A narrow
-    resolve-vs-connect race remains; pinning the IP would need a custom transport.)"""
-    if not host:
-        return False
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except OSError:
-        return False  # unresolvable → refuse rather than let httpx try
-    for info in infos:
-        try:
-            ip = ipaddress.ip_address(info[4][0])
-        except ValueError:
-            return False
-        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast:
-            return False
-    return True
 
 
 _RANK = {"ok": 0, "unknown": 1, "invalid": 2}  # severity order for worst-status-wins within a run
@@ -146,7 +98,7 @@ async def _probe(tool: Tool, smap: dict[int, Secret], client: httpx.AsyncClient)
 async def gc_expired_invites(db: AsyncSession, org_id: int) -> int:
     """Delete expired invites in an org (their codes can never be accepted). Caller commits.
     Runs opportunistically when invites are listed and periodically in the health run."""
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = utcnow_naive()
     rows = (await db.execute(select(Invite).where(Invite.org_id == org_id))).scalars().all()
     n = 0
     for inv in rows:
@@ -160,7 +112,7 @@ async def gc_expired_invites(db: AsyncSession, org_id: int) -> int:
 async def gc_stale_pending_oauth(db: AsyncSession, org_id: int) -> int:
     """Delete in-flight OAuth connects older than the TTL — each holds an encrypted client_secret and
     an otherwise-indefinitely-valid CSRF `state`. Caller commits."""
-    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=OAUTH_PENDING_TTL_MIN)
+    cutoff = utcnow_naive() - timedelta(minutes=OAUTH_PENDING_TTL_MIN)
     rows = (await db.execute(select(PendingOAuth).where(PendingOAuth.org_id == org_id))).scalars().all()
     n = 0
     for p in rows:
@@ -172,7 +124,7 @@ async def gc_stale_pending_oauth(db: AsyncSession, org_id: int) -> int:
 
 
 async def run_all(db: AsyncSession, client: httpx.AsyncClient, org_id: int | None = None) -> dict:
-    now = datetime.now(timezone.utc)
+    now = utcnow_naive()
     secret_q, tool_q = select(Secret), select(Tool)
     if org_id is not None:  # scope the run to one org (the caller's) — no cross-tenant leakage
         secret_q = secret_q.where(Secret.org_id == org_id)

@@ -1,8 +1,8 @@
 {
   "name": "treg-dsh",
-  "version": "0.12.0",
+  "version": "0.14.0",
   "type": "module",
-  "description": "OpenRouter for tools - 2,600 agent-friendly tools, pay for the usage, not subscription",
+  "description": "OpenRouter for tools - 2,896 agent-friendly tools, pay for the usage, not subscription",
   "main": "dsh/index.js",
   "files": [
     "dsh/index.js",

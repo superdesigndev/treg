@@ -2,8 +2,8 @@
   "leads": [
     {
       "id": "00c27863-2397-7b9d-754d-7d2c588748bb",
-      "firstName": "Jane",
-      "lastName": "Doe",
+      "firstName": "Cristina",
+      "lastName": "Zulaica CRCM",
       "jobTitle": "Chief Compliance Officer (Designate), Stripe US",
       "location": {
         "city": null,
@@ -31,8 +31,8 @@
     },
     {
       "id": "00e59aea-3691-60c2-60ff-c109085575b1",
-      "firstName": "Alex",
-      "lastName": "Rivera",
+      "firstName": "Mohamed",
+      "lastName": "Taha",
       "jobTitle": "Associé gérant",
       "location": {
         "city": "Sidi Slimane Province",
@@ -56,5 +56,10 @@
           "end": 5000000000
         },
         "yearsInBusiness": 16
-  … truncated to shape …
+      }
+    }
+  ],
+  "cursor": "d9RH2ga3dACvcBAg5cvUQrzYNY4Kwo71",
+  "_scrubbed": true,
+  "_note": "captured live 2026-08-28 via treg; emails/phones scrubbed"
 }

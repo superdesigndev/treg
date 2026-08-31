@@ -10,10 +10,11 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 
 from httpx import AsyncClient
 
-from treg import catalog_store as cs
+from treg.domain.catalog import store as cs
 from treg import oauth_providers as P
 
 
@@ -272,27 +273,32 @@ async def test_search_finds_the_job_across_providers_best_first(clients: AsyncCl
     rows = body["results"]
     assert body["count"] == len(rows) <= body["total"]
 
-    top = [e["id"] for e in rows[:3]]
-    assert set(top) == {
+    top = [e["id"] for e in rows[:4]]
+    assert top[0] == "treg.tiktok.video.comments", "the routed endpoint for the job comes first"
+    assert set(top[1:]) == {
         "justoneapi.tiktok.video.comments",
         "tikhub.tiktok.video.comments",
         "scrapecreators.tiktok.video.comments",
     }
-    assert all(e["tier"] == "core" and e["verified"] for e in rows[:3])
+    assert all(e["tier"] == "core" and e["verified"] for e in rows[1:4])
     # rank is total and stable: score desc, then core before extended WITHIN a score tie — tier
     # never outranks relevance, so a strong extended match may sit above a weak core one
-    scores = [e["score"] for e in rows]
+    # …except that a capability with a routed row is shown as a GROUP (parent first, then its
+    # children), so the tie-break is asserted over rows outside routed groups.
+    routed_caps = {e["capability"] for e in rows if e.get("kind") == "routed"}
+    loose = [e for e in rows if e["capability"] not in routed_caps]
+    scores = [e["score"] for e in loose]
     assert scores == sorted(scores, reverse=True)
     for score in set(scores):
-        group = [e["tier"] for e in rows if e["score"] == score]
+        group = [e["tier"] for e in loose if e["score"] == score]
         assert group == sorted(group, key=lambda t: t != "core")
 
-    first = rows[0]
+    first = rows[1]  # the first CHILD; rows[0] is the generated treg.* row, whose provider is treg itself
     assert first["capability"] == "tiktok.video.comments" and first["capability_description"]
     assert first["platform"] == "tiktok" and first["platform_label"] == "TikTok"
     assert first["provider_display"] == P.get(first["provider"]).display_name
     assert first["cost"]["usd"] is not None, "a search row prices in one currency or comparison is fiction"
-    assert any(h.startswith(f"treg catalog get {first['id']}") for h in body["hints"])
+    assert any(h.startswith(f"treg catalog get {rows[0]['id']}") or h.startswith(f"treg catalog get {first['id']}") for h in body["hints"])
 
 
 async def test_search_requires_every_token_to_match(clients: AsyncClient):
@@ -301,6 +307,8 @@ async def test_search_requires_every_token_to_match(clients: AsyncClient):
     narrow = (await clients.get("/catalog/search", params={"q": "tiktok comments", "limit": 100})).json()
     assert 0 < narrow["total"] < broad["total"]
     for e in narrow["results"]:  # the second token really is a filter, not a scoring nudge
+        if e.get("kind") == "routed":
+            continue  # a routed parent rides in on a matched CHILD (see search); its own text need not match
         haystack = " ".join((e["id"], e["summary"], e["capability"], e["capability_description"])).lower()
         assert "comment" in haystack, e["id"]
 
@@ -552,6 +560,32 @@ def test_call_templates_share_wire_encoding_and_quote_complete_query_arguments()
     assert "'phrase=two words'" in line
 
 
+def test_gtm_catalog_paths_and_declared_parameters_are_the_same_contract():
+    """Every GTM catalog command must ask for the atomic ids its path actually substitutes.
+
+    Google Discovery describes these as one semantic parent/path resource, but passing
+    ``accounts/…/containers/…`` through one treg placeholder encodes the hierarchy as ``%2F``.
+    The curated and generated tiers therefore expose the flattened path segments instead.
+    """
+    cat = cs.load()
+    endpoints = [ep for ep in cat.by_id.values() if ep["provider"] == "google-tag-manager"]
+    assert endpoints
+    for ep in endpoints:
+        placeholders = set(re.findall(r"{([A-Za-z0-9_]+)}", ep.get("path") or ""))
+        declared = set((((ep.get("input") or {}).get("pathParams")) or {}))
+        assert placeholders == declared, ep["id"]
+
+    core = [ep for ep in endpoints if ep["tier"] == "core"]
+    for ep in core:
+        for spec in (((ep.get("input") or {}).get("pathParams")) or {}).values():
+            assert "/" not in str((spec or {}).get("example") or ""), ep["id"]
+
+    line = cs.call_template(cat.by_id["google-tag-manager.workspaces"])
+    assert "--query account_id=123456" in line
+    assert "--query container_id=789" in line
+    assert "parent=" not in line
+
+
 def test_catalog_validator_rejects_an_unknown_endpoint_array_encoding(tmp_path, capsys):
     """The endpoint encoding declaration is schema, not free-form prose. Exercise the real
     validator so deleting its validation block cannot leave a falsely green test suite."""
@@ -692,7 +726,7 @@ def test_a_free_route_needs_no_price_provenance():
     number, so demanding provenance refused 61 endpoints across 8 providers — 28 of Hunter's 35 —
     treating "costs nothing" as if it meant "we don't know", which is the one distinction the cost
     model is otherwise careful to keep apart."""
-    from treg import catalog_store as cs
+    from treg.domain.catalog import store as cs
     cat = cs.load()
     free = {"type": "free", "value": 0, "currency": "USD", "unit": "call"}
     ep = {"cost": free, "provider": "hunter", "scope": "any_account", "kind": "data"}
@@ -702,7 +736,7 @@ def test_a_free_route_needs_no_price_provenance():
 def test_a_PAID_route_still_needs_provenance():
     """The relaxation must not leak: a route with a real price and no provenance stays refused, or
     we would bill a team using a number nobody checked."""
-    from treg import catalog_store as cs
+    from treg.domain.catalog import store as cs
     cat = cs.load()
     unchecked = {"type": "per_call", "value": 0.05, "currency": "USD", "unit": "call"}
     ep = {"cost": unchecked, "provider": "hunter", "scope": "any_account", "kind": "data"}
@@ -714,7 +748,7 @@ def test_a_PAID_route_still_needs_provenance():
 
 def test_an_unpriced_route_is_still_refused():
     """The original rule, unchanged: no usd → refuse, so treg never pays a provider and charges $0."""
-    from treg import catalog_store as cs
+    from treg.domain.catalog import store as cs
     cat = cs.load()
     ep = {"cost": {"type": "per_call", "currency": "credit", "unit": "credit"},
           "provider": "pdl", "scope": "any_account", "kind": "data"}
@@ -780,7 +814,7 @@ def test_a_shared_plan_rate_converts_like_any_credit():
     """The whole design: a flat-fee provider is modelled as a credit provider whose credit is one
     call on treg's shared plan. cost_view needs ZERO changes — this asserts the pilot entry flows
     through the existing conversion."""
-    from treg import catalog_store as cs
+    from treg.domain.catalog import store as cs
 
     c = cs.load()
     out = c.cost_view({"type": "per_call", "value": 1, "currency": "credit"}, "alphavantage")
@@ -818,7 +852,7 @@ def test_trial_pools_flow_from_fx_to_eligibility_and_display():
     """The real file's three pools, end to end through the loader: a $0 price that is platform
     eligible AND carries its allowance wherever the cost is shown — a bare $0.00 would read as
     unlimited."""
-    from treg import catalog_store as cs
+    from treg.domain.catalog import store as cs
 
     c = cs.load()
     assert c.trial_pools == {"finnhub": 50, "twelvedata": 20, "tiingo": 20}
@@ -911,6 +945,28 @@ def test_the_ingester_puts_a_POST_routes_arguments_in_the_BODY():
     assert "queryParams" in no_body and "body" not in no_body
 
 
+def test_gtm_ingestion_expands_semantic_resource_names_into_atomic_path_ids():
+    """The checked-in extended YAML must stay fixed after the next Discovery re-ingest."""
+    import sys
+    sys.path.insert(0, "scripts")
+    from catalog_ingest import google_flat_path_params
+
+    entry = {
+        "path": "/tagmanager/v2/accounts/{accountsId}/containers/{containersId}/workspaces",
+        "input": {
+            "pathParams": {
+                "parent": {"type": "string", "required": True, "note": "container resource path"},
+            },
+            "queryParams": {"pageToken": {"type": "string", "required": False}},
+        },
+    }
+    assert google_flat_path_params(entry) is entry
+    params = entry["input"]["pathParams"]
+    assert list(params) == ["accountsId", "containersId"]
+    assert all(spec["required"] for spec in params.values())
+    assert "pageToken" in entry["input"]["queryParams"]
+
+
 def test_a_published_spec_outranks_the_OPTIONS_probe():
     """The probe infers a verb from a preflight; the spec is the provider's own contract. When the
     spec names exactly one method the spec wins, so a re-ingest inherits an upstream verb change
@@ -942,3 +998,25 @@ def test_a_stored_EMPTY_json_body_survives_into_the_call_template():
     # …and a GET is not handed a body it never had
     gets = [e for e in cat.endpoints if e["method"] == "GET"]
     assert not any("--data" in cs.call_template(e) for e in gets)
+
+
+async def test_search_pulls_the_routed_parent_in_when_a_child_matches(clients: AsyncClient):
+    """`leadsforge email` matches leadsforge.* on the provider's NAME; the routed row for that job
+    carries no such word, yet it is the row to show first — so a matched child brings its parent
+    along. And `find leads` lands on the lead-search job itself (people.search says "leads")."""
+    rows = (await clients.get("/catalog/search", params={"q": "leadsforge email"})).json()["results"]
+    ids = [r["id"] for r in rows]
+    assert "treg.people.email.find" in ids, ids
+    assert ids.index("treg.people.email.find") < ids.index("leadsforge.people.email.find")
+    rows = (await clients.get("/catalog/search", params={"q": "find leads"})).json()["results"]
+    assert rows[0]["id"] == "treg.people.search", [r["id"] for r in rows[:3]]
+
+
+async def test_search_caps_a_routed_group_at_a_few_children(clients: AsyncClient):
+    """A search page is a list of JOBS: one capability's two dozen providers must not eat the
+    budget. The parent says how many were cut; `catalog get` ranks them all."""
+    rows = (await clients.get("/catalog/search", params={"q": "find leads"})).json()["results"]
+    parent = next(r for r in rows if r["id"] == "treg.people.search")
+    kids = [r for r in rows if r["capability"] == "people.search" and r.get("kind") != "routed"]
+    assert len(kids) <= 5 and parent["children_hidden"] >= 1
+    assert "treg.people.email.find" in {r["id"] for r in rows}, "the next job fits on the page now"

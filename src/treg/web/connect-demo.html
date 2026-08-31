@@ -170,8 +170,7 @@ async function exchange(code) {
   document.querySelectorAll(".tool").forEach((b) => (b.disabled = false));
   $("btnRefresh").disabled = false; $("btnDisconnect").disabled = false; $("btnCall").disabled = false;
   log("token received", { token_type: body.token_type, expires_in: body.expires_in,
-                          access_token: body.access_token.slice(0, 24) + "…",
-                          refresh_token: body.refresh_token.slice(0, 12) + "…" });
+                          access_token: "[received]", refresh_token: "[received]" });
 }
 
 let rpcId = 0;

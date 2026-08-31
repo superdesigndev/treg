@@ -31,7 +31,7 @@ DEV_HOME="$ROOT/scripts/.dev-home"         # sandbox HOME for the dev CLI
 
 DEV_KEYS="$DEV_HOME/dev-keys.env"           # stable dev-only Fernet + session keys, minted once —
                                             # without them every --reload restart drops sessions/secrets
-SERVER_ENV="TREG_EMAIL_DEV_MODE=true TREG_DATABASE_URL=sqlite+aiosqlite:///$DEV_DB"
+SERVER_ENV="TREG_EMAIL_DEV_MODE=true TREG_CONNECT_DEMO_ENABLED=true TREG_DATABASE_URL=sqlite+aiosqlite:///$DEV_DB"
 SERVER_CMD="cd $ROOT && set -a && . $DEV_KEYS && set +a && env $SERVER_ENV uv run python -m treg --reload"
 
 ensure_dev_keys() {
