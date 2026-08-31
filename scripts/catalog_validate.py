@@ -13,7 +13,8 @@ Checks (the success criteria from docs/context/architecture/catalog.md):
   - a `cost` block is BILLABLE, not decorative: a null `value` and `confidence: unknown` appear
     together or not at all; a verified/documented price names its `source_url`; every priced entry
     carries `checked` (WARN past 90 days); free is spelled exactly one way
-  - a `verified` endpoint must have an existing example_response file
+  - a `verified` endpoint must have an existing example_response file; when it declares `expect`,
+    that file must be readable JSON satisfying `expect.json_path` / `expect.equals`
   - an extended endpoint a verification run has touched claims exactly one non-empty state
     (verified | unverified | untestable | skipped), and an `untestable` one carries no
     test_request for a re-verify run to call it with anyway
@@ -36,6 +37,7 @@ never what a claim on it is worth.
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 import sys
 from pathlib import Path
@@ -105,6 +107,54 @@ def looks_like_secret(match: str) -> bool:
 
 def fail(errors: list[str], where: str, msg: str) -> None:
     errors.append(f"{where}: {msg}")
+
+
+def dig(node, dotted: str):
+    """Walk a dotted JSON path; numeric segments index arrays, matching the live verifiers."""
+    cur = node
+    for part in dotted.split("."):
+        if isinstance(cur, dict):
+            cur = cur.get(part)
+        elif isinstance(cur, list) and part.lstrip("-").isdigit():
+            try:
+                cur = cur[int(part)]
+            except IndexError:
+                return None
+        else:
+            return None
+    return cur
+
+
+def check_verified_example(ep: dict, where: str, errors: list[str]) -> None:
+    """A verification stamp is evidence only when its saved response proves the assertion."""
+    if not ep.get("verified"):
+        return
+    ex = ep.get("example_response")
+    if not ex:
+        fail(errors, where, "verified but no example_response")
+        return
+    path = CATALOG / ex
+    if not path.is_file():
+        fail(errors, where, f"example_response '{ex}' does not exist")
+        return
+    expect = ep.get("expect")
+    if not expect:
+        return
+    try:
+        doc = json.loads(path.read_text())
+    except (OSError, ValueError) as exc:
+        fail(errors, where, f"example_response '{ex}' is not readable JSON: {exc}")
+        return
+    if not isinstance(expect, dict) or not str(expect.get("json_path") or "").strip() \
+            or "equals" not in expect:
+        fail(errors, where, "expect needs non-empty json_path and an equals value")
+        return
+    json_path = expect["json_path"]
+    got = dig(doc, json_path)
+    wanted = expect["equals"]
+    if got != wanted:
+        fail(errors, where, f"verified example fails expect: {json_path}={got!r}, "
+                            f"wanted {wanted!r}")
 
 
 def check_status_marker(ep: dict, where: str, endpoint_status: dict[str, str],
@@ -468,11 +518,7 @@ def main(argv: list[str]) -> int:
                 else:
                     check_cost(cost, where, errors, warnings)
             if ep.get("verified"):
-                ex = ep.get("example_response")
-                if not ex:
-                    fail(errors, where, "verified but no example_response")
-                elif not (CATALOG / ex).is_file():
-                    fail(errors, where, f"example_response '{ex}' does not exist")
+                check_verified_example(ep, where, errors)
                 if not ep.get("test_request"):
                     fail(errors, where, "verified but no test_request (nothing to re-verify with)")
             if tier == "extended":
