@@ -29,6 +29,7 @@ platforms:
   tiktok: {label: "TikTok", category: "Social", featured: 1, summary: "Profiles, videos, comments, hashtags and search — plus your own account via OAuth."}
   instagram: {label: "Instagram", category: "Social", featured: 2, summary: "Public profiles, posts, comments, reels and hashtag data from Instagram."}
   youtube: {label: "YouTube", category: "Social", featured: 3, summary: "Video metadata, comments, captions, channel uploads and search from YouTube."}
+  video: {label: "AI video creation & editing", category: "Social", summary: "Turn long videos into short clips, add captions and transcripts, auto-reframe vertical video, dub languages and publish to social media."}
   x: {label: "X (Twitter)", category: "Social", featured: 4, summary: "Public profiles, posts and search — plus your own account via OAuth."}
   linkedin: {label: "LinkedIn", category: "Social", featured: 5, summary: "People, companies, posts, comments and engagement data from LinkedIn."}
   reddit: {label: "Reddit", category: "Social", featured: 6, summary: "Posts, comments and search across subreddits."}

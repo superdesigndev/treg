@@ -1,0 +1,371 @@
+provider: reap
+source:
+  docs: https://docs.reap.video/api-reference/1_introduction
+  openapi: https://docs.reap.video/openapi.json
+  curated: 2026-09-01
+
+limits: "10 requests/minute per API key; concurrent processing projects: Creator 3, Studio 10"
+pricing_url: https://reap.video/pricing
+
+proposed_capabilities:
+  video.presets.list: "List animated caption and subtitle style presets"
+  video.languages.translation.list: "List supported caption, subtitle and transcript translation languages"
+  video.languages.dubbing.list: "List supported source and target AI video dubbing languages"
+  video.upload.url.create: "Create a presigned URL for uploading a video file"
+  video.clips.create: "Create AI short-form clips from long-form video"
+  video.captions.create: "Add animated AI captions and subtitles to a video"
+  video.transcription.create: "Generate a timestamped video or audio transcript"
+  video.reframe.create: "Auto-reframe landscape video for vertical portrait or square output"
+  video.dubbing.create: "Dub a video into another language with AI voices"
+  video.project.status: "Check an AI video processing project's status"
+  video.project.clips: "List short clips generated from a long-form video project"
+  video.integrations.list: "List connected social media publishing accounts"
+  video.clip.publish: "Publish a completed short video clip to social media"
+  video.clips.schedule: "Schedule completed video clips for social media publishing"
+
+endpoints:
+  - id: reap.video.presets.list
+    kind: utility
+    capability: video.presets.list
+    platform: video
+    scope: own_account
+    method: GET
+    path: /automation/get-all-presets
+    name: "Animated caption and subtitle style presets"
+    summary: "List animated caption and subtitle templates available to the connected reap studio"
+    input:
+      queryParams:
+        page: {type: integer, required: false, note: "page number, starting at 1", example: 1}
+        pageSize: {type: integer, required: false, note: "presets per page, maximum 100", example: 20}
+    test_request:
+      queryParams: {page: 1, pageSize: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "listing presets consumes no Media or AI Credits"}
+    docs_url: https://docs.reap.video/api-reference/get-all-presets
+
+  - id: reap.video.languages.translation.list
+    kind: utility
+    capability: video.languages.translation.list
+    platform: video
+    scope: own_account
+    method: GET
+    path: /automation/get-translation-languages
+    name: "Caption, subtitle and transcript translation languages"
+    summary: "List supported source and target languages for caption, subtitle and transcript translation"
+    test_request:
+      queryParams: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "listing languages consumes no Media or AI Credits"}
+    docs_url: https://docs.reap.video/api-reference/get-translation-languages
+
+  - id: reap.video.languages.dubbing.list
+    kind: utility
+    capability: video.languages.dubbing.list
+    platform: video
+    scope: own_account
+    method: GET
+    path: /automation/get-dubbing-languages
+    name: "Supported AI video dubbing languages"
+    summary: "List supported source and target languages for multilingual AI video dubbing"
+    test_request:
+      queryParams: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "listing languages consumes no Media or AI Credits"}
+    docs_url: https://docs.reap.video/api-reference/get-dubbing-languages
+
+  - id: reap.video.upload.url.create
+    kind: utility
+    capability: video.upload.url.create
+    platform: video
+    scope: own_account
+    method: POST
+    path: /automation/get-upload-url
+    name: "Upload a video for AI editing workflows"
+    summary: "Create a presigned upload URL and upload id for an MP4 or MOV video file"
+    input:
+      body:
+        filename: {type: string, required: true, note: "file name ending in .mp4 or .mov", example: "treg-verification.mp4"}
+      bodyType: json
+      note: "PUT the video bytes to the returned uploadUrl, then pass the returned uploadId to a creation endpoint; an unused upload record can be removed with DELETE /delete-upload"
+    test_request:
+      body: {filename: "treg-verification.mp4"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "creating an upload URL consumes no Media or AI Credits"}
+    docs_url: https://docs.reap.video/api-reference/get-upload-url
+
+  - id: reap.video.clips.create
+    kind: action
+    capability: video.clips.create
+    platform: video
+    scope: own_account
+    method: POST
+    path: /automation/create-clips
+    name: "Create AI short clips from a long-form video"
+    summary: "Turn a long-form video into AI-selected short-form clips for TikTok, Reels, Shorts and social media"
+    input:
+      body:
+        sourceUrl: {type: string, required: false, note: "YouTube URL; use this or uploadId", example: "https://www.youtube.com/watch?v=83BtxZ8xMdQ"}
+        uploadId: {type: string, required: false, note: "upload id returned by video.upload.url.create; use this or sourceUrl"}
+        exportOrientation: {type: string, required: false, note: "landscape | portrait | square; portrait and square enable automatic cropping", example: "landscape"}
+        exportResolution: {type: integer, required: false, note: "720 | 1080 | 1440 | 2160; plan limits apply", example: 720}
+        captionsPreset: {type: string, required: false, note: "preset id from video.presets.list; null disables captions"}
+        enableEmojis: {type: boolean, required: false, example: false}
+        enableHighlights: {type: boolean, required: false, example: false}
+        language: {type: string, required: false, note: "source language code; auto-detected when omitted", example: "en"}
+        translationLanguage: {type: string, required: false, note: "target code from video.languages.translation.list"}
+        transcriptionScript: {type: string, required: false, note: "native | roman", example: "native"}
+        genre: {type: string, required: false, note: "talking | screenshare | gaming", example: "talking"}
+        selectedStart: {type: number, required: false, note: "processing-window start in seconds; narrows credit usage", example: 0}
+        selectedEnd: {type: number, required: false, note: "processing-window end in seconds; clipping requires at least 60 seconds", example: 64}
+        clipDurations: {type: "array[object]", required: false, note: "duration ranges as [min,max] second pairs; allowed pairs are [0,30], [30,60], [60,90], [90,180], [180,300]", example: [[0, 30]]}
+        topics: {type: "array[string]", required: false, note: "up to 10 preferred topics, each up to 100 characters", example: ["automatic video reframing"]}
+        prompt: {type: string, required: false, note: "natural-language clipping direction, maximum 1000 characters", example: "Find the clearest explanation of automatic video reframing."}
+      bodyType: json
+      note: "sourceUrl and uploadId are mutually exclusive. The endpoint starts an asynchronous project; poll video.project.status, then read video.project.clips"
+    test_request:
+      body: {sourceUrl: "https://www.youtube.com/watch?v=83BtxZ8xMdQ", exportOrientation: "landscape", exportResolution: 720, captionsPreset: null, enableEmojis: false, enableHighlights: false, genre: "talking", selectedStart: 0, selectedEnd: 64, clipDurations: [[0, 30]], topics: ["automatic video reframing"], prompt: "Find the clearest explanation of automatic video reframing."}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: minute
+      source: docs
+      source_url: https://docs.reap.video/help-center/reap-credit-system-complete-guide
+      checked: 2026-09-01
+      confidence: documented
+      note: "1 Media Credit per minute of source video processed; selectedStart and selectedEnd narrow the billed window"
+    docs_url: https://docs.reap.video/api-reference/create-clips
+
+  - id: reap.video.captions.create
+    kind: action
+    capability: video.captions.create
+    platform: video
+    scope: own_account
+    method: POST
+    path: /automation/create-captions
+    name: "Add animated AI captions and subtitles to video"
+    summary: "Generate an accurately captioned video or translated subtitles from a video URL or prior upload"
+    input:
+      body:
+        sourceUrl: {type: string, required: false, note: "direct video-file URL; use this or uploadId", example: "https://cdn.reap.video/landing-page/images/editor/hero-demo.mp4"}
+        uploadId: {type: string, required: false, note: "upload id returned by video.upload.url.create; use this or sourceUrl"}
+        captionsPreset: {type: string, required: false, note: "preset id from video.presets.list; the system default is used when omitted"}
+        language: {type: string, required: false, note: "source language code; auto-detected when omitted", example: "en"}
+        translationLanguage: {type: string, required: false, note: "target code from video.languages.translation.list"}
+        transcriptionScript: {type: string, required: false, note: "native | roman", example: "native"}
+        enableEmojis: {type: boolean, required: false, example: false}
+        enableHighlights: {type: boolean, required: false, example: false}
+        resolution: {type: integer, required: false, note: "720 | 1080 | 1440 | 2160; applies to sourceUrl and plan limits apply", example: 720}
+      bodyType: json
+      note: "sourceUrl and uploadId are mutually exclusive. The endpoint starts an asynchronous project"
+    test_request:
+      body: {sourceUrl: "https://cdn.reap.video/landing-page/images/editor/hero-demo.mp4", transcriptionScript: "native", enableEmojis: false, enableHighlights: false, resolution: 720}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: minute
+      source: docs
+      source_url: https://docs.reap.video/help-center/reap-credit-system-complete-guide
+      checked: 2026-09-01
+      confidence: documented
+      note: "1 Media Credit per minute of source video processed"
+    docs_url: https://docs.reap.video/api-reference/create-captions
+
+  - id: reap.video.transcription.create
+    kind: action
+    capability: video.transcription.create
+    platform: video
+    scope: own_account
+    method: POST
+    path: /automation/create-transcription
+    name: "Generate a timestamped video or audio transcript"
+    summary: "Transcribe video or audio into timestamped text from a media URL or prior upload"
+    input:
+      body:
+        sourceUrl: {type: string, required: false, note: "direct video- or audio-file URL; use this or uploadId", example: "https://cdn.reap.video/landing-page/images/editor/hero-demo.mp4"}
+        uploadId: {type: string, required: false, note: "upload id returned by video.upload.url.create; use this or sourceUrl"}
+        language: {type: string, required: false, note: "source language code; auto-detected when omitted", example: "en"}
+        translationLanguage: {type: string, required: false, note: "target code from video.languages.translation.list"}
+        transcriptionScript: {type: string, required: false, note: "native | roman", example: "native"}
+      bodyType: json
+      note: "sourceUrl and uploadId are mutually exclusive. The endpoint starts an asynchronous project"
+    test_request:
+      body: {sourceUrl: "https://cdn.reap.video/landing-page/images/editor/hero-demo.mp4", language: "en", transcriptionScript: "native"}
+    cost:
+      type: per_success
+      value: null
+      currency: credit
+      per: 1
+      unit: minute
+      confidence: unknown
+      note: "transcription draws from the Media Credit pool, but reap's public credit guide does not publish its exact per-minute conversion"
+    docs_url: https://docs.reap.video/api-reference/create-transcription
+
+  - id: reap.video.reframe.create
+    kind: action
+    capability: video.reframe.create
+    platform: video
+    scope: own_account
+    method: POST
+    path: /automation/create-reframe
+    name: "Auto-reframe video for vertical or square formats"
+    summary: "Automatically crop and track speakers when converting landscape video to vertical portrait or square output"
+    input:
+      body:
+        sourceUrl: {type: string, required: false, note: "direct video URL; use this or uploadId", example: "https://cdn.reap.video/landing-page/videos/ai-broll-video-editing-reap.mp4"}
+        uploadId: {type: string, required: false, note: "upload id returned by video.upload.url.create; use this or sourceUrl"}
+        genre: {type: string, required: false, note: "talking | screenshare | gaming", example: "talking"}
+        orientation: {type: string, required: false, note: "portrait | square", example: "portrait"}
+        exportResolution: {type: integer, required: false, note: "720 | 1080 | 1440 | 2160; above 1080 requires Studio", example: 720}
+        selectedStart: {type: number, required: false, note: "processing-window start in seconds", example: 0}
+        selectedEnd: {type: number, required: false, note: "processing-window end in seconds; the window must be 3 seconds to 10 minutes", example: 4}
+        disableAutoSplit: {type: boolean, required: false, example: false}
+      bodyType: json
+      note: "sourceUrl and uploadId are mutually exclusive. Only the selected window is billed"
+    test_request:
+      body: {sourceUrl: "https://cdn.reap.video/landing-page/videos/ai-broll-video-editing-reap.mp4", genre: "talking", orientation: "portrait", exportResolution: 720, selectedStart: 0, selectedEnd: 4, disableAutoSplit: false}
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: minute
+      source: docs
+      source_url: https://docs.reap.video/help-center/reap-credit-system-complete-guide
+      checked: 2026-09-01
+      confidence: documented
+      note: "2 Media Credits per minute of the selected video window"
+    docs_url: https://docs.reap.video/api-reference/create-reframe
+
+  - id: reap.video.dubbing.create
+    kind: action
+    capability: video.dubbing.create
+    platform: video
+    scope: own_account
+    method: POST
+    path: /automation/create-dubbing
+    name: "Translate and dub a video with AI voices"
+    summary: "Create multilingual AI voice dubbing for an uploaded video"
+    input:
+      body:
+        uploadId: {type: string, required: true, note: "upload id returned by video.upload.url.create after the video bytes are uploaded", example: "507f1f77bcf86cd799439011"}
+        sourceLanguage: {type: string, required: true, note: "source code from video.languages.dubbing.list", example: "en-US"}
+        targetLanguage: {type: string, required: true, note: "target code from video.languages.dubbing.list", example: "es-ES"}
+      bodyType: json
+      note: "requires a completed upload owned by the connected studio"
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 2
+      unit: minute
+      source: docs
+      source_url: https://docs.reap.video/help-center/reap-credit-system-complete-guide
+      checked: 2026-09-01
+      confidence: documented
+      note: "1 AI Credit per 2 minutes of source video"
+    untestable: "requires a completed uploadId owned by the connected reap studio; create one with video.upload.url.create and upload a permitted test video before deliberate live verification"
+    docs_url: https://docs.reap.video/api-reference/create-dubbing
+
+  - id: reap.video.project.status
+    capability: video.project.status
+    platform: video
+    scope: own_account
+    method: GET
+    path: /automation/get-project-status
+    name: "Check AI video processing project status"
+    summary: "Check whether an asynchronous AI video editing project is queued, processing, completed or failed"
+    input:
+      queryParams:
+        projectId: {type: string, required: true, note: "project id returned by a video creation endpoint", example: "507f1f77bcf86cd799439011"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "checking project status consumes no Media or AI Credits"}
+    untestable: "requires a projectId owned by the connected reap studio; verify with the id returned by a creation endpoint in the same run"
+    docs_url: https://docs.reap.video/api-reference/get-project-status
+
+  - id: reap.video.project.clips
+    capability: video.project.clips
+    platform: video
+    scope: own_account
+    method: GET
+    path: /automation/get-project-clips
+    name: "Get generated short video clips and download URLs"
+    summary: "List completed short-form clips and download URLs generated from a long-form video project"
+    input:
+      queryParams:
+        projectId: {type: string, required: true, note: "clipping project id returned by video.clips.create", example: "507f1f77bcf86cd799439011"}
+        page: {type: integer, required: false, note: "page number, starting at 1", example: 1}
+        pageSize: {type: integer, required: false, note: "clips per page, maximum 100", example: 20}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "reading generated clips consumes no Media or AI Credits"}
+    untestable: "requires a completed clipping projectId owned by the connected reap studio; verify with a project created in the same run"
+    docs_url: https://docs.reap.video/api-reference/get-project-clips
+
+  - id: reap.video.integrations.list
+    kind: account
+    capability: video.integrations.list
+    platform: video
+    scope: own_account
+    method: GET
+    path: /automation/get-integrations
+    name: "List connected social media accounts"
+    summary: "List active social media publishing integrations connected to the reap studio"
+    test_request:
+      queryParams: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "listing connected accounts consumes no Media or AI Credits"}
+    docs_url: https://docs.reap.video/api-reference/get-integrations
+
+  - id: reap.video.clip.publish
+    kind: action
+    capability: video.clip.publish
+    platform: video
+    scope: own_account
+    method: POST
+    path: /automation/publish-clip
+    name: "Publish a short video clip to social media"
+    summary: "Immediately publish a completed short video to connected social media accounts"
+    input:
+      body:
+        projectId: {type: string, required: true, note: "project containing the completed clip", example: "507f1f77bcf86cd799439011"}
+        clipId: {type: string, required: true, note: "completed clip returned by video.project.clips", example: "507f191e810c19729de860ea"}
+        integrations: {type: "array[string]", required: true, note: "integration ids from video.integrations.list", example: ["64b64c8e0f4a4b2d6c9e81a7"]}
+        title: {type: string, required: false, note: "post title; defaults to the clip title", example: "Automatic reframing in reap"}
+        description: {type: string, required: false, example: "A quick guide to automatic video reframing."}
+        tags: {type: "array[string]", required: false, note: "up to 10 post tags", example: ["videoediting", "reap"]}
+        platformSettings: {type: object, required: false, note: "optional YouTube, TikTok, Instagram and LinkedIn publishing settings"}
+      bodyType: json
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "publishing consumes no Media or AI Credits; connected platforms may enforce their own limits"}
+    untestable: "write action that publishes to real social accounts; requires deliberate manual verification with a completed clip and test integration"
+    docs_url: https://docs.reap.video/api-reference/publish-clip
+
+  - id: reap.video.clips.schedule
+    kind: action
+    capability: video.clips.schedule
+    platform: video
+    scope: own_account
+    method: POST
+    path: /automation/schedule-clips
+    name: "Schedule video clips for social media publishing"
+    summary: "Schedule one to 50 completed short videos for publishing to connected social media accounts"
+    input:
+      body:
+        clips: {type: "array[object]", required: true, note: "1-50 items shaped as {projectId, clipId, title?, description?, tags?}", example: [{projectId: "507f1f77bcf86cd799439011", clipId: "507f191e810c19729de860ea", title: "Automatic reframing in reap"}]}
+        integrations: {type: "array[string]", required: true, note: "integration ids from video.integrations.list", example: ["64b64c8e0f4a4b2d6c9e81a7"]}
+        scheduleDate: {type: integer, required: true, note: "Unix timestamp for the first clip, at least 50 minutes in the future", example: 1798848000}
+        intervalSeconds: {type: integer, required: false, note: "seconds between clips, minimum 300", example: 300}
+        platformSettings: {type: object, required: false, note: "optional YouTube, TikTok, Instagram and LinkedIn publishing settings"}
+      bodyType: json
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "scheduling consumes no Media or AI Credits; connected platforms may enforce their own limits"}
+    untestable: "write action that schedules real social posts; requires deliberate manual verification with completed clips and test integrations"
+    docs_url: https://docs.reap.video/api-reference/schedule-clips
+
+  - id: reap.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /automation/get-plan-usage
+    name: "Check reap API limits and credit balances"
+    summary: "Check the connected studio's reap plan, Media and AI Credit balances, concurrent projects and API limits"
+    test_request:
+      queryParams: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "the account and credit check is free and is also used to verify an API key"}
+    docs_url: https://docs.reap.video/api-reference/get-plan-usage

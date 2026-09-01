@@ -1,0 +1,16 @@
+<svg viewBox="82 43 126 132" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="reap">
+  <defs>
+    <linearGradient id="reap-orange" x1="96.56" y1="160.63" x2="184.96" y2="110.06" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fe7800"/><stop offset=".39" stop-color="#fc7700"/><stop offset=".53" stop-color="#f57300"/><stop offset=".63" stop-color="#e96d00"/><stop offset=".71" stop-color="#d86400"/><stop offset=".78" stop-color="#c25900"/><stop offset=".84" stop-color="#a74b00"/><stop offset=".9" stop-color="#873b00"/><stop offset=".94" stop-color="#622800"/><stop offset=".95" stop-color="#5b2500"/>
+    </linearGradient>
+    <linearGradient id="reap-blue" x1="112.05" y1="66.09" x2="198.45" y2="114.63" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#021323"/><stop offset=".02" stop-color="#01162c"/><stop offset=".09" stop-color="#011f46"/><stop offset=".17" stop-color="#00275c"/><stop offset=".27" stop-color="#002d6d"/><stop offset=".38" stop-color="#003179"/><stop offset=".55" stop-color="#003480"/><stop offset="1" stop-color="#003582"/>
+    </linearGradient>
+    <linearGradient id="reap-teal" x1="106.97" y1="58.82" x2="106.97" y2="148.31" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1bb2ae"/><stop offset=".44" stop-color="#1ab0ac"/><stop offset=".61" stop-color="#1aa9a5"/><stop offset=".72" stop-color="#189d99"/><stop offset=".82" stop-color="#168d88"/><stop offset=".9" stop-color="#147772"/><stop offset=".97" stop-color="#115d57"/><stop offset="1" stop-color="#10514b"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#reap-orange)" d="m187.05 126.07.06-.03c-.04.17-.06.34-.06.52l-66.28 37.9-.99.57c-1.1.63-2.24 1.14-3.41 1.54-.78.26-1.57.47-2.36.63-.78.15-1.56.25-2.35.31h-.05c-.38.03-.77.04-1.16.04-.61 0-1.21-.03-1.82-.09-.61-.06-1.21-.15-1.81-.27-.22-.05-.44-.09-.66-.14-1.76-.43-3.49-1.11-5.13-2.06-5.91-3.41-9.43-9.51-9.43-16.33v-2.9c5.73 3.03 12.45 2.92 18.12-.32l3.88-2.22 60.54-34.61 3.45 1.97c5.68 3.25 9.18 9 9.46 15.49Z"/>
+  <path fill="url(#reap-blue)" d="M198.88 108.62c0 .07-.01.13-.01.2h.01v.12c-.03 6.82-3.58 12.91-9.5 16.29l-2.33 1.33v-.49c-.28-6.49-3.78-12.24-9.46-15.49l-3.45-1.97-60.54-34.7v-4.43c0-6.55 3.25-12.44 8.74-15.91l-2.46-1.42 69.52 39.84c5.91 3.39 9.46 9.47 9.48 16.3v.33Z"/>
+  <path fill="url(#reap-teal)" d="M122.34 53.57c-5.49 3.47-8.74 9.36-8.74 15.91v73.74l-3.88 2.22c-5.67 3.24-12.39 3.35-18.12.32V68.48c0-1.49.17-2.95.49-4.35.09-.36.18-.72.29-1.08.13-.46.29-.92.46-1.37.06-.15.12-.31.19-.46.07-.19.15-.38.24-.56.16-.36.33-.71.51-1.05.29-.55.61-1.09.96-1.6.23-.34.46-.67.71-.99.25-.32.5-.64.78-.94.27-.31.55-.61.84-.9.85-.85 1.8-1.63 2.83-2.32.19-.14.39-.26.59-.38.18-.12.36-.22.54-.33 1.47-.85 3.02-1.49 4.61-1.92.39-.11.79-.2 1.19-.28 1.19-.24 2.41-.36 3.62-.36.4 0 .81.01 1.21.04.4.03.8.07 1.2.12h.01c.31.04.63.09.94.15.09.01.18.03.27.05.41.09.83.18 1.24.29.36.1.72.21 1.08.33.29.1.59.21.87.32.12.05.23.09.34.14.07.03.14.06.21.09.3.12.6.26.89.41.01 0 .03.01.05.02.33.16.66.34.98.52.05.03.09.05.14.08l2.46 1.42Z"/>
+</svg>
