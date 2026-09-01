@@ -56,6 +56,7 @@ sources:
   - src/treg/catalog/instagram.yaml
   - src/treg/catalog/instagram.extended.yaml
   - src/treg/catalog/justoneapi.extended.yaml
+  - src/treg/catalog/reap.yaml
   - src/treg/catalog/tikhub.extended.yaml
   - src/treg/domain/catalog/__init__.py
   - src/treg/domain/catalog/store.py
@@ -531,6 +532,9 @@ Free is spelled exactly one way — `type: free, value: 0, currency: USD, unit: 
 provenance, because 0 does not move and there is nothing to re-check. It was previously written
 three incompatible ways across 661 endpoints, which left `cost.usd` null on most of them:
 indistinguishable, downstream, from "price unknown".
+
+The `unit` is the denominator named by `per`: request and result APIs normally use `call`, `result`
+or a domain object, while duration-billed media APIs use `minute`.
 
 `scripts/catalog_cost_provenance.py` owns the mapping from what the repo knows about a provider's
 pricing to these keys, and is re-runnable — the extended tier is regenerated wholesale, so

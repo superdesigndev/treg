@@ -61,7 +61,7 @@ COST_SOURCES = ("rate_card_api", "docs", "observed", "vendor_email", "inferred")
 # its own meter and `unit` names that meter (see `Catalog.cost_view`).
 COST_UNITS = ("call", "result", "row", "record", "keyword", "page", "character", "review",
               "section", "employee", "GB", "ad", "month", "line", "target", "domain", "item",
-              "post", "user",
+              "post", "user", "minute",
               "api_unit", "analysis_unit", "retrieval_unit", "index_item_unit", "quota_row",
               "verifier_credit")
 # A platform key spends OUR money on a caller's behalf, so it is allowed only where the price is
