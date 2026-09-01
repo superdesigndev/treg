@@ -1,3 +1,5 @@
+import json
+
 from scripts import catalog_validate as validator
 
 
@@ -65,3 +67,47 @@ def test_status_marker_references_must_exist_and_end_at_a_live_endpoint():
     assert any("is not a catalog endpoint id" in error for error in broken)
     assert any("is itself broken" in error for error in broken)
     assert any("status 'Retired' not one of" in error for error in broken)
+
+
+def test_verified_example_must_satisfy_its_declared_expectation(tmp_path):
+    example = tmp_path / "examples" / "task.json"
+    example.parent.mkdir()
+    example.write_text(json.dumps({"tasks": [{"status_code": 20100}]}))
+    endpoint = {
+        "verified": "2026-08-31",
+        "example_response": "examples/task.json",
+        "expect": {"json_path": "tasks.0.status_code", "equals": 20100},
+    }
+    original = validator.CATALOG
+    try:
+        validator.CATALOG = tmp_path
+        errors: list[str] = []
+        validator.check_verified_example(endpoint, "catalog:task", errors)
+        assert errors == []
+
+        endpoint["expect"]["equals"] = 20000
+        validator.check_verified_example(endpoint, "catalog:task", errors)
+    finally:
+        validator.CATALOG = original
+    assert errors == [
+        "catalog:task: verified example fails expect: tasks.0.status_code=20100, wanted 20000"
+    ]
+
+
+def test_verified_example_must_be_readable_json(tmp_path):
+    example = tmp_path / "broken.json"
+    example.write_text("not json")
+    endpoint = {
+        "verified": "2026-08-31",
+        "example_response": "broken.json",
+        "expect": {"json_path": "ok", "equals": True},
+    }
+    original = validator.CATALOG
+    try:
+        validator.CATALOG = tmp_path
+        errors: list[str] = []
+        validator.check_verified_example(endpoint, "catalog:broken", errors)
+    finally:
+        validator.CATALOG = original
+    assert len(errors) == 1
+    assert "is not readable JSON" in errors[0]

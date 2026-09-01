@@ -15,11 +15,15 @@ sources:
   - .github/workflows/catalog-drift.yml
   - scripts/catalog_drift.py
   - scripts/catalog_ingest.py
+  - scripts/catalog_verify_extended.py
   - scripts/catalog_validate.py
+  - tests/test_catalog_verify_extended.py
+  - tests/test_catalog_validate.py
   - src/treg/catalog/aliases.yaml
   - src/treg/catalog/fx.yaml
   - src/treg/catalog/aviato.yaml
   - src/treg/catalog/crustdata.yaml
+  - src/treg/catalog/dataforseo.extended.yaml
   - src/treg/catalog/examples/aviato.companies.acquisitions.json
   - src/treg/catalog/examples/aviato.companies.employees.json
   - src/treg/catalog/examples/aviato.companies.enrich.bulk.json
@@ -766,6 +770,22 @@ goes CHEAPEST FIRST and stops before any call that would push the run past `--bu
 half-finished run has verified the cheap majority rather than an arbitrary slice. Results are
 written back into the yaml after every run and a re-run skips what already carries `verified`,
 which makes an interrupted run resumable instead of a repeat bill.
+
+HTTP success is not sufficient when an endpoint declares `expect`: the verifier resolves its
+`json_path` and requires the configured `equals` value before stamping `verified` or recording an
+observed price. This catches APIs such as DataForSEO that return HTTP 200 around a task-level
+business error; otherwise the error task's zero charge would be published as a verified free call.
+The expected value is endpoint-specific: DataForSEO live/result calls complete with `20000`, while
+successful asynchronous `task_post` calls return `20100` (Task Created). The catalog validator
+loads every saved verified example and applies the same assertion, so a stale failure response or
+an incorrect expected status cannot keep a verification stamp merely because its JSON file exists.
+
+A request that needs a freshly created upstream id is not a deterministic bulk-verifier request.
+DataForSEO's AI Summary and SERP Screenshot need a recent SERP task; Dataset Info needs an id from a
+current Dataset Search result; OnPage Content Parsing needs a completed crawl created with content
+parsing enabled. Those generated static ids expire or stop resolving, so these rows are marked
+`untestable` and carry no `test_request` instead of repeatedly publishing their 40xxx response as
+evidence. Their one-shot/live family members remain available for independent verification.
 
 Three things to know before pointing it at a new provider:
 
