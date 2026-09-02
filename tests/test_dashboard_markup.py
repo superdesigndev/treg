@@ -24,10 +24,21 @@ SHARED_DIALOGS = ["tokenAsk", "capAsk", "methodAsk", "resPick"]
 
 def test_oauth_entry_opens_the_existing_sign_in_modal_without_minting_a_sandbox():
     assert "qs.get('signin')==='oauth'" in INDEX
-    assert "else if(oauthSignin) this.demo.signin=true" in INDEX
+    assert "else this.demo.signin=true;  // OAuth returns, use-case CTA arrivals (?ref=)" in INDEX
     assert "Sign in to continue connecting Treg" in INDEX
     assert "After sign-in, review the requested access before you approve it." in INDEX
     assert '<details v-if="!oauthSignin" style="margin-top:12px;text-align:left">' in INDEX
+
+
+def test_ref_entry_opens_sign_in_without_minting_a_sandbox():
+    boot = INDEX[INDEX.index("const qs = new URLSearchParams(location.search)") :]
+    assert "ref = qs.get('ref')" in boot
+    assert "ref || oauthSignin" in boot
+    assert "else this.demo.signin=true;  // OAuth returns, use-case CTA arrivals (?ref=)" in boot
+    assert "sbxInit" not in boot
+    assert "/demo/sandbox" not in INDEX
+    assert '<section ref="demo">' not in INDEX
+    assert "localStorage.getItem('treg-sbx')" not in INDEX
 
 
 # Every <template> open/close, because only a balanced count locates the view boundaries: the file

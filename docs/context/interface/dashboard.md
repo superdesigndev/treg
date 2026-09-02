@@ -88,8 +88,9 @@ that redirect can drop the query string. No Google tag, first-party cookie only;
 The design tokens are now **shared across every served page** (`index.html`, `tutorial.html`,
 `tour/index.html`): **system mono** (`ui-monospace, "SF Mono", …` — `IBM Plex Mono` was never actually
 loaded, so this makes rendering consistent for everyone), `--r:14 / --rb:9`, a `14px` base, and one
-shared `.btn` / `.iconbtn` height so controls align. The logged-out `/` is now the **landing + sandbox
-studio** (see [landing-sandbox](landing-sandbox.md)), not a login box; sign-in is a modal.
+shared `.btn` / `.iconbtn` height so controls align. The logged-out SPA keeps the hero, key-leak
+explanation, footer CTA, and sign-in modal, but its anonymous sandbox studio has been removed. The
+backend sandbox routes remain temporarily for a later cleanup (see [landing-sandbox](landing-sandbox.md)).
 
 An OAuth authorization that needs sign-in redirects to `/?signin=oauth`. The dashboard reads this as
 a UI cue, removes it from the visible URL, and opens the same modal with generic connection copy. It
@@ -97,6 +98,11 @@ does not create a sandbox session. During this flow the modal hides the agent/CL
 because that token does not create the browser session required to resume authorization. The
 protected OAuth return path stays in an HttpOnly cookie, so GitHub, Google, and email-code sign-in all
 resume the same authorization flow without putting OAuth request data in the URL.
+
+A logged-out use-case CTA arrival at `/app?ref=<page>` follows the same front door: boot keeps `ref`
+long enough for attribution, strips it with the other one-shot parameters via `history.replaceState`,
+and opens the sign-in modal. It never calls `sbxInit` or `POST /demo/sandbox`. A plain logged-out
+`/app` visit still redirects to `/`.
 
 The **authed** shell is sidebar-first. The **top bar** is just brand + search. The **left sidebar**
 stacks: (top) an **org block** — role + team name — that on click opens a switcher **dropdown** where

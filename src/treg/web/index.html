@@ -561,97 +561,9 @@ addEventListener('load', function(){
   :root[data-theme=light] .term{background:#201c15;color:#f0e9d9}
   .lp-signin{padding-top:44px} .lp-signin .loginbox{margin:0 auto}
   .lp-foot{text-align:center;font-family:var(--mono);font-size:12px;color:var(--muted);padding-top:36px} .lp-foot a{color:var(--muted)} .lp-foot a:hover{color:var(--ink)}
-  /* ---- landing console v6 (lc-*) ---- */
+  /* ---- logged-out landing (lc-*) ---- */
   .lc-chips{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:20px}
   .lc-chips span{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:6px 13px}
-  /* guide spine */
-  .lc-guide{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;margin:0 0 14px;font-size:12.5px;color:var(--muted)}
-  .lc-guide .lc-gt{color:var(--ink);font-weight:600}
-  .lc-guide .lc-gs{display:inline-flex;align-items:center;gap:7px}
-  .lc-guide .lc-gs b{display:inline-flex;align-items:center;justify-content:center;width:19px;height:19px;border-radius:999px;background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-size:11px;font-weight:700}
-  .lc-guide .lc-ga{color:var(--accent);opacity:.7}
-  @media(max-width:640px){ .lc-guide .lc-ga{display:none} }
-  /* spotlight on the element the tour points at - TEAL, complementary to the orange coach so it's not all-orange */
-  .tour-spot{position:relative;z-index:60;box-shadow:0 0 0 2px #5aa9a6,0 0 0 8px rgba(90,169,166,.18);border-radius:var(--r);transition:box-shadow .25s}
-  /* the branded coach-mark - anchored to the element it points at (top/left set inline) */
-  .lc-coach{position:fixed;z-index:80;background:var(--panel);border:1px solid var(--accent);border-radius:13px;
-    padding:13px 15px 11px;box-shadow:0 16px 44px rgba(0,0,0,.42);display:flex;flex-direction:column;gap:8px}
-  .lc-coach-arrow{position:absolute;width:13px;height:13px;background:var(--panel);border:1px solid var(--accent);transform:rotate(45deg);left:50%;margin-left:-7px}
-  .lc-coach.arrow-down .lc-coach-arrow{bottom:-7px;border-top:0;border-left:0}
-  .lc-coach.arrow-up .lc-coach-arrow{top:-7px;border-bottom:0;border-right:0}
-  .lc-coach-x{position:absolute;top:8px;right:10px;border:0;background:none;color:var(--muted);cursor:pointer;font-size:13px}
-  .lc-coach-x:hover{color:var(--ink)}
-  .lc-coach-hd{display:flex;align-items:center;gap:8px}
-  .lc-coach-logo{font-family:var(--mono);font-size:16px;color:var(--accent);line-height:1}
-  .lc-coach-title{font-family:var(--mono);font-weight:700;font-size:13.5px;color:var(--ink)}
-  .lc-coach-txt{font-family:var(--sans);font-size:13px;line-height:1.5;color:var(--muted);min-height:40px}
-  .lc-coach-caret{color:var(--accent);animation:coachblink 1.1s steps(1) infinite;margin-left:1px}
-  @keyframes coachblink{50%{opacity:0}}
-  .lc-coach-foot{display:flex;align-items:center;gap:7px;margin-top:2px}
-  .lc-coach-dots{display:inline-flex;gap:5px}
-  .lc-coach-dots i{width:6px;height:6px;border-radius:999px;background:var(--line);display:inline-block;transition:.2s}
-  .lc-coach-dots i.on{background:var(--accent);width:15px}
-  .btn.ghost{background:none;border-color:transparent;color:var(--muted)} .btn.ghost:hover{color:var(--ink)}
-  .coach-enter-active,.coach-leave-active{transition:opacity .2s} .coach-enter-from,.coach-leave-to{opacity:0}
-  /* your-own-tools bar (sandbox) */
-  .lc-vbar{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:11px 14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-  .lc-vbar>span{align-self:center}
-  .lc-vl{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
-  .lc-vchip{display:inline-flex;align-items:center;gap:7px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:4px 6px 4px 11px;font-size:12.5px;line-height:1;height:29px;box-sizing:border-box}
-  .lc-vchip .kn{color:var(--accent);font-weight:600} .lc-vchip .kv{color:var(--muted)}
-  .lc-vchip .x{border:0;background:none;color:var(--muted);font-size:13px;padding:0 2px;cursor:pointer;visibility:hidden;line-height:1} .lc-vchip:hover .x{visibility:visible} .lc-vchip .x:hover{color:var(--red)}
-  .lc-vadd{display:flex;gap:6px;margin-left:auto;flex-wrap:nowrap;align-items:center;height:30px}
-  .lc-vadd input,.lc-vadd .btn{height:30px;line-height:1;box-sizing:border-box}
-  @media(max-width:560px){.lc-vadd{flex-wrap:wrap;height:auto}}
-  .lc-vadd input{font-family:var(--mono);font-size:12.5px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:999px;padding:6px 12px;min-width:0}
-  .lc-vadd .kn{width:96px} .lc-vadd .kv{width:120px}
-  .lc-vhint{font-size:11px;color:var(--muted);text-align:center;margin-top:8px}
-  /* workspace */
-  .lc-ws{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
-  .lc-wsh{display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
-  .lc-wstabs{display:inline-flex;gap:3px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px}
-  .lc-wstab{border:0;background:none;color:var(--muted);border-radius:999px;padding:6px 18px;font-size:13px;font-weight:600;cursor:pointer}
-  .lc-wstab.on{background:var(--accent);color:var(--onAccent)}
-  .lc-wssub{margin-left:auto;font-family:var(--sans);font-size:12.5px;color:var(--muted)}
-  .lc-panel{padding:12px 14px}
-  .lc-row{display:flex;align-items:center;gap:9px;padding:10px 11px;border-radius:var(--rb);font-size:13px}
-  .lc-row.clk{cursor:pointer} .lc-row:hover{background:var(--panel2)} .lc-row.on{background:var(--panel2);box-shadow:inset 2px 0 0 var(--accent)}
-  .lc-row.dim{color:var(--muted)}
-  .lc-meth{font-size:11px;font-weight:700;color:var(--green);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
-  .lc-host{color:var(--ink);word-break:break-all} .lc-host .path{color:var(--muted)}
-  .lc-key{font-size:10.5px;color:var(--amber);border:1px solid var(--line);border-radius:999px;padding:1px 8px;white-space:nowrap} .lc-key.warn{color:var(--red);border-color:var(--red)}
-  .lc-sp{flex:1}
-  .lc-x{color:var(--muted);border:0;background:none;font-size:14px;visibility:hidden;padding:0 2px;cursor:pointer} .lc-row:hover .lc-x,.lc-skh:hover .lc-x{visibility:visible} .lc-x:hover{color:var(--red)}
-  .lc-addwrap{margin-top:8px;border:1px dashed var(--line);border-radius:var(--rb);padding:12px}
-  .lc-addwrap input,.lc-addwrap select{font-family:var(--mono);font-size:12.5px;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:7px;padding:8px 9px;min-width:0}
-  .lc-addrow{display:flex;gap:8px;margin-bottom:10px} .lc-addwrap .grow{flex:1}
-  .lc-bindrow{display:flex;align-items:center;gap:10px;background:color-mix(in srgb,var(--accent) 8%,transparent);border:1px solid var(--line);border-radius:7px;padding:9px 11px;flex-wrap:wrap}
-  .lc-bindrow .bl{font-size:12px;color:var(--ink)} .lc-bindrow select{border-color:var(--accent);font-weight:600;color:var(--accent)} .lc-bindrow .mut{color:var(--muted)}
-  .lc-needrow{display:flex;align-items:center;gap:8px;font-size:12.5px;margin-bottom:10px;flex-wrap:wrap} .lc-ok{color:var(--green)}
-  .lc-addhint{font-size:11.5px;color:var(--muted)} .lc-addhint code{color:var(--ink)}
-  .lc-cap{font-size:11px;color:var(--muted);text-align:center;padding:8px}
-  /* skill package */
-  .lc-skill{border:1px solid var(--line);border-radius:var(--rb);overflow:hidden;background:var(--panel2);margin-bottom:8px}
-  .lc-skh{display:flex;align-items:center;gap:8px;padding:10px 12px} .lc-skh .box{font-size:15px} .lc-skh b{color:var(--ink)}
-  .lc-sbadge{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--onAccent);background:var(--accent);border-radius:999px;padding:1px 8px}
-  .lc-skmeta{font-family:var(--sans);font-size:12px;color:var(--muted);padding:0 12px 8px}
-  .lc-ftabs{display:flex;gap:2px;padding:0 10px}
-  .lc-ftab{font-size:11.5px;color:var(--muted);background:var(--bg);border:1px solid var(--line);border-bottom:0;border-radius:7px 7px 0 0;padding:5px 11px;cursor:pointer}
-  .lc-ftab.on{color:var(--accent);background:var(--panel);font-weight:600}
-  .lc-fbody{margin:0 10px;background:var(--panel);border:1px solid var(--line);border-radius:0 7px 7px 7px;padding:12px 14px;font-size:12px;white-space:pre-wrap;color:var(--ink);overflow-x:auto}
-  .lc-skinstall{display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:12px;color:var(--muted);flex-wrap:wrap} .lc-skinstall code{color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:2px 8px}
-  .lc-runbox{padding:0 12px 12px} .lc-runcap{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin:8px 0 5px} .lc-runcap code{color:var(--ink)}
-  /* result + terminal */
-  .lc-result{margin-top:12px;border:1px solid var(--accent);border-radius:var(--rb);overflow:hidden}
-  .lc-resulth{display:flex;align-items:center;gap:8px;padding:9px 13px;background:color-mix(in srgb,var(--accent) 9%,transparent);border-bottom:1px solid var(--line)}
-  .lc-resulth .lbl{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
-  .lc-resulth .badge{margin-left:auto;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--amber);border:1px solid var(--amber);border-radius:999px;padding:2px 8px}
-  .lc-rbody{padding:12px 13px}
-  .lc-inject{font-size:13px} .lc-inject b{color:var(--accent);word-break:break-all} .lc-inject .dim{color:var(--muted)}
-  .lc-pre{margin:10px 0 0;background:var(--bg);border:1px solid var(--line);border-radius:var(--rb);padding:11px 13px;overflow-x:auto;font-size:12px;color:var(--ink);white-space:pre;font-family:var(--mono);max-height:280px}
-  .lc-dim{color:var(--muted)}
-  .lc-term{margin-top:12px} .lc-term .cap{font-family:var(--sans);font-size:12.5px;color:var(--ink);margin-bottom:6px} .lc-term .cap b{color:var(--accent)}
-  .lc-term .sub{font-family:var(--sans);font-size:11.5px;color:var(--muted);margin-top:8px} .lc-term .sub b{color:var(--ink)}
   .md-dd{position:relative;display:inline-block}
   .md-menu{position:absolute;left:0;top:calc(100% + 6px);background:var(--panel);border:1px solid var(--line);border-radius:var(--rb);box-shadow:0 12px 30px rgba(0,0,0,.3);padding:5px;display:none;flex-direction:column;gap:2px;width:max-content;min-width:170px;z-index:30}
   .md-menu.show{display:flex}
@@ -671,7 +583,6 @@ addEventListener('load', function(){
   .lc-scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;place-items:center;z-index:60;padding:20px} .lc-scrim.open{display:grid}
   .lc-modal{width:min(400px,94vw);background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:26px;text-align:center;position:relative}
   .lc-modal .cls{position:absolute;top:10px;right:14px;background:none;border:0;color:var(--muted);font-size:18px;cursor:pointer}
-
 /* ================================================================
    MONOLOGUE / PIXEL RESKIN — matches the new landing (landing.html).
    Token-level override: charcoal + grain, DM Mono, Geist Pixel display,
@@ -704,7 +615,6 @@ h1{font-family:var(--display);font-weight:400;font-size:23px;letter-spacing:0}
 .seg{border-radius:999px} .seg button{border-radius:999px}
 .seg button.on{background:linear-gradient(180deg,#fdfcf7,#eae7de);color:#1c1b19}
 .seg button.on span{color:rgba(28,27,25,.55)}
-.lc-wstab.on{background:linear-gradient(180deg,#fdfcf7,#eae7de);color:#1c1b19}
 th{background:rgba(0,0,0,.25)}
 .ttable-wrap,table{box-shadow:rgba(255,255,255,.07) 0 1px 0 inset}
 .stat{background:linear-gradient(180deg,#201f1d,#181715);
@@ -879,7 +789,7 @@ h1{font-size:22px;letter-spacing:-.44px} h2{font-size:17px} h3{font-size:15px}
 .btn.primary{background:var(--inverse);border-color:var(--inverse);color:var(--inverse-ink);
   box-shadow:none;font-weight:500}
 .btn.primary:hover{background:var(--inverse);border-color:var(--inverse);opacity:.88}
-.seg button.on,.lc-wstab.on{background:var(--inverse);color:var(--inverse-ink);box-shadow:none}
+.seg button.on{background:var(--inverse);color:var(--inverse-ink);box-shadow:none}
 .seg button.on span{color:color-mix(in srgb,var(--inverse-ink) 55%,transparent)}
 .iconbtn{background:none;border:1px solid var(--line2);color:var(--muted);
   transition:background-color .18s var(--ease),color .18s var(--ease)}
@@ -1171,131 +1081,6 @@ a:hover{text-decoration-color:var(--muted)}
       </div>
     </section>
 
-    <section ref="demo">
-      <!-- GUIDE SPINE -->
-      <div class="lc-guide">
-        <span class="lc-gt">The other half — your own keys &amp; skills. Try it live, no signup:</span>
-        <span class="lc-gs"><b>1</b> your key stays on the server</span>
-        <span class="lc-ga">→</span>
-        <span class="lc-gs"><b>2</b> point at an API or a skill</span>
-        <span class="lc-ga">→</span>
-        <span class="lc-gs"><b>3</b> call it with just a token</span>
-      </div>
-
-      <!-- YOUR-KEYS BAR -->
-      <div id="tour-vault" class="lc-vbar" :class="{'tour-spot':demo.tour.on&&sbxTourStep.spot==='vault'}">
-        <span class="lc-vl">🔒 Your keys</span>
-        <span style="display:flex;gap:8px;flex-wrap:wrap">
-          <span v-for="s in demo.secrets" :key="s.id" class="lc-vchip"><span class="kn">{{s.name}}</span><span class="kv">••••••</span><button class="x" @click="sbxRmSecret(s)" aria-label="remove">✕</button></span>
-        </span>
-        <span class="lc-vadd">
-          <input class="kn" v-model="demo.ns.name" placeholder="NEW_KEY" @keyup.enter="sbxAddSecret"/>
-          <input class="kv" v-model="demo.ns.value" placeholder="value" @keyup.enter="sbxAddSecret"/>
-          <button class="btn sm" @click="sbxAddSecret">＋ add key</button>
-        </span>
-      </div>
-      <div class="lc-vhint">treg holds these · referenced by name · never downloaded to a machine</div>
-
-      <!-- WORKSPACE -->
-      <div id="tour-ws" class="lc-ws" :class="{'tour-spot':demo.tour.on&&sbxTourStep.spot==='ws'}">
-        <div class="lc-wsh">
-          <div class="lc-wstabs">
-            <button class="lc-wstab" :class="{on:demo.view==='endpoints'}" @click="demo.view='endpoints'">Endpoints</button>
-            <button class="lc-wstab" :class="{on:demo.view==='skills'}" @click="demo.view='skills'">Skills</button>
-          </div>
-          <span class="lc-wssub">{{demo.view==='endpoints'?'One API URL, called with a token. treg injects the key.':'A whole capability your agent loads. Some need a key, some are just know-how.'}}</span>
-        </div>
-        <div class="lc-panel">
-          <!-- ENDPOINTS -->
-          <template v-if="demo.view==='endpoints'">
-            <div v-for="t in demo.tools" :key="t.id" class="lc-row clk" :class="{on:demo.ran&&demo.ran.id===t.id}" @click="runTool(t)">
-              <span class="lc-meth">GET</span><span class="lc-host">{{t.host}}<span class="path">{{callPath(t)}}</span></span>
-              <span class="lc-key" :class="{warn:!bindHave(t)}">🔑 {{bindKeyName(t)}}</span><span class="lc-sp"></span>
-              <button class="lc-x" @click.stop="sbxRmTool(t)" aria-label="remove">✕</button>
-              <button class="btn sm" @click.stop="runTool(t)">▶ Run</button>
-            </div>
-            <div v-if="!demo.tools.length" class="lc-row dim">No endpoints yet - add one below.</div>
-            <div v-if="demo.tools.length < demo.maxTools" class="lc-addwrap">
-              <div class="lc-addrow">
-                <input v-model="demo.nt.name" placeholder="name" style="max-width:88px"/>
-                <input class="grow" v-model="demo.nt.base_url" placeholder="https://api.service.com/path"/>
-                <span class="bl">🔑</span>
-                <select v-model="demo.nt.secret_id"><option v-for="s in demo.secrets" :key="s.id" :value="s.id">{{s.name}}</option></select>
-                <button class="btn sm primary" @click="sbxAddTool">＋ Add</button>
-              </div>
-              <p class="lc-addhint">Now add your own. This one's prefilled with the real <b>PostHog</b> API and your <span class="mono">POSTHOG_KEY</span> - just hit <b>Add</b> (or type any URL).</p>
-            </div>
-            <div v-else class="lc-cap">sandbox limit ({{demo.maxTools}}) - sign up for more</div>
-
-            <div v-if="demo.result || demo.err" id="tour-result" class="lc-result" :class="{'tour-spot':demo.tour.on&&sbxTourStep.spot==='result'}">
-              <div class="lc-resulth"><span class="lbl">What {{demo.ran?demo.ran.host:'the API'}} received</span><span class="badge">sandbox · dummy</span></div>
-              <div class="lc-rbody">
-                <div v-if="demo.err" class="banner" style="margin:0">{{demo.err}}</div>
-                <template v-else>
-                  <div class="lc-inject"><span class="dim">🔑 your call sent <b style="color:var(--ink)">no key</b> - only a token. treg injected →</span> <b>{{injectedLine}}</b></div>
-                  <pre class="lc-pre">{{resultBody}}</pre>
-                </template>
-              </div>
-            </div>
-
-            <div v-if="demo.token" id="tour-curl" class="lc-term" :class="{'tour-spot':demo.tour.on&&sbxTourStep.spot==='curl'}">
-              <div class="cap">Same call from your terminal - <b>works now, nothing to install:</b></div>
-              <div class="lc-codewrap"><button class="lc-cp" @click="copyText(curlRaw,'curl')">{{demo.copied==='curl'?'✓ copied':'copy'}}</button><pre v-html="curlHtml"></pre></div>
-              <p class="sub">No key in the command. Revoke the token anytime - <b>your key never moves</b>.</p>
-            </div>
-          </template>
-
-          <!-- SKILLS -->
-          <template v-else>
-            <div v-for="sk in demo.skills" :key="sk.name" class="lc-skill">
-              <div class="lc-skh"><span class="box">📦</span><b>{{sk.name}}</b> <span class="lc-sbadge">skill</span>
-                <span class="lc-key" :class="{warn:!haveKey(sk.key)}">needs 🔑 {{sk.key}} {{haveKey(sk.key)?'✓':'– add it'}}</span>
-                <span class="lc-sp"></span><button class="lc-x" @click="sbxRmSkill(sk)" aria-label="remove">✕</button></div>
-              <div class="lc-skmeta">A folder your agent loads. It calls its API through treg with <b>your</b> token - the key stays on the server.</div>
-              <div class="lc-ftabs"><button v-for="f in ['SKILL.md','treg.json','.secret']" :key="f" class="lc-ftab" :class="{on:(sk.tab||'SKILL.md')===f}" @click="sk.tab=f">{{f}}</button></div>
-              <div class="lc-fbody">{{sk.files[sk.tab||'SKILL.md']}}</div>
-              <div class="lc-skinstall"><button class="btn sm primary" @click="sk.runOpen=!sk.runOpen">▶ Run in Claude Code</button>
-                <span>· installs into <code>./.claude/skills</code> · uses your treg token · key stays on the server</span></div>
-              <div v-if="sk.runOpen" class="lc-runbox">
-                <div class="lc-runcap">1 · in your project directory (creates <code>./.claude/skills/{{sk.name}}/</code> if it isn't there yet):</div>
-                <div class="lc-codewrap"><button class="lc-cp" @click="copyText(installCmd(sk),'i'+sk.name)">{{demo.copied==='i'+sk.name?'✓ copied':'copy'}}</button><pre v-html="installHtml(sk)"></pre></div>
-                <div class="lc-runcap">2 · open Claude Code there, then just ask:</div>
-                <div class="lc-codewrap"><button class="lc-cp" @click="copyText(sk.prompt,'p'+sk.name)">{{demo.copied==='p'+sk.name?'✓ copied':'copy'}}</button><pre>{{sk.prompt}}</pre></div>
-                <p class="lc-addhint">Claude Code loads the skill and runs it - calling the API <b>through treg with your token</b>. No key on your machine. (Sandbox token works now; sign up for your own.)</p>
-              </div>
-            </div>
-            <div v-if="!demo.skills.length" class="lc-row dim">No skills added yet - add one below.</div>
-            <div class="lc-addwrap">
-              <div class="lc-addrow"><select class="grow" v-model="demo.skpick"><option v-for="s in demo.samples" :key="s.name" :value="s.name">{{s.label}}</option></select></div>
-              <div class="lc-needrow"><span>This skill needs</span><span class="lc-key" :class="{warn:!skillNeedHave}">🔑 {{skillNeed}}</span>
-                <span v-if="skillNeedHave" class="lc-ok">✓ you have this key</span>
-                <button v-else class="btn sm" @click="sbxAddNeeded(skillNeed)">＋ add {{skillNeed}}</button>
-                <span class="lc-sp"></span><button class="btn sm primary" @click="sbxAddSkill" :disabled="!skillNeedHave">＋ Add skill</button></div>
-              <p class="lc-addhint">A skill declares the key it needs - you don't pick one. treg injects it. (Or paste a <code>skill.json</code>.)</p>
-            </div>
-          </template>
-        </div>
-      </div>
-
-      <!-- GUIDED TOUR COACH (anchored to the element it points at) -->
-      <transition name="coach">
-        <div v-if="demo.tour.on" ref="coach" class="lc-coach" :class="'arrow-'+(demo.tour.pos.arrow||'down')"
-             :style="{top:demo.tour.pos.top+'px', left:demo.tour.pos.left+'px', width:demo.tour.pos.width+'px'}"
-             role="dialog" aria-label="Guided tour">
-          <span class="lc-coach-arrow"></span>
-          <button class="lc-coach-x" @click="sbxTourSkip" aria-label="Skip tour">✕</button>
-          <div class="lc-coach-hd"><span class="lc-coach-logo">▚</span><span class="lc-coach-title">{{sbxTourStep.title}}</span></div>
-          <div class="lc-coach-txt">{{demo.tour.typed}}<span class="lc-coach-caret">▋</span></div>
-          <div class="lc-coach-foot">
-            <span class="lc-coach-dots"><i v-for="(s,i) in sbxTourSteps" :key="i" :class="{on:i===demo.tour.step}"></i></span>
-            <span class="lc-sp"></span>
-            <button class="btn sm ghost" @click="sbxTourSkip">Skip</button>
-            <button v-if="demo.tour.step>0" class="btn sm" @click="sbxTourBack">← Back</button>
-            <button class="btn sm primary" @click="sbxTourNext">{{demo.tour.step===sbxTourSteps.length-1?'Got it ✓':'Next →'}}</button>
-          </div>
-        </div>
-      </transition>
-    </section>
 
     <section class="lp-section">
       <div class="lp-head"><h2>Three ways a key leaks. treg closes all three.</h2>
@@ -4086,15 +3871,7 @@ createApp({
       agentGuide:null, agentGuideCopied:false, agentRowCopied:null,
       vendorAsk:false, vendorCopied:false,
       reqAsk:false, reqDone:false, reqBusy:false, reqErr:'', reqForm:{capability:'', note:'', contact:''},
-      demo:{
-        token:null, org_slug:'', ttl:60, busy:false, err:'', copied:'', signin:false,
-        view:'endpoints', secrets:[], tools:[], maxSecrets:3, maxTools:3,
-        ns:{name:'', value:''},
-        nt:{name:'', base_url:'', secret_id:null, header:'Authorization', format:'Bearer {secret}'},
-        result:null, ran:null,
-        samples:[], skills:[], skpick:'',
-        tour:{on:false, step:0, typed:'', done:false, pos:{top:0, left:0, width:380, arrow:'down'}},
-      },
+      demo:{signin:false},
     };
   },
   computed:{
@@ -4331,19 +4108,6 @@ createApp({
     anyTagged(){  // hide the column entirely for teams that never send X-Treg-Meta
       return (this.calls||[]).some(c=>c.tags && Object.keys(c.tags).length);
     },
-    sbxTourSteps(){ return [
-      {spot:'vault', view:'endpoints', title:"Hi, I'm treg 👋",
-       body:"Your team's own keys live here, held server-side, never on a machine. Stripe and PostHog are already in. Add your own with + add key."},
-      {spot:'ws', view:'endpoints', title:"1 · Point at an API",
-       body:"An endpoint is one API URL. Stripe is live below. I've prefilled the real PostHog with your key, just hit + Add."},
-      {spot:'ws', view:'skills', title:"2 · Or share a skill",
-       body:"A skill is a capability your agent loads. Some need a key, some are just know-how. The key stays on the server, never in the skill."},
-      {spot:'result', view:'endpoints', title:"3 · Called with no key",
-       body:"Your call sent no key, only a token. treg injected the real key server-side. This is exactly what the API received."},
-      {spot:'curl', view:'endpoints', title:"4 · Run it anywhere",
-       body:"The same call from your terminal. Copy it and run it now, no install, and no key in the command."},
-    ]; },
-    sbxTourStep(){ return this.sbxTourSteps[this.demo.tour.step] || this.sbxTourSteps[0]; },
     token(){ return this.cfg.active ? (this.cfg.orgs[this.cfg.active]||{}).token : null; },
     authed(){ return this.sessionMode || !!this.token; },
     activeSlugNow(){ return this.sessionMode ? this.activeSlug : this.cfg.active; },
@@ -4382,31 +4146,6 @@ createApp({
       ].join('\n');
       return this.tutHL(t,'cmd');
     },
-    demoTermURL(){
-      const t = this.demo.ran || this.demo.tools[0];
-      if(!t) return 'https://api.example.com/v1/me';
-      const ex = (t.examples && t.examples[0]) ? t.examples[0].path : '';
-      return t.base_url.replace(/\/$/,'') + '/' + (ex||'');
-    },
-    demoTermRaw(){ return 'treg login --token '+(this.demo.token||'<token>')+'\ntreg call '+this.demoTermURL; },
-    demoTermHtml(){ return this.tutHL(this.demoTermRaw,'cmd'); },
-    lastUrl(){ return this.demoTermURL; },
-    curlRaw(){ return 'curl '+this.proxy+'/call/'+this.lastUrl+' \\\n  -H "X-Treg-Token: '+(this.demo.token||'<token>')+'"'; },
-    curlHtml(){
-      const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-      return '<span class="hl-cmd">curl</span> '+esc(this.proxy)+'/call/<span class="hl-str">'+esc(this.lastUrl)+'</span> \\\n'
-        + '  <span class="hl-flag">-H</span> <span class="hl-str">"X-Treg-Token: '+esc(this.demo.token||'<token>')+'"</span>';
-    },
-    injectedLine(){
-      const h=(this.demo.result&&this.demo.result.injected&&this.demo.result.injected.headers)||{};
-      const parts=Object.entries(h).map(([k,v])=>k+': '+v);
-      const q=(this.demo.result&&this.demo.result.injected&&this.demo.result.injected.query)||{};
-      Object.entries(q).forEach(([k,v])=>parts.push('?'+k+'='+v));
-      return parts.join('   ·   ') || '(no binding)';
-    },
-    resultBody(){ return this.demo.result ? JSON.stringify(this.demo.result.data, null, 2) : ''; },
-    skillNeed(){ const s=this.demo.samples.find(x=>x.name===this.demo.skpick); return s?s.key:''; },
-    skillNeedHave(){ return this.haveKey(this.skillNeed); },
     snip(){ return this.buildSnippet(this.snippetTab); },
     recipeSnip(){ return this.recipeSnippet(this.recipeTab); },
     tutData(){ return window.TREG_TUTORIAL || {concepts:[], roles:{cols:[],rows:[]}, steps:[]}; },
@@ -4667,150 +4406,7 @@ createApp({
       if(d) localStorage.setItem('treg-next', location.pathname); },
     githubLogin(){ this._stashNext(); location.href='/auth/github'; },
     googleLogin(){ this._stashNext(); location.href='/auth/google'; },
-    demoScroll(){ this.$refs.demo && this.$refs.demo.scrollIntoView({behavior:'smooth',block:'start'}); },
-    scrollToSignin(){ this.$refs.signin && this.$refs.signin.scrollIntoView({behavior:'smooth',block:'start'}); },
-    async sbx(path, opts={}){  // fetch against the sandbox, carrying the sandbox token explicitly
-      const h={'ngrok-skip-browser-warning':'1', ...(opts.headers||{})};
-      if(this.demo.token) h['X-Treg-Token']=this.demo.token;
-      if(opts.body) h['content-type']='application/json';
-      const r=await fetch(path,{...opts,headers:h});
-      if(!r.ok){ let d=''; try{ d=(await r.json()).detail; }catch(e){} const e=new Error(d); e.status=r.status; e.detail=d; throw e; }
-      return r.status===204?null:r.json();
-    },
-    _sbxErr(e, fallback){ this.demo.err = e.status===429 ? 'Too many sandboxes from your network - try again in a bit.' : (e.detail||fallback); },
-    async sbxInit(){  // reuse this browser's sandbox across reloads (within TTL), else mint fresh
-      const saved=localStorage.getItem('treg-sbx');
-      if(saved){ this.demo.token=saved;
-        try{ await this.refreshSandbox(); if(this.demo.tools[0]) await this.runTool(this.demo.tools[0]); this._sbxGreet(); return; }
-        catch(e){ this.demo.token=null; localStorage.removeItem('treg-sbx'); }
-      }
-      await this.startSandbox();
-    },
-    _sbxGreet(){ setTimeout(()=>{ if(!this.demo.tour.on && !this.demo.tour.done) this.sbxTourStart(); }, 800); },
-    async startSandbox(){
-      this.demo.busy=true; this.demo.err='';
-      try{
-        const s=await this.sbx('/demo/sandbox',{method:'POST'});  // no token yet → plain mint
-        this.demo.token=s.token; this.demo.org_slug=s.org_slug; this.demo.ttl=s.ttl_min;
-        this.demo.maxSecrets=s.max_secrets; this.demo.maxTools=s.max_tools;
-        localStorage.setItem('treg-sbx', s.token);
-        await this.refreshSandbox();
-        if(this.demo.tools[0]) await this.runTool(this.demo.tools[0]);  // fill the result on arrival
-        this._sbxGreet();   // auto-start the guided tour (both fresh + reused sandboxes)
-      }catch(e){ this._sbxErr(e,'Could not start the sandbox - please retry.'); }
-      finally{ this.demo.busy=false; }
-    },
-    async refreshSandbox(){
-      const [secrets,tools,samples]=await Promise.all([this.sbx('/secrets'), this.sbx('/tools'), this.sbx('/skills/samples').catch(()=>[])]);
-      this.demo.secrets=secrets; this.demo.tools=tools; this.demo.samples=samples;
-      if(!this.demo.skpick && samples.length) this.demo.skpick=samples[0].name;
-      if(!this.demo.nt.secret_id && secrets.length) this.demo.nt.secret_id=secrets[0].id;
-      if(!this.demo.nt.base_url) this.sbxShuffle();  // prefill the add-endpoint URL with a random throwaway API
-    },
-    bindKeyName(t){ const b=(t.bindings||[])[0]||{}; const s=this.demo.secrets.find(x=>x.id===b.secret_id); return s?s.name:'-'; },
-    bindHave(t){ return this.bindKeyName(t)!=='-'; },
-    callPath(t){ const ex=(t.examples&&t.examples[0])?t.examples[0].path:''; return '/'+(ex||''); },
-    haveKey(name){ return !!name && this.demo.secrets.some(s=>s.name===name); },
     openSignin(){ this.demo.signin=true; },
-    _realApis(){ return [
-      {name:'posthog', url:'https://app.posthog.com/api/projects/@current/events', key:'POSTHOG_KEY'},
-      {name:'openai',  url:'https://api.openai.com/v1/models',                     key:'OPENAI_KEY'},
-      {name:'github',  url:'https://api.github.com/user/repos',                    key:'GITHUB_KEY'},
-      {name:'notion',  url:'https://api.notion.com/v1/users',                      key:'NOTION_KEY'},
-    ]; },
-    sbxShuffle(){ const list=this._realApis();
-      const a=list.find(x=>!this.demo.tools.some(t=>t.name===x.name)) || list[0];
-      this.demo.nt.name=a.name; this.demo.nt.base_url=a.url;
-      const k=this.demo.secrets.find(s=>s.name===a.key) || this.demo.secrets[0];  // match the API's key if it's in the vault
-      if(k) this.demo.nt.secret_id=k.id; },
-    // ---- guided tour: a coach-mark that anchors to each element and moves through the flow ----
-    sbxTourStart(){ this.demo.tour.on=true;
-      if(!this._tourReposition){ this._tourReposition=()=>this.sbxTourPlace();
-        window.addEventListener('scroll', this._tourReposition, {passive:true});
-        window.addEventListener('resize', this._tourReposition); }
-      this.sbxTourGo(0); },
-    sbxTourGo(i){
-      const steps=this.sbxTourSteps; if(i<0||i>=steps.length) return;
-      this.demo.tour.step=i; const s=steps[i];
-      if(s.view) this.demo.view=s.view;                 // flip endpoints/skills tab for the step
-      this._sbxType(s.body);                             // typewriter the message
-      this.$nextTick(()=>{ const el=document.getElementById('tour-'+s.spot);
-        if(el){ const y=window.scrollY + el.getBoundingClientRect().top - 210;   // leave room above for the coach
-          window.scrollTo({top:Math.max(0,y), behavior:'smooth'});
-          setTimeout(()=>this.sbxTourPlace(), 380); }   // reposition once the smooth-scroll settles
-      }); },
-    sbxTourPlace(){                                       // anchor the coach just above (or below) the target
-      if(!this.demo.tour.on) return;
-      const el=document.getElementById('tour-'+this.sbxTourStep.spot); const coach=this.$refs.coach;
-      if(!el||!coach) return;
-      const r=el.getBoundingClientRect(); const ch=coach.offsetHeight||150;
-      const pw=Math.min(380, window.innerWidth-24), gap=16;
-      let top, arrow;
-      if(r.top > ch+gap+16){ top=r.top-ch-gap; arrow='down'; }   // above the element, pointer down
-      else { top=r.bottom+gap; arrow='up'; }                      // below when there's no room above
-      let left=r.left + r.width/2 - pw/2;
-      left=Math.max(12, Math.min(left, window.innerWidth-pw-12));
-      this.demo.tour.pos={top:Math.round(top), left:Math.round(left), width:pw, arrow}; },
-    _sbxType(text){
-      if(this._typeTimer) clearInterval(this._typeTimer);
-      this.demo.tour.typed=''; let i=0;
-      this._typeTimer=setInterval(()=>{ this.demo.tour.typed=text.slice(0,++i);
-        if(i>=text.length){ clearInterval(this._typeTimer); this._typeTimer=null; }
-        this.sbxTourPlace();                             // keep anchored as the text (height) grows
-      }, 14); },
-    sbxTourNext(){ if(this.demo.tour.step>=this.sbxTourSteps.length-1){ this.sbxTourSkip(true); return; }
-      this.sbxTourGo(this.demo.tour.step+1); },
-    sbxTourBack(){ if(this.demo.tour.step>0) this.sbxTourGo(this.demo.tour.step-1); },
-    sbxTourSkip(done){ this.demo.tour.on=false; this.demo.tour.done=!!done;
-      if(this._typeTimer){ clearInterval(this._typeTimer); this._typeTimer=null; }
-      if(this._tourReposition){ window.removeEventListener('scroll', this._tourReposition);
-        window.removeEventListener('resize', this._tourReposition); this._tourReposition=null; } },
-    async sbxAddNeeded(name){ try{ await this.sbx('/secrets',{method:'POST',body:JSON.stringify({name, value:'sk_demo_'+Math.random().toString(36).slice(2,8), kind:'env'})}); await this.refreshSandbox(); }catch(e){ this._sbxErr(e,'Could not add the key.'); } },
-    sbxAddSkill(){ const s=this.demo.samples.find(x=>x.name===this.demo.skpick); if(!s||!this.haveKey(s.key)) return;
-      if(this.demo.skills.some(x=>x.name===s.name)) return;
-      this.demo.skills.push({name:s.name, key:s.key, files:s.files, prompt:s.prompt, tab:'SKILL.md', runOpen:false}); },
-    sbxRmSkill(sk){ this.demo.skills=this.demo.skills.filter(x=>x.name!==sk.name); },
-    installCmd(sk){ return 'curl -fsSL '+this.proxy+'/skills/'+sk.name+'/install.sh?token='+(this.demo.token||'<token>')+' | sh'; },
-    installHtml(sk){ const esc=s=>s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-      return '<span class="hl-cmd">curl</span> <span class="hl-flag">-fsSL</span> <span class="hl-str">'+esc(this.proxy+'/skills/'+sk.name+'/install.sh?token='+(this.demo.token||'<token>'))+'</span> | sh'; },
-    async sbxRmSecret(s){ try{ await this.sbx('/secrets/'+s.id,{method:'DELETE'}); await this.refreshSandbox(); }catch(e){ this._sbxErr(e,'Could not remove that key.'); } },
-    async sbxRmTool(t){ try{ await this.sbx('/tools/'+t.id,{method:'DELETE'}); if(this.demo.ran&&this.demo.ran.id===t.id){this.demo.result=null;this.demo.ran=null;} await this.refreshSandbox(); }catch(e){ this._sbxErr(e,'Could not remove that endpoint.'); } },
-    async sbxAddSecret(){
-      const {name,value}=this.demo.ns; if(!name.trim()||!value){ this.demo.err='Give the secret a name and a value.'; return; }
-      this.demo.busy=true; this.demo.err='';
-      try{ await this.sbx('/secrets',{method:'POST',body:JSON.stringify({name:name.trim(),value,kind:'env'})});
-        this.demo.ns={name:'',value:''}; await this.refreshSandbox();
-      }catch(e){ this._sbxErr(e,'Could not add the secret.'); } finally{ this.demo.busy=false; }
-    },
-    async sbxAddTool(){
-      const t=this.demo.nt; if(!t.name.trim()||!t.base_url.trim()){ this.demo.err='Give the endpoint a name and a base URL.'; return; }
-      if(!t.secret_id){ this.demo.err='Pick a secret to inject.'; return; }
-      this.demo.busy=true; this.demo.err='';
-      try{
-        const nm=t.name.trim();
-        await this.sbx('/tools',{method:'POST',body:JSON.stringify({name:nm, base_url:t.base_url.trim(),
-          bindings:[{secret_id:t.secret_id, injector:'env', location:'header', name:t.header||'Authorization', format:t.format||'Bearer {secret}'}]})});
-        this.demo.nt={name:'', base_url:'', secret_id:this.demo.secrets[0]&&this.demo.secrets[0].id, header:'Authorization', format:'Bearer {secret}'};
-        this.sbxShuffle();  // re-prefill with a fresh random throwaway API
-        await this.refreshSandbox();
-        const added=this.demo.tools.find(x=>x.name===nm); if(added) await this.runTool(added);  // show what the API received
-      }catch(e){ this._sbxErr(e,'Could not add the endpoint.'); } finally{ this.demo.busy=false; }
-    },
-    async runTool(t){
-      this.demo.busy=true; this.demo.err=''; this.demo.ran=t;
-      try{
-        const ex=(t.examples&&t.examples[0])?t.examples[0].path:'';
-        const url=t.base_url.replace(/\/$/,'')+'/'+(ex||'');
-        this.demo.result=await this.sbx('/call/'+url);
-      }catch(e){ this._sbxErr(e,'The call failed - please retry.'); } finally{ this.demo.busy=false; }
-    },
-    async exportSkill(){
-      this.demo.skillBusy=true; this.demo.err='';
-      try{ this.demo.skill=await this.sbx('/demo/sandbox/skill'); }
-      catch(e){ this._sbxErr(e,'Could not export the skill.'); } finally{ this.demo.skillBusy=false; }
-    },
-    resetSandbox(){ this.demo=Object.assign(this.demo,{token:null, org_slug:'', secrets:[], tools:[], result:null, ran:null, skill:null, err:''}); },
-    async copyText(txt, tag){ try{ await navigator.clipboard.writeText(txt); this.demo.copied=tag||'term'; setTimeout(()=>{this.demo.copied='';},1500); }catch(e){} },
     async emailStart(){ const e=(this.emailInput||'').trim(); if(!e){ this.loginErr='Enter your email address.'; return; } this.busy=true; this.loginErr='';
       try{ const r=await this.api('/auth/email/start',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:e})});
         this.emailStage=true; this.devCode=r.dev_code||''; this.codeInput=''; }
@@ -6447,9 +6043,9 @@ createApp({
     // Invite-link params, parsed BEFORE the session check: ?invite_org= arrives freshly signed in
     // from the email link's POST-confirm; ?invite= is the legacy code path (prefilled login).
     const qs = new URLSearchParams(location.search);
-    const linkOrg = qs.get('invite_org'), inv = qs.get('invite'), oauthSignin = qs.get('signin')==='oauth';
+    const linkOrg = qs.get('invite_org'), inv = qs.get('invite'), ref = qs.get('ref'), oauthSignin = qs.get('signin')==='oauth';
     this.oauthSignin=oauthSignin;
-    if(linkOrg || inv || qs.get('invite_expired') || oauthSignin){ history.replaceState(null,'',location.pathname+location.hash); }  // strip one-shot params so reload/share doesn't replay them
+    if(linkOrg || inv || qs.get('invite_expired') || ref || oauthSignin){ history.replaceState(null,'',location.pathname+location.hash); }  // strip one-shot params so reload/share doesn't replay them
     if(linkOrg){ this.inviteLinkOrg=parseInt(linkOrg,10)||null; }
     // A shared detail deep link (/app/skills/<x>, /app/tools/<x>) — from the URL itself, or stashed
     // before an OAuth hop (the callback always lands on /app, which would otherwise drop the path).
@@ -6513,10 +6109,9 @@ createApp({
       // renders blank in an incognito window.
       if(catRoute.slug) this.openPlatform(catRoute.slug, true); else { this.view='connections'; this.loadConnections(); }
       return; }
-    if(!inv && !linkOrg && !route && !qs.get('invite_expired') && !qs.get('ref') && !oauthSignin){ location.replace('/'); return; }  // logged-out plain visit → the marketing landing owns the front door. `ref` is NOT a plain visit: it is a use-case page's CTA (/app?ref=p1), and bouncing that visitor to the front door throws away the page they arrived on — on a paid click, the one we bought.
+    if(!inv && !linkOrg && !route && !qs.get('invite_expired') && !ref && !oauthSignin){ location.replace('/'); return; }  // logged-out plain visit → the marketing landing owns the front door. `ref` is a use-case page's CTA (/app?ref=p1), so keep that attribution while opening sign-in in place.
     if(route){ this.shareGate=route; this.demo.signin=true; }  // shared link while logged out: the focused gate (no sandbox mint, no tour); after sign-in the boot lands on it (email verify reloads in place; OAuth restores via the treg-next stash)
-    else if(oauthSignin) this.demo.signin=true;     // OAuth already has a pending return cookie; open login directly and do not mint a sandbox
-    else this.sbxInit();                            // other logged-out flows → the in-app landing + sign-in modal
+    else this.demo.signin=true;  // OAuth returns, use-case CTA arrivals (?ref=) and every other logged-out flow open sign-in; nothing mints a sandbox any more
     if(inv){ this.invitePrefill=inv; this.emailInput=inv; this.emailStage=false; this.demo.signin=true; }  // legacy code link while logged out: prefill + open sign-in; the invite auto-accepts after login (maybeOnboard)
   },
 }).mount('#app');

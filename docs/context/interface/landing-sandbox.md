@@ -1,5 +1,5 @@
 ---
-title: Landing sandbox studio — anonymous try-it, hosted skills, CLI installer
+title: Landing sandbox backend - front-end entry removed
 status: shipped
 sources:
   - src/treg/sandbox.py
@@ -19,20 +19,18 @@ related:
   - interface/api.md
 ---
 
-# Landing sandbox studio
+# Landing sandbox backend
 
-> **Where this lives now.** `/` serves `landing.html`, not the SPA — `landing()` in `routers.web` only
-> falls through to `index.html` when the request carries a query string (invite links, OAuth
-> returns, tour deep-links). The sandbox studio described below is that fall-through branch of
-> `index.html`, so it is reached from the SPA rather than from the front page. See
-> `interface/seo.md` for what `/` serves and why it is `{BASE}`-templated.
+> **Front-end entry removed.** The logged-out SPA no longer renders the sandbox studio or its coach
+> tour, stores `localStorage['treg-sbx']`, or calls `POST /demo/sandbox`. A use-case CTA arriving at
+> `/app?ref=<page>` keeps the parameter for attribution, strips it as a one-shot parameter, and opens
+> the sign-in modal. Plain logged-out `/app` still redirects to `/`. The logged-out hero, key-leak
+> explanation, footer CTA, invite and share gates, OAuth entry, and sign-in modal remain.
 
-The logged-out SPA is not a login box — it's a **landing page with a live, no-login sandbox
-studio** (the `v-if="!authed"` branch of `index.html`, `.lp` container). A visitor builds a real
-mini-registry in the browser and keeps using it from their terminal, all without an account.
-Provisioning, export, samples, and garbage collection live in `application/onboard/sandbox.py`;
-the call-side sandbox engine remains in `sandbox.py`. The routes in `routers/onboard.py` drive them
-from the front-end's `sbx*` Vue methods.
+The sections below document backend behavior that is still shipped but has no visitor-facing mint
+path in `index.html`. Provisioning, export, samples, and garbage collection remain in
+`application/onboard/sandbox.py`; the call-side sandbox engine remains in `sandbox.py`; and the routes
+remain in `routers/onboard.py`. Their removal is intentionally deferred to the backend follow-up.
 
 ## The throwaway team (`application/onboard/sandbox.py`)
 `mint(db)` creates a login-free team: a `visitor-<hex>@sandbox.treg.local` `User` (can never sign in),
@@ -44,8 +42,8 @@ onboarding's `demo.py`, which discards it), plus seeded starters from `DEFAULTS`
 binding), which auto-runs so the "no key" aha shows immediately. This exact seeded tool is also the
 **live wire** (see below): when the server is configured for it, a call to it is the sandbox's one real
 upstream request. `POSTHOG_KEY` is seeded **vault-only** (an entry with no `tool`
-key, so `mint` creates the secret but no Tool); the front-end prefills the "add your own" row with the
-real PostHog API + that key, so the visitor's first action is a single **Add**. `is_sandbox(org)` =
+key, so `mint` creates the secret but no Tool); the removed studio used it for its prefilled
+"add your own" row. `is_sandbox(org)` =
 `org.demo && _SANDBOX_SLUG_RE.match(org.slug)` — it matches the **exact mint slug format**
 (`^sbx-[0-9a-f]{12}$`, i.e. `sbx-<token_hex(6)>`), NOT a loose `startswith("sbx-")`, so a real team a
 user happens to name "sbx …" (slug `sbx-…`) is not misread as a sandbox. It also stays distinct from
@@ -55,18 +53,6 @@ onboarding demo teams (also `demo`, but team-named).
 `SANDBOX_DOMAIN`). Such a login-free visitor may act ONLY inside its own sandbox org — it can **never
 create a real team** (`POST /orgs` → `create_org` returns 403: "sign in with GitHub, Google, or email")
 nor otherwise graduate to a real account. Escaping the sandbox requires a real sign-in door.
-
-## Guided tour (the branded coach)
-On page load `sbxInit`→`_sbxGreet` auto-starts a coach walkthrough (both fresh + reused-sandbox paths;
-no once-per-visitor gate). A **coach-mark** anchored above each target element (`sbxTourPlace` positions
-it via `getBoundingClientRect`, re-anchors on scroll/resize) types out (`_sbxType`) a message and moves
-through 5 steps: vault → workspace (endpoint tab) → workspace (skills tab) → result → curl, flipping
-`demo.view` per step. The selected element gets a **teal** spotlight ring (`.tour-spot`) while the coach
-stays **orange** (deliberately complementary, not all-orange). Skippable (✕ / Skip / ← Back); state in
-`demo.tour`.
-
-The visitor holds that token and calls the **same product endpoints** the dashboard does —
-`POST /secrets`, `POST /tools`, `/call/*` — so it is a genuine registry, not a mock.
 
 ## Safety: sandbox calls never touch the network (except the one live wire)
 `application.call.service` checks `demo_sandbox.is_sandbox(caller.org)` and, for a sandbox, short-circuits to
@@ -92,10 +78,9 @@ Two guards keep the demo intact: `_require_not_live_demo_tool` / `_require_not_l
 or deletes of the seeded `stripe` tool and its `STRIPE_KEY` while the wire is on (visitor-created tools stay
 fully editable). `is_live_tool` lives in `sandbox.py`; `visitor_name` and its wordlists (`ADJECTIVES`/
 `ANIMALS`) live in the neutral `sandbox_identity.py` leaf. `mint()` returns the visitor name;
-`POST /demo/sandbox` adds `"live"` and `GET /demo/sandbox/live` (`demo_sandbox_live`) reports `{live, visitor}`
-for a reused sandbox (the browser keeps one across reloads via `localStorage`, so it may predate the mint that
-carried these facts). The front-end live pane (`liveSnippets`, the `SBX` state) shows the visitor a copyable
-`curl` that hits their OWN sandbox token.
+`POST /demo/sandbox` adds `"live"` and `GET /demo/sandbox/live` (`demo_sandbox_live`) reports `{live, visitor}`.
+Both routes remain pending backend removal, but `index.html` no longer calls either one or holds a
+sandbox token.
 
 ## The public payments feed (`application/onboard/pubfeed.py`)
 The feed is the landing page's **live payments ticker**: a stranger's live-wire charge appears on the
@@ -127,8 +112,8 @@ org-scoped rows), run opportunistically on each mint. The reaper deletes the org
 tables. It once did, the copy never learned about `IdempotentCall`, and on 2026-09-02 Postgres refused
 the membership delete on every mint. `mint_sandbox` now also isolates the reaper: a gc failure is
 rolled back and logged, and the visitor still gets a sandbox. A DB-backed `ratestore` window keyed by client
-IP and `SANDBOX_RATE_MAX` guards `POST /demo/sandbox`. The browser reuses one sandbox across reloads via
-`localStorage['treg-sbx']`. **Skill import is disabled in a sandbox org** — `POST /skills` (register),
+IP and `SANDBOX_RATE_MAX` guards `POST /demo/sandbox`. The browser no longer mints or reuses a sandbox.
+**Skill import is disabled in a sandbox org** - `POST /skills` (register),
 `POST /skills/analyze`, and `POST /skills/import` all check `is_sandbox(caller.org)` and 403 ("skill
 import is disabled in the sandbox"), because a skill package could register unlimited tools/secrets past
 the `MAX_TOOLS`/`MAX_SECRETS` cap.
@@ -167,5 +152,7 @@ Gemini, Copilot, OpenCode, Windsurf …), falling back on older CLIs to a Claude
 dashboard view (`view==='start'`) surfaces this install command + `treg login`/`onboard`/`add`/`call` and
 links to the tutorial and `/llms.txt`; `llms.txt` has a matching **Install the CLI** section.
 
-## Not yet
-Wire the landing's sign-up CTAs through to the real account flow post-launch.
+## Backend follow-up
+Remove the now-unreachable sandbox mint, export, sample, live-wire, feed, governance, and call-pipeline
+branches in a separate backend change. This front-end change deliberately leaves those routes and
+guards intact.
