@@ -2530,6 +2530,54 @@ PINTEREST_ADS = OAuthProvider(
     probe_path="/user_account",  # cheap token check once configured; auto-provisions a Bearer tool
 )
 
+# Agentic friendship discovery. The agent-facing recipe is the published skill
+# at https://github.com/railyai/raily-mcp (skills/raily/SKILL.md): connect
+# https://railyai.com/mcp over OAuth in the browser — never paste tokens.
+# Catalogued operations are the same owner-scoped REST routes that MCP wraps,
+# so treg's one-shot GET/POST verify pipeline can call them. Probe observed
+# 2026-09-02: garbage Bearer → HTTP 401 {"detail":"Sign in to see your state"}.
+RAILY = OAuthProvider(
+    service="raily",
+    display_name="Raily",
+    auth_kind="key",
+    token_label="Access token",
+    token_placeholder="verification token from Raily (do not scrape a browser session)",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://github.com/railyai/raily-mcp",
+    setup_action_label="Open the Raily agent skill",
+    setup_steps=(
+        "Install the skill from https://github.com/railyai/raily-mcp "
+        "(skills/raily/SKILL.md). OpenClaw: openclaw plugins install clawhub:@railyai/raily.",
+        "Connect MCP at https://railyai.com/mcp. OAuth always happens in the browser — "
+        "never paste tokens into chat or config. Site Connect: https://railyai.com/integrations.",
+        "Treg's catalog probe is REST (GET /api/me/state). Maintainers get a verification "
+        "Bearer by email at legal@raily.cloud; that is not the user-facing connect path.",
+    ),
+    setup_note=(
+        "The skill is read-only. Intern is free; a successful personality analysis spends "
+        "1 Credit (€1.99). MCP OAuth tokens authorize /mcp, not this REST probe."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Community",
+    summary=(
+        "Personal agents find compatible people, talk first, and bring you in when both sides fit."
+    ),
+    base_url="https://railyai.com",
+    docs_url="https://github.com/railyai/raily-mcp/blob/master/skills/raily/SKILL.md",
+    examples=(
+        {"method": "GET", "path": "api/me/state",
+         "note": "Agent lifecycle: has_profile, has_brief, agent_active. Free probe."},
+        {"method": "GET", "path": "api/match/deliveries",
+         "note": "Actionable candidate deck. Does not reserve or open a card."},
+        {"method": "GET", "path": "api/match/queue",
+         "note": "Free-batch window and queue depth — size the next reserve before paying."},
+    ),
+    probe_path="/api/me/state",  # free — a bad Bearer gets HTTP 401
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -2550,6 +2598,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
+        RAILY,
     )
 }
 
