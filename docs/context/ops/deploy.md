@@ -341,12 +341,26 @@ base. Verified on the dev server before merge: reserve $0.007 → settle $0.009 
 ## Worker commands and the capacity cron (2026-08-28)
 
 `treg-worker` (console script, `[server]` extra) hosts the scheduled maintainer commands — today
-`capacity sweep` (see `ops/capacity.md`). `render.yaml` runs it as the cron service
-`treg-capacity-sweep` every hour, with the DB URL, Fernet key and every `TREG_PLATFORM_KEY_*` pulled
-from the web service via `fromService` — so a new platform key is added in ONE place. Aggregator keys
-(`TREG_OVERFLOW_KEY_ORTHOGONAL` / `_MONID`) are dashboard-managed on the web service and flow the same
-way. `TREG_OVERFLOW_MODE` (`off` default | `shadow` | `on`) and `TREG_OVERFLOW_DAILY_BUDGET_USD` (20)
-govern the overflow child cycle (`ops/capacity.md`); the keys serve nothing while the mode is `off`.
+`capacity sweep` (see `ops/capacity.md`) and `retention purge`. `render.yaml` runs capacity sweep as
+the cron service `treg-capacity-sweep` every hour, with the DB URL, Fernet key and every
+`TREG_PLATFORM_KEY_*` pulled from the web service via `fromService` — so a new platform key is added
+in ONE place. Aggregator keys (`TREG_OVERFLOW_KEY_ORTHOGONAL` / `_MONID`) are dashboard-managed on the
+web service and flow the same way. `TREG_OVERFLOW_MODE` (`off` default | `shadow` | `on`) and
+`TREG_OVERFLOW_DAILY_BUDGET_USD` (20) govern the overflow child cycle (`ops/capacity.md`); the keys
+serve nothing while the mode is `off`.
+
+### Retention purge
+
+`treg-worker retention purge [--days 90] [--batch 5000] [--no-vacuum] [--dry-run]` deletes
+`CallRecord`, `RunRecord`, and `SearchMiss` rows older than the retention window. See
+`architecture/data-model.md` § "Retention purge". Run it manually first to clear the backlog, then
+weekly via a Render cron (start command: `treg-worker retention purge`). Only the DB URL and Fernet
+key are required — no platform keys.
+
+**One-off prod invocation after merge:** shell into the Render web service (or create a one-off
+job) and run `treg-worker retention purge --dry-run` first to confirm the expected delete count,
+then `treg-worker retention purge` to execute. For a large backlog, batch size 5000 keeps each
+transaction short.
 
 ## A `src/treg/infra/db.py` change needs a Postgres-shaped deploy plan
 

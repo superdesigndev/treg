@@ -322,6 +322,23 @@ handler on root and directly on `uvicorn.error` (Uvicorn's default parent does n
 then removes it after shutdown drain. `bootstrap_handlers._pool_saturated` calls `capture_fault` directly
 because its typed 503 is handled before Uvicorn would log it.
 
+## Retention purge (`domain/retention.py`)
+
+`CallRecord`, `RunRecord`, and `SearchMiss` grow unbounded. Evidence columns (`error_request`,
+`error_response`) already expire after 14 days via `admin._purge_expired_error_evidence`, but that
+only overwrites with `<expired>` — the rows themselves stay, and TOAST-sized JSON doesn't reclaim
+space until the row is deleted.
+
+`treg-worker retention purge [--days 90] [--batch 5000] [--no-vacuum] [--dry-run]` deletes rows
+older than the retention window (default 90 days) in batches of 5,000 to avoid long ACCESS EXCLUSIVE
+locks on hot tables. After deletes, `VACUUM ANALYZE` runs per table so Postgres can reuse the dead
+tuple space (not return it to the OS — that requires `VACUUM FULL`, which locks exclusively and
+never runs from this worker).
+
+**Never purged:** `Org`, `User`, `Membership`, `Secret`, `Tool`, `Bundle`, `CreditBlock`,
+`LedgerEntry`, `Hold`, `TagSpend`, `TagBudget`, `CapabilityPin`, `DenyRule`, `AdConversion`, or
+anything in `domain/money`. The worker's `PURGEABLE_TABLES` constant is the closed allow-list.
+
 > **Tenancy:** every resource noun carries `org_id`; access is scoped to the caller's org. Details:
 > [multi-tenancy](multi-tenancy.md).
 

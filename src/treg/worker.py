@@ -3,6 +3,7 @@
     treg-worker capacity sweep [--only provider,...] [--json]
     treg-worker overflow sync [--live]          # seed (+ live aggregator catalogs) → overflow_route
     treg-worker overflow verify [--all] [--max-usd 0.02]   # weekly re-verify of enabled routes
+    treg-worker retention purge [--days 90] [--batch 5000] [--no-vacuum] [--dry-run]
 
 Not the light `treg` CLI: these need the server extra (DB, platform keys in the env) and make
 outbound calls to third parties, so they run as Render cron jobs with the server's env — never as
@@ -170,6 +171,26 @@ async def _overflow_verify(args) -> int:
     return 1 if failed else 0
 
 
+async def _retention_purge(args) -> int:
+    """Delete aged rows from CallRecord, RunRecord, SearchMiss. Runs VACUUM after deletes."""
+    from .infra.db import session_maker, verify_db
+    from .domain.retention import run_retention_purge, RETENTION_DAYS_DEFAULT, BATCH_SIZE_DEFAULT
+
+    await verify_db()
+    async with session_maker() as db:
+        result = await run_retention_purge(
+            db,
+            retention_days=args.days,
+            batch_size=args.batch,
+            vacuum=not args.no_vacuum,
+            dry_run=args.dry_run,
+        )
+    print(result.summary())
+    if args.dry_run:
+        print("\n(dry run — no rows were actually deleted)")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="treg-worker", description=__doc__)
     sub = ap.add_subparsers(dest="group", required=True)
@@ -188,6 +209,15 @@ def main(argv: list[str] | None = None) -> int:
     ver.add_argument("--all", action="store_true", help="every row, not only enabled/previously verified")
     ver.add_argument("--max-usd", type=float, default=0.02, help="skip routes priced above this")
     ver.set_defaults(fn=_overflow_verify)
+    # retention subparser
+    ret = sub.add_parser("retention", help="audit table retention and purge")
+    retsub = ret.add_subparsers(dest="cmd", required=True)
+    purge = retsub.add_parser("purge", help="delete CallRecord/RunRecord/SearchMiss older than --days")
+    purge.add_argument("--days", type=int, default=90, help="retention window in days (default 90)")
+    purge.add_argument("--batch", type=int, default=5000, help="rows to delete per batch (default 5000)")
+    purge.add_argument("--no-vacuum", action="store_true", help="skip VACUUM ANALYZE after deletes")
+    purge.add_argument("--dry-run", action="store_true", help="report what would be deleted without deleting")
+    purge.set_defaults(fn=_retention_purge)
     args = ap.parse_args(argv)
     _need_server()
     return asyncio.run(args.fn(args))
