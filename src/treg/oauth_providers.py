@@ -702,6 +702,34 @@ SLACK = OAuthProvider(
     identity_label_path="team",
 )
 
+INTERCOM = OAuthProvider(
+    service="intercom",
+    display_name="Intercom",
+    auth_uri="https://app.intercom.com/oauth",
+    token_uri="https://api.intercom.io/auth/eagle/token",
+    # Intercom grants permissions through the Developer Hub, not via URL scopes — the `scope` param
+    # is ignored at consent. We list one capability that reflects what the app has in its manifest.
+    # Documented scopes include read_conversations, write_conversations, read_admins, read_tags,
+    # write_tags — these are for reference; the connected workspace gets whatever the app was granted.
+    scopes={"manage": ["read_conversations", "write_conversations", "read_admins", "read_tags", "write_tags"]},
+    client_id_setting="intercom_oauth_client_id",
+    client_secret_setting="intercom_oauth_client_secret",
+    category="Community",
+    summary="Read and reply to conversations in your Intercom workspace.",
+    base_url="https://api.intercom.io",
+    docs_url="https://developers.intercom.com/docs/references/rest-api/api.intercom.io",
+    auth_params={},  # Intercom rejects Google's access_type/prompt
+    # Intercom requires a version header on every request; without it calls fail with a version error.
+    required_headers=(("Intercom-Version", "2.14"),),
+    resource_label="workspace",
+    probe_path="/me",
+    # /me returns the admin and their workspace (app). The workspace id_code is the stable identifier;
+    # app.name is the human-readable workspace name.
+    identity_path="/me",
+    identity_id_path="app.id_code",
+    identity_label_path="app.name",
+)
+
 X = OAuthProvider(
     service="x",
     display_name="X (Twitter)",
@@ -2443,7 +2471,7 @@ REGISTRY: dict[str, OAuthProvider] = {
     for p in (
         GOOGLE_SEARCH_CONSOLE, GOOGLE_ANALYTICS, GOOGLE_BUSINESS_PROFILE, GOOGLE_TAG_MANAGER,
         GOOGLE_ADS, YOUTUBE,
-        LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
+        LINKEDIN, SLACK, INTERCOM, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
         APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
@@ -2540,6 +2568,12 @@ SCOPE_LABELS: dict[str, str] = {
     "profile": "See your name and profile picture",
     "email": "See your email address",
     "w_member_social": "Post, comment and react as you",
+    # Intercom (scopes set in Developer Hub; these labels are for documentation and consent display)
+    "read_conversations": "Read conversations and messages",
+    "write_conversations": "Reply to conversations and send messages",
+    "read_admins": "See admins in the workspace",
+    "read_tags": "See tags and segments",
+    "write_tags": "Create and manage tags",
     # X
     "tweet.read": "Read posts and timelines",
     "users.read": "See profiles, including your own",

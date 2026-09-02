@@ -369,6 +369,9 @@ class Settings(BaseSettings):
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
 
+    intercom_oauth_client_id: str = ""
+    intercom_oauth_client_secret: str = ""
+
     slack_client_id: str = ""
     slack_client_secret: str = ""
     x_client_id: str = ""

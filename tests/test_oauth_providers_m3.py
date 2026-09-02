@@ -40,7 +40,7 @@ def _q(payload: dict) -> dict:
 def test_every_provider_is_registered():
     assert set(P.REGISTRY) == {
         "google-search-console", "google-analytics", "google-business-profile", "google-tag-manager",
-        "google-ads", "youtube", "linkedin", "slack", "x", "tiktok",
+        "google-ads", "youtube", "linkedin", "slack", "intercom", "x", "tiktok",
         "facebook", "instagram", "meta-ads",
         # API-key providers (auth_kind="key")
         "apollo", "pdl", "akta", "hunter", "crunchbase", "tikhub", "brightdata", "semrush", "justoneapi",
@@ -263,6 +263,53 @@ async def test_linkedin_does_not_get_googles_consent_params(clients: AsyncClient
         assert q["client_id"] == ["li-cid"]
         assert "access_type" not in q and "prompt" not in q, "LinkedIn rejects Google's params"
         assert "w_member_social" in q["scope"][0]
+    finally:
+        get_settings.cache_clear()
+
+
+# ---- Intercom ---------------------------------------------------------------------------------
+def test_intercom_has_one_capability():
+    """Intercom grants permissions through the Developer Hub, not URL scopes. There is no read-only
+    capability worth offering — a connection acts on the whole workspace with whatever the app has."""
+    assert P.INTERCOM.capabilities == ["manage"]
+    assert P.INTERCOM.default_capability == "manage"
+
+
+def test_intercom_requires_version_header():
+    """Intercom requires Intercom-Version on every request; without it calls fail. The header is
+    frozen at 2.14 so the proxy can inject it automatically."""
+    assert P.INTERCOM.required_headers == (("Intercom-Version", "2.14"),)
+
+
+def test_intercom_uses_its_own_credentials():
+    """Intercom OAuth is separate from the Intercom Messenger widget — the client_id/secret come
+    from intercom_oauth_*, not from intercom_app_id/secret (the Messenger HMAC pair)."""
+    assert P.INTERCOM.client_id_setting == "intercom_oauth_client_id"
+    assert P.INTERCOM.client_secret_setting == "intercom_oauth_client_secret"
+
+
+async def test_intercom_does_not_get_googles_consent_params(clients: AsyncClient, monkeypatch):
+    monkeypatch.setenv("TREG_INTERCOM_OAUTH_CLIENT_ID", "ic-cid")
+    monkeypatch.setenv("TREG_INTERCOM_OAUTH_CLIENT_SECRET", "ic-csec")
+    get_settings.cache_clear()
+    try:
+        d = (await clients.post("/oauth/start", json={"provider": "intercom"})).json()
+        q = _q(d)
+        assert q["client_id"] == ["ic-cid"]
+        assert "access_type" not in q and "prompt" not in q, "Intercom rejects Google's params"
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_intercom_unconfigured_when_credentials_empty(clients: AsyncClient, monkeypatch):
+    monkeypatch.setenv("TREG_INTERCOM_OAUTH_CLIENT_ID", "")
+    monkeypatch.setenv("TREG_INTERCOM_OAUTH_CLIENT_SECRET", "")
+    get_settings.cache_clear()
+    try:
+        rows = {p["service"]: p for p in (await clients.get("/oauth/providers")).json()}
+        assert rows["intercom"]["configured"] is False
+        r = await clients.post("/oauth/start", json={"provider": "intercom"})
+        assert r.status_code == 422 and "not configured" in r.text
     finally:
         get_settings.cache_clear()
 
