@@ -1190,6 +1190,42 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+REALIE = OAuthProvider(
+    service="realie",
+    display_name="Realie",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Realie API key",
+    # Homepage curl and connect probes use Authorization: Bearer {secret}. OpenAPI declares an
+    # apiKey in the Authorization header; a garbage Bearer token is rejected with HTTP 401.
+    # Defaults (Authorization / Bearer {secret}) match — leave them explicit for the listing PR.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.realie.ai/developer",
+    setup_action_label="Get your Realie API key",
+    setup_steps=(
+        "Sign up at https://app.realie.ai/developer.",
+        "Add a payment method at https://app.realie.ai/billing/ (temporary $0.50 card hold).",
+        "Copy your key from Usage → API access at https://app.realie.ai/dashboard/.",
+    ),
+    setup_note=(
+        "Property lookups spend the plan's monthly token allowance; tokens-per-call is unpublished. "
+        "Slash-less paths 308 — keep the trailing slash on every route."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Look up nationwide U.S. property records by address, parcel ID, location, or search "
+        "filters (parcel, ownership, mortgage, tax, zoning)."
+    ),
+    base_url="https://app.realie.ai/api",
+    docs_url="https://docs.realie.ai/api-reference/v3/overview",
+    # Trailing slash required — without it the host answers 308 and the connect probe never sees 401.
+    probe_path="/public/property/address/?address=504%20LAVACA%20ST&state=TX",
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -2537,7 +2573,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
+        APOLLO, PDL, AKTA, HUNTER, REALIE, CRUNCHBASE, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA,

@@ -113,9 +113,17 @@ rejects on HTTP status by default.
   give `catalog_verify.py` a second pass for the routes that timed out instead of widening its timeout.
 - **Django trailing slash.** influencers.club's slash-less paths 301 with the body dropped; the Akta
   fix (slash IN `probe_path`) applies to every catalog `path` too.
+- **Vercel/Next trailing slash 308.** Realie (2026-09-02) answers HTTP 308 without the slash and
+  drops the Authorization header on the redirect — put the trailing slash in `probe_path` and every
+  catalog `path` so the connect probe sees the clean 401 `{"error":"Unauthorized: Invalid API key"}`.
+- **Unpublished tokens-per-call → BYOK-only.** Realie's plans publish monthly token allowances and
+  overage USD/token, but not how many tokens a call burns (CLI reports `apiCalls` vs `apiTokens`
+  separately; no rate-card endpoint). Cost blocks stay `value: null` / `confidence: unknown` and
+  the platform-key slot is deferred until a computable USD rate can be stated.
 - **A cross-platform provider needs its own platform slug.** influencers.club enriches a handle on any
   of 11 networks through a `platform` body field, so no single social slug is honest; it got a
-  `creators` platform on the Enrichment shelf (2026-08-21). Platforms cannot be proposed from a
+  `creators` platform on the Enrichment shelf (2026-08-21). Realie (2026-09-02) got a `property`
+  platform on the same shelf for nationwide U.S. parcel records. Platforms cannot be proposed from a
   provider file — add the slug to `capabilities.yaml` and propose only the capabilities.
 
 ## Selection heuristics (what makes a provider worth adding)

@@ -74,6 +74,9 @@ no ad platform mis-shelved, nothing accidentally defaulted to `Other` except the
 `account` shelf (correct). **No unambiguous, non-controversial miscategorization was found,
 so nothing was force-moved.**
 
+*(Later addition, 2026-09-02: `property` was added under Enrichment for Realie's nationwide
+U.S. parcel/ownership records — distinct from `beike`'s Chinese resale-listing surface.)*
+
 Three placements are *debatable* but are judgment calls, not safe fixes — escalated to the
 founder rather than applied:
 

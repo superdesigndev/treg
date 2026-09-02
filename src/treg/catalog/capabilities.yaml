@@ -107,6 +107,7 @@ platforms:
   companies: {label: "Company data", category: "Enrichment", featured: 1, summary: "Enrich and search companies — firmographics, funding, tech stack, employees."}
   people: {label: "People & contact data", category: "Enrichment", featured: 2, summary: "Enrich people and find or verify work contact details — role, company, email, phone."}
   creators: {label: "Creators & influencers", category: "Enrichment", featured: 3, summary: "Find and enrich creators across Instagram, YouTube, TikTok, Twitch, X and OnlyFans — profile, audience, contact email, posts and lookalikes."}
+  property: {label: "U.S. property records", category: "Enrichment", summary: "Nationwide U.S. parcel, ownership, mortgage, tax and zoning records by address, parcel ID or location."}
 
   ebay: {label: "eBay", category: "E-commerce", summary: "Product listings and search results from eBay."}
   walmart: {label: "Walmart", category: "E-commerce", summary: "Product listings and search results from Walmart."}

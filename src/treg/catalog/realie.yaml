@@ -1,0 +1,215 @@
+provider: realie
+source:
+  docs: https://docs.realie.ai/api-reference/v3/overview
+  openapi: https://docs.realie.ai/api-reference/v3/openapi.json
+  curated: 2026-09-02
+# UNVERIFIED — no REALIE_API_KEY in the listing environment; every path and parameter below is
+# ingested from Realie's published v3 OpenAPI (2026-09-02). Do not stamp verified: or commit
+# example responses until a live credential observes a real target and a meter delta.
+#
+# AUTH. Homepage curl and this registry use Authorization: Bearer {secret}. OpenAPI declares an
+# apiKey in the Authorization header. A garbage Bearer token against the address probe returns
+# HTTP 401 with body {"error":"Unauthorized: Invalid API key"} (observed 2026-09-02). Paths
+# without a trailing slash answer 308 — keep the slash on every catalogued route and on probe_path.
+#
+# BILLING. Shared monthly token allowance across Platform + API (Free $0/25 tokens/$0.15 overage;
+# Tier 1 $50/1,250/$0.05; Tier 2 $150/6,000/$0.025; Tier 3 $350/30,000/$0.012). Same endpoints on
+# every plan. Max 100 parcels per request; 1,200 requests/minute. There is no rate-card endpoint,
+# and tokens-per-call is unpublished (CLI reports apiCalls vs apiTokens separately), so every cost
+# block carries value: null / confidence: unknown. No platform-key slot (config.py / render.yaml /
+# fx.yaml) until a computable USD-per-call can be stated — BYOK-only for now.
+#
+# SURFACE MAP (v3 OpenAPI, 5 paths — all catalogued):
+#   GET /public/property/search/          catalogued
+#   GET /public/property/address/         catalogued (also the registry probe)
+#   GET /public/property/parcelId/        catalogued (no inventable APN — harvest from sibling)
+#   GET /public/property/location/        catalogued
+#   GET /public/premium/comparables/      catalogued
+# Excluded: owner search (not in v3 OpenAPI), CLI, MCP, bulk/enterprise sales, deprecated offset as
+# its own endpoint, v2-legacy duplicate pages.
+
+limits: "1200 requests/minute; max 100 parcels per request; monthly token allowance per plan"
+pricing_url: https://docs.realie.ai/api-reference/pricing  # Free 25 tokens/$0.15 overage; T1 1250/$0.05; T2 6000/$0.025; T3 30000/$0.012. Tokens-per-call unpublished.
+
+proposed_capabilities:
+  property.search: "Search U.S. property records by state and optional address, city, county, ZIP or filters"
+  property.address.lookup: "Look up a U.S. property record by street address and state"
+  property.parcel.lookup: "Look up a U.S. property record by parcel ID, county and state"
+  property.location.search: "Search U.S. property records near a latitude/longitude"
+  property.comparables.search: "Find comparable property sales near a latitude/longitude"
+
+endpoints:
+  - id: realie.property.search
+    domain: property
+    capability: property.search
+    platform: property
+    scope: any_account
+    method: GET
+    path: /public/property/search/
+    name: "Search U.S. properties by state and filters"
+    summary: "Search and paginate through properties across states, counties, or cities"
+    input:
+      queryParams:
+        state: {type: string, required: true, note: "two-letter state code", example: "TX"}
+        zipCode: {type: string, required: false, note: "ZIP code"}
+        county: {type: string, required: false, note: "county name"}
+        city: {type: string, required: false, note: "city name"}
+        transferedSince: {type: string, required: false, note: "days to look back for transfers, e.g. \"30\""}
+        useCode: {type: integer, required: false, note: "numerical use code, e.g. 1002"}
+        address: {type: string, required: false, note: "street address line 1 only — do not include city, state, or ZIP", example: "504 LAVACA ST"}
+        unitNumberStripped: {type: string, required: false, note: "unit number without type prefix (\"2B\" not \"APT 2B\")"}
+        includeUnassignedAddress: {type: boolean, required: false, note: "include parcels without an assigned address; default false"}
+        limit: {type: integer, required: false, note: "results per page, default 10, max 100 — keep at 1 for cheap tests", example: 1}
+        cursor: {type: string, required: false, note: "opaque pagination token; pass \"start\" then metadata.nextCursor. Prefer over offset for deep walks"}
+        offset: {type: integer, required: false, note: "DEPRECATED — does not scale; responses may carry Deprecation: true"}
+        residential: {type: boolean, required: false, note: "true = residential only; false = non-residential only"}
+      note: "state is required. For lowest latency include state + county + address. Trailing slash required."
+    test_request:
+      queryParams: {state: "TX", address: "504 LAVACA ST", limit: 1}
+    cost:
+      type: per_call
+      value: null
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://docs.realie.ai/api-reference/pricing
+      checked: '2026-09-02'
+      confidence: unknown
+      note: "Spends Realie tokens from the monthly allowance; tokens-per-call is unpublished, so no USD-per-call can be stated. Same endpoints on every plan."
+    docs_url: https://docs.realie.ai/api-reference/v3/property/property-search
+
+  - id: realie.property.address.lookup
+    domain: property
+    capability: property.address.lookup
+    platform: property
+    scope: any_account
+    method: GET
+    path: /public/property/address/
+    name: "Look up a U.S. property by street address"
+    summary: "Address Lookup"
+    input:
+      queryParams:
+        state: {type: string, required: true, note: "two-letter state code", example: "TX"}
+        address: {type: string, required: true, note: "street address line 1 only — do not include city, state, or ZIP", example: "504 LAVACA ST"}
+        unitNumberStripped: {type: string, required: false, note: "unit number without type prefix"}
+        county: {type: string, required: false, note: "required when city is provided"}
+        city: {type: string, required: false, note: "if set, county is required"}
+      note: "Faster than property search for a single known address. Also the registry's connect probe. Trailing slash required."
+    test_request:
+      queryParams: {address: "504 LAVACA ST", state: "TX"}
+    cost:
+      type: per_call
+      value: null
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://docs.realie.ai/api-reference/pricing
+      checked: '2026-09-02'
+      confidence: unknown
+      note: "Spends Realie tokens from the monthly allowance; tokens-per-call is unpublished, so no USD-per-call can be stated."
+    docs_url: https://docs.realie.ai/api-reference/v3/property/address-lookup
+
+  - id: realie.property.parcel.lookup
+    domain: property
+    capability: property.parcel.lookup
+    platform: property
+    scope: any_account
+    method: GET
+    path: /public/property/parcelId/
+    name: "Look up a U.S. property by parcel ID"
+    summary: "Parcel ID Lookup"
+    input:
+      queryParams:
+        state: {type: string, required: true, note: "two-letter state code", example: "TX"}
+        county: {type: string, required: true, note: "county where the parcel is located"}
+        parcelId: {type: string, required: true, note: "exact assessor parcel number / APN — harvest from a sibling live response; never invent one"}
+      note: "No test_request yet: without a live key there is no honest APN to send. On verification, harvest parcelId (and county) from address or search, then call this route."
+    cost:
+      type: per_call
+      value: null
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://docs.realie.ai/api-reference/pricing
+      checked: '2026-09-02'
+      confidence: unknown
+      note: "Spends Realie tokens from the monthly allowance; tokens-per-call is unpublished, so no USD-per-call can be stated."
+    docs_url: https://docs.realie.ai/api-reference/v3/property/parcel-id-lookup
+
+  - id: realie.property.location.search
+    domain: property
+    capability: property.location.search
+    platform: property
+    scope: any_account
+    method: GET
+    path: /public/property/location/
+    name: "Search U.S. properties near a lat/lng"
+    summary: "Search by latitude/longitude with an optional radius in miles"
+    input:
+      queryParams:
+        longitude: {type: number, required: true, note: "center longitude", example: -97.7404}
+        latitude: {type: number, required: true, note: "center latitude", example: 30.2747}
+        radius: {type: number, required: false, note: "miles from center; max 2", example: 0.25}
+        limit: {type: integer, required: false, note: "results to return, default 10, max 100", example: 1}
+        offset: {type: integer, required: false, note: "records to skip; default 0"}
+        residential: {type: boolean, required: false, note: "true = residential only; false = non-residential only"}
+        includeUnassignedAddress: {type: boolean, required: false, note: "include nearby parcels without an assigned address; default excludes them"}
+      note: "By default nearby searches exclude parcels without assigned addresses. Trailing slash required."
+    test_request:
+      queryParams: {latitude: 30.2747, longitude: -97.7404, radius: 0.25, limit: 1}
+    cost:
+      type: per_call
+      value: null
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://docs.realie.ai/api-reference/pricing
+      checked: '2026-09-02'
+      confidence: unknown
+      note: "Spends Realie tokens from the monthly allowance; tokens-per-call is unpublished, so no USD-per-call can be stated."
+    docs_url: https://docs.realie.ai/api-reference/v3/property/location-search
+
+  - id: realie.property.comparables.search
+    domain: property
+    capability: property.comparables.search
+    platform: property
+    scope: any_account
+    method: GET
+    path: /public/premium/comparables/
+    name: "Find comparable property sales near a lat/lng"
+    summary: "Search for comparable properties based on location and optional property characteristics"
+    input:
+      queryParams:
+        latitude: {type: number, required: true, note: "target property latitude", example: 30.2747}
+        longitude: {type: number, required: true, note: "target property longitude", example: -97.7404}
+        radius: {type: number, required: false, note: "search radius in miles; default 1"}
+        timeFrame: {type: integer, required: false, note: "months to look back for comparable sales; default 18"}
+        maxResults: {type: integer, required: false, note: "max results, default 25, max 50 — keep at 1 for cheap tests", example: 1}
+        sqftMin: {type: integer, required: false}
+        sqftMax: {type: integer, required: false}
+        bedsMin: {type: integer, required: false}
+        bedsMax: {type: integer, required: false}
+        bathsMin: {type: number, required: false}
+        bathsMax: {type: number, required: false}
+        propertyType: {type: string, required: false, note: "one of any | condo | house"}
+        priceMin: {type: integer, required: false}
+        priceMax: {type: integer, required: false}
+      note: "Premium comparables route; same auth and token meter as the property routes. Trailing slash required."
+    test_request:
+      queryParams: {latitude: 30.2747, longitude: -97.7404, maxResults: 1}
+    cost:
+      type: per_call
+      value: null
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://docs.realie.ai/api-reference/pricing
+      checked: '2026-09-02'
+      confidence: unknown
+      note: "Spends Realie tokens from the monthly allowance; tokens-per-call is unpublished, so no USD-per-call can be stated. Whether premium routes burn more tokens than property routes is also unpublished."
+    docs_url: https://docs.realie.ai/api-reference/v3/premium/premium-comparables-search

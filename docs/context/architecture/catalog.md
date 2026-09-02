@@ -1357,6 +1357,9 @@ long strings clipped, ~10 KB cap) by the verifier, then human-reviewed for PII b
 | moz | web | Basic (AccessID:SecretKey base64), POST JSON API | SEO: web.backlinks.*, web.url.metrics |
 | tikhub | tiktok (+instagram, youtube, x) | Bearer key | Social: tiktok.* |
 | justoneapi | tiktok (+instagram, xiaohongshu, weibo) | `?token=` query param | Social: tiktok.* |
+| realie (2026-09-02) | property (Enrichment) | Bearer key; BYOK-only — monthly token plans, tokens-per-call unpublished | proposed: property.search, property.address.lookup, property.parcel.lookup, property.location.search, property.comparables.search |
 
 The SEO pair and the social pair each implement the same capabilities on purpose — they are the
-first real test that the capability taxonomy supports cross-provider comparison.
+first real test that the capability taxonomy supports cross-provider comparison. Realie is the
+first nationwide U.S. property-records listing; its costs stay `value: null` until a meter
+observation or rate card makes USD-per-call computable (no platform-key slot until then).
