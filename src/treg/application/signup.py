@@ -14,7 +14,8 @@ from ..domain import referrals
 from ..domain.governance.teams import _make_org_membership, _slugify
 from ..domain.identity.access import _is_machine_email, _norm_email
 from ..infra.db import session_maker
-from ..models import Org, User
+from ..models import Invite, Membership, Org, User
+from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
 
 
@@ -214,6 +215,67 @@ async def register_user(
         # Both org-creating doors redeem because both end with a person owning a fresh team.
         await _redeem_referral(db, referral_cookie, user, org)
         return response
+
+
+# Domains that identify a person, not a company — a team named "Gmail" helps nobody, so the
+# local part is the better seed there. Mirrors _suggestTeamName in web/index.html.
+_GENERIC_EMAIL_DOMAINS = {
+    "gmail", "googlemail", "outlook", "hotmail", "live", "msn", "yahoo", "icloud", "me", "mac",
+    "proton", "protonmail", "pm", "aol", "qq", "163", "126", "foxmail", "gmx", "yandex", "hey",
+    "fastmail", "zoho", "mail", "email", "duck",
+}
+
+
+def _default_team_name(email: str) -> str:
+    """A friendly default team name from an email: sam@acme.dev → "Acme", sam@gmail.com → "Sam"."""
+    local, _, host = email.partition("@")
+    domain = host.split(".")[0].strip()
+    base = local.strip() if not domain or domain.lower() in _GENERIC_EMAIL_DOMAINS else domain
+    base = base.strip(".-_") or local.strip() or "My team"
+    return (base[:1].upper() + base[1:])[:80]
+
+
+async def ensure_first_team(
+    *, email: str, ad_cookie: str, utm_cookie: str, referral_cookie: str,
+) -> None:
+    """Auto-create a first team, server-side, for a browser sign-in that has none.
+
+    Exists because the welcome modal's POST /orgs never arrives from behind some corporate
+    secure-web-gateways (they let GETs through and silently swallow cross-origin POSTs to
+    young/uncategorized domains), which stranded real signups on an endless "Creating…" spinner.
+    The OAuth callback GET demonstrably passes those networks, so the team is made HERE and the
+    welcome modal only renames it. Runs on every browser sign-in, so a previously stranded
+    zero-team user self-heals on their next login.
+
+    Deliberately skipped for a user with a pending invite: they should JOIN their teammate's
+    org, not be handed a throwaway one (the dashboard offers that choice). Fire-and-forget:
+    a login must never fail because this could not run.
+    """
+    try:
+        async with session_maker() as db:
+            user = (
+                await db.execute(select(User).where(User.email == _norm_email(email)))
+            ).scalar_one_or_none()
+            if user is None or demo_sandbox.is_sandbox_user(user):
+                return
+            has_org = (
+                await db.execute(select(Membership.id).where(Membership.user_id == user.id).limit(1))
+            ).first()
+            if has_org:
+                return
+            invites = (
+                await db.execute(select(Invite).where(
+                    Invite.email == user.email, Invite.status == "pending"))
+            ).scalars().all()
+            now = _utcnow_naive()
+            if any(inv.expires_at is None or _as_naive(inv.expires_at) >= now for inv in invites):
+                return
+        await create_org(
+            user=user, name=_default_team_name(user.email),
+            ad_cookie=ad_cookie, utm_cookie=utm_cookie, referral_cookie=referral_cookie,
+        )
+    except Exception as exc:  # noqa: BLE001 — the sign-in itself must still succeed
+        logging.getLogger("treg").warning("first-team auto-create failed for %s: %s", email, exc)
 
 
 async def create_org(

@@ -159,6 +159,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/orgs/{org_id}/balance', ('GET',), 'org_balance'),
     ('/orgs/{org_id}/tag-keys', ('GET',), 'list_tag_keys'),
     ('/orgs/{org_id}/usage/by-tag', ('GET',), 'usage_by_tag'),
+    ('/orgs/{org_id}', ('PATCH',), 'rename_org'),
     ('/orgs/{org_id}/settings', ('GET',), 'get_org_settings'),
     ('/orgs/{org_id}/settings', ('PATCH',), 'set_org_settings'),
     ('/orgs/{org_id}/budgets', ('GET',), 'list_tag_budgets'),

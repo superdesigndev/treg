@@ -1317,6 +1317,23 @@ async def usage_by_tag(
     }
 
 
+@app.patch("/orgs/{org_id}")
+async def rename_org(
+    org_id: int, body: OrgIn,
+    caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Rename a team — display name only; the slug (and every token and URL bound to it) stays
+    stable. Admin+. Exists because the first team is now auto-created at sign-in with a name
+    guessed from the email domain, and the welcome modal names it properly with this."""
+    _require_admin_of(org_id, caller)
+    name = (body.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=422, detail="give the team a name")
+    caller.org.name = name[:80]
+    await db.commit()
+    return {"org": caller.org.slug, "org_id": org_id, "name": caller.org.name}
+
+
 @app.get("/orgs/{org_id}/settings")
 async def get_org_settings(
     org_id: int, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),

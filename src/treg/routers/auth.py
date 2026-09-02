@@ -32,6 +32,7 @@ from ..domain.identity.access import require_identity
 from ..domain.identity.mcp_oauth import REFRESH_TTL_S
 from ..models import User
 from .auth_helpers import _is_https, _remember_oauth_return, _same_origin
+from .signup_cookies import REFERRAL_COOKIE
 from .web import _esc_html
 
 # The app alias preserves the moved handlers' original @app.post decorator text byte-for-byte.
@@ -94,6 +95,9 @@ async def auth_email_verify(
         verified = await auth_use_cases.verify_email_login(body.email, body.code)
     except auth_use_cases.EmailAuthError as exc:
         raise _email_http_error(exc) from exc
+    # Same first-team guarantee as the OAuth doors (this one is a POST, so a POST-blocking network
+    # never reaches it — but a user who signed up here and signs in via OAuth later must not differ).
+    await _ensure_first_team(request, verified.email)
     resp = JSONResponse({"token": verified.token, "email": verified.email})
     resp.set_cookie(sess.COOKIE, verified.session_cookie, httponly=True,
                     samesite="lax", secure=_is_https(request), max_age=sess.TTL_SECONDS)
@@ -224,6 +228,19 @@ def _auth_page(headline: str, sub: str = "", *, ok: bool = True, status: int = 2
     return HTMLResponse(html, status_code=status)
 
 
+async def _ensure_first_team(request: Request, email: str) -> None:
+    """A browser sign-in with no team gets one made server-side, on this GET. The welcome modal's
+    own POST /orgs never arrives from behind some corporate secure-web-gateways (GETs pass, POSTs
+    are silently swallowed), which stranded signups on a spinner — so the team is created here and
+    the modal only renames it. Never fails the login (the use case swallows its own errors)."""
+    await signup.ensure_first_team(
+        email=email,
+        ad_cookie=request.cookies.get("treg_ad") or "",
+        utm_cookie=request.cookies.get("treg_utm") or "",
+        referral_cookie=request.cookies.get(REFERRAL_COOKIE) or "",
+    )
+
+
 def _finish_oauth_login(request: Request, user: User, st: tuple | None) -> RedirectResponse:
     """After a GitHub/Google callback proves an identity: set the browser session cookie, then either
     land on the dashboard (a plain browser login) or bounce to /login?cli=<id> so a `treg login`
@@ -257,6 +274,7 @@ async def auth_github_callback(
         )
     except auth_use_cases.SocialLoginError as exc:
         return _social_login_failure(exc)
+    await _ensure_first_team(request, proof.user.email)
     return _finish_oauth_login(request, proof.user, proof.cli_state)
 
 
@@ -285,6 +303,7 @@ async def auth_google_callback(
         )
     except auth_use_cases.SocialLoginError as exc:
         return _social_login_failure(exc)
+    await _ensure_first_team(request, proof.user.email)
     return _finish_oauth_login(request, proof.user, proof.cli_state)
 
 

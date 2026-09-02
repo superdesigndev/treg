@@ -31,14 +31,16 @@ async def _otp_login(c: AsyncClient, email: str) -> str:
     return r.json()["token"]
 
 
-async def test_first_login_registers_user_with_no_org_then_reuses_identity(client):
+async def test_first_login_registers_user_with_first_team_then_reuses_identity(client):
     tok = await _otp_login(client, "neo@matrix.io")
     orgs = (await client.get("/orgs", headers={"X-Treg-Token": tok})).json()
-    assert orgs == []  # no auto personal org — the user names + creates their first team next
+    # Sign-in now creates the first team server-side (name guessed from the email domain) — the
+    # welcome modal only renames it. See ensure_first_team for why this can't be a browser POST.
+    assert [(o["name"], o["role"]) for o in orgs] == [("Matrix", "owner")]
 
     await _otp_login(client, "neo@matrix.io")  # second time = login, not a new user
     orgs2 = (await client.get("/orgs", headers={"X-Treg-Token": tok})).json()
-    assert orgs2 == []  # still no duplicate user; still zero orgs until they create one
+    assert len(orgs2) == 1  # still no duplicate user; no second auto team either
 
 
 async def test_verify_rejects_wrong_and_unknown_code(client):
@@ -93,3 +95,86 @@ async def test_dev_mode_off_hides_the_code(client):
     finally:
         object.__setattr__(settings, "email_dev_mode", True)
         get_settings.cache_clear()
+
+
+# ---- the first-team auto-create contract (ensure_first_team) --------------------------------
+
+
+def _h(tok: str, org: str | None = None) -> dict:
+    h = {"X-Treg-Token": tok}
+    if org:
+        h["X-Treg-Org"] = org
+    return h
+
+
+async def test_generic_email_domain_names_team_after_the_person(client):
+    tok = await _otp_login(client, "sam@gmail.com")
+    orgs = (await client.get("/orgs", headers={"X-Treg-Token": tok})).json()
+    assert [o["name"] for o in orgs] == ["Sam"]  # "Gmail" helps nobody — use the local part
+
+
+async def test_invited_user_gets_no_auto_team(client):
+    # An invite is waiting for this email BEFORE their first login: they should JOIN that team,
+    # not be handed a throwaway one next to it (the dashboard offers the join).
+    owner = await _otp_login(client, "owner@acme.dev")
+    org = (await client.post("/orgs", json={"name": "Acme"}, headers=_h(owner))).json()
+    await client.post(f"/orgs/{org['org_id']}/invites", json={"email": "newhire@corp.com"},
+                      headers=_h(owner, org["org"]))
+
+    tok = await _otp_login(client, "newhire@corp.com")
+    assert (await client.get("/orgs", headers=_h(tok))).json() == []
+    mine = (await client.get("/invites/mine", headers=_h(tok))).json()
+    assert [m["org"] for m in mine] == [org["org"]]
+
+
+async def test_stranded_zero_team_user_selfheals_on_next_login(client):
+    # A user registered before this feature (or whose auto-create failed) has zero teams; the
+    # ensure runs on EVERY sign-in, so the next login makes their team.
+    from sqlmodel import select
+
+    from treg.infra.db import session_maker
+    from treg.models import Membership, Org, User
+
+    tok = await _otp_login(client, "stranded@oldco.io")
+    async with session_maker() as s:
+        u = (await s.execute(select(User).where(User.email == "stranded@oldco.io"))).scalar_one()
+        ms = (await s.execute(select(Membership).where(Membership.user_id == u.id))).scalars().all()
+        org = await s.get(Org, ms[0].org_id)
+        await s.delete(ms[0])
+        await s.delete(org)
+        await s.commit()  # simulate the pre-feature stranded state: a user with no team at all
+    assert (await client.get("/orgs", headers=_h(tok))).json() == []
+
+    await _otp_login(client, "stranded@oldco.io")
+    orgs = (await client.get("/orgs", headers=_h(tok))).json()
+    assert [o["name"] for o in orgs] == ["Oldco"]
+
+
+async def test_rename_org_changes_name_and_keeps_slug(client):
+    tok = await _otp_login(client, "jax@jvullinghs.com")
+    org = (await client.get("/orgs", headers=_h(tok))).json()[0]
+    assert org["name"] == "Jvullinghs"
+
+    r = await client.patch(f"/orgs/{org['org_id']}", json={"name": "Tibba"},
+                           headers=_h(tok, org["slug"]))
+    assert r.status_code == 200 and r.json() == {"org": org["slug"], "org_id": org["org_id"], "name": "Tibba"}
+
+    after = (await client.get("/orgs", headers=_h(tok))).json()[0]
+    assert after["name"] == "Tibba" and after["slug"] == org["slug"]  # slug (and tokens/URLs) stable
+
+    blank = await client.patch(f"/orgs/{org['org_id']}", json={"name": "  "}, headers=_h(tok, org["slug"]))
+    assert blank.status_code == 422
+
+
+async def test_rename_org_requires_admin(client):
+    owner = await _otp_login(client, "boss@tibba.co")
+    org = (await client.get("/orgs", headers=_h(owner))).json()[0]
+    await client.post(f"/orgs/{org['org_id']}/invites", json={"email": "viewer@corp.com", "role": "viewer"},
+                      headers=_h(owner, org["slug"]))
+    viewer = await _otp_login(client, "viewer@corp.com")
+    inv = (await client.get("/invites/mine", headers=_h(viewer))).json()[0]
+    await client.post(f"/invites/{inv['id']}/accept", headers=_h(viewer))
+
+    r = await client.patch(f"/orgs/{org['org_id']}", json={"name": "Hijacked"},
+                           headers=_h(viewer, org["slug"]))
+    assert r.status_code == 403

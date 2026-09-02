@@ -321,10 +321,16 @@ Server side (`domain.identity.access`): `require_identity` (who, from token OR s
   with **mutations** (`_adm` helper): `admGrant`/`admSuspendUser`/`admDeleteUser`,
   `admSuspendOrg`/`admDeleteOrg` (inline-confirm deletes). Self-actions are hidden for the current user
   (`u.email===me`) to prevent lockout.
-- **First-run onboarding** — a brand-new user has **zero teams** (no auto personal org), so `maybeOnboard`
-  shows a **mandatory "name your team" welcome** (`welcome.*`; team name pre-suggested from the email
-  domain via `_suggestTeamName`). Step 0 is NOT dismissable — no skip, survives Escape/backdrop — the only
-  action is `welcomeCreate` (`POST /orgs`, marks onboarded). Three more steps follow **inside the same
+- **First-run onboarding** — sign-in auto-creates a brand-new user's first team server-side
+  (`ensure_first_team`; corporate gateways swallow browser POSTs), so `maybeOnboard` shows a
+  **mandatory "name your team" welcome** (`welcome.*`) that usually **renames** that team
+  (`welcome.renameOrg` → `PATCH /orgs/{id}`; falls back to create — name pre-suggested from the email
+  domain via `_suggestTeamName`). For first-run rename scenarios, `loadAll` early-returns after
+  fetching `/orgs` and `/invites/mine` (skipping `/tools`, `/health`, `/bundles`) so the modal
+  appears immediately. Step 0 is NOT dismissable — no skip, survives Escape/backdrop — the only
+  action is `welcomeCreate` (rename or `POST /orgs` under a 15s abort-timeout; a blocked network
+  advances renames anyway and shows a "firewall may be blocking this" error on creates; marks
+  onboarded). Three more steps follow **inside the same
   modal**: an **agent picker** (`welcome.step===1` — OpenClaw / Hermes Agent / Claude.ai / Claude Code /
   Codex, plus a "More" expander with opencode / pi / Cursor / Gemini CLI / Other; LobeHub icons via
   unpkg, theme-aware light/dark variants through `agentIcon`) with Skip/Next; the **setup block**

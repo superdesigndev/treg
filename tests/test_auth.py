@@ -75,7 +75,7 @@ async def gc(monkeypatch):
     get_settings.cache_clear()
 
 
-async def test_github_login_creates_user_session_but_no_auto_org(gc):
+async def test_github_login_creates_user_session_and_first_team(gc):
     r = await gc.get("/auth/github", follow_redirects=False)
     assert r.status_code == 302
     state = gc.cookies.get("treg_oauth_state")
@@ -85,11 +85,23 @@ async def test_github_login_creates_user_session_but_no_auto_org(gc):
     assert gc.cookies.get("treg_session")  # session cookie set (secure omitted over http)
     me = await gc.get("/auth/me")
     assert me.status_code == 200 and me.json()["email"] == "octo@example.com"
-    # first login creates the USER ONLY — no throwaway personal org; the user names their first team next
+    # First login also creates the FIRST TEAM, server-side, on this GET: some corporate gateways
+    # swallow the welcome modal's POST /orgs, so team creation must not depend on a browser POST.
+    # The welcome modal only renames it (name guessed from the email domain).
     async with session_maker() as s:
         u = (await s.execute(select(User).where(User.email == "octo@example.com"))).scalar_one()
+        ms = (await s.execute(select(Membership).where(Membership.user_id == u.id))).scalars().all()
+        assert len(ms) == 1 and ms[0].role == "owner"
+        org = await s.get(Org, ms[0].org_id)
+    assert org.name == "Example"  # from octo@example.com
+
+    # A second login is a plain sign-in: it must not mint another team.
+    await gc.get("/auth/github", follow_redirects=False)
+    state2 = gc.cookies.get("treg_oauth_state")
+    await gc.get(f"/auth/github/callback?code=abc&state={state2}", follow_redirects=False)
+    async with session_maker() as s:
         n = len((await s.execute(select(Membership).where(Membership.user_id == u.id))).scalars().all())
-    assert n == 0
+    assert n == 1
 
 
 async def test_bad_state_rejected(gc):
@@ -237,7 +249,7 @@ async def goog(monkeypatch):
     get_settings.cache_clear()
 
 
-async def test_google_login_creates_user_session_but_no_auto_org(goog):
+async def test_google_login_creates_user_session_and_first_team(goog):
     r = await goog.get("/auth/google", follow_redirects=False)
     assert r.status_code == 302 and "accounts.google.com" in r.headers["location"]
     state = goog.cookies.get("treg_oauth_state")
@@ -250,7 +262,7 @@ async def test_google_login_creates_user_session_but_no_auto_org(goog):
     async with session_maker() as s:
         u = (await s.execute(select(User).where(User.email == "guser@example.com"))).scalar_one()
         n = len((await s.execute(select(Membership).where(Membership.user_id == u.id))).scalars().all())
-    assert n == 0  # first login registers the user only — no auto personal org
+    assert n == 1  # first login also creates the first team, server-side (see the GitHub twin test)
 
 
 async def test_google_bad_state_rejected(goog):

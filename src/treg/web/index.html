@@ -3582,9 +3582,10 @@ product, including per-customer usage tracking and billing.</pre>
           <template v-if="welcome.step===0">
             <div style="color:var(--accent);font-size:15px;letter-spacing:.5px;margin-bottom:12px">▚ treg</div>
             <h2 style="margin:0 0 8px;font-size:20px">Welcome{{me?', '+me.split('@')[0]:''}} 👋</h2>
-            <p class="sub" style="margin:0 0 18px">Create your team — it's where you keep API keys and skills so your teammates and their agents can call them <b>without holding the keys</b>. You can invite people and add secrets right after.</p>
+            <p v-if="welcome.renameOrg" class="sub" style="margin:0 0 18px">Your team <b>{{welcome.renameOrg.name}}</b> is ready — it's where you keep API keys and skills so your teammates and their agents can call them <b>without holding the keys</b>. Name it whatever you like:</p>
+            <p v-else class="sub" style="margin:0 0 18px">Create your team — it's where you keep API keys and skills so your teammates and their agents can call them <b>without holding the keys</b>. You can invite people and add secrets right after.</p>
             <div class="field"><input v-model="welcome.name" placeholder="Team name, e.g. Superdesign" @keyup.enter="welcomeCreate"/></div>
-            <button class="btn primary" style="width:100%;margin-top:4px" @click="welcomeCreate" :disabled="welcome.busy">{{welcome.busy?'Creating…':'Create team →'}}</button>
+            <button class="btn primary" style="width:100%;margin-top:4px" @click="welcomeCreate" :disabled="welcome.busy">{{welcome.busy?(welcome.renameOrg?'Saving…':'Creating…'):(welcome.renameOrg?'Continue →':'Create team →')}}</button>
           </template>
           <template v-else-if="welcome.step===1">
             <div style="color:var(--accent);font-size:15px;letter-spacing:.5px;margin-bottom:12px">▚ treg</div>
@@ -4074,7 +4075,7 @@ createApp({
       share:{on:false, email:'', role:'viewer', full:true, busy:false, err:'', sent:null, member:null},  // detail-page "Share…" (invite + land on this page)
       me:'', icHash:'', myOrgs:[], isAdmin:false,
       onboarded:true,  // first-run onboarding done (server flag; gates the welcome modal)
-      welcome:{on:false, step:0, name:'', agent:'openclaw', moreOpen:false, busy:false, err:''},  // first-run: name your team → pick your agent → setup line
+      welcome:{on:false, step:0, name:'', agent:'openclaw', moreOpen:false, busy:false, err:'', renameOrg:null},  // first-run: name your team → pick your agent → setup line; renameOrg = the server-made first team (step 0 renames it instead of creating)
       emptyTab:'agent',
       tools:[], health:{}, calls:[], runs:[], adminStats:null, adminOrgs:[], adminUsers:[],
       adminBusy:false, confirmAdmUser:null, confirmAdmOrg:null,
@@ -5432,11 +5433,16 @@ createApp({
       if(this.inviteLinkOrg!==null && !this.pendingInvites.length && this.sessionMode){
         this.orgMsg='That invite was already used or revoked — ask your teammate to re-invite you if you still need access.'; }
       if(this.onboarded || !this.sessionMode) return;
-      if(this.myOrgs.some(o=>!this.isPersonal(o))) return;
+      const real=this.myOrgs.filter(o=>!this.isPersonal(o) && !o.demo);
+      // Sign-in auto-created their first team server-side (corporate networks swallow the modal's
+      // POST — see ensure_first_team). Welcome still runs, but step 0 NAMES that team via PATCH.
+      if(real.length===1 && !this.pendingInvites.length){
+        this.welcome.renameOrg=real[0]; this.welcome.name=real[0].name; this.welcome.on=true; return; }
+      if(real.length) return;
       // Invited here? Show an ACCEPT-INVITE page (join those teams) instead of forcing them to create a
       // throwaway team of their own (confusing: they'd end up with two). Decline → create-team.
       if(this.pendingInvites.length){ this.openInviteChoice(); return; }
-      this.welcome.name=this._suggestTeamName(); this.welcome.on=true; },
+      this.welcome.renameOrg=null; this.welcome.name=this._suggestTeamName(); this.welcome.on=true; },
     openInviteChoice(){  // seed the multi-select: ALL pending invites checked by default
       this.inviteErr=''; this.inviteSel={}; this.pendingInvites.forEach(i=>{ this.inviteSel[i.id]=true; });
       this.inviteChoice=true; },
@@ -5474,13 +5480,29 @@ createApp({
       return (dom && !generic.includes(dom.toLowerCase())) ? dom.charAt(0).toUpperCase()+dom.slice(1) : ''; },
     async welcomeCreate(){ const name=(this.welcome.name||'').trim(); if(!name){ this.welcome.err='Give your team a name.'; return; }
       this.welcome.busy=true; this.welcome.err='';
-      try{ const o=await this.api('/orgs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})});
-        this.onboarded=true; try{ await this.api('/onboard/skip',{method:'POST'}); }catch(e){}  // don't re-prompt
-        await this.loadAll(); this.switchOrg({slug:o.org});
-        this.analyticsIdentify(); this.intercomUpdate(); this.track('onboarding_team_created',{team:o.org});
-        this.welcome.step=1; }  // stay in the modal: pick your agent → get the setup line
-      catch(e){ this.welcome.err='Could not create the team: '+(e.detail||e.status); }
-      finally{ this.welcome.busy=false; } },
+      const ren=this.welcome.renameOrg;
+      // A silently-swallowed POST (some corporate gateways) must surface as guidance, not an
+      // endless spinner: abort after 15s. The mutating writes below are fire-and-forget for the
+      // same reason — never let a hung POST strand the modal.
+      const ctl=new AbortController(); const timer=setTimeout(()=>ctl.abort(),15000);
+      const advance=async(slug,event)=>{
+        this.onboarded=true; this.api('/onboard/skip',{method:'POST'}).catch(()=>{});  // don't re-prompt
+        await this.loadAll(); this.switchOrg({slug});
+        this.analyticsIdentify(); this.intercomUpdate(); this.track(event,{team:slug});
+        this.welcome.step=1; };  // stay in the modal: pick your agent → get the setup line
+      try{
+        if(ren){  // the server already made this team at sign-in — step 0 only names it
+          if(name!==ren.name) await this.api('/orgs/'+ren.org_id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({name}),signal:ctl.signal});
+          await advance(ren.slug,'onboarding_team_named'); }
+        else{
+          const o=await this.api('/orgs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name}),signal:ctl.signal});
+          await advance(o.org,'onboarding_team_created'); } }
+      catch(e){
+        const blocked=(e.name==='AbortError'||e.name==='TypeError');  // hung-then-aborted, or reset ("Failed to fetch") — both smell like a network middlebox, not our server
+        if(ren && blocked){ await advance(ren.slug,'onboarding_team_named'); }  // the team exists; a lost rename must not block onboarding
+        else if(blocked) this.welcome.err='The request never got through — a firewall on your network may be blocking it. Try another network (a phone hotspot works), then reload this page.';
+        else this.welcome.err='Could not '+(ren?'rename':'create')+' the team: '+(e.detail||e.status); }
+      finally{ clearTimeout(timer); this.welcome.busy=false; } },
     welcomeFinish(){ this.track('onboarding_finished',{agent:this.welcome.agent, step:this.welcome.step}); this.welcome.on=false; this.go('start');
       this.orgMsg='Team created. Send your agent the setup line any time — it lives on Getting started.'; },
     agentIcon(icon){ return 'https://unpkg.com/@lobehub/icons-static-png@latest/'+(this.theme==='dark'?'dark':'light')+'/'+icon+'.png'; },
@@ -6215,6 +6237,13 @@ createApp({
         }
         if(this.sessionMode){ this.pendingInvites=await this.api('/invites/mine').catch(()=>[]); }  // BEFORE the no-orgs early return: an invited user has 0 orgs but DOES have a pending invite — maybeOnboard needs it to offer joining instead of forcing create-team
         if(!this.myOrgs.length){ this.tools=[]; this.bundles=[]; this.health={}; return; }  // brand-new user: no team yet → the mandatory welcome (maybeOnboard) creates the first one; skip org-scoped fetches (they'd 400). finally{} clears loading.
+        // First-run rename scenario (ensure_first_team auto-created the team at sign-in): skip the
+        // org-scoped fetches — maybeOnboard will show the welcome modal immediately, and welcomeCreate
+        // reloads everything after naming the team. Without this, the user waits for /tools etc.
+        if(!this.onboarded && this.sessionMode && !this.pendingInvites.length){
+          const real=this.myOrgs.filter(o=>!this.isPersonal(o) && !o.demo);
+          if(real.length===1){ this.tools=[]; this.bundles=[]; this.health={}; return; }
+        }
         if(this.sessionMode && (!this.activeSlug || !this.myOrgs.some(o=>o.slug===this.activeSlug)) && this.myOrgs.length){
           // Land on the org that actually has tools (most first). Tie / all-empty -> prefer a TEAM over
           // the personal org (first-run confusion killer). Fixes: imports living in the personal space

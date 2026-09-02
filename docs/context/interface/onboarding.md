@@ -138,8 +138,16 @@ After a first **human** `treg login`, `_maybe_offer_onboarding` prompts `[Y/n]` 
 The old docked "Getting started" stepper (`onb.*` state, `.onb-panel`/`.onb-push`/`.onb-shift`) is
 **removed** — its content had drifted from the product and it kept re-appearing after signup. First-run
 now is a **four-step welcome modal**: boot reads `onboarded` from `/auth/me`; `maybeOnboard()` opens it
-only for a non-onboarded session with **no team yet**. Step 0 names the team (`welcomeCreate` → `POST /orgs`,
-marks onboarded via `/onboard/skip`); step 1 asks **which agent you're using** (picker with LobeHub icons,
+for a non-onboarded session. Since the server auto-creates the first team at sign-in
+(`ensure_first_team` — some corporate gateways swallow browser POSTs, see
+[multi-tenancy](../architecture/multi-tenancy.md)), step 0 usually **renames** that team
+(`welcome.renameOrg` set → `PATCH /orgs/{id}`, button reads "Continue →"); a user with no team at all
+(declined an invite) still gets the create form (`welcomeCreate` → `POST /orgs`). Both paths mark
+onboarded via `/onboard/skip` (fire-and-forget) and both writes run under a **15s `AbortController`
+timeout**: a hung/reset request (`AbortError`/`TypeError`) advances anyway in rename mode (the team
+exists; a lost rename must not block onboarding) and, in create mode, surfaces a
+"firewall may be blocking this — try a phone hotspot" error instead of an endless spinner.
+Step 1 asks **which agent you're using** (picker with LobeHub icons,
 skippable); step 2 shows the per-agent **setup block** — the setup line and the team+token as ONE
 copyable unit (`welcomeSetupFull` copies the real token; `welcomeSetupMasked` renders it masked with a
 Show/Hide-key toggle, `startTokenShow`); step 3 is **"Try it out"** — a "waiting for your agent" status (pulsing `.wc-waitdot`, no 🎉), the

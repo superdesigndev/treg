@@ -153,11 +153,21 @@ dependencies, role comparison, and machine classification. Session signing and v
 `domain.identity.session`.
 - **Registration is shared across doors:** `application.signup.find_or_create_user(db, email)` finds a user or creates them
   — **the user ONLY, no auto personal org**. Every identity door calls
-  it (GitHub / Google callbacks, email OTP), so "first proof = registration" is identical. A brand-new
-  user therefore lands with **zero teams** and must name + create their first one (the dashboard's
-  mandatory welcome, or `treg org create`); their identity token is user-scoped so it works before any
-  org exists. **`create_org` uses `require_identity`, NOT `require_member`** — else a zero-org user could
-  never make their first team. See [api](../interface/api.md).
+  it (GitHub / Google callbacks, email OTP), so "first proof = registration" is identical. Their
+  identity token is user-scoped so it works before any org exists. **`create_org` uses
+  `require_identity`, NOT `require_member`** — else a zero-org user could never make their first
+  team. See [api](../interface/api.md).
+- **The first team is made at sign-in, not by the browser:** every browser door (GitHub / Google
+  callback, email OTP verify) then calls `application.signup.ensure_first_team(email, cookies…)`.
+  For a user with **zero memberships and no pending invite** it creates their first team via
+  `create_org` (name guessed from the email domain — `_default_team_name`: `sam@acme.dev` → "Acme",
+  generic inboxes use the local part), so the welcome modal only **renames** it (`PATCH /orgs/{id}`,
+  `rename_org`, admin+, display name only — the slug and every token stay stable). This exists
+  because some corporate secure-web-gateways silently swallow the modal's `POST /orgs` (GETs pass),
+  stranding signups on a spinner; the OAuth callback GET is the request that provably arrives. It
+  runs on **every** sign-in, so a previously stranded zero-team user self-heals at next login; a
+  user with a pending invite is skipped (they should join, not get a throwaway team) and it never
+  fails the login (errors are logged, swallowed).
 - **Code-free invites:** `my_invites` (`GET /invites/mine`, `require_identity`) lists pending invites for
   the caller's proven email; `accept_my_invite` (`POST /invites/{id}/accept`, `require_identity`) joins
   with no code (403 if `invite.email != user.email`, 409 if already a member). The code path stays.

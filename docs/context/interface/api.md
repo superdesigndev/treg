@@ -185,7 +185,11 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   stamp `Org.ad_gclid`/`ad_click_id_type`/`ad_landing`/`ad_click_at` on the new org when present — see
   [ads-conversions](../architecture/ads-conversions.md).
   `create_org` (`POST /orgs`, `require_identity` so a
-  zero-org user can make their first team) + `list_orgs` (`GET /orgs`,
+  zero-org user can make their first team; browser sign-ins normally don't need it — every login
+  door calls `ensure_first_team`, which auto-creates a first team for a zero-org, zero-invite user,
+  see [multi-tenancy](../architecture/multi-tenancy.md)) + `rename_org` (`PATCH /orgs/{id}`, admin+,
+  display name only — slug stays stable; the welcome modal names the auto-created team with it)
+  + `list_orgs` (`GET /orgs`,
   each org carries a `tool_count` — one grouped query — so the dashboard can land on the org with tools;
   its `active` flag follows `require_member`'s precedence — per-org membership token, else `X-Treg-Org`,
   else a team-pinned identity token's own `org` claim — so `treg login --token <pinned key>` lands on the
