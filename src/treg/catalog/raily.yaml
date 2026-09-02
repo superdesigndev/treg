@@ -1,6 +1,6 @@
 provider: raily
 source:
-  docs: https://railyai.com/api
+  docs: https://github.com/railyai/raily-mcp/blob/master/skills/raily/SKILL.md
   openapi: null # FastAPI OpenAPI is not published at a stable public URL; /openapi.json 404s
   curated: 2026-09-02
 # UNVERIFIED against a live user credential at curation time. Do not stamp `verified:` or commit
@@ -17,12 +17,11 @@ source:
 # friendship | communication | professional.
 #
 # TWO PROTOCOLS, ONE ACCOUNT
-# - REST (catalogued here): the owner-scoped FastAPI routes the web app and MCP both call.
-#   Credential: signed-in Supabase session JWT in `Authorization: Bearer`.
-# - MCP (https://railyai.com/mcp): Streamable HTTP, OAuth 2.1 + PKCE, dynamic client registration
-#   at POST https://railyai.com/oauth/register. Same projections, different token. An MCP access
-#   token will NOT pass this registry's REST probe.
-# Dedicated personal API keys (`rly_pk_…`) are owner-approved design, not shipped.
+# - Agent recipe (published): https://github.com/railyai/raily-mcp skills/raily/SKILL.md
+#   Connect https://railyai.com/mcp. OAuth in the browser. Never paste tokens.
+# - REST (catalogued here): the owner-scoped FastAPI routes MCP wraps. Treg verifies these
+#   with a Bearer from legal@raily.cloud — not a scraped browser session.
+# - MCP OAuth tokens authorize /mcp, not this REST probe.
 #
 # BILLING
 # Agent reads are included with the tier (Intern free / Fulltime €9.99/mo / PRO+ €19.99/mo).
@@ -75,7 +74,7 @@ endpoints:
       note: "no parameters — the Bearer token is the subject. Returns has_profile, has_brief, agent_active, opt-in, match and request counters"
     test_request: {}
     cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier; this is also the registry probe}
-    docs_url: https://railyai.com/api
+    docs_url: https://github.com/railyai/raily-mcp/blob/master/skills/raily/SKILL.md
 
   - id: raily.account.usage
     capability: account.usage
@@ -104,7 +103,7 @@ endpoints:
       note: "no parameters. Empty entries with brief_version null means the interview has not been completed yet"
     test_request: {}
     cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier}
-    docs_url: https://railyai.com/api
+    docs_url: https://github.com/railyai/raily-mcp/blob/master/skills/raily/SKILL.md
 
   - id: raily.people.match.queue
     capability: people.match.queue
@@ -132,7 +131,7 @@ endpoints:
       note: "no parameters. Cards stay withheld until a delivery is opened; this list is how you learn delivery ids"
     test_request: {}
     cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier; does not consume the free batch}
-    docs_url: https://railyai.com/api
+    docs_url: https://github.com/railyai/raily-mcp/blob/master/skills/raily/SKILL.md
 
   - id: raily.people.match.batch
     capability: people.match.batch
@@ -165,7 +164,7 @@ endpoints:
       note: "no parameters. Private initiators arrive as anonymous; the payload is already reduced to what this viewer may see"
     test_request: {}
     cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier}
-    docs_url: https://railyai.com/api
+    docs_url: https://github.com/railyai/raily-mcp/blob/master/skills/raily/SKILL.md
 
   - id: raily.people.match.negotiate
     capability: people.match.negotiate
@@ -184,7 +183,7 @@ endpoints:
     test_request:
       pathParams: {other_id: "00000000-0000-4000-8000-000000000001"}
     cost: {type: free, value: 0, currency: USD, unit: call, note: included with Fulltime/PRO+ grounded reports; Intern still gets the template. A 404 miss is free}
-    docs_url: https://railyai.com/api
+    docs_url: https://github.com/railyai/raily-mcp/blob/master/skills/raily/SKILL.md
 
   - id: raily.people.agent.door
     capability: people.agent.door
@@ -198,7 +197,7 @@ endpoints:
       note: "no parameters. 404 until Matching is opted in (the door is created with the opt-in). Public resolve of someone else's handle is GET /api/agent-doors/{handle} and is not catalogued — it needs no key"
     test_request: {}
     cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier}
-    docs_url: https://railyai.com/api
+    docs_url: https://github.com/railyai/raily-mcp/blob/master/skills/raily/SKILL.md
 
   - id: raily.people.agent.knock
     capability: people.agent.knock
@@ -220,7 +219,7 @@ endpoints:
       pathParams: {handle: "example-door"}
       body: {operation_key: "treg-catalog-verify-knock"}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "quota-limited, not credit-metered. A 404 miss is free. Hit price unobserved — a successful knock still spends no Credits, only one of the daily knock slots"}
-    docs_url: https://railyai.com/api
+    docs_url: https://github.com/railyai/raily-mcp/blob/master/skills/raily/SKILL.md
 
   - id: raily.people.agent.report
     capability: people.agent.report
@@ -234,7 +233,7 @@ endpoints:
       note: "no parameters. 404 with 'No agent report yet' when none has been generated — Intern is monthly, Fulltime weekly"
     test_request: {}
     cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier}
-    docs_url: https://railyai.com/api
+    docs_url: https://github.com/railyai/raily-mcp/blob/master/skills/raily/SKILL.md
 
   - id: raily.people.agent.bar
     capability: people.agent.bar
@@ -248,4 +247,4 @@ endpoints:
       note: "no parameters. Silence on Matching means the bar is working, not that the agent is broken"
     test_request: {}
     cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier}
-    docs_url: https://railyai.com/api
+    docs_url: https://github.com/railyai/raily-mcp/blob/master/skills/raily/SKILL.md

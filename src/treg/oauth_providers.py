@@ -2530,35 +2530,33 @@ PINTEREST_ADS = OAuthProvider(
     probe_path="/user_account",  # cheap token check once configured; auto-provisions a Bearer tool
 )
 
-# Agentic friendship discovery. The public agent protocol is MCP OAuth at /mcp
-# (https://railyai.com/api); the catalogued operations are the same owner-scoped
-# REST routes that MCP wraps, so treg's one-shot GET/POST verify pipeline can
-# call them. The pasted credential is a signed-in session JWT
-# (`Authorization: Bearer`). Dedicated `rly_pk_…` personal API keys are designed
-# but not shipped. Probe observed 2026-09-02: garbage Bearer → HTTP 401
-# {"detail":"Sign in to see your state"}.
+# Agentic friendship discovery. The agent-facing recipe is the published skill
+# at https://github.com/railyai/raily-mcp (skills/raily/SKILL.md): connect
+# https://railyai.com/mcp over OAuth in the browser — never paste tokens.
+# Catalogued operations are the same owner-scoped REST routes that MCP wraps,
+# so treg's one-shot GET/POST verify pipeline can call them. Probe observed
+# 2026-09-02: garbage Bearer → HTTP 401 {"detail":"Sign in to see your state"}.
 RAILY = OAuthProvider(
     service="raily",
     display_name="Raily",
     auth_kind="key",
-    token_label="Session access token",
-    token_placeholder="your Raily session JWT",
+    token_label="Access token",
+    token_placeholder="verification token from Raily (do not scrape a browser session)",
     token_header="Authorization",
     token_format="Bearer {secret}",
-    setup_url="https://railyai.com/login",
-    setup_action_label="Sign in to Raily",
+    setup_url="https://github.com/railyai/raily-mcp",
+    setup_action_label="Open the Raily agent skill",
     setup_steps=(
-        "Create an account at https://railyai.com/login (magic link — self-serve, no sales call).",
-        "Complete a camera self-analysis so the agent has a profile to match on.",
-        "Copy the session access_token from the signed-in browser "
-        "(DevTools → Application → Local Storage → the supabase auth JSON → access_token) "
-        "and paste it here.",
+        "Install the skill from https://github.com/railyai/raily-mcp "
+        "(skills/raily/SKILL.md). OpenClaw: openclaw plugins install clawhub:@railyai/raily.",
+        "Connect MCP at https://railyai.com/mcp. OAuth always happens in the browser — "
+        "never paste tokens into chat or config. Site Connect: https://railyai.com/integrations.",
+        "Treg's catalog probe is REST (GET /api/me/state). Maintainers get a verification "
+        "Bearer by email at legal@raily.cloud; that is not the user-facing connect path.",
     ),
     setup_note=(
-        "Read tools are included with every tier; Intern is free. A successful personality "
-        "analysis spends 1 Credit (€1.99). The same account is also reachable as MCP OAuth "
-        "at https://railyai.com/mcp — that access token is a different credential and will "
-        "not verify against this REST probe."
+        "The skill is read-only. Intern is free; a successful personality analysis spends "
+        "1 Credit (€1.99). MCP OAuth tokens authorize /mcp, not this REST probe."
     ),
     auth_uri="", token_uri="",
     scopes={},
@@ -2568,7 +2566,7 @@ RAILY = OAuthProvider(
         "Personal agents find compatible people, talk first, and bring you in when both sides fit."
     ),
     base_url="https://railyai.com",
-    docs_url="https://railyai.com/api",
+    docs_url="https://github.com/railyai/raily-mcp/blob/master/skills/raily/SKILL.md",
     examples=(
         {"method": "GET", "path": "api/me/state",
          "note": "Agent lifecycle: has_profile, has_brief, agent_active. Free probe."},
