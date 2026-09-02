@@ -1,6 +1,7 @@
 """First-run onboarding journeys and their transaction boundaries."""
 
 import json
+import logging
 import sys
 from collections.abc import Awaitable, Callable
 
@@ -104,7 +105,14 @@ async def mint_sandbox(*, client_ip: str) -> dict:
             await db.commit()
             raise SandboxError("rate_limited")
         await db.commit()
-        await landing_sandbox.gc(db)
+        # Reap opportunistically, but never let the reaper close the front door: a gc failure is
+        # logged and rolled back, and the visitor still gets their sandbox. Before this guard, one
+        # undeletable expired sandbox turned every mint into a 500 for six hours.
+        try:
+            await landing_sandbox.gc(db)
+        except Exception:  # noqa: BLE001 - anything the reaper raises is a bug to log, not to serve
+            await db.rollback()
+            logging.getLogger("treg").exception("sandbox gc failed; minting anyway")
         out = await landing_sandbox.mint(db)
         out["live"] = bool(get_settings().demo_stripe_key)
         return out

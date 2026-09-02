@@ -122,7 +122,11 @@ a deploy without the secret exposes no unauthenticated POST surface. Design poin
 
 Bounds: `MAX_TOOLS`/`MAX_SECRETS` (3) are enforced by `domain/governance/sandbox.py` on
 `POST /tools|/secrets`; `SANDBOX_TTL_MIN` (60) + `gc(db)` reaps expired visitors (their org + all
-org-scoped rows), run opportunistically on each mint. A DB-backed `ratestore` window keyed by client
+org-scoped rows), run opportunistically on each mint. The reaper deletes the org through the ONE shared
+`cascade_delete_org` (`domain/governance/teams.py`) - it must never keep its own list of org-scoped
+tables. It once did, the copy never learned about `IdempotentCall`, and on 2026-09-02 Postgres refused
+the membership delete on every mint. `mint_sandbox` now also isolates the reaper: a gc failure is
+rolled back and logged, and the visitor still gets a sandbox. A DB-backed `ratestore` window keyed by client
 IP and `SANDBOX_RATE_MAX` guards `POST /demo/sandbox`. The browser reuses one sandbox across reloads via
 `localStorage['treg-sbx']`. **Skill import is disabled in a sandbox org** — `POST /skills` (register),
 `POST /skills/analyze`, and `POST /skills/import` all check `is_sandbox(caller.org)` and 403 ("skill

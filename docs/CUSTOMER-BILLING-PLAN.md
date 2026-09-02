@@ -71,7 +71,7 @@ bag's keys merge into each. No schema change; attribution becomes a query.
 
 ### Piece 2 — `CustomerBudget` (enforcement)
 
-New table, org-scoped (goes into `_ORG_SCOPED_MODELS` — the delete-cascade test will catch it if
+New table, org-scoped (goes into `ORG_SCOPED_MODELS` (`domain/governance/teams.py`) - the delete-cascade test will catch it if
 forgotten, it has before):
 
     CustomerBudget: org_id, customer (string), monthly_cap_micro | daily_cap_micro (nullable),

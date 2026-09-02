@@ -103,7 +103,6 @@ from .application.onboard.sandbox import (
     SAMPLE_SKILLS,
     SANDBOX_DOMAIN,
     SANDBOX_TTL_MIN,
-    _ORG_MODELS,
     _skill_md,
     _skill_secret,
     _skill_treg_json,

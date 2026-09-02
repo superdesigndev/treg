@@ -3,7 +3,7 @@
 # ---- deleting a team must clear everything that points at it -------------------------------
 
 async def test_org_delete_clears_EVERY_org_scoped_table(clients):
-    """The list in `_cascade_delete_org` has to stay in step with the schema, and twice it did not:
+    """The list in `cascade_delete_org` has to stay in step with the schema, and twice it did not:
     the money tables arrived with the prepaid balance and `CapabilityPin` with capability pins, and
     neither was added. The effect was invisible until someone tried it — and because every NEW team
     is granted $1.00, every team has a CreditBlock, so NO team could be deleted at all. Production
@@ -16,19 +16,35 @@ async def test_org_delete_clears_EVERY_org_scoped_table(clients):
     from sqlmodel import SQLModel
 
     from treg import models as m
-    from treg.routers.orgs import _ORG_SCOPED_MODELS
+    from treg.domain.governance.teams import ORG_SCOPED_MODELS
 
-    covered = {model.__name__ for model in _ORG_SCOPED_MODELS}
+    covered = {model.__name__ for model in ORG_SCOPED_MODELS}
+    # Handled inside cascade_delete_org by hand rather than through the list, because their column
+    # is not named `org_id`: OAuthGrant.current_org_id (whole-family revocation) and
+    # Referral.referred_org_id. A column-name walk missed Referral for as long as referrals existed,
+    # so this walks FOREIGN KEYS to `org` instead: any way at all of pointing at a team counts.
+    handled_by_hand = {"OAuthGrant", "Referral"}
     missing = []
     for name, obj in vars(m).items():
         if not (inspect.isclass(obj) and issubclass(obj, SQLModel) and obj is not SQLModel):
             continue
         table = getattr(obj, "__table__", None)
-        if table is not None and "org_id" in table.columns and name not in covered:
+        if table is None or name in covered or name in handled_by_hand:
+            continue
+        if any(fk.column.table.name == "org" for fk in table.foreign_keys):
             missing.append(name)
     assert not missing, (
-        f"these models carry org_id but _cascade_delete_org never deletes them: {missing}. "
-        f"A team holding any of these rows cannot be deleted — the foreign key fails with a 500.")
+        f"these models reference org but cascade_delete_org never deletes them: {missing}. "
+        f"A team holding any of these rows cannot be deleted - the foreign key fails with a 500.")
+    # And there is only ONE list. The sandbox reaper and the demo reset each kept a private copy
+    # until 2026-09-02, when the copies had not learned about IdempotentCall and every sandbox
+    # mint returned a 500. A reaper that names its own tables is the bug coming back.
+    from treg.application.onboard import demo, sandbox
+    from treg.domain.governance.teams import cascade_delete_org
+
+    for module in (sandbox, demo):
+        assert not hasattr(module, "_ORG_MODELS"), f"{module.__name__} keeps its own org-table list"
+    assert sandbox.cascade_delete_org is cascade_delete_org
 
 
 async def test_a_team_with_a_BALANCE_can_still_be_deleted(clients):

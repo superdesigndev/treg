@@ -993,10 +993,10 @@ async def test_one_caller_cannot_reuse_a_key_twice(clients: AsyncClient):
 async def test_deleting_a_team_takes_its_remembered_answers(clients: AsyncClient):
     """A stored response belongs to the team that paid for it. Left behind it is a dangling row
     holding someone's data after they asked to be gone."""
-    from treg.routers.orgs import _ORG_SCOPED_MODELS
+    from treg.domain.governance.teams import ORG_SCOPED_MODELS
     from treg.models import IdempotentCall
 
-    assert IdempotentCall in _ORG_SCOPED_MODELS
+    assert IdempotentCall in ORG_SCOPED_MODELS
 
 
 # ---- idempotency step 2: the lookup and replay (storage still off) ---------------------------

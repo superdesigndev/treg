@@ -22,7 +22,7 @@ from ..models import ArchiveKey, ArchiveSnapshot, Bundle, CallRecord, LedgerEntr
 from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
 from ..domain.identity.access import require_superadmin
-from .orgs import _cascade_delete_org, _drop_member_deny_rules
+from ..domain.governance.teams import cascade_delete_org, drop_member_deny_rules
 
 
 # The app alias preserves the moved handlers' original @app.get decorator text byte-for-byte.
@@ -616,7 +616,7 @@ async def admin_delete_user(
         if not survivors:  # an org left with zero members is dead — cascade it away
             org = await db.get(Org, oid)
             if org is not None:
-                await _cascade_delete_org(org, db)
+                await cascade_delete_org(org, db)
                 emptied.append(oid)
         elif not any(m.role == "owner" for m in survivors):
             # Deleting the sole owner would leave an ungovernable org (no one can pass _require_owner_of).
@@ -624,7 +624,7 @@ async def admin_delete_user(
             survivors[0].role = "owner"
     # The USER row is about to go, so member-scoped rules must go from EVERY org — `DenyRule.user_id`
     # is a foreign key, and a surviving row would dangle (a hard error on Postgres).
-    await _drop_member_deny_rules(db, user_id)
+    await drop_member_deny_rules(db, user_id)
     await db.delete(user)
     await db.commit()
     return {"deleted_user": user_id, "deleted_empty_orgs": emptied}
@@ -649,7 +649,7 @@ async def admin_delete_org(
     org = await db.get(Org, org_id)
     if org is None:
         raise HTTPException(status_code=404, detail="org not found")
-    await _cascade_delete_org(org, db)
+    await cascade_delete_org(org, db)
     await db.commit()
     return {"deleted_org": org_id}
 

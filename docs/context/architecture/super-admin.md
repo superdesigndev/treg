@@ -59,9 +59,9 @@ endpoints are unaffected (they use `require_superadmin`).
   over existing rows; no scheduler. Logic in `src/treg/reconcile.py`;
   `scripts/provider_balances.py` is the manual companion that reads the providers' own balances.
 - **Mutations (Phase 2):** `admin_set_superadmin`, `admin_suspend_user`, `admin_delete_user` (removes
-  memberships, then `_cascade_delete_org` any org left with zero members, and **promotes a survivor to
+  memberships, then `cascade_delete_org` (in `domain/governance/teams.py`) any org left with zero members, and **promotes a survivor to
   owner** in any org left without one), `admin_suspend_org`, `admin_delete_org` (force, cross-tenant).
-  Org deletion shares `_cascade_delete_org` with the owner's own `delete_org` (one cascade helper: tools,
+  Org deletion shares `cascade_delete_org` (in `domain/governance/teams.py`) with the owner's own `delete_org` (one cascade helper: tools,
   secrets, bundles, pending-oauth, call records, memberships, then the org).
 - **Last-superadmin floor:** `require_superadmin` returns the principal (`"env-admin"` or the user's
   email); the three destructive user ops refuse (`409`) when demoting/suspending/deleting would drop the

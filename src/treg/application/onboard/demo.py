@@ -18,7 +18,8 @@ from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import crypto
-from .models import Bundle, CallRecord, Membership, Org, PendingOAuth, Secret, Tool, User
+from ...domain.governance.teams import cascade_delete_org, drop_member_deny_rules
+from .models import CallRecord, Membership, Org, Secret, Tool, User
 
 DEMO_DOMAIN = "demo.treg.local"      # fake teammates live here; api refuses login for this domain
 DEMO_TOOL = "echo"
@@ -38,9 +39,6 @@ SAMPLE_CALLS = [
     ("cora", "GET",  f"{DEMO_BASE}/get",  200, 2),
     ("ben",  "POST", f"{DEMO_BASE}/post", 200, 1),
 ]
-
-_ORG_MODELS = (Tool, Secret, Bundle, PendingOAuth, CallRecord, Membership)  # Invite added below
-
 
 def _slug(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-") or "team"
@@ -126,12 +124,8 @@ async def reset(db: AsyncSession, owner: User) -> dict:
         org = await existing_demo_org(db, owner)
         if org is None:
             break
-        from .models import Invite  # local to keep the module list obvious above
-        for model in (*_ORG_MODELS, Invite):
-            for r in (await db.execute(select(model).where(model.org_id == org.id))).scalars().all():
-                await db.delete(r)
+        await cascade_delete_org(org, db)  # the shared cascade, never a private table list
         removed.append(org.slug)
-        await db.delete(org)
         await db.flush()
     # dashboard flow: demo teammates the user invited into their OWN (real) teams — drop those memberships
     my_org_ids = {m.org_id for m in (await db.execute(
@@ -147,6 +141,9 @@ async def reset(db: AsyncSession, owner: User) -> dict:
     for u in demo_users:
         still = (await db.execute(select(Membership).where(Membership.user_id == u.id))).scalars().first()
         if still is None:
+            # A member-scoped deny rule in the caller's REAL team may still name this user, and
+            # `DenyRule.user_id` is a foreign key: sweep first or Postgres refuses the delete.
+            await drop_member_deny_rules(db, u.id)
             await db.delete(u)
     await db.commit()
     return {"removed": removed}

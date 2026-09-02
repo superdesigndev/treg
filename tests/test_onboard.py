@@ -15,7 +15,7 @@ from conftest import make_upstream
 from treg.api import app
 from treg.infra.db import reset_db, session_maker
 from treg.domain.identity import session as sess
-from treg.models import CallRecord, Membership, Org, Secret, Tool, User
+from treg.models import CallRecord, DenyRule, Membership, Org, Secret, Tool, User
 
 ADMIN = "ENV-ADMIN-SECRET"
 
@@ -154,3 +154,27 @@ async def test_demo_footprint_excluded_from_admin_stats(c):
     assert after["users"] == before["users"]  # the three fake teammates don't count
     assert after["orgs"] == before["orgs"]     # the demo team doesn't count
     assert after["tools"] == before["tools"]   # nor its tool
+
+
+async def test_reset_sweeps_deny_rules_naming_a_demo_teammate(c):
+    """A member-scoped deny rule may name the demo teammate in the user's REAL team. `DenyRule.user_id`
+    is a foreign key, so on Postgres deleting the demo User with that rule alive fails at the key
+    and reset returns a 500. Every other path that deletes a User sweeps first; reset did not."""
+    async with session_maker() as s:
+        user = User(email="builder@x.io")
+        s.add(user)
+        await s.commit()
+    tok = sess.make(user.id)
+    org = (await c.post("/orgs", json={"name": "Acme"}, headers=_h(tok))).json()
+    oh = {**_h(tok), "X-Treg-Org": org["org"]}
+    await c.post(f"/orgs/{org['org_id']}/invites", json={"email": "alex@demo.treg.local", "role": "member"}, headers=oh)
+    assert (await c.post("/onboard/accept-teammate", json={"email": "alex@demo.treg.local"}, headers=oh)).status_code == 200
+    async with session_maker() as s:
+        alex = (await s.execute(select(User).where(User.email == "alex@demo.treg.local"))).scalar_one()
+    r = await c.post(f"/orgs/{org['org_id']}/deny", json={"host": "api.example.com", "user_id": alex.id}, headers=oh)
+    assert r.status_code == 200, r.text
+    rr = await c.post("/onboard/reset", headers=oh)
+    assert rr.status_code == 200, rr.text
+    async with session_maker() as s:
+        assert await s.get(User, alex.id) is None
+        assert (await s.execute(select(DenyRule).where(DenyRule.user_id == alex.id))).first() is None

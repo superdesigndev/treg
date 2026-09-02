@@ -408,7 +408,7 @@ team, and the first signal was spend on a balance nobody had opened. Two halves 
     reconstructs the missing row from the oldest refresh token before refresh, listing, and team
     moves. Its portable upsert tolerates concurrent repair, and `granted_at` remains the oldest row's
     consent time rather than the later repair or rotation time.
-  - **Deleting any team in a family's history revokes the whole family.** `_cascade_delete_org`
+  - **Deleting any team in a family's history revokes the whole family.** `cascade_delete_org` (in `domain/governance/teams.py`)
     collects family ids through both `OAuthGrant.current_org_id` and immutable
     `OAuthRefresh.org_id`. Otherwise deleting a former team erases the retired row that recognises a
     replay while leaving a live token under the destination team.

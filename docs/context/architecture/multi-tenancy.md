@@ -186,9 +186,14 @@ dependencies, role comparison, and machine classification. Session signing and v
 - **Org administration:** `set_member_role` (`PATCH /orgs/{id}/members/{user}`, **owner-only** via
   `_require_owner_of`; a `_count_owners` last-owner guard blocks demoting the sole owner — ownership
   transfer = promote another to owner, then step down), `leave_org` (`POST /orgs/{id}/leave`, self-removal,
-  same last-owner guard), `delete_org` (`DELETE /orgs/{id}`, owner-only, cascades every org-scoped row —
-  including any pending `AdConversion`, which `_ORG_SCOPED_MODELS` now lists: a queued conversion belongs
-  to the team it would be attributed to).
+  same last-owner guard), `delete_org` (`DELETE /orgs/{id}`, owner-only, cascades every org-scoped row
+  through `cascade_delete_org` / `ORG_SCOPED_MODELS` in `domain/governance/teams.py` - including any
+  pending `AdConversion`: a queued conversion belongs to the team it would be attributed to).
+  **That list is the only one.** Owner delete, admin force-delete, the landing-sandbox reaper and the
+  demo reset all go through it; `test_org_delete_clears_EVERY_org_scoped_table` walks the models module
+  for anything carrying `org_id` and also refuses a reaper that keeps a private copy. The sandbox reaper
+  did until 2026-09-02, its copy never learned about `IdempotentCall` (which references a Membership),
+  and every sandbox mint 500'd at the foreign key until it was fixed.
 - **Invites lifecycle:** one-time **and** time-bounded — `Invite.expires_at` (default `INVITE_TTL_DAYS`),
   `accept_invite` returns `410` past expiry. `list_invites` (`GET /orgs/{id}/invites`, admin+) and
   `revoke_invite` (`DELETE /orgs/{id}/invites/{invite}`, admin+); expired codes are garbage-collected by
@@ -239,6 +244,6 @@ Two consequences worth stating plainly:
 - **`TagBudget` never grows a balance column.** One org, one balance. Budgets are ceilings on a shared
   pot, not sub-accounts; per-user balances would be a second money authority and are out of scope.
 - **`TagSpend` and `TagBudget` are org-scoped** and registered in
-  `routers.orgs._ORG_SCOPED_MODELS`, `TagSpend`
+  `domain/governance/teams.py`'s `ORG_SCOPED_MODELS`, `TagSpend`
   ahead of `LedgerEntry`/`Hold` because it references them. `tests/test_orgs.py` walks the models and
   fails if a new `org_id` table is missed.

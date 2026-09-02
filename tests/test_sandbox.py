@@ -161,3 +161,79 @@ async def test_gc_reaps_expired_sandboxes(anon):
     async with session_maker() as db:
         assert not (await db.execute(select(Tool))).scalars().all()
         assert not (await db.execute(select(Secret))).scalars().all()
+
+
+async def test_gc_reaps_a_sandbox_that_made_an_idempotent_call(anon):
+    """The production failure of 2026-09-02, end to end. A visitor's call carrying an
+    `Idempotency-Key` leaves an `IdempotentCall` row pointing at their membership. The sandbox
+    reaper kept its OWN list of org-scoped tables, which never learned about that table, so Postgres
+    refused to delete the membership and `gc` raised - from inside `mint_sandbox`, so every visitor
+    after the first expired one got a 500 instead of a sandbox.
+
+    SQLite does not enforce foreign keys, so on SQLite this test only sees the orphaned row; on
+    Postgres (CI) it sees the raise itself. Both are the same bug."""
+    from treg.models import IdempotentCall, Membership, Org
+
+    tok = (await anon.post("/demo/sandbox")).json()["token"]
+    r = await anon.get(f"/call/{STRIPE['base']}/{STRIPE['example']['path']}",
+                       headers={**_h(tok), "Idempotency-Key": "retry-1"})
+    assert r.status_code == 200, r.text
+    async with session_maker() as db:
+        assert (await db.execute(select(IdempotentCall))).scalars().all(), (
+            "the call did not leave an IdempotentCall row - this test no longer reproduces the bug")
+        u = (await db.execute(
+            select(User).where(User.email.like(f"visitor-%@{sandbox.SANDBOX_DOMAIN}")))).scalar_one()
+        u.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=sandbox.SANDBOX_TTL_MIN + 5)
+        await db.commit()
+        assert await sandbox.gc(db) == 1
+    async with session_maker() as db:
+        for model in (IdempotentCall, Membership, Org, User):
+            assert not (await db.execute(select(model))).scalars().all(), f"{model.__name__} rows survived gc"
+    # and the front door still opens afterwards
+    assert (await anon.post("/demo/sandbox")).status_code == 200
+
+
+async def test_a_failing_reaper_does_not_close_the_front_door(anon, monkeypatch):
+    """gc runs inside the mint request. Whatever it raises is a bug to log, never a 500 for the
+    visitor - that coupling is what turned one undeletable sandbox into six hours of downtime."""
+    from treg.application.onboard import sandbox as onboard_sandbox
+
+    async def boom(db):
+        raise RuntimeError("reaper bug")
+
+    monkeypatch.setattr(onboard_sandbox, "gc", boom)
+    r = await anon.post("/demo/sandbox")
+    assert r.status_code == 200, r.text
+    assert r.json()["token"]
+
+
+async def test_gc_skips_a_sandbox_it_cannot_delete_and_reaps_the_rest(anon, monkeypatch):
+    """Reaping is per visitor, not all-or-nothing. Before, one undeletable sandbox rolled back every
+    other delete too, and since gc only runs from mint, nothing was ever reaped again."""
+    from treg.application.onboard import sandbox as onboard_sandbox
+    from treg.models import Org
+
+    slugs = [(await anon.post("/demo/sandbox")).json()["org_slug"] for _ in range(2)]
+    poisoned = slugs[0]
+    real_cascade = onboard_sandbox.cascade_delete_org
+
+    async def cascade_unless_poisoned(org, db):
+        if org.slug == poisoned:
+            raise RuntimeError("this one will not delete")
+        await real_cascade(org, db)
+
+    monkeypatch.setattr(onboard_sandbox, "cascade_delete_org", cascade_unless_poisoned)
+    async with session_maker() as db:
+        for u in (await db.execute(
+                select(User).where(User.email.like(f"visitor-%@{sandbox.SANDBOX_DOMAIN}")))).scalars().all():
+            u.created_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=sandbox.SANDBOX_TTL_MIN + 5)
+        await db.commit()
+        assert await sandbox.gc(db) == 1
+    async with session_maker() as db:
+        assert {o.slug for o in (await db.execute(select(Org))).scalars().all()} == {poisoned}
+    # once the poisoned one is deletable again, the next reap takes it
+    monkeypatch.setattr(onboard_sandbox, "cascade_delete_org", real_cascade)
+    async with session_maker() as db:
+        assert await sandbox.gc(db) == 1
+    async with session_maker() as db:
+        assert not (await db.execute(select(Org))).scalars().all()

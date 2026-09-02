@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from secrets import token_hex
 
@@ -9,7 +10,8 @@ from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ... import crypto
-from ...models import Bundle, CallRecord, Invite, Membership, Org, PendingOAuth, Secret, Tool, User
+from ...domain.governance.teams import cascade_delete_org
+from ...models import Membership, Org, Secret, Tool, User
 from ...sandbox_identity import visitor_name
 
 SANDBOX_DOMAIN = "sandbox.treg.local"     # throwaway visitor identities live here (can never log in)
@@ -31,9 +33,6 @@ DEFAULTS = [
      "example": {"method": "GET", "path": "", "note": "list charges"}},
     {"secret": "POSTHOG_KEY", "value": "phx_DEMO0000PLACEHOLDER"},  # vault-only (no tool); the add-row uses it
 ]
-
-_ORG_MODELS = (Tool, Secret, Bundle, PendingOAuth, CallRecord, Invite, Membership)
-
 
 def is_sandbox_user(user) -> bool:
     """A login-free sandbox visitor (`visitor-…@sandbox.treg.local`). It may act ONLY inside its own
@@ -227,16 +226,26 @@ async def gc(db: AsyncSession) -> int:
         ca = ca.replace(tzinfo=None) if (ca is not None and ca.tzinfo) else ca
         if ca is not None and ca >= cutoff:
             continue
-        mems = (await db.execute(select(Membership).where(Membership.user_id == u.id))).scalars().all()
-        for m in mems:
-            org = await db.get(Org, m.org_id)
-            if org is None:
-                continue
-            for model in _ORG_MODELS:
-                for r in (await db.execute(select(model).where(model.org_id == org.id))).scalars().all():
-                    await db.delete(r)
-            await db.delete(org)
-        await db.delete(u)
+        # One savepoint per visitor. Reaping used to be all-or-nothing: one sandbox that would not
+        # delete aborted the whole loop, and since gc runs only from mint_sandbox, nothing was ever
+        # reaped again until the row was fixed by hand. Now that sandbox is logged and skipped, and
+        # every other expired one still goes.
+        nested = await db.begin_nested()
+        try:
+            mems = (await db.execute(select(Membership).where(Membership.user_id == u.id))).scalars().all()
+            for m in mems:
+                org = await db.get(Org, m.org_id)
+                if org is None:
+                    continue
+                # The shared cascade, never a private table list: the reaper's own copy is what
+                # missed `IdempotentCall` and broke every sandbox mint on 2026-09-02.
+                await cascade_delete_org(org, db)
+            await db.delete(u)
+            await db.flush()
+        except Exception:  # noqa: BLE001 - a reaper bug is logged per sandbox, never propagated
+            await nested.rollback()
+            logging.getLogger("treg").exception("could not reap sandbox user %s; skipping", u.id)
+            continue
         n += 1
     if n:
         await db.commit()

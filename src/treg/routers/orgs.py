@@ -45,29 +45,17 @@ from ..domain.identity.access import (
 from ..infra.db import get_session
 from ..models import (
     ROLE_RANK,
-    AdConversion,
     Bundle,
     CallRecord,
-    CapabilityPin,
-    CreditBlock,
     DenyRule,
-    Hold,
-    IdempotentCall,
     Invite,
-    LedgerEntry,
     Membership,
-    OAuthCode,
-    OAuthGrant,
-    OAuthRefresh,
     Org,
-    PendingOAuth,
     Project,
     RunRecord,
-    Secret,
     TagBudget,
     TagSpend,
     Tool,
-    ToolRequest,
     User,
 )
 from ..timeutil import as_naive as _as_naive
@@ -194,63 +182,6 @@ class AccessIn(BaseModel):
     local_run_enabled: bool = True
 
 
-# Every model carrying an `org_id`. Deleting the org without clearing these leaves rows pointing at
-# a row that no longer exists, and the delete fails with a 500 at the foreign key.
-#
-# This list has to be kept in step with the schema, and twice it was not: the money tables arrived
-# with the prepaid balance and `CapabilityPin` with capability pins, and neither was added here. The
-# effect was invisible until someone tried it — since every NEW team is granted $1.00, every team has
-# a CreditBlock, so NO team could be deleted at all. `test_org_delete_clears_every_org_scoped_table`
-# now walks the models module and fails if a new one is ever missed, rather than trusting this list.
-#
-# Order matters: LedgerEntry references a CreditBlock, so it goes first.
-_ORG_SCOPED_MODELS = (
-    Tool, Secret, Bundle, PendingOAuth, CallRecord, RunRecord, Invite, DenyRule, Project,
-    CapabilityPin,
-    TagBudget,
-    TagSpend,  # before the money tables it attributes: its rows reference a Hold that is about to go
-    LedgerEntry, Hold, CreditBlock,
-    OAuthCode, OAuthRefresh,   # grants naming a team that no longer exists
-    IdempotentCall,            # a remembered answer belongs to the team that paid for it
-    ToolRequest,  # attribution rows go with the team; anonymous filings carry no org_id and stay
-    AdConversion,  # pending Google Ads conversions belong to the team they'd be attributed to
-    Membership,   # last: it is what makes the caller a member of the org being deleted
-)
-
-
-async def _cascade_delete_org(org: Org, db: AsyncSession) -> None:
-    """Delete every org-scoped row then the org. Shared by owner delete_org + admin force-delete."""
-    # OAuthGrant names its mutable team `current_org_id` to distinguish family authority from the
-    # immutable `OAuthRefresh.org_id` provenance. A family can name this team on EITHER side: after
-    # a move, only a retired provenance row still names the former team. Deleting just that row
-    # destroys the replay evidence while leaving the live family authorised elsewhere, so a stolen
-    # old token becomes "unknown" instead of revoking every descendant. Revoke the union of both
-    # paths; preserving historical provenance across team deletion would need a nullable/soft FK.
-    authority_grants = (await db.execute(select(OAuthGrant).where(
-        OAuthGrant.current_org_id == org.id))).scalars().all()
-    provenance_families = (await db.execute(select(OAuthRefresh.family_id).where(
-        OAuthRefresh.org_id == org.id))).scalars().all()
-    family_ids = {grant.family_id for grant in authority_grants} | set(provenance_families)
-    if family_ids:
-        # Delete the WHOLE family, including rows issued under other teams. Keeping only the live
-        # destination token would be exactly the partial revocation that reuse detection forbids.
-        for token in (await db.execute(select(OAuthRefresh).where(
-            OAuthRefresh.family_id.in_(family_ids)))).scalars().all():
-            await db.delete(token)
-        grants = (await db.execute(select(OAuthGrant).where(
-            OAuthGrant.family_id.in_(family_ids)))).scalars().all()
-    else:
-        grants = []
-    for grant in grants:
-        await db.delete(grant)
-    await db.flush()
-    for model in _ORG_SCOPED_MODELS:
-        for r in (await db.execute(select(model).where(model.org_id == org.id))).scalars().all():
-            await db.delete(r)
-        await db.flush()   # honour the ordering above rather than leaving it to the unit of work
-    await db.delete(org)
-
-
 def _require_owner_of(org_id: int, caller: Caller) -> None:
     """Owner-only actions (change roles, delete org). Token is org-scoped, so must match."""
     if caller.org_id != org_id or caller.role != "owner":
@@ -276,28 +207,6 @@ async def _used_today_by_user(db: AsyncSession, org_id: int) -> dict[str, int]:
             RunRecord.org_id == org_id, RunRecord.created_at >= since).group_by(RunRecord.user_email))).all():
         counts[email] = counts.get(email, 0) + n
     return counts
-
-
-async def _drop_member_deny_rules(db: AsyncSession, user_id: int, org_id: int | None = None) -> int:
-    """Delete the member-scoped rules that named a member/agent who is going away — the caller they
-    were written for no longer exists, so the rule can never fire again. Left behind, they show up in
-    the Policy table as a row naming a user id the team can no longer see or clean up. Mirrors how
-    `delete_project` sweeps the id it deletes out of every `project_access`.
-
-    `org_id` set = that org only (the member left THIS team but may still be in others). `org_id`
-    None = every org, for when the USER row itself is deleted — `DenyRule.user_id` is a foreign key,
-    so a surviving rule would dangle, which Postgres rejects outright (SQLite does not enforce it by
-    default, which is why only a real deployment would have shown this).
-
-    ORG-wide rules (`user_id` NULL) are untouched: they are about the team, not about one caller.
-    The caller commits — this only stages the deletes, so it composes with the removal itself."""
-    q = select(DenyRule).where(DenyRule.user_id == user_id)
-    if org_id is not None:
-        q = q.where(DenyRule.org_id == org_id)
-    stale = (await db.execute(q)).scalars().all()
-    for rule in stale:
-        await db.delete(rule)
-    return len(stale)
 
 
 async def _enforce_deny(
@@ -858,7 +767,7 @@ async def remove_member(
     if membership.role == "owner":  # only an owner manages owners; an admin cannot remove one
         raise HTTPException(status_code=403, detail="owners cannot be removed")
     await db.delete(membership)  # revokes that user's token for this org
-    await _drop_member_deny_rules(db, user_id, org_id)
+    await teams.drop_member_deny_rules(db, user_id, org_id)
     await db.commit()
     return {"removed": user_id}
 
@@ -900,7 +809,7 @@ async def leave_org(
     if caller.role == "owner" and await _count_owners(org_id, db) <= 1:
         raise HTTPException(status_code=409, detail="you are the last owner — transfer ownership or delete the org")
     await db.delete(caller.membership)  # revokes the caller's token for this org
-    await _drop_member_deny_rules(db, caller.membership.user_id, org_id)  # same sweep as remove_member
+    await teams.drop_member_deny_rules(db, caller.membership.user_id, org_id)  # same sweep as remove_member
     await db.commit()
     return {"left_org": org_id}
 
@@ -924,7 +833,7 @@ async def delete_org(
     if confirm != org.slug:
         raise HTTPException(status_code=422, detail=(
             f"to delete this team, confirm with its slug: ?confirm={org.slug}"))
-    await _cascade_delete_org(org, db)
+    await teams.cascade_delete_org(org, db)
     await db.commit()
     return {"deleted_org": org_id}
 
@@ -1224,7 +1133,7 @@ async def revoke_agent(
         raise HTTPException(status_code=404, detail="unknown agent")
     email = user.email  # read before the delete — the row is expired after commit
     await db.delete(membership)
-    await _drop_member_deny_rules(db, user_id, org_id)  # a rule aimed at a caller that no longer exists
+    await teams.drop_member_deny_rules(db, user_id, org_id)  # a rule aimed at a caller that no longer exists
     await db.flush()
     # The identity is org-scoped, so once its last membership is gone the User row has no purpose.
     if (await db.execute(select(Membership).where(
@@ -1551,7 +1460,7 @@ async def delete_project(
             m.project_access = [p for p in m.project_access if p != project_id]
     # A rule scoped to this project can never fire again — and DenyRule.project_id is a foreign key,
     # so a surviving row would dangle (Postgres rejects that; SQLite only hides it). Same sweep-on-
-    # departure idiom as _drop_member_deny_rules.
+    # departure idiom as teams.drop_member_deny_rules.
     for rule in (await db.execute(select(DenyRule).where(
             DenyRule.project_id == project_id))).scalars().all():
         await db.delete(rule)

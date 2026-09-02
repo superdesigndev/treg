@@ -201,7 +201,7 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   (`GET`/`DELETE /orgs/{id}/members[/{user}]`, admin+); `set_member_role` (`PATCH …/members/{user}`,
   owner-only), `leave_org` (`POST /orgs/{id}/leave`), `delete_org` (`DELETE /orgs/{id}?confirm=<slug>`, owner-only
   AND the slug is REQUIRED — see hardening — via
-  `_cascade_delete_org`, which now also sweeps each org's `RunRecord` rows);
+  `cascade_delete_org` (in `domain/governance/teams.py`), which now also sweeps each org's `RunRecord` rows);
   `list_invites` / `revoke_invite` (`GET`/`DELETE /orgs/{id}/invites[/{id}]`, admin+). Full behavior:
   [multi-tenancy](../architecture/multi-tenancy.md).
 - **Agents (machine identities):** `create_agent` (`POST /orgs/{id}/agents`, admin+) mints/rotates a

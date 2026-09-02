@@ -580,3 +580,20 @@ async def test_the_referee_never_receives_the_referrers_real_address(c, monkeypa
     body = (await c.get("/billing", headers=_h(bob_token))).text
     assert "ann@superdesign.dev" not in body
     assert "a•••@superdesign.dev" in body
+
+
+async def test_a_referred_team_can_still_be_deleted(c, monkeypatch):
+    """Referral points at the team it credited as `referred_org_id`. The delete cascade only knew
+    tables with a column literally named `org_id`, so on Postgres a team that signed up through a
+    referral link could never be deleted: the org row hit the referral foreign key with a 500.
+    SQLite does not enforce the key, so here the proof is that the Referral row is gone."""
+    _, _, code = await _ready_referrer(c, monkeypatch)
+    bob_org, bob_token = await _signup(c, "bob@example.com", ref=code)
+    assert [r.referred_org_id for r in await _referral_rows()] == [bob_org]
+    async with session_maker() as s:
+        slug = (await s.get(Org, bob_org)).slug
+    gone = await c.request("DELETE", f"/orgs/{bob_org}", params={"confirm": slug}, headers=_h(bob_token))
+    assert gone.status_code == 200, gone.text
+    assert await _referral_rows() == []
+    async with session_maker() as s:
+        assert await s.get(Org, bob_org) is None

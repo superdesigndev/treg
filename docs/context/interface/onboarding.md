@@ -90,8 +90,8 @@ member) — were the dashboard stepper's backing; with the stepper removed they 
 their endpoints remain.
 
 Idempotent — `existing_demo_org` reuses the caller's demo org instead of stacking. Marks
-`owner.onboarded=True`. `reset(db, owner)` deletes every demo org the caller owns (same cascade as
-`_cascade_delete_org`), drops demo-teammate memberships from the caller's REAL teams too, and sweeps
+`owner.onboarded=True`. `reset(db, owner)` deletes every demo org the caller owns through the shared
+`cascade_delete_org` (`domain/governance/teams.py`, no private table list), drops demo-teammate memberships from the caller's REAL teams too, and sweeps
 any demo user left with zero memberships — a clean exit, no litter.
 
 `application.onboard` owns the session and commit boundary for each onboarding journey. The router
