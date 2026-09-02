@@ -112,7 +112,7 @@ async def _overflow_verify(args) -> int:
         rows = (await db.execute(select(OverflowRoute))).scalars().all()
     todo = [r for r in rows if args.all or r.enabled or r.last_verified_at]
     keys = {"orthogonal": s.overflow_key_orthogonal, "monid": s.overflow_key_monid}
-    passed = failed = skipped = 0
+    passed = failed = skipped = flaked = 0
     # One SHORT transaction per route. The first prod run (2026-08-28) kept a single session open
     # across every network round-trip: each `db.get` autoflushed the previous row's UPDATE, the row
     # locks piled up for minutes, and db.py's 5 s lock_timeout — there to keep the worker from
@@ -150,24 +150,89 @@ async def _overflow_verify(args) -> int:
                 if body is not None:
                     hdrs["Content-Type"] = "application/json"
             v = await V.verify_route(c, r, key=key, direct=direct, test_request=tr, direct_headers=hdrs)
+            outcome = v.outcome
             async with session_maker() as db:
                 row = await db.get(OverflowRoute, (r.endpoint_id, r.aggregator))
                 if row is None:
                     skipped += 1
                     continue
-                if v.passed:
+                if outcome == V.VerifyOutcome.PASS:
                     row.last_verified_at = v.verified_at or utcnow_naive()
                     passed += 1
-                else:
+                elif outcome == V.VerifyOutcome.FLAKE:
+                    flaked += 1
+                elif outcome == V.VerifyOutcome.SKIP:
+                    skipped += 1
+                else:  # FAIL
                     failed += 1
                     if row.enabled:
                         row.enabled, row.disabled_reason = False, f"re-verify failed: {v.note}"[:200]
                 row.updated_at = utcnow_naive()
                 await db.commit()
-            print(f"{'ok ' if v.passed else 'FAIL'} {r.endpoint_id} via {r.aggregator} "
+            label = {"pass": "ok ", "flake": "flak", "skip": "skip", "fail": "FAIL"}[outcome.value]
+            print(f"{label} {r.endpoint_id} via {r.aggregator} "
                   f"direct={v.direct_status} relay={v.relay_status} cost={v.cost_micro} {v.note}")
-    print(f"verified {passed}, failed {failed}, skipped {skipped}")
+    print(f"verified {passed}, failed {failed}, flaked {flaked}, skipped {skipped}")
     return 1 if failed else 0
+
+
+# Patterns in disabled_reason that indicate flake, not real failure.
+_FLAKE_PATTERNS = (
+    "malformed:",
+    "not JSON",
+    "relay 5",  # relay 502, 503, etc.
+    "relay 429",
+    "direct 5",  # direct 502, 503, etc.
+    "direct 429",
+    "relay unreachable:",
+    "direct unreachable:",
+    "contract:",  # test_request incomplete
+)
+
+
+def _is_flake_reason(reason: str | None) -> bool:
+    """Return True if the disabled_reason looks like a transient/flake issue."""
+    if not reason:
+        return False
+    reason_lower = reason.lower()
+    return any(p.lower() in reason_lower for p in _FLAKE_PATTERNS)
+
+
+async def _overflow_reenable_if_flake(args) -> int:
+    """Re-enable routes that were disabled due to transient/flake errors.
+
+    This command identifies OverflowRoutes disabled with flake-like reasons (malformed, 5xx, 429,
+    network errors, contract misses) and re-enables them. Use --dry-run to preview without changes.
+    """
+    from sqlalchemy import select
+    from .infra.db import session_maker, verify_db
+    from .models import OverflowRoute
+    from .timeutil import utcnow_naive
+
+    await verify_db()
+    async with session_maker() as db:
+        rows = (await db.execute(select(OverflowRoute).where(OverflowRoute.enabled == False))).scalars().all()  # noqa: E712
+    candidates = [(r.endpoint_id, r.aggregator, r.disabled_reason)
+                  for r in rows if _is_flake_reason(r.disabled_reason)]
+    if not candidates:
+        print("no routes disabled by flake-like reasons")
+        return 0
+    print(f"found {len(candidates)} routes disabled by flake-like reasons:")
+    for eid, agg, reason in candidates:
+        print(f"  {eid} via {agg}: {reason}")
+    if args.dry_run:
+        print("(dry run — no changes made)")
+        return 0
+    async with session_maker() as db:
+        for eid, agg, _ in candidates:
+            row = await db.get(OverflowRoute, (eid, agg))
+            if row is not None and not row.enabled:
+                row.enabled = True
+                row.disabled_reason = None
+                row.updated_at = utcnow_naive()
+        await db.commit()
+    print(f"re-enabled {len(candidates)} routes")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -188,6 +253,9 @@ def main(argv: list[str] | None = None) -> int:
     ver.add_argument("--all", action="store_true", help="every row, not only enabled/previously verified")
     ver.add_argument("--max-usd", type=float, default=0.02, help="skip routes priced above this")
     ver.set_defaults(fn=_overflow_verify)
+    reen = ovsub.add_parser("reenable-if-flake", help="re-enable routes disabled by transient errors")
+    reen.add_argument("--dry-run", action="store_true", help="list candidates without changing them")
+    reen.set_defaults(fn=_overflow_reenable_if_flake)
     args = ap.parse_args(argv)
     _need_server()
     return asyncio.run(args.fn(args))

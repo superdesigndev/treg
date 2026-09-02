@@ -152,6 +152,17 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
   fingerprint (keys and list/leaf markers, values ignored), stamp `last_verified_at` or disable
   with the reason. Spends real money (bounded by `--max-usd`, default 2¢); needs the aggregator
   keys in the env — a Render cron, never the dataplane.
+  
+  **Verification outcomes** (`VerifyOutcome` enum, `classify_verification()`): a verification is
+  classified into one of four outcomes to decide whether to disable a route. **PASS** = both sides
+  2xx with matching shapes (updates `last_verified_at`). **FLAKE** = transient vendor/aggregator
+  error (malformed JSON, 5xx, 429, network errors, 4xx-vs-4xx) — don't disable or count as fail.
+  **SKIP** = can't verify (contract miss from incomplete test_request, pending async run, no direct
+  key) — don't count. **FAIL** = real 200/200 shape mismatch — the only case that disables the
+  route. The cron exits 0 when only flakes/skips, exit 1 only when real FAILs exist.
+  
+  **`treg-worker overflow reenable-if-flake [--dry-run]`** — re-enables routes disabled by
+  flake-like reasons (malformed, 5xx, 429, contract, network errors). Use `--dry-run` to preview.
 
 ## Protect, part one (step D) — refuse before reserve
 

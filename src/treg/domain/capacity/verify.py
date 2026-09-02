@@ -12,11 +12,84 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 
 import httpx
 
 from ...timeutil import utcnow_naive
 from ...infra.upstream.aggregators import by_name
+
+
+class VerifyOutcome(str, Enum):
+    """Classification of a verification result — determines whether to disable the route.
+
+    PASS  — Both sides 2xx with matching shapes; update last_verified_at.
+    FLAKE — Transient vendor/aggregator error (5xx, 429, malformed, network). Don't disable.
+    SKIP  — Can't verify (contract, pending, no direct key). Don't count as pass or fail.
+    FAIL  — Real shape mismatch at 200/200. Disable the route.
+    """
+    PASS = "pass"
+    FLAKE = "flake"
+    SKIP = "skip"
+    FAIL = "fail"
+
+
+def classify_verification(v: "Verification") -> VerifyOutcome:
+    """Classify a Verification result into one of the four outcomes.
+
+    This classifier is intentionally conservative: only 200/200 shape mismatches cause FAIL.
+    Transient aggregator issues (malformed, 5xx, 429) are FLAKE. Contract misses are SKIP.
+    """
+    if v.passed:
+        return VerifyOutcome.PASS
+
+    if v.relay_status is None:
+        if v.note.startswith("relay unreachable:"):
+            return VerifyOutcome.FLAKE
+        if "malformed" in v.note or "not JSON" in v.note:
+            return VerifyOutcome.FLAKE
+        if "contract:" in v.note:
+            return VerifyOutcome.SKIP
+        if "pending" in v.note:
+            return VerifyOutcome.SKIP
+        return VerifyOutcome.FLAKE
+
+    if v.relay_status >= 500:
+        return VerifyOutcome.FLAKE
+
+    if v.relay_status == 429:
+        return VerifyOutcome.FLAKE
+
+    if v.direct_status is None:
+        if "direct not attempted" in v.note or "direct unreachable:" in v.note:
+            return VerifyOutcome.SKIP
+        if v.note.startswith("relay ok"):
+            return VerifyOutcome.SKIP
+        return VerifyOutcome.SKIP
+
+    if v.direct_status >= 500:
+        return VerifyOutcome.FLAKE
+
+    if v.direct_status == 429:
+        return VerifyOutcome.FLAKE
+
+    if 200 <= v.direct_status < 300 and 200 <= v.relay_status < 300:
+        if v.same_shape is False:
+            return VerifyOutcome.FAIL
+        if v.same_shape is None:
+            return VerifyOutcome.FLAKE
+        return VerifyOutcome.PASS
+
+    if (400 <= v.direct_status < 500) and (400 <= v.relay_status < 500):
+        return VerifyOutcome.FLAKE
+
+    if (200 <= v.direct_status < 300) and (v.relay_status >= 500):
+        return VerifyOutcome.FLAKE
+
+    if (200 <= v.relay_status < 300) and (v.direct_status >= 500):
+        return VerifyOutcome.FLAKE
+
+    return VerifyOutcome.FAIL
 
 
 def shape(obj, depth: int = 0):
@@ -50,6 +123,11 @@ class Verification:
     @property
     def passed(self) -> bool:
         return bool(self.same_shape) and self.relay_status is not None and 200 <= self.relay_status < 300
+
+    @property
+    def outcome(self) -> VerifyOutcome:
+        """The classified outcome of this verification."""
+        return classify_verification(self)
 
 
 async def relay_once(client: httpx.AsyncClient, route, key: str, query: dict, body: bytes | None,

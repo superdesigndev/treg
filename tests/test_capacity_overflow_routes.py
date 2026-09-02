@@ -341,5 +341,90 @@ def test_worker_cli_parses_overflow_commands(monkeypatch):
         seen.update(vars(args)); return 0
     monkeypatch.setattr(worker, "_overflow_sync", fake)
     monkeypatch.setattr(worker, "_overflow_verify", fake)
+    monkeypatch.setattr(worker, "_overflow_reenable_if_flake", fake)
     assert worker.main(["overflow", "sync", "--live"]) == 0 and seen["live"] is True
     assert worker.main(["overflow", "verify", "--max-usd", "0.05"]) == 0 and seen["max_usd"] == 0.05
+    assert worker.main(["overflow", "reenable-if-flake", "--dry-run"]) == 0 and seen["dry_run"] is True
+
+
+# ---- verification classifier -------------------------------------------------------------------
+
+
+def test_verify_outcome_classify_pass():
+    """A verification with same_shape=True and relay 2xx is PASS."""
+    v = V.Verification("x", "y", 200, 200, True, 1000, utcnow_naive())
+    assert v.outcome == V.VerifyOutcome.PASS
+    assert v.passed
+
+
+def test_verify_outcome_classify_fail_200_200_shape_differs():
+    """200/200 with different shapes is FAIL — the only case that disables."""
+    v = V.Verification("x", "y", 200, 200, False, 1000, None, note="direct 200, relay 200, shape differs")
+    assert v.outcome == V.VerifyOutcome.FAIL
+    assert not v.passed
+
+
+def test_verify_outcome_classify_flake_malformed():
+    """Malformed (non-JSON from aggregator) is FLAKE — don't disable."""
+    v = V.Verification("x", "y", None, None, None, None, None, note="malformed: monid: not JSON")
+    assert v.outcome == V.VerifyOutcome.FLAKE
+
+
+def test_verify_outcome_classify_flake_relay_5xx():
+    """Relay 5xx (502, 503, etc.) is FLAKE — don't disable."""
+    v = V.Verification("x", "y", 200, 502, None, None, None, note="direct 200, relay 502, shape differs")
+    assert v.outcome == V.VerifyOutcome.FLAKE
+    v2 = V.Verification("x", "y", None, 503, None, None, None, note="relay 503")
+    assert v2.outcome == V.VerifyOutcome.FLAKE
+
+
+def test_verify_outcome_classify_flake_429():
+    """429 on either side is FLAKE — rate limiting is transient."""
+    v_relay = V.Verification("x", "y", 200, 429, None, None, None, note="direct 200, relay 429")
+    assert v_relay.outcome == V.VerifyOutcome.FLAKE
+    v_direct = V.Verification("x", "y", 429, 200, None, None, None, note="direct 429, relay 200")
+    assert v_direct.outcome == V.VerifyOutcome.FLAKE
+
+
+def test_verify_outcome_classify_flake_4xx_vs_4xx():
+    """4xx vs 4xx (e.g. 400/400, 403/403) is FLAKE — error bodies differ across accounts."""
+    v = V.Verification("x", "y", 400, 400, False, 0, None, note="direct 400, relay 400, shape differs")
+    assert v.outcome == V.VerifyOutcome.FLAKE
+    v2 = V.Verification("x", "y", 403, 422, False, 0, None, note="direct 403, relay 422, shape differs")
+    assert v2.outcome == V.VerifyOutcome.FLAKE
+
+
+def test_verify_outcome_classify_skip_contract():
+    """Contract miss (test_request incomplete) is SKIP — don't count as pass or fail."""
+    v = V.Verification("x", "y", None, None, None, 0, None, note="contract: Required parameters are missing")
+    assert v.outcome == V.VerifyOutcome.SKIP
+
+
+def test_verify_outcome_classify_skip_pending():
+    """Pending async run (never completed) is SKIP."""
+    v = V.Verification("x", "y", None, None, None, None, None, note="pending: RUNNING")
+    assert v.outcome == V.VerifyOutcome.SKIP
+
+
+def test_verify_outcome_classify_skip_no_direct():
+    """No direct key available (relay ok, direct not attempted) is SKIP."""
+    v = V.Verification("x", "y", None, 200, None, 1000, None, note="relay ok, direct not attempted")
+    assert v.outcome == V.VerifyOutcome.SKIP
+
+
+def test_verify_outcome_classify_flake_relay_unreachable():
+    """Network error reaching aggregator is FLAKE."""
+    v = V.Verification("x", "y", None, None, None, None, None, note="relay unreachable: ConnectError: ...")
+    assert v.outcome == V.VerifyOutcome.FLAKE
+
+
+def test_flake_reason_patterns():
+    """_is_flake_reason identifies flake-like disabled_reason patterns."""
+    assert worker._is_flake_reason("re-verify failed: malformed: monid: not JSON")
+    assert worker._is_flake_reason("re-verify failed: direct 200, relay 502, shape differs")
+    assert worker._is_flake_reason("re-verify failed: direct 429, relay 200")
+    assert worker._is_flake_reason("re-verify failed: relay unreachable: ConnectError")
+    assert worker._is_flake_reason("re-verify failed: contract: Required parameters")
+    assert not worker._is_flake_reason("re-verify failed: direct 200, relay 200, shape differs")
+    assert not worker._is_flake_reason("not in the current sync")
+    assert not worker._is_flake_reason(None)
