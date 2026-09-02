@@ -25,7 +25,7 @@ def test_key_providers_are_offerable_without_deployment_credentials():
                 "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato",
                 "spyfu", "apify", "meta-ad-library", "serpapi",
                 "coingecko", "polygon", "finnhub", "twelvedata", "fmp", "eodhd", "marketstack",
-                "tiingo"):
+                "tiingo", "raily"):
         p = P.get(svc)
         assert p is not None, svc
         assert p.auth_kind == "key", svc
@@ -41,8 +41,11 @@ def test_key_providers_appear_in_the_marketplace_listing():
     assert listing["semrush"]["category"] == "SEO"
     assert listing["tikhub"]["category"] == "Social media"
     assert listing["coingecko"]["category"] == "Market data"
+    assert listing["raily"]["category"] == "Community"
+    assert listing["raily"]["auth_kind"] == "key"
     assert "Enrichment" in P.CATEGORY_ORDER
     assert "Market data" in P.CATEGORY_ORDER
+    assert "Community" in P.CATEGORY_ORDER
 
 
 # ---- connect-by-key ----------------------------------------------------------------------

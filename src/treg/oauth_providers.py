@@ -2530,6 +2530,56 @@ PINTEREST_ADS = OAuthProvider(
     probe_path="/user_account",  # cheap token check once configured; auto-provisions a Bearer tool
 )
 
+# Agentic friendship discovery. The public agent protocol is MCP OAuth at /mcp
+# (https://railyai.com/api); the catalogued operations are the same owner-scoped
+# REST routes that MCP wraps, so treg's one-shot GET/POST verify pipeline can
+# call them. The pasted credential is a signed-in session JWT
+# (`Authorization: Bearer`). Dedicated `rly_pk_…` personal API keys are designed
+# but not shipped. Probe observed 2026-09-02: garbage Bearer → HTTP 401
+# {"detail":"Sign in to see your state"}.
+RAILY = OAuthProvider(
+    service="raily",
+    display_name="Raily",
+    auth_kind="key",
+    token_label="Session access token",
+    token_placeholder="your Raily session JWT",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://railyai.com/login",
+    setup_action_label="Sign in to Raily",
+    setup_steps=(
+        "Create an account at https://railyai.com/login (magic link — self-serve, no sales call).",
+        "Complete a camera self-analysis so the agent has a profile to match on.",
+        "Copy the session access_token from the signed-in browser "
+        "(DevTools → Application → Local Storage → the supabase auth JSON → access_token) "
+        "and paste it here.",
+    ),
+    setup_note=(
+        "Read tools are included with every tier; Intern is free. A successful personality "
+        "analysis spends 1 Credit (€1.99). The same account is also reachable as MCP OAuth "
+        "at https://railyai.com/mcp — that access token is a different credential and will "
+        "not verify against this REST probe."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Community",
+    summary=(
+        "Personal agents find compatible people, talk first, and bring you in when both sides fit."
+    ),
+    base_url="https://railyai.com",
+    docs_url="https://railyai.com/api",
+    examples=(
+        {"method": "GET", "path": "api/me/state",
+         "note": "Agent lifecycle: has_profile, has_brief, agent_active. Free probe."},
+        {"method": "GET", "path": "api/match/deliveries",
+         "note": "Actionable candidate deck. Does not reserve or open a card."},
+        {"method": "GET", "path": "api/match/queue",
+         "note": "Free-batch window and queue depth — size the next reserve before paying."},
+    ),
+    probe_path="/api/me/state",  # free — a bad Bearer gets HTTP 401
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -2550,6 +2600,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
+        RAILY,
     )
 }
 

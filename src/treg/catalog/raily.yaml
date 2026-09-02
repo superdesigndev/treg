@@ -1,0 +1,251 @@
+provider: raily
+source:
+  docs: https://railyai.com/api
+  openapi: null # FastAPI OpenAPI is not published at a stable public URL; /openapi.json 404s
+  curated: 2026-09-02
+# UNVERIFIED against a live user credential at curation time. Do not stamp `verified:` or commit
+# example responses — those marks are maintainer-side. The bogus-key probe WAS observed live
+# (2026-09-02): GET https://railyai.com/api/me/state with a garbage Authorization token
+# returned HTTP 401 {"detail":"Sign in to see your state"}. The MCP surface at POST /mcp returned
+# HTTP 401 {"error":"invalid_token","error_description":"Authentication required"} for the same
+# garbage token (WWW-Authenticate resource_metadata points at
+# https://railyai.com/.well-known/oauth-protected-resource/mcp).
+#
+# WHAT THIS API IS
+# Raily is agentic friendship discovery: personal agents find compatible people, talk first, and
+# bring the humans in when both sides fit. Dating is excluded from Real Matching. Intents are
+# friendship | communication | professional.
+#
+# TWO PROTOCOLS, ONE ACCOUNT
+# - REST (catalogued here): the owner-scoped FastAPI routes the web app and MCP both call.
+#   Credential: signed-in Supabase session JWT in `Authorization: Bearer`.
+# - MCP (https://railyai.com/mcp): Streamable HTTP, OAuth 2.1 + PKCE, dynamic client registration
+#   at POST https://railyai.com/oauth/register. Same projections, different token. An MCP access
+#   token will NOT pass this registry's REST probe.
+# Dedicated personal API keys (`rly_pk_…`) are owner-approved design, not shipped.
+#
+# BILLING
+# Agent reads are included with the tier (Intern free / Fulltime €9.99/mo / PRO+ €19.99/mo).
+# They never debit Credits. A successful personality analysis (photo or JSON) spends 1 Credit
+# after the result is delivered (€1.99 / €4.99 / €7.99 for 1 / 3 / 5 Credits, VAT-inclusive).
+# The free match batch is 3 candidates / 24 hours on Intern. Knocking on another agent's door
+# is rate-limited per tier (Intern 3 / Fulltime 5 / PRO+ 10 per 24h), not metered in Credits.
+# There is no machine-readable rate-card endpoint. Platform (tier-4) metering is refused on
+# purpose: every catalogued route is own_account except the public door knock, and even that
+# is a write against the caller's knock quota.
+#
+# AUTH TRAPS
+# - Guest wallet tokens (`X-Wallet-Token`) admit analysis/checkout, not matching or agent reads.
+# - MCP OAuth tokens do not authorize REST, and session JWTs do not authorize /mcp.
+# - GET /api/health and GET /api/ready are unauthenticated and MUST NOT be used as the probe.
+#
+# House rules for every endpoint below:
+# 1. Owner-scoped. A delivery, connection or report that is not yours is 404, not 403.
+# 2. Free reads do not reserve, open, or skip a candidate. POST /api/match/batch/free is the
+#    cheapest discovery write and is idempotent inside the 24h window.
+# 3. Negotiation and latest-report 404 when the caller has no connected pair / no report yet.
+#    Those test_requests are labeled deliberate misses.
+
+limits: "MCP tool limiter per grant; free match batch 3/24h (Intern); agent-door knocks 3/5/10 per 24h by tier; analysis 10/IP/day"
+pricing_url: https://railyai.com/pricing
+
+proposed_capabilities:
+  people.agent.brief: "Read what a personal agent is looking for — the caller's matching brief"
+  people.agent.door: "Read a personal agent's public door"
+  people.agent.bar: "Read the agent's current compatibility bar, vetoes and priorities"
+  people.agent.report: "Read the latest agent scan report of who it found"
+  people.agent.knock: "Knock on another person's agent door so the two agents can talk first"
+  people.match.discover: "List compatible people a personal agent has already screened"
+  people.match.queue: "Read match-queue depth and the free-batch window before reserving"
+  people.match.batch: "Reserve the cheapest (free) batch of compatible people"
+  people.match.intro: "Read inbound connection requests after agents have already talked"
+  people.match.negotiate: "Read the agent-to-agent intro report once both sides accepted"
+
+endpoints:
+  - id: raily.account.identity
+    capability: account.identity
+    platform: account
+    scope: own_account
+    kind: account
+    method: GET
+    path: /api/me/state
+    name: "Read your Raily agent lifecycle state"
+    summary: "Read the caller's current agent lifecycle state"
+    input:
+      note: "no parameters — the Bearer token is the subject. Returns has_profile, has_brief, agent_active, opt-in, match and request counters"
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier; this is also the registry probe}
+    docs_url: https://railyai.com/api
+
+  - id: raily.account.usage
+    capability: account.usage
+    platform: account
+    scope: own_account
+    kind: account
+    method: GET
+    path: /api/billing/subscription
+    name: "Read your Raily agent tier and budget"
+    summary: "Read the caller's tier, included budget, and renewal metadata"
+    input:
+      note: "no parameters. Intern is the default free tier; Fulltime and PRO+ set current_period_end from Stripe"
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier}
+    docs_url: https://railyai.com/pricing
+
+  - id: raily.people.agent.brief
+    capability: people.agent.brief
+    platform: people
+    scope: own_account
+    method: GET
+    path: /api/agent/brief
+    name: "Read your matching brief"
+    summary: "Read the caller's latest bounded brief"
+    input:
+      note: "no parameters. Empty entries with brief_version null means the interview has not been completed yet"
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier}
+    docs_url: https://railyai.com/api
+
+  - id: raily.people.match.queue
+    capability: people.match.queue
+    platform: people
+    scope: own_account
+    method: GET
+    path: /api/match/queue
+    name: "Read match queue depth before reserving"
+    summary: "Read match-queue depth and the free-batch window before reserving"
+    input:
+      note: "no parameters — the free pre-flight. Size the next reserve from this instead of posting batch/free blindly"
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier}
+    docs_url: https://railyai.com/how-matching/
+
+  - id: raily.people.match.discover
+    capability: people.match.discover
+    platform: people
+    scope: own_account
+    method: GET
+    path: /api/match/deliveries
+    name: "List screened compatible people"
+    summary: "Read the caller's actionable deck without reserving or opening it"
+    input:
+      note: "no parameters. Cards stay withheld until a delivery is opened; this list is how you learn delivery ids"
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier; does not consume the free batch}
+    docs_url: https://railyai.com/api
+
+  - id: raily.people.match.batch
+    capability: people.match.batch
+    platform: people
+    scope: own_account
+    kind: action
+    method: POST
+    path: /api/match/batch/free
+    name: "Reserve today's free match batch"
+    summary: "Reserve the cheapest (free) batch of compatible people"
+    input:
+      bodyType: json
+      body:
+        operation_key: {type: string, required: false, note: "idempotency key, max 128 chars; retries inside the 24h window return the original batch", example: "treg-free-batch-1"}
+      note: "Intern gets 3 candidates / 24h. Requires a signed-in user with a matching-eligible self-analysis and an active opt-in. Conflicts: 409 PAID_BATCH_RECONCILING or INVENTORY_CHANGED_DURING_RESERVATION"
+    test_request:
+      body: {operation_key: "treg-catalog-verify-free-batch"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "the cheap tier of discovery — Intern included; paid batch is a separate route and is excluded"}
+    docs_url: https://railyai.com/how-matching/
+
+  - id: raily.people.match.intro
+    capability: people.match.intro
+    platform: people
+    scope: own_account
+    method: GET
+    path: /api/match/connections
+    name: "List inbound connection requests"
+    summary: "Read privacy-reduced inbound connection requests and counters"
+    input:
+      note: "no parameters. Private initiators arrive as anonymous; the payload is already reduced to what this viewer may see"
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier}
+    docs_url: https://railyai.com/api
+
+  - id: raily.people.match.negotiate
+    capability: people.match.negotiate
+    platform: people
+    scope: own_account
+    method: GET
+    path: /api/agent/negotiation/{other_id}
+    name: "Read an agent intro report"
+    summary: "Read the agent-to-agent intro report once both sides accepted"
+    input:
+      pathParams:
+        other_id: {type: string, required: true, note: "the other person's matching person id (UUID)", example: "00000000-0000-4000-8000-000000000001"}
+      queryParams:
+        locale: {type: string, required: false, note: "one of en | ru | es | ar | pt-BR", example: "en"}
+      note: "404 when the pair is not connected — same status as an unknown id, so this is not an oracle for who is in the pool. Deliberate-miss test_request: the nil-looking UUID is not a connected pair"
+    test_request:
+      pathParams: {other_id: "00000000-0000-4000-8000-000000000001"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with Fulltime/PRO+ grounded reports; Intern still gets the template. A 404 miss is free}
+    docs_url: https://railyai.com/api
+
+  - id: raily.people.agent.door
+    capability: people.agent.door
+    platform: people
+    scope: own_account
+    method: GET
+    path: /api/agent-doors/me
+    name: "Read your public agent door"
+    summary: "Read the caller's public agent door URL"
+    input:
+      note: "no parameters. 404 until Matching is opted in (the door is created with the opt-in). Public resolve of someone else's handle is GET /api/agent-doors/{handle} and is not catalogued — it needs no key"
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier}
+    docs_url: https://railyai.com/api
+
+  - id: raily.people.agent.knock
+    capability: people.agent.knock
+    platform: people
+    scope: own_account
+    kind: action
+    method: POST
+    path: /api/agent-doors/{handle}/knock
+    name: "Knock so two agents can talk first"
+    summary: "Knock on another person's agent door so the two agents can talk first"
+    input:
+      pathParams:
+        handle: {type: string, required: true, note: "public slug or paid vanity, 3-64 chars [a-z0-9-]", example: "example-door"}
+      bodyType: json
+      body:
+        operation_key: {type: string, required: true, note: "idempotency key, 1-128 chars; a replay returns the original outcome", example: "treg-knock-1"}
+      note: "Daily knock caps: Intern 3, Fulltime 5, PRO+ 10. Unknown/closed doors 404. Self-knock 409 DOOR_CLOSED. Deliberate-miss test_request: example-door is not a live handle, so this charges nothing"
+    test_request:
+      pathParams: {handle: "example-door"}
+      body: {operation_key: "treg-catalog-verify-knock"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "quota-limited, not credit-metered. A 404 miss is free. Hit price unobserved — a successful knock still spends no Credits, only one of the daily knock slots"}
+    docs_url: https://railyai.com/api
+
+  - id: raily.people.agent.report
+    capability: people.agent.report
+    platform: people
+    scope: own_account
+    method: GET
+    path: /api/agent/reports/latest
+    name: "Read the latest agent scan report"
+    summary: "Read the latest persisted queued or sent agent report snapshot"
+    input:
+      note: "no parameters. 404 with 'No agent report yet' when none has been generated — Intern is monthly, Fulltime weekly"
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier}
+    docs_url: https://railyai.com/api
+
+  - id: raily.people.agent.bar
+    capability: people.agent.bar
+    platform: people
+    scope: own_account
+    method: GET
+    path: /api/agent/memory/state
+    name: "Read the agent's bar and vetoes"
+    summary: "Read the current bar, vetoes, priorities, and brief version"
+    input:
+      note: "no parameters. Silence on Matching means the bar is working, not that the agent is broken"
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with every tier}
+    docs_url: https://railyai.com/api
