@@ -20,6 +20,7 @@ def test_key_providers_are_offerable_without_deployment_credentials():
     not shown as 'not configured' the way an unset OAuth provider is."""
     for svc in ("apollo", "pdl", "akta", "hunter", "crunchbase", "tikhub", "brightdata", "semrush",
                 "justoneapi", "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
+                "agentline",
                 "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
                 "companyenrich", "oceanio", "tomba", "predictleads", "findymail", "branddev",
                 "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato",

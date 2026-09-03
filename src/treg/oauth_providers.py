@@ -1737,6 +1737,37 @@ EXA = OAuthProvider(
     probe_json={"urls": ["https://example.com"], "text": {"maxCharacters": 1}},
 )
 
+AGENTLINE = OAuthProvider(
+    service="agentline",
+    display_name="AgentLine",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="al_live_...",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://agentline.cloud/signup",
+    setup_action_label="Get your AgentLine API key",
+    setup_steps=(
+        "Sign up or sign in to AgentLine with your email address.",
+        "Copy the API key shown after verification.",
+    ),
+    setup_note=(
+        "Account and history reads are free; voice calls cost $0.10/minute, phone number "
+        "provisioning costs $2.00, and inbound SMS costs $0.02/message."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Other",
+    summary=(
+        "Give AI agents phone numbers, voice calls, SMS history, event delivery and telephony "
+        "spend tracking."
+    ),
+    base_url="https://api.agentline.cloud",
+    docs_url="https://docs.agentline.cloud",
+    probe_path="/v1/billing/balance",
+)
+
 
 # ---- more Enrichment API-key providers (2026-08 category expansion) ---------------------------
 # Eight providers added together to deepen Enrichment: company/people enrichment with prospecting
@@ -2538,7 +2569,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
         APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
-        SCRAPECREATORS,
+        SCRAPECREATORS, AGENTLINE,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA,
         # more Enrichment API-key providers
