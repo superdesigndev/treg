@@ -137,6 +137,8 @@ services:
         sync: false
       - key: TREG_PLATFORM_KEY_AVIATO             # Aviato API key (Authorization: Bearer)
         sync: false
+      - key: TREG_PLATFORM_KEY_DEVMATCH           # DevMatch API key (X-API-Key: sk_dm_…)
+        sync: false
       - key: TREG_PLATFORM_KEY_EXA                # Exa API key (x-api-key); every response reports costDollars
         sync: false
       - key: TREG_PLATFORM_KEY_FIBER_AI           # Fiber AI key (x-api-key)

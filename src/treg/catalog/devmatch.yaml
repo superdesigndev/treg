@@ -1,0 +1,136 @@
+provider: devmatch
+source:
+  docs: https://dev-match.xyz/docs/mcp
+  openapi: https://mcp.dev-match.xyz/openapi.json
+  curated: '2026-09-03'
+# The public agent surface is three paid tools plus a free rate card. Population-specific tools
+# (defense / mechanical / research) were folded into find_candidates on 2026-08-01: the classifier
+# picks the corpus, the caller does not. REST twins under /api/mcp-tools/* are the same three tools
+# (Zapier/n8n aliases) and are not catalogued separately. POST /mcp is the JSON-RPC transport for
+# the same three. Do not stamp verified: — live calls below are the vendor self-check; maintainers
+# re-run with an independent credential.
+#
+# Auth: X-API-Key: sk_dm_… (header). A garbage key on POST /mcp initialize returns HTTP 401
+# {"error":{"code":-32000,"message":"authentication required — sign in via OAuth or provide an
+# X-API-Key header"}} (observed 2026-09-03). The same garbage key on POST /tools/{tool} returns
+# HTTP 402 (x402 challenge) because MCPAuth is non-blocking on that path — so the connect probe
+# MUST be POST /mcp initialize, not a /tools/* call.
+#
+# Two meters, one key path. treg injects X-API-Key, so callers hit the monthly company-credit pool
+# on https://dev-match.xyz/pricing (find_candidates 25, find_similar_projects 3, get_profile 1;
+# failed / empty-result calls are not billed). GET /tools/listing is the machine-readable rate card
+# for the permissionless x402 USDC rack ($1.25 / $0.75 / $0.25) used when no key is present. There
+# is no per-call charge header and GET /api/account/credits is session-JWT only, so credit spend is
+# the published weight; USD conversion is the Pro entry tier in fx.yaml.
+limits: "10 req/min per IP on /api/mcp-tools/*; authenticated POST /tools/{tool} is the public HTTP surface. Monthly company credit pool (Free 250, Pro 350, no rollover)."
+pricing_url: https://dev-match.xyz/pricing
+
+proposed_capabilities:
+  github.repos.similar: "Find open-source repositories similar to a seed repo, with top contributors"
+
+endpoints:
+  - id: devmatch.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: any_account
+    method: GET
+    path: /tools/listing
+    name: "Published per-tool prices"
+    summary: "Public merchant listing — pricing and per-tool metadata. Free, no auth, no payment."
+    input:
+      note: "no parameters — this is the public rate card (x402 USDC rack + credit weights). A key is not required; treg may still inject X-API-Key."
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free public rate card; no credits, no x402"}
+    docs_url: https://mcp.dev-match.xyz/openapi.json
+
+  - id: devmatch.people.search
+    domain: contacts
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    path: /tools/find_candidates
+    name: "Find engineers by public work"
+    summary: "Find engineers who uniquely fit a role or project from open-source contributions and other public work, with evidence."
+    input:
+      bodyType: json
+      body:
+        input: {type: string, required: true, note: "job description, informal brief, or public github.com repo URL. Longer, more specific input produces a tighter mission fit. The older field name job_description is also accepted.", example: "Senior Rust engineer for systems and infrastructure. Prefer open-source maintainers."}
+        limit: {type: integer, required: false, note: "max candidates, default 20, max 20 on this HTTP/MCP surface (the paid x402 docs mention 50; ClampFindCandidatesLimit caps MCP at 20). THIS IS NOT A PRICE DIAL: every successful run costs 25 credits regardless of limit.", example: 1}
+        exclude: {type: "array[string]", required: false, note: "GitHub logins or org names to drop"}
+        location: {type: string, required: false, note: "optional place filter (city, country, or ISO code); forwarded as a strict must-be-there constraint"}
+      note: "returns a shortlist of unique mission-fit people with evidence (source, matched projects, signals) and contact where the plan allows. Contact is withheld for unpaid/free callers. Bots and service accounts are filtered server-side. Price does not change with limit."
+    test_request:
+      body: {input: "Senior Rust engineer for systems and infrastructure. Prefer open-source maintainers.", limit: 1}
+    cost:
+      type: per_success
+      value: 25
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://dev-match.xyz/pricing
+      checked: '2026-09-03'
+      confidence: documented
+      note: "25 company credits per successful shortlist on the X-API-Key path (treg BYOK). Empty/failed runs are not billed. Pay-per-call without a key is $1.25 USDC via x402 (GET /tools/listing). Live self-check 2026-09-03: POST /tools/find_candidates limit=1 returned HTTP 200, cache_source=miss, 1 candidate — no charge header; credit weight is the published meter."
+    docs_url: https://dev-match.xyz/docs/mcp
+
+  - id: devmatch.github.user.profile
+    domain: contacts
+    capability: github.user.profile
+    platform: github
+    scope: any_account
+    method: POST
+    path: /tools/get_profile
+    name: "One contributor profile card"
+    summary: "Fetch one contributor's profile card by GitHub login, ORCID iD, or a find_candidates id."
+    input:
+      bodyType: json
+      body:
+        handle: {type: string, required: true, note: "GitHub login without @, an ORCID iD / orcid.org URL, or a find_candidates id (source:name). Do not invent a GitHub handle for research or deep-tech people.", example: "torvalds"}
+      note: "cheapest paid call (1 credit). find_candidates already returns inline profiles; use this for ids outside that shortlist. recent_activities is the current ingestion window, not a full career."
+    test_request:
+      body: {handle: "torvalds"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://dev-match.xyz/pricing
+      checked: '2026-09-03'
+      confidence: documented
+      note: "1 company credit per successful profile on the X-API-Key path. Pay-per-call without a key is $0.25 USDC via x402 (GET /tools/listing). Live self-check 2026-09-03: POST /tools/get_profile handle=torvalds returned HTTP 200 with a public profile card — no charge header."
+    docs_url: https://dev-match.xyz/docs/mcp
+
+  - id: devmatch.github.repos.similar
+    domain: github
+    capability: github.repos.similar
+    platform: github
+    scope: any_account
+    method: POST
+    path: /tools/find_similar_projects
+    name: "Similar open-source projects"
+    summary: "Find open-source projects similar to a seed GitHub repo, with top contributors as leads."
+    input:
+      bodyType: json
+      body:
+        repo: {type: string, required: true, note: "owner/name or a github.com URL; the server strips the prefix.", example: "karpathy/llm.c"}
+        limit: {type: integer, required: false, note: "number of similar projects, default 10, max 25. Not a price dial.", example: 1}
+      note: "landscape mapping, not a hiring shortlist. Follow with find_candidates for unique mission fit."
+    test_request:
+      body: {repo: "karpathy/llm.c", limit: 1}
+    cost:
+      type: per_success
+      value: 3
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://dev-match.xyz/pricing
+      checked: '2026-09-03'
+      confidence: documented
+      note: "3 company credits per successful call on the X-API-Key path. Pay-per-call without a key is $0.75 USDC via x402 (GET /tools/listing). Live self-check 2026-09-03: POST /tools/find_similar_projects repo=karpathy/llm.c limit=3 returned HTTP 200 with projects[] — no charge header."
+    docs_url: https://dev-match.xyz/docs/mcp

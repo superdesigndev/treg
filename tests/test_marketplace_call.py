@@ -900,6 +900,20 @@ def test_crustdata_and_aviato_catalogs_are_platform_priced():
     assert all(cat.platform_eligible(ep) for ep in rows)
 
 
+def test_devmatch_paid_catalog_is_platform_priced():
+    """The three paid DevMatch tools convert via fx.yaml; the free rate-card route is own-shelf plumbing."""
+    cat = A.catalog_store.load()
+    rows = cat.for_provider("devmatch")
+    paid = [ep for ep in rows if ep.get("kind") != "account"]
+    assert {ep["id"] for ep in paid} == {
+        "devmatch.people.search",
+        "devmatch.github.user.profile",
+        "devmatch.github.repos.similar",
+    }
+    assert all(cat.platform_eligible(ep) for ep in paid)
+    assert all(cat.cost_view(ep["cost"], "devmatch")["usd"] > 0 for ep in paid)
+
+
 def test_exa_catalog_is_platform_priced():
     """Exa prices in dollars per call, so every curated route converts natively and is eligible."""
     cat = A.catalog_store.load()

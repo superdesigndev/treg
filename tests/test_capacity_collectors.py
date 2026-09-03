@@ -143,7 +143,7 @@ def test_no_balance_api_entries_have_meaningful_notes():
 
 def test_no_balance_api_includes_expected_providers():
     """Verify the vendors that have no free balance API are documented."""
-    expected = {"aviato", "coresignal", "exa", "finnhub", "justoneapi", "marketstack", "tiingo"}
+    expected = {"aviato", "coresignal", "devmatch", "exa", "finnhub", "justoneapi", "marketstack", "tiingo"}
     assert expected == set(collectors.NO_BALANCE_API.keys())
 
 

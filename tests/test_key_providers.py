@@ -22,7 +22,7 @@ def test_key_providers_are_offerable_without_deployment_credentials():
                 "justoneapi", "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
                 "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
                 "companyenrich", "oceanio", "tomba", "predictleads", "findymail", "branddev",
-                "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato",
+                "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato", "devmatch",
                 "spyfu", "apify", "meta-ad-library", "serpapi",
                 "coingecko", "polygon", "finnhub", "twelvedata", "fmp", "eodhd", "marketstack",
                 "tiingo"):

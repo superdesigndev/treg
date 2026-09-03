@@ -1700,6 +1700,50 @@ AVIATO = OAuthProvider(
     probe_path="/billing/balance",
 )
 
+DEVMATCH = OAuthProvider(
+    service="devmatch",
+    display_name="DevMatch",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="sk_dm_…",
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://dev-match.xyz/account",
+    setup_action_label="Get your DevMatch API key",
+    setup_steps=(
+        "Sign in at https://dev-match.xyz/account (or start from /docs/mcp → Get an API key).",
+        "Open Account → API keys, create a key, and copy it. Keys look like sk_dm_…",
+    ),
+    setup_note=(
+        "Tool calls spend monthly company credits (find_candidates 25, find_similar_projects 3, "
+        "get_profile 1). POST /mcp initialize is free and is the connect probe. Alternatively pay "
+        "per call in USDC via x402 without a key — treg injects the key, so BYOK uses credits."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find engineers who uniquely fit a role from public work with evidence — job description or repo in, shortlist out.",
+    base_url="https://mcp.dev-match.xyz",
+    docs_url="https://dev-match.xyz/docs/mcp",
+    # No free /account route for API keys (GET /api/account/credits is session-JWT only). POST /mcp
+    # initialize is free: a valid key returns JSON-RPC 200, a garbage key returns HTTP 401
+    # "authentication required — sign in via OAuth or provide an X-API-Key header" (observed 2026-09-03).
+    # Do NOT probe POST /tools/{tool}: a garbage key there is treated as anonymous and returns 402 x402.
+    probe_method="POST",
+    probe_path="/mcp",
+    probe_json={
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-03-26",
+            "capabilities": {},
+            "clientInfo": {"name": "treg", "version": "0"},
+        },
+    },
+)
+
 EXA = OAuthProvider(
     service="exa",
     display_name="Exa",
@@ -2543,6 +2587,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO,
+        DEVMATCH,
         COMPANYENRICH, OCEANIO, TOMBA, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB,
         # Market data API-key providers

@@ -52,7 +52,7 @@ def test_every_provider_is_registered():
         "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
         "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
         "companyenrich", "oceanio", "tomba", "predictleads", "findymail", "branddev",
-        "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato",
+        "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato", "devmatch",
         "spyfu", "apify", "meta-ad-library", "serpapi",
         "coingecko", "polygon", "finnhub", "twelvedata", "fmp", "eodhd", "marketstack", "tiingo",
         "microsoft-ads", "snapchat-ads", "tiktok-ads", "pinterest-ads",
