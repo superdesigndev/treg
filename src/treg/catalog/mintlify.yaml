@@ -1,0 +1,422 @@
+# unverified — transcribed from Mintlify's published OpenAPI specs and docs 2026-09-02; the vendor's
+# own self-verification ledger is in the listing PR. No `verified:` stamps or example responses
+# here — those are the maintainers' to add from an independent live run.
+#
+# Mintlify's platform REST API, reached with the organization's OWN admin API key (mint_…), which
+# users create themselves on the dashboard's API keys page. Everything the key can do is scoped to
+# the caller's own documentation projects, so every endpoint below is scope own_account.
+#
+# Conventions that shape every entry:
+#   1. Every route takes the caller's `projectId` as a PATH parameter. It is not a secret (a Mongo
+#      ObjectId, copied from the same dashboard page as the key) but it is per-account, so the
+#      `PROJECT_ID` placeholder in each test_request must be swapped for the verifier's own test
+#      project — supplied privately alongside the test credential.
+#   2. Bad or missing key → HTTP 401 {"error":"Unauthorized"} from the auth middleware before any
+#      route runs. A key created with only the `read` scope gets 403 on every POST. A project the
+#      key's org does not own → 404. A route the plan lacks → 401/403 with an upgrade message.
+#   3. Money: the API itself is unmetered. Deploys, previews, status reads and analytics exports
+#      are free with the Pro/Enterprise plan. Only two things spend the plan's CREDITS (10,000/mo
+#      on Pro, $0.01 each on overage — see fx.yaml): an agent job and an automation run. Mintlify
+#      publishes AVERAGES per run, not a rate, so those two carry `confidence: inferred`.
+#   4. Deliberate misses: five test_requests below are labeled DELIBERATE MISS — they hit a
+#      nonexistent id or an empty body so the call proves auth + routing without redeploying a
+#      site, opening a pull request, or spending credits. Each note names the real-hit shape.
+#
+# Rate limits are per route (from the docs): trigger update + trigger automation share 10 req /
+# 10 s per org; update status 20 / 10 s; preview 5 / min; agent job routes 100 / project / hour;
+# all analytics routes share 100 / org / hour. Key creation itself is capped at 10 / org / hour.
+#
+# Two documented admin-key surfaces are deliberately NOT here: the deprecated v1 agent routes
+# (/v1/agent/…, superseded by v2) and the static-export routes (/v1/static-export/…, private beta
+# gated on an enterprise agreement, which fails treg's self-serve rule). The assistant/search
+# routes (/discovery/…) and the Mintlify Index API use different key types and hosts, so they are
+# candidates for separate provider files, not this one.
+
+provider: mintlify
+source:
+  docs: https://www.mintlify.com/docs/api/introduction
+  openapi: https://www.mintlify.com/docs/openapi.json  # deploy + automation routes; the agent routes are in /docs/admin-openapi.json and the analytics routes in /docs/analytics.openapi.json
+  curated: 2026-09-02
+limits: "per route: deploy/automation 10 req per 10 s per org; status 20 per 10 s; preview 5/min; agent 100/project/hour; analytics 100/org/hour"
+pricing_url: https://www.mintlify.com/pricing  # Admin API on Pro ($450/mo, 10,000 credits) and Enterprise; API calls are free, agent jobs and automation runs spend credits at $0.01 each on overage (https://www.mintlify.com/docs/credits)
+
+proposed_capabilities:
+  # A documentation platform is a new shelf: the Developer category so far holds only GitHub's
+  # public-data platform. These are all own-account jobs on the connected org's docs sites.
+  mintlify.docs.deploy: "Redeploy your documentation site from its deploy branch"
+  mintlify.docs.deploy_status: "Check whether a documentation deployment has finished"
+  mintlify.docs.preview: "Create or refresh a preview deployment of a Git branch"
+  mintlify.automation.run: "Run one of your scheduled docs automations now"
+  mintlify.agent.job.create: "Ask the docs agent to edit your documentation and open a pull request"
+  mintlify.agent.job.get: "Check the status and pull request of a docs agent job"
+  mintlify.agent.job.message: "Send a follow-up instruction to a running docs agent job"
+  mintlify.analytics.feedback: "Export the feedback readers left on your documentation pages"
+  mintlify.analytics.feedback_by_page: "Count reader feedback per documentation page"
+  mintlify.analytics.assistant_conversations: "Export your docs AI assistant's conversation history"
+  mintlify.analytics.assistant_caller_stats: "Count assistant queries by caller type (web, API, other)"
+  mintlify.analytics.searches: "Export what readers search for in your documentation"
+  mintlify.analytics.views: "Page views of your documentation, split human vs AI traffic"
+  mintlify.analytics.visitors: "Unique visitors of your documentation, split human vs AI traffic"
+
+endpoints:
+  # --- Deployments ----------------------------------------------------------------------------
+  - id: mintlify.docs.deploy
+    domain: deploy
+    kind: action
+    capability: mintlify.docs.deploy
+    platform: mintlify
+    scope: own_account
+    method: POST
+    path: /v1/project/update/{projectId}
+    name: "Redeploy your docs site"
+    summary: "Queue a deployment update for your documentation project. Returns a status ID that can be used to track the update progress. The update is triggered from your configured deployment branch."
+    input:
+      pathParams:
+        projectId: {type: string, required: true, note: "your project ID, copied from the dashboard's API keys page", example: "PROJECT_ID"}
+      note: "no body. Answers HTTP 202 with {statusId} — poll mintlify.docs.deploy_status with it. Redeploys the CONFIGURED deploy branch; it cannot pick a branch (that is the preview route). Needs the `write` scope on the key"
+    test_request:
+      pathParams: {projectId: "PROJECT_ID"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the Pro/Enterprise plan; 10 requests per 10 s per organization, shared with the automation trigger"}
+    docs_url: https://www.mintlify.com/docs/api/update/trigger
+
+  - id: mintlify.docs.deploy_status
+    domain: deploy
+    capability: mintlify.docs.deploy_status
+    platform: mintlify
+    scope: own_account
+    method: GET
+    path: /v1/project/update-status/{statusId}
+    name: "Check a deployment's status"
+    summary: "Get the status of an update from the status ID"
+    input:
+      pathParams:
+        statusId: {type: string, required: true, note: "the statusId returned by a deploy or preview trigger", example: "STATUS_ID"}
+      note: "returns the deployment history record — projectId, status, timestamps, and error output when the build failed. A status ID from another organization answers 401; an unknown one 404"
+    # DELIBERATE MISS: a status id only exists after a deploy, so the replayable request uses a
+    # well-formed nonexistent id and answers 404 {"error":"Status ID … does not exist"} — proving
+    # auth and routing without a deploy. For a 2xx, chain it: take statusId from mintlify.docs.deploy
+    # and read it back here (the vendor's ledger script does exactly that).
+    test_request:
+      pathParams: {statusId: "000000000000000000000000"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the plan; 20 requests per 10 s per organization"}
+    docs_url: https://www.mintlify.com/docs/api/update/status
+
+  - id: mintlify.docs.preview
+    domain: deploy
+    kind: action
+    capability: mintlify.docs.preview
+    platform: mintlify
+    scope: own_account
+    method: POST
+    path: /v1/project/preview/{projectId}
+    name: "Preview-deploy a Git branch"
+    summary: "Create or update a preview deployment for a specific branch. If a preview already exists for the branch, it triggers a redeployment. Returns a status ID to track progress and the preview URL."
+    input:
+      pathParams:
+        projectId: {type: string, required: true, example: "PROJECT_ID"}
+      body:
+        branch: {type: string, required: true, note: "name of the Git branch to preview", example: "main"}
+      bodyType: json
+      note: "answers HTTP 202 with {statusId, previewUrl}; 400 when branch is missing; 403 when the plan has no preview deployments. Re-running for the same branch redeploys the existing preview instead of creating another"
+    test_request:
+      pathParams: {projectId: "PROJECT_ID"}
+      body: {branch: "main"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the Pro/Enterprise plan; 5 requests per minute per organization"}
+    docs_url: https://www.mintlify.com/docs/api/preview/trigger
+
+  # --- Automations ----------------------------------------------------------------------------
+  - id: mintlify.automation.run
+    domain: automation
+    kind: action
+    capability: mintlify.automation.run
+    platform: mintlify
+    scope: own_account
+    method: POST
+    path: /v1/workflow/{projectId}/{workflowSchemaId}/trigger
+    name: "Run a scheduled docs automation now"
+    summary: "Trigger a scheduled automation to run immediately, instead of waiting for its next scheduled time. Useful for running automations from CI/CD pipelines, like a GitHub Action that runs on every merge to your default branch. Only scheduled (custom schedule) automations can be triggered."
+    input:
+      pathParams:
+        projectId: {type: string, required: true, example: "PROJECT_ID"}
+        workflowSchemaId: {type: string, required: true, note: "the automation's ID, copied from its settings panel on the dashboard's Automations page", example: "WORKFLOW_ID"}
+      note: "no body. Answers HTTP 202 when queued; 400 when the automation is not a custom-schedule one, malformed or inactive; 404 when it is not this project's. The run behaves like a scheduled run — it picks up everything changed since the last completed run — and bills the same credits"
+    # DELIBERATE MISS: the replayable request names a well-formed nonexistent automation id and
+    # answers 404 — no run is queued and no credits move. A real hit needs an automation id from
+    # the caller's dashboard and spends that automation's credits (see cost.note).
+    test_request:
+      pathParams: {projectId: "PROJECT_ID", workflowSchemaId: "000000000000000000000000"}
+    cost:
+      type: per_success
+      value: 180
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.mintlify.com/docs/credits
+      checked: '2026-09-02'
+      confidence: inferred
+      note: "Mintlify publishes AVERAGE credits per run by automation type, not a rate: Update from code changes 180, Update from assistant conversations 212, Changelog 223, Writing style 235, Broken link detection 285, Typo check 330, SEO audit 422, Translations 913. The 180 here is the cheapest type; a run costs more or less with the amount of content touched. Rejected triggers (400/404) are free"
+    docs_url: https://www.mintlify.com/docs/api/automations/trigger
+
+  # --- Agent ----------------------------------------------------------------------------------
+  - id: mintlify.agent.job.create
+    domain: agent
+    kind: action
+    capability: mintlify.agent.job.create
+    platform: mintlify
+    scope: own_account
+    method: POST
+    path: /v2/agent/{projectId}/job
+    name: "Ask the docs agent to edit your docs"
+    summary: "Creates a new agent job that runs in the background. The job processes the prompt asynchronously — poll the get job endpoint to track progress. If the agent edits files successfully, a pull request is automatically created."
+    input:
+      pathParams:
+        projectId: {type: string, required: true, example: "PROJECT_ID"}
+      body:
+        prompt: {type: string, required: true, note: "the instruction for the agent to execute", example: "Add a quickstart guide for the Python SDK"}
+      bodyType: json
+      note: "answers HTTP 201 with the job {id, status: active, …}; poll mintlify.agent.job.get until status is completed (with prLink) or failed. Only GitHub-connected projects are supported (400 otherwise). 100 jobs per project per hour"
+    # DELIBERATE MISS: an empty prompt fails schema validation and answers 400 {"error": …}
+    # before any agent session starts, so no pull request is opened and no credits move. A real
+    # hit opens a PR on the connected docs repository — never replay one against a live site.
+    test_request:
+      pathParams: {projectId: "PROJECT_ID"}
+      body: {prompt: ""}
+    cost:
+      type: per_success
+      value: 115
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.mintlify.com/docs/credits
+      checked: '2026-09-02'
+      confidence: inferred
+      note: "Mintlify publishes an AVERAGE of 115 credits per editor agent run, not a rate; a job costs more or less with how much it reads and changes. A rejected request (400/404/429) is free"
+    docs_url: https://www.mintlify.com/docs/api/agent/v2/create-agent-job
+
+  - id: mintlify.agent.job.get
+    domain: agent
+    capability: mintlify.agent.job.get
+    platform: mintlify
+    scope: own_account
+    method: GET
+    path: /v2/agent/{projectId}/job/{id}
+    name: "Check a docs agent job"
+    summary: "Retrieves the current status and details of an agent job. Poll this endpoint to track job progress."
+    input:
+      pathParams:
+        projectId: {type: string, required: true, example: "PROJECT_ID"}
+        id: {type: string, required: true, note: "the job id returned by create", example: "JOB_ID"}
+      note: "status transitions active → completed | failed; prLink is set once the agent opened a pull request"
+    # DELIBERATE MISS: a well-formed nonexistent job id answers 404 {"error":"Job not found"}. For a
+    # 2xx, chain it from a job id returned by mintlify.agent.job.create.
+    test_request:
+      pathParams: {projectId: "PROJECT_ID", id: "000000000000000000000000"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the plan; 100 requests per project per hour, shared across the agent routes"}
+    docs_url: https://www.mintlify.com/docs/api/agent/v2/get-agent-job
+
+  - id: mintlify.agent.job.message
+    domain: agent
+    kind: action
+    capability: mintlify.agent.job.message
+    platform: mintlify
+    scope: own_account
+    method: POST
+    path: /v2/agent/{projectId}/job/{id}/message
+    name: "Send a follow-up to a docs agent job"
+    summary: "Sends a follow-up message to an existing agent job. The message is processed asynchronously — poll the get job endpoint to track progress."
+    input:
+      pathParams:
+        projectId: {type: string, required: true, example: "PROJECT_ID"}
+        id: {type: string, required: true, note: "the job to continue", example: "JOB_ID"}
+      body:
+        prompt: {type: string, required: true, note: "the follow-up instruction for the agent", example: "Also add error handling examples to the quickstart guide"}
+      bodyType: json
+      note: "answers HTTP 200 when accepted; 404 for an unknown job; 400 for an empty prompt"
+    # DELIBERATE MISS: an empty prompt answers 400 from schema validation, before the job lookup —
+    # no agent turn runs and no credits move.
+    test_request:
+      pathParams: {projectId: "PROJECT_ID", id: "000000000000000000000000"}
+      body: {prompt: ""}
+    cost:
+      type: per_success
+      value: 115
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.mintlify.com/docs/credits
+      checked: '2026-09-02'
+      confidence: inferred
+      note: "a follow-up is another agent turn on the same job, billed like a run: Mintlify's published AVERAGE is 115 credits per editor agent run. A rejected request (400/404/429) is free"
+    docs_url: https://www.mintlify.com/docs/api/agent/v2/send-message
+
+  # --- Analytics export -----------------------------------------------------------------------
+  # All eight routes are free reads with the Pro/Enterprise plan and share one limit of 100
+  # requests per organization per hour. Date filters are ISO dates (YYYY-MM-DD); every test_request
+  # asks for the smallest page.
+  - id: mintlify.analytics.feedback
+    domain: analytics
+    capability: mintlify.analytics.feedback
+    platform: mintlify
+    scope: own_account
+    method: GET
+    path: /v1/analytics/{projectId}/feedback
+    name: "Export reader feedback"
+    summary: "Returns paginated user feedback with optional filtering"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, example: "PROJECT_ID"}
+      queryParams:
+        dateFrom: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-01"}
+        dateTo: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-31"}
+        source: {type: string, required: false, note: "one of code_snippet | contextual | agent | thumbs_only", example: "contextual"}
+        status: {type: string, required: false, note: "e.g. pending | in_progress | resolved | dismissed", example: "pending"}
+        limit: {type: number, required: false, note: "page size, default 50", example: 1}
+        cursor: {type: string, required: false, note: "cursor from the previous page; keep fetching while hasMore is true"}
+      note: "each row carries the page path plus, by source: contextual feedback a `helpful` boolean and optional contact email; code snippet feedback the code, filename and language; agent feedback a comment"
+    test_request:
+      pathParams: {projectId: "PROJECT_ID"}
+      queryParams: {limit: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the plan; 100 requests per organization per hour, shared across all analytics routes"}
+    docs_url: https://www.mintlify.com/docs/api/analytics/feedback
+
+  - id: mintlify.analytics.feedback_by_page
+    domain: analytics
+    capability: mintlify.analytics.feedback_by_page
+    platform: mintlify
+    scope: own_account
+    method: GET
+    path: /v1/analytics/{projectId}/feedback/by-page
+    name: "Count feedback per docs page"
+    summary: "Returns feedback counts aggregated by documentation page path (thumbs up/down for contextual feedback, code snippet count, and total per page)"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, example: "PROJECT_ID"}
+      queryParams:
+        dateFrom: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-01"}
+        dateTo: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-31"}
+        limit: {type: number, required: false, note: "pages to return, default 10", example: 1}
+        source: {type: string, required: false, note: "one of code_snippet | contextual | agent | thumbs_only"}
+        status: {type: string, required: false, note: "e.g. pending | in_progress | resolved | dismissed"}
+    test_request:
+      pathParams: {projectId: "PROJECT_ID"}
+      queryParams: {limit: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the plan; 100 requests per organization per hour, shared across all analytics routes"}
+    docs_url: https://www.mintlify.com/docs/api/analytics/feedback-by-page
+
+  - id: mintlify.analytics.assistant_conversations
+    domain: analytics
+    capability: mintlify.analytics.assistant_conversations
+    platform: mintlify
+    scope: own_account
+    method: GET
+    path: /v1/analytics/{projectId}/assistant
+    name: "Export assistant conversations"
+    summary: "Returns paginated AI assistant conversation history"
+    input:
+      pathParams:
+        projectId: {type: string, required: true, example: "PROJECT_ID"}
+      queryParams:
+        dateFrom: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-01"}
+        dateTo: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-31"}
+        limit: {type: number, required: false, note: "page size, default 100", example: 1}
+        cursor: {type: string, required: false, note: "cursor from the previous page; keep fetching while hasMore is true"}
+      note: "one row per user turn: query, response, responseType (answer | clarifying_question), sources cited, resolutionStatus (answered | unanswered — the documentation-gap signal), queryCategory, pageUrl and timestamp; turns of one conversation share a conversationId. The full transcript of one thread is GET /v1/analytics/{projectId}/assistant/threads/{threadId} with the row's id"
+    test_request:
+      pathParams: {projectId: "PROJECT_ID"}
+      queryParams: {limit: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the plan; 100 requests per organization per hour, shared across all analytics routes"}
+    docs_url: https://www.mintlify.com/docs/api/analytics/assistant-conversations
+
+  - id: mintlify.analytics.assistant_caller_stats
+    domain: analytics
+    capability: mintlify.analytics.assistant_caller_stats
+    platform: mintlify
+    scope: own_account
+    method: GET
+    path: /v1/analytics/{projectId}/assistant/caller-stats
+    name: "Count assistant queries by caller type"
+    summary: "Returns a breakdown of assistant query counts by caller type (web, API, and other) for the specified date range."
+    input:
+      pathParams:
+        projectId: {type: string, required: true, example: "PROJECT_ID"}
+      queryParams:
+        dateFrom: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-01"}
+        dateTo: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-31"}
+      note: "returns {web, api, other, total} — web is the docs site, api is direct calls to the assistant API"
+    test_request:
+      pathParams: {projectId: "PROJECT_ID"}
+      queryParams: {dateFrom: "2026-08-01", dateTo: "2026-08-02"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the plan; 100 requests per organization per hour, shared across all analytics routes"}
+    docs_url: https://www.mintlify.com/docs/api/analytics/assistant-caller-stats
+
+  - id: mintlify.analytics.searches
+    domain: analytics
+    capability: mintlify.analytics.searches
+    platform: mintlify
+    scope: own_account
+    method: GET
+    path: /v1/analytics/{projectId}/searches
+    name: "Export docs search terms"
+    summary: "Returns paginated documentation search terms for the date range, ordered by hit count descending. Each row includes click-through rate, the most-clicked result path for that query (if any), and the last time the term was searched."
+    input:
+      pathParams:
+        projectId: {type: string, required: true, example: "PROJECT_ID"}
+      queryParams:
+        dateFrom: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-01"}
+        dateTo: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-31"}
+        limit: {type: number, required: false, note: "page size, default 50", example: 1}
+        cursor: {type: string, required: false, note: "nextCursor from the previous page; keep fetching while it is not null"}
+    test_request:
+      pathParams: {projectId: "PROJECT_ID"}
+      queryParams: {limit: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the plan; 100 requests per organization per hour, shared across all analytics routes"}
+    docs_url: https://www.mintlify.com/docs/api/analytics/searches
+
+  - id: mintlify.analytics.views
+    domain: analytics
+    capability: mintlify.analytics.views
+    platform: mintlify
+    scope: own_account
+    method: GET
+    path: /v1/analytics/{projectId}/views
+    name: "Export page views, human vs AI"
+    summary: "Returns per-path and site-wide content view event counts, split by human and AI traffic."
+    input:
+      pathParams:
+        projectId: {type: string, required: true, example: "PROJECT_ID"}
+      queryParams:
+        dateFrom: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-01"}
+        dateTo: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-31"}
+        limit: {type: integer, required: false, note: "paths per page, default 50", example: 1}
+        offset: {type: integer, required: false, note: "offset pagination — add limit while hasMore is true", example: 0}
+    test_request:
+      pathParams: {projectId: "PROJECT_ID"}
+      queryParams: {limit: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the plan; 100 requests per organization per hour, shared across all analytics routes"}
+    docs_url: https://www.mintlify.com/docs/api/analytics/views
+
+  - id: mintlify.analytics.visitors
+    domain: analytics
+    capability: mintlify.analytics.visitors
+    platform: mintlify
+    scope: own_account
+    method: GET
+    path: /v1/analytics/{projectId}/visitors
+    name: "Export unique visitors, human vs AI"
+    summary: "Returns per-path and site-wide approximate distinct visitors by traffic type. The `total` field is deduplicated across human and AI (union of distinct visitor IDs with any qualifying content view)."
+    input:
+      pathParams:
+        projectId: {type: string, required: true, example: "PROJECT_ID"}
+      queryParams:
+        dateFrom: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-01"}
+        dateTo: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-08-31"}
+        limit: {type: integer, required: false, note: "paths per page, default 50", example: 1}
+        offset: {type: integer, required: false, note: "offset pagination — add limit while hasMore is true", example: 0}
+    test_request:
+      pathParams: {projectId: "PROJECT_ID"}
+      queryParams: {limit: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the plan; 100 requests per organization per hour, shared across all analytics routes"}
+    docs_url: https://www.mintlify.com/docs/api/analytics/visitors

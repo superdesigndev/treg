@@ -49,6 +49,7 @@ platforms:
 
   # --- Developer: code hosting & developer platforms -------------------------------------------
   github: {label: "GitHub", category: "Developer", summary: "Public repos, users, contributions and trending pages from GitHub."}
+  mintlify: {label: "Mintlify", category: "Developer", summary: "Deploy, preview, agent-edit and export analytics for your own Mintlify documentation site."}
 
   # --- Chinese social & video (merged into Social; non-China platforms lead by popularity) ---
   douyin: {label: "Douyin (TikTok China)", category: "Social", summary: "Profiles, videos, comments, search, billboards and live data — the deepest platform here."}
