@@ -71,6 +71,7 @@ this fragment is the *process*, not the mechanics reference.
 | Provider behavior | Field(s) to set | Real example |
 |---|---|---|
 | Key in a header | `token_header` + `token_format` (`Bearer {secret}` / `{secret}` / `Token {secret}`) | TikHub, Apollo, SE Ranking |
+| Free authenticated balance route doubles as a machine-readable rate card | use it as `probe_path`; record its published unit rate on catalog rows | Litescrape `/api/keys/status` (`remaining_calls`, `cents_per_1000_calls`) |
 | Key in the query string | `token_location="query"` + `token_param` | Semrush, Diffbot, SpyFu |
 | HTTP Basic from `login:password` | `token_format="Basic {secret}"` + `token_encode="base64"` | DataForSEO, Moz |
 | HTTP Basic with a RAW token after `Basic ` | `token_format="Basic {secret}"`, **no** `token_encode` | The Companies API |

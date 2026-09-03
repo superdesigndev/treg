@@ -68,10 +68,11 @@ Developer-vs-Social for `github`.
 
 ## (b) Platform → category placement — AUDITED, applied fixes: 0
 
-All 78 platforms were checked against their category. The map is **internally consistent**:
+All 79 platforms were checked against their category. The map is **internally consistent**:
 no typos/whitespace variants, no China platform stranded in global Social (and vice-versa),
 no ad platform mis-shelved, nothing accidentally defaulted to `Other` except the meta
-`account` shelf (correct). **No unambiguous, non-controversial miscategorization was found,
+`account` shelf (correct). The new `apple-maps` platform belongs on **Reviews & Apps** beside
+other place-and-review sources. **No unambiguous, non-controversial miscategorization was found,
 so nothing was force-moved.**
 
 Three placements are *debatable* but are judgment calls, not safe fixes — escalated to the

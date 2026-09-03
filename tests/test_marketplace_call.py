@@ -909,6 +909,38 @@ def test_exa_catalog_is_platform_priced():
     assert all(cat.cost_view(ep["cost"], "exa")["usd"] > 0 for ep in rows)
 
 
+def test_litescrape_catalog_is_platform_priced():
+    """Litescrape has one native USD rate: $0.15 per 1,000 successful calls."""
+    cat = A.catalog_store.load()
+    rows = cat.for_provider("litescrape")
+    assert len(rows) == 22
+    assert sum(ep.get("tier", "core") == "core" for ep in rows) == 13
+    assert sum(ep.get("tier") == "extended" for ep in rows) == 9
+    core_paths = {
+        "/api/google/maps", "/api/google/maps/posts", "/api/google/maps/popular-times",
+        "/api/google/maps/photo-meta", "/api/google/reviews",
+        "/api/google/contributor-reviews", "/api/google/search", "/api/google/shopping",
+        "/api/google/ai-mode", "/api/google/ai-overview",
+        "/api/google/shopping/product", "/api/duckduckgo/search", "/api/bing/search",
+    }
+    extended_paths = {
+        "/api/apple/maps/places", "/api/apple/maps/reviews", "/api/duckduckgo/maps",
+        "/api/bing/maps", "/api/yelp/search", "/api/yelp/reviews",
+        "/api/tripadvisor/search", "/api/tripadvisor/place", "/api/tripadvisor/reviews",
+    }
+    assert {ep["path"] for ep in rows if ep.get("tier", "core") == "core"} == core_paths
+    assert {ep["path"] for ep in rows if ep.get("tier") == "extended"} == extended_paths
+    assert not ({"/api/google/ads", "/api/google/local", "/api/google/maps/web"}
+                & {ep["path"] for ep in rows})
+    assert all(cat.platform_eligible(ep) for ep in rows)
+    assert all(cat.cost_view(ep["cost"], "litescrape")["usd"] == pytest.approx(0.00015)
+               for ep in rows)
+    assert oauth_providers.platform_bindings(oauth_providers.get("litescrape")) == [
+        {"platform_setting": "platform_key_litescrape", "injector": "env", "location": "header",
+         "name": "Authorization", "format": "Bearer {secret}"},
+    ]
+
+
 def test_brightdata_estimate_counts_the_body_array():
     """Bright Data bills per record delivered and takes its targets as a bare JSON array, so the
     reserve has to scale with the array's LENGTH — there is no limit param in the query to read."""

@@ -130,6 +130,30 @@ async def test_akta_collector_marks_enterprise_accounts():
     assert "(enterprise)" in result["note"]
 
 
+# ---- litescrape -------------------------------------------------------------------------
+
+async def test_litescrape_collector_parses_calls_and_rate_card():
+    class RecordingClient(MockClient):
+        async def get(self, url, **kwargs):
+            self.request = (url, kwargs)
+            return await super().get(url, **kwargs)
+
+    client = RecordingClient(get_response=MockResponse({
+        "remaining_calls": 461,
+        "cents_per_1000_calls": 15,
+    }))
+    result = await collectors._litescrape(client, "test-key")
+    assert result == {
+        "value": 461,
+        "unit": "calls left",
+        "note": "15 cents per 1,000 successful calls",
+    }
+    assert client.request == (
+        "https://api.litescrape.com/api/keys/status",
+        {"headers": {"Authorization": "Bearer test-key"}},
+    )
+
+
 # ---- NO_BALANCE_API entries -------------------------------------------------------------
 
 def test_no_balance_api_entries_have_meaningful_notes():
@@ -152,6 +176,7 @@ def test_balance_routes_includes_new_collectors():
     assert "akta" in collectors.BALANCE_ROUTES
     assert "brightdata" in collectors.BALANCE_ROUTES
     assert "crustdata" in collectors.BALANCE_ROUTES
+    assert "litescrape" in collectors.BALANCE_ROUTES
 
 
 def test_no_overlap_between_balance_routes_and_no_balance_api():

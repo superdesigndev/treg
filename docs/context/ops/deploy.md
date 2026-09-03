@@ -338,6 +338,14 @@ USD. Platform billing settles every call from the response's `costDollars.total`
 search or a contents call with three content types bills exactly what Exa charged, not the catalog
 base. Verified on the dev server before merge: reserve $0.007 → settle $0.009 on a 12-result search.
 
+## Litescrape platform key (2026-09-03)
+
+`TREG_PLATFORM_KEY_LITESCRAPE` is a Bearer API key for the 13 core and 9 extended Litescrape
+routes. Add `litescrape` to `TREG_PLATFORM_PROVIDERS` to enable tier 4. Every successful scraper
+request costs $0.00015 and failures are refunded, so the catalog prices directly in USD and needs
+no `fx.yaml` row. The free `/api/keys/status` probe reports both `remaining_calls` and
+`cents_per_1000_calls`; the hourly capacity sweep uses the same route.
+
 ## Worker commands and the capacity cron (2026-08-28)
 
 `treg-worker` (console script, `[server]` extra) hosts the scheduled maintainer commands -

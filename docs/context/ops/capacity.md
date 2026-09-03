@@ -54,9 +54,11 @@ consulted or affected by anything here.
 
 ## Pieces (`src/treg/domain/capacity/`)
 
-- **`collectors.py`** — the 31 providers' *free* balance/quota calls (`coroutine(client, key) →
+- **`collectors.py`** — the 32 providers' *free* balance/quota calls (`coroutine(client, key) →
   {value, unit, note}`), moved byte-identically from `scripts/provider_balances.py`. Only DataForSEO,
-  TikHub, and Brightdata speak dollars; everyone else meters credits, rows, searches. `NO_BALANCE_API`
+  TikHub, and Brightdata speak dollars; everyone else meters credits, rows, searches or calls.
+  Litescrape's `/api/keys/status` supplies both `remaining_calls` and its live cents-per-1,000 rate.
+  `NO_BALANCE_API`
   names the 7 providers that publish no meter (dashboard-only) so they read as "no API", never as a
   broken key.
   `provider_balance()` never raises — a failure is a row. It reads the *setting*, not
@@ -143,7 +145,9 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
   a `retry-after ≤ 60 s` is a burst. Apollo says "out of credits" with a **422** ("Insufficient
   credits"), recorded after 2026-09-01: eleven hours of `people.enrich` 422s with overflow on and
   not one attempt, because no row matched. Two guards against the next such vendor: `unrecorded`,
-  a signal kind for a 4xx no row matched whose body still names credits/quota/balance (pattern =
+  Litescrape's HTTP 402 `payment_required` envelope is recorded as balance exhaustion. Two guards
+  against the next unknown vendor remain: `unrecorded`, a signal kind for a 4xx no row matched whose
+  body still names credits/quota/balance (pattern =
   the table's own phrases plus generic nouns) - never a mark, only a log line and
   `capacity_signal=unrecorded` on `tool_called`; and the coverage guard in
   `tests/test_capacity_overflow_routes.py`, which fails when a `platform_key_*` provider has neither

@@ -1,0 +1,506 @@
+provider: litescrape
+source:
+  docs: https://litescrape.com/docs
+  openapi: https://api.litescrape.com/api/openapi.json
+  curated: '2026-09-03'
+limits: "No public numeric request-per-second limit is published. Rate-limit responses use HTTP 429 and the standard retryable error envelope."
+pricing_url: https://litescrape.com/#pricing
+
+# Litescrape charges a flat $0.15 per 1,000 successful scraper calls. Every endpoint below costs
+# $0.00015; invalid, unsupported, scraper, upstream and internal failures are refunded. The
+# authenticated GET /api/keys/status route is both the balance meter (`remaining_calls`) and the
+# machine-readable rate card (`cents_per_1000_calls`).
+# Vendor self-verification on 2026-09-03 called all 22 selected core + extended routes with real
+# public targets: every successful response moved `remaining_calls` by exactly one; transient
+# `503 proxy_capacity_unavailable` attempts moved it by zero. Independent treg verification is
+# still required, so endpoint-level `verified:` stamps and response examples are intentionally absent.
+# Vendor PR policy: these rows deliberately carry no `verified:` stamp and no captured examples.
+# The PR ledger records the vendor's self-verification; treg maintainers add those artifacts after
+# independent live verification.
+
+proposed_capabilities:
+  google.maps.posts: "List updates and events published by a Google Maps place"
+  google.maps.popular_times: "Get current and usual foot-traffic levels for a Google Maps place"
+  google.maps.photo_meta: "Get contributor, place and capture metadata for a Google Maps photo"
+  google.business.reviews: "List public Google reviews for a place"
+  google.contributor.reviews: "List the public review history for a Google Maps contributor"
+  google.shopping.search: "Search Google's Shopping product grid"
+  google.serp.ai_overview: "Get the AI Overview module for a Google query"
+  google.shopping.product: "Get offers, specifications and reviews for a Google Shopping product"
+
+endpoints:
+  - id: litescrape.google.serp.organic
+    domain: search
+    capability: google.serp.organic
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/google/search
+    name: "Google organic search"
+    summary: "Search Google and return structured organic results plus source-selected SERP modules."
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "query text, 1-2,048 characters; one of q, ludocid or kgmid is required", example: "Litescrape API"}
+        ludocid: {type: string, required: false, note: "decimal Google entity ID; conflicts with q and kgmid"}
+        kgmid: {type: string, required: false, note: "Google Knowledge Graph ID; conflicts with q and ludocid"}
+        location: {type: string, required: false, note: "named origin; conflicts with uule and lat/lon"}
+        uule: {type: string, required: false, note: "pre-encoded Google location; conflicts with other geography modes"}
+        lat: {type: number, required: false, note: "latitude; requires lon"}
+        lon: {type: number, required: false, note: "longitude; requires lat"}
+        radius: {type: number, required: false, note: "metres around location or coordinates"}
+        google_domain: {type: string, required: false, note: "validated Google domain; default google.com"}
+        gl: {type: string, required: false, note: "two-letter country code", example: "us"}
+        hl: {type: string, required: false, note: "language code", example: "en"}
+        cr: {type: string, required: false, note: "country restriction such as countryUS"}
+        lr: {type: string, required: false, note: "language restriction such as lang_en"}
+        tbs: {type: string, required: false, note: "native Google search-filter string"}
+        safe: {type: string, required: false, note: "active or off"}
+        tbm: {type: string, required: false, note: "lcl, vid, nws, shop or pts; images are unsupported"}
+        start: {type: integer, required: false, note: "non-negative result offset", example: 0}
+        num: {type: integer, required: false, note: "best-effort first-page row hint, 1-100", example: 10}
+        device: {type: string, required: false, note: "desktop, tablet or mobile", example: "desktop"}
+      note: "Always returns search_metadata and search_parameters. Optional groups include organic_results, ads, knowledge_graph, answer_box, related questions/searches, local modules, stories, media and pagination when Google supplies them."
+    test_request:
+      queryParams: {q: "Litescrape API", hl: "en", gl: "us", device: "desktop", num: 10}
+    cost:
+      type: per_success
+      value: 0.15
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://api.litescrape.com/api/keys/status
+      checked: '2026-09-03'
+      confidence: verified
+      note: "One successful response consumes one call at the published 15 cents per 1,000 calls; failed responses are refunded."
+    docs_url: https://litescrape.com/docs#google-search-api
+
+  - id: litescrape.google.serp.maps
+    domain: search
+    capability: google.serp.maps
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/google/maps
+    name: "Google Maps search or place details"
+    summary: "Search Google Maps by query and viewport or resolve an exact place identifier."
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "required for type=search", example: "coffee shops in Austin, TX"}
+        type: {type: string, required: false, note: "search or place; inferred as place when an exact-place identifier is supplied", example: "search"}
+        ll: {type: string, required: false, note: "viewport as @lat,lon,14z or @lat,lon,5000m", example: "@30.2672,-97.7431,14z"}
+        location: {type: string, required: false, note: "named origin; conflicts with ll and lat/lon; requires z or m"}
+        lat: {type: string, required: false, note: "latitude; requires lon and z or m"}
+        lon: {type: string, required: false, note: "longitude; requires lat and z or m"}
+        z: {type: string, required: false, note: "zoom from 3 through 30"}
+        m: {type: string, required: false, note: "radius from 1 through 15,028,132 metres"}
+        nearby: {type: boolean, required: false, note: "requires a viewport or location"}
+        place_id: {type: string, required: false, note: "mutually exclusive exact-place identifier"}
+        data_cid: {type: string, required: false, note: "decimal Google CID for an exact place"}
+        data: {type: string, required: false, note: "opaque Google Maps data token for an exact place"}
+        start: {type: integer, required: false, note: "non-negative Maps offset", example: 0}
+        hl: {type: string, required: false, example: "en"}
+        gl: {type: string, required: false, example: "us"}
+        google_domain: {type: string, required: false, note: "validated Google domain"}
+      note: "Search responses expose local_results and pagination; exact-place responses expose place_results with source-supplied hours, reviews, photos, services and related-place modules."
+    test_request:
+      queryParams: {q: "coffee shops in Austin, TX", type: "search", ll: "@30.2672,-97.7431,14z", hl: "en", gl: "us"}
+    cost:
+      type: per_success
+      value: 0.15
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://api.litescrape.com/api/keys/status
+      checked: '2026-09-03'
+      confidence: verified
+      note: "One successful response consumes one call at the published 15 cents per 1,000 calls; failed responses are refunded."
+    docs_url: https://litescrape.com/docs#google-maps-api
+
+  - id: litescrape.google.maps.posts
+    domain: maps
+    capability: google.maps.posts
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/google/maps/posts
+    name: "Google Maps place posts"
+    summary: "List updates, events and offers published by a Google Maps place."
+    input:
+      queryParams:
+        data_id: {type: string, required: true, note: "hexadecimal Maps feature ID from a place response", example: "0x89c259a61c75684f:0x79d31adb123348d2"}
+        next_page_token: {type: string, required: false, note: "opaque token from a previous posts response"}
+        hl: {type: string, required: false, example: "en"}
+        gl: {type: string, required: false, example: "us"}
+        google_domain: {type: string, required: false, note: "validated Google domain"}
+      note: "Posts may include title, description, CTA links, media thumbnails, source, event dates and publication timestamps."
+    test_request:
+      queryParams: {data_id: "0x89c259a61c75684f:0x79d31adb123348d2", hl: "en", gl: "us"}
+    cost:
+      type: per_success
+      value: 0.15
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://api.litescrape.com/api/keys/status
+      checked: '2026-09-03'
+      confidence: verified
+      note: "One successful response consumes one call at the published 15 cents per 1,000 calls; failed responses are refunded."
+    docs_url: https://litescrape.com/docs#google-maps-posts
+
+  - id: litescrape.google.maps.popular_times
+    domain: maps
+    capability: google.maps.popular_times
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/google/maps/popular-times
+    name: "Google Maps popular times"
+    summary: "Get current and usual foot-traffic levels for a Google Maps place."
+    input:
+      queryParams:
+        place_id: {type: string, required: true, note: "Google Maps place ID", example: "ChIJT2h1HKZZwokR0kgzEtsa03k"}
+        hl: {type: string, required: false, example: "en"}
+        gl: {type: string, required: false, example: "us"}
+        google_domain: {type: string, required: false, note: "validated Google domain"}
+      note: "Returns popular_times with Google's weekly hourly curves and, when published, a live busyness reading and typical visit duration. A valid place with no data returns popular_times: null."
+    test_request:
+      queryParams: {place_id: "ChIJT2h1HKZZwokR0kgzEtsa03k", hl: "en", gl: "us"}
+    cost:
+      type: per_success
+      value: 0.15
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://api.litescrape.com/api/keys/status
+      checked: '2026-09-03'
+      confidence: verified
+      note: "One successful response consumes one call at the published 15 cents per 1,000 calls; failed responses are refunded."
+    docs_url: https://litescrape.com/docs#live-foot-traffic
+
+  - id: litescrape.google.maps.photo_meta
+    domain: maps
+    capability: google.maps.photo_meta
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/google/maps/photo-meta
+    name: "Google Maps photo metadata"
+    summary: "Get source metadata for a Google Maps photo without downloading the image."
+    input:
+      queryParams:
+        data_id: {type: string, required: true, note: "photo ID from a nested photo_meta_link", example: "CIHM0ogKEPfhkKXSgpCIwwE"}
+        hl: {type: string, required: false, example: "en"}
+        gl: {type: string, required: false, example: "us"}
+        google_domain: {type: string, required: false, note: "validated Google domain"}
+      note: "Returns contributor, place, coordinates, type and photo date when Google supplies them."
+    test_request:
+      queryParams: {data_id: "CIHM0ogKEPfhkKXSgpCIwwE", hl: "en", gl: "us"}
+    cost:
+      type: per_success
+      value: 0.15
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://api.litescrape.com/api/keys/status
+      checked: '2026-09-03'
+      confidence: verified
+      note: "One successful response consumes one call at the published 15 cents per 1,000 calls; failed responses are refunded."
+    docs_url: https://litescrape.com/docs#google-maps-photo-meta
+
+  - id: litescrape.google.serp.ai_mode
+    domain: search
+    capability: google.serp.ai_mode
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/google/ai-mode
+    name: "Google AI Mode answer"
+    summary: "Ask Google AI Mode a question and receive ordered answer blocks with cited references."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "question, 1-2,048 characters", example: "What is the capital of France?"}
+        location: {type: string, required: false, note: "named origin; conflicts with uule"}
+        uule: {type: string, required: false, note: "canonical location token; conflicts with location"}
+        google_domain: {type: string, required: false, note: "validated Google domain"}
+        gl: {type: string, required: false, example: "us"}
+        hl: {type: string, required: false, example: "en"}
+        device: {type: string, required: false, note: "desktop, tablet or mobile"}
+        continuable: {type: boolean, required: false, note: "request a token for a follow-up turn"}
+        subsequent_request_token: {type: string, required: false, note: "opaque token from a prior continuable response; requires a new q"}
+        image_url: {type: string, required: false, note: "public HTTP(S) image up to 20 MB; conflicts with subsequent_request_token"}
+      note: "Returns ordered text_blocks and references when Google supplies them. Paragraph, heading, list and code-block answer shapes are preserved."
+    test_request:
+      queryParams: {q: "What is the capital of France?", hl: "en", gl: "us"}
+    cost:
+      type: per_success
+      value: 0.15
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://api.litescrape.com/api/keys/status
+      checked: '2026-09-03'
+      confidence: verified
+      note: "One successful response consumes one call at the published 15 cents per 1,000 calls; each successful conversation turn is one call and failed responses are refunded."
+    docs_url: https://litescrape.com/docs#google-ai-mode-api
+
+  - id: litescrape.google.business.reviews
+    domain: business
+    capability: google.business.reviews
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/google/reviews
+    name: "Google place reviews"
+    summary: "List public Google reviews for a place with ratings, details, photos and replies."
+    input:
+      queryParams:
+        place_id: {type: string, required: false, note: "Google place ID; one of place_id or data_id is required", example: "ChIJT2h1HKZZwokR0kgzEtsa03k"}
+        data_id: {type: string, required: false, note: "hexadecimal feature ID; conflicts with place_id"}
+        hl: {type: string, required: false, example: "en"}
+        gl: {type: string, required: false, example: "us"}
+        sort_by: {type: string, required: false, note: "qualityScore, newestFirst, ratingHigh or ratingLow", example: "qualityScore"}
+        topic_id: {type: string, required: false, note: "review topic; conflicts with query"}
+        query: {type: string, required: false, note: "review-text filter; conflicts with topic_id"}
+        num: {type: integer, required: false, note: "1-100 initially; 1-20 for filtered or continuation requests", example: 10}
+        next_page_token: {type: string, required: false, note: "opaque token from a prior response"}
+      note: "Reviews preserve source review IDs, author, rating, text, guided visit details, photos, likes and management responses."
+    test_request:
+      queryParams: {place_id: "ChIJT2h1HKZZwokR0kgzEtsa03k", hl: "en", gl: "us", sort_by: "qualityScore", num: 10}
+    cost:
+      type: per_success
+      value: 0.15
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://api.litescrape.com/api/keys/status
+      checked: '2026-09-03'
+      confidence: verified
+      note: "One successful response consumes one call at the published 15 cents per 1,000 calls; failed responses are refunded."
+    docs_url: https://litescrape.com/docs#google-reviews-api
+
+  - id: litescrape.google.contributor.reviews
+    domain: business
+    capability: google.contributor.reviews
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/google/contributor-reviews
+    name: "Google contributor review history"
+    summary: "List the public Google Maps review history attached to a contributor profile."
+    input:
+      queryParams:
+        contributor_id: {type: string, required: true, note: "10-32 digit ID from /maps/contrib/{id}/reviews", example: "109736708296406538146"}
+        hl: {type: string, required: false, example: "en"}
+        gl: {type: string, required: false, example: "us"}
+        limit: {type: integer, required: false, note: "1-200; Google exposes no anonymous continuation cursor", example: 10}
+      note: "Returns the public contributor profile plus source-backed reviews, place details, images, likes and management responses."
+    test_request:
+      queryParams: {contributor_id: "109736708296406538146", hl: "en", gl: "us", limit: 10}
+    cost:
+      type: per_success
+      value: 0.15
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://api.litescrape.com/api/keys/status
+      checked: '2026-09-03'
+      confidence: verified
+      note: "One successful response consumes one call at the published 15 cents per 1,000 calls, regardless of review count; failed responses are refunded."
+    docs_url: https://litescrape.com/docs#google-contributor-reviews-api
+
+  - id: litescrape.google.shopping.search
+    domain: shopping
+    capability: google.shopping.search
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/google/shopping
+    name: "Google Shopping product search"
+    summary: "Search Google's Shopping grid for products, prices, sellers and refinement filters."
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "query; one of q or shoprs is required", example: "coffee maker"}
+        location: {type: string, required: false, note: "named origin; conflicts with uule"}
+        uule: {type: string, required: false, note: "canonical location token; conflicts with location"}
+        google_domain: {type: string, required: false, note: "validated Google domain"}
+        gl: {type: string, required: false, example: "us"}
+        hl: {type: string, required: false, example: "en"}
+        shoprs: {type: string, required: false, note: "refinement token from a previous response"}
+        min_price: {type: number, required: false, note: "lower bound; mutually exclusive with other refinements"}
+        max_price: {type: number, required: false, note: "upper bound; mutually exclusive with other refinements"}
+        sort_by: {type: integer, required: false, note: "1 low-high, 2 high-low, 3 rating, 4 relevance"}
+        free_shipping: {type: boolean, required: false}
+        on_sale: {type: boolean, required: false}
+        small_business: {type: boolean, required: false}
+        start: {type: integer, required: false, note: "result offset, 0-1,000"}
+        num: {type: integer, required: false, note: "results to return, 1-100", example: 5}
+        device: {type: string, required: false, note: "desktop, tablet or mobile"}
+      note: "Returns shopping_results plus source-selected category, sponsored, filter and carousel groups. Product rows preserve Google-supplied price, seller, rating, delivery, images and product identifiers."
+    test_request:
+      queryParams: {q: "coffee maker", gl: "us", hl: "en", num: 5}
+    cost:
+      type: per_success
+      value: 0.15
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://api.litescrape.com/api/keys/status
+      checked: '2026-09-03'
+      confidence: verified
+      note: "One successful response consumes one call at the published 15 cents per 1,000 calls; failed responses are refunded."
+    docs_url: https://litescrape.com/docs#google-shopping-api
+
+  - id: litescrape.google.serp.ai_overview
+    domain: search
+    capability: google.serp.ai_overview
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/google/ai-overview
+    name: "Google AI Overview"
+    summary: "Get only the AI Overview module for a Google query, including answer blocks and citations."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "Google query, 1-2,048 characters", example: "what is a heat pump"}
+        location: {type: string, required: false, note: "named origin; conflicts with uule and lat/lon"}
+        uule: {type: string, required: false, note: "canonical location token; conflicts with other geography modes"}
+        google_domain: {type: string, required: false, note: "validated Google domain"}
+        gl: {type: string, required: false, example: "us"}
+        hl: {type: string, required: false, example: "en"}
+        safe: {type: string, required: false, note: "active or off"}
+        start: {type: integer, required: false, note: "non-negative result offset"}
+        device: {type: string, required: false, note: "desktop, tablet or mobile"}
+      note: "Returns search metadata, normalized parameters and ai_overview. The overview preserves ordered text blocks, citations, references, products, images and comparison rows when Google supplies them."
+    test_request:
+      queryParams: {q: "what is a heat pump", hl: "en", gl: "us", device: "desktop"}
+    cost:
+      type: per_success
+      value: 0.15
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://api.litescrape.com/api/keys/status
+      checked: '2026-09-03'
+      confidence: verified
+      note: "One successful response consumes one call at the published 15 cents per 1,000 calls; ai_overview may be null when Google does not advertise one for the query."
+    docs_url: https://litescrape.com/docs#google-ai-overview-api
+
+  - id: litescrape.google.shopping.product
+    domain: shopping
+    capability: google.shopping.product
+    platform: google
+    scope: any_account
+    method: GET
+    path: /api/google/shopping/product
+    name: "Google Shopping product details"
+    summary: "Get one Google Shopping product's offers, specifications, reviews and related products."
+    input:
+      queryParams:
+        gpcid: {type: string, required: false, note: "1-20 digit product cluster ID from shopping search; one of gpcid or prds is required", example: "2786756917538688235"}
+        headline_offer_docid: {type: string, required: false, note: "headline merchant offer ID from the same product", example: "5148952067814683768"}
+        image_docid: {type: string, required: false, note: "image document ID from the same product", example: "15207157515713434896"}
+        prds: {type: string, required: false, note: "Google product selector token; conflicts with the three ID fields"}
+        q: {type: string, required: true, note: "the search query that found this product", example: "coffee maker"}
+        location: {type: string, required: false, note: "named origin; conflicts with uule"}
+        uule: {type: string, required: false, note: "canonical location token; conflicts with location"}
+        google_domain: {type: string, required: false, note: "validated Google domain"}
+        gl: {type: string, required: false, example: "us"}
+        hl: {type: string, required: false, example: "en"}
+        device: {type: string, required: false, note: "desktop, tablet or mobile"}
+      note: "Returns product_result plus source-selected merchant offers, product reviews and related products."
+    test_request:
+      queryParams: {q: "coffee maker", gpcid: "2786756917538688235", headline_offer_docid: "5148952067814683768", image_docid: "15207157515713434896", gl: "us", hl: "en"}
+    cost:
+      type: per_success
+      value: 0.15
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://api.litescrape.com/api/keys/status
+      checked: '2026-09-03'
+      confidence: verified
+      note: "One successful response consumes one call at the published 15 cents per 1,000 calls; failed responses are refunded."
+    docs_url: https://litescrape.com/docs#google-shopping-product-api
+
+  - id: litescrape.bing.serp.organic
+    domain: search
+    capability: bing.serp.organic
+    platform: bing
+    scope: any_account
+    method: GET
+    path: /api/bing/search
+    name: "Bing organic search"
+    summary: "Search Bing and return structured organic results plus source-selected SERP modules."
+    input:
+      queryParams:
+        engine: {type: string, required: false, note: "must be bing; defaults to bing", example: "bing"}
+        q: {type: string, required: true, note: "query text, 1-2,048 characters", example: "Litescrape API"}
+        location: {type: string, required: false, note: "optional city-level origin"}
+        lat: {type: string, required: false, note: "latitude from -90 through 90"}
+        lon: {type: string, required: false, note: "longitude from -180 through 180"}
+        mkt: {type: string, required: false, note: "language-country market such as en-US; conflicts with cc", example: "en-US"}
+        cc: {type: string, required: false, note: "two-letter country code; conflicts with mkt"}
+        first: {type: integer, required: false, note: "one-based organic-result offset", example: 1}
+        safeSearch: {type: string, required: false, note: "off, moderate or strict", example: "moderate"}
+        filters: {type: string, required: false, note: "native Bing display/date filters"}
+        device: {type: string, required: false, note: "desktop, tablet or mobile", example: "desktop"}
+      note: "Always returns search_metadata and search_parameters. Optional result groups include organic_results, ads, answers, knowledge cards, local, media, shopping, stories and pagination."
+    test_request:
+      queryParams: {engine: "bing", q: "Litescrape API", mkt: "en-US", first: 1, safeSearch: "moderate", device: "desktop"}
+    cost:
+      type: per_success
+      value: 0.15
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://api.litescrape.com/api/keys/status
+      checked: '2026-09-03'
+      confidence: verified
+      note: "One successful response consumes one call at the published 15 cents per 1,000 calls; failed responses are refunded."
+    docs_url: https://litescrape.com/docs#bing-search-api
+
+  - id: litescrape.duckduckgo.serp.organic
+    domain: search
+    capability: duckduckgo.serp.organic
+    platform: duckduckgo
+    scope: any_account
+    method: GET
+    path: /api/duckduckgo/search
+    name: "DuckDuckGo organic search"
+    summary: "Search DuckDuckGo and return ranked web results as structured JSON."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "query text, 1-500 characters", example: "Litescrape API"}
+        kl: {type: string, required: false, note: "DuckDuckGo region/language token", example: "us-en"}
+        search_assist: {type: boolean, required: false, note: "defaults true; mutually exclusive with explicit m"}
+        safe: {type: string, required: false, note: "1, -1 or -2", example: "-1"}
+        df: {type: string, required: false, note: "d, w, m, y or YYYY-MM-DD..YYYY-MM-DD"}
+        start: {type: integer, required: false, note: "result offset, 0-10,000", example: 0}
+        m: {type: integer, required: false, note: "result count, 1-50; mutually exclusive with search_assist"}
+      note: "Returns ranked rows in organic_results with the standard search_metadata and search_parameters envelope."
+    test_request:
+      queryParams: {q: "Litescrape API", kl: "us-en", safe: "-1"}
+    cost:
+      type: per_success
+      value: 0.15
+      currency: USD
+      per: 1000
+      unit: call
+      source: observed
+      source_url: https://api.litescrape.com/api/keys/status
+      checked: '2026-09-03'
+      confidence: verified
+      note: "One successful response consumes one call at the published 15 cents per 1,000 calls; failed responses are refunded."
+    docs_url: https://litescrape.com/docs#duckduckgo-search-api

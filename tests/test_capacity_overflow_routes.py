@@ -260,6 +260,16 @@ def test_every_platform_provider_has_a_recorded_or_acknowledged_signature():
     assert not stale, f"acknowledged providers that are now recorded or gone: {sorted(stale)}"
 
 
+def test_litescrape_payment_required_is_an_exhausted_balance():
+    sig = S.classify(
+        "litescrape",
+        402,
+        {"content-type": "application/json"},
+        b'{"error":"The API key has no calls remaining.","error_code":"payment_required"}',
+    )
+    assert sig is not None and sig.kind == "balance" and S.is_exhausting(sig)
+
+
 _CF_PAGE = (b"<!DOCTYPE html><html><head><title>Access denied | api.example.com used Cloudflare "
             b"to restrict access</title></head><body>Error 1010</body></html>")
 

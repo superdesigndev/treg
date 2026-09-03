@@ -79,6 +79,7 @@ platforms:
 
   # --- Reviews & Apps: app stores and review sites ---------------------------------------------
   app-store: {label: "Apple App Store", category: "Reviews & Apps", featured: 1, summary: "App listings, rankings and reviews from the Apple App Store."}
+  apple-maps: {label: "Apple Maps", category: "Reviews & Apps", summary: "Public place details, ratings and reviews from Apple Maps."}
   google-play: {label: "Google Play", category: "Reviews & Apps", featured: 2, summary: "App listings, rankings and reviews from Google Play."}
   trustpilot: {label: "Trustpilot", category: "Reviews & Apps", featured: 3, summary: "Company profiles and reviews from Trustpilot."}
   imdb: {label: "IMDb", category: "Reviews & Apps", featured: 4, summary: "Titles, ratings, cast, box office and reviews from IMDb."}
