@@ -25,7 +25,7 @@ from .bootstrap_http import (
     _SecurityHeadersMiddleware,
 )
 from .config import get_settings
-from .infra.db import session_maker, verify_db
+from .infra.db import background_session_maker, verify_db
 from .infra.catalog_observations import (
     CachedEndpointObservationReader,
     PostgresEndpointObservationReader,
@@ -423,7 +423,7 @@ def _lifespan(role: AppRole):
             timeout=httpx.Timeout(float(get_settings().call_timeout_s)),
         )
         ads_task = (
-            asyncio.create_task(adsconv.worker(session_maker, app.state.http))
+            asyncio.create_task(adsconv.worker(background_session_maker, app.state.http))
             if ROLE_BACKGROUND_TASKS[role] and adsconv.enabled()
             else None
         )
@@ -497,7 +497,10 @@ def create_app(role: AppRole = "all") -> FastAPI:
         redoc_url=None,
     )
     app.state.endpoint_observation_reader = CachedEndpointObservationReader(
-        PostgresEndpointObservationReader(session_maker)
+        # Background: `CachedEndpointObservationReader` never awaits the source on the request path
+        # (a miss returns empty and schedules a refresh task), so these aggregates over `callrecord`
+        # are off-request work and belong off the API's pool.
+        PostgresEndpointObservationReader(background_session_maker)
     )
 
     # Registration order is part of the compatibility surface. add_middleware prepends entries.

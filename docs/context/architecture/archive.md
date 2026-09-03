@@ -142,6 +142,12 @@ the tasks it gathered itself rather than waiting on their done callbacks — aud
 discipline; the busy-spin both avoid (the 2026-08 serial-Postgres CI hang) is explained and pinned
 for both modules in `tests/test_audit.py`.
 
+**Which pool.** Every write here — `_store_locked`, `_touch_write`, `prune_once`, `refresh_once` —
+uses `background_session_maker`. `lookup` is the one exception and uses the API pool on purpose: it
+runs INSIDE a caller's `/call/`, so it must not queue behind this module's own writes.
+`tests/test_db_pool_isolation.py` pins that split per function; see also Recorder throttle below,
+which bounds concurrency inside the pool.
+
 **Counted vs kept.** Statistics and the raw-body `content_hash` are recorded for every observed
 answer (a hash is an identity, not the content); body BYTES are kept only when the entry's cache
 policy is `transient`/`archive` AND the body fits `archive_max_body_bytes` (default 2 MB —
@@ -269,7 +275,10 @@ move atomically with each strip.
 
 At most `_MAX_CONCURRENT_WRITES` (4) recordings touch the database at once — audit's exact
 loop-bound-semaphore pattern. Before it, a burst could put up to 512 concurrent short sessions in
-front of the API's 15-slot pool (SToneX's pool-pressure report). Queued recordings wait inside
+front of the API's 15-slot pool (SToneX's pool-pressure report); those writes now land on the
+BACKGROUND pool instead (`ops/deploy.md` § Three pools), so the semaphore is the inner bound rather
+than the only one — a third module reaching for the wrong maker no longer needs its author to have
+read this section. Queued recordings wait inside
 their fire-and-forget task, so the caller is unaffected; the 30s bound covers wait+write, so a
 stuck queue still sheds rather than wedges. Throttled, not shed: the burst test proves all 12
 concurrent recordings land while peak DB concurrency stays ≤4.

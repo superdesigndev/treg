@@ -66,20 +66,75 @@ bound to a closed maintenance loop. Calling `maintenance.upgrade()` directly doe
 - **Fails loud on a missing key + real DB:** if `TREG_SECRET_KEY` is empty and `database_url` isn't
   SQLite, `verify_db` raises (an ephemeral key would make every stored secret undecryptable after a
   restart — silent total loss). On SQLite dev it only logs a warning.
-- **Postgres pool hygiene:** for non-SQLite URLs the async engine adds `pool_pre_ping=True`,
-  `pool_recycle=300`, sizing (`pool_size=5`, `max_overflow=10` — per instance; a rolling deploy runs two
-  against a basic-plan Postgres ceiling of ~100, the 2026-08-15 outage) and `pool_timeout=5`. A request
-  that gets no slot in 5 s is answered `503 {"treg_saturated": true}` with `Retry-After: 2` (api.py
-  `_pool_saturated`) instead of SQLAlchemy's default 30 s wait and an anonymous 500. 15 slots is plenty
-  because a `/call/` holds no connection during its upstream round trip — `call_tool` commits before
-  `relay()`; holding one there deadlocked 15 concurrent calls for 30 s on 2026-08-24 (see
+- **Three pools, one database (the bulkhead).** `POOL_SPECS` in `infra/db.py` is the whole policy:
+
+  | pool | maker | slots | serves |
+  |---|---|---|---|
+  | `api` | `session_maker` | 5 + 10 | every request handler, via `get_session` or directly |
+  | `admin` | `admin_session_maker` | 3 + **0** | `/admin/*` only, via `get_admin_session` |
+  | `background` | `background_session_maker` | 13 + **0** | audit, archive writes, ads worker, the observation reader, the error-evidence sweep |
+
+  Each class of work can exhaust only its own slots. Before this there was ONE pool of 15, and on
+  2026-09-03 a single admin browser tab polling `/admin/archive/panel` (every 5 s, no in-flight
+  guard, fanning a `/admin/archive/keys` request out per endpoint row) held a third of it for two
+  hours; ~10,300 real `/call/` requests were refused as saturated. Neither sizing nor a semaphore
+  would have prevented it — a semaphore bounds only the module that remembers to take one
+  (`audit.py` did, `archive.py` did not), while a pool bounds every module routed to it. Overflow
+  is **0** on both minor pools for the same reason: it is the escape hatch a bulkhead must not have.
+
+  Two sizing rules, both learned by getting them wrong first:
+
+  - **`background` is derived, not chosen.** `BACKGROUND_CONSUMERS` lists everything that can hold
+    one of its slots at the same moment and the pool is `sum()` of it. Sizing below real demand
+    makes the bounds fight: the loser waits `pool_timeout` then drops its row — for audit, the
+    failure evidence a burst just produced. The first cut sized it as `audit(4) + archive(4)` and
+    shipped a test asserting exactly that, which passed while four more consumers drew on the same
+    slots (`adsconv` holds one across two Google round trips, the pruner across a whole sweep). Add
+    a background consumer, add it to that dict.
+  - **A handler that opens a SECOND session needs a spare slot.** At `admin=2`, `/admin/errors`
+    nesting the retention sweep inside itself consumed the entire pool. That sweep now runs on
+    `background` (it is a sweep, not a read) and is single-flighted so N concurrent readers cannot
+    run N bulk UPDATEs; `admin` is 3.
+
+  `get_admin_session` is a separate dependency callable rather than a flag because FastAPI caches
+  dependencies per request BY IDENTITY: `require_superadmin` names the same one its handlers do, or
+  an admin request would check out one connection from each of two pools.
+
+- **`TREG_DB_POOL_OVERRIDES`** (`"admin.pool_size=4,background.pool_size=16"`) patches `POOL_SPECS`
+  at startup. Pool sizing can only be validated in production — too small and real traffic gets
+  503s, too large and the bulkhead is decorative, and no test distinguishes them — so a wrong number
+  must be a dashboard edit, not a deploy. Unknown pools, unknown FIELD names, non-integers and
+  out-of-range values are each logged and skipped: this knob gets reached for mid-incident, so a
+  typo must neither stop the server booting nor pass silently and leave the operator believing they
+  resized something. The range check is not pedantry — SQLAlchemy reads `pool_size=0` and
+  `max_overflow=-1` as **unlimited**, and `pool_size=0` sets `_max_overflow=-1` too, so `-1` typed
+  to mean "no overflow" would uncap connections against the ~100 ceiling: the 2026-08-15 outage,
+  entered through the knob added to prevent outages.
+- **No statement timeout yet.** The pools bound how many connections a class of work can hold, not
+  how long a query may run; `alembic/env.py` still has the only timeouts in the app. Adding per-pool
+  `statement_timeout` is deliberately a SEPARATE change: it is a behavior change on every query,
+  it can only be validated against production data volumes, and it would land on reads already
+  known to be far over any sane bound (the 2026-09-03 admin report measured 133 s, and
+  `admin_stats` / `admin_users` / `admin_tools` still read their tables unbounded). Splitting it
+  out keeps "the bulkhead broke something" and "a timeout broke something" distinguishable.
+- **Other Postgres pool hygiene:** `pool_pre_ping=True`, `pool_recycle=300`, and `pool_timeout=5` on
+  every pool. A request that gets no slot in 5 s is answered `503 {"treg_saturated": true}` with
+  `Retry-After: 2` (`bootstrap_handlers._pool_saturated`) instead of SQLAlchemy's default 30 s wait
+  and an anonymous 500. The API's 15 slots are plenty because a `/call/` holds no connection during
+  its upstream round trip — `call_tool` commits before `relay()`; holding one there deadlocked 15
+  concurrent calls for 30 s on 2026-08-24 (see
   [proxy-model](../architecture/proxy-model.md) § Connection discipline).
+- **SQLite aliases all three to one engine.** It has no pool to protect and file-level write locks
+  it cannot share, so three engines against one file would only manufacture "database is locked".
+  Tests therefore pin the ROUTING (which maker each module reaches for), not the isolation.
 
 ## Config (`config.py`)
 `Settings` (pydantic-settings, env prefix `TREG_`, reads `.env`), cached via `get_settings()`:
 - `database_url` — default `sqlite+aiosqlite:///./treg.db` (SQLite dev, Postgres on Render, same code).
   A `field_validator` rewrites a bare `postgres://` / `postgresql://` URL → `postgresql+asyncpg://`, so
   Render's `fromDatabase`-injected URL works unedited (the async engine needs the asyncpg driver).
+- `db_pool_overrides` — `"admin.pool_size=4,background.pool_size=12"`, patching `POOL_SPECS` at
+  startup; empty uses the defaults. Bad entries are logged and skipped. See § Three pools above.
 - `secret_key` — the Fernet key; empty → an ephemeral key is minted at startup (secrets won't survive a
   restart). See [auth-secrets](../architecture/auth-secrets.md).
 - `public_url` — default `https://treg.to`; the reference deployment is cut over in STAGES —
@@ -237,10 +292,12 @@ and in the serial Postgres CI migration set. `env.py` bounds Postgres lock and s
 a contended migration fails before it queues the serving database behind DDL.
 
 **Audit back-pressure (`audit.py`).** Audit rows are written off the request path (fire-and-forget), and
-each write opens a DB connection from the small pool **shared** with real requests. Two limits keep
-best-effort logging from starving that pool: a loop-bound semaphore caps concurrent audit writes at
-`_MAX_CONCURRENT_WRITES`, and under an extreme burst the writer **sheds** load — it drops any audit row
-past `_MAX_PENDING` rather than let the pending set grow without bound. Audit must never OOM or wedge the
+each write opens a DB connection — from the **background** pool since 2026-09-03, so a burst here can no
+longer starve real requests, only other background work. Two limits still apply inside it: a loop-bound
+semaphore caps concurrent audit writes at `_MAX_CONCURRENT_WRITES` (queueing in-process rather than
+holding a pooled connection, and keeping `drain()` deterministic on SQLite, where all three makers share
+one engine), and under an extreme burst the writer **sheds** load — it drops any audit row past
+`_MAX_PENDING` rather than let the pending set grow without bound. Audit must never OOM or wedge the
 server. Shedding is the *only* loss that should ever happen: `record_call` splats its telemetry dict
 into `CallRecord(**fields)`, so a key with no matching column used to raise inside `_write`, where the
 except swallowed it, and the whole row disappeared — a telemetry field deployed one commit ahead of its
@@ -377,8 +434,13 @@ the ALTER, both instances starved, and the shared Postgres stayed wedged until a
   Postgres only). A contended
   deploy therefore FAILS CLEANLY — prod keeps serving the old code — and the right response is to
   redeploy at a quieter moment, not to raise the timeout.
-- The pool is per instance and a rolling deploy runs two: keep `pool_size + max_overflow` such that
-  DOUBLE it stays under the database plan's connection ceiling. A guard test pins this.
+- The pools are per instance and a rolling deploy runs two: keep the SUM of `pool_size +
+  max_overflow` across every entry in `POOL_SPECS` such that DOUBLE it stays under the database
+  plan's connection ceiling. A guard test pins this and counts all three deliberately — splitting
+  one pool into three protects the API and is also a way to walk back into this outage.
+- A new class of work gets a POOL, not a semaphore: "the maker you import decides what you can
+  exhaust" replaces "the author remembers to bound themselves", which is the rule that failed.
+  `tests/test_db_pool_isolation.py` pins which maker each module reaches for.
 
 If a deploy fails with a lock timeout in the logs, that is the mechanism working. If the database
 itself stops accepting connections, restart the POSTGRES resource, not the web service — an app

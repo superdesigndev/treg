@@ -358,13 +358,6 @@ async def _store(
     an identical answer arrives at a key whose bytes were never kept (policy or cap changed), the
     bytes are stored now, so a policy upgrade heals the store forward without a backfill."""
     try:
-        from sqlalchemy import select
-        from sqlalchemy.exc import IntegrityError
-
-        from .domain.catalog import store as catalog_store
-        from .infra.db import session_maker
-        from .models import ArchiveKey, ArchiveSnapshot
-
         async with _get_sem():
             return await _store_locked(
                 method=method, endpoint_id=endpoint_id, provider=provider, url=url,
@@ -394,7 +387,7 @@ async def _store_locked(
     from sqlalchemy.exc import IntegrityError
 
     from .domain.catalog import store as catalog_store
-    from .infra.db import session_maker
+    from .infra.db import background_session_maker
     from .models import ArchiveKey, ArchiveSnapshot
 
     entry = catalog_store.load().by_id.get(endpoint_id)
@@ -407,7 +400,7 @@ async def _store_locked(
     keep_bytes = pol in _STORABLE and len(body) <= cap
     now = _utcnow()
 
-    async with session_maker() as s:
+    async with background_session_maker() as s:
         key = (await s.execute(
             select(ArchiveKey).where(ArchiveKey.key_hash == kh))).scalars().one_or_none()
         if key is None:
@@ -518,7 +511,7 @@ async def prune_once() -> int:
         return 0
     from sqlalchemy import select, update as sa_update
 
-    from .infra.db import session_maker
+    from .infra.db import background_session_maker
     from .models import ArchiveEndpointStat, ArchiveKey, ArchiveSnapshot
 
     s_cfg = get_settings()
@@ -528,7 +521,7 @@ async def prune_once() -> int:
     demand_floor = _utcnow() - timedelta(days=_PRUNE_DEMAND_GRACE_DAYS)
     stripped = 0
 
-    async with session_maker() as s:
+    async with background_session_maker() as s:
         # Candidate keys, worst earners first: never-servable, then long-undemanded.
         keys = (await s.execute(
             select(ArchiveKey)
@@ -710,6 +703,9 @@ async def lookup(
         from sqlalchemy import select
 
         from .domain.catalog import store as catalog_store
+        # The API pool, deliberately: a lookup runs INSIDE a caller's /call/. Every other session in
+        # this module is a write nobody awaits and goes to the background pool; this one is on the
+        # hot path and must not queue behind them.
         from .infra.db import session_maker
         from .models import ArchiveKey, ArchiveSnapshot
 
@@ -774,10 +770,15 @@ async def _touch_write(key_hash: str) -> None:
     try:
         from sqlalchemy import update
 
-        from .infra.db import session_maker
+        from .infra.db import background_session_maker
         from .models import ArchiveKey
 
-        async with session_maker() as s:
+        # The SAME semaphore `_store` takes. A touch is a smaller write, not a freer one: `_touch`
+        # bounds only the pending SET (512), so without this a burst of served hits would put
+        # hundreds of sessions against the background pool at once. What gets dropped then is
+        # `last_requested_at` — the demand signal `prune_once` reads — so a burst of hits would make
+        # exactly those keys look undemanded and eligible for stripping.
+        async with _get_sem(), background_session_maker() as s:
             await s.execute(update(ArchiveKey).where(ArchiveKey.key_hash == key_hash)
                             .values(last_requested_at=_utcnow()))
             await s.commit()
@@ -922,12 +923,12 @@ async def refresh_once(client) -> int:
     from sqlalchemy import func, select
 
     from .domain.catalog import store as catalog_store
-    from .infra.db import session_maker
+    from .infra.db import background_session_maker
     from .models import ArchiveKey, ArchiveSnapshot
 
     now = _utcnow()
     cat = catalog_store.load()
-    async with session_maker() as s:
+    async with background_session_maker() as s:
         candidates = (await s.execute(
             select(ArchiveKey)
             .where(ArchiveKey.ttl_s > 0, ArchiveKey.req_url != "",

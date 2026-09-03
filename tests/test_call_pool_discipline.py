@@ -32,7 +32,7 @@ from treg.routers import call as call_routes
 from treg import audit
 from treg.domain import money as ledger
 from treg.config import get_settings
-from treg.infra.db import _engine, session_maker
+from treg.infra.db import _background_engine, _engine, session_maker
 from treg.infra.upstream.relay import relay as upstream_relay
 from treg.models import CallRecord, Hold
 
@@ -224,7 +224,14 @@ async def test_http_and_mcp_catalog_search_share_one_nonblocking_refresh(
             )
             assert http_response.status_code == 200, http_response.text
             assert mcp_response["results"]
-            assert _engine.pool.checkedout() == 1, (
+            # The refresh holds exactly one connection and it is NOT one of the API's. Before the
+            # pool split this read `_engine.pool.checkedout() == 1`, because the refresh ran on the
+            # request pool; now the same invariant is the stronger pair below. SQLite aliases all
+            # three engines, which is why this whole test is Postgres-only.
+            assert _engine.pool.checkedout() == 0, (
+                "a catalog search must hold no request-pool connection while the refresh runs"
+            )
+            assert _background_engine.pool.checkedout() == 1, (
                 "only the independent refresh session may hold a pooled connection"
             )
             assert refresh_calls == 1, "HTTP and MCP must join the same process refresh task"

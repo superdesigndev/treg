@@ -29,6 +29,13 @@ flag (so a web portal can log in with either). Returns a principal string (for a
 The dependency lives in `domain.identity.access` and every consumer imports it from there; the
 transitional `api.py` re-export retired with the rest of the stage-3 compatibility surface.
 
+**On the admin pool.** The gate takes `Depends(get_admin_session)`, and so does every `/admin/*`
+handler it guards — 3 connections, no overflow, separate from the API's
+(`ops/deploy.md` § Three pools). It must be the SAME dependency callable on both: FastAPI caches
+dependencies per request by identity, so a gate on `get_session` would put admin traffic back on the
+API pool through the back door. Staff pages are therefore bounded by construction — a panel that
+polls itself into saturation costs admins their own 503s, not the product's.
+
 The cross-tenant read, mutation, and reconciliation handlers live in three ordered blocks in
 `routers.admin`. The mutation block shares the org deletion and member-rule cleanup helpers from
 `routers.orgs`.
@@ -52,7 +59,7 @@ endpoints are unaffected (they use `require_superadmin`).
   these columns, and it defers them so they are not even fetched. This route also performs the
   14-day retention pass (`_purge_expired_error_evidence`, blanking to `'<expired>'` on its own
   committed session) — ageing lives here because there is no scheduler and the request path cannot
-  hold a lazy marker, `get_session` never committing one.
+  hold a lazy marker, `get_admin_session` never committing one.
 - **Reconciliation (Phase 5):** `admin_reconcile_drift|spend|repeats` (`?since_days=30`) — cross-org
   aggregates over platform-tier spend, so super-admin and not org-admin: price drift per endpoint,
   settled spend per provider (the invoice comparison), and the repeat-query rate. Query-time reports

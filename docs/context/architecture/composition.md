@@ -42,7 +42,9 @@ conversion worker. Registration order is compatibility behavior. The four stage-
 byte-identical for `role="all"` unless that composition intentionally changes.
 
 For every role, the factory wires the Catalog observation port to one process-local
-`CachedEndpointObservationReader` backed by short `session_maker` reads. `all` and `dataplane`
+`CachedEndpointObservationReader` backed by short `background_session_maker` reads — the cache never
+awaits the source on the request path (a miss returns empty and schedules a refresh), so those
+`callrecord` aggregates are off-request work and belong off the API's pool. `all` and `dataplane`
 lifespans inject that exact instance into both mounted MCP catalog surfaces; the HTTP catalog routes
 and the observed-stats prose pages (use-case and workflow) on `all` and `control` read the instance
 from app state. This keeps one cache and one refresh Task per

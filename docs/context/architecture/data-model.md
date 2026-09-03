@@ -165,8 +165,8 @@ SQLModel tables in `src/treg/models.py`. Kept minimal on purpose. Org multi-tena
   Unmetered request bodies are cached only with a declared `Content-Length` at or below 64 KiB; failed
   streaming responses contribute only their first 8 KiB and are replayed byte-for-byte to the caller.
   Aged out to `'<expired>'` after 14 days by
-  `GET /admin/errors` — not on the request path, because `get_session` never commits and a lazy
-  marker written there would roll back, leaving the purge to run on every failed call.
+  `GET /admin/errors` — not on the request path, because `get_admin_session` never commits and a
+  lazy marker written there would roll back, leaving the purge to run on every failed call.
 - **`IdempotentCall`** - a caller-scoped, 24-hour replay cache for metered successes, keyed by
   `(membership_id, key)` and also carrying `org_id` for team cleanup. It is not an audit record: once
   the membership is revoked there is no valid caller that can replay it. `delete_membership` removes
@@ -250,18 +250,21 @@ The API builds a single-binding tool from flat fields via `_flat_binding()`; inj
 [auth-secrets](auth-secrets.md).
 
 ## Async DB (`src/treg/infra/db.py`)
-One async SQLAlchemy engine (`_engine`, Postgres pool 5 + 10 overflow per instance, `pool_timeout=5`)
-+ a public `session_maker` (the audit writer opens its own session here; so do the post-relay
-bookkeeping steps of `/call/` — the request session is committed before the relay so none of them
-ever waits on it, see [proxy-model](proxy-model.md) § Connection discipline). The public
+Three async SQLAlchemy engines against one database, declared by `POOL_SPECS` and exposed as
+`session_maker` (api), `admin_session_maker` (`/admin/*`) and `background_session_maker` (audit,
+archive writes, the ads worker) — a bulkhead, so no class of work can exhaust another's slots; sizes,
+statement timeouts and the reasoning are in [deploy](../ops/deploy.md) § Three pools. On SQLite all
+three alias one engine. The post-relay bookkeeping steps of `/call/` use `session_maker`; the request
+session is committed before the relay so none of them ever waits on it, see
+[proxy-model](proxy-model.md) § Connection discipline. The public
 `dispose_engine()` closes pooled connections before an explicit maintenance event loop exits, so a
 later server loop cannot inherit connections bound to the closed loop. `verify_db()` is the read-only
 lifespan and worker guard: it keeps the missing-Fernet-key refusal, requires a stamp at head, refuses a
 known older revision, and warns but serves on an unknown-newer revision for additive-era rollback.
-`reset_db()` is test-only: it disposes the loop-bound pool, recreates the SQLite schema or truncates
+`reset_db()` is test-only: it disposes every loop-bound pool, recreates the SQLite schema or truncates
 application tables on Postgres, then writes the Alembic head stamp. Avoiding per-test Alembic runs and
-Postgres DDL keeps the suite fast without weakening the autogenerate drift guard. `get_session()` is the FastAPI
-dependency. SQLite locally (`aiosqlite`), Postgres on Render, same code. **Timestamps are
+Postgres DDL keeps the suite fast without weakening the autogenerate drift guard. `get_session()` and
+`get_admin_session()` are the FastAPI dependencies. SQLite locally (`aiosqlite`), Postgres on Render, same code. **Timestamps are
 naive UTC:** `_now()` (the `created_at` default) drops tzinfo because the columns are `TIMESTAMP WITHOUT
 TIME ZONE` and asyncpg rejects tz-aware values on Postgres; the app compares naive UTC throughout.
 Shared request-time conversions live in `timeutil.utcnow_naive` and `timeutil.as_naive`, re-exported

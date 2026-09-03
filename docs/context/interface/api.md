@@ -157,7 +157,10 @@ with the names of the colliding usable tools and the explicit `/call/<name>/<pat
 /invites/accept` (open, self-registering) and `GET /oauth/callback` (browser-hit, protected by `state`).
 Each successful identity dependency commits its read-only transaction before the handler runs, so an
 application use case can open its own session without waiting behind the request's pool slot. The
-dependency-cached session remains usable because `session_maker` sets `expire_on_commit=False`.
+dependency-cached session remains usable because every session maker sets `expire_on_commit=False`.
+`require_superadmin` is the one gate on a different pool — it takes `get_admin_session`, and so must
+every `/admin/*` handler under it (FastAPI caches dependencies by identity; see
+[super-admin](../architecture/super-admin.md)).
 Authz = org scoping + a role gate: `_can_manage` lets admin/owner manage any org resource, a member only
 what they created; `_require_admin_of` gates the org-admin endpoints. See
 [multi-tenancy](../architecture/multi-tenancy.md).

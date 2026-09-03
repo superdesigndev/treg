@@ -49,6 +49,12 @@ class Settings(BaseSettings):
             v = "postgresql+asyncpg://" + v[len("postgresql://") :]
         return v
 
+    # Pool sizing overrides, e.g. "admin.pool_size=4,background.pool_size=12". Empty = the defaults
+    # in `infra.db.POOL_SPECS`. This exists because pool sizing can only be validated in production:
+    # too small and real traffic gets 503s, too large and the bulkhead is decorative, and neither is
+    # visible from a test. A wrong number must be a dashboard edit, not a deploy.
+    db_pool_overrides: str = ""
+
     # Fernet key (urlsafe base64, 32 bytes). Generate with `treg keygen` (see crypto.py).
     # Empty in dev means an ephemeral key is minted at startup (secrets won't survive a restart).
     secret_key: str = ""

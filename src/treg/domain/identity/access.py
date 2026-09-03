@@ -11,7 +11,7 @@ from sqlmodel import select
 
 from ... import crypto
 from ...config import get_settings
-from ...infra.db import get_session
+from ...infra.db import get_admin_session, get_session
 from ...models import ROLE_RANK, Membership, Org, User
 from . import session as sess
 
@@ -175,10 +175,14 @@ async def require_member(
 async def require_superadmin(
     x_treg_token: str = Header(default=""),
     treg_session: str = Cookie(default=""),
-    db: AsyncSession = Depends(get_session),
+    db: AsyncSession = Depends(get_admin_session),
 ) -> str:
     """Cross-tenant gate for /admin/*. Authorized by the env admin token, a token whose user is
-    is_superadmin, OR a session whose user is is_superadmin. Returns a principal (for audit)."""
+    is_superadmin, OR a session whose user is is_superadmin. Returns a principal (for audit).
+
+    On the admin pool, and it must name the same dependency callable its handlers do — FastAPI
+    caches dependencies per request by identity, so a gate on `get_session` would put admin traffic
+    back on the API pool through the back door."""
     admin = get_settings().admin_token
     if x_treg_token and admin and hmac.compare_digest(x_treg_token, admin):
         await db.commit()

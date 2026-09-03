@@ -5,11 +5,12 @@ streams without waiting. A strong reference to each task is held until it finish
 the event loop may GC a bare create_task). Failures are swallowed: an audit hiccup must never
 break a real call. `drain()` flushes pending writes on shutdown / in tests.
 
-Back-pressure (why this matters): each write opens a DB connection, and the pool is small + SHARED
-with the request path. Under a burst, uncapped background writes would grab every connection and
-starve real calls. So: at most `_MAX_CONCURRENT_WRITES` writes hold a connection at once (a loop-bound
-semaphore), and under an extreme burst we DROP audit rows past `_MAX_PENDING` rather than grow without
-bound — audit is best-effort; never OOM or wedge the server for it.
+Back-pressure (why this matters): each write opens a DB connection, from the BACKGROUND pool
+(db.py), so a burst here can starve other background work but never real calls. The semaphore stays
+as the inner, cheaper bound — it queues in-process instead of holding a pooled connection, and it is
+what keeps `drain()` deterministic on sqlite, where all three makers share one engine. Under an
+extreme burst we DROP audit rows past `_MAX_PENDING` rather than grow without bound — audit is
+best-effort; never OOM or wedge the server for it.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from .infra.db import session_maker
+from .infra.db import background_session_maker
 from .models import CallRecord, RunRecord, SearchMiss
 
 _pending: set[asyncio.Task] = set()
@@ -117,7 +118,7 @@ def _schedule(coro) -> None:
 async def _write(model, **fields) -> None:
     async with _get_sem():  # cap concurrent DB connections held by audit — never starve the request pool
         try:
-            async with session_maker() as session:
+            async with background_session_maker() as session:
                 session.add(model(**fields))
                 await session.commit()
         except Exception:  # noqa: BLE001 — audit must never surface into a call's result

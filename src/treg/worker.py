@@ -116,8 +116,11 @@ async def _overflow_verify(args) -> int:
     skipped, key_failures = 0, []
     # One SHORT transaction per route. The first prod run (2026-08-28) kept a single session open
     # across every network round-trip: each `db.get` autoflushed the previous row's UPDATE, the row
-    # locks piled up for minutes, and db.py's 5 s lock_timeout — there to keep the worker from
-    # queueing behind live traffic — killed the run at route 60 (LockNotAvailableError).
+    # locks piled up for minutes, and the run died at route 60 with LockNotAvailableError. Where
+    # that 5 s bound came from is NOT db.py — its pools set no lock_timeout, and `alembic/env.py`'s
+    # applies only to the migration connection, which this worker never opens. Most likely the
+    # database role carries one. Recorded as observed rather than explained: the fix (one short
+    # transaction per route) is right whatever set it.
     async with httpx.AsyncClient(timeout=60) as c:
         for r in todo:
             ep = by_id.get(r.endpoint_id)
