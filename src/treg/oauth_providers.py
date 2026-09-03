@@ -1190,6 +1190,40 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+ALERTKICK = OAuthProvider(
+    service="alertkick",
+    display_name="AlertKick",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="ak_…",
+    # AlertKick authenticates API calls with an X-API-Key header only — never a query param, never
+    # the URL path. A bad key answers 401 {"code":"401","error":"Unauthorized Access",
+    # "message":"Invalid API-Key"} (observed live 2026-09-03).
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://app.alertkick.com/settings",
+    setup_action_label="Get your AlertKick API key",
+    setup_steps=(
+        "Sign in to your AlertKick workspace and open Settings → API Keys.",
+        "Create a key and copy it — it is shown once.",
+    ),
+    # Keys are WORKSPACE-BOUND: each workspace lives on its own host
+    # (https://{workspace}.alertkick.com) and a key only works on the host that minted it — the
+    # wrong host answers 401 (observed live 2026-09-03). base_url below is the
+    # `app` workspace host; users on another workspace must swap the host until per-account
+    # base URLs are supported.
+    setup_note="API calls are free on every plan; plan quotas cap how many monitors, heartbeats "
+               "and hosts can exist. Keys are workspace-bound — see the catalog notes.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Developer",
+    summary="Create and read uptime monitors, cron heartbeats, alerts and monitored servers in your own AlertKick workspace.",
+    base_url="https://app.alertkick.com/api/v1",
+    docs_url="https://alertkick.com/docs/api/",
+    probe_path="/monitors/all?limit=1",  # free, in the public OpenAPI spec, clean 401 on a bad key
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -2537,7 +2571,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
+        APOLLO, PDL, AKTA, HUNTER, ALERTKICK, CRUNCHBASE, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA,
@@ -2557,7 +2591,7 @@ DEFAULT_CAPABILITY = "read"
 
 # Shelf order in the marketplace. Anything carrying a category not named here sorts last, so a
 # provider added without one is visible rather than lost between the shelves.
-CATEGORY_ORDER = ("SEO", "Advertising", "Social media", "Enrichment", "Market data", "Community", "Other")
+CATEGORY_ORDER = ("SEO", "Advertising", "Social media", "Enrichment", "Market data", "Community", "Developer", "Other")
 
 
 def get(service: str) -> OAuthProvider | None:

@@ -49,6 +49,7 @@ platforms:
 
   # --- Developer: code hosting & developer platforms -------------------------------------------
   github: {label: "GitHub", category: "Developer", summary: "Public repos, users, contributions and trending pages from GitHub."}
+  uptime: {label: "Uptime & Server Monitoring", category: "Developer", summary: "Uptime monitors, cron heartbeats, alerts and monitored servers in your own monitoring account."}
 
   # --- Chinese social & video (merged into Social; non-China platforms lead by popularity) ---
   douyin: {label: "Douyin (TikTok China)", category: "Social", summary: "Profiles, videos, comments, search, billboards and live data — the deepest platform here."}
