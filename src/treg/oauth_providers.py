@@ -1190,6 +1190,43 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+MINTLIFY = OAuthProvider(
+    service="mintlify",
+    display_name="Mintlify",
+    auth_kind="key",
+    token_label="Admin API key",
+    token_placeholder="mint_…",
+    # token_header / token_format default to Authorization: Bearer {secret}. The ADMIN key (prefix
+    # mint_) covers every route in catalog/mintlify.yaml. Mintlify issues two other key types that
+    # are NOT this credential: the per-deployment assistant key (mint_dsc_, /discovery/…) and the
+    # Index key (mint_us_, leaves.mintlify.com) — each would be its own provider.
+    setup_url="https://app.mintlify.com/settings/organization/api-keys",
+    setup_action_label="Get your Mintlify admin API key",
+    setup_steps=(
+        "Sign in to the Mintlify dashboard and open Settings → Organization → API keys.",
+        "Create an admin API key (prefix mint_). Leave scopes empty for read + write, or pick "
+        "`read` for analytics-only access.",
+        "Copy your project ID from the same page — every route takes it as a path parameter.",
+    ),
+    setup_note="Admin API access needs a Pro or Enterprise plan (self-serve). Deploys, previews and "
+               "analytics exports are free; agent jobs and automation runs spend the plan's credits.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Developer",
+    summary="Deploy, preview, agent-edit and export analytics for your own Mintlify documentation site.",
+    base_url="https://api.mintlify.com",
+    docs_url="https://www.mintlify.com/docs/api/introduction",
+    # No free fixed-path account route exists: every admin route is scoped by a per-account project
+    # id. Key verification therefore rides the free, read-scoped status lookup with a nonexistent id
+    # — a VALID key answers 404 {"error": "Status ID … does not exist"} (no charge), a bad or
+    # missing key answers 401 {"error":"Unauthorized"} from the auth middleware before any route
+    # runs (verified live 2026-09-02), so only 401/403 count as a bad-key rejection. Same shape as
+    # Coresignal above; the ongoing health probe (expect 200) will report the 404 as invalid.
+    probe_path="/v1/project/update-status/treg-probe",
+    probe_reject_statuses=(401, 403),
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -2550,6 +2587,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
+        # Developer platforms
+        MINTLIFY,
     )
 }
 
