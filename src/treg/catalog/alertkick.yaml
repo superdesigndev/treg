@@ -1,0 +1,339 @@
+provider: alertkick
+source:
+  docs: https://alertkick.com/docs/api/
+  openapi: https://alertkick.com/openapi.yaml
+  curated: '2026-09-03'
+# AlertKick is an uptime + server monitoring service: uptime monitors (HTTP/API/DNS/TCP/domain/
+# mail), cron-job heartbeats, alerting with on-call escalation, and agent-based server monitoring.
+# The API itself is NOT metered — every call below is free — and the account's PLAN caps how many
+# monitors/heartbeats/hosts can EXIST (Free: 10 monitors & heartbeats; paid plans raise the caps,
+# see pricing_url). Creating past a cap answers 402, never a charge.
+#
+# TENANCY — the one thing to know before calling: every workspace lives on its own host
+# (https://{workspace}.alertkick.com/api/v1) and an API key only works against the workspace that
+# minted it. A well-formed key on the wrong workspace host answers 401 (observed live
+# 2026-09-03). The registry entry's base_url is the `app` workspace host; a user on another
+# workspace must point calls at their own host until per-account base URLs are supported.
+# Keys: Settings → API Keys in the workspace UI, shown once at creation, sent as X-API-Key.
+#
+# UUIDs in test_requests are CHAINED, ACCOUNT-BOUND IDs: monitors/heartbeats/alerts live inside
+# the calling workspace, so a re-verify must first harvest ids from the list endpoints (or from
+# the create entries below) rather than trusting a 404 on someone else's id.
+limits: "no API metering; plan quotas cap monitors/heartbeats/hosts — a full quota answers 402"
+pricing_url: https://alertkick.com/pricing/  # Free £0 (10 monitors & heartbeats); Professional £39/mo; Business £149/mo (GBP)
+
+endpoints:
+  - id: alertkick.uptime.monitors.list
+    domain: monitors
+    capability: uptime.monitors.list
+    platform: uptime
+    scope: own_account
+    method: GET
+    path: /monitors/all
+    name: "List your uptime monitors"
+    summary: "List the workspace's uptime monitors with current up/down status and recent response times"
+    input:
+      queryParams:
+        offset: {type: integer, required: false, example: 0}
+        limit: {type: integer, required: false, note: "default 50", example: 50}
+    test_request:
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://alertkick.com/docs/api/operations/listmonitors/
+
+  - id: alertkick.uptime.monitors.get
+    domain: monitors
+    capability: uptime.monitors.get
+    platform: uptime
+    scope: own_account
+    method: GET
+    path: /monitors/{uuid}
+    name: "Get one uptime monitor"
+    summary: "Get one monitor's full config, check history and poller locations"
+    input:
+      pathParams:
+        uuid: {type: string, required: true, note: "from the list or create endpoints", example: "dacdvk0fhf9s73ehbet0"}
+    test_request:
+      pathParams: {uuid: "dacdvk0fhf9s73ehbet0"}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://alertkick.com/docs/api/operations/getmonitor/
+
+  - id: alertkick.uptime.monitors.create
+    domain: monitors
+    capability: uptime.monitors.create
+    platform: uptime
+    scope: own_account
+    kind: action
+    method: POST
+    path: /monitors/create
+    name: "Create an uptime monitor"
+    summary: "Create an uptime monitor for a URL, API, DNS record, TCP port, domain expiry or mailbox"
+    input:
+      body:
+        display_name: {type: string, required: true, example: "Marketing site"}
+        monitor_type: {type: string, required: true, note: "http | api | dns | tcp | domain | mail", example: "http"}
+        url: {type: string, required: true, example: "https://example.com"}
+        http_method: {type: string, required: true, note: "REQUIRED for http/api monitors — GET, POST, PUT, PATCH, DELETE, HEAD or OPTIONS (verified live: omitting it is a 400)", example: "GET"}
+        check_interval_seconds: {type: integer, required: true, note: "must be > 0; Free plan floor is 300, paid plans allow 60", example: 300}
+        timeout_seconds: {type: integer, required: true, note: "must be > 0 (verified live: omitting it is a 400)", example: 30}
+        expected_status_code: {type: integer, required: true, note: "must be > 0 for http/api monitors (verified live: omitting it is a 400)", example: 200}
+        expected_response_contains: {type: string, required: false}
+        tcp_port: {type: integer, required: false, note: "tcp monitors"}
+        dns_record_type: {type: string, required: false, note: "dns monitors — A, AAAA, CNAME, MX, TXT…", example: "A"}
+        expected_dns_host: {type: string, required: false}
+        ssl_cert_monitoring: {type: boolean, required: false, example: true}
+        ssl_cert_expiry_alert_days: {type: integer, required: false, example: 14}
+        domain_expiry_alert_days: {type: integer, required: false, note: "domain monitors", example: 30}
+        response_time_alert_ms: {type: integer, required: false}
+        failure_threshold: {type: integer, required: false, note: "consecutive failures before an alert", example: 3}
+        locations: {type: array, required: false, note: "poller location keys from the locations endpoint; omit for the default"}
+      bodyType: json
+      note: "creates a REAL monitor that counts against the workspace's plan quota — a full quota answers 402. The response carries the new monitor's uuid; delete or pause it from the dashboard (or the update/delete API) when it was only a test"
+    test_request:
+      body: {display_name: "treg verification monitor", monitor_type: "http", url: "https://example.com", http_method: "GET", check_interval_seconds: 300, timeout_seconds: 30, expected_status_code: 200}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free but quota-bound — see the endpoint note"}
+    docs_url: https://alertkick.com/docs/api/operations/createmonitor/
+
+  - id: alertkick.uptime.monitors.pause
+    domain: monitors
+    capability: uptime.monitors.pause
+    platform: uptime
+    scope: own_account
+    kind: action
+    method: POST
+    path: /monitors/{uuid}/pause
+    name: "Pause an uptime monitor"
+    summary: "Pause a monitor's checks without deleting its history"
+    input:
+      pathParams:
+        uuid: {type: string, required: true, example: "dacdvk0fhf9s73ehbet0"}
+      bodyType: json
+      note: "empty JSON body"
+    test_request:
+      pathParams: {uuid: "dacdvk0fhf9s73ehbet0"}
+      body: {}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://alertkick.com/docs/api/operations/pausemonitor/
+
+  - id: alertkick.uptime.monitors.resume
+    domain: monitors
+    capability: uptime.monitors.resume
+    platform: uptime
+    scope: own_account
+    kind: action
+    method: POST
+    path: /monitors/{uuid}/resume
+    name: "Resume a paused uptime monitor"
+    summary: "Resume checks on a paused monitor"
+    input:
+      pathParams:
+        uuid: {type: string, required: true, example: "dacdvk0fhf9s73ehbet0"}
+      bodyType: json
+      note: "empty JSON body"
+    test_request:
+      pathParams: {uuid: "dacdvk0fhf9s73ehbet0"}
+      body: {}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://alertkick.com/docs/api/operations/resumemonitor/
+
+  - id: alertkick.uptime.heartbeats.list
+    domain: heartbeats
+    capability: uptime.heartbeats.list
+    platform: uptime
+    scope: own_account
+    method: GET
+    path: /heartbeats/all
+    name: "List your cron heartbeats"
+    summary: "List the workspace's cron-job heartbeats with their health and last-ping times"
+    input:
+      queryParams:
+        offset: {type: integer, required: false, example: 0}
+        limit: {type: integer, required: false, example: 50}
+    test_request:
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://alertkick.com/docs/api/operations/listheartbeats/
+
+  - id: alertkick.uptime.heartbeats.get
+    domain: heartbeats
+    capability: uptime.heartbeats.get
+    platform: uptime
+    scope: own_account
+    method: GET
+    path: /heartbeats/{uuid}
+    name: "Get one heartbeat"
+    summary: "Get one heartbeat's config, health and its scoped ping key"
+    input:
+      pathParams:
+        uuid: {type: string, required: true, note: "from the list endpoint or the auto-ping response"}
+    test_request:
+      pathParams: {uuid: "dacdurofhf9s73ehbesg"}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://alertkick.com/docs/api/operations/getheartbeat/
+
+  - id: alertkick.uptime.heartbeats.ping
+    domain: heartbeats
+    capability: uptime.heartbeats.ping
+    platform: uptime
+    scope: own_account
+    kind: action
+    method: GET
+    path: /hb/auto/{slug}
+    name: "Create-or-ping a heartbeat by slug"
+    summary: "Idempotently create a heartbeat on first call and record a ping on every call — one URL a cron job can curl"
+    input:
+      pathParams:
+        slug: {type: string, required: true, note: "stable job name; creation happens on the first call for a new slug", example: "nightly-backup"}
+      queryParams:
+        interval: {type: integer, required: false, note: "expected seconds between pings — creation-time only", example: 86400}
+        grace: {type: integer, required: false, note: "late allowance in seconds — creation-time only", example: 3600}
+        name: {type: string, required: false, note: "display name — creation-time only"}
+      note: "201 on first-call creation, 200 on subsequent pings. Creation counts against the plan's heartbeat quota (402 when full). POST works identically for callers that can't GET"
+    test_request:
+      pathParams: {slug: "treg-verify"}
+      queryParams: {interval: 86400, grace: 3600}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free but the first call for a new slug is quota-bound"}
+    docs_url: https://alertkick.com/docs/api/operations/autopingheartbeat/
+
+  - id: alertkick.uptime.alerts.list
+    domain: alerts
+    capability: uptime.alerts.list
+    platform: uptime
+    scope: own_account
+    method: GET
+    path: /alerts
+    name: "List monitoring alerts"
+    summary: "List the workspace's monitoring alerts, filtered by status"
+    input:
+      queryParams:
+        status: {type: string, required: false, note: "triggered | acknowledged | resolved", example: "triggered"}
+        offset: {type: integer, required: false, example: 0}
+        limit: {type: integer, required: false, example: 50}
+    test_request:
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://alertkick.com/docs/api/operations/listalerts/
+
+  - id: alertkick.uptime.alerts.get
+    domain: alerts
+    capability: uptime.alerts.get
+    platform: uptime
+    scope: own_account
+    method: GET
+    path: /alerts/{uuid}
+    name: "Get one alert"
+    summary: "Get one alert with its source, severity and timeline"
+    input:
+      pathParams:
+        uuid: {type: string, required: true, note: "from the list endpoint"}
+    test_request:
+      pathParams: {uuid: "dacdgi3r895c73chbt2g"}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://alertkick.com/docs/api/operations/getalert/
+
+  - id: alertkick.uptime.alerts.acknowledge
+    domain: alerts
+    capability: uptime.alerts.acknowledge
+    platform: uptime
+    scope: own_account
+    kind: action
+    method: POST
+    path: /alerts/acknowledge
+    name: "Acknowledge alerts"
+    summary: "Acknowledge open alerts so the on-call escalation stops"
+    input:
+      body:
+        UUIDs: {type: array, required: true, note: "alert uuids — note the capitalised field name", example: ["dacdgi3r895c73chbt2g"]}
+      bodyType: json
+      note: "mutates real alert state in the calling workspace — only replay against an alert that should be acknowledged"
+    test_request:
+      body: {UUIDs: ["dacdgi3r895c73chbt2g"]}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://alertkick.com/docs/api/operations/acknowledgealerts/
+
+  - id: alertkick.uptime.alerts.resolve
+    domain: alerts
+    capability: uptime.alerts.resolve
+    platform: uptime
+    scope: own_account
+    kind: action
+    method: POST
+    path: /alerts/resolve
+    name: "Resolve alerts"
+    summary: "Mark alerts resolved once the underlying problem is fixed"
+    input:
+      body:
+        UUIDs: {type: array, required: true, note: "alert uuids — note the capitalised field name", example: ["dacdgi3r895c73chbt2g"]}
+      bodyType: json
+      note: "mutates real alert state in the calling workspace — only replay against an alert that should be resolved"
+    test_request:
+      body: {UUIDs: ["dacdgi3r895c73chbt2g"]}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://alertkick.com/docs/api/operations/resolvealerts/
+
+  - id: alertkick.uptime.servers.list
+    domain: servers
+    capability: uptime.servers.list
+    platform: uptime
+    scope: own_account
+    method: GET
+    path: /hosts
+    name: "List monitored servers"
+    summary: "List servers monitored by an installed AlertKick agent, with online state"
+    input:
+      queryParams:
+        offset: {type: integer, required: false, example: 0}
+        limit: {type: integer, required: false, example: 50}
+    test_request:
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://alertkick.com/docs/api/operations/listhosts/
+
+  - id: alertkick.uptime.servers.get
+    domain: servers
+    capability: uptime.servers.get
+    platform: uptime
+    scope: own_account
+    method: GET
+    path: /hosts/{uuid}
+    name: "Get one monitored server"
+    summary: "Get one monitored server's details, agent state and last-seen time"
+    input:
+      pathParams:
+        uuid: {type: string, required: true, note: "from the list endpoint"}
+    test_request:
+      pathParams: {uuid: "da88t6jp62tc73dd6h7g"}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://alertkick.com/docs/api/operations/gethost/
+
+  - id: alertkick.uptime.locations.list
+    domain: monitors
+    capability: uptime.locations.list
+    platform: uptime
+    scope: own_account
+    kind: utility
+    method: GET
+    path: /poller-locations/all
+    name: "List polling locations"
+    summary: "List the polling locations a monitor's checks can run from — the keys the create endpoint's locations field takes"
+    input: {}
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://alertkick.com/docs/api/
+
+proposed_capabilities:
+  uptime.monitors.list: "List your uptime monitors with current status"
+  uptime.monitors.get: "Get one uptime monitor's config and recent checks"
+  uptime.monitors.create: "Create an uptime monitor for a URL, host or domain"
+  uptime.monitors.pause: "Pause an uptime monitor's checks"
+  uptime.monitors.resume: "Resume a paused uptime monitor"
+  uptime.heartbeats.list: "List your cron-job heartbeats with health"
+  uptime.heartbeats.get: "Get one heartbeat's config and last ping"
+  uptime.heartbeats.ping: "Create or ping a heartbeat for a scheduled job"
+  uptime.alerts.list: "List monitoring alerts, filtered by status"
+  uptime.alerts.get: "Get one alert with its timeline"
+  uptime.alerts.acknowledge: "Acknowledge open monitoring alerts"
+  uptime.alerts.resolve: "Resolve monitoring alerts"
+  uptime.servers.list: "List servers monitored by an installed agent"
+  uptime.servers.get: "Get one monitored server's details"
+  uptime.locations.list: "List polling locations monitors can check from"
