@@ -14,6 +14,7 @@ Proves the invariants that make an agent safe to hand out:
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -25,7 +26,7 @@ from conftest import make_upstream
 from treg import crypto
 from treg.api import app
 from treg.infra.db import reset_db, session_maker
-from treg.models import Membership, Org, User
+from treg.models import IdempotentCall, Membership, Org, User
 
 
 def _h(t: str) -> dict:
@@ -165,6 +166,32 @@ async def test_revoke_kills_the_token(env):
     assert r.status_code == 200, r.text
     assert (await env.c.get("/tools", headers=_h(a["token"]))).status_code == 401
     assert (await env.c.get(f"/orgs/{env.org_id}/agents", headers=_h(env.owner))).json() == []
+
+
+async def test_revoke_clears_the_agents_idempotency_cache(env):
+    """Production regression: a paid retry cache must not make token revocation return 500."""
+    a = await _agent(env, name="caller-with-retry")
+    async with session_maker() as s:
+        membership = (await s.execute(select(Membership).where(
+            Membership.user_id == a["user_id"],
+            Membership.org_id == env.org_id,
+        ))).scalar_one()
+        s.add(IdempotentCall(
+            org_id=env.org_id,
+            membership_id=membership.id,
+            key="paid-retry",
+            status="done",
+            response_status=200,
+            expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1),
+        ))
+        await s.commit()
+
+    r = await env.c.delete(
+        f"/orgs/{env.org_id}/agents/{a['user_id']}", headers=_h(env.owner))
+    assert r.status_code == 200, r.text
+    assert (await env.c.get("/tools", headers=_h(a["token"]))).status_code == 401
+    async with session_maker() as s:
+        assert (await s.execute(select(IdempotentCall))).scalars().all() == []
 
 
 async def test_agents_are_listed_and_flagged_apart_from_people(env):

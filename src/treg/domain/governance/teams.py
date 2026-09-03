@@ -2,7 +2,7 @@
 
 import re
 
-from sqlalchemy import func
+from sqlalchemy import delete, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -207,3 +207,17 @@ async def drop_member_deny_rules(db: AsyncSession, user_id: int, org_id: int | N
     for rule in stale:
         await db.delete(rule)
     return len(stale)
+
+
+async def delete_membership(db: AsyncSession, membership: Membership) -> None:
+    """Delete one membership and the caller-scoped state that has no meaning without it.
+
+    The explicit IdempotentCall delete keeps SQLite tests honest even though their fast schema does
+    not enforce foreign keys. The database FK also cascades as the invariant backstop, so a future
+    membership-removal door cannot turn token revocation into a 500 by forgetting this helper.
+    Does not commit.
+    """
+    await db.execute(delete(IdempotentCall).where(
+        IdempotentCall.membership_id == membership.id))
+    await drop_member_deny_rules(db, membership.user_id, membership.org_id)
+    await db.delete(membership)

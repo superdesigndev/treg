@@ -1003,11 +1003,11 @@ class IdempotentCall(SQLModel, table=True):
     __table_args__ = (UniqueConstraint("membership_id", "key", name="uq_idem_caller_key"),)
 
     id: int | None = Field(default=None, primary_key=True)
-    # org_id is kept alongside the caller so the row is still org-scoped for deletion and audit:
-    # a membership can go away while the team remains, and the stored answer belongs to the team
-    # that paid for it.
+    # org_id is kept alongside the caller so the row is still org-scoped for deletion and audit.
+    # The response cache cannot outlive its caller: once a membership is revoked nobody can replay
+    # its key, so the membership foreign key cascades instead of blocking token revocation.
     org_id: int = Field(foreign_key="org.id", index=True)
-    membership_id: int = Field(foreign_key="membership.id", index=True)
+    membership_id: int = Field(foreign_key="membership.id", ondelete="CASCADE", index=True)
     key: str = Field(index=True)
     request_fingerprint: str = Field(default="")
     endpoint_id: str = Field(default="")

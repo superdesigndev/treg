@@ -766,8 +766,7 @@ async def remove_member(
         raise HTTPException(status_code=404, detail="not a member of this org")
     if membership.role == "owner":  # only an owner manages owners; an admin cannot remove one
         raise HTTPException(status_code=403, detail="owners cannot be removed")
-    await db.delete(membership)  # revokes that user's token for this org
-    await teams.drop_member_deny_rules(db, user_id, org_id)
+    await teams.delete_membership(db, membership)  # revokes that user's token for this org
     await db.commit()
     return {"removed": user_id}
 
@@ -808,8 +807,7 @@ async def leave_org(
         raise HTTPException(status_code=403, detail="use this org's token to leave it")
     if caller.role == "owner" and await _count_owners(org_id, db) <= 1:
         raise HTTPException(status_code=409, detail="you are the last owner — transfer ownership or delete the org")
-    await db.delete(caller.membership)  # revokes the caller's token for this org
-    await teams.drop_member_deny_rules(db, caller.membership.user_id, org_id)  # same sweep as remove_member
+    await teams.delete_membership(db, caller.membership)  # revokes the caller's token for this org
     await db.commit()
     return {"left_org": org_id}
 
@@ -912,7 +910,7 @@ async def delete_public_token(
         membership = (await db.execute(select(Membership).where(
             Membership.user_id == user.id, Membership.org_id == org_id))).scalar_one_or_none()
         if membership is not None:
-            await db.delete(membership)
+            await teams.delete_membership(db, membership)
     org.public_demo = False
     await db.commit()
     return {"public_token_revoked": True, "org": org.slug}
@@ -1132,8 +1130,7 @@ async def revoke_agent(
     if membership is None:
         raise HTTPException(status_code=404, detail="unknown agent")
     email = user.email  # read before the delete — the row is expired after commit
-    await db.delete(membership)
-    await teams.drop_member_deny_rules(db, user_id, org_id)  # a rule aimed at a caller that no longer exists
+    await teams.delete_membership(db, membership)
     await db.flush()
     # The identity is org-scoped, so once its last membership is gone the User row has no purpose.
     if (await db.execute(select(Membership).where(

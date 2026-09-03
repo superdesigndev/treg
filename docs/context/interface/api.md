@@ -207,7 +207,8 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
 - **Agents (machine identities):** `create_agent` (`POST /orgs/{id}/agents`, admin+) mints/rotates a
   member token for a machine caller — its own `daily_call_cap`, `tool_access` and audit trail, with no
   new table; `list_agents` (`GET`, never returns a token) and `revoke_agent` (`DELETE …/{user_id}`,
-  which also sweeps the deny rules aimed at that agent). An agent token is refused by
+  which also sweeps the deny rules and idempotent replay cache owned by that agent before deleting its
+  membership; the schema cascades that cache as a backstop). An agent token is refused by
   `require_identity` and can never be an owner. **Re-POSTing the same name ROTATES, and a field the
   caller omits is left as it is** — a rotate changes the token, never the limits. `AgentIn` also takes
   `project_access` (slugs or ids), so an agent can be project-scoped at mint time; `created_by` stamps

@@ -14,6 +14,7 @@ sources:
   - src/treg/alembic/versions/0008_org_platform_overflow_disabled.py
   - src/treg/alembic/versions/0009_callrecord_hit.py
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
+  - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
   - src/treg/maintenance.py
   - src/treg/web/sitetrack.js
   - src/treg/models.py
@@ -165,6 +166,11 @@ SQLModel tables in `src/treg/models.py`. Kept minimal on purpose. Org multi-tena
   Aged out to `'<expired>'` after 14 days by
   `GET /admin/errors` — not on the request path, because `get_session` never commits and a lazy
   marker written there would roll back, leaving the purge to run on every failed call.
+- **`IdempotentCall`** - a caller-scoped, 24-hour replay cache for metered successes, keyed by
+  `(membership_id, key)` and also carrying `org_id` for team cleanup. It is not an audit record: once
+  the membership is revoked there is no valid caller that can replay it. `delete_membership` removes
+  it explicitly and the `membership_id` foreign key uses `ON DELETE CASCADE` as the schema backstop
+  (Alembic `0015`), so a cached paid response can never turn token revocation into a 500.
 - **`ToolRequest`** — a "the catalog doesn't have X" report (`POST /tool-requests`, open + per-IP
   rate-limited): `capability` (the headline, ≤200 chars), `query` (the search that came up empty —
   auto-filled by agents, the dedup/priority signal), `note`, `contact`, `source` (`web` | `cli` |

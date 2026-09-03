@@ -22,7 +22,7 @@ from ..models import ArchiveEndpointStat, ArchiveKey, ArchiveSnapshot, Bundle, C
 from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
 from ..domain.identity.access import require_superadmin
-from ..domain.governance.teams import cascade_delete_org, drop_member_deny_rules
+from ..domain.governance.teams import cascade_delete_org, delete_membership, drop_member_deny_rules
 
 
 # The app alias preserves the moved handlers' original @app.get decorator text byte-for-byte.
@@ -607,7 +607,7 @@ async def admin_delete_user(
     mem = (await db.execute(select(Membership).where(Membership.user_id == user_id))).scalars().all()
     affected = {m.org_id for m in mem}
     for m in mem:
-        await db.delete(m)
+        await delete_membership(db, m)
     await db.flush()
     emptied = []
     for oid in affected:

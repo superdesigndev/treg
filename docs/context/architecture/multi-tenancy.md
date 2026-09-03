@@ -175,14 +175,18 @@ dependencies, role comparison, and machine classification. Session signing and v
   `list_members`
   / `remove_member` (`GET`/`DELETE /orgs/{id}/members[/{user}]`, admin+; owners cannot be removed).
   `_require_admin_of(org_id, caller)` gates the admin endpoints (token must be for that org + role ≥ admin).
-- **An identity leaving takes its policy with it (`_drop_member_deny_rules`).** A `DenyRule` aimed at
+- **An identity leaving takes its caller-owned state with it (`delete_membership`).** A `DenyRule` aimed at
   one caller (`user_id` set) is meaningless once that caller is gone, and it lingers in the Policy
   table naming a user id nobody can resolve. `remove_member`, `leave_org` and `revoke_agent` sweep the
   rules for that `(user_id, org_id)`; `admin_delete_user` sweeps **every org's** rules for that user,
   because `DenyRule.user_id` is a foreign key and a surviving row would dangle — Postgres rejects that
   outright, while SQLite only hides it by not enforcing FKs (so the test suite alone cannot catch it).
   ORG-wide rules (`user_id` NULL) are never touched: they are about the team, not about one caller.
-  Mirrors how `delete_project` sweeps the id it deletes out of every `project_access`.
+  The same helper deletes `IdempotentCall` rows keyed to the membership before deleting it; those are
+  replay caches, not audit history, and no valid caller remains after revocation. The foreign key also
+  uses `ON DELETE CASCADE` as a database-level backstop. This closes the production failure where
+  revoking an agent that had made an idempotent paid call returned 500 and rolled its token revocation
+  back. Mirrors how `delete_project` sweeps the id it deletes out of every `project_access`.
 - **Org administration:** `set_member_role` (`PATCH /orgs/{id}/members/{user}`, **owner-only** via
   `_require_owner_of`; a `_count_owners` last-owner guard blocks demoting the sole owner — ownership
   transfer = promote another to owner, then step down), `leave_org` (`POST /orgs/{id}/leave`, self-removal,
