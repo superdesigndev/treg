@@ -346,6 +346,16 @@ async def _akta(c, key):
             "note": f"tier {tier}{enterprise}, lifetime {d.get('lifetime_consumed_credits', 0)} used"}
 
 
+async def _litescrape(c, key):
+    # GET /api/keys/status is the free balance probe and machine-readable rate card.
+    d = await _get(c, "https://api.litescrape.com/api/keys/status",
+                   headers={"Authorization": f"Bearer {key}"})
+    cents = d.get("cents_per_1000_calls")
+    rate = f"{cents:g}" if isinstance(cents, (int, float)) else "unknown"
+    return {"value": d.get("remaining_calls"), "unit": "calls left",
+            "note": f"{rate} cents per 1,000 successful calls"}
+
+
 BALANCE_ROUTES = {
     "akta": _akta,
     "brightdata": _brightdata,
@@ -362,6 +372,7 @@ BALANCE_ROUTES = {
     "companyenrich": _companyenrich,
     "findymail": _findymail,
     "leadsforge": _leadsforge,
+    "litescrape": _litescrape,
     "oceanio": _oceanio,
     "predictleads": _predictleads,
     "tomba": _tomba,

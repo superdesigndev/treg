@@ -37,6 +37,7 @@ _TABLE: list[tuple[str, int, str, str]] = [
     ("akta", 402, r"insufficient credits", "balance"),
     ("lusha", 400, r"reached your credit limit", "balance"),
     ("predictleads", 402, r"exceeded the monthly request limit", "quota"),
+    ("litescrape", 402, r"payment_required", "balance"),
     ("lusha", 429, r"daily", "quota"),
     ("hunter", 429, r"per billing period", "quota"),
     ("apollo", 429, r"per (day|month)|daily|monthly", "quota"),
@@ -53,7 +54,7 @@ _TABLE: list[tuple[str, int, str, str]] = [
 # "quotation mark" and "unbalanced quotes" - a caller's error echoed back. The test
 # `test_every_recorded_phrase_arms_the_tripwire` keeps this list and the table in step.
 CAPACITY_PHRASES = (
-    r"not enough credits", r"insufficient[ _]credits", r"nocreditsremaining", r"payment required",
+    r"not enough credits", r"insufficient[ _]credits", r"nocreditsremaining", r"payment[ _]required",
     r"reached your credit limit", r"exceeded the monthly request limit",
     r"insufficient (?:credits?|balance|funds)", r"out of credits?", r"credits? (?:exhausted|remaining|left)",
     r"(?:account |api |credit )?(?:balance|quota)(?: (?:has been|is|was))? (?:exceeded|reached|exhausted|limit)",

@@ -983,7 +983,230 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
     return write_extended("justoneapi", source, endpoints, notes), {"missing": len(missing)}
 
 
-INGESTERS = {"tikhub": ingest_tikhub, "dataforseo": ingest_dataforseo, "justoneapi": ingest_justoneapi}
+# ---------------------------------------------------------------------------------------------
+# Litescrape
+
+LITESCRAPE_OPENAPI = "https://api.litescrape.com/api/openapi.json"
+LITESCRAPE_DOCS = "https://litescrape.com/docs"
+LITESCRAPE_EXTENDED = (
+    {
+        "path": "/api/apple/maps/places", "platform": "apple-maps",
+        "name": "Apple Maps place details",
+        "summary": "Resolve one to 50 Apple Maps place identifiers into structured place details.",
+        "input": {"queryParams": {
+            "muid": {"type": "string", "required": True,
+                     "note": "one to 50 comma-separated unsigned 64-bit Apple Maps MUIDs",
+                     "example": "4372355869446211302"},
+            "locale": {"type": "string", "required": False,
+                       "note": "Apple-supported language-region locale", "example": "en-US"},
+        }, "note": "Returns place_results with identity, address, contact, hours, reputation, media and related-place fields supplied by Apple."},
+        "test_request": {"queryParams": {"muid": "4372355869446211302", "locale": "en-US"}},
+        "docs_url": f"{LITESCRAPE_DOCS}#apple-maps-places-api",
+    },
+    {
+        "path": "/api/apple/maps/reviews", "platform": "apple-maps",
+        "name": "Apple Maps place reviews",
+        "summary": "Get Apple-attributed ratings and public reviews for an Apple Maps place.",
+        "input": {"queryParams": {
+            "muid": {"type": "string", "required": True,
+                     "note": "one unsigned 64-bit Apple Maps MUID", "example": "4560078147072908047"},
+            "locale": {"type": "string", "required": False,
+                       "note": "Apple-supported language-region locale", "example": "en-GB"},
+        }, "note": "Returns Apple-attributed rating_summary, ratings and reviews when supplied. The first-party surface has no verified pagination transport."},
+        "test_request": {"queryParams": {"muid": "4560078147072908047", "locale": "en-GB"}},
+        "docs_url": f"{LITESCRAPE_DOCS}#apple-maps-reviews-api",
+    },
+    {
+        "path": "/api/duckduckgo/maps", "platform": "duckduckgo",
+        "name": "DuckDuckGo Maps search",
+        "summary": "Search DuckDuckGo's local application inside a geographic viewport.",
+        "input": {"queryParams": {
+            "q": {"type": "string", "required": True, "note": "query, 1-500 characters", "example": "coffee"},
+            "bbox": {"type": "string", "required": False,
+                     "note": "top,left,bottom,right rectangle; conflicts with lat/lon"},
+            "lat": {"type": "number", "required": False, "note": "latitude; requires lon", "example": 30.2672},
+            "lon": {"type": "number", "required": False, "note": "longitude; requires lat", "example": -97.7431},
+            "strict_bbox": {"type": "boolean", "required": False,
+                            "note": "exclude results outside the viewport; default true"},
+        }, "note": "Supply either bbox or lat/lon. Results arrive in local_results."},
+        "test_request": {"queryParams": {"q": "coffee", "lat": 30.2672, "lon": -97.7431,
+                                          "strict_bbox": True}},
+        "docs_url": f"{LITESCRAPE_DOCS}#duckduckgo-maps-api",
+    },
+    {
+        "path": "/api/bing/maps", "platform": "bing",
+        "name": "Bing Maps search or place details",
+        "summary": "Search Bing Maps listings or resolve one native Bing place identifier.",
+        "input": {"queryParams": {
+            "q": {"type": "string", "required": False,
+                  "note": "query, required unless place_id is supplied", "example": "coffee Austin TX"},
+            "cp": {"type": "string", "required": False,
+                   "note": "optional center as latitude~longitude", "example": "30.2672~-97.7431"},
+            "setlang": {"type": "string", "required": False, "note": "interface language", "example": "en-US"},
+            "place_id": {"type": "string", "required": False,
+                         "note": "native Bing place ID, required unless q is supplied"},
+            "first": {"type": "integer", "required": False, "note": "result offset, 0-10,000", "example": 0},
+            "count": {"type": "integer", "required": False, "note": "results, 1-30", "example": 5},
+        }, "note": "Search responses return listing rows; place_id resolves native place detail."},
+        "test_request": {"queryParams": {"q": "coffee Austin TX", "cp": "30.2672~-97.7431",
+                                          "setlang": "en-US", "count": 5}},
+        "docs_url": f"{LITESCRAPE_DOCS}#bing-maps-api",
+    },
+    {
+        "path": "/api/yelp/search", "platform": "yelp",
+        "name": "Yelp business search",
+        "summary": "Search Yelp businesses by description and location with ratings and categories.",
+        "input": {"queryParams": {
+            "find_desc": {"type": "string", "required": False,
+                          "note": "business, category or query text", "example": "coffee"},
+            "find_loc": {"type": "string", "required": True, "note": "location", "example": "Austin, TX"},
+            "yelp_domain": {"type": "string", "required": False,
+                            "note": "supported localized Yelp hostname; default www.yelp.com"},
+            "l": {"type": "string", "required": False, "note": "native map-bounds token"},
+            "cflt": {"type": "string", "required": False, "note": "Yelp category identifier"},
+            "sortby": {"type": "string", "required": False,
+                       "note": "recommended, rating or review_count", "example": "recommended"},
+            "attrs": {"type": "string", "required": False, "note": "native Yelp attribute filters"},
+            "start": {"type": "integer", "required": False, "note": "result offset, 0-10,000", "example": 0},
+        }, "note": "Returns businesses in organic_results with place IDs, rating, address, coordinates, categories and callable review links."},
+        "test_request": {"queryParams": {"find_desc": "coffee", "find_loc": "Austin, TX",
+                                          "sortby": "recommended"}},
+        "docs_url": f"{LITESCRAPE_DOCS}#yelp-search-api",
+    },
+    {
+        "path": "/api/yelp/reviews", "platform": "yelp",
+        "name": "Yelp business reviews",
+        "summary": "Fetch public Yelp reviews for a business, including profiles and replies.",
+        "input": {"queryParams": {
+            "place_id": {"type": "string", "required": True,
+                         "note": "encoded ID from Yelp search", "example": "p88l_DLOIB-yL3Ka8GbGDw"},
+            "yelp_domain": {"type": "string", "required": False,
+                            "note": "supported localized Yelp hostname; default www.yelp.com"},
+            "hl": {"type": "string", "required": False, "example": "en"},
+            "sortby": {"type": "string", "required": False,
+                       "note": "relevance_desc, date_desc, date_asc, rating_desc, rating_asc or elites_desc"},
+            "rating": {"type": "string", "required": False, "note": "comma-separated ratings 1-5"},
+            "start": {"type": "integer", "required": False, "note": "result offset, 0-10,000", "example": 0},
+            "num": {"type": "integer", "required": False, "note": "reviews, 1-49", "example": 10},
+        }, "note": "Hidden/not-recommended reviews and free-text corpus filtering are explicitly unsupported."},
+        "test_request": {"queryParams": {"place_id": "p88l_DLOIB-yL3Ka8GbGDw", "hl": "en",
+                                          "sortby": "relevance_desc", "num": 10}},
+        "docs_url": f"{LITESCRAPE_DOCS}#yelp-reviews-api",
+    },
+    {
+        "path": "/api/tripadvisor/search", "platform": "tripadvisor",
+        "name": "Tripadvisor place search",
+        "summary": "Search Tripadvisor for accommodations, attractions, restaurants and destinations.",
+        "input": {"queryParams": {
+            "q": {"type": "string", "required": True, "note": "query, 1-500 characters", "example": "The Louvre"},
+            "tripadvisor_domain": {"type": "string", "required": False,
+                                   "note": "supported localized Tripadvisor hostname"},
+            "locale": {"type": "string", "required": False, "example": "en-US"},
+            "geo_id": {"type": "string", "required": False, "note": "optional geography ID"},
+            "lat": {"type": "number", "required": False, "note": "latitude; requires lon"},
+            "lon": {"type": "number", "required": False, "note": "longitude; requires lat"},
+            "place_type": {"type": "string", "required": False,
+                           "note": "all, accommodation, attraction, attraction_product, eatery or geo",
+                           "example": "attraction"},
+            "start": {"type": "integer", "required": False, "note": "result offset, 0-10,000", "example": 0},
+            "num": {"type": "integer", "required": False, "note": "results, 1-30", "example": 5},
+        }, "note": "Returns search_results with source place IDs, names, hierarchy, ratings, snippets and callable place/review links."},
+        "test_request": {"queryParams": {"q": "The Louvre", "locale": "en-US",
+                                          "place_type": "attraction", "num": 5}},
+        "docs_url": f"{LITESCRAPE_DOCS}#tripadvisor-search-api",
+    },
+    {
+        "path": "/api/tripadvisor/place", "platform": "tripadvisor",
+        "name": "Tripadvisor place details",
+        "summary": "Get one Tripadvisor place with source-specific identity, location and reputation fields.",
+        "input": {"queryParams": {
+            "place_id": {"type": "string", "required": True, "note": "positive decimal place ID", "example": "437641"},
+            "tripadvisor_domain": {"type": "string", "required": False,
+                                   "note": "supported localized Tripadvisor hostname"},
+            "locale": {"type": "string", "required": False, "example": "en-US"},
+            "currency": {"type": "string", "required": False, "note": "three-letter ISO code", "example": "USD"},
+            "geo_id": {"type": "string", "required": False, "note": "optional parent geography ID"},
+        }, "note": "Returns place_results with core identity plus type-specific hotel, attraction, restaurant or geography fields supplied by Tripadvisor."},
+        "test_request": {"queryParams": {"place_id": "437641", "locale": "en-US", "currency": "USD"}},
+        "docs_url": f"{LITESCRAPE_DOCS}#tripadvisor-place-api",
+    },
+    {
+        "path": "/api/tripadvisor/reviews", "platform": "tripadvisor",
+        "name": "Tripadvisor place reviews",
+        "summary": "Fetch Tripadvisor reviews with profiles, photos, trip details and management replies.",
+        "input": {"queryParams": {
+            "place_id": {"type": "string", "required": True, "note": "positive decimal place ID", "example": "437641"},
+            "tripadvisor_domain": {"type": "string", "required": False,
+                                   "note": "supported localized Tripadvisor hostname"},
+            "locale": {"type": "string", "required": False, "example": "en-US"},
+            "start": {"type": "integer", "required": False, "note": "result offset, 0-10,000", "example": 0},
+            "num": {"type": "integer", "required": False, "note": "reviews, 1-50", "example": 5},
+            "sort_by": {"type": "string", "required": False, "note": "recent or relevance", "example": "relevance"},
+            "translate": {"type": "boolean", "required": False, "note": "request machine translation"},
+        }, "note": "Returns source-backed review text, ratings, reviewer profiles, photos, trip metadata, votes and replies."},
+        "test_request": {"queryParams": {"place_id": "437641", "locale": "en-US",
+                                          "sort_by": "relevance", "num": 5}},
+        "docs_url": f"{LITESCRAPE_DOCS}#tripadvisor-reviews-api",
+    },
+)
+
+
+def ingest_litescrape(refresh: bool) -> tuple[Path, dict]:
+    """Generate the nine non-core stable routes selected by the vendor from its live OpenAPI."""
+    spec = json.loads(fetch(LITESCRAPE_OPENAPI, "litescrape_openapi.json", refresh=refresh))
+    core = core_routes("litescrape")
+    endpoints: list[dict] = []
+    for documented in LITESCRAPE_EXTENDED:
+        path = documented["path"]
+        operation = (spec.get("paths", {}).get(path) or {}).get("get")
+        if operation is None:
+            raise SystemExit(f"litescrape: GET {path} is absent from the live OpenAPI")
+        if ("GET", path) in core:
+            continue
+        entry = {
+            "id": slug_id("litescrape", path.replace("/api/", "")),
+            "tier": "extended",
+            "platform": documented["platform"],
+            "method": "GET",
+            "path": path,
+            "name": documented["name"],
+            "summary": documented["summary"],
+            "input": documented["input"],
+            "cost": {
+                "type": "per_success", "value": 0.15, "currency": "USD", "per": 1000,
+                "unit": "call", "source": "observed",
+                "source_url": "https://api.litescrape.com/api/keys/status",
+                "checked": "2026-09-03", "confidence": "verified",
+                "note": "Vendor-observed: one successful response consumed one call; transient failures were refunded.",
+            },
+            "test_request": documented["test_request"],
+            "unverified": "vendor self-verification passed 2026-09-03; independent maintainer verification pending",
+            "docs_url": documented["docs_url"],
+        }
+        endpoints.append(entry)
+
+    source = {
+        "method": "live OpenAPI route discovery + official parameter reference",
+        "ingested": str(date.today()),
+        "spec_urls": [LITESCRAPE_OPENAPI, LITESCRAPE_DOCS],
+    }
+    notes = [
+        "",
+        "The live OpenAPI is authoritative for method + path. Its operations currently omit query",
+        "parameter schemas, so input contracts and cheap public test values come from the official",
+        "reference linked in source.spec_urls. The vendor selected these nine stable routes for the",
+        "extended tier; 13 higher-priority routes live in core litescrape.yaml. Three",
+        "vendor-designated alpha routes are intentionally excluded from both tiers.",
+    ]
+    return write_extended("litescrape", source, endpoints, notes), {"missing": 0}
+
+
+INGESTERS = {
+    "tikhub": ingest_tikhub,
+    "dataforseo": ingest_dataforseo,
+    "justoneapi": ingest_justoneapi,
+    "litescrape": ingest_litescrape,
+}
 
 
 # =============================================================================================

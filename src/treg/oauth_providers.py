@@ -1737,6 +1737,37 @@ EXA = OAuthProvider(
     probe_json={"urls": ["https://example.com"], "text": {"maxCharacters": 1}},
 )
 
+LITESCRAPE = OAuthProvider(
+    service="litescrape",
+    display_name="Litescrape",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Litescrape API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://litescrape.com/#demo",
+    setup_action_label="Get your Litescrape API key",
+    setup_steps=(
+        "Open the Litescrape homepage and complete browser verification.",
+        "Copy the visitor API key from the API workbench.",
+    ),
+    setup_note=(
+        "Every visitor key includes 10 free calls. Paid usage is prepaid at $0.15 per 1,000 "
+        "successful requests; failed requests are refunded."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary=(
+        "Search Google, Bing and DuckDuckGo plus maps, local businesses, reviews and shopping "
+        "as structured JSON."
+    ),
+    base_url="https://api.litescrape.com",
+    docs_url="https://litescrape.com/docs",
+    probe_path="/api/keys/status",  # free balance/rate-card snapshot; 401 on a bad key
+)
+
 
 # ---- more Enrichment API-key providers (2026-08 category expansion) ---------------------------
 # Eight providers added together to deepen Enrichment: company/people enrichment with prospecting
@@ -2540,7 +2571,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
-        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA,
+        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, LITESCRAPE,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, TOMBA, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,

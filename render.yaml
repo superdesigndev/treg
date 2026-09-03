@@ -139,6 +139,8 @@ services:
         sync: false
       - key: TREG_PLATFORM_KEY_EXA                # Exa API key (x-api-key); every response reports costDollars
         sync: false
+      - key: TREG_PLATFORM_KEY_LITESCRAPE         # Litescrape API key (Authorization: Bearer); $0.15/1k successes
+        sync: false
       - key: TREG_PLATFORM_KEY_FIBER_AI           # Fiber AI key (x-api-key)
         sync: false
       - key: TREG_PLATFORM_KEY_TOMBA              # Tomba API key ta_… (X-Tomba-Key)
@@ -340,6 +342,11 @@ services:
           type: web
           name: treg
           envVarName: TREG_PLATFORM_KEY_EXA
+      - key: TREG_PLATFORM_KEY_LITESCRAPE
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_LITESCRAPE
       - key: TREG_PLATFORM_KEY_FIBER_AI
         fromService:
           type: web
