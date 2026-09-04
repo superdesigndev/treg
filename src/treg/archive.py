@@ -196,6 +196,9 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 
+# Losing a recording is ERROR, not WARNING: the fault handler starts at ERROR, so anything below it
+# reaches stdout and nowhere else. Degradations that cost nothing (a lookup miss serving live, a
+# retried pass) stay at WARNING — the line is whether data was actually lost.
 _log = logging.getLogger("treg.archive")
 _pending: set[asyncio.Task] = set()
 _MAX_PENDING = 512
@@ -293,8 +296,8 @@ async def drain() -> None:
         _pending.difference_update(tasks)
         for r in results:
             if isinstance(r, asyncio.TimeoutError | TimeoutError):
-                _log.warning("archive recording dropped: database did not answer in %ss",
-                             _STORE_TIMEOUT_S)
+                _log.error("archive recording dropped: database did not answer in %ss",
+                           _STORE_TIMEOUT_S)
 
 
 
@@ -365,7 +368,7 @@ async def _store(
                 media_type=media_type, body=body, origin=origin,
                 key_hash=key_hash, body_hash=body_hash)
     except Exception:  # noqa: BLE001 — recording must never surface anywhere
-        _log.warning("archive recording dropped for %s", endpoint_id, exc_info=True)
+        _log.error("archive recording dropped for %s", endpoint_id, exc_info=True)
 
 
 async def _store_locked(
@@ -783,7 +786,7 @@ async def _touch_write(key_hash: str) -> None:
                             .values(last_requested_at=_utcnow()))
             await s.commit()
     except Exception:  # noqa: BLE001
-        _log.warning("archive touch dropped", exc_info=True)
+        _log.error("archive touch dropped", exc_info=True)
 
 
 # ---------------------------------------------------------------------------------------------

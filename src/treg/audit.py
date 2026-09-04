@@ -106,7 +106,7 @@ def _schedule(coro) -> None:
         global _shed
         _shed += 1
         if _shed == 1 or _shed % 1000 == 0:
-            logging.getLogger("treg.audit").warning(
+            logging.getLogger("treg.audit").error(
                 "audit back-pressure: %d row(s) dropped this process (pending at %d)",
                 _shed, _MAX_PENDING)
         return
@@ -122,10 +122,11 @@ async def _write(model, **fields) -> None:
                 session.add(model(**fields))
                 await session.commit()
         except Exception:  # noqa: BLE001 — audit must never surface into a call's result
-            # Swallowed on purpose, but no longer SILENT: this used to be a bare `pass`, so a bad
-            # write was indistinguishable from a call that never happened. The row is still lost —
-            # that is the contract — but now something says so.
-            logging.getLogger("treg.audit").warning(
+            # Swallowed on purpose, but neither silent nor local: the row is lost — that is the
+            # contract — and ERROR is what puts that loss in front of someone. At WARNING it stayed
+            # in the container's stdout, below the fault handler's threshold, so the only way to
+            # learn that audit was dropping rows was to already suspect it and go grep.
+            logging.getLogger("treg.audit").error(
                 "audit write dropped for %s", model.__name__, exc_info=True)
 
 

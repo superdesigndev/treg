@@ -469,9 +469,12 @@ def _lifespan(role: AppRole):
                     _mcp.clear_endpoint_observation_reader(endpoint_observations)
                 routed_call.clear_endpoint_observation_reader(endpoint_observations)
                 await endpoint_observations.aclose()
+                # analytics LAST: it is the sink the other two report their losses into, and a
+                # drop during their drain is the one most worth hearing about. Draining it first
+                # left those events queued behind a cancelled flusher.
                 await audit.drain()
-                await analytics.drain()
                 await archive.drain()
+                await analytics.drain()
                 await app.state.http.aclose()
             finally:
                 analytics.remove_fault_handler(fault_handler)

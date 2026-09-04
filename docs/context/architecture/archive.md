@@ -136,8 +136,10 @@ later for the timers; it complements `/admin/reconcile/repeats`, which prices wh
 Hooked in `call_tool` immediately after `_buffer_response` — the one line where "metered platform
 call, body already in memory" is a fact, which IS eligibility gate 3. Metered 2xx only; the
 `X-Treg-Cache`-style serve headers do not exist yet. `archive.record()` is fire-and-forget with
-audit's discipline: bounded pending set (512), failures swallowed with a log line, `drain()` on
-shutdown (bootstrap) and in tests. A recorder crash cannot fail a call (tested). `drain()` removes
+audit's discipline: bounded pending set (512), failures swallowed but logged at **ERROR** (a lost
+recording has to clear `FaultCaptureHandler`'s threshold to be reportable at all; degradations that
+cost nothing, like a lookup falling back to a live call, stay at WARNING), `drain()` on
+shutdown (bootstrap, **before** `analytics.drain()` so a loss during it still gets reported) and in tests. A recorder crash cannot fail a call (tested). `drain()` removes
 the tasks it gathered itself rather than waiting on their done callbacks — audit's exact drain
 discipline; the busy-spin both avoid (the 2026-08 serial-Postgres CI hang) is explained and pinned
 for both modules in `tests/test_audit.py`.

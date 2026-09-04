@@ -22,13 +22,21 @@ Server faults share this intentionally lossy pipe. A root logging handler mirror
 records into PostHog's Error Tracking `$exception` event; Uvicorn's error logger gets the
 same handler because its default configuration stops propagation before root. Fault payloads
 contain only exception type + a short message — never frames, locals, request bodies, or a
-user identity. Per-key and global token buckets keep a fault storm from evicting ordinary
-analytics. Losing a fault costs an alert, never the availability of the server reporting it.
+user identity. Losing a fault costs an alert, never the availability of the server reporting it.
+
+Repeats are ROLLED UP, not rate-limited: one event per `(fault type, site)` per
+`_FAULT_WINDOW_S`, and every event carries `fault_occurrences`, so `sum(fault_occurrences)`
+is the true count even though PostHog's issue list counts events. A rate limit would trade
+that number away — this bounds cost by key CARDINALITY instead, which the code bounds, so
+volume stops mattering and no key can silence another. Faults yield to product analytics only
+when the shared queue is actually backing up (`_FAULT_QUEUE_SHARE`), which is the congestion
+this pipe was ever at risk from.
 """
 
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from datetime import datetime, timezone
 import logging
 import re
@@ -48,28 +56,29 @@ _flusher: asyncio.Task | None = None
 
 _SERVER_DISTINCT_ID = "treg-server"
 _FAULT_VALUE_MAX = 500
-_FAULT_PER_KEY_CAPACITY = 10.0
-_FAULT_PER_KEY_REFILL_S = 60.0 / _FAULT_PER_KEY_CAPACITY
-_FAULT_GLOBAL_CAPACITY = 60.0
-_FAULT_GLOBAL_REFILL_S = 60.0 / _FAULT_GLOBAL_CAPACITY
+_FAULT_WINDOW_S = 10.0     # one event per (fault type, site) per window; the rest are counted
+_FAULT_MAX_KEYS = 500      # bound the ledger — it is what caps the cost, so it must be finite
+_FAULT_QUEUE_SHARE = 0.5   # faults may fill at most this much of the shared queue
 
 
-class _TokenBucket:
-    def __init__(self, capacity: float, now: float):
-        self.capacity = capacity
-        self.tokens = capacity
-        self.updated = now
-        self.dropped = 0
+class _FaultWindow:
+    """One `(fault type, site)` key's current rollup window.
 
-    def refill(self, now: float, refill_s: float) -> None:
-        elapsed = max(0.0, now - self.updated)
-        self.tokens = min(self.capacity, self.tokens + elapsed / refill_s)
-        self.updated = now
+    `pending` is what happened after the window's one reported event. It leaves on a timer
+    (`_emit_fault_summaries`), not on the back of the next occurrence — a storm that stops, or a
+    process that restarts mid-incident, would otherwise take the count with it.
+    """
+
+    __slots__ = ("opened", "pending", "fault")
+
+    def __init__(self, now: float, fault: tuple[str, str, str, str | None]):
+        self.opened = now
+        self.pending = 0
+        self.fault = fault
 
 
 _fault_lock = threading.Lock()
-_fault_buckets: dict[tuple[str, str], _TokenBucket] = {}
-_fault_global = _TokenBucket(_FAULT_GLOBAL_CAPACITY, time.monotonic())
+_fault_windows: OrderedDict[tuple[str, str], _FaultWindow] = OrderedDict()
 _fault_capture_active = threading.local()
 
 _handler_lock = threading.Lock()
@@ -107,22 +116,66 @@ def capture(distinct_id: str, event: str, properties: dict | None = None,
         pass
 
 
-def _allow_fault(key: tuple[str, str]) -> int | None:
-    """Return this key's accumulated drop count, or None when this event is throttled."""
+def _fault_properties(fault: tuple[str, str, str, str | None], occurrences: int) -> dict:
+    """The `$exception` payload. `occurrences` is how many faults THIS event stands for, so
+    summing it across events recovers the true count that the issue list cannot show."""
+    fault_type, value, component, logger = fault
+    properties: dict = {
+        "$exception_list": [{
+            "type": fault_type,
+            "value": value,
+            "mechanism": {"handled": False},
+        }],
+        "component": component,
+        "fault_type": fault_type,
+        "fault_occurrences": occurrences,
+    }
+    if logger:
+        properties["logger"] = logger
+    return properties
+
+
+def _note_fault(key: tuple[str, str], fault: tuple[str, str, str, str | None],
+                *, congested: bool) -> bool:
+    """Record one occurrence. True = report it now, False = it is counted and rides a summary."""
     now = time.monotonic()
     with _fault_lock:
-        bucket = _fault_buckets.get(key)
-        if bucket is None:
-            bucket = _fault_buckets[key] = _TokenBucket(_FAULT_PER_KEY_CAPACITY, now)
-        bucket.refill(now, _FAULT_PER_KEY_REFILL_S)
-        _fault_global.refill(now, _FAULT_GLOBAL_REFILL_S)
-        if bucket.tokens < 1.0 or _fault_global.tokens < 1.0:
-            bucket.dropped += 1
-            return None
-        bucket.tokens -= 1.0
-        _fault_global.tokens -= 1.0
-        dropped, bucket.dropped = bucket.dropped, 0
-        return dropped
+        window = _fault_windows.get(key)
+        if window is None or now - window.opened >= _FAULT_WINDOW_S:
+            window = _fault_windows[key] = _FaultWindow(now, fault)
+            _fault_windows.move_to_end(key)
+            while len(_fault_windows) > _FAULT_MAX_KEYS:
+                # Evict the oldest window that is NOT holding a count. Evicting one that is would
+                # discard occurrences nobody has reported — the exact loss this rewrite removes.
+                # If every key holds one, the ledger runs over until the next sweep clears them.
+                stale = next((k for k, w in _fault_windows.items() if not w.pending), None)
+                if stale is None:
+                    break
+                del _fault_windows[stale]
+            if not congested:
+                return True
+        _fault_windows.move_to_end(key)
+        window.fault = fault
+        window.pending += 1
+        return False
+
+
+def _fault_summaries_pending() -> bool:
+    with _fault_lock:
+        return any(window.pending for window in _fault_windows.values())
+
+
+def _emit_fault_summaries(*, force: bool = False) -> None:
+    """Queue one event per window whose time is up, carrying everything it counted."""
+    now = time.monotonic()
+    due = []
+    with _fault_lock:
+        for window in _fault_windows.values():
+            if window.pending and (force or now - window.opened >= _FAULT_WINDOW_S):
+                due.append((window.fault, window.pending))
+                window.pending, window.opened = 0, now
+    for fault, occurrences in due:
+        capture(_SERVER_DISTINCT_ID, "$exception", _fault_properties(fault, occurrences))
 
 
 def capture_fault(exc: BaseException | None = None, *, component: str,
@@ -141,23 +194,12 @@ def capture_fault(exc: BaseException | None = None, *, component: str,
         # Query injection puts credentials in URLs, and exception strings (notably httpx's)
         # can include the full request URL. Redact before truncation so no partial key survives.
         resolved_value = re.sub(r"\?\S*", "?[redacted]", resolved_value)
-        dropped = _allow_fault((resolved_type, logger or component))
-        if dropped is None:
+        fault = (resolved_type, resolved_value[:_FAULT_VALUE_MAX], component, logger)
+        if not _note_fault((resolved_type, logger or component), fault,
+                           congested=len(_queue) >= _MAX_PENDING * _FAULT_QUEUE_SHARE):
+            _ensure_flusher()  # nothing was queued, so nothing else would start the sweeper
             return
-        properties: dict = {
-            "$exception_list": [{
-                "type": resolved_type,
-                "value": resolved_value[:_FAULT_VALUE_MAX],
-                "mechanism": {"handled": False},
-            }],
-            "component": component,
-            "fault_type": resolved_type,
-        }
-        if logger:
-            properties["logger"] = logger
-        if dropped:
-            properties["throttled_dropped"] = dropped
-        capture(_SERVER_DISTINCT_ID, "$exception", properties)
+        capture(_SERVER_DISTINCT_ID, "$exception", _fault_properties(fault, 1))
     except Exception:  # noqa: BLE001 — reporting a fault must never become another fault
         pass
     finally:
@@ -238,8 +280,9 @@ def _ensure_flusher() -> None:
 
 
 async def _flush_loop() -> None:
-    while _queue:
+    while _queue or _fault_summaries_pending():
         await asyncio.sleep(_FLUSH_INTERVAL_S)
+        _emit_fault_summaries()
         while _queue:
             batch, _queue[:_BATCH_MAX] = _queue[:_BATCH_MAX], []
             try:
@@ -259,8 +302,13 @@ async def _post(batch: list[dict]) -> None:
 
 
 async def drain() -> None:
-    """Best-effort flush of whatever is queued (shutdown / tests). One attempt per batch."""
+    """Best-effort flush of whatever is queued (shutdown / tests). One attempt per batch.
+
+    Sweeps the fault windows first, unconditionally: a restart mid-incident is exactly when the
+    counts nobody has reported yet are worth the most, and after this there is no later.
+    """
     global _flusher
+    _emit_fault_summaries(force=True)
     if _flusher is not None and not _flusher.done():
         _flusher.cancel()
         try:

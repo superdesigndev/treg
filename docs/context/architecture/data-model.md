@@ -322,7 +322,9 @@ connection. Emitters:
 `call_tool`'s `_audit` funnel (`tool_called`, with the catalog `provider` as vendor or the upstream host
 for own tools; the field list is in [proxy-model](proxy-model.md)), `bootstrap_handlers._pool_saturated`
 (`call_intake_failed`), `billing_topup` (`topup_started`), and `billing._credit` (`topup_completed`,
-gated on `fresh`). Drained in the lifespan `finally` after `audit.drain()`. The engine adds Postgres pool
+gated on `fresh`). Drained in the lifespan `finally` **last** — after `audit.drain()` and
+`archive.drain()`, because it is the sink those two report their losses into and draining it first
+strands those events behind a cancelled flusher. The engine adds Postgres pool
 hygiene (`pool_pre_ping`/`pool_recycle`/sizing) for non-SQLite URLs, and `verify_db` refuses to start with
 no `TREG_SECRET_KEY` on a real DB (an ephemeral key would lose every stored secret on restart).
 
@@ -333,12 +335,28 @@ value are replaced with `?[redacted]` **before truncation**, so query-injected c
 frames, locals, request bodies, and user identity are never included. `FaultCaptureHandler` mirrors ERROR+
 records while analytics is enabled; it ignores the
 `treg.analytics` logger tree, marks records to prevent duplicate root/Uvicorn delivery, and uses a
-thread-local re-entry guard plus a never-raise `emit`. `_allow_fault` applies token buckets of 10/minute
-per `(fault type, logger/site)` and 60/minute process-wide; throttled events are dropped before the shared
-queue and the next allowed event for that key carries `throttled_dropped`. The lifespan installs the
+thread-local re-entry guard plus a never-raise `emit`. The lifespan installs the
 handler on root and directly on `uvicorn.error` (Uvicorn's default parent does not propagate to root),
 then removes it after shutdown drain. `bootstrap_handlers._pool_saturated` calls `capture_fault` directly
 because its typed 503 is handled before Uvicorn would log it.
+
+**Repeats roll up; they are not rate-limited.** `_note_fault` opens one `_FaultWindow` per
+`(fault type, logger/site)` for `_FAULT_WINDOW_S`: the first occurrence is reported immediately, the rest
+are counted, and `_emit_fault_summaries` releases the count **on the flusher's timer and again in
+`drain()`** — never on the back of the next occurrence, which is how a storm that stopped (or a restart
+mid-incident) used to take its count with it. Every event carries `fault_occurrences`, the number it
+stands for, so `sum(fault_occurrences)` is the true total; PostHog's issue list counts events and is a
+lower bound. Cost is bounded by key **cardinality** (`_FAULT_MAX_KEYS`, LRU-evicted), not volume, which is
+why no global budget exists: the process-wide bucket this replaced let one loud key silence every other
+key, including first sightings that never recurred to carry their own count out. Faults are shed only when
+the shared queue is genuinely backing up (`_FAULT_QUEUE_SHARE` of `_MAX_PENDING`) — the congestion the
+throttle was ever meant to prevent, rather than a wall-clock rate that fired against an empty queue.
+
+**Losing data is ERROR, not WARNING.** `audit._write`, `audit._schedule`'s back-pressure shed, and
+`archive`'s `_store`/`_touch_write` drops all log at ERROR, because `FaultCaptureHandler` starts at ERROR:
+below it the loss reaches container stdout and nothing else, so it can neither be alerted on nor found
+without already suspecting it. Degradations that cost nothing (an archive lookup falling back to a live
+call, a retried pass) stay at WARNING — the line is whether data was actually lost.
 
 > **Tenancy:** every resource noun carries `org_id`; access is scoped to the caller's org. Details:
 > [multi-tenancy](multi-tenancy.md).

@@ -28,10 +28,9 @@ async def _clean():
         analytics.remove_fault_handler(analytics._installed_fault_handler)
     analytics._queue.clear()
     analytics._flusher = None
-    analytics._fault_buckets.clear()
-    analytics._fault_global = analytics._TokenBucket(
-        analytics._FAULT_GLOBAL_CAPACITY, analytics.time.monotonic())
+    analytics._fault_windows.clear()
     yield
+    analytics._fault_windows.clear()
     # Enabled tests inspect queued payloads but must never send them to a real PostHog host.
     analytics._queue.clear()
     await analytics.drain()
@@ -129,6 +128,7 @@ def test_fault_payload_is_secret_minimal_and_truncated(enabled):
         }],
         "component": "scheduler",
         "fault_type": "RuntimeError",
+        "fault_occurrences": 1,
         "$lib": "treg-server",
     }
     assert "frames" not in str(event).lower()
@@ -146,37 +146,93 @@ def test_fault_value_redacts_query_credentials_before_capture(enabled):
     assert "api_key=" not in value
 
 
-def test_per_key_throttle_counts_drops_on_next_allowed_event(enabled, monkeypatch):
+def _occurrences() -> int:
+    """What a `sum(fault_occurrences)` query in PostHog would return."""
+    return sum(e["properties"]["fault_occurrences"] for e in _exception_events())
+
+
+def test_a_storm_costs_one_event_per_window_but_reports_every_occurrence(enabled, monkeypatch):
+    """The point of the rollup: cost is bounded, the COUNT is not approximated. The old token
+    bucket emitted ~10/minute and pinned the dashboard at its own refill rate, so the graph of a
+    two-hour incident was a flat line at the limiter."""
     now = [100.0]
     monkeypatch.setattr(analytics.time, "monotonic", lambda: now[0])
-    monkeypatch.setattr(analytics, "_MAX_PENDING", 20)
-    analytics._fault_global = analytics._TokenBucket(analytics._FAULT_GLOBAL_CAPACITY, now[0])
 
     for _ in range(100):
         analytics.capture_fault(PoolTimeoutError("pool full"), component="db_pool")
-    assert len(_exception_events()) == 10
-    analytics.capture("person@example.com", "normal_analytics")
-    assert len(analytics._queue) == 11  # the storm cannot evict an ordinary event
+    assert len(_exception_events()) == 1  # one event stands for the window
 
-    now[0] += 6.0  # ten per minute = one replenished token every six seconds
-    analytics.capture_fault(PoolTimeoutError("pool full"), component="db_pool")
-    assert len(_exception_events()) == 11
-    assert _exception_events()[-1]["properties"]["throttled_dropped"] == 90
+    now[0] += analytics._FAULT_WINDOW_S
+    analytics._emit_fault_summaries()
+    assert len(_exception_events()) == 2
+    assert _occurrences() == 100  # ...and nothing was approximated away
 
 
-def test_global_throttle_limits_many_distinct_faults(enabled, monkeypatch):
+def test_a_loud_fault_cannot_silence_an_unrelated_one(enabled, monkeypatch):
+    """The bug the global bucket had: one key exhausting a shared budget dropped every OTHER key,
+    including a first sighting — the highest-information event there is, and the one least likely
+    to recur and carry its own count out later."""
     now = [100.0]
     monkeypatch.setattr(analytics.time, "monotonic", lambda: now[0])
-    analytics._fault_global = analytics._TokenBucket(analytics._FAULT_GLOBAL_CAPACITY, now[0])
 
-    for i in range(70):
-        analytics.capture_fault(RuntimeError(str(i)), component=f"site-{i}")
-    assert len(_exception_events()) == 60
+    for _ in range(500):
+        analytics.capture_fault(PoolTimeoutError("pool full"), component="db_pool")
+    analytics.capture_fault(RuntimeError("something new"), component="scheduler")
 
-    now[0] += 1.0
-    analytics.capture_fault(RuntimeError("60"), component="site-60")
-    assert len(_exception_events()) == 61
-    assert _exception_events()[-1]["properties"]["throttled_dropped"] == 1
+    assert [e["properties"]["fault_type"] for e in _exception_events()] == [
+        "TimeoutError", "RuntimeError"]
+
+
+def test_the_key_ledger_is_bounded(enabled, monkeypatch):
+    """Cardinality is what caps the cost now that volume does not, so it must be finite."""
+    monkeypatch.setattr(analytics, "_FAULT_MAX_KEYS", 5)
+    for i in range(50):
+        analytics.capture_fault(RuntimeError("x"), component=f"site-{i}")
+    assert len(analytics._fault_windows) == 5
+
+
+def test_eviction_never_discards_a_count_that_was_never_reported(enabled, monkeypatch):
+    """Bounding the ledger must not reintroduce the loss this rewrite exists to remove: a window
+    holding occurrences nobody has seen is not eligible for eviction, even over the cap."""
+    monkeypatch.setattr(analytics, "_FAULT_MAX_KEYS", 3)
+    for i in range(3):
+        for _ in range(4):  # first reports, next three land in `pending`
+            analytics.capture_fault(RuntimeError("x"), component=f"loud-{i}")
+    for i in range(20):
+        analytics.capture_fault(RuntimeError("x"), component=f"quiet-{i}")
+
+    holding = {k: w.pending for k, w in analytics._fault_windows.items() if w.pending}
+    assert sorted(k[1] for k in holding) == ["loud-0", "loud-1", "loud-2"]
+    assert set(holding.values()) == {3}
+
+
+async def test_a_shutdown_does_not_take_the_counts_with_it(enabled, posts, monkeypatch):
+    """A storm that stops, or a process that restarts mid-incident, used to lose its accumulated
+    count: the old code released it only on the back of the NEXT event for that key. Restarting is
+    what you do during an incident, so the counts died exactly when they were worth the most."""
+    now = [100.0]
+    monkeypatch.setattr(analytics.time, "monotonic", lambda: now[0])
+
+    for _ in range(30):
+        analytics.capture_fault(PoolTimeoutError("pool full"), component="db_pool")
+    analytics._queue.clear()  # the window's one reported event is already on its way
+
+    await analytics.drain()  # sweeps unconditionally: after this there is no later
+    sent = [e for batch in posts for e in batch if e["event"] == "$exception"]
+    assert [e["properties"]["fault_occurrences"] for e in sent] == [29]
+
+
+def test_faults_yield_to_analytics_only_when_the_queue_is_actually_backing_up(enabled, monkeypatch):
+    """The old rate limit shed at full speed against an empty queue — it fired on elapsed time,
+    while the resource it existed to protect was at ~1% of its bound."""
+    monkeypatch.setattr(analytics, "_MAX_PENDING", 10)
+    analytics.capture_fault(RuntimeError("first"), component="quiet")
+    assert len(_exception_events()) == 1  # queue empty: no reason to drop anything
+
+    for i in range(9):
+        analytics.capture("a@b.c", "tool_called", {"i": i})
+    analytics.capture_fault(RuntimeError("second"), component="congested")
+    assert len(_exception_events()) == 1  # past the share: counted, not queued
 
 
 def test_handler_recursion_guard_swallows_capture_failure(enabled, monkeypatch):
@@ -324,6 +380,20 @@ async def test_typed_refusals_auth_and_validation_are_not_faults(enabled):
     await _run_through_uvicorn(app, "/validated", b"count=not-an-int")
     analytics.remove_fault_handler(handler)
     assert _exception_events() == []
+
+
+def test_the_lifespan_drains_analytics_after_everything_that_reports_into_it():
+    """Order matters now that audit and archive report their losses at ERROR: analytics is their
+    sink, so draining it first leaves those events queued behind a cancelled flusher and they are
+    lost — silently, and exactly at shutdown, which is when a loss is most worth hearing about."""
+    import pathlib
+
+    from treg import bootstrap
+
+    source = pathlib.Path(bootstrap.__file__).read_text()
+    drains = ("audit.drain()", "archive.drain()", "analytics.drain()")
+    assert all(name in source for name in drains)
+    assert sorted(drains, key=source.index) == list(drains)
 
 
 async def test_typed_pool_saturation_is_explicitly_captured(enabled):
