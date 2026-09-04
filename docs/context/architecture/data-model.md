@@ -13,6 +13,8 @@ sources:
   - src/treg/alembic/versions/0007_overflow_spend.py
   - src/treg/alembic/versions/0008_org_platform_overflow_disabled.py
   - src/treg/alembic/versions/0009_callrecord_hit.py
+  - src/treg/alembic/versions/0017_async_task_record.py
+  - src/treg/alembic/versions/0018_async_resource_ownership.py
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
   - src/treg/maintenance.py
@@ -36,6 +38,15 @@ related:
 ---
 
 # Data model
+
+`AsyncTaskRecord` is one deferred metered submission keyed by the original `call_id`: org,
+provider, endpoint, extracted task id, optional fetch/result id, optional validated dynamic poll URL,
+reserved micro-USD, frozen descriptor/basis/request evidence, scheduling attempts, status and
+completion/error fields. Migration `0017` adds the record and `0018` expand-only adds the nullable,
+indexed result id and adds `AsyncResourceRecord`: an org/provider/resource-kind/id ownership tuple
+for legacy async pairs whose billing does not use a deferred hold. They ship with the behavior
+because old code ignores the additions while new code cannot safely retain an asynchronous hold or
+authorize a shared-provider result without them.
 
 ## OAuth authorization method identity
 

@@ -35131,6 +35131,7 @@ endpoints:
   example_response: examples/tikhub.x.youtube-web-v2-get-video-captions.json
   capability: youtube.video.captions
 - id: tikhub.x.youtube-web-v2-get-video-captions-result
+  platform_blocked: "No shared-key job producer is available for this legacy result route; connect your own TikHub key."
   tier: extended
   platform: youtube
   method: GET

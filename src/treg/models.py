@@ -671,13 +671,60 @@ class Hold(SQLModel, table=True):
 
     `id` IS the call_id, so the settle/release that closes it needs no second lookup. Rows are
     deleted on settle/release, which makes the table a live list of in-flight spend — and lets the
-    reaper (ledger.reap_stale_holds) find the ones a crash between relay and settle stranded.
+    reaper (ledger.reap_stale_holds) find the ones a crash between relay and settle stranded. A hold
+    referenced by a pending AsyncTaskRecord is deliberately excluded until its worker resolves it.
     """
 
     id: str = Field(primary_key=True)  # == call_id
     org_id: int = Field(foreign_key="org.id", index=True)
     endpoint_id: str = Field(default="")
     amount_micro: int  # what was withheld from the balance (margin already applied)
+    created_at: datetime = Field(default_factory=_now, index=True)
+
+
+class AsyncTaskRecord(SQLModel, table=True):
+    """A metered async submission whose existing ledger hold awaits terminal evidence."""
+
+    call_id: str = Field(primary_key=True)  # Hold.id and the public X-Treg-Call-Id
+    org_id: int = Field(foreign_key="org.id", index=True)
+    provider: str = Field(index=True)
+    endpoint_id: str = Field(index=True)
+    task_id: str | None = Field(default=None, index=True)
+    # A fetch-mode descriptor may expose a different provider id after success (MiniMax file_id).
+    # It is learned only from an org-authorized terminal poll or the settlement worker.
+    result_id: str | None = Field(default=None, index=True)
+    poll_url: str | None = Field(default=None)
+    reserved_micro: int
+    descriptor: dict = Field(default_factory=dict, sa_column=Column("descriptor", JSON, nullable=False))
+    # Freezes the whole price rule with the request it was applied to, so a settlement replays
+    # from this row alone, whatever the catalog says by the time the task finishes.
+    settlement_basis: dict = Field(
+        default_factory=dict, sa_column=Column("settlement_basis", JSON, nullable=False))
+    created_at: datetime = Field(default_factory=_now, index=True)
+    next_check_at: datetime = Field(index=True)
+    attempts: int = Field(default=0)
+    status: str = Field(default="pending", index=True)
+    error: str = Field(default="")
+    settled_micro: int | None = Field(default=None)
+    completed_at: datetime | None = Field(default=None, index=True)
+
+
+class AsyncResourceRecord(SQLModel, table=True):
+    """An opaque object created on a shared provider account and owned by one org."""
+
+    __table_args__ = (
+        UniqueConstraint(
+            "org_id", "provider", "resource_kind", "resource_id",
+            name="uq_asyncresource_org_provider_kind_id",
+        ),
+    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    org_id: int = Field(foreign_key="org.id", index=True)
+    provider: str = Field(index=True)
+    resource_kind: str = Field(index=True)
+    resource_id: str = Field(index=True)
+    source_call_id: str = Field(index=True)
     created_at: datetime = Field(default_factory=_now, index=True)
 
 

@@ -159,6 +159,10 @@ endpoints:
     path: /actors/{actor_id}/runs
     name: "Start an Apify actor run in the background"
     summary: "Start a scraper run in the background and get back its run id"
+    resource_ownership:
+      produces:
+        - {kind: run, path: data.id}
+        - {kind: dataset, path: data.defaultDatasetId}
     input:
       pathParams:
         actor_id: {type: string, required: true, note: "username~actorname with a TILDE, e.g. apify~facebook-ads-scraper", example: "apify~facebook-ads-scraper"}
@@ -188,6 +192,10 @@ endpoints:
     path: /actor-runs/{run_id}
     name: "Check an Apify actor run by run id"
     summary: "Check whether a background scraper run has finished"
+    resource_ownership:
+      requires: {kind: run, param: run_id}
+      produces:
+        - {kind: dataset, path: data.defaultDatasetId}
     input:
       pathParams:
         run_id: {type: string, required: true, note: "the id from the run-start response", example: "HG7ML7M8z78YcAPEB"}
@@ -210,6 +218,8 @@ endpoints:
     path: /datasets/{dataset_id}/items
     name: "Download an Apify run's results by dataset id"
     summary: "Download the results of a finished scraper run"
+    resource_ownership:
+      requires: {kind: dataset, param: dataset_id}
     input:
       pathParams:
         dataset_id: {type: string, required: true, note: "defaultDatasetId from the run", example: "9RcGyLmzZm3nBWNsL"}

@@ -500,6 +500,9 @@ endpoints:
     path: /companies/enrich/bulk
     name: "Start a bulk enrichment job (up to 10,000 domains)"
     summary: "Creates an asynchronous bulk enrichment job for up to 10,000 domains — returns a job ID immediately"
+    resource_ownership:
+      produces:
+        - {kind: job, path: job_id}
     input:
       body:
         domains: {type: "array[string]", required: true, note: "1-10,000 company domains. THIS IS THE PRICE — 1 credit per domain successfully enriched, charged on completion", example: ["anthropic.com"]}
@@ -531,6 +534,8 @@ endpoints:
     path: /companies/enrich/bulk/{jobId}
     name: "Check a bulk enrichment job"
     summary: "Returns the current status of a bulk enrichment job — once completed, includes the results_url to download the enrichment results"
+    resource_ownership:
+      requires: {kind: job, param: jobId}
     input:
       pathParams:
         jobId: {type: string, required: true, note: "the `job_id` returned by companyenrich.companies.enrich.bulk.start", example: "01a01ca2-932a-7b00-bc07-9417bb2a2b58"}
@@ -573,6 +578,9 @@ endpoints:
     path: /companies/search/async
     name: "Start a company-search export (up to 50,000 rows)"
     summary: "Creates an asynchronous search export job for up to 50,000 companies — supports both standard company search and similar-company search"
+    resource_ownership:
+      produces:
+        - {kind: company_search_job, path: job_id}
     input:
       body:
         count: {type: integer, required: true, note: "how many companies to export, up to 50,000. THIS IS THE PRICE — credits are RESERVED at submission and settled on completion", example: 1}
@@ -606,6 +614,8 @@ endpoints:
     path: /companies/search/async/{jobId}
     name: "Check a company-search export job"
     summary: "Returns the current status of a search export job — once completed, includes the results_url to download the export results"
+    resource_ownership:
+      requires: {kind: company_search_job, param: jobId}
     input:
       pathParams:
         jobId: {type: string, required: true, note: "the `job_id` from companyenrich.companies.search.async.start", example: "01a01ca2-97b9-7aa3-94d8-b34128beaef5"}
@@ -827,6 +837,9 @@ endpoints:
     path: /people/email/bulk
     name: "Start a bulk work-email lookup (beta, up to 1,000 people)"
     summary: "Creates an asynchronous bulk person email enrichment job for up to 1,000 lookup items"
+    resource_ownership:
+      produces:
+        - {kind: people_email_job, path: job_id}
     input:
       body:
         items: {type: "array[object]", required: true, note: "1-1,000 objects of {person_id (required, integer), domain (optional string)}. NOTE the field is `person_id`, not `id` — using `id` is rejected with a bodyless HTTP 400", example: [{person_id: 256474769, domain: "stripe.com"}]}
@@ -858,6 +871,8 @@ endpoints:
     path: /people/email/bulk/{jobId}
     name: "Check a bulk work-email lookup job"
     summary: "Returns the current status of a bulk person email enrichment job — once completed, includes the results_url to download the full results"
+    resource_ownership:
+      requires: {kind: people_email_job, param: jobId}
     input:
       pathParams:
         jobId: {type: string, required: true, note: "the `job_id` from companyenrich.people.email.bulk.start", example: "01a01ca3-7120-7ee5-beba-a7bc64de4ea7"}
@@ -878,6 +893,9 @@ endpoints:
     path: /people/search/async
     name: "Start a people-search export (up to 50,000 rows)"
     summary: "Creates an asynchronous search export job for up to 50,000 people — returns a job ID immediately"
+    resource_ownership:
+      produces:
+        - {kind: people_search_job, path: job_id}
     input:
       body:
         count: {type: integer, required: true, note: "how many people to export, up to 50,000. THIS IS THE PRICE — 2 credits each, reserved at submission", example: 1}
@@ -915,6 +933,8 @@ endpoints:
     path: /people/search/async/{jobId}
     name: "Check a people-search export job"
     summary: "Returns the current status of a person search export job — once completed, includes the results_url to download the export results"
+    resource_ownership:
+      requires: {kind: people_search_job, param: jobId}
     input:
       pathParams:
         jobId: {type: string, required: true, note: "the `job_id` from companyenrich.people.search.async.start", example: "01a01ca3-32df-70c8-bb03-8060f181e9fc"}

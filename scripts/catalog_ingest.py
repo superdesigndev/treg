@@ -16,7 +16,8 @@ Properties this script guarantees (they are why it exists instead of a one-off s
   - **core wins**: any (method, path) already in the provider's core yaml is skipped, never duplicated.
   - **cached**: downloads land in ~/.cache/treg-catalog-ingest (override TREG_INGEST_CACHE);
     `--refresh` re-fetches. Nothing is cached inside the repo.
-  - **credential-free**: no source below needs auth, so no secret can reach a committed file.
+  - **secret-safe**: generated files never contain credentials. Replicate's official collection
+    requires `REPLICATE_API_TOKEN`; the token is used only as a request header.
 
 See docs/context/architecture/catalog.md for the extended-entry schema.
 """
@@ -108,7 +109,7 @@ def clean(s: str) -> str:
 
 
 def english(s: str) -> str:
-    """TikHub summaries are '中文描述/English description' — keep the English half."""
+    """TikHub summaries contain Chinese text followed by English text; keep the English half."""
     s = clean(s)
     parts = s.split("/")
     for i in range(len(parts)):
@@ -156,20 +157,20 @@ def core_routes(provider: str) -> set[tuple[str, str]]:
     }
 
 
-def carry_verification(provider: str, endpoints: list[dict]) -> int:
-    """Re-attach reviewed and live-verified fields from the file being replaced.
+def carry_verification(provider: str, endpoints: list[dict], *, carry_capability: bool = True) -> int:
+    """Re-attach reviewed fields from the extended file being replaced.
 
     Those fields are the only ones NOT derived from upstream: verification stamps are the result
-    of an actual paid call made by scripts/catalog_verify_extended.py, and `capability` is a
-    reviewed mapping into the capabilities.yaml taxonomy (2026-07-28 batch onwards). `name` (the
-    short display title) and `kind` (data | action | account | utility — a reviewed judgement the
-    ingest cannot re-derive) are carried on the same guard: ingest generates a title where the spec
-    offers one, but a reviewed/hand-set title or kind must survive a re-ingest like a capability.
+    of an actual paid call made by scripts/catalog_verify_extended.py. `name` (the short display
+    title) and `kind` (data | action | account | utility - a reviewed judgement the ingest cannot
+    re-derive) are carried on the same guard. A provider may also carry reviewed `capability`
+    mappings; AIGC coverage ingesters disable that option because comparison membership belongs
+    only in core.
     Regenerating the file must not silently discard them, so they are carried across by id, as long as the
     route itself (method + path) still matches — a route that moved is a different endpoint and
     its old result means nothing.
 
-    A carried `capability` brings its `platform` with it: the validator requires platform ==
+    When enabled, a carried `capability` brings its `platform` with it: the validator requires platform ==
     the capability's first segment, and review sometimes refines the ingest guess (e.g. douyin ->
     douyin-xingtu, tiktok -> tiktok-shop), so regenerating the guess over the reviewed platform
     would break validation on the next run.
@@ -192,16 +193,19 @@ def carry_verification(provider: str, endpoints: list[dict]) -> int:
             continue
         if prev.get("method") != ep.get("method") or prev.get("path") != ep.get("path"):
             continue
-        for field in (
-            "verified", "example_response", "unverified", "capability", "name", "kind",
+        carried_fields = [
+            "verified", "example_response", "unverified", "name", "kind", "platform_blocked",
             # Meta publishes no machine-readable request schema or grant matrix. These contracts
             # are reviewed against its HTML docs and must survive the next deterministic ingest.
             "input", "authorization_method", "authorization_methods", "authorization_paths",
             "required_scopes", "required_resource", "token_type",
-        ):
+        ]
+        if carry_capability:
+            carried_fields.append("capability")
+        for field in carried_fields:
             if prev.get(field) is not None:
                 ep[field] = prev[field]
-        if prev.get("capability") is not None and prev.get("platform"):
+        if carry_capability and prev.get("capability") is not None and prev.get("platform"):
             # the reviewed platform (capability's first segment) wins over the ingest guess
             ep["platform"] = prev["platform"]
         if prev.get("verified"):
@@ -212,8 +216,9 @@ def carry_verification(provider: str, endpoints: list[dict]) -> int:
     return kept
 
 
-def write_extended(provider: str, source: dict, endpoints: list[dict], notes: list[str]) -> Path:
-    carried = carry_verification(provider, endpoints)
+def write_extended(provider: str, source: dict, endpoints: list[dict], notes: list[str],
+                   *, carry_capability: bool = True) -> Path:
+    carried = carry_verification(provider, endpoints, carry_capability=carry_capability)
     if carried:
         print(f"  carried {carried} verification stamp(s) forward", file=sys.stderr)
     endpoints = sorted(endpoints, key=lambda e: (e["platform"], e["path"], e["method"]))
@@ -223,11 +228,16 @@ def write_extended(provider: str, source: dict, endpoints: list[dict], notes: li
             raise SystemExit(f"{provider}: duplicate generated id {ep['id']}")
         seen.add(ep["id"])
     out = CATALOG / f"{provider}.extended.yaml"
+    carry_note = (
+        "# `capability` mappings (with their platform correction) are added later and carried across"
+        if carry_capability else
+        "# names and kinds are added later and carried across; capability mappings stay in core"
+    )
     header = [
-        f"# {provider} — EXTENDED tier: the provider's full endpoint surface, machine-generated by",
+        f"# {provider} - EXTENDED tier: the provider's full endpoint surface, machine-generated by",
         "# scripts/catalog_ingest.py. Do not hand-edit; re-run the script instead. Entries start with",
-        "# no capability, no verification and no example response — verification stamps and reviewed",
-        "# `capability` mappings (with their platform correction) are added later and carried across",
+        "# no capability, no verification and no example response - verification stamps and reviewed",
+        carry_note,
         f"# re-ingests by id via carry_verification. Routes curated in core {provider}.yaml are excluded here.",
     ]
     header += [f"# {n}" if n else "#" for n in notes]
@@ -651,7 +661,7 @@ def ingest_tikhub(refresh: bool) -> tuple[Path, dict]:
             "path": uri,
             "summary": summary,
         }
-        # Apifox gives every documented op a human title ("中文/Get TikHub user info") distinct
+        # Apifox gives every documented operation a bilingual human title distinct
         # from the openapi summary — the English half is the display `name`.
         title = short_name((doc_op or {}).get("name") or "", summary)
         if title:
@@ -983,7 +993,252 @@ def ingest_justoneapi(refresh: bool) -> tuple[Path, dict]:
     return write_extended("justoneapi", source, endpoints, notes), {"missing": len(missing)}
 
 
-INGESTERS = {"tikhub": ingest_tikhub, "dataforseo": ingest_dataforseo, "justoneapi": ingest_justoneapi}
+def _aigc_async_static() -> dict:
+    return {
+        "id_from": "id",
+        "poll": {"endpoint": "openrouter.video-gen.task.status",
+                 "param": {"in": "pathParams", "name": "id"}},
+        "status": {"path": "status", "success": ["completed"],
+                   "failure": ["failed", "cancelled", "expired"]},
+        "result": {"fetch": "openrouter.video-gen.result.retrieve",
+                   "fetch_param": {"in": "pathParams", "name": "id", "value_from": "id"}},
+        "interval": 30,
+    }
+
+
+def core_body_models(provider: str, method: str, path: str) -> set[str]:
+    """Fixed body.model values curated in core for one shared generation route."""
+    core = CATALOG / f"{provider}.yaml"
+    if not core.is_file():
+        return set()
+    doc = yaml.safe_load(core.read_text()) or {}
+    models: set[str] = set()
+    for ep in doc.get("endpoints") or []:
+        if str(ep.get("method") or "").upper() != method or ep.get("path") != path:
+            continue
+        model = (((ep.get("input") or {}).get("body") or {}).get("model") or {})
+        values = model.get("enum") or []
+        if len(values) == 1:
+            models.add(str(values[0]))
+    return models
+
+
+def _openrouter_cost(model: dict) -> dict:
+    model_id = str(model["id"])
+    skus = model.get("pricing_skus") or {}
+    unsupported = (
+        "video_tokens", "cents_per_image_input", "cents_per_megapixel_second", "reference_images",
+    )
+    if any(str(name).startswith(unsupported) for name in skus):
+        return {
+            "type": "per_success",
+            "value": None,
+            "confidence": "unknown",
+            "source": "rate_card_api",
+            "source_url": "https://openrouter.ai/api/v1/videos/models",
+            "checked": "2026-09-02",
+            "rate_card": {str(name): str(value) for name, value in sorted(skus.items())},
+            "note": "The live rate card includes a token, image-input, reference-image, or megapixel-second dimension that the request schema cannot bound with one declarative times field; this row remains BYOK-only.",
+        }
+    durations = [int(v) for v in (model.get("supported_durations") or []) if isinstance(v, int)]
+    duration_max = max(durations, default=30)
+    grouped: dict[tuple, dict] = {}
+    maxima: list[float] = []
+    minimum = 0.0
+    for sku, raw in sorted(skus.items()):
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if str(sku).startswith("minimum_cents_per_generation"):
+            minimum = max(minimum, value / 100)
+            continue
+        if str(sku).startswith("cents_per_"):
+            value /= 100
+        when: dict[str, object] = {"body.model": model_id}
+        row: dict[str, object] = {"when": when, "value": value}
+        if sku == "generate":
+            maxima.append(value)
+        else:
+            resolution = next((r for r in (model.get("supported_resolutions") or [])
+                               if str(r).lower() in str(sku).lower()), None)
+            if resolution:
+                when["body.resolution"] = resolution
+            if "with_audio" in str(sku) and "without_audio" not in str(sku):
+                when["body.generate_audio"] = True
+            elif "without_audio" in str(sku):
+                when["body.generate_audio"] = False
+            row["times"] = "body.duration"
+            maxima.append(value * duration_max)
+        key = (tuple(sorted(when.items())), row.get("times"))
+        previous = grouped.get(key)
+        if previous is None or float(previous["value"]) < value:
+            grouped[key] = row
+    rows = list(grouped.values())
+    rows.sort(key=lambda row: (-len(row["when"]), sorted(row["when"].items())))
+    upper = max([minimum, *maxima], default=0.0)
+    return {
+        "type": "per_success",
+        "table": rows or [{"when": {"body.model": model_id}, "value": 0.0}],
+        "fallback": {
+            "value": round(upper + 0.000000001, 9),
+            "note": "The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling.",
+        },
+        "currency": "USD",
+        "settle": "usage",
+        "usage": {"path": "usage.cost", "unit": "usd"},
+        "source": "rate_card_api",
+        "source_url": "https://openrouter.ai/api/v1/videos/models",
+        "checked": "2026-09-02",
+        "confidence": "documented",
+        "note": "Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns).",
+    }
+
+
+def ingest_openrouter(refresh: bool) -> tuple[Path, dict]:
+    url = "https://openrouter.ai/api/v1/videos/models"
+    models = json.loads(fetch(url, "openrouter_video_models.json", refresh=refresh))["data"]
+    endpoints = []
+    curated_models = core_body_models("openrouter", "POST", "/videos")
+    for model in sorted(models, key=lambda row: str(row.get("id") or "")):
+        model_id = str(model.get("id") or "").strip()
+        if not model_id or model_id in curated_models:
+            continue
+        durations = [int(v) for v in (model.get("supported_durations") or []) if isinstance(v, int)]
+        resolutions = [str(v) for v in (model.get("supported_resolutions") or [])]
+        body = {
+            "model": {"type": "string", "required": True, "enum": [model_id], "example": model_id},
+            "prompt": {"type": "string", "required": True, "example": "A paper boat crosses a quiet pond at sunrise."},
+            "duration": {"type": "integer", "required": False, "default": min(durations, default=5),
+                         "max": max(durations, default=30)},
+        }
+        if resolutions:
+            body["resolution"] = {"type": "string", "required": False,
+                                  "default": resolutions[0], "enum": resolutions}
+        if model.get("supported_aspect_ratios"):
+            ratios = [str(v) for v in model["supported_aspect_ratios"]]
+            body["aspect_ratio"] = {"type": "string", "required": False,
+                                    "default": ratios[0], "enum": ratios}
+        sku_names = [str(name) for name in (model.get("pricing_skus") or {})]
+        if isinstance(model.get("generate_audio"), bool) or any("_audio" in name for name in sku_names):
+            body["generate_audio"] = {"type": "boolean", "required": False,
+                                      "default": bool(model.get("generate_audio", False))}
+        ep = {
+            "id": slug_id("openrouter", model_id),
+            "tier": "extended",
+            "platform": "video-gen",
+            "domain": "models",
+            "method": "POST",
+            "path": "/videos",
+            "name": str(model.get("name") or model_id)[:60],
+            "summary": clean(
+                str(model.get("description") or f"Generate video with {model_id}.")
+            ).replace("\N{EM DASH}", "-")[:400],
+            "input": {"body": body, "bodyType": "json"},
+            "cost": _openrouter_cost(model),
+            "docs_url": f"https://openrouter.ai/{model_id}",
+        }
+        endpoints.append(ep)
+    source = {"spec_urls": [url], "ingested": "2026-09-02"}
+    out = write_extended("openrouter", source, endpoints, [
+        "Generated from the live video model rate card. Each row fixes one model on POST /videos.",
+        "pricing_skus become a first-match reserve table; terminal usage.cost remains authoritative.",
+    ], carry_capability=False)
+    # Provider defaults belong at the document top level, not inside source provenance.
+    generated = yaml.safe_load(out.read_text())
+    doc = {"provider": generated["provider"], "source": generated["source"],
+           "async": _aigc_async_static(), "endpoints": generated["endpoints"]}
+    header, _, _ = out.read_text().partition("provider:")
+    out.write_text(header + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=4096))
+    return out, {"models": len(endpoints)}
+
+
+def _replicate_schema(model: dict) -> dict:
+    schema = (((model.get("latest_version") or {}).get("openapi_schema") or {})
+              .get("components", {}).get("schemas", {}).get("Input", {}))
+    required = set(schema.get("required") or [])
+    properties = {}
+    for name, raw in sorted((schema.get("properties") or {}).items(),
+                            key=lambda item: (item[1].get("x-order", 9999), item[0])):
+        field = {key: raw[key] for key in ("type", "description", "default", "minimum", "maximum", "enum")
+                 if key in raw}
+        if "minimum" in field:
+            field["min"] = field.pop("minimum")
+        if "maximum" in field:
+            field["max"] = field.pop("maximum")
+        field["required"] = name in required
+        properties[name] = field
+    return {"type": "object", "required": True, "properties": properties}
+
+
+def ingest_replicate(refresh: bool) -> tuple[Path, dict]:
+    token = os.environ.get("REPLICATE_API_TOKEN", "").strip()
+    if not token:
+        raise SystemExit("replicate ingest requires REPLICATE_API_TOKEN")
+    headers = {"Authorization": f"Bearer {token}"}
+    collections: dict[tuple[str, str], tuple[dict, set[str]]] = {}
+    urls = []
+    for slug in ("text-to-image", "text-to-video", "image-to-video"):
+        url = f"https://api.replicate.com/v1/collections/{slug}"
+        urls.append(url)
+        data = json.loads(fetch(url, f"replicate_{slug}.json", refresh=refresh, headers=headers))
+        for model in data.get("models") or []:
+            if not model.get("is_official"):
+                continue
+            key = (str(model.get("owner") or ""), str(model.get("name") or ""))
+            if not all(key):
+                continue
+            collections.setdefault(key, (model, set()))[1].add(slug)
+    skip = core_routes("replicate")
+    endpoints = []
+    for (owner, name), (model, groups) in sorted(collections.items()):
+        path = f"/models/{owner}/{name}/predictions"
+        if ("POST", path) in skip:
+            continue
+        platform = "video-gen" if groups & {"text-to-video", "image-to-video"} else "image-gen"
+        ep = {
+            "id": slug_id("replicate", f"{owner}/{name}"),
+            "tier": "extended",
+            "platform": platform,
+            "domain": "models",
+            "method": "POST",
+            "path": path,
+            "name": f"{owner}/{name}"[:60],
+            "summary": clean(str(model.get("description") or f"Run the official {owner}/{name} model."))[:400],
+            "input": {"body": {"input": _replicate_schema(model)}, "bodyType": "json"},
+            "cost": {"type": "per_success", "value": None, "confidence": "unknown",
+                     "note": "Replicate does not expose this model's price in the collection API; the generated row is BYOK-only."},
+            "docs_url": str(model.get("url") or f"https://replicate.com/{owner}/{name}"),
+        }
+        endpoints.append(ep)
+    async_default = {
+        "id_from": "id",
+        "poll": {"url_from": "urls.get", "url_hosts": ["api.replicate.com"]},
+        "status": {"path": "status", "success": ["succeeded"],
+                   "failure": ["failed", "canceled"]},
+        "result": {"path": "output"},
+        "interval": 2,
+    }
+    out = write_extended("replicate", {"spec_urls": urls, "ingested": "2026-09-01"}, endpoints, [
+        "Generated from Replicate's maintained text-to-image, text-to-video, and image-to-video collections.",
+        "Only official models are included. Input fields come from latest_version.openapi_schema.",
+        "Generated rows intentionally carry no price; an unpriced row is BYOK-only.",
+    ], carry_capability=False)
+    generated = yaml.safe_load(out.read_text())
+    doc = {"provider": generated["provider"], "source": generated["source"],
+           "async": async_default, "endpoints": generated["endpoints"]}
+    header, _, _ = out.read_text().partition("provider:")
+    out.write_text(header + yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=4096))
+    return out, {"models": len(endpoints)}
+
+
+INGESTERS = {
+    "tikhub": ingest_tikhub,
+    "dataforseo": ingest_dataforseo,
+    "justoneapi": ingest_justoneapi,
+    "openrouter": ingest_openrouter,
+    "replicate": ingest_replicate,
+}
 
 
 # =============================================================================================

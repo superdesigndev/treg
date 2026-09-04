@@ -2253,6 +2253,146 @@ def cmd_tool_update(args, cfg) -> None:
 
 
 # ---- call + audit -------------------------------------------------------------------------
+# The descriptor semantics (dotted paths, terminal classification, artifact extraction) are the
+# server's own `treg.domain.asynctasks`, a stdlib-only leaf - one implementation, pinned light by
+# `test_import_lightness` and an import-linter contract, so the CLI and the settlement worker can
+# never disagree about what "done" means.
+from .domain.asynctasks import ExtractionError as _AsyncExtractionError  # noqa: E402
+from .domain.asynctasks import artifact as _async_artifact  # noqa: E402
+from .domain.asynctasks import extract_submission as _extract_submission  # noqa: E402
+from .domain.asynctasks import fetch_command as _async_fetch_command  # noqa: E402
+from .domain.asynctasks import shown as _shown  # noqa: E402
+from .domain.asynctasks import classify_terminal as _classify_terminal  # noqa: E402
+from .domain.asynctasks import json_path as _json_path  # noqa: E402
+
+
+def _async_param(rule: dict) -> tuple[str, str]:
+    return str(rule["in"]), str(rule["name"])
+
+
+def _clock_report(clock, message: str) -> None:
+    reporter = getattr(clock, "report", None)
+    if reporter is not None:
+        reporter(message)
+
+
+class _CliAwaitClock:
+    def monotonic(self) -> float:
+        return time.monotonic()
+
+    def sleep(self, seconds: float) -> None:
+        time.sleep(seconds)
+
+    def report(self, message: str) -> None:
+        print(message, file=sys.stderr)
+
+
+def await_async_task(descriptor: dict, submission: httpx.Response, call_fn, clock,
+                     timeout: float) -> dict:
+    """Follow one async descriptor using injected HTTP and clock functions."""
+    try:
+        submitted = submission.json()
+    except ValueError:
+        return {"code": 1, "error": "the async submission response is not JSON"}
+    try:
+        # The server's own reading of the submission: task id, and for dynamic polling an https
+        # URL on the descriptor's allow-list - the same rule the settlement worker applies.
+        extracted = _extract_submission(descriptor, submitted)
+    except _AsyncExtractionError as exc:
+        # The provider's answer IS the diagnosis (MiniMax puts "invalid params, ..." in a 200);
+        # hand it to stdout as any other response, then say what treg could not find in it.
+        return {"code": 1, "response": submission, "error": str(exc)}
+    task_id = extracted.task_id
+    poll = descriptor["poll"]
+    if poll.get("endpoint"):
+        _, param_name = _async_param(poll["param"])
+        target = poll["endpoint"]
+        params = [(param_name, task_id)]
+        recovery = f"treg call {target} -p {shlex.quote(param_name + '=' + task_id)}"
+    else:
+        target = extracted.poll_url
+        params = []
+        recovery = f"treg call {shlex.quote(target)}"
+
+    interval = float(descriptor.get("interval") or 10)
+    start = clock.monotonic()
+    failures = 0
+    warned: set[str] = set()
+    while True:
+        if clock.monotonic() - start >= timeout:
+            return {"code": 3, "task_id": str(task_id), "recovery": recovery,
+                    "error": "timed out while waiting for the async task"}
+        clock.sleep(interval if failures == 0 else min(60.0, interval * (2 ** (failures - 1))))
+        try:
+            response = call_fn(target, params)
+        except (httpx.RequestError, OSError) as exc:
+            failures += 1
+            _clock_report(clock, f"async poll retry {failures}/5 after a network error: {exc}")
+            if failures >= 5:
+                return {"code": 3, "task_id": str(task_id), "recovery": recovery,
+                        "error": f"polling failed five consecutive times: {exc}"}
+            continue
+        if response.status_code >= 500:
+            failures += 1
+            _clock_report(clock, f"async poll retry {failures}/5 after HTTP {response.status_code}")
+            if failures >= 5:
+                return {"code": 3, "task_id": str(task_id), "recovery": recovery,
+                        "error": f"polling returned {response.status_code} five consecutive times"}
+            continue
+        if response.status_code >= 400:
+            return {"code": 3, "task_id": str(task_id), "recovery": recovery,
+                    "error": f"polling returned HTTP {response.status_code}"}
+        failures = 0
+        try:
+            terminal = response.json()
+        except ValueError:
+            return {"code": 3, "task_id": str(task_id), "recovery": recovery,
+                    "error": "a polling response was not JSON"}
+        status = str(_json_path(terminal, descriptor["status"]["path"]))
+        outcome = _classify_terminal(descriptor, terminal)
+        if outcome == "success":
+            result = {"code": 0, "task_id": str(task_id), "recovery": recovery,
+                      "response": response, "status": status}
+            found = _async_artifact(descriptor, terminal)
+            if descriptor["result"].get("path"):
+                result["result"] = found["result"]
+            elif found["fetch"] is None:
+                value_from = descriptor["result"]["fetch_param"]["value_from"]
+                return {"code": 1, "task_id": str(task_id), "recovery": recovery,
+                        "response": response, "status": status,
+                        "error": f"the terminal response has no {value_from!r} for result retrieval"}
+            else:
+                result["fetch_command"] = _async_fetch_command(found["fetch"])
+            if found["ttl_note"]:
+                result["ttl_note"] = found["ttl_note"]
+            return result
+        if outcome == "failure":
+            return {"code": 2, "task_id": str(task_id), "recovery": recovery,
+                    "response": response, "status": status}
+        if status not in warned:
+            warned.add(status)
+            _clock_report(clock, f"warning: unknown async status {_shown(status)!r}; continuing to wait")
+        _clock_report(clock, f"async task {_shown(task_id)}: {_shown(status)} "
+                             f"({int(clock.monotonic() - start)}s elapsed)")
+
+
+def _print_raw_response(response: httpx.Response) -> None:
+    sys.stdout.write(response.text)
+    sys.stdout.flush()
+
+
+def _show_call_response(response: httpx.Response) -> None:
+    content_type = getattr(response, "headers", {}).get("content-type", "").partition(";")[0].strip().lower()
+    if content_type and content_type != "application/json" and not content_type.endswith("+json") \
+            and not content_type.startswith("text/"):
+        sys.stdout.buffer.write(response.content)
+        sys.stdout.buffer.flush()
+        if response.status_code >= 400:
+            raise SystemExit(1)
+        return
+    _show(response)
+
+
 def cmd_call(args, cfg) -> None:
     for kv in args.query:  # a token without '=' would crash dict()/split with an opaque traceback
         if "=" not in kv:
@@ -2326,7 +2466,72 @@ def cmd_call(args, cfg) -> None:
     # `treg call <id> --data …` just work beats asking the caller to repeat what the catalog knows.
     method = args.method or ("POST" if content is not None else "GET")
     with _client(cfg) as c:
-        _show(c.request(method, f"/call/{rest}", params=params, content=content, headers=headers))
+        submission = c.request(method, f"/call/{rest}", params=params, content=content, headers=headers)
+        if not getattr(args, "await_task", False) or not submission.headers.get("X-Treg-Async"):
+            _show_call_response(submission)
+            return
+        if submission.status_code >= 400:
+            _show(submission)
+            return
+        try:
+            descriptor = json.loads(submission.headers["X-Treg-Async"])
+        except (TypeError, ValueError):
+            sys.exit("treg: X-Treg-Async is not valid JSON")
+
+        def call_fn(target, poll_params):
+            # Dynamic poll URLs still travel THROUGH treg. Calling the absolute upstream URL from
+            # the CLI would bypass server-side credential injection and the host safety check.
+            return c.get(f"/call/{target}", params=poll_params)
+
+        try:
+            submitted = submission.json()
+        except ValueError:
+            submitted = None
+        task_id, recovery = None, ""
+        try:
+            extracted = _extract_submission(descriptor, submitted) if submitted is not None else None
+        except _AsyncExtractionError:
+            extracted = None
+        if extracted is not None:
+            task_id = extracted.task_id
+            poll = descriptor.get("poll") or {}
+            if poll.get("endpoint"):
+                _, resume_name = _async_param(poll["param"])
+                recovery = f"treg call {poll['endpoint']} -p {shlex.quote(resume_name + '=' + task_id)}"
+            elif extracted.poll_url:
+                recovery = f"treg call {shlex.quote(extracted.poll_url)}"
+        if task_id not in (None, ""):
+            print(f"async task submitted: {_shown(task_id)}", file=sys.stderr)
+            if recovery:
+                print(f"resume: {recovery}", file=sys.stderr)
+        if reserved := submission.headers.get("X-Treg-Cost-Micro"):
+            print(f"generation reservation: ${int(reserved) / 1_000_000:g}", file=sys.stderr)
+        try:
+            outcome = await_async_task(
+                descriptor, submission, call_fn, _CliAwaitClock(), getattr(args, "timeout", None)
+            )
+        except KeyboardInterrupt:
+            print("treg: waiting interrupted; the upstream task is still recoverable", file=sys.stderr)
+            if recovery:
+                print(f"resume: {recovery}", file=sys.stderr)
+            raise SystemExit(3) from None
+        response = outcome.get("response")
+        if response is not None:
+            _print_raw_response(response)
+        if outcome.get("result") not in (None, ""):
+            value = outcome["result"]
+            rendered = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+            print(f"result: {rendered}", file=sys.stderr)
+        if outcome.get("fetch_command"):
+            # What comes back is the provider's own retrieval answer: the file bytes (OpenRouter) or
+            # a JSON envelope carrying a download URL (MiniMax) - the command is the same shape.
+            print(f"retrieve the result (file bytes, or JSON with a download URL): "
+                  f"{outcome['fetch_command']}", file=sys.stderr)
+        if outcome.get("ttl_note"):
+            print(f"download promptly; result lifetime: {outcome['ttl_note']}", file=sys.stderr)
+        if outcome.get("error"):
+            print(f"treg: {outcome['error']}", file=sys.stderr)
+        raise SystemExit(outcome["code"])
 
 
 def cmd_calls(args, cfg) -> None:
@@ -2365,7 +2570,12 @@ def cmd_audit(args, cfg) -> None:
     rows = [
         {"kind": "call", "id": f"c{x['id']}", "user_email": x.get("user_email"),
          "tool": x.get("tool_name"), "detail": f"{x.get('method', '')} {x.get('path', '')}".strip(),
-         "result": x.get("status_code"), "where": "proxy", "created_at": x.get("created_at")}
+         "result": x.get("status_code"), "where": "proxy", "created_at": x.get("created_at"),
+         # A metered async task (generation): how it settled and where its artifact is. `treg calls`
+         # carries the full block verbatim; this is the merged view's one-line reading of it.
+         **({"task": {k: x["async_task"].get(k) for k in
+                      ("status", "settled_micro", "result_url", "fetch_command", "ttl_note")}}
+            if x.get("async_task") else {})}
         for x in calls
     ] + [
         {"kind": "run", "id": r.get("id"), "user_email": r.get("user_email"), "tool": r.get("tool"),
@@ -4399,6 +4609,9 @@ def _cost_label(cost) -> str:
         return "-"
     kind = (cost.get("type") or "").replace("_", " ")
     value, currency = cost.get("value"), cost.get("currency") or ""
+    if value in (None, "") and isinstance(cost.get("table"), list):
+        # A price table: the ceiling is the scalar (matches `usd`); `_cost_usd` shows the range.
+        value = (cost.get("fallback") or {}).get("value")
     if kind == "free":
         return "free"
     if value in (None, ""):
@@ -4624,7 +4837,12 @@ def _cost_usd(cost: dict | None) -> str:
             "per call": "call", "per result": "result", "per success": "success"}.get(cost.get("type"), "call")
     # 3 significant digits: no decision turns on the 5th decimal of a sub-cent price, and the full
     # value (plus the provider's own currency) is one `treg catalog get` away
-    return "free" if not usd else f"${usd:.3g}/{unit}"
+    if not usd:
+        return "free"
+    low = cost.get("usd_min")  # a price table: the cheapest row up to the validated ceiling
+    if isinstance(low, (int, float)) and low < usd:
+        return f"${low:.3g}-${usd:.3g}/{unit}"
+    return f"${usd:.3g}/{unit}"
 
 
 def _clip(text: str, width: int) -> str:
@@ -4823,9 +5041,14 @@ def _catalog_get(endpoint_id: str, cfg) -> None:
         _dim("  the only provider offering this capability")
 
     _print_params(e.get("input") or {})
+    _print_price_table(e.get("cost"), e.get("input") or {})
+    _print_async(e.get("async"))
 
     print(f"\n{_B}RUN IT{_R}")
-    print(f"  {body['call_template']}")
+    template = body['call_template']
+    if e.get("async") and "--await" not in template:
+        template += " --await --timeout 900"
+    print(f"  {template}")
     _dim("  the key is injected server-side — you never hold it")
     # Which credential tier would serve THIS caller (registered tool / org credential / treg's own
     # metered key / none)? Authenticated + best-effort: signed-out readers and older servers skip it.
@@ -4872,12 +5095,35 @@ def _print_params(inp: dict) -> None:
             continue
         # required first: the shortest working call is the required set, and that is what an agent
         # reads this table to assemble
-        for name, spec in sorted(params.items(), key=lambda kv: (not (kv[1] or {}).get("required")
-                                                                 if isinstance(kv[1], dict) else True, kv[0])):
-            spec = spec if isinstance(spec, dict) else {}
-            note = spec.get("note") or ""
+        # A nested object (Replicate's `input: {properties: …}`) is shown as dotted names, one row per
+        # leaf, because that is what the caller has to type.
+        flat: list[tuple[str, dict]] = []
+
+        def walk(items: dict, prefix: str) -> None:
+            for name, spec in items.items():
+                spec = spec if isinstance(spec, dict) else {}
+                props = spec.get("properties")
+                if isinstance(props, dict) and props:
+                    walk(props, f"{prefix}{name}.")
+                else:
+                    flat.append((f"{prefix}{name}", spec))
+
+        walk(params, "")
+        for name, spec in sorted(flat, key=lambda kv: (not kv[1].get("required"), kv[0])):
+            # The NOTE column is the whole contract: the prose rule, then the closed set of values,
+            # the default, the numeric range, the example. An agent choosing "the cheapest valid
+            # request" needs the enum and the bounds more than the prose.
+            parts = [spec.get("note") or ""]
+            if isinstance(spec.get("enum"), list) and spec["enum"]:
+                parts.append("one of: " + " | ".join(str(v) for v in spec["enum"]))
+            if "default" in spec:
+                parts.append(f"default {spec['default']}")
+            lo, hi = spec.get("min"), spec.get("max")
+            if lo is not None or hi is not None:
+                parts.append(f"range {lo if lo is not None else '…'}-{hi if hi is not None else '…'}")
             if spec.get("example") not in (None, ""):
-                note = f"{note} (e.g. {spec['example']})".strip()
+                parts.append(f"e.g. {spec['example']}")
+            note = " · ".join(p.rstrip(".") if i else p for i, p in enumerate(parts) if p)
             # The note is the contract ("one of domain | company", "THIS IS THE PRICE DIAL") — never
             # clipped: an agent reading this table to build a call must see the whole rule. Long
             # notes wrap under the NOTE column instead.
@@ -4891,6 +5137,69 @@ def _print_params(inp: dict) -> None:
         import textwrap
         for i, line in enumerate(textwrap.wrap(inp["note"], width=90)):
             print(f"  {_M}{'note' if i == 0 else '':<6}{_R} {line}")
+
+
+def _print_price_table(cost, inp: dict) -> None:
+    """The price rows a `cost.table` endpoint bills by - the matrix behind the "$low-$high" line.
+    Rows are the provider's own price list, first match wins; the fallback is what an unmatched
+    request reserves."""
+    if not isinstance(cost, dict) or not isinstance(cost.get("table"), list) or not cost["table"]:
+        return
+    cur = cost.get("currency") or "USD"
+    money = (lambda v: f"${v:g}") if cur == "USD" else (lambda v: f"{v:g} {cur}")
+    settle = cost.get("settle", "table")
+    print(f"\n{_B}PRICE TABLE{_R}  first matching row; unmatched requests reserve the fallback")
+    for row in cost["table"]:
+        if not isinstance(row, dict):
+            continue
+        when = " · ".join(f"{k.split('.', 1)[-1]}={v}" for k, v in (row.get("when") or {}).items())
+        price = money(float(row.get("value") or 0))
+        if row.get("times"):
+            price += f" × {str(row['times']).split('.', 1)[-1]}"
+            if row.get("times_min") is not None:
+                price += f" (from {row['times_min']})"
+        print(f"  {_clip(when, 58):<58} {price}")
+    fb = cost.get("fallback") or {}
+    if isinstance(fb, dict) and fb.get("value") is not None:
+        print(f"  {'fallback (ceiling)':<58} {money(float(fb['value']))}")
+    if settle == "usage":
+        usage = cost.get("usage") or {}
+        _dim(f"  settle: usage - the matched row is reserved; the provider's reported "
+             f"{usage.get('path', 'usage')} is what you pay")
+        _dim("  (it can exceed the reserve when the provider applies a minimum charge).")
+    else:
+        _dim("  settle: table - the matched row is reserved at submission and charged when the task succeeds.")
+
+
+def _print_async(desc) -> None:
+    """How an async generation call is followed - the same descriptor `--await` executes and the
+    `X-Treg-Async` header carries, so an MCP or raw-HTTP agent can poll it by hand."""
+    if not isinstance(desc, dict) or not desc:
+        return
+    print(f"\n{_B}ASYNC TASK{_R}  the call returns at once; the result arrives later")
+    print(f"  task id      response field `{desc.get('id_from')}`")
+    poll = desc.get("poll") or {}
+    if poll.get("endpoint"):
+        param = poll.get("param") or {}
+        print(f"  poll         treg call {poll['endpoint']} -p {param.get('name')}=<task id>"
+              f"   every ~{desc.get('interval', 10)} s")
+    elif poll.get("url_from"):
+        print(f"  poll         the URL in response field `{poll['url_from']}` (hosts: "
+              f"{', '.join(poll.get('url_hosts') or [])})   every ~{desc.get('interval', 10)} s")
+    status = desc.get("status") or {}
+    print(f"  done when    `{status.get('path')}` is one of {status.get('success')}; "
+          f"failed when {status.get('failure')} (a failed task refunds the hold)")
+    result = desc.get("result") or {}
+    if result.get("path"):
+        print(f"  result       response field `{result['path']}`")
+    elif result.get("fetch"):
+        fp = result.get("fetch_param") or {}
+        print(f"  result       treg call {result['fetch']} -p {fp.get('name')}=<`{fp.get('value_from')}` "
+              f"from the finished task>")
+    if result.get("ttl_note"):
+        print(f"  lifetime     {result['ttl_note']} - download promptly; treg never stores media")
+    _dim("  `treg call … --await` does all of this and prints the final response; from a coding")
+    _dim("  agent, raise the shell tool's timeout or run it in the background (video takes 1-5 min).")
 
 
 def cmd_connections_ls(args, cfg) -> None:
@@ -5353,7 +5662,7 @@ def build_parser() -> argparse.ArgumentParser:
     cl.add_argument("path", nargs="?", default="", help="the path when using a tool name")
     cl.add_argument("--method", default=None,
                     help="HTTP method (default: GET, or POST when --data/--file/--upload is given)")
-    cl.add_argument("--query", action="append", default=[], metavar="K=V", help="a query param (repeatable)")
+    cl.add_argument("-p", "--query", action="append", default=[], metavar="K=V", help="a query param (repeatable)")
     cl.add_argument("--authorization-method", metavar="METHOD",
                     help="select an authorization method declared by the catalog endpoint")
     cl.add_argument("--data", help="request body (string)"); cl.add_argument("--file", help="request body from a file")
@@ -5366,6 +5675,10 @@ def build_parser() -> argparse.ArgumentParser:
                     help="a multipart/form-data part (repeatable): NAME=@/path/to/file for a file, or "
                          "NAME=value for a plain field. Use for real file uploads (e.g. Meta adimages) — "
                          "--file sends a single raw body that most upload APIs reject.")
+    cl.add_argument("--await", dest="await_task", action="store_true",
+                    help="wait for an async catalog call to reach a terminal state")
+    cl.add_argument("--timeout", type=float, default=900,
+                    help="maximum seconds to wait with --await (default: 900)")
     cl.set_defaults(fn=cmd_call)
 
     # ---- audit (one log over both halves; `calls`/`runs` live on as hidden aliases) ----

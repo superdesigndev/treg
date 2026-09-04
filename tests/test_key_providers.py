@@ -41,8 +41,23 @@ def test_key_providers_appear_in_the_marketplace_listing():
     assert listing["semrush"]["category"] == "SEO"
     assert listing["tikhub"]["category"] == "Social media"
     assert listing["coingecko"]["category"] == "Market data"
+    assert listing["minimax"]["category"] == "AI generation"
+    assert listing["openrouter"]["auth_kind"] == "token"
+    assert listing["replicate"]["base_url"] == "https://api.replicate.com/v1"
     assert "Enrichment" in P.CATEGORY_ORDER
     assert "Market data" in P.CATEGORY_ORDER
+
+
+def test_aigc_token_providers_are_offerable_without_deployment_credentials():
+    for service in ("minimax", "openrouter", "replicate"):
+        provider = P.get(service)
+        assert provider is not None
+        assert provider.auth_kind == "token"
+        assert provider.uses_pasted_secret is True
+        assert P.is_configured(provider) is True
+    assert P.get("minimax").probe_method == "POST"
+    assert P.get("minimax").probe_json == {}
+    assert P.get("minimax").probe_reject_statuses == (401, 403)
 
 
 # ---- connect-by-key ----------------------------------------------------------------------

@@ -56,12 +56,32 @@ sources:
   - src/treg/catalog/instagram.yaml
   - src/treg/catalog/instagram.extended.yaml
   - src/treg/catalog/justoneapi.extended.yaml
+  - src/treg/catalog/minimax.yaml
+  - src/treg/catalog/apify.yaml
+  - src/treg/catalog/brightdata.yaml
+  - src/treg/catalog/companyenrich.yaml
+  - src/treg/catalog/oceanio.yaml
+  - src/treg/catalog/akta.extended.yaml
+  - src/treg/catalog/dataforseo.extended.yaml
   - src/treg/catalog/tikhub.extended.yaml
+  - src/treg/catalog/examples/minimax.video-gen.result.retrieve.json
+  - src/treg/catalog/examples/minimax.video-gen.from_image.json
+  - src/treg/catalog/examples/minimax.video-gen.task.status.json
+  - src/treg/catalog/openrouter.yaml
+  - src/treg/catalog/openrouter.extended.yaml
+  - src/treg/catalog/examples/openrouter.x.alibaba-wan-3-0.json
+  - src/treg/catalog/replicate.yaml
+  - src/treg/catalog/replicate.extended.yaml
+  - src/treg/catalog/examples/replicate.image-gen.flux-schnell.json
   - src/treg/domain/catalog/__init__.py
   - src/treg/domain/catalog/store.py
+  - src/treg/domain/money/settlement.py
   - src/treg/domain/catalog/stats.py
   - src/treg/infra/catalog_observations.py
   - src/treg/routers/catalog.py
+  - tests/test_aigc_pr_b.py
+  - tests/test_catalog_api.py
+  - tests/test_catalog_validate.py
 related:
   - architecture/money.md
   - architecture/proxy-model.md
@@ -69,6 +89,11 @@ related:
 ---
 
 # Endpoint catalog — platform-grouped operations per provider
+
+The computed cost view uses a `cost.table` fallback as its scalar validated upper bound for
+eligibility and compact displays. Runtime charging evaluates the first matching row against request
+values plus catalog defaults and freezes that settlement basis. Terminal usage or the recorded table
+evidence feeds the shared money settlement function; provider variation stays declarative in YAML.
 
 ## Authorization metadata
 
@@ -226,6 +251,22 @@ already curates, so an endpoint appears exactly once across both tiers. Promotin
 means moving it into the core file and completing it (steps 3–8 below) — not editing it in place;
 extended files are regenerated wholesale and hand edits are lost.
 
+OpenRouter video models are the deliberate exception to path-only collision detection: every model
+uses `POST /videos`, so `core_body_models` skips only the fixed `body.model` values already curated
+in core. Its OpenRouter and Replicate generation ingesters emit no capability guesses and explicitly
+set `domain: models`; this keeps every coverage row as a standalone model. Their
+`carry_verification(..., carry_capability=False)` migration keeps verification evidence and
+reviewed names/kinds without resurrecting old inferred capability tags.
+The core AIGC generation rows pin `domain: models` too and carry PER-MODEL capabilities
+(`video-gen.hailuo.from_text`, proposed in their provider files) rather than the job-level
+`video-gen.from_text` family. Generation models are not interchangeable - a merged row comparing
+Hailuo with Wan or Seedance is a false comparison - so the job-level capabilities are deliberately
+memberless, reserved for hand-picked models (see capabilities.yaml). Both AI generation pages
+therefore render as ONE flat model wall; the same model reachable over several routes (MiniMax
+direct, OpenRouter, Replicate all serve Hailuo) sits adjacent under model-led names, which is the
+comparison that actually means something. The per-model capability is the join key that lets those
+routes merge onto one row if that comparison is later curated.
+
 ## Schema
 
 ### capabilities.yaml
@@ -237,6 +278,8 @@ capabilities:
 platforms:
   tiktok: "TikTok"
   web: "The web at large (backlinks, authority, traffic)"
+  video-gen: {label: "Video generation", category: "AI generation"}
+  image-gen: {label: "Image generation", category: "AI generation"}
 ```
 
 Rules:
@@ -245,6 +288,10 @@ Rules:
 - Adding a capability = adding it here. Provider files may carry `proposed_capabilities:` (same
   mapping shape) when curation discovers a job the taxonomy lacks; the reviewer merges them into
   this file. The validator accepts a capability that is either global or proposed in the same file.
+- Under `AI generation`, platform means the generated-media modality rather than a system that owns
+  the data. The frozen vocabulary is `video-gen.from_text`, `video-gen.from_image`,
+  `video-gen.task.status`, `image-gen.from_text`, and `image-gen.edit`; text-to-video and
+  image-to-video stay separate because their required inputs and prices differ.
 
 ### `<service>.yaml`
 
@@ -297,6 +344,123 @@ endpoints:
     docs_url: https://docs.tikhub.io/…
 ```
 
+### Async descriptors
+
+An asynchronous submission endpoint may carry an `async:` descriptor. A provider file may put the
+same block at top level as a default for every endpoint in that file; an endpoint block **replaces
+it whole** (`effective_async_descriptor`): a descriptor is one protocol, and a protocol that differs
+in one axis differs in poll target, status vocabulary and result location together (MiniMax v2
+against v1), so a field-wise merge only produced descriptors nobody had written down. `catalog_store`
+serves the effective descriptor on the normalized endpoint. An explicit endpoint `async: false` opts
+a utility or synchronous endpoint out of the provider default; absence means inherit.
+
+**Poll mode in practice.** Every listed provider polls a static catalog id (`poll.endpoint`), which
+the CLI reaches through `/call/<id>` on any credential tier. Replicate offers both `urls.get` and the
+stable `GET /v1/predictions/{id}`; the static form is listed (`replicate.predictions.get`) because a
+`--await` that polled the absolute URL through `/call/https://…` was refused for a team on treg's
+key - that path resolves only a team's own tool (sample run, 2026-09-02). The dynamic-URL mode
+(`poll.url_from` + `url_hosts`) stays in the schema, validator and worker for a provider that offers
+nothing else (BFL), but today it works only for BYOK teams; serving it on the platform key needs a
+host-allow-listed relay that is not built. Do not document it as available.
+
+**Envelope errors.** A submission endpoint may carry `expect` (the provider-wide or per-endpoint
+success rule already used by settle); `application.call.service._submission_accepted` gates
+deferral on it, so MiniMax's HTTP-200-with-`base_resp.status_code: 2013` releases at once instead of
+becoming a task nobody can poll. The synchronous MiniMax image endpoint carries the same rule;
+otherwise an invalid prompt or output count would be charged at the image table or fallback price.
+OpenRouter's terminal failure set includes `failed`, `cancelled`, and `expired`; all three release
+the hold as soon as the status endpoint reports them.
+
+```yaml
+async:
+  id_from: task_id
+  poll:
+    endpoint: minimax.video-gen.task.status
+    param: {in: queryParams, name: task_id}
+    # Alternative mode:
+    # url_from: polling_url
+    # url_hosts: [api.example.com]
+  status:
+    path: task.status
+    success: [succeeded]
+    failure: [failed, cancelled]
+  result:
+    path: task.content.url
+    # Alternative mode:
+    # fetch: provider.video-gen.result.retrieve
+    # fetch_param: {in: pathParams, name: video_id, value_from: id}
+    ttl_note: 9h
+  interval: 10
+```
+
+A `cost.table` also prices out as a range: at load time `_table_floor` computes the cheapest row
+(a `times` row at its field's declared `min`) into `cost.table_min`, and `cost_view` exposes it as
+`usd_min` beside `usd`, which stays the validated ceiling (what reserve and eligibility read). Every
+price surface - the wall, `treg catalog search`, the dashboard, `/access` - shows `$low-$high` for a
+table rather than the worst case alone.
+
+The validator checks the effective descriptor. Dotted JSON paths are syntactically valid; success and
+failure are non-empty, disjoint lists; `interval` is positive; poll has exactly one of `endpoint`
+or `url_from`; result has exactly one of `path` or `fetch`; every descriptor block rejects unknown
+keys. Status values are compared after string coercion on both sides; a missing or unrecognized value
+means still in progress, in both the CLI awaiter and the settlement worker. Static poll/fetch ids must
+be same-provider GET utility endpoints. Their mapping is explicit:
+poll `param` is exactly `{in, name}`, while result `fetch_param` is exactly `{in, name, value_from}`
+so a terminal field such as MiniMax's `file_id` is not confused with the utility request parameter.
+The named path/query input must exist on the target endpoint. Body-mode polling is deliberately
+outside the frozen contract because no surveyed provider uses it and the generic client could not
+faithfully execute it. Dynamic URLs require a non-empty `url_hosts` allow-list. Any endpoint with
+`async:` must use `cost.type: per_success`. The descriptor is metadata
+beside the faithful relay: it never changes provider-native parameters or response bodies. The call
+router serializes the effective descriptor into `X-Treg-Async` before the response stream starts;
+it does not inspect or buffer the upstream body.
+
+Older async pairs that settle on their existing request paths use `resource_ownership` alongside
+the deferred-settlement design. `produces` maps response JSON paths to provider-local resource
+kinds; `requires` binds a path/query parameter to one of those kinds. On treg's shared key, a 2xx
+producer records the opaque id for the caller org, and a consumer is refused before relay unless the
+same org owns that provider/kind/id tuple. This covers Apify run/dataset ids, Bright Data snapshot
+ids, and CompanyEnrich bulk job ids without changing their billing behavior. The validator requires
+declared parameters and exact non-empty `{kind, path}` / `{kind, param}` shapes. BYOK does not use
+this metadata because the provider account itself belongs to the caller.
+Formal descriptors also materialize their poll/fetch ids under endpoint-namespaced resource kinds;
+their utility rows declare matching `requires` rules. The frozen `AsyncTaskRecord` remains the
+compatibility authority for tasks created before the resource table existed, while the explicit
+utility rule prevents a later catalog edit from silently turning a protected endpoint fail-open.
+The catalog test additionally rejects platform-eligible task/status/result object reads that have a
+required id but omit this metadata, so new legacy-style pairs cannot rely on a reviewer noticing the
+boundary by hand.
+Generated legacy task consumers for which no trustworthy producer→id chain is represented are
+explicitly `platform_blocked` instead: Akta request status, TikHub's captions-result route, and the
+DataForSEO on-page/SERP task consumers remain callable with BYOK but never receive treg's shared key.
+`carry_verification` preserves that reviewed block across re-ingestion just like a verification
+stamp; silently regenerating it away would reopen the tenant boundary.
+
+MiniMax's curated Hailuo routes intentionally use the v1 three-step protocol: submit with
+`POST /v1/video_generation`, poll `GET /v1/query/video_generation` with a query-string task id and
+the terminal values `Success`/`Fail`, then pass the returned `file_id` to
+`GET /v1/files/retrieve`. The v2 generation path serves the H3 family and is not a protocol upgrade
+for the Hailuo models in this listing.
+
+OpenRouter ingest reads `/api/v1/videos/models`, emits one extended row per model on the shared
+`POST /videos` route, and converts duration-based `pricing_skus` into price tables with
+`rate_card_api` provenance. It converts `cents_per_*` units to USD, maps resolution/audio dimensions,
+orders narrower conditions first, and collapses indistinguishable mode SKUs to the highest rate.
+Token, image-input, reference-image, and megapixel-second SKUs preserve the live rate card but stay
+explicitly unknown/BYOK-only because one bounded `times` field cannot safely describe them.
+Two verified Wan 3.0 480p/2s calls each quoted $0.10 from `pricing_skus` but reported
+`usage.cost: 0.2125`; rate-card rows are therefore `documented`, not observed-cost `verified`.
+Replicate ingest joins the official text-to-image, text-to-video, and image-to-video collections;
+each generated row takes its request fields from `latest_version.openapi_schema`. Its generated
+prices are explicitly unknown, while the curated core rows carry per-model page provenance. Both
+ingesters sort their inputs and produce byte-identical output when upstream data is unchanged.
+
+Utility capability names still describe the utility's actual job. OpenRouter model discovery uses
+the file-local proposed `video-gen.models.list`; OpenRouter and MiniMax content retrieval use the
+proposed `video-gen.result.retrieve`; only polling uses the frozen `video-gen.task.status`. These
+rows remain hidden management plumbing because `kind: utility`, and proposed capabilities avoid
+expanding the global generation vocabulary merely to satisfy the core-row capability requirement.
+
 ### `<service>.extended.yaml`
 
 Generated — never hand-edited. Re-run `uv run python scripts/catalog_ingest.py <service>` instead.
@@ -318,7 +482,8 @@ endpoints:
                                     #   where the spec offers a human title distinct from the
                                     #   description (TikHub's Apifox op names, Just One API's
                                     #   per-op summary / info.title, DataForSEO's operationId).
-                                    #   Carried across re-ingests by id, like `capability`.
+                                    #   Carried across re-ingests by id; providers may also carry
+                                    #   reviewed `capability` mappings when coverage policy permits.
     summary: "Get comments of a Zhihu answer"
     kind: data                      # optional; data (DEFAULT) | action | account | utility (see "Kind")
     cost: {type: per_success, value: 0.001, currency: USD}   # optional
@@ -335,8 +500,10 @@ endpoints:
 Rules:
 - Required: `id`, `platform`, `method`, `path`, `summary`. `platform` must exist in
   `capabilities.yaml` — that is what puts the endpoint on a marketplace shelf.
-- `capability` is normally ABSENT (extended entries are unmapped). If one is present the validator
-  holds it to the full core rules, so promotion by hand cannot silently drift.
+- `capability` is normally ABSENT (extended entries are unmapped). AIGC generation coverage forbids
+  inferred mappings entirely: comparison membership is curated in core, and extended rows use the
+  explicit `models` domain. If another extended file has a reviewed mapping, the validator holds it
+  to the full core rules so promotion by hand cannot silently drift.
 - `cost` is optional, because several providers price per API family rather than per route. When
   present it must still be a real cost model (`cost.type` from the same enum as core).
 - `input` / `test_request` appear when the provider publishes enough parameter documentation to
@@ -472,6 +639,42 @@ cost:
   confidence: documented  # verified | documented | inferred | unknown
   note: "…"               # free text: the half of the charge the schema cannot hold, caveats, traps
 ```
+
+For finite AIGC matrices, linear rates, and usage-settled generation, `value` is replaced by an
+ordered first-match `table` plus an explicit fallback upper bound:
+
+```yaml
+cost:
+  type: per_success
+  table:
+    - {when: {body.model: Model-A, body.resolution: 512P, body.duration: 6}, value: 0.3}
+    - {when: {body.model: Model-B, body.resolution: 768P}, value: 0.13, times: body.duration}
+  fallback: {value: 2.0, note: "most expensive supported combination"}
+  currency: USD
+  settle: table                 # or usage
+  # usage: {path: usage.cost, unit: usd}
+  source: docs
+  source_url: https://example.com/pricing
+  checked: 2026-09-01
+  confidence: documented
+```
+
+Rows match in file order. `when` is a subset comparison: every named field must equal the request
+value after input defaults are applied, using exact forms. References are location-qualified dotted
+paths (`body.model`, `body.input.num_outputs`, `queryParams.mode`) so query/body collisions cannot
+silently price the wrong field. Every `when` field must be required or declare `default` in `input`.
+`times` multiplies by one numeric request field with a positive `max`. Narrow rows must precede broad
+ones; the validator rejects a later condition shadowed by an earlier subset, duplicate conditions,
+unknown row/fallback keys, non-finite values, values outside input enum/min/max, and simultaneous
+`cost.value` plus `cost.table`. `fallback` is a hand-written, explained global upper bound, checked
+against every row's maximum computable price. A `times` value outside the field's declared range
+(or non-finite, or non-positive when no minimum is declared) matches no row and prices at the
+fallback, so a request cannot reserve zero or bill past the ceiling. With `settle: table`, the
+matched row is reserved and settled (fallback when unmatched). With `settle: usage`, the matched
+row is reserved as the rate-card estimate and the terminal `usage.path` figure settles, which may
+exceed the reserve (OpenRouter's unpublished minimums); `settle: usage` therefore requires an async
+descriptor, exactly a dotted `usage.path` and a supported `usage.unit`, and `settle: table` rejects
+a stray usage block. The money fragment describes the settlement itself.
 
 `value` + `currency` + `per` answer *how much*; `type` + `unit` answer *per what*; `source` +
 `source_url` + `checked` + `confidence` answer *says who, and how sure*. All four questions have to
@@ -1067,7 +1270,18 @@ weight. NOUNS ONLY: aliasing a verb to a commoner verb poisons the key (`lookup:
 inflated lookup's match set 27 → 689 endpoints and destroyed its ranking power). The file is
 query-side only — it rewrites no provider text, survives every re-ingest, and the validator
 (`check_aliases`) rejects entries that could not survive the tokenizer and warns on aliases whose
-target occurs nowhere in the catalog. The SearchMiss log is its feed: a zero-result query whose
+target occurs nowhere in the catalog. The tokenizer also retains contiguous CJK text, so Chinese
+task-phrase aliases are real searchable keys rather than discarded punctuation spans. Alias keys
+remain one token, while targets may be lowercase hyphenated phrases because matching tests the
+target string directly against catalog text. This makes `t2v` → `text-to-video` selective. The
+original AIGC aliases mapped model names and Chinese task phrases to `video`/`image`: live
+`treg catalog search` expanded Hailuo/Seedance/t2v to 521 endpoints and Flux to 172, including
+YouTube and unrelated image utilities. Model-family aliases were removed once real endpoint text
+contained those names; compact and Chinese task terms now target only `text-to-video` and/or
+`image-to-video`. A post-change CLI run returned 10 Hailuo, 11 Seedance, and 14 Flux matches; the
+task aliases returned 24 for t2v, 39 for i2v, 21 for the Chinese text-to-video query, and 35 for the
+Chinese image-to-video query, with generation models at the top instead of unrelated utilities.
+The SearchMiss log is its feed: a zero-result query whose
 words name an existing endpoint in different vocabulary is one row here.
 
 A query token that IS a platform slug ("tiktok", "linkedin") is the caller's hard filter, but idf

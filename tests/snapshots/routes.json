@@ -1896,6 +1896,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "admin_reconcile_asynctasks",
+    "path": "/admin/reconcile/asynctasks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "admin_archive",
     "path": "/admin/archive"
   },

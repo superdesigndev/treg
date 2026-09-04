@@ -1,0 +1,177 @@
+provider: openrouter
+source:
+  docs: https://openrouter.ai/docs/guides/overview/multimodal/video-generation
+  curated: 2026-09-02
+pricing_url: https://openrouter.ai/api/v1/videos/models
+proposed_capabilities:
+  video-gen.models.list: "List available video generation models"
+  video-gen.result.retrieve: "Retrieve completed video generation content"
+  # Per-model capabilities (see minimax.yaml): single-provider join keys that keep curated rows
+  # standalone in the model wall; job-level comparisons stay empty until models are hand-picked.
+  video-gen.wan-3-0.from_text: "Generate a Wan 3.0 video from a text prompt"
+  video-gen.wan-3-0.from_image: "Animate an image into a Wan 3.0 video"
+async:
+  id_from: id
+  poll:
+    endpoint: openrouter.video-gen.task.status
+    param: {in: pathParams, name: id}
+  status:
+    path: status
+    success: [completed]
+    # OpenRouter documents cancelled and expired as terminal failures too. If either is treated as
+    # progress, the worker retains the caller's hold until treg's 24-hour safety deadline.
+    failure: [failed, cancelled, expired]
+  result:
+    fetch: openrouter.video-gen.result.retrieve
+    fetch_param: {in: pathParams, name: id, value_from: id}
+  interval: 30
+endpoints:
+  - id: openrouter.video-gen.models.list
+    async: false
+    kind: utility
+    capability: video-gen.models.list
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /videos/models
+    name: "List current video generation models"
+    summary: "List OpenRouter video models, supported inputs, dimensions, durations, and live pricing SKUs."
+    input: {}
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "The public video model rate card is free to read."}
+    docs_url: https://openrouter.ai/docs/api/api-reference/video-generation/list-videos-models
+
+  - id: openrouter.video-gen.task.status
+    async: false
+    kind: utility
+    capability: video-gen.task.status
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /videos/{id}
+    name: "Check an OpenRouter video task"
+    summary: "Read the status, terminal usage, and output metadata for an OpenRouter video task."
+    resource_ownership:
+      requires: {kind: "poll:openrouter.video-gen.task.status", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: job-abc123}
+    test_request: {pathParams: {id: job-abc123}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Video task status checks are free."}
+    docs_url: https://openrouter.ai/docs/api/api-reference/video-generation/get-videos
+
+  - id: openrouter.video-gen.result.retrieve
+    async: false
+    kind: utility
+    capability: video-gen.result.retrieve
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /videos/{id}/content
+    name: "Retrieve OpenRouter video content"
+    summary: "Retrieve the generated binary video content after a task completes."
+    resource_ownership:
+      requires: {kind: "fetch:openrouter.video-gen.result.retrieve", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: job-abc123}
+    test_request: {pathParams: {id: job-abc123}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Retrieving completed video content does not create another generation."}
+    docs_url: https://openrouter.ai/docs/api/api-reference/video-generation/get-videos-content
+
+  - id: openrouter.video-gen.wan-3-0.from_text
+    capability: video-gen.wan-3-0.from_text
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /videos
+    name: "Alibaba: Wan 3.0 (text-to-video)"
+    summary: "Generate 480p, 720p, or 1080p video from a text prompt with the Wan 3.0 model."
+    input:
+      body:
+        model: {type: string, required: true, enum: [alibaba/wan-3.0], example: alibaba/wan-3.0}
+        prompt: {type: string, required: true, example: "A paper boat crosses a quiet pond at sunrise."}
+        duration: {type: integer, required: false, default: 2, max: 30}
+        resolution: {type: string, required: false, default: 480p, enum: [480p, 720p, 1080p]}
+        aspect_ratio: {type: string, required: false, default: "16:9", enum: ["16:9", "4:3", "1:1", "3:4", "9:16"]}
+        generate_audio: {type: boolean, required: false, default: true}
+      bodyType: json
+    test_request:
+      body:
+        model: alibaba/wan-3.0
+        prompt: "A small red kite rises above a calm beach at sunrise."
+        duration: 2
+        resolution: 480p
+        aspect_ratio: "16:9"
+    cost:
+      type: per_success
+      table:
+        - {when: {body.model: alibaba/wan-3.0, body.resolution: 1080p}, value: 0.2, times: body.duration}
+        - {when: {body.model: alibaba/wan-3.0, body.resolution: 480p}, value: 0.05, times: body.duration}
+        - {when: {body.model: alibaba/wan-3.0, body.resolution: 720p}, value: 0.1, times: body.duration}
+      fallback:
+        value: 6.000000001
+        note: "The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling."
+      currency: USD
+      settle: usage
+      usage: {path: usage.cost, unit: usd}
+      source: rate_card_api
+      source_url: https://openrouter.ai/api/v1/videos/models
+      checked: 2026-09-02
+      confidence: documented
+      note: "Table rows quote the live rate card; the upstream applies a minimum charge the rate card does not publish (live 2026-09-02: 480p x 2 s priced $0.10 by the table, billed $0.2125 as usage.cost). What settles is the terminal usage.cost, never the table row. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved; the fallback is the matrix ceiling for unmatched requests."
+    verified: 2026-09-02
+    example_response: examples/openrouter.x.alibaba-wan-3-0.json
+    docs_url: https://openrouter.ai/alibaba/wan-3.0
+
+  - id: openrouter.video-gen.wan-3-0.from_image
+    capability: video-gen.wan-3-0.from_image
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /videos
+    name: "Alibaba: Wan 3.0 (image-to-video)"
+    summary: "Generate 480p, 720p, or 1080p video from a first-frame image with the Wan 3.0 model."
+    input:
+      body:
+        model: {type: string, required: true, enum: [alibaba/wan-3.0], example: alibaba/wan-3.0}
+        prompt: {type: string, required: true, example: "Bring the scene to life with a slow camera push."}
+        frame_images:
+          type: array
+          required: true
+          note: "OpenRouter image objects with type image_url, an image_url.url, and frame_type first_frame."
+        duration: {type: integer, required: false, default: 2, max: 30}
+        resolution: {type: string, required: false, default: 480p, enum: [480p, 720p, 1080p]}
+        aspect_ratio: {type: string, required: false, default: "16:9", enum: ["16:9", "4:3", "1:1", "3:4", "9:16"]}
+        generate_audio: {type: boolean, required: false, default: true}
+      bodyType: json
+    test_request:
+      body:
+        model: alibaba/wan-3.0
+        prompt: "Bring the scene to life with a slow camera push."
+        frame_images:
+          - {type: image_url, image_url: {url: "https://example.com/source.png"}, frame_type: first_frame}
+        duration: 2
+        resolution: 480p
+        aspect_ratio: "16:9"
+    cost:
+      type: per_success
+      table:
+        - {when: {body.model: alibaba/wan-3.0, body.resolution: 1080p}, value: 0.2, times: body.duration}
+        - {when: {body.model: alibaba/wan-3.0, body.resolution: 480p}, value: 0.05, times: body.duration}
+        - {when: {body.model: alibaba/wan-3.0, body.resolution: 720p}, value: 0.1, times: body.duration}
+      fallback:
+        value: 6.000000001
+        note: "The highest live SKU multiplied by the model's maximum duration is the global usage-settlement reservation ceiling."
+      currency: USD
+      settle: usage
+      usage: {path: usage.cost, unit: usd}
+      source: rate_card_api
+      source_url: https://openrouter.ai/api/v1/videos/models
+      checked: 2026-09-02
+      confidence: documented
+      note: "Table rows quote the live rate card. Indistinguishable mode-specific SKUs collapse to the highest rate. The matched row is reserved and the terminal usage.cost settles; observed charges can include a minimum or fee absent from pricing_skus, so a settle may exceed its reserve (reconcile lists overruns)."
+    unverified: "Image-to-video mode is documented but was not live-called during B-prime verification."
+    docs_url: https://openrouter.ai/docs/cookbook/video-generation/image-to-video

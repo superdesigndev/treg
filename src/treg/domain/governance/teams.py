@@ -9,6 +9,8 @@ from sqlmodel import select
 from ... import crypto
 from ...models import (
     AdConversion,
+    AsyncResourceRecord,
+    AsyncTaskRecord,
     Bundle,
     CallRecord,
     CapabilityPin,
@@ -130,7 +132,7 @@ ORG_SCOPED_MODELS = (
     CapabilityPin,
     TagBudget,
     TagSpend,  # before the money tables it attributes: its rows reference a Hold that is about to go
-    LedgerEntry, Hold, CreditBlock,
+    AsyncResourceRecord, AsyncTaskRecord, LedgerEntry, Hold, CreditBlock,
     OAuthCode, OAuthRefresh,   # grants naming a team that no longer exists
     IdempotentCall,            # a remembered answer belongs to the team that paid for it
     ToolRequest,  # attribution rows go with the team; anonymous filings carry no org_id and stay

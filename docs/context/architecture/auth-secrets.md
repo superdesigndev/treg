@@ -21,6 +21,7 @@ sources:
   - src/treg/domain/tools/bindings.py
   - src/treg/domain/tools/bundles.py
   - tests/test_oauth_refresh.py
+  - src/treg/config.py
 related:
   - architecture/proxy-model.md
   - architecture/data-model.md
@@ -28,6 +29,10 @@ related:
 ---
 
 # Auth & secrets
+
+Tier 4 has explicit platform-key slots for MiniMax, OpenRouter and Replicate. The web and async cron
+receive them as environment secrets, and the worker constructs the same platform bindings as the call
+path. Key values are never copied into task records, logs or archive evidence.
 
 ## Instagram grant methods (2026-09-01)
 
@@ -216,8 +221,9 @@ module symbols:
   `billed_rates` so the dashboard can show the price BEFORE consent — and so the catalog's own price
   display can stop calling a connected account free (`catMetered`, [dashboard](../interface/dashboard.md)). A **BYO connect is never metered** — the callback
   stamps `secret.provider` only in registry mode, and that attribution is the whole detection.
-- `auth_kind` = `"oauth"` (treg's app), `"token"` (Slack — a workspace-scoped bot the user creates and
-  pastes; `is_token_kind`), or `"key"` (an **API-key provider** connected by pasting a key: Apollo, PDL,
+- `auth_kind` = `"oauth"` (treg's app), `"token"` (a user-pasted Bearer token: Slack plus the
+  MiniMax, OpenRouter, and Replicate AI-generation providers),
+  or `"key"` (an **API-key provider** connected by pasting a key: Apollo, PDL,
   Akta, Hunter, Crunchbase, Lusha, Coresignal, Diffbot, The Companies API, LeadMagic on a new
   **Enrichment** shelf, TikHub + Bright Data + Just One API under
   Social, under **SEO** Semrush + DataForSEO, SE Ranking, Moz, Majestic, Serpstat, and under

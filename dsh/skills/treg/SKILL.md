@@ -96,7 +96,8 @@ spends nothing: that key belongs to them.
 
 2,600+ catalogued endpoints across 60+ providers, grouped by what they DO: keyword & rank tracking,
 backlinks & authority, AI visibility, trending & discovery, publishing to the team's own social
-accounts, people & company enrichment, ads management & creative, measurement.
+accounts, people & company enrichment, ads management & creative, measurement, video & image
+generation.
 
 ```bash
 treg catalog search "subreddit posts"            # find endpoints by what they do
@@ -152,6 +153,40 @@ Notes:
     — post-filter, or send `X-Treg-Route-Strict-Filters: 1` to get a 422 (unbilled) instead of a looser
     answer. `catalog_get treg.people.email.find` shows the plan and prices.
 - An endpoint with no published price is refused rather than served free; connect your own key.
+
+## Task - generate a video or an image
+
+Generation models live in the catalog under the `video-gen` and `image-gen` platforms, one row per
+model per route (MiniMax direct, Replicate, OpenRouter), so the same model on two routes sits next
+to itself with both prices. Models are not interchangeable - you pick one; treg does not choose.
+
+```bash
+treg catalog search "text to video"                  # every model, with prices
+treg catalog get minimax.video-gen.h3.generate       # native params, model enum, price table, async descriptor
+treg call minimax.video-gen.h3.generate --await --timeout 900 --data '{"model":"MiniMax-H3-Max",
+  "content":[{"type":"text","text":"A paper boat drifts across a quiet pond at sunrise."}],
+  "resolution":"480P","duration":5,"ratio":"16:9"}'
+```
+How it works:
+- **A generation call is an async task.** The submission returns a task id at once; `--await` polls
+  the provider until it finishes and prints the **final response only** on stdout. stderr carries the
+  task id, a resumable `treg call …` command (Ctrl-C loses the wait, never the task or the money),
+  progress, and the result URL. Exit 0 = done, 2 = the provider failed the task, 3 = timed out
+  (resume with the printed command).
+- **CLI agents: raise your shell tool's timeout or run the call in the background.** A video takes
+  1-5 minutes; a runtime's default 2-minute command limit cuts it off mid-wait.
+- **MCP and raw-HTTP agents:** the response header `X-Treg-Async` is the descriptor - where to poll,
+  which status values are terminal, where the result is. Poll lazily: wait ~60 s before the first
+  check, then every 30-60 s; three to six checks per video is normal. Do other work in between.
+- Parameters are the provider's own, verbatim; `treg catalog get` shows them, including the
+  enum of selectable models and resolutions. Nothing is translated between providers.
+- **Money:** the price is reserved at submission and charged only when the task succeeds. A failed
+  or moderated task refunds the whole hold - nothing to do on your side. `treg audit` and the
+  dashboard's Activity page show each task's state (`generating…` → `done` / `failed · refunded`)
+  with the result link once it exists.
+- **Result URLs expire** (the descriptor's `ttl_note` says how soon; MiniMax's ~9h). Download
+  promptly; treg never stores the media. On some routes the file needs one more call -
+  `--await` prints that exact command instead of downloading.
 
 ## Retrying a call without paying twice
 

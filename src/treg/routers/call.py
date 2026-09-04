@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from urllib.parse import urlsplit
 
@@ -37,6 +38,7 @@ from ..application.call.types import CallerSnapshot, CallFailure, CallInput, Ups
 from ..caller_metadata import _client_of
 from ..call_surface import split_call_path
 from ..config import get_settings
+from ..domain.catalog import store as catalog_store
 from ..domain.governance import access as access_policy
 from ..domain.governance import publicdemo as publicdemo_policy
 from ..domain.identity.access import Caller, require_member
@@ -82,6 +84,25 @@ def _http_upstream_response(upstream: UpstreamResponse) -> StreamingResponse:
     )
     response.raw_headers = list(upstream.raw_headers)
     return response
+
+
+def _attach_async_descriptor(upstream: UpstreamResponse, context, rest: str = "") -> None:
+    """Attach static catalog metadata before Starlette starts the upstream body stream.
+
+    An idempotent replay returns before marketplace resolution, so the endpoint is taken from the
+    path itself: a `--await` retry of a stored submission must still learn how to poll the task
+    that is already running, or it would print the body and stop."""
+    marketplace = context.marketplace
+    endpoint_id = marketplace.endpoint_id if marketplace is not None else rest.split("?", 1)[0]
+    endpoint = catalog_store.load().by_id.get(endpoint_id)
+    descriptor = endpoint.get("async") if endpoint else None
+    if not descriptor:
+        return
+    value = json.dumps(descriptor, ensure_ascii=True, separators=(",", ":")).encode("ascii")
+    upstream.raw_headers = tuple(
+        (name, existing) for name, existing in upstream.raw_headers
+        if name.lower() != b"x-treg-async"
+    ) + ((b"x-treg-async", value),)
 
 
 def _require_tool_use_http(caller: Caller, tool: Tool) -> None:
@@ -287,7 +308,9 @@ async def call_tool(
     request.state.call_ref = context.call_ref
     request.state.call_context = context
     try:
-        return _http_upstream_response(await execute_call(context, request.app.state.http))
+        upstream = await execute_call(context, request.app.state.http)
+        _attach_async_descriptor(upstream, context, rest)
+        return _http_upstream_response(upstream)
     except CallFailure as exc:
         raise _translate_call_failure(exc) from exc
     except PoolTimeoutError:

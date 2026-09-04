@@ -202,6 +202,7 @@ endpoints:
     note: documented free — does not consume credits
   docs_url: https://docs.akta.pro/api-reference/supporting-apis/company-addition-api
 - id: akta.x.request-status
+  platform_blocked: "Shared-key request ownership is unavailable; connect your own Akta key."
   kind: utility
   tier: extended
   platform: companies

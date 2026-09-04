@@ -85,7 +85,8 @@ answer was lost on the way back to you. Send the SAME key when you repeat that c
       -H "X-Treg-Token: $TREG_TOKEN" -H "Idempotency-Key: 4f9c1b2e"
 
 treg returns the stored answer, does not call the provider again, and charges nothing. The reply
-carries `X-Treg-Idempotent-Replay: true` and `X-Treg-Cost-Micro` set to what the original cost.
+carries `X-Treg-Idempotent-Replay: true` and `X-Treg-Cost-Micro` set to what the original cost
+(for a generation task: what it reserved; the settled figure is in `treg audit` / `GET /calls`).
 
 Use a NEW key, or none, for genuinely new work — even with identical parameters. Repeating a search
 to see what changed is a new call, not a retry, and reusing the key would hand you yesterday's
@@ -133,7 +134,7 @@ ledger.
 
 Curated endpoints across 60+ providers, grouped by what they DO: keyword and rank tracking,
 backlinks and authority, AI visibility, trending and discovery, publishing to socials, people and
-company enrichment, ads management and creative, measurement. Ask for the task; the catalog tells
+company enrichment, ads management and creative, measurement, video and image generation. Ask for the task; the catalog tells
 you which endpoints serve it, what each costs, and how you would be served. Exact live counts:
 `GET {BASE}/catalog/platforms`.
 
@@ -216,6 +217,29 @@ shows the ranked plan and prices before you spend.
 Call a specific provider's endpoint when you need a particular one.
 
 <!--/routed-->
+**Video and image generation - async calls.** The `video-gen` and `image-gen` platforms list one
+row per model per route (MiniMax direct, Replicate, OpenRouter); the same model on two routes sits
+side by side with both prices. Models are not interchangeable - you pick one; treg does not choose.
+A generation call is an **async task**: the submission returns a task id, and the response carries
+`X-Treg-Async`, a JSON descriptor saying where to poll (a catalog id plus the parameter that takes
+the task id, or an allow-listed URL from the submission), which status values mean done or failed,
+and where the result is (a path in the terminal response, or one more catalog call that fetches it).
+
+    treg catalog get minimax.video-gen.h3.generate      # native params, model enum, price table, descriptor
+    treg call minimax.video-gen.h3.generate --await --timeout 900 --data '{...}'
+    # stdout: the final polling response only; stderr: task id, a resumable `treg call` command,
+    # progress, the result URL. Exit 0 done · 2 provider failed the task · 3 timed out (resumable).
+
+- **CLI agents: raise your shell tool's timeout or run the call in the background** - a video takes
+  1-5 minutes, and a runtime's default 2-minute limit cuts the wait off (never the task).
+- **MCP and raw HTTP:** poll lazily - wait ~60 s before the first check, then every 30-60 s; three to
+  six checks per video is normal. Work on something else in between.
+- **Money:** reserved at submission, charged only when the task succeeds; a failed or moderated task
+  refunds the whole hold. `treg audit`, `GET /calls` (`async_task`) and the dashboard Activity page
+  show each task's state and, once done, the result link.
+- **Result URLs expire** (`ttl_note` in the descriptor; MiniMax ~9h). Download promptly; treg never
+  stores generated media. Fetch-mode routes need one more call - `--await` prints that command.
+
 Money notes for agents:
 - The price is visible before you call (`treg catalog get`, or `estimated_cost_usd` in
   `GET {BASE}/catalog/endpoints/<id>/access`). No confirmation ritual — costs are fractions
@@ -404,7 +428,11 @@ are both supported; you do not need to pre-arrange anything with us.
                                                           store a secret without binding it to a tool)
     treg tool ls | rm <id> | update <id> …
     treg call <tool> <path>  |  treg call <full-url>     proxy an HTTP call (named or agent-native)
+    treg call <endpoint-id> --await [--timeout N] a catalog call that is an async task (generation):
+                                                  submit, poll, print the final response (default 900 s)
     treg calls [--limit N]                        the proxied-call audit log
+    treg audit [--limit N] [--calls | --runs]     calls + CLI runs in one log; generation tasks carry
+                                                  their state and result link
 
     treg run <tool> -- <cli args>                 run a vendor CLI (stripe/gh/vercel…) with the tool's
                                                   credential injected — the CLI runs, you never hold the key

@@ -23,6 +23,7 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     "target_ambiguous": "caller",
     "catalog_retired": "caller",
     "catalog_parameter_invalid": "caller",
+    "async_resource_not_owned": "caller",
     "capability_pinned": "caller",
     "policy_denied": "caller",
     "daily_cap_reached": "caller",

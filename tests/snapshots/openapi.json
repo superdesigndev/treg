@@ -2213,6 +2213,69 @@
         "summary": "Admin Suspend Org"
       }
     },
+    "/admin/reconcile/asynctasks": {
+      "get": {
+        "description": "Deferred holds, absorbed timeouts, usage overruns (team paid more than reserved), block\nshortfalls (platform absorbed), and provider task outcomes.",
+        "operationId": "admin_reconcile_asynctasks_admin_reconcile_asynctasks_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since_days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Since Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Admin Reconcile Asynctasks Admin Reconcile Asynctasks Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin Reconcile Asynctasks"
+      }
+    },
     "/admin/reconcile/drift": {
       "get": {
         "description": "Endpoints whose observed cost has wandered from the catalog's estimate. Only the providers that\nreport their own charge in-band appear (see `reconcile.price_drift`).",

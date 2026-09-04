@@ -595,6 +595,11 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   "we said no"). It does **not** carry `error_request`/`error_response`, and defers them so they are
   not even fetched: the captured evidence is admin-only in v1, and putting it on a team's own feed
   has to be a deliberate edit in two places rather than a column appearing by accident.
+  A metered async submission audited its RESERVE as `cost_charged_micro`; both `list_calls` and
+  `get_call` therefore join `application.asynctasks.views_for` on `call_ref` and add `async_task`
+  (`status`, `task_id`, `reserved_micro`, `settled_micro`, `completed_at`, `error`, `result_url`,
+  `fetch_command`, `ttl_note`) while `_async_charged` rewrites the charge to what actually hit the
+  balance - `null` while pending, the settled figure (0 after a refund) at a terminal state.
   Each row also carries `has_result` — true when the archive holds this call's answer — and
   `get_call_result` (`GET /calls/{id}/result`, member, org-scoped by the row's `org_id`) returns
   it: the vendor-facing request shape BEFORE credential injection (`ArchiveKey.req_*`) and the
@@ -699,6 +704,11 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   credential ladder onward it delegates to `call_tool`, retaining provider/user credentials, ACLs,
   deny rules, caps, metering, audit, idempotency and faithful relay.
 
+  A resolved catalog endpoint with an async descriptor adds one treg-owned response header:
+  `X-Treg-Async`, containing compact JSON for the already-known effective descriptor. The router
+  attaches it after catalog resolution and before Starlette begins streaming; no provider response
+  bytes are read, parsed, or rewritten.
+
 ## Schemas
 Pydantic input models: `UserIn`, `OrgIn` / `InviteIn` / `AcceptIn`, `EmailStartIn` / `EmailVerifyIn`,
 `SecretIn` / `SecretUpdate`,
@@ -787,7 +797,11 @@ OAuth grants and catalog-only calls are also refused.
 
 `/call/` gained one thing for this: a metered response now carries `X-Treg-Cost-Micro`, so a caller
 can report what it spent instead of diffing the balance. Absent on an unmetered call — a team's own
-key is not ours to bill, and `0` would read as "free".
+key is not ours to bill, and `0` would read as "free". On an **async submission** (a deferred
+generation task) the header is the **reserve**, not the final charge: the task settles later at
+the table row or the provider's reported usage, or refunds in full on failure; `GET /calls` and
+`/calls/{ref}` carry the settled figure under `async_task`, and an idempotent replay repeats the
+reserve. The CLI prints it as "generation reservation".
 
 ## `Idempotency-Key` on `/call/`
 
@@ -838,6 +852,7 @@ if returning the hold itself fails, the money comes back when the hold is reaped
 | Route | Does |
 |---|---|
 | `GET /calls?days=&before_id=&limit=` | this team's calls, windowed and pageable. Analytics — **not** an invoice source |
+| `GET /calls/{call_ref}` | one call by its `X-Treg-Call-Id`, plus the ledger entries for it and its `async_task` view when it was a metered generation |
 | `GET /calls/{id}/result` | what one call asked and what came back — the archive's copy; metered platform 2xx only, `stored: false` + `note` otherwise |
 | `GET /calls/{call_ref}` | one call by its `X-Treg-Call-Id`, plus the ledger entries for it |
 | `GET /orgs/{id}/usage/by-tag?key=&days=` | per-value spend for one tag key. **Money from the ledger**; admin+ |

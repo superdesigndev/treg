@@ -456,6 +456,9 @@ endpoints:
     path: /v2/segmentation
     name: "Start an ICP segmentation from a list of domains"
     summary: "Create a new segmentation from a list of company domains"
+    resource_ownership:
+      produces:
+        - {kind: segmentation, path: segmentationId}
     input:
       body:
         domains: {type: "array[string]", required: true, note: "the companies to group — typically your customer list or best-fit accounts", example: ["stripe.com", "adyen.com", "razorpay.com", "checkout.com", "mollie.com"]}
@@ -480,6 +483,8 @@ endpoints:
     path: /v2/segmentation/{segmentation_id}
     name: "Get a segmentation's results"
     summary: "Retrieve a segmentation by its id, including its segments, traits, and CRM metrics once status is SUCCESSFUL"
+    resource_ownership:
+      requires: {kind: segmentation, param: segmentation_id}
     input:
       pathParams:
         segmentation_id: {type: integer, required: true, note: "the id returned by oceanio.companies.segment.create", example: 153746}
@@ -500,6 +505,8 @@ endpoints:
     path: /v2/segmentation/{segmentation_id}/markDomains
     name: "Mark companies good or poor fit"
     summary: "Append domains to the positive or negative list of an existing segmentation"
+    resource_ownership:
+      requires: {kind: segmentation, param: segmentation_id}
     input:
       pathParams:
         segmentation_id: {type: integer, required: true, note: "the segmentation to teach", example: 153746}
@@ -524,6 +531,8 @@ endpoints:
     path: /v2/segmentation/{segmentation_id}/attribute-domains
     name: "Assign domains to the closest segment, with match score"
     summary: "Assign each input domain to the closest segment in a segmentation, with a 0-1 match score"
+    resource_ownership:
+      requires: {kind: segmentation, param: segmentation_id}
     input:
       pathParams:
         segmentation_id: {type: integer, required: true, note: "a segmentation whose status is SUCCESSFUL", example: 153746}

@@ -132,7 +132,11 @@ class Catalog:
         records `value: 2.0, per: 1000, unit: row` and prices out at $0.002 per row."""
         if not isinstance(cost, dict):
             return None
-        value, cur = cost.get("value"), cost.get("currency", "USD")
+        # A table's explicit fallback is its validated global upper bound.  It is therefore the
+        # one safe scalar to expose to eligibility and callers that cannot render the matrix.
+        fallback = cost.get("fallback") if isinstance(cost.get("fallback"), dict) else {}
+        value = cost.get("value", fallback.get("value"))
+        cur = cost.get("currency", "USD")
         per = cost.get("per") or 1
         if cur == "credit":
             rate = self.credit_rates.get(provider)
@@ -145,6 +149,12 @@ class Catalog:
         usd = (round(value * rate / per, 9)
                if isinstance(value, (int, float)) and rate is not None and per > 0 else None)
         out = {**cost, "usd": usd}
+        # A table prices out as a RANGE: `usd` stays the validated ceiling (what reserve and
+        # eligibility read), `usd_min` is the cheapest row so a display never shows only the
+        # worst case as "the price" (an H3 video is $0.25 typical against a $1.96 ceiling).
+        floor = cost.get("table_min")
+        if isinstance(floor, (int, float)) and rate is not None and per > 0 and usd is not None:
+            out["usd_min"] = min(usd, round(floor * rate / per, 9))
         # A $0 trial price travels with its allowance, so every surface showing the price can also
         # say how much of it a team gets — a bare $0.00 would read as unlimited.
         if provider in self.trial_pools and usd == 0:
@@ -211,6 +221,56 @@ def _read_yaml(path: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def effective_async_descriptor(default: object, override: object = None) -> object:
+    """The descriptor an endpoint actually follows: its own block, else the provider file's default.
+
+    An endpoint block REPLACES the provider default wholesale - a descriptor is one protocol, and
+    a protocol that differs in one axis (MiniMax v2 versus v1) differs in its poll target, status
+    vocabulary and result location together, so a field-wise merge only ever produced descriptors
+    nobody had written down. ``false`` is the explicit opt-out for utility and synchronous rows
+    sharing a file with async submissions; absence means inherit. Non-mapping values pass through
+    for the validator to reject."""
+    if override is False:
+        return None
+    if override is None:
+        return default
+    return override
+
+
+def _table_floor(cost: object, input_schema: object) -> float | None:
+    """The cheapest price a `cost.table` can produce, in the table's own currency: the smallest
+    row value, a `times` row taken at its field's declared minimum (or 1). Display only - reserve
+    and settle read the rows themselves."""
+    if not isinstance(cost, dict) or not isinstance(cost.get("table"), list):
+        return None
+    fields: dict[str, dict] = {}
+
+    def add(items: dict, prefix: str) -> None:  # nested objects (Replicate `input.*`) included
+        for name, spec in items.items():
+            if isinstance(spec, dict):
+                fields[f"{prefix}.{name}"] = spec
+                if isinstance(spec.get("properties"), dict):
+                    add(spec["properties"], f"{prefix}.{name}")
+
+    if isinstance(input_schema, dict):
+        for location in ("pathParams", "queryParams", "body"):
+            block = input_schema.get(location)
+            if isinstance(block, dict) and isinstance(block.get("properties"), dict):
+                block = block["properties"]
+            if isinstance(block, dict):
+                add(block, location)
+    floors = []
+    for row in cost["table"]:
+        if not isinstance(row, dict) or not isinstance(row.get("value"), (int, float)):
+            continue
+        value = float(row["value"])
+        if isinstance(row.get("times"), str):
+            low = row.get("times_min", fields.get(row["times"], {}).get("min"))
+            value *= float(low) if isinstance(low, (int, float)) and low > 0 else 1.0
+        floors.append(value)
+    return min(floors) if floors else None
+
+
 def _parse(directory: Path) -> Catalog:
     if not directory.is_dir():
         return Catalog()
@@ -264,6 +324,14 @@ def _parse(directory: Path) -> Catalog:
             # from a hit.
             if "expect" not in raw and doc.get("expect") is not None:
                 raw = {**raw, "expect": doc["expect"]}
+            effective_async = effective_async_descriptor(doc.get("async"), raw.get("async"))
+            if effective_async is not None:
+                raw = {**raw, "async": effective_async}
+            # A price table's floor rides with the cost so every price surface can show the honest
+            # range instead of the fallback ceiling alone (cost_view derives `usd_min` from it).
+            floor = _table_floor(raw.get("cost"), raw.get("input"))
+            if floor is not None:
+                raw = {**raw, "cost": {**raw["cost"], "table_min": floor}}
             ep = _normalize(raw, provider, directory)
             if ep["id"] in by_id:  # first file wins; ids are unique by validator contract
                 continue
@@ -426,7 +494,8 @@ def _effective_cost(raw: dict):
     its evidence is the captured example response, not a page that might have moved since. Without
     a `verified` date there is no date to stand behind, and the price stays unprovenanced."""
     cost = raw.get("cost")
-    if isinstance(cost, dict) and (cost.get("value") is not None or cost.get("type") == "free"):
+    if isinstance(cost, dict) and (cost.get("value") is not None or cost.get("table") is not None
+                                   or cost.get("type") == "free"):
         return cost
     oc = raw.get("observed_cost")
     if oc is None:
@@ -476,6 +545,12 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         # per_success endpoint with no routing adapter can still tell a vendor-side failure from a
         # hit. Without it treg bills the estimate for a body the VENDOR gave away free.
         "expect": raw.get("expect") or None,
+        # How an async submission is followed to a terminal result. Provider-file defaults have
+        # already been merged above; consumers always see the complete effective descriptor.
+        "async": raw.get("async") or None,
+        # Opaque shared-account objects created/read by legacy async endpoint pairs. Resolution
+        # enforces `requires`; the buffered successful response persists every `produces` path.
+        "resource_ownership": raw.get("resource_ownership") or None,
         "cost": _effective_cost(raw),
         # Absent `tier` means core: the curated first wave predates the split, and treating an
         # unmarked endpoint as extended would hide it from the platform view entirely.
@@ -559,6 +634,7 @@ def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None) -
         # the row — not a second request away
         "call_template": call_template(ep),
         "cost": cat.cost_view(ep["cost"], ep["provider"]) if cat else ep["cost"],
+        "async": ep.get("async"),
         # whether treg may serve this route with its OWN key, billed to the caller's balance —
         # a fact about the row that decides whether the caller needs a credential at all, so it
         # rides on the row rather than being re-derived per client (see `Catalog.platform_eligible`)
@@ -802,7 +878,7 @@ def unknown_id_hint(endpoint_id: str, cat: Catalog) -> str:
 # curated English, so an embedding index would add a dependency and a build step to beat "tiktok
 # comments" by nothing. Ranking has to be PREDICTABLE above all — an agent that can't guess why a row
 # won can't refine its query.
-_SPLIT = re.compile(r"[^a-z0-9]+")
+_SPLIT = re.compile(r"[^a-z0-9\u3400-\u9fff]+")
 
 # what a token hit is worth, by where it landed
 W_CAPABILITY = 3   # capability id/description + platform label/slug — the curated vocabulary

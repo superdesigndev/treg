@@ -12,6 +12,7 @@ sources:
   - src/treg/api.py
   - src/treg/bootstrap.py
   - src/treg/routers/admin.py
+  - src/treg/application/asynctasks.py
 related:
   - architecture/data-model.md
   - architecture/proxy-model.md
@@ -19,6 +20,13 @@ related:
 ---
 
 # The archive
+
+Async settlement archives terminal provider JSON under `treg://asynctasks/<call_id>` using the
+original endpoint and provider. This mandatory evidence may contain expiring result URLs; the worker
+never follows those URLs and never stores generated media bytes. `load_terminal_responses((call_id, endpoint_id), …)`, which looks them up by the indexed key hash
+they were stored under and tolerates a pruned carrier,
+reads them back (newest snapshot per key, following `body_of`) for the Activity displays, which
+extract the artifact through the descriptor rather than by guessing at the provider's shape.
 
 Two concepts, one word each — the vocabulary is deliberate and mirrors the charter's discipline:
 **cache** is the newest stored answer for a key, served instead of a vendor call while it is
@@ -284,6 +292,16 @@ read this section. Queued recordings wait inside
 their fire-and-forget task, so the caller is unaffected; the 30s bound covers wait+write, so a
 stuck queue still sheds rather than wedges. Throttled, not shed: the burst test proves all 12
 concurrent recordings land while peak DB concurrency stays ≤4.
+
+The semaphore is process-local, while production runs multiple processes. An exact in-process key
+lock is acquired before the semaphore, so duplicate recordings queue without consuming all four
+database-write slots and unrelated keys keep moving; weak references discard inactive locks. Once
+admitted, the writer locks and refreshes the matching `ArchiveKey` row before reading the newest
+snapshot and allocating version N+1. The refresh matters because the earlier unlocked lookup
+already populated SQLAlchemy's identity map. The per-key Postgres row lock serializes cross-process
+writers; SQLite is protected in-process by the key lock. Snapshot insertion is explicitly flushed,
+and version conflicts propagate to the bounded outer retry to cover first-key and multi-process
+SQLite races.
 
 ## Keys-endpoint weight fix (2026-09-03, the pool-pressure repeat)
 

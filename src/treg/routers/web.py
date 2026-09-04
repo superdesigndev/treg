@@ -89,6 +89,9 @@ def _price_label(cost: dict | None) -> str:
         return "free"
     unit = {"per_call": "call", "per_result": "result", "per_success": "success"}.get(
         cost.get("type"), "call")
+    low = cost.get("usd_min")  # a price table: cheapest row up to the validated ceiling
+    if isinstance(low, (int, float)) and low < usd:
+        return f"{_usd_short(low)}-{_usd_short(usd)}/{unit}"
     return f"{_usd_short(usd)}/{unit}"
 
 

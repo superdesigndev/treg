@@ -460,6 +460,24 @@ def test_cli_org_overflow_parses(monkeypatch):
     assert args.state == "off" and args.fn is not None
 
 
+async def test_child_with_no_reported_cost_settles_at_the_aggregator_reserve(
+    clients: AsyncClient, overflow_on, monkeypatch,
+):
+    """The child carries its own settlement basis. An aggregator answer without a price settles at
+    the aggregator reserve, never at the parent's direct price (a regression the basis refactor
+    introduced and the review caught)."""
+    await _route(price_micro=3_000)
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, b'{"detail":"out"}'))
+    envelope = {"success": True, "data": VENDOR_BODY}  # no priceCents, no billing block
+    monkeypatch.setattr(O, "_send", _orthogonal([(200, envelope)], []))
+    before = await _balance(clients)
+    response = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert response.status_code == 200
+    assert response.headers["X-Treg-Cost-Micro"] == "3000"
+    assert before - await _balance(clients) == 3_000
+    assert 3_000 != EP_MICRO, "the fixture must price the aggregator differently from direct"
+
+
 # --- Apollo: "out of credits" is a 422, not a 402 (ops/capacity.md, 2026-09-01) --------------
 
 APOLLO_EP = "apollo.people.enrich"           # POST /people/match, 1 credit = $0.026 per hit

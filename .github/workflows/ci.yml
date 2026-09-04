@@ -98,6 +98,7 @@ jobs:
           tests/callmatrix
           tests/test_ledger.py
           tests/test_ledger_claim_review.py
+          tests/test_asynctasks.py
           tests/test_alembic_baseline.py
           tests/test_archive.py
           tests/test_call_cancellation.py

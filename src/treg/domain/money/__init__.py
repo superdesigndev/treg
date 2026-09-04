@@ -52,7 +52,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from ...config import get_settings
-from ...models import CreditBlock, Hold, LedgerEntry, Org, TagSpend
+from ...models import AsyncTaskRecord, CreditBlock, Hold, LedgerEntry, Org, TagSpend
 
 # Block consumption order: promotional credit burns first, then the oldest purchased block. Promo is
 # a marketing expense and never refundable, so spending it first keeps the refundable (and disputable)
@@ -470,7 +470,9 @@ async def reap_stale_holds(db: AsyncSession, *, org_id: int | None = None, limit
     `reserve` passes its own org, which is the lazy strategy that keeps this off any scheduler.
     Returns how many were released. Commits (via `release`)."""
     cutoff = _now() - timedelta(seconds=hold_ttl_s())
-    q = select(Hold).where(Hold.created_at < cutoff).order_by(Hold.created_at).limit(limit)
+    deferred = select(AsyncTaskRecord.call_id).where(
+        AsyncTaskRecord.call_id == Hold.id, AsyncTaskRecord.status == "pending").exists()
+    q = select(Hold).where(Hold.created_at < cutoff, ~deferred).order_by(Hold.created_at).limit(limit)
     if org_id is not None:
         q = q.where(Hold.org_id == org_id)
     stale = (await db.execute(q)).scalars().all()

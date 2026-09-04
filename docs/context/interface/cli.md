@@ -252,12 +252,32 @@ Bare **`treg connections`** now lists (the subparser is `required=False` with a 
   `--query` (consumed — dropped from the relayed query via `relay(drop_params=…)`). Members restricted
   via `--tools` get no marketplace calls; a bare provider name (`call tikhub /path`) still 404s but
   points at the endpoint-id form. See [cli-audit-2026-07-28](cli-audit-2026-07-28.md) (design section).
+  `-p` is a short alias for `--query`. `catalog get` prints the whole contract an agent needs to
+  build the cheapest valid request: the PARAMS table flattens nested objects to dotted names and
+  its NOTE column carries the prose rule, the enum (`one of:`), the default, the numeric range and
+  the example; a `cost.table` endpoint gets a PRICE TABLE section (`_print_price_table`: the rows,
+  `× field (from times_min)` for linear rows, the fallback ceiling, and whether the row or the
+  provider's usage settles); an async endpoint gets an ASYNC TASK section (`_print_async`: id
+  field, poll command and interval, terminal values, result location or retrieval command,
+  lifetime) and its RUN IT template ends in `--await --timeout 900`. `--await [--timeout 900]`
+  reads `X-Treg-Async`; without the header it is a no-op. Descriptor semantics come from `treg.domain.asynctasks` (stdlib-only, see
+  the import-boundaries fragment), not a CLI-side copy. With the header it prints the task id and a resumable `treg call` command to
+  stderr, polls static catalog ids or allow-listed dynamic URLs through `/call/`, retries network/5xx
+  failures with backoff up to five consecutive failures, and keeps waiting on unknown status values
+  after one warning. Stdout contains only the terminal polling response bytes. Exit codes are 0 for
+  success, 2 for a provider terminal failure, 3 for timeout/interruption/recoverable polling failure,
+  and 1 for malformed usage or metadata. Fetch-mode results print a retrieval command rather than
+  downloading binary content; result URLs, reservations, progress, and TTL reminders stay on stderr.
+  Running that command preserves a non-text response byte-for-byte on stdout (for example,
+  `treg call openrouter.video-gen.result.retrieve -p video_id=... > result.mp4`); the upstream
+  `Content-Type` remains authoritative, so the async descriptor does not duplicate a result format.
 - **`audit`** (`cmd_audit`, `--limit`, `--calls` | `--runs`) — the single "who did what" view. `--calls`
   and `--runs` delegate to `cmd_calls` / `cmd_runs` verbatim (the old `treg calls` / `treg runs` output,
   byte for byte). The **default merged view** is the only new behaviour in the consolidation: it fetches
   both `GET /calls` and `GET /runs` (no new endpoint), normalises each row to
-  `{kind, id, user_email, tool, detail, result, where, created_at}`, sorts by `created_at` descending and
-  truncates to `--limit`. It **drops the `kind == "local_run"` CallRecords**, because `/runs` already
+  `{kind, id, user_email, tool, detail, result, where, created_at}` (plus `task` - `status`,
+  `settled_micro`, `result_url`, `fetch_command`, `ttl_note` - when `/calls` reports an `async_task`
+  for the row, i.e. a metered generation), sorts by `created_at` descending and truncates to `--limit`. It **drops the `kind == "local_run"` CallRecords**, because `/runs` already
   surfaces those same grants as its `where: "local"` rows — otherwise every local run would be listed
   twice. Call ids are prefixed `c…`; run ids keep `/runs`' own `s…`/`l…` prefixes, so nothing collides.
 - **`cli run`** (`treg cli run <tool> [--local|--server] [--] <cli args…>`, `cmd_run`) — a **dispatcher** that picks

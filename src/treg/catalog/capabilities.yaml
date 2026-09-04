@@ -25,6 +25,10 @@ platforms:
   # --- AI Search: answer engines (GEO / AEO visibility) ----------------------------------------
   ai-search: {label: "AI Visibility / AEO", category: "SEO/AEO", featured: 6, summary: "Aggregated brand-mention and keyword data across AI answer engines."}
 
+  # --- AI generation: generated media modalities ------------------------------------------------
+  video-gen: {label: "Video generation", category: "AI generation", summary: "Text-to-video and image-to-video across models, with prices side by side."}
+  image-gen: {label: "Image generation", category: "AI generation", summary: "Text-to-image and prompt-based image editing across models."}
+
   # --- Social: global social & video -----------------------------------------------------------
   tiktok: {label: "TikTok", category: "Social", featured: 1, summary: "Profiles, videos, comments, hashtags and search — plus your own account via OAuth."}
   instagram: {label: "Instagram", category: "Social", featured: 2, summary: "Public profiles, posts, comments, reels and hashtag data from Instagram."}
@@ -120,6 +124,18 @@ platforms:
   stocks: {label: "Stock Market Data", category: "Market data", featured: 2, summary: "End-of-day and intraday stock prices, tickers, splits and dividends across global exchanges."}
 
 capabilities:
+  # --- AI generation ---------------------------------------------------------------------------
+  # The four generation capabilities are DELIBERATELY memberless: generation models are not
+  # interchangeable, so a merged row comparing different models would be a false comparison.
+  # They are reserved for hand-picked models (cheapest / best value / best quality) - mapping a
+  # row here is an editorial act, not a modality tag. Rows carry per-model capabilities instead
+  # (proposed in their provider files), the join key for same-model multi-route comparison.
+  video-gen.from_text: "Generate a video from a text prompt"
+  video-gen.from_image: "Animate an image into a video (image-to-video)"
+  video-gen.task.status: "Check an async video generation task"
+  image-gen.from_text: "Generate an image from a text prompt"
+  image-gen.edit: "Edit or restyle an image with a prompt"
+
   creators.search: "Find influencers & creators by niche, country, followers & engagement on Instagram, TikTok, YouTube"
   # --- SEO / search -----------------------------------------------------------------------------
   google.serp.organic: "Get organic search results for a keyword"

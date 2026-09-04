@@ -273,6 +273,14 @@ packages = ["src/treg"]
 # time and break the wheel build (`A second file is being added ... at the same path`).
 
 [[tool.importlinter.contracts]]
+name = "Async task domain is a stdlib leaf shared with the light CLI"
+type = "forbidden"
+source_modules = ["treg.domain.asynctasks"]
+forbidden_modules = ["treg.api", "treg.routers", "treg.application", "treg.bootstrap", "treg.audit", "treg.models", "treg.infra", "treg.config", "fastapi", "starlette", "sqlmodel", "sqlalchemy", "pydantic", "pydantic_settings", "yaml", "httpx"]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
 name = "Capacity domain does not depend on outer layers"
 type = "forbidden"
 source_modules = ["treg.domain.capacity"]

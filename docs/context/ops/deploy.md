@@ -397,7 +397,7 @@ USD. Platform billing settles every call from the response's `costDollars.total`
 search or a contents call with three content types bills exactly what Exa charged, not the catalog
 base. Verified on the dev server before merge: reserve $0.007 → settle $0.009 on a 12-result search.
 
-## Worker commands and the capacity cron (2026-08-28)
+## Worker commands and scheduled settlement
 
 `treg-worker` (console script, `[server]` extra) hosts the scheduled maintainer commands -
 `capacity sweep` and `overflow verify --all` (see `ops/capacity.md`). `render.yaml` describes only the
@@ -425,6 +425,11 @@ Aggregator keys
 (`TREG_OVERFLOW_KEY_ORTHOGONAL` / `_MONID`) are dashboard-managed on the web service and flow the same
 way. `TREG_OVERFLOW_MODE` (`off` default | `shadow` | `on`) and `TREG_OVERFLOW_DAILY_BUDGET_USD` (20)
 govern the overflow child cycle (`ops/capacity.md`); the keys serve nothing while the mode is `off`.
+
+`treg-worker asynctasks settle` is the second cron command. `treg-asynctasks-settle` runs every two
+minutes with the database URL, provider allow-list, and MiniMax/OpenRouter/Replicate platform keys
+inherited from the web service. It never originates money; it only completes request-path holds.
+Multi-instance claims use `FOR UPDATE SKIP LOCKED`.
 
 ## A `src/treg/infra/db.py` change needs a Postgres-shaped deploy plan
 

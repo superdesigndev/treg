@@ -33,6 +33,7 @@ sources:
   - src/treg/domain/connections/oauth_flow.py
   - src/treg/domain/connections/refresh.py
   - src/treg/domain/money/__init__.py
+  - src/treg/domain/asynctasks/__init__.py
   - src/treg/domain/capacity/__init__.py
   - src/treg/infra/upstream/__init__.py
   - src/treg/infra/upstream/injectors.py
@@ -73,6 +74,10 @@ indirectly. `as_packages = true` makes the source cover every current and future
 `api.py` remains the compatibility exporter and ordered route-table host, so the allowed direction is
 API to routers.
 
+The async-task domain has the same inward-only boundary as capacity: it may not import API, routers,
+application orchestration or best-effort audit. `tests/test_call_architecture.py` pins the rule and a
+mutation proving the guard rejects a forbidden edge.
+
 Stage 3 adds domain contracts as packages appear. The complete `treg.domain.identity` package cannot import
 `treg.api`, `treg.routers`, or `treg.application`. Identity now owns session signing and validation,
 MCP token and grant-family primitives, and caller/access resolution as a leaf. Sibling-domain
@@ -112,6 +117,12 @@ An ignore covers an entire module edge and therefore cannot detect someone movin
 module scope. `tests.test_import_lightness` closes that gap by starting an isolated Python subprocess,
 importing every lightweight module, and asserting that no server dependency root appears in `sys.modules`.
 Base dependencies such as httpx and questionary remain allowed.
+
+The async task domain (`treg.domain.asynctasks`) is a **stdlib-only leaf shared with the light
+CLI**: `cli.await_async_task` imports its `json_path`, `classify_terminal` and `artifact` so the
+awaiter and the settlement worker can never disagree about what "done" means. Two guards keep it
+light: the module is on `test_import_lightness`'s list, and an import-linter contract forbids it
+every server root (`treg.models`, `treg.infra`, `treg.config`, SQLModel, pydantic, yaml, httpx).
 
 The capacity domain (`treg.domain.capacity`, plan step B) is a leaf like identity: it cannot import
 `treg.api`, `treg.routers`, `treg.application`, `treg.bootstrap`, `treg.audit`, FastAPI or Starlette.

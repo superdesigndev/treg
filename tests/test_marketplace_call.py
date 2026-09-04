@@ -29,7 +29,6 @@ from treg.application.call import resolve as call_resolution
 from treg.application.call import settle as call_settle
 from treg.application.call import service as call_service
 from treg.application.call.types import ResolutionFailed, UpstreamResponse
-from treg.routers import call as call_routes
 from treg.config import get_settings
 from treg.infra.db import session_maker
 from treg.models import Org
@@ -57,6 +56,16 @@ def platform_on(monkeypatch):
     for name, value in PLATFORM_KEYS.items():
         monkeypatch.setenv(f"TREG_PLATFORM_KEY_{name}", value)
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", ",".join(k.lower() for k in PLATFORM_KEYS))
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def minimax_platform_on(monkeypatch):
+    """Enable only MiniMax tier 4 for its provider-envelope billing regressions."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_MINIMAX", "PLATFORM-MINIMAX-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "minimax")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -404,6 +413,28 @@ async def test_released_call_records_charged_zero(clients: AsyncClient, platform
     row = await _telemetry(clients)
     assert row["cost_charged_micro"] == 0
     assert row["cost_estimated_micro"] == EP_MICRO  # the estimate stays, marked un-charged
+
+
+@pytest.mark.parametrize("request_body", [
+    {"model": "image-01", "n": 1},
+    {"model": "image-01", "prompt": "A paper airplane", "n": 10},
+])
+async def test_minimax_image_error_envelope_releases_hold(
+    clients: AsyncClient, minimax_platform_on, monkeypatch, request_body,
+):
+    """MiniMax reports invalid image params inside HTTP 200; those requests cost the caller zero."""
+    rejected = {"base_resp": {"status_code": 2013, "status_msg": "invalid params"}}
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, json.dumps(rejected).encode()))
+    before = await _balance(clients)
+
+    response = await clients.post("/call/minimax.image-gen.from_text", json=request_body)
+
+    assert response.status_code == 200 and response.json() == rejected
+    assert response.headers["X-Treg-Cost-Micro"] == "0"
+    assert await _balance(clients) == before
+    row = await _telemetry(clients)
+    assert row["cost_charged_micro"] == 0
+    assert row["cost_estimated_micro"] > 0
 
 
 async def test_settled_call_records_what_was_charged(clients: AsyncClient, platform_on, monkeypatch):
@@ -1090,11 +1121,6 @@ async def test_an_expired_label_frees_itself(clients: AsyncClient, platform_on):
 async def test_one_callers_label_is_invisible_to_another(clients: AsyncClient, platform_on):
     """The tenant boundary, exercised through the HTTP path rather than asserted on the schema. A
     second caller using the same label must reach the provider, not read the first one's answer."""
-    from sqlmodel import select
-
-    from treg.infra.db import session_maker
-    from treg.models import IdempotentCall, Membership
-
     await _seed_answer(clients, "shared-label", body=b'{"owner":"first"}')
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     made = await clients.post(f"/orgs/{org_id}/agents", json={"name": "other-agent"})
@@ -1668,6 +1694,14 @@ async def test_brightdata_snapshot_download_bills_the_jobs_records(
         clients: AsyncClient, platform_on, monkeypatch):
     """The async job's records bill at the snapshot download — the endpoint that was cataloged
     `free` while $9.09 of Google Play reviews rode through it unbilled."""
+    monkeypatch.setattr(call_service, "relay", _fake_relay(
+        202, b'{"snapshot_id": "sd_test123"}'))
+    started = await clients.post(
+        "/call/brightdata.web.scrape.structured?dataset_id=gd_x",
+        json=[{"url": "https://x/0"}],
+    )
+    assert started.status_code == 202
+
     records = [{"review": f"r{i}"} for i in range(40)]
     monkeypatch.setattr(call_service, "relay", _fake_relay(200, json.dumps(records).encode()))
     before = await _balance(clients)

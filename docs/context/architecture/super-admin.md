@@ -65,6 +65,7 @@ endpoints are unaffected (they use `require_superadmin`).
   settled spend per provider (the invoice comparison), and the repeat-query rate. Query-time reports
   over existing rows; no scheduler. Logic in `src/treg/reconcile.py`;
   `scripts/provider_balances.py` is the manual companion that reads the providers' own balances.
+  The async-task settlement report follows the same super-admin and dedicated admin-pool boundary.
 - **Mutations (Phase 2):** `admin_set_superadmin`, `admin_suspend_user`, `admin_delete_user` (removes
   memberships, then `cascade_delete_org` (in `domain/governance/teams.py`) any org left with zero members, and **promotes a survivor to
   owner** in any org left without one), `admin_suspend_org`, `admin_delete_org` (force, cross-tenant).

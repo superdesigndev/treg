@@ -3,13 +3,19 @@ title: Money — prepaid balance, the ledger, Stripe, and the reports that check
 status: shipped
 sources:
   - src/treg/domain/money/__init__.py
+  - src/treg/domain/money/settlement.py
+  - src/treg/domain/asynctasks/__init__.py
   - src/treg/models.py
   - src/treg/application/billing.py
   - src/treg/application/call/idempotency.py
   - src/treg/application/call/intake.py
   - src/treg/application/call/resolve.py
+  - src/treg/application/call/service.py
   - src/treg/application/call/reserve.py
   - src/treg/application/call/settle.py
+  - src/treg/application/asynctasks.py
+  - src/treg/alembic/versions/0017_async_task_record.py
+  - src/treg/alembic/versions/0018_async_resource_ownership.py
   - src/treg/application/referrals.py
   - src/treg/domain/governance/budgets.py
   - src/treg/infra/__init__.py
@@ -24,6 +30,7 @@ sources:
   - src/treg/routers/orgs.py
   - src/treg/routers/referrals.py
   - tests/test_call_architecture.py
+  - tests/test_asynctasks.py
 related:
   - architecture/catalog.md
   - architecture/proxy-model.md
@@ -72,10 +79,15 @@ micro and every crossing goes through `micro_to_cents` / `cents_to_micro` in `ap
 file where two unit systems meet. Whole dollars appear only in settings and in what a human types.
 Every `*_micro` value has a display-only `*_usd` twin: **never compute against the USD field.**
 
-## The four tables and the invariant
+## The money tables and the invariant
 
 `Org.balance_micro` (materialized) · `CreditBlock` (one funding event, and what is left of it) ·
 `Hold` (an open reservation) · `LedgerEntry` (append-only journal).
+
+`AsyncTaskRecord` is the durable owner of an existing hold after a metered asynchronous submission.
+It stores the catalog-derived settlement basis, request evidence, task id, an optional terminal
+result id or allow-listed dynamic poll URL, attempts and terminal state. It does not create another
+money movement.
 
     balance_micro == sum(block.remaining_micro) - sum(open hold.amount_micro)
 
@@ -152,6 +164,64 @@ leader election on a multi-instance deploy, and would still only run on a timer;
 stale holds is paid by the caller who benefits from it, and an org that never calls again has no
 balance to strand. Each stale release commits independently before the new balance gate. A later 402
 rolls back only the failed reservation, never a refund the reaper already made durable.
+Pending `AsyncTaskRecord` holds are excluded from this short request reaper. Their worker has a separate
+24-hour deadline and always closes the hold by settle or release.
+
+## Deferred asynchronous settlement
+
+`domain/money/settlement.py` is the single data-derived calculation seam. Reserve time freezes a basis
+with `when: response|terminal` and `amount.kind: table|usage|observed`; `settle(basis, evidence)` returns
+raw integer micro-USD and never writes the ledger. `table_amount_micro` bounds a `times` multiplier by
+the field's declared `min`/`max` (finite, positive when no minimum is declared): an out-of-range value
+matches no row and prices at the fallback, so a caller can neither reserve zero nor bill past the
+validated ceiling. Both the normal response path and the async worker
+use it. Provider differences remain in catalog YAML; there are no provider billing adapters.
+
+For a tier-4 endpoint carrying `async`, a successful submission keeps its hold and writes an
+`AsyncTaskRecord` whose `settlement_basis` freezes the whole price rule with the request it was
+applied to, so the settlement replays from the row alone. BYOK calls create neither hold nor task
+row. The worker claims due rows with `FOR UPDATE SKIP LOCKED`, polls through the normal credential
+injector (a static poll's parameter rides as `query_items` or a path substitution; the relay forwards
+no URL-embedded query, which once left MiniMax v1 polls empty; a path parameter is substituted by its
+declared location and percent-encoded; the body is capped at `MAX_POLL_BODY_BYTES`), takes terminal
+evidence only from a 2xx poll (an error envelope that happens to say `succeeded` backs off like any
+other non-2xx, the same rule the CLI applies), settles success, fully releases failure and backs off nonterminal states. **At the 24-hour
+deadline it releases the hold in full**, marks the row `timed_out` with `reconcile_review`, and logs
+an ERROR-level alert: an outcome nobody observed is the platform's cost, never the customer's, and a
+provider that silently changed its status field shows up as absorbed timeouts in
+`reconcile.async_task_settlement` (`absorbed_timeouts`) rather than as a quiet overcharge.
+Platform-key poll and fetch calls are authorized against the caller org's row before relay. A
+successful caller-driven poll may see a fetch-mode result id before the worker does, so the buffered
+terminal response records that id on the same row; the worker records it as part of settlement too.
+This makes the durable record both the hold owner and the authority for later shared-account objects.
+A 2xx that is not an accepted submission (not JSON, fails the endpoint's `expect` rule, or carries
+no task id / an off-allow-list poll URL: `application.call.service._submission_rejected`) never
+becomes a row: it settles at zero on the request path and the caller sees the body and `$0`. The
+worker never lets one row abort a tick (`_process` catches everything, `settle_due` gathers with
+`return_exceptions`), because an unset platform key for one provider must not stall every other
+provider's settlements. An overflow child (`application.call.overflow._child`) carries its own
+observed-kind basis at the aggregator price, so an aggregator that reports no cost settles at the
+aggregator reserve, not at the parent's price. A `settle: usage` row reserves what its rate-card table says THIS request costs
+(the matrix ceiling had made a $0.05 call demand a $6 balance) and settles the provider's reported
+figure, which may exceed the reserve: the ledger takes the difference from the balance, the next
+reserve is the gate, and `reconcile.async_task_settlement` lists every such `overrun` (the team
+paid it) and every settle whose `block_shortfall_micro` > 0 (`absorbed_shortfalls`: the platform
+ate what the team's blocks could not cover). A success whose terminal response carries no usage
+figure settles at the reserve with `reconcile_review` and an ERROR alert, never at the ceiling.
+When the pending row itself cannot be persisted, the request path releases the
+hold with reason `async_task_not_recorded` and logs an ERROR alert - the same doctrine, since nobody
+will observe that task's outcome. The only usage unit real traffic has settled is `usd` (OpenRouter's
+`usage.cost`); a token unit returns with the first metered token-priced listing, together with its fx
+rule and a live test. Ledger writes remain exclusively through `domain/money`.
+
+The audit row (`CallRecord`) froze the reserve as `cost_charged_micro` at submission, so displays
+must not read it alone. `application.asynctasks.views_for(org_id, call_ids)` is the read side: it
+joins the org's `AsyncTaskRecord`s, loads the archived terminal JSON for settled ones, and derives
+the artifact with the pure `domain.asynctasks.artifact(descriptor, terminal)` - the first URL under
+`result.path`, or the `{endpoint, name, value}` retrieval target for fetch-mode descriptors (the
+view formats it as `treg call … -p name=value`), plus `ttl_note`. The CLI's `--await` calls the
+same function; there is one reading of the descriptor, not a mirror. `/calls`,
+`/calls/{ref}`, `treg audit` and the dashboard Activity page all render from this one view.
 
 **Idempotency on `topup` is enforced by the database.** `stripe_payment_intent` is UNIQUE, and `topup`
 FLUSHES its INSERT inside a SAVEPOINT, before the balance moves: the loser of a race rolls back only

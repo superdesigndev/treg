@@ -111,10 +111,14 @@ async def _run(client: httpx.AsyncClient, aggregator: str, route, key: str, quer
 
 
 def _child(mk: MarketplaceCall, route) -> MarketplaceCall:
-    return replace(mk, tier="platform-overflow", call_id=None,
-                   estimate_micro=int(route.agg_price_micro or 0),
+    agg = int(route.agg_price_micro or 0)
+    # The child settles against ITS price: an aggregator that reports no cost settles at the
+    # aggregator reserve, never at the parent's direct price or table ceiling.
+    return replace(mk, tier="platform-overflow", call_id=None, estimate_micro=agg,
                    cost_type="per_call" if route.agg_unit == "call" else "per_result",
-                   unit_micro=int(route.agg_price_micro or 0))
+                   unit_micro=agg,
+                   settlement_basis={"when": "response", "amount": {"kind": "observed"},
+                                     "fallback_micro": agg, "reserve_micro": agg})
 
 
 def _response(res: AggregatorResult) -> UpstreamResponse:

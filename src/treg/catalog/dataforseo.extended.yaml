@@ -7555,6 +7555,7 @@ endpoints:
   example_response: examples/dataforseo.x.merchant-google-sellers-task-post.json
   observed_cost: 0.001
 - id: dataforseo.x.serp-ai-summary
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: google
   method: POST
@@ -9002,6 +9003,7 @@ endpoints:
   example_response: examples/dataforseo.x.serp-google-search-by-image-task-post.json
   observed_cost: 0.0006
 - id: dataforseo.x.serp-screenshot
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: google
   method: POST
@@ -12533,6 +12535,7 @@ endpoints:
   example_response: examples/dataforseo.x.keywords-data-dataforseo-trends-subregion-interests-live.json
   observed_cost: 0.0024
 - id: dataforseo.x.on-page-content-parsing
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: POST
@@ -12644,6 +12647,7 @@ endpoints:
     note: the POST body is an ARRAY of task objects with these fields — one object per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-duplicate-content
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: POST
@@ -12684,6 +12688,7 @@ endpoints:
     note: the POST body is an ARRAY of task objects with these fields — one object per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-duplicate-tags
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: POST
@@ -12725,6 +12730,7 @@ endpoints:
     note: the POST body is an ARRAY of task objects with these fields — one object per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-keyword-density
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: POST
@@ -12860,6 +12866,7 @@ endpoints:
     note: the POST body is an ARRAY of task objects with these fields — one object per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-links
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: POST
@@ -12944,6 +12951,7 @@ endpoints:
     note: the POST body is an ARRAY of task objects with these fields — one object per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-non-indexable
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: POST
@@ -13043,6 +13051,7 @@ endpoints:
     note: the POST body is an ARRAY of task objects with these fields — one object per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-pages
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: POST
@@ -13097,6 +13106,7 @@ endpoints:
     note: the POST body is an ARRAY of task objects with these fields — one object per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-pages-by-resource
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: POST
@@ -13141,6 +13151,7 @@ endpoints:
     note: the POST body is an ARRAY of task objects with these fields — one object per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-raw-html
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: POST
@@ -13165,6 +13176,7 @@ endpoints:
     note: the POST body is an ARRAY of task objects with these fields — one object per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-redirect-chains
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: POST
@@ -13205,6 +13217,7 @@ endpoints:
     note: the POST body is an ARRAY of task objects with these fields — one object per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-resources
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: POST
@@ -13267,6 +13280,7 @@ endpoints:
     note: the POST body is an ARRAY of task objects with these fields — one object per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-summary-id
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: GET
@@ -13484,6 +13498,7 @@ endpoints:
   example_response: examples/dataforseo.x.on-page-task-post.json
   observed_cost: 0.018
 - id: dataforseo.x.on-page-uncrawlable-resources
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: POST
@@ -13527,6 +13542,7 @@ endpoints:
     note: the POST body is an ARRAY of task objects with these fields — one object per task
   untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
 - id: dataforseo.x.on-page-waterfall
+  platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
   platform: web
   method: POST

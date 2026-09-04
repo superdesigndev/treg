@@ -18,6 +18,9 @@ _LIGHTWEIGHT_MODULES = (
     "treg.agents",
     "treg.egress",
     "treg.fsjail",
+    # The CLI's `--await` reads the async descriptor through the server's own domain module; it
+    # stays stdlib-only so the light install never learns what a database is.
+    "treg.domain.asynctasks",
 )
 _SERVER_DEPENDENCY_ROOTS = (
     "aiosqlite",

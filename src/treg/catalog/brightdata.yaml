@@ -47,6 +47,9 @@ endpoints:
     path: /datasets/v3/scrape
     name: "Scrape URLs into structured records in one call"
     summary: "Scrape one or more URLs into structured records and get them back in the same call"
+    resource_ownership:
+      produces:
+        - {kind: snapshot, path: snapshot_id}
     input:
       queryParams:
         dataset_id: {type: string, required: true, note: "which managed scraper to run — it decides both the site and the output columns. List them with brightdata.account.datasets.list", example: "gd_l1vikfch901nx3by4"}
@@ -73,6 +76,9 @@ endpoints:
     path: /datasets/v3/trigger
     name: "Start an async scrape of a URL batch — snapshot id"
     summary: "Start an asynchronous scraping job over a batch of URLs and get a snapshot id back"
+    resource_ownership:
+      produces:
+        - {kind: snapshot, path: snapshot_id}
     input:
       queryParams:
         dataset_id: {type: string, required: true, note: "which managed scraper to run", example: "gd_l1vikfch901nx3by4"}
@@ -108,6 +114,8 @@ endpoints:
     path: /datasets/v3/progress/{snapshot_id}
     name: "Check an async scrape job by snapshot id"
     summary: "Check whether an asynchronous scraping job has finished"
+    resource_ownership:
+      requires: {kind: snapshot, param: snapshot_id}
     input:
       pathParams:
         snapshot_id: {type: string, required: true, note: "the snapshot_id returned by brightdata.web.scrape.job.start", example: "s_00000000000000000"}
@@ -127,6 +135,8 @@ endpoints:
     path: /datasets/v3/snapshot/{snapshot_id}
     name: "Download scraped records by snapshot id"
     summary: "Download the records produced by a finished scraping job"
+    resource_ownership:
+      requires: {kind: snapshot, param: snapshot_id}
     input:
       pathParams:
         snapshot_id: {type: string, required: true, note: "the snapshot_id returned by brightdata.web.scrape.job.start", example: "s_00000000000000000"}
@@ -150,6 +160,9 @@ endpoints:
     scope: any_account
     method: POST
     path: /datasets/v3/scrape
+    resource_ownership:
+      produces:
+        - {kind: snapshot, path: snapshot_id}
     name: "Instagram profile by URL — followers, bio, verification"
     summary: "Get the public profile of an Instagram user (followers, bio, verification)"
     input:
@@ -174,6 +187,9 @@ endpoints:
     scope: any_account
     method: POST
     path: /datasets/v3/scrape
+    resource_ownership:
+      produces:
+        - {kind: snapshot, path: snapshot_id}
     name: "LinkedIn member profile by URL — headline, experience"
     summary: "Get a public LinkedIn member profile (headline, experience, education)"
     input:

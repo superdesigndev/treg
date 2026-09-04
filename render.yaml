@@ -145,6 +145,12 @@ services:
         sync: false
       - key: TREG_PLATFORM_KEY_TOMBA_SECRET       # Tomba API secret ts_… (X-Tomba-Secret) — set BOTH
         sync: false
+      - key: TREG_PLATFORM_KEY_MINIMAX            # MiniMax Bearer key
+        sync: false
+      - key: TREG_PLATFORM_KEY_OPENROUTER         # OpenRouter Bearer key
+        sync: false
+      - key: TREG_PLATFORM_KEY_REPLICATE          # Replicate Bearer token
+        sync: false
       - key: TREG_PLATFORM_PROVIDERS           # e.g. "tikhub,dataforseo,scrapecreators"; "" = tier 4 off
         value: ""
       # Overflow (docs/context/ops/capacity.md): treg-owned aggregator accounts serving the SAME vendor
@@ -355,3 +361,46 @@ services:
           type: web
           name: treg
           envVarName: TREG_PLATFORM_KEY_TOMBA_SECRET
+
+  # Completes holds opened by asynchronous metered submissions. It never creates a hold.
+  - type: cron
+    name: treg-asynctasks-settle
+    runtime: python
+    region: oregon
+    plan: starter
+    branch: main
+    schedule: "*/2 * * * *"
+    buildCommand: pip install ".[server]"
+    startCommand: treg-worker asynctasks settle
+    envVars:
+      - key: TREG_DATABASE_URL
+        fromDatabase:
+          name: treg-db
+          property: connectionString
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: TREG_SECRET_KEY
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_SECRET_KEY
+      - key: TREG_PLATFORM_PROVIDERS
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_PROVIDERS
+      - key: TREG_PLATFORM_KEY_MINIMAX
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_MINIMAX
+      - key: TREG_PLATFORM_KEY_OPENROUTER
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_OPENROUTER
+      - key: TREG_PLATFORM_KEY_REPLICATE
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_REPLICATE

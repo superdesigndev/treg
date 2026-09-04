@@ -250,6 +250,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/reconcile/drift', ('GET',), 'admin_reconcile_drift'),
     ('/admin/reconcile/spend', ('GET',), 'admin_reconcile_spend'),
     ('/admin/reconcile/repeats', ('GET',), 'admin_reconcile_repeats'),
+    ('/admin/reconcile/asynctasks', ('GET',), 'admin_reconcile_asynctasks'),
     ('/admin/archive', ('GET',), 'admin_archive'),
     ('/admin/archive/keys', ('GET',), 'admin_archive_keys'),
     ('/admin/archive/body', ('GET',), 'admin_archive_body'),

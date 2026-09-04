@@ -6,6 +6,8 @@ sources:
   - src/treg/api.py
   - src/treg/caller_metadata.py
   - src/treg/application/auth.py
+  - src/treg/application/asynctasks.py
+  - src/treg/application/call/resolve.py
   - src/treg/application/signup.py
   - src/treg/domain/governance/access.py
   - src/treg/domain/governance/budgets.py
@@ -21,7 +23,10 @@ sources:
   - src/treg/routers/resources.py
   - src/treg/domain/tools/bundles.py
   - src/treg/infra/db.py
+  - src/treg/alembic/versions/0017_async_task_record.py
+  - src/treg/alembic/versions/0018_async_resource_ownership.py
   - tests/test_router_dependencies.py
+  - tests/test_asynctasks.py
 related:
   - architecture/data-model.md
   - architecture/proxy-model.md
@@ -263,3 +268,6 @@ Two consequences worth stating plainly:
   `domain/governance/teams.py`'s `ORG_SCOPED_MODELS`, `TagSpend`
   ahead of `LedgerEntry`/`Hold` because it references them. `tests/test_orgs.py` walks the models and
   fails if a new `org_id` table is missed.
+- **Shared-provider async objects are org-scoped.** Platform-key poll and result-fetch utility calls
+  must resolve their id through an org-owned `AsyncTaskRecord` or `AsyncResourceRecord` before the
+  upstream is contacted. BYOK calls keep access to ids in the team's own provider account.

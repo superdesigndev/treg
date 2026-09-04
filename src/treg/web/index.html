@@ -2540,7 +2540,7 @@ a:hover{text-decoration-color:var(--muted)}
           <template v-if="actTab==='feed'">
           <p class="sub">{{actOkOnly?'Successful calls and runs in this org.':'Every proxy call and server CLI run in this org.'}}</p>
           <table><tr><th>When</th><th>Who</th><th v-if="anyTagged">Tagged</th><th>Tool</th><th>Action</th><th>Status</th><th style="text-align:right">Cost</th></tr>
-            <tr v-for="a in activityShown" :key="a.kind+'-'+a.id" :class="{'act-row':a.kind==='call'}" @click="a.kind==='call'&&openCall(a)" :title="a.kind==='call'?(a.has_result?'Show request and response':'Show call details'):''"><td class="muted">{{when(a.created_at)}}</td><td>{{short(a.user_email)}}<span v-if="a.client && a.client!=='cli'" class="chip" style="margin-left:6px" :title="'reported by the runtime — attribution, not authentication'">via {{a.client}}</span></td><td v-if="anyTagged"><template v-if="a.tags"><span v-for="(v,k) in a.tags" :key="k" class="chip" style="margin-right:4px" :title="'X-Treg-Meta '+k+'='+v">{{k}}={{v}}</span></template><span v-else class="muted">—</span></td><td>{{a.tool}}</td><td><span v-if="a.kind==='run'" class="chip" style="margin-right:6px" :title="a.where==='local'?'ran on this member\'s machine':'ran on the registry server'">{{a.where||'run'}}</span>{{a.action}}</td><td><span class="badge" :class="a.ok?'ok':'invalid'">{{a.status}}</span><span v-if="a.has_result" class="act-view">result ›</span></td><td style="text-align:right;white-space:nowrap" class="muted" :title="a.tier==='platform'?'charged to team balance':(a.cost!=null?'estimated — billed to your own provider key':'')">{{a.cost!=null?money(a.cost):'—'}}</td></tr></table>
+            <tr v-for="a in activityShown" :key="a.kind+'-'+a.id" :class="{'act-row':a.kind==='call'}" @click="a.kind==='call'&&openCall(a)" :title="a.kind==='call'?(a.has_result?'Show request and response':'Show call details'):''"><td class="muted">{{when(a.created_at)}}</td><td>{{short(a.user_email)}}<span v-if="a.client && a.client!=='cli'" class="chip" style="margin-left:6px" :title="'reported by the runtime — attribution, not authentication'">via {{a.client}}</span></td><td v-if="anyTagged"><template v-if="a.tags"><span v-for="(v,k) in a.tags" :key="k" class="chip" style="margin-right:4px" :title="'X-Treg-Meta '+k+'='+v">{{k}}={{v}}</span></template><span v-else class="muted">—</span></td><td>{{a.tool}}</td><td><span v-if="a.kind==='run'" class="chip" style="margin-right:6px" :title="a.where==='local'?'ran on this member\'s machine':'ran on the registry server'">{{a.where||'run'}}</span>{{a.action}}<!-- A generation task's artifact, once it succeeded: the provider's time-limited URL, or the CLI command that retrieves it (treg never downloads media). --><template v-if="a.task"><a v-if="a.task.result_url" :href="a.task.result_url" target="_blank" rel="noopener" style="margin-left:8px" :title="taskArtifactTitle(a.task)" @click.stop>result ↗</a><span v-else-if="a.task.fetch_command" class="chip" style="margin-left:8px" :title="'retrieve it from the CLI: '+a.task.fetch_command">result via CLI</span><span v-if="a.task.result_url||a.task.fetch_command" class="muted" style="margin-left:6px;font-size:.85em">{{a.task.ttl_note?'expires in '+a.task.ttl_note:'time-limited link'}}</span></template></td><td><span class="badge" :class="a.ok?'ok':'invalid'">{{a.status}}</span><span v-if="a.task" class="chip" style="margin-left:6px" :title="taskStateTitle(a.task)">{{taskStateLabel(a.task)}}</span><span v-if="a.has_result" class="act-view">result ›</span></td><td style="text-align:right;white-space:nowrap" class="muted" :title="a.held?'reserved - settles when the task finishes, refunded if it fails':(a.tier==='platform'?'charged to team balance':(a.cost!=null?'estimated — billed to your own provider key':''))"><span v-if="a.held" style="font-size:.85em">hold </span>{{a.cost!=null?money(a.cost):'—'}}</td></tr></table>
           <p v-if="!loading && !activityRows.length" class="sub">No activity yet.</p>
           <p v-else-if="!loading && !activityShown.length" class="sub">No successful calls yet — <a href="#" @click.prevent="actOkOnly=false">show all {{activityRows.length}}</a>.</p>
           </template>
@@ -4153,8 +4153,11 @@ createApp({
       // Local runs now arrive via /runs (where:'local'); drop them from the calls feed so they aren't double-counted.
       // Cost precedence: what was CHARGED (settle amount; 0 on a release — the estimate alone would
       // over-report a refunded call as spend), else observed, else the estimate (old rows / own-key).
+      // A metered async task (video/image generation) is the one row whose charge is decided AFTER
+      // the call returned: the server nulls the charge while the task is pending, so show the hold.
       const calls=(this.calls||[]).filter(c=>c.kind!=='local_run').map(c=>({kind:'call', id:c.id, created_at:c.created_at, user_email:c.user_email, client:c.client, tool:c.tool_name, action:c.method, status:c.status_code, ok:c.status_code<400,
-        cost:(c.cost_charged_micro!=null?c.cost_charged_micro:(c.cost_observed_micro!=null?c.cost_observed_micro:c.cost_estimated_micro)), tier:c.credential_tier, tags:c.tags,
+        task:c.async_task||null, held:!!(c.async_task&&c.async_task.status==='pending'),
+        cost:(c.async_task&&c.async_task.status==='pending')?c.async_task.reserved_micro:(c.cost_charged_micro!=null?c.cost_charged_micro:(c.cost_observed_micro!=null?c.cost_observed_micro:c.cost_estimated_micro)), tier:c.credential_tier, tags:c.tags,
         has_result:!!c.has_result, endpoint_id:c.endpoint_id, call_ref:c.call_ref, path:c.path, cached:c.cached}));
       const runs=(this.runs||[]).map(r=>({kind:'run', where:r.where, id:r.id, created_at:r.created_at, user_email:r.user_email, client:r.client, tool:r.tool, action:(r.argv||[]).join(' ').slice(0,48)||'-', status:(r.where==='local'?'local run':'exit '+r.exit_code), ok:(r.where==='local'?true:r.exit_code===0)}));
       return calls.concat(runs).sort((a,b)=>a.created_at<b.created_at?1:-1);
@@ -4626,6 +4629,16 @@ createApp({
     // to "$10.00"; a fixed 4 decimals rounds $0.00015 to $0.0001 (float: 0.00015 is stored just
     // under). So: whole-cent amounts render as normal cents, everything else renders all 6 micro
     // digits with trailing zeros trimmed — a micro amount is always representable. Mirrors cli._usd.
+    // Async generation tasks on the Activity feed: the state chip and the artifact link's tooltip.
+    taskStateLabel(t){ return {pending:'generating…', settled:'done', released:'failed · refunded', timed_out:'timed out'}[t.status]||t.status; },
+    taskStateTitle(t){
+      if(t.status==='pending') return 'the task is still running upstream; the hold settles or is refunded when it finishes';
+      if(t.status==='settled') return 'the task succeeded; charged '+this.money(t.settled_micro)+(t.completed_at?' at '+new Date(t.completed_at+(/(Z|[+-]\d{2}:?\d{2})$/.test(t.completed_at)?'':'Z')).toLocaleString():'');
+      if(t.status==='released') return 'the provider reported the task failed; the whole hold was refunded'+(t.error?' - '+t.error:'');
+      if(t.status==='timed_out') return 'no terminal state within 24 hours; the whole hold was refunded and treg absorbed any upstream charge (flagged for review)';
+      return t.status;
+    },
+    taskArtifactTitle(t){ return 'the provider\'s download URL - time-limited'+(t.ttl_note?' (lifetime: '+t.ttl_note+')':'')+', download promptly'+(t.completed_at?'; generated '+this.when(t.completed_at):''); },
     money(micro){ const m=Math.round(Number(micro)||0), s=m<0?'-':'', a=Math.abs(m);
       if(a%10000===0) return s+'$'+(a/1e6).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
       return s+'$'+(a/1e6).toFixed(6).replace(/0+$/,''); },
@@ -5764,7 +5777,7 @@ createApp({
       if(c.type==='free') return 'free';
       // Known billing unit, unpublished number: say which, and where the number lives. A bare
       // "per success" reads as free, and "—" hides that we do know how it's metered.
-      if(c.value==null){
+      if(c.value==null && !c.table){  // a price table has no scalar `value`; its range renders below
         const per={per_call:'call', per_success:'success', per_result:'result'}[c.type];
         return per ? 'per '+per+' · price in provider dashboard' : '—'; }
       // Rows convert like any meter once fx carries a rate — dollars first, native as the fallback.
@@ -5773,7 +5786,10 @@ createApp({
       // A published number the FX table can't convert (an unknown currency) still beats silence —
       // fall back to the native figure rather than dropping the price entirely.
       if(typeof c.usd!=='number') return this.nativeAmount(c)+'/'+this.priceUnit(c.type);
-      return '$'+this.usdNum(c.usd)+'/'+(c.type==='quota_rows'?'call':this.priceUnit(c.type)); },
+      const unit=(c.type==='quota_rows'?'call':this.priceUnit(c.type));
+      // A price table (generation models) is a range: cheapest row up to the validated ceiling.
+      if(typeof c.usd_min==='number' && c.usd_min<c.usd) return '$'+this.usdNum(c.usd_min)+'-$'+this.usdNum(c.usd)+'/'+unit;
+      return '$'+this.usdNum(c.usd)+'/'+unit; },
     costTitle(c){ if(!c) return 'The catalog has no price for this endpoint';
       const nat=this.nativeAmount(c);
       return [c.note,

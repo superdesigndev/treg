@@ -136,6 +136,7 @@ treg tool add google-ads --base-url https://googleads.googleapis.com \
 | `treg catalog search` | `"what you want to do"` | find endpoints by capability |
 | `treg catalog get` | `ENDPOINT_ID` | docs, parameters, **the price**, and how you would be served |
 | `treg call ENDPOINT_ID` | `--query K=V`, `--data STR` | call it |
+| `treg call ENDPOINT_ID --await` | `--timeout N` (default 900) | a generation call (video/image): submit, poll the provider, print the final response |
 | `treg catalog request` | `"what's missing"` | searched, not there? file it — requests steer what gets added next |
 
 ```bash
@@ -143,6 +144,14 @@ treg catalog search "instagram profile"
 treg catalog get tikhub.tiktok.user.profile          # shows the price BEFORE you spend
 treg call tikhub.tiktok.user.profile --query uniqueId=tiktok
 ```
+
+**Video and image generation** (`video-gen` / `image-gen` platforms) are async tasks: the call returns
+a task id, and `--await` polls until it finishes. Stdout is the final response only; stderr gets the
+task id, a resumable `treg call …` command, progress and the result URL. Exit 0 = done, 2 = the
+provider failed the task, 3 = timed out (resume with the printed command). Money is reserved at
+submission and charged only on success; a failed task refunds the hold. Result URLs are time-limited
+(download promptly; treg never stores media). From a coding agent, raise the shell tool's timeout or
+run the call in the background - a video takes 1-5 minutes. `treg audit` shows each task's state.
 
 **How a catalogued call is served — the credential ladder, in order:**
 

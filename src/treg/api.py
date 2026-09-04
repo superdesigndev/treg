@@ -27,6 +27,7 @@ from sqlalchemy.orm import defer
 from sqlmodel import select
 
 from . import archive, audit, crypto, localrun, ratestore, runner, sandbox as demo_sandbox
+from .application import asynctasks as async_task_app
 from .caller_metadata import _client_of
 from .config import get_settings
 from .domain.catalog import store as catalog_store
@@ -643,6 +644,10 @@ async def list_calls(
     if before_id is not None:
         q = q.where(CallRecord.id < before_id)
     rows = (await db.execute(q.order_by(CallRecord.id.desc()).limit(limit))).scalars().all()
+    # A metered async submission audited its RESERVE as the charge. The task record is the account
+    # of what happened afterwards (settled, refunded, timed out) and what the caller bought.
+    tasks = await async_task_app.views_for(
+        caller.org_id, [c.call_ref for c in rows if c.call_ref and c.credential_tier == "platform"])
     return [
         {
             "id": c.id,
@@ -667,7 +672,7 @@ async def list_calls(
             "has_result": c.archive_key_hash is not None,
             "cost_estimated_micro": c.cost_estimated_micro,
             "cost_observed_micro": c.cost_observed_micro,
-            "cost_charged_micro": c.cost_charged_micro,
+            "cost_charged_micro": _async_charged(c, tasks.get(c.call_ref)),
             "duration_ms": c.duration_ms,
             "response_bytes": c.response_bytes,
             "params_hash": c.params_hash,
@@ -681,9 +686,20 @@ async def list_calls(
             "budget_val": c.budget_val,
             "tags": c.tags,
             "created_at": c.created_at.isoformat(),
+            # Present only on a metered async submission: settlement state, and the artifact once the
+            # task succeeded (a time-limited URL, or the CLI command that retrieves it).
+            "async_task": tasks.get(c.call_ref),
         }
         for c in rows
     ]
+
+
+def _async_charged(c: CallRecord, task: dict | None) -> int | None:
+    """What hit the balance, once the task record is known: nothing yet while pending, the settled
+    figure at a terminal state. Without a task record the audit row's own column stands."""
+    if task is None:
+        return c.cost_charged_micro
+    return None if task["status"] == "pending" else task["settled_micro"]
 
 
 @app.get("/calls/{call_id:int}/result")
@@ -748,6 +764,7 @@ async def get_call(
         .order_by(LedgerEntry.created_at))).scalars().all()
     if row is None and not entries:
         raise HTTPException(status_code=404, detail="no call with that id")
+    task = (await async_task_app.views_for(caller.org_id, [call_ref])).get(call_ref)
     view = None
     if row is not None:
         view = {"id": row.id, "call_ref": row.call_ref, "user_email": row.user_email,
@@ -757,13 +774,14 @@ async def get_call(
                 "credential_tier": row.credential_tier,
                 "cost_estimated_micro": row.cost_estimated_micro,
                 "cost_observed_micro": row.cost_observed_micro,
-                "cost_charged_micro": row.cost_charged_micro,
+                "cost_charged_micro": _async_charged(row, task),
                 "duration_ms": row.duration_ms, "response_bytes": row.response_bytes,
                 "refused_by": row.refused_by, "budget_dim": row.budget_dim,
                 "budget_val": row.budget_val, "tags": row.tags,
                 "created_at": row.created_at.isoformat() if row.created_at else None}
     return {
         "call": view,
+        "async_task": task,
         "ledger": [{"kind": e.kind, "amount_micro": e.amount_micro, "endpoint_id": e.endpoint_id,
                     "created_at": e.created_at.isoformat() if e.created_at else None}
                    for e in entries],

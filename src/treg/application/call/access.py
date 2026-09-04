@@ -96,15 +96,25 @@ async def catalog_endpoint_access(
 
     cost = _platform_offer(endpoint, provider, caller.org)
     if cost is not None:
+        # The number is the honest per-call price at the DEFAULT page size — a `per_result`
+        # endpoint costs more or less depending on how many rows the caller asks for, so it is "~".
         estimate = _platform_estimate_micro(cost, {})
+        low = cost.get("usd_min")  # a price table: the figure depends on model/resolution/duration
+        if isinstance(low, (int, float)) and low < ledger.usd(estimate):
+            price = (f"${low:g}-${ledger.usd(estimate):g} by model, resolution and duration (the "
+                     f"matching rate-card row is held; you pay the provider's reported cost, which "
+                     f"can exceed it)" if cost.get("settle") == "usage" else
+                     f"${low:g}-${ledger.usd(estimate):g} by model, resolution and duration (reserved "
+                     f"at the table row your request matches)")
+        else:
+            price = f"~${ledger.usd(estimate):g}/call"
         return {
             "tier": "platform",
-            "detail": (
-                f"no key needed — uses treg's {service} key, "
-                f"~${ledger.usd(estimate):g}/call from your team balance (treg balance)"
-            ),
+            "detail": (f"no key needed — uses treg's {service} key, {price} "
+                       f"from your team balance (treg balance)"),
             "estimated_cost_micro": estimate,
             "estimated_cost_usd": ledger.usd(estimate),
+            **({"estimated_cost_usd_min": low} if isinstance(low, (int, float)) else {}),
         }
     return _missing_access(endpoint, registry_provider, provider, methods, service)
 

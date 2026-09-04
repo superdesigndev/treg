@@ -63,7 +63,7 @@ async def test_platform_detail_groups_the_same_job_across_providers(clients: Asy
     assert set(ep) == {"id", "provider", "provider_display", "name", "summary", "method", "path",
                        "scope", "tier", "kind", "domain", "call_template", "cost", "verified", "docs_url",
                        "has_example", "input", "platform_eligible", "platform_blocked",
-                       "test_request", "miss", "status", "status_note", "superseded_by"}
+                       "test_request", "miss", "status", "status_note", "superseded_by", "async"}
     assert ep["kind"] == "data", "an endpoint with no explicit kind is data (the browse surface)"
     assert ep["provider_display"] == P.get("tikhub").display_name
     assert ep["method"] == "GET" and ep["path"].startswith("/")
@@ -748,6 +748,93 @@ def test_an_extended_file_merges_into_the_same_provider(tmp_path):
     tiers = {e["id"]: e["tier"] for e in cat.endpoints}
     assert tiers["tikhub.tiktok.user.profile"] == "core"
     assert tiers["tikhub.tiktok.user.mix"] == "extended"
+
+
+def test_async_defaults_apply_per_endpoint_and_an_endpoint_block_replaces_them_whole(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text(
+        "platforms: {video-gen: Video}\ncapabilities: {video-gen.from_text: Generate}\n")
+    (tmp_path / "demo.yaml").write_text(
+        "provider: demo\n"
+        "async:\n"
+        "  id_from: task_id\n"
+        "  poll: {endpoint: demo.video-gen.task.status, param: {in: pathParams, name: task_id}}\n"
+        "  status: {path: status, success: [done], failure: [failed]}\n"
+        "  result: {path: output.url, ttl_note: 1h}\n"
+        "  interval: 10\n"
+        "endpoints:\n"
+        "  - id: demo.video-gen.from-text\n"
+        "    capability: video-gen.from_text\n    platform: video-gen\n"
+        "    method: POST\n    path: /generate\n"
+        "    cost: {type: per_success, table: [{when: {body.model: a}, value: 1}], "
+        "fallback: {value: 1, note: upper}, currency: USD}\n"
+        "  - id: demo.video-gen.dynamic\n"
+        "    capability: video-gen.from_text\n    platform: video-gen\n"
+        "    method: POST\n    path: /dynamic\n"
+        "    async:\n"
+        "      id_from: id\n"
+        "      poll: {url_from: urls.get, url_hosts: [api.example.com]}\n"
+        "      status: {path: status, success: [succeeded], failure: [failed]}\n"
+        "      result: {fetch: demo.video-gen.content, fetch_param: {in: pathParams, name: id, value_from: id}}\n"
+        "      interval: 20\n"
+        "  - id: demo.video-gen.task.status\n    platform: video-gen\n    tier: extended\n"
+        "    method: GET\n    path: /tasks/{task_id}\n"
+        "  - id: demo.video-gen.content\n    platform: video-gen\n    tier: extended\n"
+        "    method: GET\n    path: /content/{id}\n")
+
+    cat = cs.load(directory=tmp_path)
+    first = cat.by_id["demo.video-gen.from-text"]
+    assert first["async"]["status"] == {"path": "status", "success": ["done"], "failure": ["failed"]}
+    assert first["async"]["interval"] == 10
+    assert first["cost"]["table"][0]["when"] == {"body.model": "a"}
+    # An endpoint block is the whole protocol: nothing from the provider default leaks into it.
+    dynamic = cat.by_id["demo.video-gen.dynamic"]["async"]
+    assert dynamic["poll"] == {"url_from": "urls.get", "url_hosts": ["api.example.com"]}
+    assert dynamic["result"] == {
+        "fetch": "demo.video-gen.content",
+        "fetch_param": {"in": "pathParams", "name": "id", "value_from": "id"}}
+    assert dynamic["status"] == {"path": "status", "success": ["succeeded"], "failure": ["failed"]}
+    assert cs.effective_async_descriptor({"id_from": "a"}, False) is None
+    assert cs.effective_async_descriptor({"id_from": "a"}, None) == {"id_from": "a"}
+    assert cs.effective_async_descriptor(None, {"id_from": "b"}) == {"id_from": "b"}
+
+
+def test_ai_generation_taxonomy_and_chinese_alias_tokens_are_loaded():
+    cat = cs.load()
+    assert cat.platforms["video-gen"]["category"] == "AI generation"
+    assert cat.platforms["image-gen"]["category"] == "AI generation"
+    assert {"video-gen.from_text", "video-gen.from_image", "video-gen.task.status",
+            "image-gen.from_text", "image-gen.edit"} <= set(cat.capabilities)
+    text_to_video_zh = "\u6587\u751f\u89c6\u9891"
+    assert cat.aliases[text_to_video_zh] == ["text-to-video"]
+    assert cs._tokens(f"{text_to_video_zh} text-to-video") == [
+        text_to_video_zh, "text", "to", "video"]
+
+
+async def test_ai_generation_pages_keep_comparisons_curated_and_coverage_in_models(
+        clients: AsyncClient):
+    video = (await clients.get("/catalog/platforms/video-gen")).json()
+    # One ledger of standalone model rows. Generation models are not interchangeable, so the
+    # job-level capabilities (video-gen.from_text/.from_image) hold NO endpoints - a merged row
+    # comparing Hailuo with Wan or Seedance would be a false comparison. Curated core rows carry
+    # per-model capabilities instead (single-provider, so they render as singles in the wall);
+    # the job-level rows return only when specific models are hand-picked into them.
+    assert {section["domain"] for section in video["domains"]} == {"models"}
+    rows = video["domains"][0]["rows"]
+    assert all(row["kind"] == "single" for row in rows)
+    caps = {row["capability"] for row in rows}
+    assert "video-gen.from_text" not in caps and "video-gen.from_image" not in caps
+    ids = {endpoint["id"] for row in rows for endpoint in row["endpoints"]}
+    assert {"minimax.video-gen.from_text", "minimax.video-gen.from_image",
+            "openrouter.video-gen.wan-3-0.from_text",
+            "replicate.video-gen.seedance-1-lite"} <= ids
+
+    image = (await clients.get("/catalog/platforms/image-gen")).json()
+    assert {section["domain"] for section in image["domains"]} == {"models"}
+    image_rows = [row for section in image["domains"] for row in section["rows"]]
+    assert all(row["kind"] == "single" for row in image_rows)
+    assert "image-gen.from_text" not in {row["capability"] for row in image_rows}
+    image_ids = {endpoint["id"] for row in image_rows for endpoint in row["endpoints"]}
+    assert {"minimax.image-gen.from_text", "replicate.image-gen.flux-schnell"} <= image_ids
 
 
 def test_a_missing_catalog_directory_is_an_empty_catalog_not_a_crash(tmp_path):

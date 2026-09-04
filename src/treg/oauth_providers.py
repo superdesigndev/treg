@@ -1190,6 +1190,75 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+MINIMAX = OAuthProvider(
+    service="minimax",
+    display_name="MiniMax",
+    auth_kind="token",
+    token_label="API key",
+    token_placeholder="your MiniMax API key",
+    setup_url="https://platform.minimax.io/user-center/basic-information/interface-key",
+    setup_action_label="Get your MiniMax API key",
+    setup_steps=(
+        "Sign in to the MiniMax international platform and open API Keys.",
+        "Create a key and copy it.",
+    ),
+    setup_note="Generation calls are paid; the empty validation probe does not create content.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Generate images and create videos from text or source images.",
+    base_url="https://api.minimax.io",
+    docs_url="https://platform.minimax.io/docs/api-reference/api-overview",
+    probe_path="/v2/video_generation",
+    probe_method="POST",
+    probe_json={},
+    probe_reject_statuses=(401, 403),
+)
+
+OPENROUTER = OAuthProvider(
+    service="openrouter",
+    display_name="OpenRouter",
+    auth_kind="token",
+    token_label="API key",
+    token_placeholder="your OpenRouter API key",
+    setup_url="https://openrouter.ai/settings/keys",
+    setup_action_label="Get your OpenRouter API key",
+    setup_steps=(
+        "Sign in to OpenRouter and open API Keys.",
+        "Create a key and copy it.",
+    ),
+    setup_note="Model calls spend OpenRouter credits; the key-info probe is free.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Generate video across many hosted models through one API.",
+    base_url="https://openrouter.ai/api/v1",
+    docs_url="https://openrouter.ai/docs/guides/overview/multimodal/video-generation",
+    probe_path="/key",
+)
+
+REPLICATE = OAuthProvider(
+    service="replicate",
+    display_name="Replicate",
+    auth_kind="token",
+    token_label="API token",
+    token_placeholder="your Replicate API token",
+    setup_url="https://replicate.com/account/api-tokens",
+    setup_action_label="Get your Replicate API token",
+    setup_steps=(
+        "Sign in to Replicate and open API tokens.",
+        "Copy the default token or create a new token.",
+    ),
+    setup_note="Predictions are paid; the account probe does not run a model.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Run official image and video generation models with a stable prediction API.",
+    base_url="https://api.replicate.com/v1",
+    docs_url="https://replicate.com/docs/reference/http",
+    probe_path="/account",
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -2537,7 +2606,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
+        APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
+        TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA,
@@ -2557,7 +2627,8 @@ DEFAULT_CAPABILITY = "read"
 
 # Shelf order in the marketplace. Anything carrying a category not named here sorts last, so a
 # provider added without one is visible rather than lost between the shelves.
-CATEGORY_ORDER = ("SEO", "Advertising", "Social media", "Enrichment", "Market data", "Community", "Other")
+CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Enrichment",
+                  "Market data", "Community", "Other")
 
 
 def get(service: str) -> OAuthProvider | None:

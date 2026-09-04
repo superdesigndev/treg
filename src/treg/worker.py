@@ -3,10 +3,12 @@
     treg-worker capacity sweep [--only provider,...] [--json]
     treg-worker overflow sync [--live]          # seed (+ live aggregator catalogs) → overflow_route
     treg-worker overflow verify [--all] [--max-usd 0.02]   # weekly re-verify of enabled routes
+    treg-worker asynctasks settle [--limit 50]       # complete deferred metered-call holds
 
 Not the light `treg` CLI: these need the server extra (DB, platform keys in the env) and make
 outbound calls to third parties, so they run as Render cron jobs with the server's env — never as
-dataplane lifespan work (refactor plan §2.2). Money is never moved here.
+dataplane lifespan work (refactor plan §2.2). The worker never originates a money movement. It may
+complete a hold opened by the request path, settling or releasing it with full call and org attribution.
 """
 
 from __future__ import annotations
@@ -189,6 +191,16 @@ async def _overflow_verify(args) -> int:
     return 0
 
 
+async def _asynctasks_settle(args) -> int:
+    from .infra.db import verify_db
+    from .application.asynctasks import settle_due
+
+    await verify_db()
+    result = await settle_due(limit=args.limit)
+    print(json.dumps(result.__dict__, sort_keys=True))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="treg-worker", description=__doc__)
     sub = ap.add_subparsers(dest="group", required=True)
@@ -207,6 +219,11 @@ def main(argv: list[str] | None = None) -> int:
     ver.add_argument("--all", action="store_true", help="every row, not only enabled/previously verified")
     ver.add_argument("--max-usd", type=float, default=0.02, help="skip routes priced above this")
     ver.set_defaults(fn=_overflow_verify)
+    tasks = sub.add_parser("asynctasks", help="deferred asynchronous task settlement")
+    tasksub = tasks.add_subparsers(dest="cmd", required=True)
+    settle = tasksub.add_parser("settle", help="poll due tasks and complete their existing holds")
+    settle.add_argument("--limit", type=int, default=50)
+    settle.set_defaults(fn=_asynctasks_settle)
     args = ap.parse_args(argv)
     _need_server()
     return asyncio.run(args.fn(args))

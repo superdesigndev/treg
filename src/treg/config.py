@@ -190,6 +190,9 @@ class Settings(BaseSettings):
     platform_key_crustdata: str = ""  # Bearer key; every call also needs the pinned x-api-version header
     platform_key_aviato: str = ""     # Bearer key; $10 auto-top-up buys 1,000 credits
     platform_key_exa: str = ""        # x-api-key; dollar-metered ($7/1k searches, $1/1k pages); settles from costDollars.total
+    platform_key_minimax: str = ""    # Bearer key for asynchronous Hailuo generation
+    platform_key_openrouter: str = ""  # Bearer key for asynchronous routed generation
+    platform_key_replicate: str = ""  # Bearer token for official asynchronous models
     # Overflow aggregators (docs/PROVIDER-CAPACITY-PLAN.md §4.3): treg-owned accounts that serve the
     # SAME vendor endpoint when our direct account is out. Env only, never a Secret row, never logged.
     # Not platform_key_* on purpose: they are a credential RUNG (platform-overflow), not a provider.

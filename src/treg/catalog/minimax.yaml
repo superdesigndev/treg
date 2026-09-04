@@ -1,0 +1,286 @@
+provider: minimax
+source:
+  docs: https://platform.minimax.io/docs/api-reference/api-overview
+  curated: 2026-09-02
+pricing_url: https://platform.minimax.io/docs/guides/pricing-paygo
+limits: "Video generation is asynchronous; poll every 10 seconds. Generated download URLs expire after about 9 hours."
+proposed_capabilities:
+  video-gen.result.retrieve: "Retrieve completed video generation content"
+  # Per-model capabilities: each is the join key for one model, so the row stands alone in the
+  # model wall today and merges with other ROUTES to the same model (aggregator listings) when
+  # those are curated later. The job-level video-gen.from_text/.from_image capabilities stay
+  # deliberately memberless until models are hand-picked into a comparison row.
+  video-gen.hailuo.from_text: "Generate a Hailuo video from a text prompt"
+  video-gen.hailuo.from_image: "Animate an image into a Hailuo video"
+  video-gen.h3.generate: "Generate an H3 (Hailuo 3) video from text, optionally with first/last frame images"
+  image-gen.image-01.from_text: "Generate images with MiniMax image-01"
+async:
+  id_from: task_id
+  poll:
+    endpoint: minimax.video-gen.task.status
+    param: {in: queryParams, name: task_id}
+  status:
+    path: status
+    success: [Success]
+    failure: [Fail]
+  result:
+    fetch: minimax.video-gen.result.retrieve
+    fetch_param: {in: queryParams, name: file_id, value_from: file_id}
+    ttl_note: "9h"
+  interval: 10
+endpoints:
+  - id: minimax.video-gen.from_text
+    capability: video-gen.hailuo.from_text
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /v1/video_generation
+    name: "MiniMax: Hailuo (text-to-video)"
+    summary: "Create a Hailuo video generation task from a text prompt."
+    input:
+      body:
+        # Live 2026-09-02 (base_resp 2013 on both): MiniMax-Hailuo-2.3-Fast "does not support
+        # Text-to-Video mode", and 512P "is only supported when param 'first_frame_image' provided".
+        # Both are image-to-video-only and live on the from_image row.
+        model: {type: string, required: true, enum: [MiniMax-Hailuo-2.3, MiniMax-Hailuo-02], example: MiniMax-Hailuo-2.3}
+        prompt: {type: string, required: true, example: "A paper boat drifts across a quiet pond at sunrise."}
+        duration: {type: integer, required: false, default: 6, min: 6, max: 10, example: 6}
+        resolution: {type: string, required: false, default: 768P, enum: [768P, 1080P], example: 768P, note: "1080P is 6 seconds only; see the price table for valid model-resolution-duration combinations."}
+        prompt_optimizer: {type: boolean, required: false, default: true}
+      bodyType: json
+    test_request:
+      body: {model: MiniMax-Hailuo-2.3, prompt: "A paper boat drifts across a quiet pond at sunrise.", duration: 6, resolution: 768P}
+    # MiniMax answers HTTP 200 with the error in the envelope (`base_resp.status_code` 2013 = invalid
+    # params). This rule makes such an answer a failure: the hold is released and no task is deferred.
+    expect: {json_path: base_resp.status_code, equals: 0}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 768P, body.duration: 6}, value: 0.28}
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 768P, body.duration: 10}, value: 0.56}
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 1080P, body.duration: 6}, value: 0.49}
+        - {when: {body.model: MiniMax-Hailuo-2.3, body.resolution: 768P, body.duration: 6}, value: 0.28}
+        - {when: {body.model: MiniMax-Hailuo-2.3, body.resolution: 768P, body.duration: 10}, value: 0.56}
+        - {when: {body.model: MiniMax-Hailuo-2.3, body.resolution: 1080P, body.duration: 6}, value: 0.49}
+      fallback: {value: 0.56, note: "The highest documented Hailuo text-to-video combination is a 10-second 768P video; unmatched combinations reserve this explicit upper bound."}
+      currency: USD
+      settle: table
+      source: docs
+      source_url: https://platform.minimax.io/docs/guides/pricing-paygo#video
+      checked: 2026-09-01
+      confidence: documented
+    verified: 2026-09-02
+    example_response: examples/minimax.video-gen.from_text.json
+    docs_url: https://platform.minimax.io/docs/api-reference/video-generation-t2v
+
+  - id: minimax.video-gen.from_image
+    capability: video-gen.hailuo.from_image
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /v1/video_generation
+    name: "MiniMax: Hailuo (image-to-video)"
+    summary: "Animate a first-frame image into a Hailuo video, optionally guided by a prompt."
+    input:
+      body:
+        model: {type: string, required: true, enum: [MiniMax-Hailuo-2.3, MiniMax-Hailuo-2.3-Fast, MiniMax-Hailuo-02], example: MiniMax-Hailuo-02}
+        first_frame_image: {type: string, required: true, example: "https://example.com/first-frame.png", note: "A public image URL or a data URL."}
+        prompt: {type: string, required: false, example: "The camera slowly pulls back."}
+        duration: {type: integer, required: false, default: 6, min: 6, max: 10, example: 6}
+        resolution: {type: string, required: false, default: 768P, enum: [512P, 768P, 1080P], example: 512P, note: "512P is Hailuo-02 only; see the price table for valid model-resolution-duration combinations."}
+        prompt_optimizer: {type: boolean, required: false, default: true}
+      bodyType: json
+    test_request:
+      body: {model: MiniMax-Hailuo-02, first_frame_image: "https://picsum.photos/seed/treg-aigc/512/512", prompt: "The camera slowly pulls back.", duration: 6, resolution: 512P}
+    expect: {json_path: base_resp.status_code, equals: 0}
+    cost: &hailuo_cost
+      type: per_success
+      table:
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 512P, body.duration: 6}, value: 0.10}
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 512P, body.duration: 10}, value: 0.15}
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 768P, body.duration: 6}, value: 0.28}
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 768P, body.duration: 10}, value: 0.56}
+        - {when: {body.model: MiniMax-Hailuo-02, body.resolution: 1080P, body.duration: 6}, value: 0.49}
+        - {when: {body.model: MiniMax-Hailuo-2.3, body.resolution: 768P, body.duration: 6}, value: 0.28}
+        - {when: {body.model: MiniMax-Hailuo-2.3, body.resolution: 768P, body.duration: 10}, value: 0.56}
+        - {when: {body.model: MiniMax-Hailuo-2.3, body.resolution: 1080P, body.duration: 6}, value: 0.49}
+        - {when: {body.model: MiniMax-Hailuo-2.3-Fast, body.resolution: 768P, body.duration: 6}, value: 0.19}
+        - {when: {body.model: MiniMax-Hailuo-2.3-Fast, body.resolution: 768P, body.duration: 10}, value: 0.32}
+        - {when: {body.model: MiniMax-Hailuo-2.3-Fast, body.resolution: 1080P, body.duration: 6}, value: 0.33}
+      fallback: {value: 0.56, note: "The highest documented Hailuo combination is a 10-second 768P video; unmatched combinations reserve this explicit upper bound."}
+      currency: USD
+      settle: table
+      source: docs
+      source_url: https://platform.minimax.io/docs/guides/pricing-paygo#video
+      checked: 2026-09-01
+      confidence: documented
+      note: "MiniMax charges only successful Hailuo video generations."
+    verified: 2026-09-01
+    example_response: examples/minimax.video-gen.from_image.json
+    docs_url: https://platform.minimax.io/docs/api-reference/video-generation-i2v
+
+  - id: minimax.video-gen.task.status
+    kind: utility
+    capability: video-gen.task.status
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /v1/query/video_generation
+    name: "Check a Hailuo video task"
+    summary: "Read the current status and generated file ID for a Hailuo video task."
+    resource_ownership:
+      requires: {kind: "poll:minimax.video-gen.task.status", param: task_id}
+      produces:
+        - {kind: "fetch:minimax.video-gen.result.retrieve", path: file_id}
+    async: false
+    input:
+      queryParams:
+        task_id: {type: string, required: true, example: "106916112212032"}
+    test_request: {queryParams: {task_id: "437021055357229"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Task status checks are free."}
+    verified: 2026-09-01
+    example_response: examples/minimax.video-gen.task.status.json
+    docs_url: https://platform.minimax.io/docs/api-reference/video-generation-query
+
+  - id: minimax.video-gen.result.retrieve
+    kind: utility
+    capability: video-gen.result.retrieve
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /v1/files/retrieve
+    name: "Retrieve a generated Hailuo file"
+    summary: "Exchange a successful video task's file ID for its temporary download URL."
+    resource_ownership:
+      requires: {kind: "fetch:minimax.video-gen.result.retrieve", param: file_id}
+    async: false
+    input:
+      queryParams:
+        file_id: {type: string, required: true, example: "176844028768320"}
+    test_request: {queryParams: {file_id: "437019583025452"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Generated file metadata retrieval is free."}
+    verified: 2026-09-01
+    example_response: examples/minimax.video-gen.result.retrieve.json
+    docs_url: https://platform.minimax.io/docs/api-reference/file-management-retrieve
+
+  - id: minimax.video-gen.h3.generate
+    capability: video-gen.h3.generate
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /v2/video_generation
+    name: "MiniMax: H3"
+    summary: "Create a Hailuo 3 (H3 / H3-Max) video task from a multimodal content array: one text item is required, with up to two optional first/last-frame images. The v2 API serves only the H3 family; Hailuo 2.x models use /v1/video_generation."
+    # The v2 chain differs from the provider-default v1 chain on every axis: path-parameter
+    # polling, lowercase terminal statuses, and the video URL directly in the terminal body
+    # (no files/retrieve exchange), so this row overrides the whole descriptor.
+    async:
+      id_from: task_id
+      poll:
+        endpoint: minimax.video-gen.v2.task.status
+        param: {in: pathParams, name: task_id}
+      status:
+        path: task.status
+        success: [succeeded]
+        failure: [failed, cancelled]
+      result:
+        path: task.content.url
+        ttl_note: "Download URL is time-limited; query the task again to mint a fresh one."
+      interval: 10
+    input:
+      body:
+        model: {type: string, required: true, enum: [MiniMax-H3, MiniMax-H3-Max], example: MiniMax-H3-Max}
+        content:
+          type: array
+          required: true
+          note: "Items of type text / image_url. One non-empty text item is required (max 7000 chars); up to two images (JPG/PNG/WEBP, <=30MB) set the first and last frame."
+        resolution: {type: string, required: true, enum: [480P, 768P, 2K], example: 480P, note: "H3 supports 768P and 2K; H3-Max supports 480P and 768P."}
+        duration: {type: integer, required: true, min: 4, max: 15, example: 5, note: "H3 accepts 4-15 seconds; H3-Max accepts 5-15."}
+        ratio: {type: string, required: false, enum: [adaptive, "21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], example: "16:9", note: "Required for text-only tasks, where adaptive is rejected; adaptive suits image-led tasks."}
+      bodyType: json
+    test_request:
+      body:
+        model: MiniMax-H3-Max
+        content: [{type: text, text: "A paper boat drifts across a quiet pond at sunrise."}]
+        resolution: 480P
+        duration: 5
+        ratio: "16:9"
+    cost:
+      type: per_success
+      table:
+        - {when: {body.model: MiniMax-H3, body.resolution: 768P}, value: 0.08, times: body.duration}
+        - {when: {body.model: MiniMax-H3, body.resolution: 2K}, value: 0.13, times: body.duration}
+        # H3-Max accepts 5-15 s (H3 4-15 s): `times_min` keeps the displayed floor honest ($0.25).
+        - {when: {body.model: MiniMax-H3-Max, body.resolution: 480P}, value: 0.05, times: body.duration, times_min: 5}
+        - {when: {body.model: MiniMax-H3-Max, body.resolution: 768P}, value: 0.08, times: body.duration, times_min: 5}
+      fallback: {value: 1.96, note: "Fifteen seconds of 2K output at the highest documented per-second rate ($1.95), rounded up a cent to clear float comparison."}
+      currency: USD
+      settle: table
+      source: docs
+      source_url: https://platform.minimax.io/docs/guides/pricing-paygo#video
+      checked: 2026-09-02
+      confidence: documented
+      note: "Billed per second of output video; only successful generations are charged."
+    verified: 2026-09-02
+    example_response: examples/minimax.video-gen.h3.generate.json
+    docs_url: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
+  - id: minimax.video-gen.v2.task.status
+    kind: utility
+    capability: video-gen.task.status
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /v2/query/video_generation/{task_id}
+    name: "Check a Hailuo 3 video task"
+    summary: "Read a v2 (H3 family) video task's status; a succeeded task carries its time-limited download URL at task.content.url."
+    resource_ownership:
+      requires: {kind: "poll:minimax.video-gen.v2.task.status", param: task_id}
+    async: false
+    input:
+      pathParams:
+        task_id: {type: string, required: true, example: "312409584736256"}
+    test_request: {pathParams: {task_id: "312409584736256"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Task status checks are free."}
+    verified: 2026-09-02
+    example_response: examples/minimax.video-gen.v2.task.status.json
+    docs_url: https://platform.minimax.io/docs/api-reference/video-generation-v2-query
+
+  - id: minimax.image-gen.from_text
+    capability: image-gen.image-01.from_text
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /v1/image_generation
+    name: "MiniMax: image-01"
+    summary: "Generate one or more images synchronously from a text prompt."
+    async: false
+    input:
+      body:
+        model: {type: string, required: false, default: image-01, enum: [image-01], example: image-01}
+        prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane."}
+        aspect_ratio: {type: string, required: false, default: "1:1", example: "1:1"}
+        response_format: {type: string, required: false, default: url, example: url}
+        n: {type: integer, required: false, default: 1, min: 1, max: 9, example: 1}
+      bodyType: json
+    test_request:
+      body: {model: image-01, prompt: "A clean editorial illustration of a paper airplane.", aspect_ratio: "1:1", response_format: url, n: 1}
+    # Image generation uses the same HTTP-200 error envelope as video submission. Without this,
+    # invalid params such as a missing prompt or n=10 settle at the table/fallback price.
+    expect: {json_path: base_resp.status_code, equals: 0}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.model: image-01}, value: 0.0035, times: body.n}
+      fallback: {value: 0.0315, note: "Nine image-01 outputs at the documented per-image rate are the explicit request maximum."}
+      currency: USD
+      settle: table
+      source: docs
+      source_url: https://platform.minimax.io/docs/guides/pricing-paygo#image
+      checked: 2026-09-01
+      confidence: documented
+      note: "Price is per generated image."
+    docs_url: https://platform.minimax.io/docs/api-reference/image-generation-t2i
