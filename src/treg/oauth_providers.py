@@ -1259,6 +1259,35 @@ REPLICATE = OAuthProvider(
     probe_path="/account",
 )
 
+SHOPAROLL = OAuthProvider(
+    service="shoparoll",
+    display_name="ShopARoll",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="sr_live_…",
+    # Bearer in the Authorization header only — never a query param, never the path. A bad key
+    # answers 401 {"error":"That API key isn't valid. Mint one in the app under Settings."}
+    # (observed live 2026-09-04).
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.shoparoll.com/settings",
+    setup_action_label="Create a ShopARoll API key",
+    setup_steps=(
+        "Sign in to ShopARoll and open Settings.",
+        "Under 'API access', create a key and copy it — it is shown once.",
+    ),
+    setup_note="Ads and reels are billed per successful generation from the account's prepaid "
+               "credits; the account check, uploads, status polls and downloads are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Finished, branded ad creatives and narrated vertical reels from a business's own photos.",
+    base_url="https://app.shoparoll.com",
+    docs_url="https://app.shoparoll.com/api/v1/openapi.json",
+    probe_path="/api/v1/account",  # free — a bad key gets a 401 here
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -2606,7 +2635,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
+        APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE, SHOPAROLL,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers

@@ -28,6 +28,7 @@ platforms:
   # --- AI generation: generated media modalities ------------------------------------------------
   video-gen: {label: "Video generation", category: "AI generation", summary: "Text-to-video and image-to-video across models, with prices side by side."}
   image-gen: {label: "Image generation", category: "AI generation", summary: "Text-to-image and prompt-based image editing across models."}
+  creative: {label: "Ad creatives & reels", category: "AI generation", summary: "Finished, branded ad images and narrated short-form videos generated from a business's own photos."}
 
   # --- Social: global social & video -----------------------------------------------------------
   tiktok: {label: "TikTok", category: "Social", featured: 1, summary: "Profiles, videos, comments, hashtags and search — plus your own account via OAuth."}
