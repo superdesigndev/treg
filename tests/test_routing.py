@@ -1040,3 +1040,52 @@ def test_every_declared_miss_status_names_its_meaning():
     assert call_route._miss_status(cat.by_id["aviato.people.phone.find"]) == 404
     assert call_route._miss_status(cat.by_id["tikhub.x.reddit-app-fetch-post-comments"]) is None
     assert call_route._miss_status({"id": "x"}) is None
+
+
+async def test_lusha_is_the_last_rung_of_the_phone_waterfall_and_settles_on_its_own_bill(clients: AsyncClient, enrichment_on, monkeypatch):
+    """Guatemala, 2026-09-03: 7 phones in 44 across tomba/aviato/leadmagic/findymail/leadsforge.
+    Lusha's native direct-dial data is the sixth rung — dearest per hit (6 credits), so it ranks
+    last and is only asked once the cheap five have missed; a miss is free and a matched profile
+    with no number costs the 1-credit search, both read off `billing.creditsCharged`."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LUSHA", "PLATFORM-LUSHA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,aviato,fiber-ai,lusha")
+    get_settings.cache_clear()
+    routed = "treg.people.phone.find"
+    plan = (await clients.get(f"/catalog/endpoints/{routed}")).json()["routing"]["plan"]
+    assert plan[-1]["endpoint_id"] == "lusha.people.phone.find" and len(plan) == 6, [c["endpoint_id"] for c in plan]
+    def misses():
+        return {"aviato": [(404, {"message": "Not Found"})], "tomba": [(200, {"data": {"e164_format": None}})],
+                "leadmagic": [(200, {"mobile_number": None, "credits_consumed": 0})],
+                "findymail": [(200, {"phone": None})], "leadsforge": [(200, {"phoneNumber": None})]}
+    seen = []
+    hit = {"requestId": "r", "results": [{"id": "v1.x", "fullName": "Ana Perez",
+                                          "phones": [{"number": "+502 5555 0100", "type": "mobile", "doNotCall": False, "countryIso2": "GT"}]}],
+           "billing": {"creditsCharged": 6, "resultsReturned": 1}}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({**misses(), "lusha": [(200, hit)]}, seen))
+    # a Lusha attempt RESERVES the 6-credit hit price (~$0.75): on the $1.00 signup grant a team gets
+    # one attempt, so fund the second call here rather than let the reserve mask the miss rule
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        await ledger.grant(db, org_id, amount_micro=5_000_000, kind="test-funding", once=False)
+        await db.commit()
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{routed}", json={"full_name": "Ana Perez", "domain": "acme.gt"})
+    assert r.status_code == 200 and r.json()["_treg"]["served_by"] == "lusha.people.phone.find", r.text
+    assert r.json()["output"] == {"phone": "+502 5555 0100", "line_type": "mobile", "country_code": "GT"}
+    # {full_name, domain} is accepted by two rungs only (leadsforge, lusha); the four that need a
+    # LinkedIn URL or an email are not candidates for this identity at all
+    assert [p for p, *_ in seen] == ["leadsforge", "lusha"], "asked last, after every cheaper candidate missed"
+    body = seen[-1][3]
+    assert body == {"contacts": [{"firstName": "Ana", "lastName": "Perez", "companyDomain": "acme.gt"}], "reveal": ["phones"]}
+    rate = catalog_store.load().credit_rates["lusha"]
+    assert before - await _balance(clients) == int(6 * rate * 1_000_000 + 0.5), "the bill is Lusha's own creditsCharged"
+    # a matched profile with no number is a MISS that still cost the 1-credit search
+    seen.clear()
+    no_number = {"requestId": "r", "results": [{"id": "v1.x", "fullName": "Ana Perez", "partialProfile": False}],
+                 "billing": {"creditsCharged": 1, "resultsReturned": 1}, "status": "partial", "statusReason": "WATERFALL_NOT_CONFIGURED"}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({**misses(), "lusha": [(200, no_number)]}, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{routed}", json={"full_name": "Ana Perez", "domain": "acme.gt"})
+    assert r.status_code == 200 and r.headers["X-Treg-Route-Outcome"] == "miss" and r.json()["output"]["phone"] is None, r.text
+    assert before - await _balance(clients) == int(1 * rate * 1_000_000 + 0.5)
+    get_settings.cache_clear()

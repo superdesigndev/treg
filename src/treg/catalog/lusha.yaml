@@ -89,6 +89,46 @@ endpoints:
     example_response: examples/lusha.people.enrich.json
     docs_url: https://docs.lusha.com/apis/openapi/enrichment
 
+  - id: lusha.people.phone.find
+    domain: contacts
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v3/contacts/search-and-enrich
+    name: "Find a person's phone by LinkedIn URL, email or name"
+    summary: "Reveal a person's direct-dial or mobile from a LinkedIn URL, email, or name + company domain — Lusha's native phone data"
+    input:
+      bodyType: json
+      body:
+        contacts: {type: "array[object]", required: true, note: "ONE person to look up, identified by linkedinUrl, email, or firstName + lastName + companyDomain", example: [{"linkedinUrl": "https://www.linkedin.com/in/example"}]}
+        reveal: {type: "array[string]", required: true, note: "always [\"phones\"] on this route — the phone-only view of lusha.people.enrich, so the router can bill and rank it as a phone finder", example: ["phones"]}
+      note: "the same search-and-enrich call as lusha.people.enrich with `reveal: [\"phones\"]`. THREE OUTCOMES, each with its own bill (live 2026-09-04): not found → `results[0].error.code == NOT_FOUND`, 0 credits; found but Lusha holds no number → a profile with no `phones` key, 1 credit (the contact search) and a top-level `status: partial`; found with a number → `phones: [{number, type, doNotCall, countryIso2}]`, 1 + 5 credits. Honour `doNotCall`. treg's account has Lusha's third-party phone waterfall NOT connected (`statusReason: WATERFALL_NOT_CONFIGURED`), so this answers from Lusha's native data only"
+    test_request:
+      body: {contacts: [{firstName: "Jane", lastName: "Doe", companyDomain: "lusha.com"}], reveal: ["phones"]}
+    miss:
+      status: 200
+      means: "`results[0].error.code == NOT_FOUND` (0 credits) or a matched profile with no `phones` key (1 credit) — Lusha has no number; do not retry the same identifier"
+    cost:
+      type: per_success
+      value: 6
+      currency: credit
+      per: 1
+      unit: result
+      source: rate_card_api
+      source_url: https://www.lusha.com/pricing/
+      checked: '2026-09-04'
+      confidence: verified
+      note: 'The live rate card (GET /v3/account/usage.pricing, read 2026-09-04) prices contactSearch at
+        1 credit per 25 results and revealPhone at 5 per 1, so a found number = 1 + 5 = 6 credits —
+        the reveal half confirmed live by a contacts/enrich reveal reporting billing.creditsCharged 5.
+        A contact Lusha cannot match is free (creditsCharged 0, observed 2026-09-04); a matched contact
+        with no number still costs the 1-credit search (creditsCharged 1, observed 2026-09-04 twice).
+        Every response carries `billing.creditsCharged`, which is what treg settles on.'
+    verified: 2026-09-04
+    example_response: examples/lusha.people.phone.find.json
+    docs_url: https://docs.lusha.com/apis/openapi/enrichment
+
   - id: lusha.people.search
     domain: contacts
     capability: people.search
