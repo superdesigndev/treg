@@ -3009,6 +3009,25 @@ async def adtrack_js():
     return FileResponse(f, media_type="application/javascript", headers=headers)
 
 
+@app.get("/gtag.js", include_in_schema=False)
+async def gtag_js():
+    """Google Ads tag for CLIENT-SIDE website conversion tracking. Exposes `tregSignupConversion()`
+    for the dashboard to call on new-account signup success.
+
+    This is the **website** conversion (action 7745505287 "treg Signup (web)") that fires to the
+    Ads UI SIGNUP goal. It is NOT a duplicate of the server-side adsconv upload conversions, which
+    go to different action IDs (signup 7723667014, first_call 7723667017, paid 7723667020) via the
+    Data Manager API. Both coexist: client gives Google a real-time website signal; server uploads
+    durable attributed conversions for bidding."""
+    headers = {"Cache-Control": "no-cache"}
+    if not adsconv.enabled():
+        return Response(content="", media_type="application/javascript", headers=headers)
+    f = _WEB_DIR / "gtag.js"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="gtag.js not bundled")
+    return FileResponse(f, media_type="application/javascript", headers=headers)
+
+
 @app.get("/sitetrack.js", include_in_schema=False)
 async def sitetrack_js():
     """First-touch traffic-source capture (`treg_utm` cookie, always on — first-party, no PII) plus

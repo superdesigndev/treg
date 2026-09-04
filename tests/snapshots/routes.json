@@ -637,6 +637,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "gtag_js",
+    "path": "/gtag.js"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "sitetrack_js",
     "path": "/sitetrack.js"
   },

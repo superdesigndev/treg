@@ -44,6 +44,7 @@ addEventListener('load', function(){
 <script src="/tutorial.js"></script>
 <script src="/dashboard-tour/tour.js"></script>
 <script src="/adtrack.js"></script>
+<script src="/gtag.js"></script>
 <style>
   [v-cloak]{display:none}  /* hide the raw template until Vue mounts — else a hard refresh flashes the un-compiled markup while the script downloads. Vue drops the attribute on mount, which is also how the loader guard above detects that it never did. */
   /* ===== Ledger: warm paper + clay, mono-forward. Dark default. ===== */
@@ -5140,6 +5141,7 @@ createApp({
         this.onboarded=true; try{ await this.api('/onboard/skip',{method:'POST'}); }catch(e){}  // don't re-prompt
         await this.loadAll(); this.switchOrg({slug:o.org});
         this.analyticsIdentify(); this.intercomUpdate(); this.track('onboarding_team_created',{team:o.org});
+        try{ if(window.tregSignupConversion) window.tregSignupConversion(); }catch(e){}  // client-side website conversion (Ads action 7745505287)
         this.welcome.step=1; }  // stay in the modal: pick your agent → get the setup line
       catch(e){ this.welcome.err='Could not create the team: '+(e.detail||e.status); }
       finally{ this.welcome.busy=false; } },
