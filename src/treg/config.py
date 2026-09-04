@@ -155,6 +155,7 @@ class Settings(BaseSettings):
     platform_key_moz: str = ""          # base64 of "access_id:secret_key" (HTTP Basic)
     platform_key_seranking: str = ""
     platform_key_hunter: str = ""
+    platform_key_feedjolt: str = ""  # Bearer fjk_…; plan-included REST, no per-call meter
     platform_key_leadmagic: str = ""
     platform_key_lusha: str = ""
     platform_key_pdl: str = ""

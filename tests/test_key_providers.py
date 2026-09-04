@@ -115,7 +115,7 @@ async def test_key_connect_supports_a_query_param_key(clients: AsyncClient, monk
 
 
 async def test_a_plain_text_error_body_is_rejected(clients: AsyncClient, monkeypatch):
-    """Semrush signals a bad key with HTTP 200 + an "ERROR ..." text body. Storing it anyway just
+    """Semrush signals a bad key with HTTP 200 + an \"ERROR ...\" text body. Storing it anyway just
     moves the failure to the first real report call, after the user has left the setup screen."""
     monkeypatch.setitem(P.REGISTRY, "semrush", dataclasses.replace(
         P.REGISTRY["semrush"], base_url="http://upstream", probe_url="", probe_path="/units-bad"))

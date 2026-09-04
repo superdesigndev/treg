@@ -1,0 +1,443 @@
+provider: feedjolt
+source:
+  docs: https://www.feedjolt.com/en/docs/developers
+  openapi: https://api.feedjolt.com/openapi.json
+  curated: 2026-09-03
+# BYOK listing. REST+MCP sit in Feedjolt's premium set (Startup $9/mo monthly, Scale $15/mo
+# annual). There is no per-call meter and no rate-card endpoint, so treg cannot serve these on
+# its own key yet. Authenticated routes are own_account workspace data.
+#
+# MCP (Streamable HTTP at /mcp/reader and /mcp/writer) is a sibling product, not catalogued here —
+# treg relays REST HTTP, not JSON-RPC.
+#
+# Probe is GET /workspaces. GET /health is unauthenticated (200 with no key) and must not be used.
+# Auth: Authorization Bearer fjk_ (X-API-Key also works). The oauth sidecar sends Bearer.
+
+limits: "plan-included; 429 on abuse. REST API is not on the Growth plan."
+pricing_url: https://www.feedjolt.com/en
+
+proposed_capabilities:
+  product.feedback.boards.list: "List feedback boards in a product workspace"
+  product.feedback.posts.list: "List customer feedback posts"
+  product.feedback.posts.get: "Get one feedback post"
+  product.feedback.posts.search: "Search customer feedback posts by keyword"
+  product.feedback.roadmap.get: "Get a product roadmap grouped by status"
+  product.feedback.changelog.list: "List published changelog entries"
+  product.feedback.statuses.list: "List feedback statuses in a workspace"
+  product.feedback.tags.list: "List tags in a feedback workspace"
+
+endpoints:
+  - id: feedjolt.public.boards.list
+    capability: product.feedback.boards.list
+    platform: web
+    scope: any_account
+    method: GET
+    path: /public/{workspace_slug}/boards
+    name: "List public boards"
+    summary: "List Public Boards"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "corvidly"}
+    test_request:
+      pathParams: {workspace_slug: "corvidly"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-02"
+      confidence: documented
+      note: "Public portal read; no API key required."
+    docs_url: https://api.feedjolt.com/docs
+
+  - id: feedjolt.public.posts.list
+    capability: product.feedback.posts.list
+    platform: web
+    scope: any_account
+    method: GET
+    path: /public/{workspace_slug}/boards/{board_slug}/posts
+    name: "List public posts on a board"
+    summary: "List Public Posts"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "corvidly"}
+        board_slug: {type: string, required: true, example: "feedback"}
+      queryParams:
+        page: {type: integer, required: false, example: 1}
+        page_size: {type: integer, required: false, example: 3}
+        sort_by: {type: string, required: false}
+        q: {type: string, required: false}
+        status_id: {type: string, required: false}
+        tag_ids: {type: string, required: false}
+    test_request:
+      pathParams: {workspace_slug: "corvidly", board_slug: "feedback"}
+      queryParams: {page_size: 3}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-02"
+      confidence: documented
+      note: "Public portal read; no API key required."
+    docs_url: https://api.feedjolt.com/docs
+
+  - id: feedjolt.public.posts.get
+    capability: product.feedback.posts.get
+    platform: web
+    scope: any_account
+    method: GET
+    path: /public/{workspace_slug}/posts/{post_id}
+    name: "Get a public post"
+    summary: "Get Public Post"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "corvidly"}
+        post_id: {type: string, required: true, example: "52428c9b-971a-4804-a96e-73ce3da4ab17"}
+    test_request:
+      pathParams: {workspace_slug: "corvidly", post_id: "52428c9b-971a-4804-a96e-73ce3da4ab17"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-02"
+      confidence: documented
+      note: "Public portal read; no API key required."
+    docs_url: https://api.feedjolt.com/docs
+
+  - id: feedjolt.public.posts.search
+    capability: product.feedback.posts.search
+    platform: web
+    scope: any_account
+    method: GET
+    path: /public/{workspace_slug}/search
+    name: "Search public posts"
+    summary: "Search Public Posts"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "corvidly"}
+      queryParams:
+        q: {type: string, required: true, example: "MCP", note: "minLength 2, maxLength 200"}
+    test_request:
+      pathParams: {workspace_slug: "corvidly"}
+      queryParams: {q: "MCP"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-02"
+      confidence: documented
+      note: "Public portal read. OpenAPI: q minLength 2, maxLength 200."
+    docs_url: https://api.feedjolt.com/docs
+
+  - id: feedjolt.public.roadmap.get
+    capability: product.feedback.roadmap.get
+    platform: web
+    scope: any_account
+    method: GET
+    path: /public/{workspace_slug}/roadmap
+    name: "Get public roadmap"
+    summary: "Get Public Roadmap"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "corvidly"}
+      queryParams:
+        tags: {type: string, required: false, note: "comma-separated tag ids"}
+    test_request:
+      pathParams: {workspace_slug: "corvidly"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-02"
+      confidence: documented
+      note: "Public portal read."
+    docs_url: https://api.feedjolt.com/docs
+
+  - id: feedjolt.public.changelog.list
+    capability: product.feedback.changelog.list
+    platform: web
+    scope: any_account
+    method: GET
+    path: /public/{workspace_slug}/changelog
+    name: "List public changelog"
+    summary: "List Public Changelog"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "corvidly"}
+      queryParams:
+        page: {type: integer, required: false, example: 1}
+        page_size: {type: integer, required: false, example: 5}
+        version_id: {type: string, required: false}
+    test_request:
+      pathParams: {workspace_slug: "corvidly"}
+      queryParams: {page_size: 5}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-02"
+      confidence: documented
+      note: "Public portal read."
+    docs_url: https://api.feedjolt.com/docs
+
+  - id: feedjolt.account.workspaces.list
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /workspaces
+    name: "List workspaces for this API key"
+    summary: "List Workspaces"
+    input:
+      note: "no parameters — the key rides in the Authorization Bearer header (X-API-Key also works). This is the registry probe."
+    test_request: {queryParams: {}}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-03"
+      confidence: documented
+      note: "Probe. Garbage Bearer/X-API-Key returns 401 {\"detail\":\"Invalid or revoked API key\"}. Cookie-missing (no auth) returns 401 {\"detail\":\"Not authenticated\"}. Matching-slug key returns 200 (observed 2026-09-03, workspace luodaint, Bearer and X-API-Key). Cross-workspace slug returns 403 {\"detail\":\"API key is not valid for this workspace\"}."
+    docs_url: https://www.feedjolt.com/en/docs/developers
+
+  - id: feedjolt.boards.list
+    capability: product.feedback.boards.list
+    platform: web
+    scope: own_account
+    method: GET
+    path: /workspaces/{workspace_slug}/boards
+    name: "List boards in a workspace"
+    summary: "List Boards"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "luodaint"}
+    test_request:
+      pathParams: {workspace_slug: "luodaint"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-03"
+      confidence: documented
+      note: "Included in plan. Auth: Authorization Bearer fjk_ (X-API-Key also works). Live 2xx on 2026-09-03 (slug must match the key). Cross-workspace slug returns 403."
+    docs_url: https://api.feedjolt.com/docs
+
+  - id: feedjolt.posts.list
+    capability: product.feedback.posts.list
+    platform: web
+    scope: own_account
+    method: GET
+    path: /workspaces/{workspace_slug}/posts
+    name: "List posts in a workspace"
+    summary: "List Posts"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "luodaint"}
+      queryParams:
+        page: {type: integer, required: false, example: 1}
+        page_size: {type: integer, required: false, note: "keep small", example: 5}
+        board_id: {type: string, required: false}
+        status_id: {type: string, required: false}
+        exclude_status_ids: {type: string, required: false}
+        tag_ids: {type: string, required: false}
+        q: {type: string, required: false, note: "minLength 2, maxLength 200"}
+        owner_admin_id: {type: string, required: false}
+        date_from: {type: string, required: false, note: "YYYY-MM-DD"}
+        date_to: {type: string, required: false, note: "YYYY-MM-DD"}
+        sort_by: {type: string, required: false, note: "default newest"}
+    test_request:
+      pathParams: {workspace_slug: "luodaint"}
+      queryParams: {page_size: 5}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-03"
+      confidence: documented
+      note: "Included in plan. Auth: Authorization Bearer fjk_ (X-API-Key also works). Live 2xx on 2026-09-03 (slug must match the key). Cross-workspace slug returns 403."
+    docs_url: https://api.feedjolt.com/docs
+
+  - id: feedjolt.posts.search
+    capability: product.feedback.posts.search
+    platform: web
+    scope: own_account
+    method: GET
+    path: /workspaces/{workspace_slug}/posts/search
+    name: "Search posts in a workspace"
+    summary: "Search Posts"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "luodaint"}
+      queryParams:
+        q: {type: string, required: true, example: "ab", note: "minLength 2, maxLength 200"}
+    test_request:
+      pathParams: {workspace_slug: "luodaint"}
+      queryParams: {q: "ab"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-03"
+      confidence: documented
+      note: "Included in plan. Auth: Authorization Bearer fjk_ (X-API-Key also works). Live 2xx on 2026-09-03 (slug must match the key). Cross-workspace slug returns 403."
+    docs_url: https://api.feedjolt.com/docs
+
+  - id: feedjolt.posts.get
+    capability: product.feedback.posts.get
+    platform: web
+    scope: own_account
+    method: GET
+    path: /workspaces/{workspace_slug}/posts/{post_id}
+    name: "Get a post"
+    summary: "Get a post in a workspace"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "luodaint"}
+        post_id: {type: string, required: true, example: "b7e1779e-6c6d-4d07-b916-3dfd3ce5ad15"}
+    test_request:
+      pathParams: {workspace_slug: "luodaint", post_id: "b7e1779e-6c6d-4d07-b916-3dfd3ce5ad15"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-03"
+      confidence: documented
+      note: "Included in plan. Auth: Authorization Bearer fjk_ (X-API-Key also works). Live 2xx on 2026-09-03 (slug must match the key). Cross-workspace slug returns 403."
+    docs_url: https://api.feedjolt.com/docs
+
+  - id: feedjolt.roadmap.get
+    capability: product.feedback.roadmap.get
+    platform: web
+    scope: own_account
+    method: GET
+    path: /workspaces/{workspace_slug}/roadmap
+    name: "Get workspace roadmap"
+    summary: "Get Workspace Roadmap"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "luodaint"}
+    test_request:
+      pathParams: {workspace_slug: "luodaint"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-03"
+      confidence: documented
+      note: "Included in plan. Auth: Authorization Bearer fjk_ (X-API-Key also works). Live 2xx on 2026-09-03 (slug must match the key). Cross-workspace slug returns 403."
+    docs_url: https://api.feedjolt.com/docs
+
+  - id: feedjolt.changelog.list
+    capability: product.feedback.changelog.list
+    platform: web
+    scope: own_account
+    method: GET
+    path: /workspaces/{workspace_slug}/changelog
+    name: "List workspace changelog"
+    summary: "List Workspace Changelog"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "luodaint"}
+      queryParams:
+        page: {type: integer, required: false, example: 1}
+        page_size: {type: integer, required: false, example: 5}
+    test_request:
+      pathParams: {workspace_slug: "luodaint"}
+      queryParams: {page_size: 5}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-03"
+      confidence: documented
+      note: "Included in plan. Auth: Authorization Bearer fjk_ (X-API-Key also works). Live 2xx on 2026-09-03 (slug must match the key). Cross-workspace slug returns 403."
+    docs_url: https://api.feedjolt.com/docs
+
+  - id: feedjolt.statuses.list
+    capability: product.feedback.statuses.list
+    platform: web
+    scope: own_account
+    method: GET
+    path: /workspaces/{workspace_slug}/statuses
+    name: "List statuses"
+    summary: "List Statuses"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "luodaint"}
+    test_request:
+      pathParams: {workspace_slug: "luodaint"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-03"
+      confidence: documented
+      note: "Included in plan. Auth: Authorization Bearer fjk_ (X-API-Key also works). Live 2xx on 2026-09-03 (slug must match the key). Cross-workspace slug returns 403."
+    docs_url: https://api.feedjolt.com/docs
+
+  - id: feedjolt.tags.list
+    capability: product.feedback.tags.list
+    platform: web
+    scope: own_account
+    method: GET
+    path: /workspaces/{workspace_slug}/tags
+    name: "List tags"
+    summary: "List Tags"
+    input:
+      pathParams:
+        workspace_slug: {type: string, required: true, example: "luodaint"}
+    test_request:
+      pathParams: {workspace_slug: "luodaint"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://www.feedjolt.com/en
+      checked: "2026-09-03"
+      confidence: documented
+      note: "Included in plan. Auth: Authorization Bearer fjk_ (X-API-Key also works). Live 2xx on 2026-09-03 (slug must match the key). Cross-workspace slug returns 403."
+    docs_url: https://api.feedjolt.com/docs

@@ -97,6 +97,8 @@ services:
         sync: false
       - key: TREG_PLATFORM_KEY_HUNTER
         sync: false
+      - key: TREG_PLATFORM_KEY_FEEDJOLT  # plan-included; BYOK until a per-call rate card exists
+        sync: false
       - key: TREG_PLATFORM_KEY_LEADMAGIC
         sync: false
       - key: TREG_PLATFORM_KEY_LUSHA
