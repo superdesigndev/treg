@@ -18,7 +18,9 @@ async:
   status:
     path: status
     success: [completed]
-    failure: [failed]
+    # OpenRouter documents cancelled and expired as terminal failures too. If either is treated as
+    # progress, the worker retains the caller's hold until treg's 24-hour safety deadline.
+    failure: [failed, cancelled, expired]
   result:
     fetch: openrouter.video-gen.result.retrieve
     fetch_param: {in: pathParams, name: id, value_from: id}

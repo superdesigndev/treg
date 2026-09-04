@@ -680,7 +680,12 @@ async def test_activity_reports_task_state_and_artifact(
 ):
     """The audit row froze the reserve as the charge; the feed must show what actually happened."""
     call_id = await _due_submission(clients, monkeypatch, {
-        "status": "succeeded", "output": ["https://replicate.delivery/out.webp"]})
+        "status": "succeeded", "output": ["https://replicate.delivery/out.webp"],
+        # Keep the terminal envelope above archive._COMPRESS_MIN_BYTES. Production video status
+        # bodies are compressed, which is where the activity reader once returned encoded bytes
+        # to json.loads and silently lost the artifact.
+        "provider_metadata": "x" * 512,
+    })
     pending = await _activity_row(clients, call_id)
     assert pending["cost_charged_micro"] is None
     assert pending["async_task"]["status"] == "pending"

@@ -452,6 +452,143 @@
   .section { padding: 110px 24px; }
   .section h2 { font-family: var(--display); font-weight: 500; letter-spacing: -.025em; font-size: clamp(30px, 4.6vw, 46px); text-align: center; margin: 0 0 14px; text-wrap: balance; }
   .section .lede { text-align: center; color: var(--muted); max-width: 56ch; margin: 0 auto 48px; font-size: 17px; text-wrap: balance; }
+
+  /* ---- the six public Grok cards, recut in treg's light-page grammar ---- */
+  .bot-gallery { padding-top: 124px; overflow: hidden; }
+  .bot-gallery h2 .hl2 { color: var(--teal-ink); font-weight: 600; }
+  .bot-kicker {
+    width: fit-content; margin: 0 auto 18px; display: flex; align-items: center; gap: 9px;
+    color: var(--teal-ink); font-family: var(--mono); font-size: 12px; letter-spacing: .02em;
+  }
+  .bot-kicker i {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--teal); display: inline-block;
+    box-shadow: 0 0 0 5px rgba(84,185,166,.12);
+  }
+  .bot-deck {
+    max-width: 1040px; margin: 0 auto; display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px;
+  }
+  .bot-card {
+    --blink: 0s;
+    grid-column: span 2; min-height: 454px; position: relative; overflow: hidden;
+    display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 23px;
+    background: #fff; color: var(--ink); text-decoration: none;
+    box-shadow: 0 12px 36px -28px rgba(20,18,12,.42);
+    opacity: 0; transform: translateY(32px) scale(.985);
+    transition: opacity .6s ease, transform .7s cubic-bezier(.2,.75,.2,1), border-color .25s, box-shadow .25s;
+  }
+  .bot-card:nth-child(2) { --blink: .7s; }
+  .bot-card:nth-child(3) { --blink: 1.4s; }
+  .bot-card:nth-child(4) { --blink: 2.1s; }
+  .bot-card:nth-child(5) { --blink: 2.8s; }
+  .bot-card:nth-child(6) { --blink: 3.5s; }
+  .bot-gallery.seen .bot-card { opacity: 1; transform: none; }
+  .bot-gallery.seen .bot-card:nth-child(2) { transition-delay: .08s; }
+  .bot-gallery.seen .bot-card:nth-child(3) { transition-delay: .16s; }
+  .bot-gallery.seen .bot-card:nth-child(4) { transition-delay: .24s; }
+  .bot-gallery.seen .bot-card:nth-child(5) { transition-delay: .32s; }
+  .bot-gallery.seen .bot-card:nth-child(6) { transition-delay: .4s; }
+  .bot-gallery.seen .bot-card:hover {
+    transform: translateY(-7px); transition-delay: 0s; border-color: rgba(84,185,166,.7);
+    box-shadow: 0 26px 58px -32px rgba(20,18,12,.38);
+  }
+  .bot-visual {
+    height: 188px; flex: none; position: relative; overflow: hidden; display: grid; place-items: center;
+    background:
+      radial-gradient(circle at 18% 15%, #1C6B5C 0%, transparent 45%),
+      radial-gradient(circle at 82% 78%, #16A085 0%, transparent 55%),
+      radial-gradient(ellipse at 50% 50%, #0D3D34 0%, #050F0D 80%);
+    border-bottom: 1px solid rgba(16,16,16,.08);
+  }
+  .bot-avatar {
+    width: 92px; height: 92px; position: relative; display: grid; place-items: center;
+    filter: drop-shadow(0 18px 24px rgba(0,25,23,.2));
+    transition: transform .45s cubic-bezier(.2,.8,.2,1);
+  }
+  .bot-card:hover .bot-avatar { transform: translateY(-3px) scale(1.04); }
+  .bot-face { position: relative; display: block; background: #18BEA9; }
+  .face-scout {
+    width: 51px; height: 80px; background: #32AA9B;
+    border-radius: 48% 52% 45% 47% / 29% 30% 26% 28%;
+  }
+  .face-rival {
+    width: 70px; height: 79px; background: #32AA9B;
+    clip-path: path("M 15 3 Q 35 -1 56 2 Q 70 4 70 15 Q 68 45 59 63 Q 51 79 35 79 Q 18 79 10 66 Q 2 53 0 20 Q -1 9 7 6 Q 11 4 15 3 Z");
+  }
+  .face-serp {
+    width: 68px; height: 76px; background: #32AA9B;
+    clip-path: path("M 34 0 Q 38 0 42 3 L 63 15 Q 68 18 68 24 L 68 52 Q 68 59 62 63 L 40 74 Q 34 78 28 74 L 6 63 Q 0 59 0 52 L 0 25 Q 0 18 6 15 L 29 2 Q 32 0 34 0 Z");
+  }
+  .face-creator { width: 66px; height: 39px; border-radius: 45% 50% 48% 48%; margin-top: 19px; }
+  .face-creator::before, .face-creator::after { content: ""; position: absolute; background: inherit; border-radius: 50%; }
+  .face-creator::before { width: 40px; height: 48px; left: 7px; top: -22px; }
+  .face-creator::after { width: 38px; height: 39px; right: -4px; top: -5px; }
+  .face-icp { width: 82px; height: 82px; background: transparent; }
+  .face-icp::before {
+    content: ""; position: absolute; width: 58px; height: 58px; left: 12px; top: 12px;
+    background: #32AA9B; border-radius: 29% 43% 31% 41% / 39% 31% 43% 29%;
+    transform: rotate(39deg);
+  }
+  .face-gtm { width: 82px; height: 53px; background: #32AA9B; border-radius: 999px; }
+  .bot-eyes {
+    --eye-x: 0px; --eye-y: 0px; --eye-rot: 0deg;
+    position: absolute; left: 50%; top: 44%; z-index: 3; display: flex; gap: 8px;
+    transform: translate(-50%, -50%) translate(var(--eye-x), var(--eye-y)) rotate(var(--eye-rot));
+    transition: transform .16s cubic-bezier(.2,.7,.2,1); will-change: transform;
+  }
+  .face-scout .bot-eyes { top: 56%; left: 49%; gap: 6px; align-items: flex-start; }
+  .face-scout .bot-eye:first-child { position: relative; width: 6px; height: 13px; top: -5px; transform: rotate(45deg); }
+  .face-scout .bot-eye + .bot-eye { position: relative; width: 6px; height: 16px; top: 1px; transform: rotate(-16deg); }
+  .face-rival .bot-eyes { top: 42%; left: 69%; gap: 10px; align-items: flex-start; }
+  .face-rival .bot-eye:first-child { position: relative; width: 6px; height: 14px; top: 2px; transform: rotate(-18deg); }
+  .face-rival .bot-eye + .bot-eye { position: relative; width: 6px; height: 14px; top: -2px; transform: rotate(-18deg); }
+  .face-serp .bot-eyes { top: 57%; left: 40%; gap: 7px; align-items: flex-start; }
+  .face-serp .bot-eye:first-child { position: relative; width: 6px; height: 13px; top: -4px; transform: rotate(45deg); }
+  .face-serp .bot-eye + .bot-eye { position: relative; width: 6px; height: 17px; top: 2px; transform: rotate(-15deg); }
+  .face-creator .bot-eyes { top: 28%; left: 58%; }
+  .face-icp .bot-eyes { top: 43%; left: 56%; gap: 10px; }
+  .face-icp .bot-eye, .face-icp .bot-eye + .bot-eye { width: 6px; height: 14px; transform: rotate(-20deg); }
+  .face-gtm .bot-eyes { top: 41%; left: 68%; gap: 11px; align-items: flex-start; }
+  .face-gtm .bot-eye:first-child { position: relative; width: 6px; height: 15px; top: 2px; transform: rotate(-12deg); }
+  .face-gtm .bot-eye + .bot-eye { position: relative; width: 6px; height: 15px; top: -2px; transform: rotate(-16deg); }
+  .bot-eye {
+    display: block; width: 6px; height: 14px; border-radius: 999px; background: #06211E;
+    transform: rotate(-12deg); transform-origin: center; animation: bot-blink 5.4s var(--blink) infinite;
+  }
+  .bot-eye + .bot-eye { transform: rotate(12deg); }
+  @keyframes bot-blink { 0%, 44%, 47%, 100% { scale: 1 1; } 45%, 46% { scale: 1 .12; } }
+  .bot-copy {
+    flex: 1; display: flex; flex-direction: column; align-items: center; padding: 22px 22px 21px;
+    text-align: center; background: linear-gradient(180deg, #fff, #FBFAF7);
+  }
+  .bot-card h3 { margin: 0 0 2px; font-family: var(--display); font-size: 22px; line-height: 1.12; letter-spacing: -.02em; font-weight: 600; }
+  .bot-by { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
+  .bot-by.branded { display: inline-flex; align-items: center; gap: 4px; }
+  .bot-by-logo { width: 14px; height: 14px; border-radius: 4px; flex: none; }
+  .bot-card p { margin: 0; max-width: 280px; min-height: 43px; color: #65635F; font-size: 14px; line-height: 1.52; text-wrap: balance; }
+  .bot-tags { margin-top: 13px; display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+  .bot-tag {
+    padding: 5px 8px; border: 1px solid rgba(46,126,113,.18); border-radius: 999px;
+    background: rgba(84,185,166,.09); color: var(--teal-ink);
+    font-family: var(--mono); font-size: 9.5px; line-height: 1; letter-spacing: .025em; white-space: nowrap;
+  }
+  .bot-open {
+    margin-top: auto; padding-top: 18px; display: inline-flex; align-items: center; gap: 9px;
+    color: var(--ink); font-weight: 600; font-size: 13px;
+  }
+  .bot-open-brand { display: inline-flex; align-items: center; gap: 5px; }
+  .bot-open-logo { width: 17px; height: 17px; border-radius: 5px; flex: none; }
+  .bot-arrow { font-size: 17px; transition: transform .2s ease; }
+  .bot-card:hover .bot-arrow { transform: translate(3px, -3px); }
+  @media (max-width: 900px) {
+    .bot-deck { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+    .bot-card { grid-column: span 3; }
+  }
+  @media (max-width: 620px) {
+    .bot-deck { grid-template-columns: 1fr; }
+    .bot-card { grid-column: 1; min-height: 440px; }
+    .bot-gallery { padding-top: 96px; }
+  }
   /* ---- the catalog, in the treg landing page's grammar:
          category headers with a hairline running on, then capability cards ---- */
   .catwrap { max-width: 1000px; margin: 0 auto; }
@@ -603,7 +740,9 @@
   .nav-links { display: flex; gap: 22px; align-items: center; margin-right: 10px; }
   .nav-links a { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 500; color: #43413E; text-decoration: none; }
   .nav-links a:hover { color: var(--ink); }
-  @media (max-width: 1020px) { .nav-links { display: none; } }
+  .nav-jump { display: inline-flex; align-items: center; margin-right: 14px; font-size: 14px; font-weight: 500; color: #43413E; text-decoration: none; }
+  .nav-jump:hover { color: var(--ink); }
+  @media (max-width: 1020px) { .nav-links, .nav-jump { display: none; } }
   @media (max-width: 720px) {
     .nav { padding: 10px 14px; }
     .wordmark { white-space: nowrap; }
@@ -646,6 +785,8 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .caret { animation: none; }
+    .bot-card { opacity: 1; transform: none; transition: none; }
+    .bot-eye { animation: none; }
   }
   /* ---- sign-in modal: stays on this page, no hop to the dashboard's landing ---- */
   .scrim { position: fixed; inset: 0; background: rgba(26,26,26,.55); display: none; place-items: center; z-index: 200; padding: 20px; backdrop-filter: blur(6px); }
@@ -668,6 +809,7 @@
 <nav class="nav" id="nav">
   <span class="wordmark"><img class="wm-grok" data-icon="grokbot" alt=""> Grok Bot <span style="color:var(--muted);font-weight:400">×</span> <a href="/" style="display:inline-flex;align-items:center;gap:10px;color:inherit;text-decoration:none" aria-label="treg home"><svg class="wm-treg" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</a></span>
   <span style="display:flex;gap:8px">
+    <a class="nav-jump" href="#bots">Bot gallery</a>
     <span class="nav-links"><a href="#bench">#1 in benchmark</a><a href="#pricing">Pricing</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg> Open source</a><a href="https://x.com/treg_ai" target="_blank" rel="noopener" aria-label="treg on X"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a><a href="https://discord.gg/6mQYYfFMAn" target="_blank" rel="noopener" aria-label="treg on Discord"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z"/></svg></a></span>
     <a class="pill dark" href="/app?ref=grokbot" id="ctaNav">Setup treg</a>
     <a class="pill" href="https://x.ai/bot/plugin/55647425" target="_blank" rel="noopener">Install plugin</a>
@@ -862,6 +1004,62 @@
     </div>
   </div>
 </div>
+
+<section class="section bot-gallery" id="bots" aria-labelledby="bots-title">
+  <div class="bot-kicker"><i aria-hidden="true"></i>Built by the treg team · 6 bots live</div>
+  <h2 id="bots-title">Meet the <span class="hl2">Grok Bot crew.</span></h2>
+  <p class="lede">Six focused teammates, ordered from market map to full GTM orchestration. Move around and meet the team.</p>
+  <div class="bot-deck">
+    <a class="bot-card" href="https://x.ai/bot/yrm2MJ2nInUhoneTBSwJF" target="_blank" rel="noopener" aria-label="Open ICP Map Coach on Grok">
+      <div class="bot-visual" aria-hidden="true"><div class="bot-avatar"><span class="bot-face face-icp"><span class="bot-eyes"><i class="bot-eye"></i><i class="bot-eye"></i></span></span></div></div>
+      <div class="bot-copy"><h3>ICP Map Coach</h3><span class="bot-by branded">by <svg class="bot-by-logo" viewBox="0 0 512 512" aria-label="treg"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+        <p>Map target accounts and the buying teams behind them.</p>
+        <span class="bot-tags" aria-label="Capabilities"><span class="bot-tag">TAM</span><span class="bot-tag">ICP</span><span class="bot-tag">Buying teams</span></span>
+        <span class="bot-open">Open in <span class="bot-open-brand"><img class="bot-open-logo" data-icon="grokbot" alt=""> Grok</span><span class="bot-arrow" aria-hidden="true">↗</span></span>
+      </div>
+    </a>
+    <a class="bot-card" href="https://x.ai/bot/mfaurGq6eY9rIvIpMfUFI" target="_blank" rel="noopener" aria-label="Open Lookalike Scout on Grok">
+      <div class="bot-visual" aria-hidden="true"><div class="bot-avatar"><span class="bot-face face-scout"><span class="bot-eyes"><i class="bot-eye"></i><i class="bot-eye"></i></span></span></div></div>
+      <div class="bot-copy"><h3>Lookalike Scout</h3><span class="bot-by branded">by <svg class="bot-by-logo" viewBox="0 0 512 512" aria-label="treg"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+        <p>Find lookalike accounts and verified buyers from one seed company.</p>
+        <span class="bot-tags" aria-label="Capabilities"><span class="bot-tag">Lookalikes</span><span class="bot-tag">Buyers</span><span class="bot-tag">Outbound</span></span>
+        <span class="bot-open">Open in <span class="bot-open-brand"><img class="bot-open-logo" data-icon="grokbot" alt=""> Grok</span><span class="bot-arrow" aria-hidden="true">↗</span></span>
+      </div>
+    </a>
+    <a class="bot-card" href="https://x.ai/bot/WKRY_T1y-KOmOn2q5vpRW" target="_blank" rel="noopener" aria-label="Open Rival Watch Desk on Grok">
+      <div class="bot-visual" aria-hidden="true"><div class="bot-avatar"><span class="bot-face face-rival"><span class="bot-eyes"><i class="bot-eye"></i><i class="bot-eye"></i></span></span></div></div>
+      <div class="bot-copy"><h3>Rival Watch Desk</h3><span class="bot-by branded">by <svg class="bot-by-logo" viewBox="0 0 512 512" aria-label="treg"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+        <p>Track rival funding, hiring, news, and ads in one live brief.</p>
+        <span class="bot-tags" aria-label="Capabilities"><span class="bot-tag">Competitors</span><span class="bot-tag">Signals</span><span class="bot-tag">Alerts</span></span>
+        <span class="bot-open">Open in <span class="bot-open-brand"><img class="bot-open-logo" data-icon="grokbot" alt=""> Grok</span><span class="bot-arrow" aria-hidden="true">↗</span></span>
+      </div>
+    </a>
+    <a class="bot-card" href="https://x.ai/bot/iN9VkE6H4f4CLidzMaNaZ" target="_blank" rel="noopener" aria-label="Open SERP Watch Team on Grok">
+      <div class="bot-visual" aria-hidden="true"><div class="bot-avatar"><span class="bot-face face-serp"><span class="bot-eyes"><i class="bot-eye"></i><i class="bot-eye"></i></span></span></div></div>
+      <div class="bot-copy"><h3>SERP Watch Team</h3><span class="bot-by branded">by <svg class="bot-by-logo" viewBox="0 0 512 512" aria-label="treg"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+        <p>Track search rankings and AI visibility, then spot what to publish next.</p>
+        <span class="bot-tags" aria-label="Capabilities"><span class="bot-tag">SERP</span><span class="bot-tag">AI visibility</span><span class="bot-tag">Content</span></span>
+        <span class="bot-open">Open in <span class="bot-open-brand"><img class="bot-open-logo" data-icon="grokbot" alt=""> Grok</span><span class="bot-arrow" aria-hidden="true">↗</span></span>
+      </div>
+    </a>
+    <a class="bot-card" href="https://x.ai/bot/6IU2bm7uuSPk6ETC-gC4D" target="_blank" rel="noopener" aria-label="Open Creator Shortlist Crew on Grok">
+      <div class="bot-visual" aria-hidden="true"><div class="bot-avatar"><span class="bot-face face-creator"><span class="bot-eyes"><i class="bot-eye"></i><i class="bot-eye"></i></span></span></div></div>
+      <div class="bot-copy"><h3>Creator Shortlist Crew</h3><span class="bot-by branded">by <svg class="bot-by-logo" viewBox="0 0 512 512" aria-label="treg"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+        <p>Discover niche creators, enrich contacts, and keep a living shortlist.</p>
+        <span class="bot-tags" aria-label="Capabilities"><span class="bot-tag">Creators</span><span class="bot-tag">Contacts</span><span class="bot-tag">Partnerships</span></span>
+        <span class="bot-open">Open in <span class="bot-open-brand"><img class="bot-open-logo" data-icon="grokbot" alt=""> Grok</span><span class="bot-arrow" aria-hidden="true">↗</span></span>
+      </div>
+    </a>
+    <a class="bot-card" href="https://x.ai/bot/PIGZO9iQIeWkbmE79Q7bT" target="_blank" rel="noopener" aria-label="Open GTM Expert on Grok">
+      <div class="bot-visual" aria-hidden="true"><div class="bot-avatar"><span class="bot-face face-gtm"><span class="bot-eyes"><i class="bot-eye"></i><i class="bot-eye"></i></span></span></div></div>
+      <div class="bot-copy"><h3>GTM Expert</h3><span class="bot-by branded">by <svg class="bot-by-logo" viewBox="0 0 512 512" aria-label="treg"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg> treg</span>
+        <p>Coordinate lookalikes, rival intel, search, creators, and ICP maps.</p>
+        <span class="bot-tags" aria-label="Capabilities"><span class="bot-tag">GTM</span><span class="bot-tag">Orchestration</span><span class="bot-tag">All-in-one</span></span>
+        <span class="bot-open">Open in <span class="bot-open-brand"><img class="bot-open-logo" data-icon="grokbot" alt=""> Grok</span><span class="bot-arrow" aria-hidden="true">↗</span></span>
+      </div>
+    </a>
+  </div>
+</section>
 
 <section class="wf-sec" id="bench">
  <div class="bench-track" id="benchTrack">
@@ -1505,11 +1703,32 @@
   }
   requestAnimationFrame(frame);
 
+  /* The public Grok cards look back at the pointer. Keep the travel small so
+     the motion reads as attention, not a novelty cursor effect. */
+  if (!reduced) {
+    Array.prototype.slice.call(document.querySelectorAll('.bot-visual')).forEach(function (visual) {
+      var eyes = visual.querySelector('.bot-eyes');
+      visual.addEventListener('pointermove', function (e) {
+        var r = visual.getBoundingClientRect();
+        var x = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width - .5) * 2));
+        var y = Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height - .5) * 2));
+        eyes.style.setProperty('--eye-x', (x * 5).toFixed(2) + 'px');
+        eyes.style.setProperty('--eye-y', (y * 3.5).toFixed(2) + 'px');
+        eyes.style.setProperty('--eye-rot', (x * 5).toFixed(2) + 'deg');
+      });
+      visual.addEventListener('pointerleave', function () {
+        eyes.style.setProperty('--eye-x', '0px');
+        eyes.style.setProperty('--eye-y', '0px');
+        eyes.style.setProperty('--eye-rot', '0deg');
+      });
+    });
+  }
+
   /* reveal-on-scroll for the bill strikes */
   var io = new IntersectionObserver(function (entries) {
     entries.forEach(function (e) { if (e.isIntersecting) e.target.classList.add('seen'); });
   }, { threshold: 0.25 });
-  document.querySelectorAll('.bill-sec').forEach(function (s) { io.observe(s); });
+  document.querySelectorAll('.bill-sec, .bot-gallery').forEach(function (s) { io.observe(s); });
 
   /* the bench: autoplays once when it scrolls into view. The duel plays,
      then the MAGIC MOVE — the two duel bars fly into the B2B group and

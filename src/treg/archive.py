@@ -194,6 +194,7 @@ def content_hash(body: bytes) -> str:
 
 import asyncio
 import logging
+import weakref
 from datetime import datetime, timedelta, timezone
 
 # Losing a recording is ERROR, not WARNING: the fault handler starts at ERROR, so anything below it
@@ -210,6 +211,8 @@ _MAX_CONCURRENT_WRITES = 4
 
 _sem: asyncio.Semaphore | None = None
 _sem_loop = None
+_key_locks: weakref.WeakValueDictionary[str, asyncio.Lock] | None = None
+_key_locks_loop = None
 
 
 def _get_sem() -> asyncio.Semaphore:
@@ -220,6 +223,22 @@ def _get_sem() -> asyncio.Semaphore:
         _sem = asyncio.Semaphore(_MAX_CONCURRENT_WRITES)
         _sem_loop = loop
     return _sem
+
+
+def _get_key_lock(key_hash: str) -> asyncio.Lock:
+    """Exact per-key serialization without retaining inactive keys forever."""
+    global _key_locks, _key_locks_loop
+    loop = asyncio.get_running_loop()
+    if _key_locks is None or _key_locks_loop is not loop:
+        _key_locks = weakref.WeakValueDictionary()
+        _key_locks_loop = loop
+    lock = _key_locks.get(key_hash)
+    if lock is None:
+        lock = asyncio.Lock()
+        _key_locks[key_hash] = lock
+    return lock
+
+
 # A recording is best-effort by contract (audit's discipline: shed, never wedge). A database that
 # does not answer in this window — a lock, a stuck pool slot, a dying connection — costs ONE
 # dropped sample, which the next identical call re-supplies; it must never hold drain(), a test,
@@ -326,11 +345,13 @@ async def load_terminal_responses(tasks: list[tuple[str, str]]) -> dict[str, byt
             newest.setdefault(snap.key_id, snap)
         for key_id, snap in newest.items():
             body = snap.body
+            enc = snap.enc
             if body is None and snap.body_of is not None:
                 carrier = await s.get(ArchiveSnapshot, snap.body_of)
                 body = carrier.body if carrier is not None else None
+                enc = carrier.enc if carrier is not None else None
             if body is not None:
-                out[by_key[key_id]] = body
+                out[by_key[key_id]] = _unpack(body, enc)
     return out
 
 
@@ -411,15 +432,41 @@ async def _store(
     deduplicate: the new version row points at the row carrying the bytes (`body_of`) — and when
     an identical answer arrives at a key whose bytes were never kept (policy or cap changed), the
     bytes are stored now, so a policy upgrade heals the store forward without a backfill."""
+    from sqlalchemy.exc import IntegrityError
+
+    kh = key_hash or cache_key(method, endpoint_id, url, caller_body, headers)
     try:
-        async with _get_sem():
-            return await _store_locked(
-                method=method, endpoint_id=endpoint_id, provider=provider, url=url,
-                caller_body=caller_body, headers=headers, status_code=status_code,
-                media_type=media_type, body=body, origin=origin,
-                key_hash=key_hash, body_hash=body_hash)
+        # Same-key waiters must queue before taking a scarce database-write slot. Otherwise four
+        # duplicate recordings can occupy the whole semaphore while only one touches the database.
+        async with _get_key_lock(kh):
+            async with _get_sem():
+                # Postgres row locking handles other processes. A retry also covers the narrow
+                # first-key race and multi-process SQLite, where SELECT FOR UPDATE is ignored.
+                for attempt in range(4):
+                    try:
+                        return await _store_locked(
+                            method=method, endpoint_id=endpoint_id, provider=provider, url=url,
+                            caller_body=caller_body, headers=headers, status_code=status_code,
+                            media_type=media_type, body=body, origin=origin,
+                            key_hash=kh, body_hash=body_hash)
+                    except IntegrityError:
+                        if attempt == 3:
+                            raise
+                        await asyncio.sleep(0.01 * (attempt + 1))
     except Exception:  # noqa: BLE001 — recording must never surface anywhere
         _log.error("archive recording dropped for %s", endpoint_id, exc_info=True)
+
+
+async def _lock_archive_key(s, key_id: int):
+    """Lock and refresh a key whose earlier unlocked lookup may be stale in the identity map."""
+    from sqlalchemy import select
+
+    from .models import ArchiveKey
+
+    return (await s.execute(
+        select(ArchiveKey).where(ArchiveKey.id == key_id).with_for_update()
+        .execution_options(populate_existing=True)
+    )).scalars().one()
 
 
 async def _store_locked(
@@ -479,6 +526,12 @@ async def _store_locked(
                 key = (await s.execute(
                     select(ArchiveKey).where(ArchiveKey.key_hash == kh))).scalars().one()
 
+        # Snapshot versions are allocated from the newest row. Serialize that read and insert per
+        # key across processes; the in-process semaphore only bounds pool pressure and cannot stop
+        # two Render instances from both choosing version N+1. Re-lock after the key-creation commit
+        # as well, because that commit necessarily released the insert transaction's locks.
+        key = await _lock_archive_key(s, key.id)
+
         newest = (await s.execute(
             select(ArchiveSnapshot).where(ArchiveSnapshot.key_id == key.id)
             .order_by(ArchiveSnapshot.version.desc()).limit(1))).scalars().first()
@@ -516,14 +569,14 @@ async def _store_locked(
             key.last_requested_at = now
         s.add(key)
         s.add(snap)
+        # Make version conflicts explicit here, before any stats query or commit handling. The
+        # IntegrityError leaves this function and the outer loop retries the whole transaction.
+        await s.flush()
         await _bump_stats(
             s, endpoint_id=endpoint_id, provider=provider, pol=pol, new_key=new_key,
             stable_d=key.stable_seen - seen_before[0], changed_d=key.change_seen - seen_before[1],
             kept=snap.body is not None, size=len(body), now=now)
-        try:
-            await s.commit()
-        except IntegrityError:  # version race with a concurrent recording — drop this sample
-            await s.rollback()
+        await s.commit()
 
 
 

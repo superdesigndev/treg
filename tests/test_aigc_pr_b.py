@@ -10,6 +10,7 @@ import yaml
 
 from treg import cli
 from treg.application.call.types import UpstreamResponse
+from treg.domain import asynctasks
 from treg.domain.catalog import store as catalog_store
 from treg.routers import call as call_router
 
@@ -59,6 +60,18 @@ def test_catalog_loads_provider_defaults_and_utility_opt_out():
     assert status["async"] is None
     replicate = cat.by_id["replicate.image-gen.flux-schnell"]["async"]["poll"]
     assert replicate == {"endpoint": "replicate.predictions.get", "param": {"in": "pathParams", "name": "id"}}
+
+
+def test_openrouter_cancelled_and_expired_jobs_are_terminal_failures():
+    cat = catalog_store.load(refresh=True)
+    endpoint_ids = (
+        "openrouter.video-gen.wan-3-0.from_text",
+        "openrouter.x.alibaba-happyhorse-1-0",
+    )
+    for endpoint_id in endpoint_ids:
+        descriptor = cat.by_id[endpoint_id]["async"]
+        for status in ("failed", "cancelled", "expired"):
+            assert asynctasks.classify_terminal(descriptor, {"status": status}) == "failure"
 
 
 def test_async_wait_succeeds_after_unknown_status_and_warns_once():

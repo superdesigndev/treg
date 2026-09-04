@@ -24,6 +24,8 @@ async:
     - completed
     failure:
     - failed
+    - cancelled
+    - expired
   result:
     fetch: openrouter.video-gen.result.retrieve
     fetch_param:

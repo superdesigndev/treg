@@ -366,7 +366,10 @@ host-allow-listed relay that is not built. Do not document it as available.
 **Envelope errors.** A submission endpoint may carry `expect` (the provider-wide or per-endpoint
 success rule already used by settle); `application.call.service._submission_accepted` gates
 deferral on it, so MiniMax's HTTP-200-with-`base_resp.status_code: 2013` releases at once instead of
-becoming a task nobody can poll.
+becoming a task nobody can poll. The synchronous MiniMax image endpoint carries the same rule;
+otherwise an invalid prompt or output count would be charged at the image table or fallback price.
+OpenRouter's terminal failure set includes `failed`, `cancelled`, and `expired`; all three release
+the hold as soon as the status endpoint reports them.
 
 ```yaml
 async:

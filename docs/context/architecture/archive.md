@@ -293,6 +293,16 @@ their fire-and-forget task, so the caller is unaffected; the 30s bound covers wa
 stuck queue still sheds rather than wedges. Throttled, not shed: the burst test proves all 12
 concurrent recordings land while peak DB concurrency stays ≤4.
 
+The semaphore is process-local, while production runs multiple processes. An exact in-process key
+lock is acquired before the semaphore, so duplicate recordings queue without consuming all four
+database-write slots and unrelated keys keep moving; weak references discard inactive locks. Once
+admitted, the writer locks and refreshes the matching `ArchiveKey` row before reading the newest
+snapshot and allocating version N+1. The refresh matters because the earlier unlocked lookup
+already populated SQLAlchemy's identity map. The per-key Postgres row lock serializes cross-process
+writers; SQLite is protected in-process by the key lock. Snapshot insertion is explicitly flushed,
+and version conflicts propagate to the bounded outer retry to cover first-key and multi-process
+SQLite races.
+
 ## Keys-endpoint weight fix (2026-09-03, the pool-pressure repeat)
 
 `/admin/archive/keys` ran one whole-row query per key, dragging every stored BODY out of the

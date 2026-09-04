@@ -828,7 +828,6 @@ async def test_endpoint_stats_match_direct_aggregation(clients: AsyncClient, sha
     await clients.get(f"/call/{EP}?aweme_id=8")            # second key
     await archive.drain()
 
-    from sqlalchemy import func as F
     from treg.models import ArchiveEndpointStat
     async with session_maker() as s:
         st = (await s.execute(select(ArchiveEndpointStat)
@@ -982,3 +981,101 @@ async def test_recorder_concurrency_is_throttled(clients: AsyncClient, shadow, m
     assert peak <= archive._MAX_CONCURRENT_WRITES
     keys, _ = await _rows()
     assert len(keys) == 12                 # throttled, not shed: every recording landed
+
+
+async def test_same_key_waiters_do_not_consume_slots_needed_by_other_keys(monkeypatch):
+    """Duplicate work queues at its key lock before entering the global database-write bound."""
+    import asyncio as aio
+
+    first_same_entered = aio.Event()
+    unrelated_entered = aio.Event()
+    release_same = aio.Event()
+    same_entries = 0
+
+    async def blocked_store(**kw):
+        nonlocal same_entries
+        if kw["url"].endswith("same"):
+            same_entries += 1
+            first_same_entered.set()
+            await release_same.wait()
+        else:
+            unrelated_entered.set()
+
+    monkeypatch.setattr(archive, "_store_locked", blocked_store)
+    monkeypatch.setattr(archive, "_sem", None)
+    monkeypatch.setattr(archive, "_key_locks", None)
+    common = dict(method="GET", endpoint_id=EP, provider="tikhub", caller_body=b"",
+                  headers={}, status_code=200, media_type="application/json", body=b"{}")
+    duplicates = [aio.create_task(archive._store(url="https://api.example/same", **common))
+                  for _ in range(archive._MAX_CONCURRENT_WRITES)]
+    await aio.wait_for(first_same_entered.wait(), timeout=1)
+    await aio.sleep(0.05)  # let every duplicate reach the key lock
+
+    unrelated = aio.create_task(archive._store(url="https://api.example/other", **common))
+    try:
+        await aio.wait_for(unrelated_entered.wait(), timeout=1)
+        assert same_entries == 1
+    finally:
+        release_same.set()
+        await aio.gather(*duplicates, unrelated, return_exceptions=True)
+
+
+async def test_store_retries_integrity_conflicts(monkeypatch):
+    """A version collision retries the complete transaction instead of dropping the snapshot."""
+    from sqlalchemy.exc import IntegrityError
+
+    attempts = 0
+
+    async def colliding_store(**kw):
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise IntegrityError("snapshot version collision", {}, Exception("duplicate"))
+
+    monkeypatch.setattr(archive, "_store_locked", colliding_store)
+    await archive._store(
+        method="GET", endpoint_id=EP, provider="tikhub",
+        url="https://api.example/retry", caller_body=b"", headers={},
+        status_code=200, media_type="application/json", body=b"{}",
+    )
+    assert attempts == 3
+
+
+async def test_locked_key_refreshes_identity_map_state(clients: AsyncClient, shadow):
+    """The locking read observes changes committed after the session's initial unlocked lookup."""
+    from sqlalchemy import update as sa_update
+
+    from treg.infra.db import background_session_maker
+
+    await archive._store(
+        method="GET", endpoint_id=EP, provider="tikhub",
+        url="https://api.example/stale", caller_body=b"", headers={},
+        status_code=200, media_type="application/json", body=b'{"v": 1}',
+    )
+    async with background_session_maker() as first:
+        cached = (await first.execute(select(ArchiveKey))).scalars().one()
+        assert cached.stable_seen == 0
+        async with background_session_maker() as second:
+            await second.execute(sa_update(ArchiveKey).where(ArchiveKey.id == cached.id)
+                                 .values(stable_seen=6))
+            await second.commit()
+
+        locked = await archive._lock_archive_key(first, cached.id)
+        assert locked is cached
+        assert locked.stable_seen == 6
+
+
+async def test_same_key_recordings_allocate_distinct_versions(clients: AsyncClient, shadow):
+    """Concurrent writers serialize on the key before choosing the next snapshot version."""
+    import asyncio as aio
+
+    await aio.gather(*(archive._store(
+        method="GET", endpoint_id=EP, provider="tikhub",
+        url="https://api.example/same?aweme_id=7", caller_body=b"", headers={},
+        status_code=200, media_type="application/json",
+        body=b'{"writer": %d}' % i,
+    ) for i in range(12)))
+
+    keys, snaps = await _rows()
+    assert len(keys) == 1
+    assert [snap.version for snap in snaps] == list(range(1, 13))
