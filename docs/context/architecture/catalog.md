@@ -1274,7 +1274,17 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
 - **The answer says what it ignored (2026-08-29)**: `ignored_filters` was on `_treg.tried[]` only,
   which no caller reads. It is now also on `_treg` itself for the child that served and on an
   `X-Treg-Ignored-Filters` response header, so an agent can post-filter, or say why the rows are
-  wrong, without walking the attempt list.
+  wrong, without walking the attempt list. **Opt-in refusal (2026-09-04)**: `X-Treg-Route-Strict-Filters: 1`
+  drops every candidate that cannot express a sent filter at planning time (listed in `dropped`
+  with `strict: true` and what the adapter takes instead) and answers `route_no_candidate` 422,
+  unbilled, when none is left — a 503 stays reserved for capacity/key drops. Off by default: the
+  ignored-but-billed call (`{full_name, country: GT}` → New York, voice-ai-outbound 2026-09-03) is
+  the documented behaviour, and the fix for that case was to give the candidate the filter.
+- **Lusha is the sixth phone rung (2026-09-04)**: `lusha.people.phone.find` — the phone-only view
+  of search-and-enrich — accepts every phone.find identity and ranks last on price (6 credits a
+  hit; a miss free, a matched-but-no-number profile the 1-credit search, all settled from
+  `billing.creditsCharged`). Added for LatAm coverage after a Guatemala test found 7 in 44 across
+  the other five. Apollo cannot join: its phone reveal is webhook-only, never inline.
 - **people.\* sweep (2026-08-29)**: people.search 6 → 16 children (aviato dsl/simple, companyenrich
   scroll, crustdata, fiber-ai, leadsforge, leadmagic search + role-finder, findymail employees +
   domain — the last retagged from email.find, it returns a list), people.enrich 9 → 14 (aviato bulk,

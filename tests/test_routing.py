@@ -1089,3 +1089,36 @@ async def test_lusha_is_the_last_rung_of_the_phone_waterfall_and_settles_on_its_
     assert r.status_code == 200 and r.headers["X-Treg-Route-Outcome"] == "miss" and r.json()["output"]["phone"] is None, r.text
     assert before - await _balance(clients) == int(1 * rate * 1_000_000 + 0.5)
     get_settings.cache_clear()
+
+
+async def test_strict_filters_refuses_a_looser_answer_instead_of_billing_it(clients: AsyncClient, enrichment_on, monkeypatch):
+    """voice-ai-outbound, 2026-09-03: `{full_name, country: GT}` went to a candidate that ignored
+    the country and was billed for people in New York. Opt-in, the caller is refused instead —
+    unbilled, told which filter, and what identity a filter-aware provider would take."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CRUSTDATA", "PLATFORM-CRUSTDATA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,aviato,fiber-ai,crustdata")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"profiles": [{"name": "Someone"}], "total_count": 1})] * 3}, seen))
+    before = await _balance(clients)
+    # crustdata's people.search takes full_name and nothing geographic: with the header it is dropped
+    r = await clients.post("/call/treg.people.search", json={"full_name": "Carlos Lopez", "country": "GT", "limit": 3},
+                           headers={"X-Treg-Route-Strict-Filters": "1", "X-Treg-Route-Exclude": "aviato"})
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "no_route_candidate", r.text
+    d = r.json()["detail"]
+    assert seen == [] and await _balance(clients) == before, "refused before any provider was asked; nothing billed"
+    assert any(x["endpoint_id"] == "crustdata.people.search" and x.get("strict") and "country" in x["why"] for x in d["dropped"]), d
+    assert "X-Treg-Route-Strict-Filters" in d["message"] and "full_name" in d["message"]
+    # without the header the same call goes out, is billed, and says what it ignored
+    r = await clients.post("/call/treg.people.search", json={"full_name": "Carlos Lopez", "country": "GT", "limit": 3},
+                           headers={"X-Treg-Route-Exclude": "aviato"})
+    assert r.status_code == 200 and r.headers["X-Treg-Ignored-Filters"] == "country" and r.json()["_treg"]["ignored_filters"] == ["country"], r.text
+    assert len(seen) == 1
+    # and a candidate that CAN express the filter is unaffected by the header (aviato's simple search maps country)
+    seen.clear()
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"aviato": [(200, {"items": [{"fullName": "Carlos Lopez", "location": "Guatemala"}], "totalResults": 1})]}, seen))
+    r = await clients.post("/call/treg.people.search", json={"full_name": "Carlos Lopez", "country": "GT", "limit": 3},
+                           headers={"X-Treg-Route-Strict-Filters": "1"})
+    assert r.status_code == 200 and r.json()["_treg"]["served_by"] == "aviato.people.search.simple", r.text
+    assert "X-Treg-Ignored-Filters" not in r.headers and seen[0][2]["country"] == "Guatemala"
+    get_settings.cache_clear()

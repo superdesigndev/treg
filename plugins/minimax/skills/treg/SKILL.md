@@ -131,7 +131,10 @@ Notes:
     `{linkedin_url}`); treg runs the best child (own keys first, then cheapest per hit), falls back
     on errors AND misses (cheapest first, within `X-Treg-Route-Max-Cost`, default $1), and returns
     `{output, raw, _treg.served_by, _treg.tried}` + `X-Treg-Served-By`. `X-Treg-Route-Waterfall: 0`
-    stops at the first miss. `catalog_get treg.people.email.find` shows the plan and prices.
+    stops at the first miss. A filter a provider cannot apply (`country` on a name-only search) is
+    still sent to the others, and the answer names it in `X-Treg-Ignored-Filters` / `_treg.ignored_filters`
+    — post-filter, or send `X-Treg-Route-Strict-Filters: 1` to get a 422 (unbilled) instead of a looser
+    answer. `catalog_get treg.people.email.find` shows the plan and prices.
 - An endpoint with no published price is refused rather than served free; connect your own key.
 
 ## Retrying a call without paying twice

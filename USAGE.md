@@ -203,7 +203,7 @@ returns `{output, raw, _treg: {served_by, tried, charged_micro}}` plus `X-Treg-S
 vendor 4xx is your request's fault and stops. A **miss** tries the next provider too (the waterfall,
 on by default), cheapest first, within `X-Treg-Route-Max-Cost` (default $1 per call); every
 attempt settles at its real price and misses on per-success providers are free. `X-Treg-Route-Waterfall: 0`
-stops at the first miss. `X-Treg-Route-Prefer` / `X-Treg-Route-Exclude` name providers. Vendor endpoints are still relayed verbatim; only `treg.*` rows model an API.
+stops at the first miss. `X-Treg-Route-Prefer` / `X-Treg-Route-Exclude` name providers. A filter the serving provider could not apply is named in `X-Treg-Ignored-Filters` (and `_treg.ignored_filters`); `X-Treg-Route-Strict-Filters: 1` refuses such a call with a 422 (unbilled) instead. Vendor endpoints are still relayed verbatim; only `treg.*` rows model an API.
 
 ## Calling
 
