@@ -599,7 +599,7 @@ endpoints:
         enrich: {type: boolean, required: false, note: "when true, enriches and charges 1 person credit per result; false returns minimal rows", example: false}
         fullName: {type: string, required: false, note: "fuzzy name query", example: "Satya Nadella"}
         headline: {type: string, required: false, note: "headline keyword search"}
-        country: {type: "array[string]", required: false}
+        country: {type: "array[string]", required: false, note: "country NAMES, not ISO codes — `Guatemala` matched 84,145 people and `GT` matched 0 (live 2026-09-04); a code is a silent empty answer, not an error", example: ["Guatemala"]}
         currentTitles: {type: "array[string]", required: false}
         currentCompanyNames: {type: "array[string]", required: false}
         skills: {type: "array[string]", required: false, note: "all specified skills must be present"}

@@ -722,6 +722,15 @@ def test_a_provider_that_cannot_express_a_supplied_filter_ranks_last_among_equal
     assert "country" in ignored_filters(cat.adapters["aviato.people.search"], contract, ident)
     assert ignored_filters(cat.adapters["icypeas.people.search"], contract, ident) == (), \
         "icypeas is the only people.search adapter that maps geo — the rule must float it to the top"
+    # the full_name variant has exactly two candidates and neither mapped `country` — so a GT search
+    # went to New York and was billed (voice-ai-outbound, 2026-09-03). aviato's simple search takes
+    # country NAMES (live 2026-09-04: `Guatemala` → 84,145 rows, `GT` → 0), hence country_name().
+    simple = cat.adapters["aviato.people.search.simple"]
+    by_name, _ = canonical_identity(contract, {"full_name": "Carlos Lopez", "country": "GT", "limit": 5})
+    assert ignored_filters(simple, contract, by_name) == ()
+    q, _ = simple.to_upstream(by_name, ("full_name",))
+    assert q["country"] == "Guatemala", q  # a query value travels as one string, never a list repr
+    assert "country" not in simple.to_upstream({**by_name, "country": None}, ("full_name",))[0]
 
 
 async def test_the_geo_aware_child_wins_a_filtered_search_and_the_answer_says_what_was_dropped(

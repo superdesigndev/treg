@@ -1845,7 +1845,10 @@ adapters:
   aviato.people.search.simple:
     accepts: [[full_name]]
     in:  {full_name: queryParams.fullName}
-    in_expr: {queryParams.perPage: limit}
+    # `country` takes NAMES: live 2026-09-04, `country=Guatemala` → 84,145 rows, `country=GT` → 0
+    # rows (a silent empty, not an error). The only full_name candidate that can honour the filter
+    # — before this it was ignored and a GT search answered New York (voice-ai-outbound).
+    in_expr: {queryParams.perPage: limit, queryParams.country: "country_name(country)"}
     const: {queryParams.page: "1", queryParams.enrich: "false"}
     out: {people: items, count: totalResults}
     miss: "items == []"
