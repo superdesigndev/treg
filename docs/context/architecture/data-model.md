@@ -346,7 +346,11 @@ are counted, and `_emit_fault_summaries` releases the count **on the flusher's t
 `drain()`** — never on the back of the next occurrence, which is how a storm that stopped (or a restart
 mid-incident) used to take its count with it. Every event carries `fault_occurrences`, the number it
 stands for, so `sum(fault_occurrences)` is the true total; PostHog's issue list counts events and is a
-lower bound. Cost is bounded by key **cardinality** (`_FAULT_MAX_KEYS`, LRU-evicted), not volume, which is
+lower bound. A window's payload is **fixed at construction**: PostHog fingerprints on exception type +
+value, so a summary carrying a later occurrence's message would land in a different issue from the event
+it summarises and split the sum — under-reporting for anyone filtering by issue, which is the normal way
+to read Error Tracking. The cost is that a window reports its first message, not its latest, and the
+key's other messages are counted under it. Cost is bounded by key **cardinality** (`_FAULT_MAX_KEYS`, LRU-evicted), not volume, which is
 why no global budget exists: the process-wide bucket this replaced let one loud key silence every other
 key, including first sightings that never recurred to carry their own count out. Faults are shed only when
 the shared queue is genuinely backing up (`_FAULT_QUEUE_SHARE` of `_MAX_PENDING`) — the congestion the

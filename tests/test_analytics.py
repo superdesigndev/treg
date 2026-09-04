@@ -206,6 +206,44 @@ def test_eviction_never_discards_a_count_that_was_never_reported(enabled, monkey
     assert set(holding.values()) == {3}
 
 
+def test_a_full_ledger_still_rolls_up_a_newly_seen_key(enabled, monkeypatch):
+    """A new window is the only one with an empty count when every other key is holding one, so an
+    eviction scan looking for `not pending` picks the key it just created. That key then never
+    stays in the ledger: each occurrence opens a window, loses it, and reports on its own. The
+    rollup would be off exactly during a broad storm, which is the case the cap exists for."""
+    monkeypatch.setattr(analytics, "_FAULT_MAX_KEYS", 3)
+    for i in range(3):
+        for _ in range(2):
+            analytics.capture_fault(RuntimeError("x"), component=f"loud-{i}")
+    assert all(w.pending for w in analytics._fault_windows.values())  # ledger full, all holding
+
+    analytics._queue.clear()
+    for _ in range(50):
+        analytics.capture_fault(RuntimeError("newcomer"), component="new-site")
+
+    assert len(_exception_events()) == 1     # one report, 49 rolled up — not 50 reports
+    assert _occurrences() == 1
+    assert ("RuntimeError", "new-site") in analytics._fault_windows
+
+
+def test_a_summary_shares_the_fingerprint_of_the_event_it_summarises(enabled, monkeypatch):
+    """PostHog fingerprints on type + value. A summary carrying a LATER occurrence's message lands
+    in a different issue from its own first report, so `sum(fault_occurrences)` splits and anyone
+    filtering by issue — the normal way to read Error Tracking — gets a number that is quietly low.
+    Constant messages hide this; any `str(exc)` carrying an id, path or URL does not."""
+    now = [100.0]
+    monkeypatch.setattr(analytics.time, "monotonic", lambda: now[0])
+
+    for message in ("first for /a", "second for /b", "third for /c"):
+        analytics.capture_fault(RuntimeError(message), component="relay")
+    now[0] += analytics._FAULT_WINDOW_S
+    analytics._emit_fault_summaries()
+
+    values = [e["properties"]["$exception_list"][0]["value"] for e in _exception_events()]
+    assert values == ["first for /a", "first for /a"]
+    assert _occurrences() == 3
+
+
 async def test_a_shutdown_does_not_take_the_counts_with_it(enabled, posts, monkeypatch):
     """A storm that stops, or a process that restarts mid-incident, used to lose its accumulated
     count: the old code released it only on the back of the NEXT event for that key. Restarting is

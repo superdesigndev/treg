@@ -67,6 +67,13 @@ class _FaultWindow:
     `pending` is what happened after the window's one reported event. It leaves on a timer
     (`_emit_fault_summaries`), not on the back of the next occurrence — a storm that stops, or a
     process that restarts mid-incident, would otherwise take the count with it.
+
+    `fault` is fixed at construction and never updated. PostHog fingerprints on exception type +
+    VALUE, so a summary carrying a later occurrence's message lands in a different issue from the
+    event it is summarising, and `sum(fault_occurrences)` silently splits — under-reporting for
+    anyone filtering by issue, which is how you actually read Error Tracking. The cost is that a
+    window reports its first message rather than its latest; that is what fingerprint stability
+    buys, and occurrences of the key's other messages are counted under it.
     """
 
     __slots__ = ("opened", "pending", "fault")
@@ -148,14 +155,18 @@ def _note_fault(key: tuple[str, str], fault: tuple[str, str, str, str | None],
                 # Evict the oldest window that is NOT holding a count. Evicting one that is would
                 # discard occurrences nobody has reported — the exact loss this rewrite removes.
                 # If every key holds one, the ledger runs over until the next sweep clears them.
-                stale = next((k for k, w in _fault_windows.items() if not w.pending), None)
+                # `k != key` because the window just opened is the only clean one in that case, and
+                # evicting it means this key is never in the ledger, so every occurrence opens and
+                # loses a window and reports individually — no rollup at all, precisely during the
+                # broad storm the cap exists for.
+                stale = next((k for k, w in _fault_windows.items()
+                              if not w.pending and k != key), None)
                 if stale is None:
                     break
                 del _fault_windows[stale]
             if not congested:
                 return True
         _fault_windows.move_to_end(key)
-        window.fault = fault
         window.pending += 1
         return False
 
