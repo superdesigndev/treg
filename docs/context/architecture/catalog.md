@@ -1207,6 +1207,15 @@ Five rules worth keeping:
   same). Endpoints with evidenced miss behaviour carry a `miss: {status, means}` block in their
   YAML, surfaced through `endpoint_view` — so an agent reads "404 = no match, don't retry" instead
   of treating an expected empty answer as a failure. Only annotate what the wire has demonstrated.
+  **The router reads the same block** (`route._miss_status`): a child answering the declared
+  4xx is a MISS — the waterfall goes on and a fully-missed call ends as a 200 miss, never
+  `route_failed`. Before 2026-09-04 only PDL carried the block; the annotated set (aviato, hunter,
+  leadmagic, findymail, companyenrich, thecompaniesapi, fiber-ai, scrapecreators linkedin) came
+  from 30 days of prod children answering 404 with a "not found" body, and the router treated each
+  as a rejected request: 1,824 `phone.find` parents were 502 in that window, 768 of them with no
+  failure but an aviato 404 (voice-ai-outbound's GT report). Only a 4xx is honoured — a
+  `status: 200` block (tikhub) is agent documentation; the adapter's own `miss` predicate decides
+  a 2xx. Note a `per_call` provider (companyenrich) still bills the request on its declared miss.
 - **Below `MIN_SAMPLES` we publish the count and nothing else.** "100% from two calls" is noise
   dressed as evidence, and on a quiet endpoint a rate could expose one org's activity. The floor
   applies to **decided calls** (2xx + provider-fault failures), not total traffic: four caller 422s
@@ -1398,7 +1407,9 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   (tikhub, live 2026-08-28), so the waterfall goes on ONLY to candidates that bill nothing for a
   rejected request — per_success, free, the org's own key, or per_call ≤ 1¢ (`CHEAP_RETRY_MICRO`)
   — never the same provider again, within the error bound; if every one rejects it, the caller
-  gets `route_caller_fault` naming each attempt. Our 5xx/503/429 or a vendor 5xx/429/402 = error →
+  gets `route_caller_fault` naming each attempt. A 4xx the endpoint's YAML declares as its
+  "no result" status (`miss: {status: 404}`, see "`miss` semantics ride on the endpoint") is a
+  MISS instead, not a fault. Our 5xx/503/429 or a vendor 5xx/429/402 = error →
   next candidate, at most two extra, only for idempotent contracts. A treg-side
   `tool_access_denied`, `policy_denied`, or `capability_pinned` refusal is local to that child and
   follows the same error fallback. A platform child's vendor 401/403 also falls back because it
@@ -1477,7 +1488,17 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
 - **The answer says what it ignored (2026-08-29)**: `ignored_filters` was on `_treg.tried[]` only,
   which no caller reads. It is now also on `_treg` itself for the child that served and on an
   `X-Treg-Ignored-Filters` response header, so an agent can post-filter, or say why the rows are
-  wrong, without walking the attempt list.
+  wrong, without walking the attempt list. **Opt-in refusal (2026-09-04)**: `X-Treg-Route-Strict-Filters: 1`
+  drops every candidate that cannot express a sent filter at planning time (listed in `dropped`
+  with `strict: true` and what the adapter takes instead) and answers `route_no_candidate` 422,
+  unbilled, when none is left — a 503 stays reserved for capacity/key drops. Off by default: the
+  ignored-but-billed call (`{full_name, country: GT}` → New York, voice-ai-outbound 2026-09-03) is
+  the documented behaviour, and the fix for that case was to give the candidate the filter.
+- **Lusha is the sixth phone rung (2026-09-04)**: `lusha.people.phone.find` — the phone-only view
+  of search-and-enrich — accepts every phone.find identity and ranks last on price (6 credits a
+  hit; a miss free, a matched-but-no-number profile the 1-credit search, all settled from
+  `billing.creditsCharged`). Added for LatAm coverage after a Guatemala test found 7 in 44 across
+  the other five. Apollo cannot join: its phone reveal is webhook-only, never inline.
 - **people.\* sweep (2026-08-29)**: people.search 6 → 16 children (aviato dsl/simple, companyenrich
   scroll, crustdata, fiber-ai, leadsforge, leadmagic search + role-finder, findymail employees +
   domain — the last retagged from email.find, it returns a list), people.enrich 9 → 14 (aviato bulk,

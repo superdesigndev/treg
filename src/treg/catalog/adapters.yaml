@@ -237,6 +237,19 @@ adapters:
     in:  {linkedin_url: queryParams.linkedinURL, email: queryParams.email}
     out: {phone: "phones[0].phoneNumber"}
     miss: "phones == []"
+  lusha.people.phone.find:
+    # Lusha's native direct-dial/mobile data (its third-party phone waterfall is not connected on
+    # treg's account). Dearest phone finder in the ladder — 6 credits on a hit — so it ranks last
+    # and is only asked once the cheaper five have missed; a miss is free, a matched-but-no-number
+    # profile costs the 1-credit search (settled from billing.creditsCharged). Added for LatAm
+    # coverage after voice-ai-outbound's Guatemala test (7 hits in 44 across the other five).
+    accepts: [[linkedin_url], [email], [first_name, last_name, domain], [full_name, domain]]
+    in:  {}
+    in_expr: {body.contacts: "list(obj('linkedinUrl', linkedin_url, 'email', email, 'firstName', first_name, 'lastName', last_name, 'companyDomain', domain))"}
+    const: {body.reveal: [phones]}
+    test_identity: {first_name: Jane, last_name: Doe, domain: lusha.com}
+    out: {phone: "results[0].phones[0].number", line_type: "results[0].phones[0].type", country_code: "results[0].phones[0].countryIso2"}
+    miss: "results[0].phones[0].number == null"
 
   # ---- people.email.verify ------------------------------------------------------------------
   leadmagic.people.email.verify:
@@ -1845,7 +1858,10 @@ adapters:
   aviato.people.search.simple:
     accepts: [[full_name]]
     in:  {full_name: queryParams.fullName}
-    in_expr: {queryParams.perPage: limit}
+    # `country` takes NAMES: live 2026-09-04, `country=Guatemala` → 84,145 rows, `country=GT` → 0
+    # rows (a silent empty, not an error). The only full_name candidate that can honour the filter
+    # — before this it was ignored and a GT search answered New York (voice-ai-outbound).
+    in_expr: {queryParams.perPage: limit, queryParams.country: "country_name(country)"}
     const: {queryParams.page: "1", queryParams.enrich: "false"}
     out: {people: items, count: totalResults}
     miss: "items == []"

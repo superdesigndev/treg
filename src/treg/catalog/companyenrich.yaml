@@ -72,6 +72,9 @@ endpoints:
   - id: companyenrich.companies.enrich
     domain: companies
     capability: companies.enrich
+    miss:
+      status: 404
+      means: "`Company could not be found` — no company behind this domain, an expected outcome; NOTE this route is per_call, so the request itself is still billed"
     platform: companies
     scope: any_account
     method: GET
@@ -103,6 +106,9 @@ endpoints:
   - id: companyenrich.companies.enrich.by_properties
     domain: companies
     capability: companies.enrich
+    miss:
+      status: 404
+      means: "`Company could not be found` — an expected outcome; NOTE this route is per_call, so the request itself is still billed"
     platform: companies
     scope: any_account
     method: POST
@@ -759,6 +765,9 @@ endpoints:
   - id: companyenrich.people.lookup
     domain: people
     capability: people.enrich
+    miss:
+      status: 404
+      means: "`Person could not be found` — an expected outcome and free; do not retry the same email"
     platform: people
     scope: any_account
     method: POST

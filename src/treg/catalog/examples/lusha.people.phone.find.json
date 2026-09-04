@@ -1,0 +1,15 @@
+{
+  "requestId": "26a728f2-db86-4fd1-8fa3-95345b907cbe",
+  "results": [
+    {
+      "error": {
+        "code": "NOT_FOUND",
+        "message": "Contact not found"
+      }
+    }
+  ],
+  "billing": {
+    "creditsCharged": 0,
+    "resultsReturned": 0
+  }
+}

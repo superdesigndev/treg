@@ -722,6 +722,15 @@ def test_a_provider_that_cannot_express_a_supplied_filter_ranks_last_among_equal
     assert "country" in ignored_filters(cat.adapters["aviato.people.search"], contract, ident)
     assert ignored_filters(cat.adapters["icypeas.people.search"], contract, ident) == (), \
         "icypeas is the only people.search adapter that maps geo — the rule must float it to the top"
+    # the full_name variant has exactly two candidates and neither mapped `country` — so a GT search
+    # went to New York and was billed (voice-ai-outbound, 2026-09-03). aviato's simple search takes
+    # country NAMES (live 2026-09-04: `Guatemala` → 84,145 rows, `GT` → 0), hence country_name().
+    simple = cat.adapters["aviato.people.search.simple"]
+    by_name, _ = canonical_identity(contract, {"full_name": "Carlos Lopez", "country": "GT", "limit": 5})
+    assert ignored_filters(simple, contract, by_name) == ()
+    q, _ = simple.to_upstream(by_name, ("full_name",))
+    assert q["country"] == "Guatemala", q  # a query value travels as one string, never a list repr
+    assert "country" not in simple.to_upstream({**by_name, "country": None}, ("full_name",))[0]
 
 
 async def test_the_geo_aware_child_wins_a_filtered_search_and_the_answer_says_what_was_dropped(
@@ -979,3 +988,137 @@ def test_a_per_success_endpoint_with_no_adapter_settles_on_the_providers_own_suc
         m2 = _mk(dfs[0]["provider"], endpoint_id=dfs[0]["id"], cost_type="per_success")
         assert A._observed_cost_micro(m2, b'{"tasks": [{"status_code": 40501}]}') == 0
         assert A._observed_cost_micro(m2, b'{"tasks": [{"status_code": 20000}]}') is None
+
+async def test_a_declared_miss_status_is_a_miss_not_a_caller_fault(clients: AsyncClient, enrichment_on, monkeypatch):
+    """aviato answers HTTP 404 `Not Found` for a person it has no record of. The endpoint's YAML says
+    so (`miss: {status: 404}`), and the router must read it: before this a waterfall in which the
+    other providers all missed ended in a 502 `route_failed` (live 2026-09-03, voice-ai-outbound —
+    768 of 1,824 phone.find 502s in 30 days had no failure but an aviato 404), when the honest
+    answer was a 200 miss."""
+    routed = "treg.people.phone.find"
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"aviato": [(404, {"message": "Not Found"})],
+         "tomba": [(200, {"data": {"e164_format": None}})],
+         "leadmagic": [(200, {"mobile_number": None, "credits_consumed": 0})],
+         "findymail": [(200, {"phone": None})],
+         "leadsforge": [(200, {"phoneNumber": None})]}, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/nobody-here"})
+    assert r.status_code == 200, r.text
+    assert r.headers["X-Treg-Route-Outcome"] == "miss" and r.json()["_treg"]["served_by"] is None
+    outcomes = {t["endpoint_id"]: t["outcome"] for t in r.json()["_treg"]["tried"]}
+    assert outcomes["aviato.people.phone.find"] == "miss" and len(seen) == 5, "the 404 is a miss; every provider was still asked"
+    assert await _balance(clients) == before, "nobody found anything, nothing was charged"
+    # an UNDECLARED 4xx keeps its meaning: a vendor rejecting the request is still the caller's fault
+    seen.clear()
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"aviato": [(422, {"message": "bad identifier"})], "*": [(422, {"message": "bad"})] * 4}, seen))
+    r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/nobody-here"},
+                           headers={"X-Treg-Route-Prefer": "aviato"})
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "route_caller_fault", r.text
+    # and with the waterfall off, the declared 404 alone is the (free) miss the caller asked for
+    seen.clear()
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"aviato": [(404, {"message": "Not Found"})]}, seen))
+    r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/nobody-here"},
+                           headers={"X-Treg-Route-Prefer": "aviato", "X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200 and r.headers["X-Treg-Route-Outcome"] == "miss" and len(seen) == 1, r.text
+    assert r.json()["output"]["phone"] is None
+
+
+def test_every_declared_miss_status_names_its_meaning():
+    """`miss: {status, means}` is agent-facing (`endpoint_view`) and router-facing: both halves
+    are required. The router honours a 4xx only — a `status: 200` block is documentation for the
+    agent (tikhub answers 200 with a null body for an unknown id) and the adapter's own predicate
+    decides that case, so `_miss_status` must never turn a success into a miss."""
+    cat = catalog_store.load()
+    declared = {e["id"]: e["miss"] for e in cat.by_id.values() if e.get("miss")}
+    assert "aviato.people.phone.find" in declared and "hunter.people.enrich" in declared
+    for eid, m in declared.items():
+        assert isinstance(m, dict) and m.get("status") is not None and m.get("means"), eid
+        assert int(m["status"]) < 500, f"{eid}: a 5xx is never 'asked and answered'"
+    assert call_route._miss_status(cat.by_id["aviato.people.phone.find"]) == 404
+    assert call_route._miss_status(cat.by_id["tikhub.x.reddit-app-fetch-post-comments"]) is None
+    assert call_route._miss_status({"id": "x"}) is None
+
+
+async def test_lusha_is_the_last_rung_of_the_phone_waterfall_and_settles_on_its_own_bill(clients: AsyncClient, enrichment_on, monkeypatch):
+    """Guatemala, 2026-09-03: 7 phones in 44 across tomba/aviato/leadmagic/findymail/leadsforge.
+    Lusha's native direct-dial data is the sixth rung — dearest per hit (6 credits), so it ranks
+    last and is only asked once the cheap five have missed; a miss is free and a matched profile
+    with no number costs the 1-credit search, both read off `billing.creditsCharged`."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LUSHA", "PLATFORM-LUSHA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,aviato,fiber-ai,lusha")
+    get_settings.cache_clear()
+    routed = "treg.people.phone.find"
+    plan = (await clients.get(f"/catalog/endpoints/{routed}")).json()["routing"]["plan"]
+    assert plan[-1]["endpoint_id"] == "lusha.people.phone.find" and len(plan) == 6, [c["endpoint_id"] for c in plan]
+    def misses():
+        return {"aviato": [(404, {"message": "Not Found"})], "tomba": [(200, {"data": {"e164_format": None}})],
+                "leadmagic": [(200, {"mobile_number": None, "credits_consumed": 0})],
+                "findymail": [(200, {"phone": None})], "leadsforge": [(200, {"phoneNumber": None})]}
+    seen = []
+    hit = {"requestId": "r", "results": [{"id": "v1.x", "fullName": "Ana Perez",
+                                          "phones": [{"number": "+502 5555 0100", "type": "mobile", "doNotCall": False, "countryIso2": "GT"}]}],
+           "billing": {"creditsCharged": 6, "resultsReturned": 1}}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({**misses(), "lusha": [(200, hit)]}, seen))
+    # a Lusha attempt RESERVES the 6-credit hit price (~$0.75): on the $1.00 signup grant a team gets
+    # one attempt, so fund the second call here rather than let the reserve mask the miss rule
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as db:
+        await ledger.grant(db, org_id, amount_micro=5_000_000, kind="test-funding", once=False)
+        await db.commit()
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{routed}", json={"full_name": "Ana Perez", "domain": "acme.gt"})
+    assert r.status_code == 200 and r.json()["_treg"]["served_by"] == "lusha.people.phone.find", r.text
+    assert r.json()["output"] == {"phone": "+502 5555 0100", "line_type": "mobile", "country_code": "GT"}
+    # {full_name, domain} is accepted by two rungs only (leadsforge, lusha); the four that need a
+    # LinkedIn URL or an email are not candidates for this identity at all
+    assert [p for p, *_ in seen] == ["leadsforge", "lusha"], "asked last, after every cheaper candidate missed"
+    body = seen[-1][3]
+    assert body == {"contacts": [{"firstName": "Ana", "lastName": "Perez", "companyDomain": "acme.gt"}], "reveal": ["phones"]}
+    rate = catalog_store.load().credit_rates["lusha"]
+    assert before - await _balance(clients) == int(6 * rate * 1_000_000 + 0.5), "the bill is Lusha's own creditsCharged"
+    # a matched profile with no number is a MISS that still cost the 1-credit search
+    seen.clear()
+    no_number = {"requestId": "r", "results": [{"id": "v1.x", "fullName": "Ana Perez", "partialProfile": False}],
+                 "billing": {"creditsCharged": 1, "resultsReturned": 1}, "status": "partial", "statusReason": "WATERFALL_NOT_CONFIGURED"}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({**misses(), "lusha": [(200, no_number)]}, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{routed}", json={"full_name": "Ana Perez", "domain": "acme.gt"})
+    assert r.status_code == 200 and r.headers["X-Treg-Route-Outcome"] == "miss" and r.json()["output"]["phone"] is None, r.text
+    assert before - await _balance(clients) == int(1 * rate * 1_000_000 + 0.5)
+    get_settings.cache_clear()
+
+
+async def test_strict_filters_refuses_a_looser_answer_instead_of_billing_it(clients: AsyncClient, enrichment_on, monkeypatch):
+    """voice-ai-outbound, 2026-09-03: `{full_name, country: GT}` went to a candidate that ignored
+    the country and was billed for people in New York. Opt-in, the caller is refused instead —
+    unbilled, told which filter, and what identity a filter-aware provider would take."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CRUSTDATA", "PLATFORM-CRUSTDATA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,aviato,fiber-ai,crustdata")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"profiles": [{"name": "Someone"}], "total_count": 1})] * 3}, seen))
+    before = await _balance(clients)
+    # crustdata's people.search takes full_name and nothing geographic: with the header it is dropped
+    r = await clients.post("/call/treg.people.search", json={"full_name": "Carlos Lopez", "country": "GT", "limit": 3},
+                           headers={"X-Treg-Route-Strict-Filters": "1", "X-Treg-Route-Exclude": "aviato"})
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "no_route_candidate", r.text
+    d = r.json()["detail"]
+    assert seen == [] and await _balance(clients) == before, "refused before any provider was asked; nothing billed"
+    assert any(x["endpoint_id"] == "crustdata.people.search" and x.get("strict") and "country" in x["why"] for x in d["dropped"]), d
+    assert "X-Treg-Route-Strict-Filters" in d["message"] and "full_name" in d["message"]
+    # without the header the same call goes out, is billed, and says what it ignored
+    r = await clients.post("/call/treg.people.search", json={"full_name": "Carlos Lopez", "country": "GT", "limit": 3},
+                           headers={"X-Treg-Route-Exclude": "aviato"})
+    assert r.status_code == 200 and r.headers["X-Treg-Ignored-Filters"] == "country" and r.json()["_treg"]["ignored_filters"] == ["country"], r.text
+    assert len(seen) == 1
+    # and a candidate that CAN express the filter is unaffected by the header (aviato's simple search maps country)
+    seen.clear()
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"aviato": [(200, {"items": [{"fullName": "Carlos Lopez", "location": "Guatemala"}], "totalResults": 1})]}, seen))
+    r = await clients.post("/call/treg.people.search", json={"full_name": "Carlos Lopez", "country": "GT", "limit": 3},
+                           headers={"X-Treg-Route-Strict-Filters": "1"})
+    assert r.status_code == 200 and r.json()["_treg"]["served_by"] == "aviato.people.search.simple", r.text
+    assert "X-Treg-Ignored-Filters" not in r.headers and seen[0][2]["country"] == "Guatemala"
+    get_settings.cache_clear()

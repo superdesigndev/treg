@@ -5000,7 +5000,8 @@ def _catalog_get(endpoint_id: str, cfg) -> None:
             flag = f"  {_AM}exhausted{_R}" if c.get("exhausted") else ""
             print(f"  {i:<3}{_clip(c['endpoint_id'], 38):<38} {price:<9} {accepts}{flag}")
         _dim("  a miss tries the next one (ceiling $1 per call by default); --header 'X-Treg-Route-Max-Cost: 0.05' to cap it,")
-        _dim("  --header 'X-Treg-Route-Waterfall: 0' to stop at the first miss")
+        _dim("  --header 'X-Treg-Route-Waterfall: 0' to stop at the first miss,")
+        _dim("  --header 'X-Treg-Route-Strict-Filters: 1' to refuse (422, unbilled) rather than call a provider that ignores a filter you sent")
         also = routing.get("also") or []
         if also:
             print(f"\n{_A}ALSO{_R}  {_M}the same job from providers treg does not route to (yet) — call them by id{_R}")

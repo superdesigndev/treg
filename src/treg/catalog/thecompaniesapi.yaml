@@ -29,6 +29,9 @@ endpoints:
     test_request: {"pathParams": {"domain": "stripe.com"}}
     domain: companies
     capability: companies.enrich
+    miss:
+      status: 404
+      means: "`companyNotFound` — no company behind this domain, an expected outcome and free (1 credit only when found); do not retry the same domain"
     platform: companies
     scope: any_account
     method: GET

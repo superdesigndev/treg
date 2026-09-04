@@ -164,6 +164,9 @@ endpoints:
     test_request: {"body": {"domain": "stripe.com"}}
     domain: companies
     capability: companies.enrich
+    miss:
+      status: 404
+      means: "`Company not found.` — an expected outcome and free; do not retry the same domain"
     platform: companies
     scope: any_account
     method: POST

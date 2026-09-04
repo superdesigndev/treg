@@ -260,6 +260,9 @@ endpoints:
   # --- LinkedIn -----------------------------------------------------------------------------------
   - id: scrapecreators.linkedin.user.profile
     capability: linkedin.user.profile
+    miss:
+      status: 404
+      means: "profile is private or not public (`error: not_found`, `credits_charged: 0`) — an expected outcome and free; do not retry the same handle"
     platform: linkedin
     scope: any_account
     method: GET

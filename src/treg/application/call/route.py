@@ -8,7 +8,8 @@ core `output` (via the child's adapter), the child's `raw` body, and `_treg: {se
 
 Fallback follows the overflow rules: on an ERROR (our 5xx/503, a vendor 5xx/429/402) the next
 candidate is tried, at most two extra, idempotent contracts only; a caller-caused refusal (4xx)
-stops at once — it would be the same 4xx everywhere. Child-local treg authorization failures and
+stops at once — it would be the same 4xx everywhere — unless the endpoint's YAML declares that
+status as its "no result" answer (`miss: {status: 404}`), which is a MISS. Child-local treg authorization failures and
 platform vendor 401/403 responses are errors because another child may work. A MISS (2xx,
 `adapter.miss`) stops unless the
 caller turned the waterfall off (`X-Treg-Route-Waterfall: 0`). The waterfall is ON by default —
@@ -73,10 +74,11 @@ PREFER_HEADER = "x-treg-route-prefer"
 EXCLUDE_HEADER = "x-treg-route-exclude"
 MIN_RESULTS_HEADER = "x-treg-route-min-results"
 MERGE_HEADER = "x-treg-route-merge"
+STRICT_FILTERS_HEADER = "x-treg-route-strict-filters"
 _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-encoding", b"idempotency-key",
                               b"x-treg-route-waterfall", b"x-treg-route-max-cost", b"x-treg-route-prefer",
                               b"x-treg-route-exclude", b"x-treg-route-min-results",
-                              b"x-treg-route-merge", b"host"})
+                              b"x-treg-route-merge", b"x-treg-route-strict-filters", b"host"})
 _CALLER_FAULT = frozenset({400, 401, 403, 404, 405, 409, 422})
 _CANDIDATE_LOCAL_FAILURES = frozenset({"tool_access_denied", "policy_denied", "capability_pinned"})
 _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
@@ -98,6 +100,21 @@ def _free_on_failure(cand: Candidate) -> bool:
     return cand.price_micro <= CHEAP_RETRY_MICRO
 
 
+def _miss_status(endpoint: dict) -> int | None:
+    """The ERROR status this endpoint's YAML declares as "no result" (`miss: {status, means}`),
+    or None when an error status means what it says. Only a 4xx counts: a `status: 200` block
+    (tikhub's "an unknown id still answers 200 with a null body") documents a 2xx the adapter's
+    own `miss` predicate decides, and honouring it here would call every success a miss."""
+    m = endpoint.get("miss")
+    if isinstance(m, dict) and m.get("status") is not None:
+        try:
+            status = int(m["status"])
+        except (TypeError, ValueError):
+            return None
+        return status if 400 <= status < 500 else None
+    return None
+
+
 DEFAULT_MAX_COST_MICRO = 1_000_000  # $1.00 per routed call unless the caller says otherwise — a runaway guard, not a budget
 
 
@@ -109,6 +126,7 @@ class RouteOptions:
     exclude: list[str] = field(default_factory=list)
     min_results: int = 1     # a hit with fewer rows than this is WEAK: keep looking, keep the best
     merge: bool = False      # union the rows of every attempt that returned some (list answers only)
+    strict_filters: bool = False  # drop any candidate that cannot express a filter the caller sent
 
     @classmethod
     def from_headers(cls, get, default_max_cost_micro: int | None = None) -> "RouteOptions":
@@ -128,9 +146,10 @@ class RouteOptions:
             raise ResolutionFailed("catalog_parameter_invalid", status_code=400,
                                    detail=f"{MIN_RESULTS_HEADER} must be a whole number, got {get(MIN_RESULTS_HEADER)!r}")
         mg = str(get(MERGE_HEADER) or "").strip().lower()
+        sf = str(get(STRICT_FILTERS_HEADER) or "").strip().lower()
         return cls(waterfall=wf not in ("0", "false", "no", "off"),
                    max_cost_micro=max_cost, prefer=_list(get(PREFER_HEADER)), exclude=_list(get(EXCLUDE_HEADER)),
-                   min_results=mr, merge=mg in ("1", "true", "yes", "on"))
+                   min_results=mr, merge=mg in ("1", "true", "yes", "on"), strict_filters=sf in ("1", "true", "yes", "on"))
 
 
 class _Bytes:
@@ -274,6 +293,21 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         if c.exhausted:
             dropped.append({"endpoint_id": e["id"], "why": "treg's account for this provider is exhausted right now"})
         cands.append(c)
+    if options.strict_filters:
+        # The caller would rather get nothing than a LOOSER answer: a candidate that cannot express
+        # a filter it sent is dropped, not ranked last. Without this, `{full_name, country: GT}`
+        # had two candidates, neither mapping country, and the call went out and was billed for
+        # people in New York (voice-ai-outbound, 2026-09-03). The drop names the filters and what
+        # the adapter DOES take, so an agent can re-ask with an identity a geo-aware child accepts.
+        kept = []
+        for c in cands:
+            if c.ignored:
+                wants = " | ".join("{" + ", ".join(a) + "}" for a in c.adapter.accepts)
+                dropped.append({"endpoint_id": c.endpoint["id"], "strict": True,
+                                "why": f"cannot express {', '.join(c.ignored)} (X-Treg-Route-Strict-Filters); it takes {wants}"})
+            else:
+                kept.append(c)
+        cands = kept
     return Plan(contract=contract, identity=identity, variant=variant,
                 candidates=rank(cands, prefer=options.prefer, exclude=options.exclude,
                                 given={k for k, v in (identity_given or {}).items() if v not in (None, "")},
@@ -323,10 +357,17 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
         get_header, int(round(contract.default_max_cost_usd * 1_000_000)) if contract and contract.default_max_cost_usd else None)
     plan = await build_plan(ep, given, parent.input.caller, options)
     if not plan.candidates:
-        raise ResolutionFailed("route_no_candidate", status_code=422 if not plan.dropped else 503, detail={
+        # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
+        # caller's own choice and answers 422 (nothing was charged either way)
+        capacity_drop = any(not d.get("strict") and not str(d.get("why", "")).startswith("needs ") for d in plan.dropped)
+        strict_drop = [d for d in plan.dropped if d.get("strict")]
+        raise ResolutionFailed("route_no_candidate", status_code=503 if capacity_drop else 422, detail={
             "error": "no_route_candidate", "endpoint_id": ep["id"], "identity_variant": list(plan.variant),
             "dropped": plan.dropped,
-            "message": f"no provider can serve {ep['id']} for this identity right now"})
+            "message": (f"no provider can serve {ep['id']} for this identity right now" if not strict_drop or capacity_drop else
+                        f"no provider for {ep['id']} can honour every filter you sent for this identity "
+                        f"(X-Treg-Route-Strict-Filters): " + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in strict_drop)
+                        + ". Send an identity a filter-aware provider accepts, or drop the header to accept a looser answer")})
     first = plan.candidates[0]
     if options.max_cost_micro is not None and (first.price_micro or 0) > options.max_cost_micro:
         raise ResolutionFailed("route_max_cost", status_code=402, detail={
@@ -372,6 +413,18 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
         raw = await _read(response)
         charged = int(_header(response, "X-Treg-Cost-Micro") or 0)
         spent += charged
+        if response.status == _miss_status(cand.endpoint):
+            # The provider's declared "asked and answered: no result" status (`miss: {status, means}`
+            # on the endpoint — aviato/hunter/leadmagic/… 404 a person they have no record of). It
+            # is a MISS, not a rejected request: before this the 404 counted as an error, so a
+            # waterfall whose other providers all missed ended in a 502 `route_failed` instead of
+            # a 200 miss (live 2026-09-03: 768 of 1,824 phone.find 502s in 30 days had no failure
+            # but an aviato 404), and a caller could not tell "nobody has it" from "treg broke".
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "miss", response.status, charged, ignored=ignored))
+            if options.waterfall:
+                continue
+            winner = (cand, {}, {}, raw)
+            break
         platform_auth_failure = cand.tier == "platform" and response.status in (401, 403)
         if (400 <= response.status < 500 and response.status not in (402, 408, 429)
                 and not platform_auth_failure):
