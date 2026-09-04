@@ -5,6 +5,7 @@ sources:
   - src/treg/adsconv.py
   - src/treg/application/signup.py
   - src/treg/web/adtrack.js
+  - src/treg/web/gtag.js
 related:
   - architecture/money.md
   - architecture/multi-tenancy.md
@@ -169,6 +170,22 @@ Created live on Google Ads account `5149790776` (type `UPLOAD_CLICKS`):
 signup measures curiosity, not commercial intent, so it should inform Google's targeting without
 being a bidding goal. `first_call` and `paid` are the two events the campaign should actually bid
 toward — an agent successfully calling a tool, and a team paying for more balance.
+
+## Client-side website conversion (separate)
+
+A **fourth action** (`7745505287`, "treg Signup (web)") fires client-side from `web/gtag.js`. This is
+a **website** conversion (type `WEBSITE`, not `UPLOAD_CLICKS`) that populates the Ads UI SIGNUP goal
+under website conversion tracking. It is NOT a duplicate of the server-side `signup` action above —
+they are different action IDs serving different purposes:
+
+- **Client-side** (`gtag.js`): gives Google a real-time browser-side signal the moment a new user
+  creates their first team (`welcomeCreate` in `index.html`). Uses localStorage dedupe
+  (`treg_signup_conv_fired`) so retries/reloads don't double-fire. Fires `send_to:
+  AW-18392771132/0usqCIeQrO0cELzUrcJE` with `value: 1.0, currency: 'AUD'`.
+- **Server-side** (`adsconv.py`): uploads durable attributed conversions to the UPLOAD_CLICKS actions
+  above, carrying the click id captured in `treg_ad`. Used for bidding optimization.
+
+Both are gated by `adsconv.enabled()` — `/gtag.js` returns an empty script when disabled.
 
 ## API version
 
