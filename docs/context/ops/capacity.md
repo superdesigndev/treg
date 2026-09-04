@@ -62,6 +62,10 @@ consulted or affected by anything here.
   `provider_balance()` never raises — a failure is a row. It reads the *setting*, not
   `platform_key_for`: the tier-4 allow-list is a serving kill switch, and a provider just switched
   off is exactly one whose last balance we still want.
+  The shared `_get` helper retries on transient failures (timeouts, transport errors, and HTTP
+  408/425/429/500/502/503/504) with short backoff (0 / 0.8s / 2s) before raising.
+  Ocean.io specifically gets one extra 404 retry after the normal retries, since it has been
+  observed returning 404 on the correct path under concurrent sweep load, then recovering.
 - **`policy.py`** — `CapacityPolicy` defaults per account (`_KNOWN`: capacity type, funding mode,
   source, plus the verified quota/rate facts for lusha, hunter, leadsforge, leadmagic, crustdata,
   tikhub). The population is every `platform_key_*` slot **plus `overflow:orthogonal` /

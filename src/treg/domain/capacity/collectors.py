@@ -10,6 +10,8 @@ Pure collection: nothing here touches the database or the request path. The work
 
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 
 from ...config import get_settings, platform_setting_name
@@ -18,11 +20,32 @@ from ...config import get_settings, platform_setting_name
 # `unit` says what the number IS ("USD", "credits", "units left", "rows used") — the one lesson of
 # collecting these: only DataForSEO and TikHub speak dollars; everyone else meters something else.
 
+# Transient HTTP status codes that warrant a retry — vendor-side flakes under load.
+_TRANSIENT_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+
+# Backoff delays (seconds) between retries: immediate, short, longer.
+_RETRY_DELAYS = (0, 0.8, 2.0)
+
 
 async def _get(c: httpx.AsyncClient, url: str, **kw) -> dict:
-    r = await c.get(url, **kw)
-    r.raise_for_status()
-    return r.json()
+    """GET with retry on transient failures: transport errors and retriable status codes."""
+    last_exc: Exception | None = None
+    for attempt, delay in enumerate(_RETRY_DELAYS):
+        if attempt > 0:
+            await asyncio.sleep(delay)
+        try:
+            r = await c.get(url, **kw)
+            r.raise_for_status()
+            return r.json()
+        except httpx.TimeoutException as exc:
+            last_exc = exc
+        except httpx.TransportError as exc:
+            last_exc = exc
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code not in _TRANSIENT_STATUSES:
+                raise
+            last_exc = exc
+    raise last_exc  # type: ignore[misc]
 
 
 async def _dataforseo(c, key):
@@ -174,7 +197,17 @@ async def _companyenrich(c, key):
 
 
 async def _oceanio(c, key):
-    d = await _get(c, "https://api.ocean.io/v2/credits/balance", headers={"X-Api-Token": key})
+    # Ocean.io has been observed returning 404 on the correct path under load, then recovering.
+    # After _get exhausts its normal retries, give one extra 404-specific retry with a longer pause.
+    url = "https://api.ocean.io/v2/credits/balance"
+    headers = {"X-Api-Token": key}
+    try:
+        d = await _get(c, url, headers=headers)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code != 404:
+            raise
+        await asyncio.sleep(1.5)
+        d = await _get(c, url, headers=headers)
     cr = d.get("credits", {})
     one, rec = cr.get("oneTime", 0) or 0, cr.get("recurrent", 0) or 0
     return {"value": one + rec, "unit": "credits",

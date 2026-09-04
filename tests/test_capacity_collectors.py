@@ -6,6 +6,7 @@ Each test mocks the upstream API response and verifies that the collector return
 
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from treg.domain.capacity import collectors
@@ -24,7 +25,6 @@ class MockResponse:
 
     def raise_for_status(self):
         if self.status_code >= 400:
-            import httpx
             raise httpx.HTTPStatusError(
                 f"HTTP {self.status_code}", request=None, response=self  # type: ignore[arg-type]
             )
@@ -42,6 +42,102 @@ class MockClient:
 
     async def post(self, url, **kwargs):
         return self._post_response
+
+
+class SequentialMockClient:
+    """A mock client that returns responses in sequence, for retry testing."""
+
+    def __init__(self, responses: list[MockResponse]):
+        self._responses = responses
+        self._call_count = 0
+
+    async def get(self, url, **kwargs):
+        resp = self._responses[self._call_count]
+        self._call_count += 1
+        return resp
+
+    @property
+    def call_count(self):
+        return self._call_count
+
+
+# ---- _get retry behavior ----------------------------------------------------------------
+
+async def test_get_retries_on_500_then_succeeds(monkeypatch):
+    """_get should retry on transient 500, then succeed on 200."""
+    monkeypatch.setattr("treg.domain.capacity.collectors._RETRY_DELAYS", (0, 0, 0))
+    responses = [
+        MockResponse({}, status_code=500),
+        MockResponse({"ok": True}, status_code=200),
+    ]
+    client = SequentialMockClient(responses)
+    result = await collectors._get(client, "https://example.com/test")
+    assert result == {"ok": True}
+    assert client.call_count == 2
+
+
+async def test_get_retries_exhausted_raises(monkeypatch):
+    """_get should raise after all retries exhausted."""
+    monkeypatch.setattr("treg.domain.capacity.collectors._RETRY_DELAYS", (0, 0, 0))
+    responses = [
+        MockResponse({}, status_code=500),
+        MockResponse({}, status_code=502),
+        MockResponse({}, status_code=503),
+    ]
+    client = SequentialMockClient(responses)
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        await collectors._get(client, "https://example.com/test")
+    assert exc_info.value.response.status_code == 503
+    assert client.call_count == 3
+
+
+async def test_get_does_not_retry_non_transient_status(monkeypatch):
+    """_get should raise immediately on non-transient status like 401."""
+    monkeypatch.setattr("treg.domain.capacity.collectors._RETRY_DELAYS", (0, 0, 0))
+    responses = [
+        MockResponse({}, status_code=401),
+        MockResponse({"ok": True}, status_code=200),
+    ]
+    client = SequentialMockClient(responses)
+    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        await collectors._get(client, "https://example.com/test")
+    assert exc_info.value.response.status_code == 401
+    assert client.call_count == 1
+
+
+# ---- _oceanio 404 retry -----------------------------------------------------------------
+
+async def test_oceanio_retries_on_404_then_succeeds(monkeypatch):
+    """Ocean.io collector should retry once on 404 (their observed flake), then succeed.
+
+    404 is NOT in _TRANSIENT_STATUSES (those are server errors like 500), so _get raises
+    immediately. _oceanio then catches the 404, sleeps 1.5s, and calls _get one more time.
+    """
+    async def mock_sleep(_):
+        pass
+
+    monkeypatch.setattr("treg.domain.capacity.collectors.asyncio.sleep", mock_sleep)
+
+    call_count = 0
+    responses = [
+        MockResponse({}, status_code=404),  # First _get call raises immediately
+        MockResponse({"credits": {"oneTime": 100, "recurrent": 215}, "dailyLimitRateLeft": 50}),
+    ]
+
+    class OceanioMockClient:
+        async def get(self, url, **kwargs):
+            nonlocal call_count
+            resp = responses[call_count]
+            call_count += 1
+            return resp
+
+    client = OceanioMockClient()
+    result = await collectors._oceanio(client, "test-key")
+
+    assert result["value"] == 315
+    assert result["unit"] == "credits"
+    assert "100 one-time + 215 recurring" in result["note"]
+    assert call_count == 2  # One 404, then one success
 
 
 # ---- brightdata -------------------------------------------------------------------------
