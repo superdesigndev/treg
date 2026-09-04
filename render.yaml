@@ -379,6 +379,11 @@ services:
           property: connectionString
       - key: PYTHON_VERSION
         value: "3.12.7"
+      - key: TREG_SECRET_KEY
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_SECRET_KEY
       - key: TREG_PLATFORM_PROVIDERS
         fromService:
           type: web
