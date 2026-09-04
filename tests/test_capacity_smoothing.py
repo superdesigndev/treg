@@ -182,6 +182,10 @@ async def test_concurrent_platform_calls_over_the_limit_relay_no_429_and_hold_no
             return None
         return UpstreamResponse(status, (), _s(), _c)
     monkeypatch.setattr(call_service, "relay", provider)
+    assert (await clients.get(f"/call/{EP}?aweme_id=99")).status_code == 200  # warm the process (see below)
+    stamps.clear()
+    pool_seen.clear()
+    limiter.reset()
     t0 = time.monotonic()
     rs = await asyncio.gather(*(clients.get(f"/call/{EP}?aweme_id={i}") for i in range(4)))
     assert [r.status_code for r in rs] == [200] * 4, [r.text for r in rs]
@@ -193,7 +197,11 @@ async def test_concurrent_platform_calls_over_the_limit_relay_no_429_and_hold_no
 async def test_a_smoothed_call_holds_no_db_connection_while_it_waits(clients: AsyncClient, platform_on, monkeypatch):
     """The pool-discipline rule extended to the wait: the bucket runs after the DB phase ended."""
     await _publish_rate("tikhub", 2, 1.0)
-    await limiter.acquire("tikhub", 2, 1.0)  # drain the one token so the call below must wait ~0.5 s
+    # Put the bucket two tokens in debt so the call below MUST wait, whatever the request setup
+    # costs on this machine: at 2 tokens/s the wait is 1.5 s minus the time until the relay
+    # reaches the limiter. `limiter.acquire` (one token drained) left only ~0.5 s of margin, and a
+    # slow runner spent it before the call arrived — CI 2026-09-04 measured a 77 ms wait, and a
+    # laptop's sqlite setup let the token refill entirely (no header at all).
     seen = []
     async def provider(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False):
         seen.append(_engine.pool.checkedout())
@@ -203,7 +211,17 @@ async def test_a_smoothed_call_holds_no_db_connection_while_it_waits(clients: As
             return None
         return UpstreamResponse(200, (), _s(), _c)
     monkeypatch.setattr(call_service, "relay", provider)
+    # Warm the process first (catalog load, capacity view): the FIRST call in a fresh worker takes
+    # seconds, during which the bucket refills — that is the cold start that made this test pass
+    # only after its siblings had run (a laptop saw no wait at all; CI gw2 measured 77 ms).
+    assert (await clients.get(f"/call/{EP}?aweme_id=0")).status_code == 200
+    seen.clear()
+    bucket = limiter.bucket("tikhub", 2, 1.0)
+    bucket.updated = time.monotonic()
+    bucket.tokens = -2.0
+    t_drained = time.monotonic()
     r = await clients.get(f"/call/{EP}?aweme_id=1")
     assert r.status_code == 200 and r.headers["X-Treg-Smoothed"].startswith("wait=")
-    assert int(r.headers["X-Treg-Smoothed"].split("=")[1]) >= 300
+    elapsed_ms = int((time.monotonic() - t_drained) * 1000)
+    assert int(r.headers["X-Treg-Smoothed"].split("=")[1]) >= 300, f"setup took {elapsed_ms} ms"
     assert seen == [0], "no pooled connection during the wait or the relay"
