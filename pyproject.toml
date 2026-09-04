@@ -77,6 +77,11 @@ test = [
     "playwright>=1.62.0",
 ]
 
+[tool.uv]
+# uv.lock is `revision = 3`; uv < 0.8.4 silently rewrites it to revision 2 (a ~650-line diff
+# that changes no versions). Refuse to run on an old uv rather than teach everyone to avoid `uv lock`.
+required-version = ">=0.12"
+
 [tool.importlinter]
 root_package = "treg"
 include_external_packages = true

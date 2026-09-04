@@ -48,16 +48,15 @@ jobs:
           python-version: "3.13"
       - name: Install dependencies
         if: steps.docs.outputs.only != 'true'
-        run: uv sync --frozen
+        run: uv sync --locked
       - name: Enforce import boundaries
         if: steps.docs.outputs.only != 'true'
-        run: uv run --frozen lint-imports
+        run: uv run --locked lint-imports
       - name: Run tests
         if: steps.docs.outputs.only != 'true'
         # -n auto: the suite is 1,700+ small independent tests — serial execution is what let a
         # throttled runner turn minutes into tens of minutes. xdist arrives via --with rather than
-        # the lockfile on purpose: it is a CI-only concern, and the team's older uv rewrites
-        # uv.lock's whole format on any touch.
+        # the lockfile on purpose: it is a CI-only concern.
         run: uv run --with pytest-xdist pytest -n auto -v -o faulthandler_timeout=300
 
   test-postgres:
@@ -86,7 +85,7 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --locked
       - name: Run Postgres tests serially
         # Never add xdist here. Every worker would share this one database while reset_db() drops
         # and recreates its tables, reproducing the 1,022-error cross-worker failure shape.
