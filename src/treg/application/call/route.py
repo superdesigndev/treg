@@ -8,7 +8,8 @@ core `output` (via the child's adapter), the child's `raw` body, and `_treg: {se
 
 Fallback follows the overflow rules: on an ERROR (our 5xx/503, a vendor 5xx/429/402) the next
 candidate is tried, at most two extra, idempotent contracts only; a caller-caused refusal (4xx)
-stops at once — it would be the same 4xx everywhere. Child-local treg authorization failures and
+stops at once — it would be the same 4xx everywhere — unless the endpoint's YAML declares that
+status as its "no result" answer (`miss: {status: 404}`), which is a MISS. Child-local treg authorization failures and
 platform vendor 401/403 responses are errors because another child may work. A MISS (2xx,
 `adapter.miss`) stops unless the
 caller turned the waterfall off (`X-Treg-Route-Waterfall: 0`). The waterfall is ON by default —
@@ -96,6 +97,21 @@ def _free_on_failure(cand: Candidate) -> bool:
     if (cand.endpoint.get("cost") or {}).get("type") == "per_success":
         return True
     return cand.price_micro <= CHEAP_RETRY_MICRO
+
+
+def _miss_status(endpoint: dict) -> int | None:
+    """The ERROR status this endpoint's YAML declares as "no result" (`miss: {status, means}`),
+    or None when an error status means what it says. Only a 4xx counts: a `status: 200` block
+    (tikhub's "an unknown id still answers 200 with a null body") documents a 2xx the adapter's
+    own `miss` predicate decides, and honouring it here would call every success a miss."""
+    m = endpoint.get("miss")
+    if isinstance(m, dict) and m.get("status") is not None:
+        try:
+            status = int(m["status"])
+        except (TypeError, ValueError):
+            return None
+        return status if 400 <= status < 500 else None
+    return None
 
 
 DEFAULT_MAX_COST_MICRO = 1_000_000  # $1.00 per routed call unless the caller says otherwise — a runaway guard, not a budget
@@ -372,6 +388,18 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
         raw = await _read(response)
         charged = int(_header(response, "X-Treg-Cost-Micro") or 0)
         spent += charged
+        if response.status == _miss_status(cand.endpoint):
+            # The provider's declared "asked and answered: no result" status (`miss: {status, means}`
+            # on the endpoint — aviato/hunter/leadmagic/… 404 a person they have no record of). It
+            # is a MISS, not a rejected request: before this the 404 counted as an error, so a
+            # waterfall whose other providers all missed ended in a 502 `route_failed` instead of
+            # a 200 miss (live 2026-09-03: 768 of 1,824 phone.find 502s in 30 days had no failure
+            # but an aviato 404), and a caller could not tell "nobody has it" from "treg broke".
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "miss", response.status, charged, ignored=ignored))
+            if options.waterfall:
+                continue
+            winner = (cand, {}, {}, raw)
+            break
         platform_auth_failure = cand.tier == "platform" and response.status in (401, 403)
         if (400 <= response.status < 500 and response.status not in (402, 408, 429)
                 and not platform_auth_failure):

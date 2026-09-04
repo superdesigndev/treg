@@ -42,6 +42,9 @@ endpoints:
   - id: fiber-ai.people.contacts.reveal
     domain: contacts
     capability: people.email.find
+    miss:
+      status: 404
+      means: "`Profile not found` — the LinkedIn URL does not resolve to a known person, an expected outcome and free; do not retry the same URL"
     platform: people
     scope: any_account
     method: POST
@@ -307,6 +310,9 @@ endpoints:
   - id: fiber-ai.people.search
     domain: contacts
     capability: people.search
+    miss:
+      status: 404
+      means: "the company filter did not resolve to a known company (`Failed to resolve company filters`) — no people to return, an expected outcome and free; do not retry the same domain"
     platform: people
     scope: any_account
     method: POST

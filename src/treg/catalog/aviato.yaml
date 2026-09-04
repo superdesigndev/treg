@@ -346,6 +346,9 @@ endpoints:
   - id: aviato.people.enrich
     domain: contacts
     capability: people.enrich
+    miss:
+      status: 404
+      means: "no person matched the identifier — an expected outcome and free (per_success); do not retry the same identifier"
     platform: people
     scope: any_account
     method: GET
@@ -509,6 +512,9 @@ endpoints:
   - id: aviato.people.phone.find
     domain: contacts
     capability: people.phone.find
+    miss:
+      status: 404
+      means: "no person matched the identifier — an expected outcome and free (per_success); do not retry the same identifier"
     platform: people
     scope: any_account
     method: GET

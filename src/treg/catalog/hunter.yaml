@@ -149,6 +149,9 @@ endpoints:
   - id: hunter.people.enrich
     domain: contacts
     capability: people.enrich
+    miss:
+      status: 404
+      means: "no person on record for this identifier — an expected outcome and free (the cost note: a 404 is never billed); do not retry the same identifier"
     platform: people
     scope: any_account
     method: GET
@@ -181,6 +184,9 @@ endpoints:
   - id: hunter.companies.enrich
     domain: companies
     capability: companies.enrich
+    miss:
+      status: 404
+      means: "no company on record for this domain — an expected outcome and free (the cost note: a 404 is never billed); do not retry the same domain"
     platform: companies
     scope: any_account
     method: GET

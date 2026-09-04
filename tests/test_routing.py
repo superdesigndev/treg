@@ -979,3 +979,55 @@ def test_a_per_success_endpoint_with_no_adapter_settles_on_the_providers_own_suc
         m2 = _mk(dfs[0]["provider"], endpoint_id=dfs[0]["id"], cost_type="per_success")
         assert A._observed_cost_micro(m2, b'{"tasks": [{"status_code": 40501}]}') == 0
         assert A._observed_cost_micro(m2, b'{"tasks": [{"status_code": 20000}]}') is None
+
+async def test_a_declared_miss_status_is_a_miss_not_a_caller_fault(clients: AsyncClient, enrichment_on, monkeypatch):
+    """aviato answers HTTP 404 `Not Found` for a person it has no record of. The endpoint's YAML says
+    so (`miss: {status: 404}`), and the router must read it: before this a waterfall in which the
+    other providers all missed ended in a 502 `route_failed` (live 2026-09-03, voice-ai-outbound —
+    768 of 1,824 phone.find 502s in 30 days had no failure but an aviato 404), when the honest
+    answer was a 200 miss."""
+    routed = "treg.people.phone.find"
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"aviato": [(404, {"message": "Not Found"})],
+         "tomba": [(200, {"data": {"e164_format": None}})],
+         "leadmagic": [(200, {"mobile_number": None, "credits_consumed": 0})],
+         "findymail": [(200, {"phone": None})],
+         "leadsforge": [(200, {"phoneNumber": None})]}, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/nobody-here"})
+    assert r.status_code == 200, r.text
+    assert r.headers["X-Treg-Route-Outcome"] == "miss" and r.json()["_treg"]["served_by"] is None
+    outcomes = {t["endpoint_id"]: t["outcome"] for t in r.json()["_treg"]["tried"]}
+    assert outcomes["aviato.people.phone.find"] == "miss" and len(seen) == 5, "the 404 is a miss; every provider was still asked"
+    assert await _balance(clients) == before, "nobody found anything, nothing was charged"
+    # an UNDECLARED 4xx keeps its meaning: a vendor rejecting the request is still the caller's fault
+    seen.clear()
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"aviato": [(422, {"message": "bad identifier"})], "*": [(422, {"message": "bad"})] * 4}, seen))
+    r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/nobody-here"},
+                           headers={"X-Treg-Route-Prefer": "aviato"})
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "route_caller_fault", r.text
+    # and with the waterfall off, the declared 404 alone is the (free) miss the caller asked for
+    seen.clear()
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"aviato": [(404, {"message": "Not Found"})]}, seen))
+    r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/nobody-here"},
+                           headers={"X-Treg-Route-Prefer": "aviato", "X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200 and r.headers["X-Treg-Route-Outcome"] == "miss" and len(seen) == 1, r.text
+    assert r.json()["output"]["phone"] is None
+
+
+def test_every_declared_miss_status_names_its_meaning():
+    """`miss: {status, means}` is agent-facing (`endpoint_view`) and router-facing: both halves
+    are required. The router honours a 4xx only — a `status: 200` block is documentation for the
+    agent (tikhub answers 200 with a null body for an unknown id) and the adapter's own predicate
+    decides that case, so `_miss_status` must never turn a success into a miss."""
+    cat = catalog_store.load()
+    declared = {e["id"]: e["miss"] for e in cat.by_id.values() if e.get("miss")}
+    assert "aviato.people.phone.find" in declared and "hunter.people.enrich" in declared
+    for eid, m in declared.items():
+        assert isinstance(m, dict) and m.get("status") is not None and m.get("means"), eid
+        assert int(m["status"]) < 500, f"{eid}: a 5xx is never 'asked and answered'"
+    assert call_route._miss_status(cat.by_id["aviato.people.phone.find"]) == 404
+    assert call_route._miss_status(cat.by_id["tikhub.x.reddit-app-fetch-post-comments"]) is None
+    assert call_route._miss_status({"id": "x"}) is None

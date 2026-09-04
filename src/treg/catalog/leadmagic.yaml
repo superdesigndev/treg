@@ -101,6 +101,9 @@ endpoints:
   - id: leadmagic.people.enrich
     domain: contacts
     capability: people.enrich
+    miss:
+      status: 404
+      means: "`profile_not_found` — no matching profile for the identifiers, an expected outcome and free; do not retry the same identifiers"
     platform: people
     scope: any_account
     method: POST
