@@ -429,7 +429,11 @@ govern the overflow child cycle (`ops/capacity.md`); the keys serve nothing whil
 `treg-worker asynctasks settle` is the second cron command. `treg-asynctasks-settle` runs every two
 minutes with the database URL, provider allow-list, and MiniMax/OpenRouter/Replicate platform keys
 inherited from the web service. It never originates money; it only completes request-path holds.
-Multi-instance claims use `FOR UPDATE SKIP LOCKED`.
+Candidates are claimed by conditional update only after acquiring a concurrency slot. Each claim
+has a 60-second lease and an attempt-version fence; processing is bounded to 30 seconds and network
+polling to 10 seconds. Consecutive errors back off to 15 minutes. Caller terminal polls can complete
+the original hold before cron. Migration `0019` adds the failure counter with a server default;
+run the normal pre-deploy upgrade before either the web service or cron uses the new code.
 
 ## A `src/treg/infra/db.py` change needs a Postgres-shaped deploy plan
 

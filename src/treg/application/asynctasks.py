@@ -10,7 +10,7 @@ from datetime import timedelta
 
 import httpx
 from urllib.parse import quote
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from .. import archive, oauth_providers
 from ..domain import asynctasks
@@ -29,6 +29,9 @@ log = logging.getLogger("treg.asynctasks")
 DEFAULT_LIMIT = 50
 GLOBAL_CONCURRENCY = 8
 PROVIDER_CONCURRENCY = 2
+POLL_TIMEOUT_S = 10
+PROCESS_TIMEOUT_S = 30
+CLAIM_LEASE_S = 60
 # Terminal task JSON is small; a provider that streams more than this is not answering a poll.
 MAX_POLL_BODY_BYTES = 2 * 1024 * 1024
 
@@ -135,29 +138,24 @@ async def remember_platform_resources(
     return added
 
 
-async def remember_result_from_poll(call_id: str, body: bytes) -> bool:
-    """Learn a fetch-mode result id from a caller's already-authorized platform poll.
-
-    The CLI may observe success before the minute worker does. Persisting the id here lets its next
-    retrieval pass the same org boundary; malformed/nonterminal responses simply teach nothing.
-    """
+async def observe_owned_poll(call_id: str, status_code: int, body: bytes) -> str:
+    """Apply a live, org-authorized poll to its original task; never charge the poll itself."""
+    if not 200 <= status_code < 300:
+        return "noop"
     try:
         document = json.loads(body)
     except (UnicodeDecodeError, json.JSONDecodeError):
-        return False
+        return "noop"
     async with session_maker() as db:
-        row = await db.get(AsyncTaskRecord, call_id, with_for_update=True)
-        if row is None or asynctasks.classify_terminal(row.descriptor, document) != "success":
-            return False
-        result_id = _result_id(row.descriptor, document)
-        if result_id is None:
-            return False
-        row.result_id = result_id
-        fetch = (row.descriptor or {}).get("result") or {}
-        if fetch.get("fetch"):
-            await _remember_resource(db, row, f"fetch:{fetch['fetch']}", result_id)
-        await db.commit()
-        return True
+        row = await db.get(AsyncTaskRecord, call_id)
+        if row is None or row.status != asynctasks.PENDING:
+            return "noop"
+        snapshot = row.model_copy()
+    outcome = asynctasks.classify_terminal(snapshot.descriptor, document)
+    if outcome not in ("success", "failure"):
+        return "noop"
+    return await _finish_terminal(
+        snapshot, outcome, document, status_code, body, utcnow_naive(), require_usage=True)
 
 
 async def views_for(org_id: int, call_ids: list[str]) -> dict[str, dict]:
@@ -213,20 +211,29 @@ class TickResult:
     timed_out: int = 0
 
 
-async def _claim_due(limit: int, now) -> list[str]:
+async def _due_candidates(limit: int, now) -> list[tuple[str, str]]:
     async with session_maker() as db:
-        rows = (await db.execute(
-            select(AsyncTaskRecord)
+        return list((await db.execute(
+            select(AsyncTaskRecord.call_id, AsyncTaskRecord.provider)
             .where(AsyncTaskRecord.status == asynctasks.PENDING,
                    AsyncTaskRecord.next_check_at <= now)
             .order_by(AsyncTaskRecord.next_check_at, AsyncTaskRecord.call_id)
-            .with_for_update(skip_locked=True).limit(limit)
-        )).scalars().all()
-        for row in rows:
-            row.attempts += 1
-            row.next_check_at = now + timedelta(seconds=60)
+            .limit(limit)
+        )).all())
+
+
+async def _claim_due(call_id: str, now) -> int | None:
+    """Claim only after a network slot is available; attempts is the fencing token."""
+    async with session_maker() as db:
+        attempt = (await db.execute(update(AsyncTaskRecord).where(
+            AsyncTaskRecord.call_id == call_id,
+            AsyncTaskRecord.status == asynctasks.PENDING,
+            AsyncTaskRecord.next_check_at <= now,
+        ).values(attempts=AsyncTaskRecord.attempts + 1,
+                 next_check_at=now + timedelta(seconds=CLAIM_LEASE_S))
+          .returning(AsyncTaskRecord.attempts))).scalar_one_or_none()
         await db.commit()
-        return [row.call_id for row in rows]
+        return attempt
 
 
 def _poll_target(row: AsyncTaskRecord) -> tuple[str, str, list[tuple[str, str]]]:
@@ -289,11 +296,16 @@ async def _poll(row: AsyncTaskRecord, client: httpx.AsyncClient) -> tuple[int, b
         await response.close()
 
 
-async def _finish(call_id: str, outcome: str, document: object | None, now) -> str:
+async def _finish(call_id: str, outcome: str, document: object | None, now, *,
+                  require_usage: bool = False, expected_attempt: int | None = None) -> str:
     async with session_maker() as db:
         row = await db.get(AsyncTaskRecord, call_id, with_for_update=True)
         if row is None or row.status != asynctasks.PENDING:
             return "noop"
+        if expected_attempt is not None and row.attempts != expected_attempt:
+            return "noop"
+        if outcome in ("success", "failure") and asynctasks.expired(row.created_at, now):
+            outcome = "timed_out"
         if outcome in ("success", "failure", "timed_out") and await db.get(Hold, call_id) is None:
             # The request path already closed this hold (cancelled at the commit boundary, or
             # reaped): there is no money left to move, and a row "settled" at zero would lie.
@@ -310,9 +322,14 @@ async def _finish(call_id: str, outcome: str, document: object | None, now) -> s
             fetch = (row.descriptor or {}).get("result") or {}
             if row.result_id is not None and fetch.get("fetch"):
                 await _remember_resource(db, row, f"fetch:{fetch['fetch']}", row.result_id)
-            raw = settlement.settle(row.settlement_basis, evidence)
             unobserved = (row.settlement_basis["amount"]["kind"] == "usage"
                           and settlement.usage_evidence(row.settlement_basis, evidence) is None)
+            if unobserved and require_usage:
+                # A caller may see completion before the provider publishes its final usage.
+                # Retain fetch ownership, but leave money and the worker's due time untouched.
+                await db.commit()
+                return "awaiting_usage"
+            raw = settlement.settle(row.settlement_basis, evidence)
             if unobserved:
                 row.error = "usage field missing from the terminal response; settled at the reserve"
                 log.error("ASYNC USAGE UNOBSERVED: call %s on %s succeeded but %s carried no usage "
@@ -344,7 +361,10 @@ async def _finish(call_id: str, outcome: str, document: object | None, now) -> s
                       "check whether the provider changed its status field",
                       row.call_id, row.provider, row.endpoint_id, row.reserved_micro)
         else:
-            row.next_check_at = asynctasks.next_check(now, row.attempts)
+            row.consecutive_failures = row.consecutive_failures + 1 if outcome == "poll_error" else 0
+            due = (asynctasks.next_failure_check(now, row.consecutive_failures)
+                   if row.consecutive_failures else asynctasks.next_check(now, row.attempts))
+            row.next_check_at = min(due, row.created_at + asynctasks.MAX_AGE)
             await db.commit()
             return "backed_off"
         row.completed_at = now
@@ -352,73 +372,103 @@ async def _finish(call_id: str, outcome: str, document: object | None, now) -> s
         return row.status
 
 
-async def _process(call_id: str, client: httpx.AsyncClient) -> str:
+async def _finish_terminal(snapshot: AsyncTaskRecord, outcome: str, document: object,
+                           status_code: int, body: bytes, now, *, require_usage: bool = False,
+                           expected_attempt: int | None = None) -> str:
+    """One settlement and evidence path for caller polling and the recovery worker."""
+    result = await _finish(snapshot.call_id, outcome, document, now, require_usage=require_usage,
+                           expected_attempt=expected_attempt)
+    expected = asynctasks.SETTLED if outcome == "success" else asynctasks.RELEASED
+    if result == expected:
+        # Only the winning finalizer records evidence; a late poll cannot replace the result
+        # whose usage was charged. Archive failure cannot undo the committed money transaction.
+        try:
+            await archive.store_terminal_response(
+                snapshot.call_id, snapshot.provider, snapshot.endpoint_id, status_code, body)
+        except Exception:  # noqa: BLE001 - archive is best effort, settlement is durable
+            log.exception("could not archive terminal evidence for %s", snapshot.call_id)
+    return result
+
+
+async def _process(call_id: str, client: httpx.AsyncClient, attempt: int) -> str:
     now = utcnow_naive()
     async with session_maker() as db:
         row = await db.get(AsyncTaskRecord, call_id)
-        if row is None or row.status != asynctasks.PENDING:
+        if row is None or row.status != asynctasks.PENDING or row.attempts != attempt:
             return "noop"
-        if asynctasks.expired(row.created_at, now):
-            return await _finish(call_id, "timed_out", None, now)
         if row.error:
-            return "backed_off"
+            if not asynctasks.expired(row.created_at, now):
+                return "backed_off"
         snapshot = row.model_copy()
+    if asynctasks.expired(snapshot.created_at, now):
+        return await _finish(call_id, "timed_out", None, now, expected_attempt=attempt)
     try:
-        status, body = await _poll(snapshot, client)
+        async with asyncio.timeout(POLL_TIMEOUT_S):
+            status, body = await _poll(snapshot, client)
         if not 200 <= status < 300:
             # Only a successful poll is evidence. A 404 or 401 body that happens to carry
             # "status": "succeeded" is an error envelope, not a terminal state; the CLI treats
             # every non-2xx the same way, and money must not depend on an error page's fields.
             log.warning("async poll for call %s returned HTTP %s; backing off", call_id, status)
-            return await _finish(call_id, "progress", None, now)
+            return await _finish(call_id, "poll_error", None, utcnow_naive(), expected_attempt=attempt)
         document = json.loads(body)
         outcome = asynctasks.classify_terminal(snapshot.descriptor, document)
-        result = await _finish(call_id, outcome, document, now)
         if outcome in ("success", "failure"):
-            await archive.store_terminal_response(
-                snapshot.call_id, snapshot.provider, snapshot.endpoint_id, status, body)
-        return result
+            return await _finish_terminal(snapshot, outcome, document, status, body, utcnow_naive(),
+                                          expected_attempt=attempt)
+        return await _finish(call_id, outcome, document, utcnow_naive(), expected_attempt=attempt)
     except Exception as exc:  # noqa: BLE001 - one row's failure must never abort the tick
         # relay() raises GatewayFailed (an unset platform key, an SSRF refusal), httpx raises its
         # own, JSON raises ValueError: all mean "no evidence this tick". Back off and say why; the
         # deadline still ends it, and the whole tick keeps serving the other rows.
         log.warning("async poll failed for call %s: %s: %s", call_id, type(exc).__name__, exc)
-        return await _finish(call_id, "progress", None, now)
+        return await _finish(call_id, "poll_error", None, utcnow_naive(), expected_attempt=attempt)
 
 
 async def settle_due(*, limit: int = DEFAULT_LIMIT, client: httpx.AsyncClient | None = None) -> TickResult:
     """Claim one worker tick and process network waits under global and provider caps."""
     now = utcnow_naive()
-    call_ids = await _claim_due(limit, now)
-    if not call_ids:
+    candidates = await _due_candidates(limit, now)
+    if not candidates:
         return TickResult()
     global_sem = asyncio.Semaphore(GLOBAL_CONCURRENCY)
     provider_sems: dict[str, asyncio.Semaphore] = {}
     owned = client is None
-    client = client or httpx.AsyncClient(timeout=60)
+    client = client or httpx.AsyncClient(timeout=POLL_TIMEOUT_S)
+    claimed = 0
 
-    async def run(call_id: str) -> str:
-        async with session_maker() as db:
-            row = await db.get(AsyncTaskRecord, call_id)
-            provider = row.provider if row else ""
+    async def run(call_id: str, provider: str) -> str:
+        nonlocal claimed
         sem = provider_sems.setdefault(provider, asyncio.Semaphore(PROVIDER_CONCURRENCY))
-        async with global_sem, sem:
-            return await _process(call_id, client)
+        async with sem, global_sem:
+            attempt = None
+            try:
+                async with asyncio.timeout(PROCESS_TIMEOUT_S):
+                    attempt = await _claim_due(call_id, utcnow_naive())
+                    if attempt is None:
+                        return "noop"
+                    claimed += 1
+                    return await _process(call_id, client, attempt)
+            except TimeoutError:
+                if attempt is None:
+                    return "backed_off"
+                return await _finish(call_id, "poll_error", None, utcnow_naive(),
+                                     expected_attempt=attempt)
 
     try:
-        results = await asyncio.gather(*(run(call_id) for call_id in call_ids), return_exceptions=True)
+        results = await asyncio.gather(*(run(*item) for item in candidates), return_exceptions=True)
     finally:
         if owned:
             await client.aclose()
     outcomes = []
-    for call_id, result in zip(call_ids, results):
+    for (call_id, _), result in zip(candidates, results):
         if isinstance(result, BaseException):  # _process already guards; this is the last net
             log.error("async task %s: tick-level failure: %s", call_id, result, exc_info=result)
             outcomes.append("backed_off")
         else:
             outcomes.append(result)
     return TickResult(
-        claimed=len(call_ids), settled=outcomes.count(asynctasks.SETTLED),
+        claimed=claimed, settled=outcomes.count(asynctasks.SETTLED),
         released=outcomes.count(asynctasks.RELEASED),
         backed_off=outcomes.count("backed_off"), timed_out=outcomes.count(asynctasks.TIMED_OUT),
     )

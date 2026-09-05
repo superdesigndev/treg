@@ -59,7 +59,7 @@ _DATAPLANE_DERIVED_WRITES = {
         (overflow._release_budget, "overflow_spend_ledger.release_reservation_in_transaction"),
     ),
     "async_result_ownership": (
-        (service._execute_call, "async_task_app.remember_result_from_poll"),
+        (service._execute_call, "async_task_app.observe_owned_poll"),
     ),
     "async_resource_ownership": (
         (service._execute_call, "async_task_app.remember_platform_resources"),
@@ -93,7 +93,7 @@ _DERIVED_WRITE_FILES = {
         "overflow_spend_ledger.release_reservation_in_transaction",
     },
     _SRC / "application" / "call" / "service.py": {
-        "async_task_app.remember_result_from_poll",
+        "async_task_app.observe_owned_poll",
         "async_task_app.remember_platform_resources",
     },
     _SRC / "domain" / "capacity" / "marks.py": {"ratestore.kv_put", "ratestore.kv_pop"},
@@ -124,7 +124,7 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/overflow.py", "_release_budget",
      "overflow_spend_ledger.release_reservation_in_transaction"),
     ("application/call/service.py", "_execute_call",
-     "async_task_app.remember_result_from_poll"),
+     "async_task_app.observe_owned_poll"),
     ("application/call/service.py", "_execute_call",
      "async_task_app.remember_platform_resources"),
     ("domain/capacity/marks.py", "strike", "ratestore.kv_put"),

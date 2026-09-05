@@ -346,6 +346,11 @@ endpoints:
 
 ### Async descriptors
 
+`catalog_store._normalize` sets `cache: forbidden` for `image-gen` and `video-gen` endpoints,
+including synchronous generation, task/result utilities and generated extended rows. Their `kind`
+is unchanged. These requests must reach the provider, not replay shared-account task ids or media
+from an identical prompt. Other platforms retain their declared/default cache policy.
+
 An asynchronous submission endpoint may carry an `async:` descriptor. A provider file may put the
 same block at top level as a default for every endpoint in that file; an endpoint block **replaces
 it whole** (`effective_async_descriptor`): a descriptor is one protocol, and a protocol that differs

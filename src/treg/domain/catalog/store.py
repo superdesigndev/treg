@@ -557,7 +557,9 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         "tier": raw.get("tier") or "core",
         # The archive's per-endpoint cache policy (absent ⇒ forbidden — see archive.policy);
         # inherited from the file header unless the endpoint declares its own.
-        "cache": raw.get("cache"),
+        # Generated media and its task/result utilities must never replay shared-account ids.
+        # Enforce this for core and generated extended rows without changing their public kind.
+        "cache": "forbidden" if platform in {"image-gen", "video-gen"} else raw.get("cache"),
         "verified": str(verified) if verified else None,
         # {status, means} — a status the provider uses for "asked and answered: no result" (PDL
         # 404s a person it has no record of). Only endpoints with evidenced miss semantics carry

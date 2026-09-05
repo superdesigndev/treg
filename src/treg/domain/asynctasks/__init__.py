@@ -120,3 +120,8 @@ def next_check(now: datetime, attempts: int) -> datetime:
 
 def expired(created_at: datetime, now: datetime) -> bool:
     return now - created_at >= MAX_AGE
+
+
+def next_failure_check(now: datetime, failures: int) -> datetime:
+    """Provider failures retry after 2, 4, 8, then at most 15 minutes."""
+    return now + timedelta(seconds=min(900, 120 * 2 ** min(3, max(0, failures - 1))))

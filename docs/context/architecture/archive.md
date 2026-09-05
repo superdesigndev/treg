@@ -28,6 +28,12 @@ they were stored under and tolerates a pruned carrier,
 reads them back (newest snapshot per key, following `body_of`) for the Activity displays, which
 extract the artifact through the descriptor rather than by guessing at the provider's shape.
 
+Image/video API entries carry effective `cache: forbidden`, including extended catalog rows.
+`lookup` and refresh check the current policy, so old cached responses are not replayed or refreshed.
+This does not delete historical snapshots or change ordinary query caching. Terminal evidence is
+the deliberate exception: only the winning caller/worker finalizer stores it under the original
+call id, independent of replay policy; generated media bytes are never downloaded.
+
 Two concepts, one word each — the vocabulary is deliberate and mirrors the charter's discipline:
 **cache** is the newest stored answer for a key, served instead of a vendor call while it is
 fresh; **archive** is every version of every answer, kept with its timestamp. The cache is the

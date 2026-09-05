@@ -324,11 +324,20 @@ class MarketplaceCall:
     probe_lock_id: str | None = None
 
     @property
+    def free_owned_poll(self) -> bool:
+        """A free status read authorized against this org's durable submission."""
+        return (self.tier == "platform" and self.async_owner_call_id is not None
+                and self.cost_type == "free" and self.estimate_micro == 0
+                and not self.billed_oauth)
+
+    @property
     def metered(self) -> bool:
         """True when OUR money is at stake: treg's platform key (tier 4), or an org credential that
         rides treg's pay-per-use OAuth app (`billed_oauth`). Tiers 1/2 on a provider that bills the
-        account owner stay unmetered — there the org's own account pays."""
-        return self.tier in ("platform", "platform-overflow") or self.billed_oauth
+        account owner stay unmetered; there the org's own account pays. An owned free poll reads
+        an existing task without reserving or settling money again."""
+        return ((self.tier in ("platform", "platform-overflow") or self.billed_oauth)
+                and not self.free_owned_poll)
 
 
 # A `per_result` price is per ROW, so an estimate needs a row count. The caller's own limit param is
