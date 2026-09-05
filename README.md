@@ -387,6 +387,8 @@ Loopni merge.
 ## License
 
 Apache 2.0 with additional terms ([`LICENSE`](LICENSE)): use it freely — including commercially,
-inside your own organization (self-hosting your own registry is encouraged) — but don't offer it
-to third parties as a hosted/managed service or embed it in a commercially distributed product
-without written permission (`jason@superdesign.dev`).
+inside your own organization (self-hosting your own registry is encouraged). The restriction: don't
+redistribute the code to third parties as a competing hosted/managed registry service without written
+permission (`jason@superdesign.dev`). **Using the hosted treg.to API** inside your own product —
+with pass-through billing via `X-Treg-Meta` and `usage/by-tag` — is allowed without permission;
+that's calling our API, not redistributing our software.
