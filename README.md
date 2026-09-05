@@ -32,8 +32,8 @@ The vocabulary for the second half:
 
 - **tool** = something the registry calls for you with the org's credential. Two kinds:
   - **endpoint** — an upstream `base_url` + credential **bindings** (each binding injects one
-  secret into the request; a request can carry several, e.g. an OAuth bearer *and* a
-  `developer-token` header).
+    secret into the request; a request can carry several, e.g. an OAuth bearer *and* a
+    `developer-token` header).
   - **CLI** — a vendor binary (`stripe`, `gh`, `vercel`, ...) run with the credential injected.
 - **skill / bundle** = a recipe (`SKILL.md`) + its secrets + its tool(s), registered together.
 
