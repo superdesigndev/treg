@@ -900,3 +900,29 @@ def test_show_prints_failure_diagnostics_on_stderr_and_keeps_stdout_the_body(cap
     cli._show(ok)
     out, err = capsys.readouterr()
     assert json.loads(out) == {"ok": True} and err == ""
+
+
+def test_show_prints_the_charge_and_call_id_for_a_metered_success(capsys):
+    """A metered 2xx gets one stderr line with the settled charge and the call id; stdout is the exact
+    body. No cost header (own key, or a non-call response) → nothing extra. A replay says so."""
+    import httpx
+    metered = httpx.Response(200, content=b'{"results":[{"x":1}],"next_token":"abc"}', headers={
+        "content-type": "application/json", "X-Treg-Cost-Micro": "6667",
+        "X-Treg-Call-Id": "125117d50cd3470cb25ba11f3d9789ad"})
+    cli._show(metered)
+    out, err = capsys.readouterr()
+    assert json.loads(out) == {"results": [{"x": 1}], "next_token": "abc"}
+    assert err.strip() == "treg: charged $0.006667 · call id 125117d50cd3470cb25ba11f3d9789ad"
+
+    own_key = httpx.Response(200, content=b'{"ok":true}', headers={
+        "content-type": "application/json", "X-Treg-Call-Id": "deadbeef"})
+    cli._show(own_key)
+    _, err = capsys.readouterr()
+    assert err == ""
+
+    replay = httpx.Response(200, content=b'{}', headers={
+        "content-type": "application/json", "X-Treg-Cost-Micro": "6667",
+        "X-Treg-Idempotent-Replay": "true", "X-Treg-Call-Id": "c1"})
+    cli._show(replay)
+    _, err = capsys.readouterr()
+    assert "replay" in err and "nothing new charged" in err

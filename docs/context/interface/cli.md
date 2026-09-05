@@ -79,7 +79,9 @@ exits non-zero on HTTP >= 400, and on >= 400 first prints one stderr line (`_sho
 2026-09-05): the HTTP status, whose answer it is (`X-Treg-Error: 1` = treg refused; absent = the
 provider answered and treg relayed it unchanged), the `X-Treg-Call-Id` to quote to support, and the
 `X-Treg-Cost-Micro` charge when the header is present. stdout stays the exact body — a runner that
-saved only stdout filed 115 relayed Moz quota 403s as a bare "cli_error" with no status or id.
+saved only stdout filed 115 relayed Moz quota 403s as a bare "cli_error" with no status or id. A
+metered 2xx gets the matching line (`_show_charge_line`: `treg: charged $0.006667 · call id …`,
+replay-aware); no cost header (own key, non-call response) → nothing extra.
 
 **Per-process identity:** `TREG_TOKEN` (+ optional `TREG_ORG`) in the environment beat
 `~/.treg/config.json`, so each coding agent on one machine can run as its own scoped agent —
