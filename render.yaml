@@ -83,6 +83,8 @@ services:
       # against their prepaid balance (docs/PLATFORM-BALANCE-PLAN.md §Phase 3). A key alone does
       # nothing — TREG_PLATFORM_PROVIDERS is the allow-list AND the kill switch: set it to "" to turn
       # tier 4 off instantly, without a redeploy. Fund each provider account upstream first.
+      - key: TREG_PLATFORM_KEY_OPENHANDLE      # Authorization: Bearer; postpaid USD
+        sync: false
       - key: TREG_PLATFORM_KEY_TIKHUB          # TikHub API key (Authorization: Bearer)
         sync: false
       - key: TREG_PLATFORM_KEY_DATAFORSEO      # base64 of "login:password" (HTTP Basic)
@@ -200,6 +202,11 @@ services:
           type: web
           name: treg
           envVarName: TREG_OVERFLOW_KEY_MONID
+      - key: TREG_PLATFORM_KEY_OPENHANDLE
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_OPENHANDLE
       - key: TREG_PLATFORM_KEY_TIKHUB
         fromService:
           type: web

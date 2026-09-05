@@ -1,0 +1,52 @@
+{
+  "platform": "tiktok",
+  "resource": "post",
+  "capturedAt": "2026-09-05T17:45:26.811713899Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "7570672096087493906",
+      "url": "https://www.tiktok.com/@jamesamess/video/7570672096087493906",
+      "type": "video",
+      "format": "post",
+      "title": null,
+      "caption": "de la mama @Abel | dc: 🙋‍♂️ #jamesamess",
+      "publishedAt": "2025-11-09T10:34:22Z",
+      "author": {
+        "id": "6740862417964516358",
+        "handle": "jamesamess",
+        "displayName": "James",
+        "avatar": "… {2 field(s) truncated}",
+        "isVerified": false
+      },
+      "media": [
+        "… {7 field(s) truncated}"
+      ],
+      "hashtags": [
+        "jamesamess"
+      ],
+      "mentions": [
+        "abel"
+      ],
+      "commentsDisabled": false,
+      "metrics": {
+        "views": 76414597,
+        "likes": 9446519,
+        "comments": 30747,
+        "shares": 438283,
+        "reposts": 0,
+        "saves": 1033727,
+        "downloads": 207424
+      },
+      "taggedUsers": null,
+      "collaborators": null,
+      "…": "6 more field(s) truncated"
+    },
+    "… 11 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AYzRhJ4-wE665L3kLef0fno1NhSGV7UNxxnyADtDe3UYSeAlgxmALgcRx5piyxQMjDePhNBy96sFqMNPj8-UEkyXGt-KzNJ9opXeE0YXQ3risb2Iuh6ZDRlztdcRuxE6BK71WEKGzhE8qfEGdx5vgwIradoD8D9laJjRWMjJ7I2rAEDZK65iUvLALhk3j_FNaZRHu-5z… [259 chars]"
+    }
+  }
+}

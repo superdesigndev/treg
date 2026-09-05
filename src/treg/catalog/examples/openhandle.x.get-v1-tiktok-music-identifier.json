@@ -1,0 +1,28 @@
+{
+  "platform": "tiktok",
+  "resource": "music",
+  "capturedAt": "2026-09-05T17:45:25.278050172Z",
+  "source": "live",
+  "data": {
+    "id": "7240110572024645634",
+    "title": "La Mamá de la Mamá",
+    "artist": {
+      "id": null,
+      "name": "El Alfa & El Cherry Scom & CJ"
+    },
+    "album": "SAGITARIO",
+    "duration": 60,
+    "isOriginal": false,
+    "isExplicit": null,
+    "isCommercial": null,
+    "artwork": {
+      "url": "https://media.openhandle.dev/AzGqjq7g5_tC0ToXEF2HEKS6KtMjb69dzOfZpfkWHFV9jaQmEKd_euvEY3TstZ4viI9y3DNL9fiGYsAV9exRe1Tk6UOKbfFTb-B6hGwXwuAyOrVgAJ-7ma6b-OXatfPyVIFhz1vIDgB3ute1yw"
+    },
+    "audio": {
+      "url": "https://media.openhandle.dev/AzH_8uqSOLfsoToBzQ4aMrTTKglQJoJIFBm4alMz1bOOP7GPIljTVNsMmusko2AmLnCKceRK95r_JOiAVktMylA1z3Iqt8_R2yW7_5FoH_UAlFCNvhiZrZ9pjqX96zq83M_XQY2J_TVxkfUrbg"
+    },
+    "metrics": {
+      "posts": 300177
+    }
+  }
+}

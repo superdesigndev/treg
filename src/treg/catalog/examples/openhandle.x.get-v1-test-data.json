@@ -1,0 +1,64 @@
+{
+  "data": {
+    "datasetVersion": "2026-08-20.1",
+    "contentHash": "sha256:4fe030da765bd49c35868124200314a8dc40181266a3519751b43677eb5c9d08",
+    "mediaProvenanceUrl": "https://openhandle.dev/test-data/media/provenance.json",
+    "synthetic": true,
+    "changeNotes": [
+      "Initial versioned profile, post, comment, and reply universe.",
+      "… 9 more item(s) truncated"
+    ],
+    "operations": [
+      {
+        "id": "instagram.profile.get",
+        "platform": "instagram",
+        "resource": "profile",
+        "publicSchema": "InstagramProfile",
+        "method": "GET",
+        "path": "/v1/instagram/profiles/{identifier}",
+        "summary": "Get a profile",
+        "description": "Return one public profile. Use @username or a platform ID as the identifier.",
+        "inputFields": [
+          "identifier"
+        ],
+        "locators": [
+          "identifier"
+        ],
+        "paginated": false,
+        "toolName": "instagram_get_profile"
+      },
+      "… 122 more item(s) truncated"
+    ],
+    "entries": [
+      {
+        "id": "instagram.entity.extended-public",
+        "datasetVersion": "2026-08-20.1",
+        "platform": "instagram",
+        "resource": "entity",
+        "label": "Instagram extended public data",
+        "description": "A deterministic entity for every extended public Instagram read operation.",
+        "traits": [
+          "empty",
+          "… 4 more item(s) truncated"
+        ],
+        "inputs": {
+          "comment": "synthetic comment",
+          "handle": "northstar_forge_test",
+          "id": "910100000001",
+          "media_id": "910100000001",
+          "platform_id": "910000000001",
+          "q": "synthetic"
+        },
+        "expected": {
+          "status": 200
+        },
+        "relationships": [],
+        "operationIds": [
+          "instagram.profile.stories.list",
+          "… 15 more item(s) truncated"
+        ],
+        "synthetic": true
+      }
+    ]
+  }
+}

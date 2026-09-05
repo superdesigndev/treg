@@ -1,0 +1,16 @@
+{
+  "platform": "instagram",
+  "resource": "hashtag",
+  "capturedAt": "2026-09-05T16:48:00.956878926Z",
+  "source": "cache",
+  "data": {
+    "id": "17843683441044043",
+    "name": "instagram",
+    "description": null,
+    "image": null,
+    "metrics": {
+      "posts": 1745587930,
+      "views": null
+    }
+  }
+}

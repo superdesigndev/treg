@@ -1,0 +1,20 @@
+{
+  "platform": "instagram",
+  "resource": "entity",
+  "capturedAt": "2026-09-05T16:56:49.159040775Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "3394046145008733819",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A9hVTwm0XKhweYnHRVe4E2tyqQSVlUbHyigrGg2hMr4n1BAkx3d5EFlBdzhdcRFivkqOUEIBtzsns6_ItXW8TyzLN0wohW8xb_6xUrKLnIXB-L8TNqxY1nrwqE8EXAZIJQf8RXFskq3kZGdO8X0zFw"
+      }
+    },
+    "… 118 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

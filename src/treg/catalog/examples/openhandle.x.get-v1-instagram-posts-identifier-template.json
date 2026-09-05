@@ -1,0 +1,39 @@
+{
+  "platform": "instagram",
+  "resource": "entity",
+  "capturedAt": "2026-09-05T16:56:39.626767563Z",
+  "source": "live",
+  "data": {
+    "id": "3978880184454783667_25025320",
+    "name": "Not interested",
+    "type": "1",
+    "url": "https://scontent-dfw6-2.cdninstagram.com/v/t51.71878-15/793802675_2144237739771828_5561237876622064288_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=1&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaW… [545 chars]",
+    "author": {
+      "id": "25025320",
+      "name": "Instagram",
+      "handle": "instagram",
+      "image": {
+        "url": "https://media.openhandle.dev/AwIvxWBT3fgr19PooYM5bQxUfCoyWB1-UxUt7Igqs9nHqKqFKLZ_e8Orku5THpK-iA0Nzw4w6XSey32Fv2MCGwNh9Imper7kdS1fntunnPW7O0EKoOISmmAukbsAlUK-ugDJUMV10Moahl-RmC7d2w"
+      }
+    },
+    "media": [
+      {
+        "type": "video",
+        "url": "https://media.openhandle.dev/A8MyOlufqM77go2t1bT9mRPXDAT9C4rZIlp11UNmUY_krz6vf8q-T5IwiZgnisDP77-9Mq038SiWeb3gIOd-RtImKViV_hcR0oJWdj88udVjpOM9zcNJjPvsDdAdF4f4WbiOXdaqkHfOpFm9x-JGJQ",
+        "width": 720,
+        "height": 1280,
+        "thumbnail": {
+          "url": "https://media.openhandle.dev/A1orm0IuR4d9nwiHp496NANFCTKKF7W7b2trrUXZI6iOn2WJ2rbf3W-_-qAx2sNo8elj8thbgEL0pZWX3O4DKpNLj3abqmZgktg384AIQxEPW5gSJZ-XEDxbsT4GJDwAe8kJrNrv4Cid5Zc5IfFY1A"
+        },
+        "variants": [
+          {
+            "url": "https://media.openhandle.dev/A8MyOlufqM77go2t1bT9mRPXDAT9C4rZIlp11UNmUY_krz6vf8q-T5IwiZgnisDP77-9Mq038SiWeb3gIOd-RtImKViV_hcR0oJWdj88udVjpOM9zcNJjPvsDdAdF4f4WbiOXdaqkHfOpFm9x-JGJQ",
+            "width": 720,
+            "height": 1280,
+            "role": "video_versions"
+          }
+        ]
+      }
+    ]
+  }
+}

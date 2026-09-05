@@ -1,0 +1,33 @@
+{
+  "data": {
+    "id": "instagram.profile.northstar-forge",
+    "datasetVersion": "2026-08-20.1",
+    "platform": "instagram",
+    "resource": "profile",
+    "label": "Northstar Forge",
+    "description": "A rich public synthetic profile with connected posts.",
+    "traits": [
+      "business",
+      "… 5 more item(s) truncated"
+    ],
+    "inputs": {
+      "handle": "northstar_forge_test",
+      "platform_id": "910000000001"
+    },
+    "expected": {
+      "status": 200
+    },
+    "relationships": [
+      {
+        "type": "has_post",
+        "entryId": "instagram.post.northstar-field-kit"
+      },
+      "… 2 more item(s) truncated"
+    ],
+    "operationIds": [
+      "instagram.profile.get",
+      "… 8 more item(s) truncated"
+    ],
+    "synthetic": true
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "platform": "instagram",
+  "resource": "location",
+  "capturedAt": "2026-09-05T16:57:46.19865145Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "580684658661893",
+      "name": "Instagram.",
+      "category": null,
+      "address": null,
+      "city": null,
+      "region": null,
+      "countryCode": null,
+      "postalCode": null,
+      "latitude": 52.7025067,
+      "longitude": 7.2635226,
+      "website": null,
+      "phone": null
+    },
+    "… 29 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

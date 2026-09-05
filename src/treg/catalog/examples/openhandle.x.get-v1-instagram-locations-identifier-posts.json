@@ -1,0 +1,53 @@
+{
+  "platform": "instagram",
+  "resource": "post",
+  "capturedAt": "2026-09-05T16:56:18.017881055Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "3979615443274828178_71496479663",
+      "url": "https://www.instagram.com/p/Dc6byknDgmS/",
+      "type": "carousel",
+      "format": "post",
+      "title": "",
+      "caption": "Porque en la más grande de las ciudades puedes encontrarte una leyenda y un vaquero! \n\nTimes Square: donde el espectáculo nunca termina. El legendario Naked Cowboy es pura energía de Nueva York. ✨🗽\n\n#… [263 chars]",
+      "publishedAt": "2026-09-05T16:52:31Z",
+      "author": {
+        "id": "71496479663",
+        "handle": "glandolfi.photo",
+        "displayName": "Gianni Landolfi M.",
+        "avatar": "… {1 field(s) truncated}",
+        "isVerified": false
+      },
+      "media": [
+        "… {6 field(s) truncated}",
+        "… 2 more item(s) truncated"
+      ],
+      "hashtags": [
+        "nyc",
+        "… 4 more item(s) truncated"
+      ],
+      "mentions": [],
+      "commentsDisabled": false,
+      "shortcode": "Dc6byknDgmS",
+      "metrics": {
+        "views": 0,
+        "likes": 2,
+        "comments": 0,
+        "shares": null,
+        "reposts": null,
+        "saves": null
+      },
+      "taggedUsers": [
+        "… {5 field(s) truncated}"
+      ],
+      "…": "7 more field(s) truncated"
+    },
+    "… 62 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AeOlRgxFd_gc-M3K9t8j-BDy6XlzbaaURkhw9H4UvqqZ1eDv6N4G7eLBj4biAYcQTXXkPBtKLFgNFzC4UqUfEWedqyVqctRG89qv_vomY5lwc4gddr-7Vf9OcKZSGNc0vFZ2iEgx_JcNOhaESOIwG_uNKnw5n5MnUF9mNHShrU5W90JeElaxrcf66FqdhVXPEnw13OvX… [507 chars]"
+    }
+  }
+}

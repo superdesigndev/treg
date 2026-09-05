@@ -1,0 +1,20 @@
+{
+  "platform": "instagram",
+  "resource": "location",
+  "capturedAt": "2026-09-05T16:51:53.143925953Z",
+  "source": "cache",
+  "data": {
+    "id": "384695225271379",
+    "name": "Times Square",
+    "category": null,
+    "address": null,
+    "city": "New York, New York",
+    "region": null,
+    "countryCode": null,
+    "postalCode": null,
+    "latitude": null,
+    "longitude": null,
+    "website": "https://www.timessquarenyc.org/",
+    "phone": "+1 212-768-1560"
+  }
+}

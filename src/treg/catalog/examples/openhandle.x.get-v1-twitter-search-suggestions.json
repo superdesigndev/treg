@@ -1,0 +1,18 @@
+{
+  "platform": "twitter",
+  "resource": "entity",
+  "capturedAt": "2026-09-05T17:51:14.153422818Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "NASA",
+      "text": "NASA"
+    },
+    "… 13 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

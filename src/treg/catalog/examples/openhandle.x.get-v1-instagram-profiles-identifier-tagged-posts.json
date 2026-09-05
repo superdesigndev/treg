@@ -1,0 +1,52 @@
+{
+  "platform": "instagram",
+  "resource": "post",
+  "capturedAt": "2026-09-05T16:57:39.075545662Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "2251138696266127152_3021079942",
+      "url": "https://www.instagram.com/p/B89prebFBcw/",
+      "type": "image",
+      "format": "post",
+      "title": null,
+      "caption": "Uma homenagem a rede social que contribui muito para divulgação do meu trabalho.\n.\nO Instagram tem sido para mim muito mais que uma simples rede social; essa plataforma que além de criar uma conexão c… [945 chars]",
+      "publishedAt": "2020-02-24T20:37:46Z",
+      "author": {
+        "id": "3021079942",
+        "handle": "lucasramosmendes",
+        "displayName": "LUCAS RAMOS MENDES ®",
+        "avatar": "… {1 field(s) truncated}",
+        "isVerified": true
+      },
+      "media": [
+        "… {6 field(s) truncated}"
+      ],
+      "hashtags": [],
+      "mentions": [
+        "instagram"
+      ],
+      "commentsDisabled": null,
+      "shortcode": "B89prebFBcw",
+      "metrics": {
+        "views": null,
+        "likes": 149858,
+        "comments": 10252,
+        "shares": 745,
+        "reposts": 130,
+        "saves": null
+      },
+      "taggedUsers": [
+        "… {5 field(s) truncated}",
+        "… 2 more item(s) truncated"
+      ],
+      "…": "7 more field(s) truncated"
+    },
+    "… 20 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AUpdwc4YxfVUDwiAQO9hENJ1Pzx0l_EmpX66cmnoEgbDDCaAKHIdn099IGd6Ghe1Fjlx8hrjAf_SXPnrlX0T6fEGo4v2leSbxGTdVQguBkVs2dwH9QMDkyem430D6okuQM4h49q8mfOlZ3ORxiWB_kp1NsSknmEEcr4ncaOaKgZ7qIMdx1wPoCctolH3c3RMVEXxt6hJ… [298 chars]"
+    }
+  }
+}

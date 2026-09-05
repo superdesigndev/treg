@@ -1,0 +1,34 @@
+{
+  "platform": "instagram",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T16:56:59.836496875Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "74754386404",
+      "handle": "cortis",
+      "displayName": "CORTIS",
+      "bio": "",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A_y-cnN-SVGeEZVrTv9bdGj2_fY1Bd1yb86clFWWJg95bP46i20O0HcvTjfSyds-d9nD8y5gvFj_zSEBP0JJUHc6x7aUxv6pBdAsKsASEccZHvfI5KZv4PPE7kohWYqyouZnMdgmAOakyWzF1c8mHEaf"
+      },
+      "externalUrl": null,
+      "isVerified": true,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": null,
+        "following": null,
+        "posts": null
+      }
+    },
+    "… 24 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AdxoC6Z-roQy3AKaZmcsHUQr7BL9gQ5oTUet7Lvt_OOdCR1sTUnHCzw97OU1cX4ZKnVoFF-cdc2bqYACm6PPvH9uj8OzULCgUd5V_hQqrm60kfviUYc673grf5gOccH9z7CliOxuBn3w3qPkW61W0eTpqcfi0jdF-Ph2uF62E8xknbLne39MjOSXXB40W5kyxOKICCR9… [276 chars]"
+    }
+  }
+}

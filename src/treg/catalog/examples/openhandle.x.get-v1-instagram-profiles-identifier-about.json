@@ -1,0 +1,12 @@
+{
+  "platform": "instagram",
+  "resource": "entity",
+  "capturedAt": "2026-09-05T16:56:41.289024852Z",
+  "source": "live",
+  "data": {
+    "id": "@instagram",
+    "handle": "instagram",
+    "country": "United States",
+    "isVerified": true
+  }
+}

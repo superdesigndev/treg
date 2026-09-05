@@ -1,0 +1,54 @@
+{
+  "platform": "twitter",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T17:43:10.06038788Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "11348282",
+      "handle": "NASA",
+      "displayName": "NASA",
+      "bio": "Making the seemingly impossible, possible. ✨",
+      "avatar": {
+        "url": "https://media.openhandle.dev/AzHwWJe2I0w19esy01vpmUEX_wb0a-MHo_cOa714rkKzK4YeepZeP3jAEvnVQB7i0gDAi8PUfqVZrfjWcudNQWzBPcr8isVEYFdkOZW-WZWeI3-f6e2xuZZf7zrzPPyTes_aflDHm-inGbp7rA"
+      },
+      "externalUrl": null,
+      "isVerified": true,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": 92384656,
+        "following": 117,
+        "posts": 74276
+      }
+    },
+    {
+      "id": "14091091",
+      "handle": "NASAHubble",
+      "displayName": "Hubble",
+      "bio": "The official X account for the NASA Hubble Space Telescope, managed and operated by NASA's Goddard Space Flight Center.",
+      "avatar": {
+        "url": "https://media.openhandle.dev/AzitLTPDCcYq--TF3MgVRX61gHk_UMl916qgNnTLH2Y-n1SA1rqydoL3IBvYp6gGJ65-pJmjtrO3CIkEDgloVTnLTveNUmeesLH3uPJXIvXwWplW-zwZb2ydglhleKAMB43Iu8GIqmbmJ5g-LA"
+      },
+      "externalUrl": null,
+      "isVerified": true,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": 8903457,
+        "following": 44,
+        "posts": 8444
+      }
+    },
+    "… 38 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "ARChR7cbPpDYh1Bp14-naRW3OL4yPqgHN3los2lUqfbMdUxQGo8T4_GQgEacbn5zYb94VzYX5b4epqbxGb_guhwCGRGIBVhR1iEBPXVJk0-3HxqqwVtAKp3bwh6LWo9soSmCUeygwXxW7xHCTE54Ad-P2mHAj8H3uvki_G0krWQhk2ZXGn4OaMGT06fizgQLM9Pe0Tbmictr-NIEe-BR8SGmAx-et4lpJW-IiftynAl4OMq7wfGYoxDsBMMdbQaeQSCeyVbCIyFBwZqinXivGiX6yfghwrVlEoEpSQUa6wvHHhFUyk5Z0rfpgAYd8ZKvzjw74oNq1BNOtqrkbGfvQGFyweZryoYv8a6s-fgfU9Irj33ItUpgJR2PFFn1nSrvQkPmJOFhNGmVCEEXkYIqM1Y3ah5L-20v-q7jpbRLPgsRPU9tNKzJvmtKsORzTH01Ff4YhLuG7dp_GIFTvPnrikeLGvh8V55bC6HF7gIprFwvcwLVFPyk… [1124 chars total]"
+    }
+  }
+}
