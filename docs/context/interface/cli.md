@@ -14,11 +14,13 @@ related:
 
 ## Instagram grants
 
-`treg connections connect --provider instagram` starts direct Instagram Login, prints the consent
-URL, and polls the normal status endpoint. Page-only tools use `--capability page-tools`. Before
-that consent starts, `POST /oauth/start` returns the selected authorization method's registry
-description and the CLI prints it. The CLI contains no provider-specific guidance. Call errors
-return the exact command for the missing method.
+`TREG_OAUTH_REVIEW_PENDING` and provider-registry metadata control the CLI's effective default and
+guidance. With both Instagram keys pending, `treg connections connect --provider instagram` starts
+the approved Facebook Page core flow. Direct Instagram Login remains explicit with `--capability
+manage`, and Page messaging remains explicit with `--capability page-messages`. Removing the Page
+message key makes the full Page grant the default. Removing the direct key restores direct Instagram
+Login as the default. Before consent starts, `POST /oauth/start` returns the effective guidance and
+the CLI prints it. The CLI contains no provider-specific review logic.
 
 For a catalog endpoint that supports both grants, `treg call <endpoint>
 --authorization-method <method>` selects the grant, upstream host, route, and method-specific

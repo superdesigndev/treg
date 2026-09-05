@@ -1465,9 +1465,9 @@ a:hover{text-decoration-color:var(--muted)}
           <div class="tgroup">
             <div class="tgh">Permissions <span class="tgh-hint">what {{mkProvider.display_name}} is asked to grant — hover a line for the exact scope</span></div>
             <div class="mk-perms">
-              <div v-for="cap in mkProvider.capabilities" :key="cap" class="mk-perm">
+              <div v-for="cap in (mkProvider.permission_capabilities||mkProvider.capabilities)" :key="cap" class="mk-perm">
                 <div class="mk-perm-h">
-                  <b>{{cap}}</b>
+                  <b>{{mkCapabilityLabel(cap)}}</b>
                   <span v-if="mkGranted.has(cap)" class="chip ok">granted</span>
                   <span v-else class="mk-quiet">not requested yet</span>
                 </div>
@@ -3155,8 +3155,10 @@ product, including per-customer usage tracking and billing.</pre>
                  but here the help text shares the cell. Unwrapped, a long capability
                  description widens the table past the modal and .ttable-wrap's overflow:hidden
                  clips the Choose button clean off — the choice becomes unclickable. -->
-            <td style="white-space:normal"><b>{{capLabel(cap)}}</b><span class="sub" style="display:block;font-size:11px;margin-top:3px">{{capHelp(cap)}}</span></td>
-            <td class="tx"><button class="btn sm" :class="{primary:cap===capAsk.provider.default_capability}"
+            <td style="white-space:normal"><b>{{capLabel(cap,capAsk)}}</b>
+              <span v-if="capInReview(cap,capAsk)" class="chip warn" style="margin-left:6px">In review</span>
+              <span class="sub" style="display:block;font-size:11px;margin-top:3px">{{capHelp(cap,capAsk)}}</span></td>
+            <td class="tx"><button class="btn sm" :class="{primary:cap===capDefault(capAsk)}"
                                     @click="chooseCapability(cap)">Choose</button></td>
           </tr>
         </table></div>
@@ -3177,6 +3179,7 @@ product, including per-customer usage tracking and billing.</pre>
               <span class="method-title">
                 <b>{{method.display_name}}</b>
                 <span v-if="isRecommendedMethod(methodAsk.provider,method)" class="chip ok">Recommended</span>
+                <span v-if="method.in_review" class="chip warn">In review</span>
                 <span v-if="!method.configured" class="chip warn">Not configured</span>
               </span>
               <span class="sub">{{method.description}}</span>
@@ -5296,7 +5299,10 @@ createApp({
       if(!p){ this.connErr='Unknown provider for this connection: '+c.provider; return; }
       const method=(p.authorization_methods||[]).find(m=>m.name===c.authorization_method);
       const options=method ? method.capabilities : (c.capabilities||p.capabilities||['read']);
-      const cap=(c.capabilities||[]).slice(-1)[0] || options.slice(-1)[0] || p.default_capability;
+      const granted=new Set(c.capabilities||[]);
+      const cap=[...options].filter(option=>granted.has(option)).sort((a,b)=>
+        ((p.scope_detail[a]||[]).length-(p.scope_detail[b]||[]).length)).slice(-1)[0]
+        || this.methodCapability(p,method);
       await this.connectProvider(p, cap, c);
     },
     capOptions(ask){
@@ -5310,13 +5316,19 @@ createApp({
     article(w){ return /^[aeiou]/i.test(w||'') ? 'an' : 'a'; },  // "an account", not "a account"
     mkCapabilityMethod(cap){ return ((this.mkProvider&&this.mkProvider.authorization_methods)||[]).find(m=>
       m.capability_details && (m.capability_details[cap]||[]).length); },
+    mkCapabilityLabel(cap){ const m=this.mkCapabilityMethod(cap); return (m&&m.capability_labels&&m.capability_labels[cap])||cap; },
     mkCapabilityIntro(cap){ const m=this.mkCapabilityMethod(cap); return (m&&m.capability_intros&&m.capability_intros[cap])||''; },
     mkCapabilityDetails(cap){
       const m=this.mkCapabilityMethod(cap), labels=m&&m.capability_details[cap];
       return labels ? labels.map(label=>({scope:'',label})) : (((this.mkProvider&&this.mkProvider.scope_detail)||{})[cap]||[]);
     },
-    capLabel(cap){ return {read:'Read only', draft:'Read and draft', post:'Read and publish', write:'Read and write', manage:'Full access'}[cap] || cap; },
-    capHelp(cap){ return {
+    capMethod(ask, cap){
+      if(ask&&ask.method) return ask.method;
+      if(ask&&ask.conn) return (ask.provider.authorization_methods||[]).find(m=>m.name===ask.conn.authorization_method);
+      return (ask&&ask.provider.authorization_methods||[]).find(m=>(m.capabilities||[]).includes(cap));
+    },
+    capLabel(cap, ask){ const m=this.capMethod(ask,cap), custom=m&&m.capability_labels&&m.capability_labels[cap]; return custom || {read:'Read only', draft:'Read and draft', post:'Read and publish', write:'Read and write', manage:'Full access'}[cap] || cap; },
+    capHelp(cap, ask){ const m=this.capMethod(ask,cap), custom=m&&m.capability_help&&m.capability_help[cap]; return custom || {
       read:'Your agent can view data. It can never change anything.',
       // TikTok's `draft` is a genuinely weaker grant, not a softer word for post: video.upload can
       // only drop a video into the creator's inbox for them to finish by hand, and TikTok bins it
@@ -5329,11 +5341,17 @@ createApp({
       write:'Your agent can view data and also create, update or publish.',
       manage:'Your agent can view and manage everything in the account.',
     }[cap] || 'Requests the '+cap+' scopes.'; },
-    isRecommendedMethod(p, method){ return !!(method && (method.capabilities||[]).includes(p.default_capability)); },
+    capInReview(cap, ask){ const m=this.capMethod(ask,cap); return !!(m&&(m.capabilities_in_review||[]).includes(cap)); },
+    capDefault(ask){
+      if(ask&&ask.method&&ask.method.connect_capability) return ask.method.connect_capability;
+      return ask&&(ask.provider.connect_default_capability||ask.provider.default_capability);
+    },
+    isRecommendedMethod(p, method){ return !!(method && (method.capabilities||[]).includes(p.connect_default_capability||p.default_capability)); },
     selectedMethod(ask){ return ask && (ask.provider.authorization_methods||[]).find(m=>m.name===ask.selected); },
     methodCapability(p, method){
       const caps=(method&&method.capabilities)||[];
-      return caps.includes(p.default_capability) ? p.default_capability : (caps[caps.length-1]||p.default_capability);
+      const preferred=p.connect_default_capability||p.default_capability;
+      return method&&method.connect_capability || (caps.includes(preferred) ? preferred : (caps[caps.length-1]||preferred));
     },
     startConnect(p, conn){
       // A pasted-secret provider has no consent screen — the user brings their own bot token (Slack)

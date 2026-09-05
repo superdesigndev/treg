@@ -84,6 +84,9 @@ def test_separate_oauth_methods_share_one_single_choice_modal():
     assert 'v-if="methodAsk"' in INDEX
     assert 'v-model="methodAsk.selected"' in INDEX
     assert 'class="chip ok">Recommended</span>' in INDEX
+    assert 'v-if="method.in_review" class="chip warn">In review</span>' in INDEX
+    assert 'v-if="capInReview(cap,capAsk)" class="chip warn"' in INDEX
+    assert "mkProvider.permission_capabilities||mkProvider.capabilities" in INDEX
     assert '@click="continueMethod()">Continue</button>' in INDEX
     assert "if(methods.length>1 && !conn)" in INDEX
     assert "if(methods.length===1 && !conn) return this.connectProvider" in INDEX
@@ -106,7 +109,7 @@ def test_permission_cards_can_use_method_specific_incremental_benefits():
     assert "mkCapabilityDetails(cap)" in panel
     computed = INDEX[INDEX.index("computed:{") : INDEX.index("methods:{")]
     assert "mkCapabilityMethod(cap){" not in computed
-    logic = INDEX[INDEX.index("mkCapabilityMethod(cap){") : INDEX.index("capLabel(cap){")]
+    logic = INDEX[INDEX.index("mkCapabilityMethod(cap){") : INDEX.index("capLabel(cap, ask){")]
     assert "m.capability_details && (m.capability_details[cap]||[]).length" in logic
     assert "this.mkProvider&&this.mkProvider.scope_detail" in logic
     assert "page-tools" not in logic and "instagram" not in logic

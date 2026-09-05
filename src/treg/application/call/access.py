@@ -63,7 +63,9 @@ async def catalog_endpoint_access(
 
     if methods:
         try:
-            grant = await _provider_tool_grant(service, methods, caller, db)
+            grant = await _provider_tool_grant(
+                service, methods, caller, db, endpoint=endpoint,
+            )
         except CallFailure as exc:
             if exc.status_code == 403:
                 return {
@@ -74,7 +76,16 @@ async def catalog_endpoint_access(
                 }
             raise
         if grant is not None:
-            tool, _, grant_method = grant
+            tool, secret, grant_method = grant
+            specification = connection_authorization.method_spec(
+                registry_provider, grant_method,
+            )
+            required = connection_authorization.required_scopes(endpoint, specification)
+            if any(scope not in secret.granted_scopes.split() for scope in required):
+                return _missing_access(
+                    endpoint, registry_provider, provider, (grant_method,), service,
+                    existing=True,
+                )
             return {
                 "tier": "tool",
                 "authorization_method": grant_method,
@@ -213,11 +224,14 @@ async def _direct_access(
 
 def _missing_access(
     endpoint: dict, registry_provider, provider, methods: tuple[str, ...], service: str,
+    *, existing: bool = False,
 ) -> dict:
     specification = (
         connection_authorization.method_spec(registry_provider, methods[0]) if methods else None
     )
-    capability = specification.connect_capability if specification else ""
+    capability = connection_authorization.connect_capability(
+        registry_provider, endpoint, specification,
+    )
     connect = f"treg connections connect --provider {service}"
     if capability:
         connect += f" --capability {capability}"
@@ -225,12 +239,19 @@ def _missing_access(
         f"connect with: {connect}" if not provider.uses_pasted_secret else
         f"connect with: {connect}, or treg secret add {service} …"
     )
+    detail = (
+        f"the connected {service} authorization needs more access — reconnect with: {connect}"
+        if existing else f"no {service} credential in this org yet — {hint}"
+    )
     return {
         "tier": "none",
         "authorization_method": methods[0] if methods else "",
         "connect_capability": capability,
         "connect_command": connect,
-        "action_label": specification.action_label if specification else "",
+        "action_label": (
+            connection_authorization.action_label(specification, capability)
+            if specification else ""
+        ),
         "missing_message": specification.missing_message if specification else "",
-        "detail": f"no {service} credential in this org yet — {hint}",
+        "detail": detail,
     }

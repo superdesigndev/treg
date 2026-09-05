@@ -1035,6 +1035,7 @@ async def _enforce_capability_pin(ep: dict, caller: Caller, db: AsyncSession) ->
 
 async def _provider_tool_grant(
     service: str, methods: tuple[str, ...], caller: Caller, db: AsyncSession,
+    endpoint: dict | None = None,
 ) -> tuple[Tool, Secret, str] | None:
     """Resolve a named catalog endpoint by provider and grant identity, not only by host.
 
@@ -1050,7 +1051,7 @@ async def _provider_tool_grant(
     connection_names = {
         item.name: item.connection_name for item in (provider.authorization_methods if provider else ())
     }
-    matches: list[tuple[int, bool, int, Tool, Secret, str]] = []
+    matches: list[tuple[bool, int, bool, int, Tool, Secret, str]] = []
     denied = False
     for tool in tools:
         for binding in tool.bindings or []:
@@ -1068,7 +1069,18 @@ async def _provider_tool_grant(
                 continue
             priority = methods.index(method)
             exact = tool.name == connection_names.get(method, service)
-            matches.append((priority, not exact, -(secret.id or 0), tool, secret, method))
+            authorization = (
+                connection_authorization.method_spec(provider, method) if provider else None
+            )
+            required = (
+                connection_authorization.required_scopes(endpoint, authorization)
+                if endpoint else []
+            )
+            granted = set(secret.granted_scopes.split())
+            scope_gap = any(scope not in granted for scope in required)
+            matches.append(
+                (scope_gap, priority, not exact, -(secret.id or 0), tool, secret, method)
+            )
     if not matches:
         if denied:
             raise ResolutionFailed(
@@ -1076,16 +1088,18 @@ async def _provider_tool_grant(
                 detail=f"a {service} authorization exists, but you do not have access to its tool",
             )
         return None
-    matches.sort(key=lambda item: item[:3])
-    _, _, _, tool, secret, method = matches[0]
+    matches.sort(key=lambda item: item[:4])
+    _, _, _, _, tool, secret, method = matches[0]
     return tool, secret, method
 
 
 def _authorization_error(
     ep: dict, method: str, *, code: str, explanation: str, scopes: list[str], authorization=None,
 ) -> ResolutionFailed:
+    provider = oauth_providers.get(ep["provider"])
     capability = (
-        authorization.connect_capability if authorization else ep.get("authorization_capability")
+        connection_authorization.connect_capability(provider, ep, authorization)
+        if provider else str(ep.get("authorization_capability") or "")
     )
     command = f"treg connections connect --provider {ep['provider']}"
     if capability:
@@ -1100,7 +1114,7 @@ def _authorization_error(
         "message": explanation,
         "cli_command": command,
         "dashboard_action": {
-            "label": authorization.action_label if authorization else "Add account",
+            "label": connection_authorization.action_label(authorization, capability),
             "url": "/app#connections",
         },
     })
@@ -1172,7 +1186,7 @@ async def _resolve_marketplace_call(
     chosen_method = ""
     if methods:
         authorization = None
-        grant = await _provider_tool_grant(service, methods, caller, db)
+        grant = await _provider_tool_grant(service, methods, caller, db, endpoint=ep)
         if grant is not None:
             chosen_tool, chosen_secret, chosen_method = grant
         else:

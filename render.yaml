@@ -44,6 +44,10 @@ services:
       # Never return OTP codes in prod responses (account-takeover vector); email them via Resend.
       - key: TREG_EMAIL_DEV_MODE
         value: "false"
+      # One rollout switch for OAuth permissions awaiting provider review. Remove a key after its
+      # review succeeds; set an empty value after all listed reviews succeed.
+      - key: TREG_OAUTH_REVIEW_PENDING
+        value: instagram-login,page-messages
       # treg.to is Resend-verified (DKIM + SPF). Deliverability canary after every change to this
       # value: sign in via email OTP and confirm the code ARRIVES — send failures are swallowed by
       # design, so a broken sender silently kills OTP login. Rollback: the old sender stays
