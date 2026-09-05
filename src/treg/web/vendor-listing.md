@@ -63,7 +63,7 @@ While you're there:
 
 ```bash
 uv run --frozen python scripts/catalog_validate.py   # must exit 0
-uv run --frozen python -m pytest -q                  # must pass
+uv run --with pytest-xdist pytest -n auto -q         # must pass
 ```
 
 Rebase on the latest `main` right before opening — catalog files move fast and a stale branch

@@ -54,9 +54,10 @@ jobs:
         run: uv run --locked lint-imports
       - name: Run tests
         if: steps.docs.outputs.only != 'true'
-        # -n auto: the suite is 1,700+ small independent tests — serial execution is what let a
+        # -n auto: the suite is 2,700+ small independent tests — serial execution is what let a
         # throttled runner turn minutes into tens of minutes. xdist arrives via --with rather than
-        # the lockfile on purpose: it is a CI-only concern.
+        # the lockfile on purpose (local daily default uses the same --with). The Postgres job
+        # below must stay serial: workers would share one database while reset_db() drops tables.
         run: uv run --with pytest-xdist pytest -n auto -v -o faulthandler_timeout=300
 
   test-postgres:

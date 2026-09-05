@@ -14,6 +14,7 @@ classified here, so "nobody thought about which pool this belongs on" fails rath
 from __future__ import annotations
 
 import ast
+import functools
 import pathlib
 
 import pytest
@@ -68,6 +69,7 @@ def _maker_names(tree: ast.AST) -> set[str]:
     return names
 
 
+@functools.cache
 def _modules_opening_sessions() -> dict[str, ast.AST]:
     out = {}
     for path in sorted(SRC.rglob("*.py")):

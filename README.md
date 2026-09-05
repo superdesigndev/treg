@@ -356,7 +356,8 @@ Deep design lives in [`docs/context/`](docs/context/README.md) (per-subsystem fr
 ## Tests
 
 ```bash
-uv run pytest -q     # 521 tests
+uv run --with pytest-xdist pytest -n auto -q   # daily local default (same shape as CI)
+uv run --frozen python -m pytest -q            # serial: debugging one test, or order
 ```
 
 Coverage: proxy walking-skeleton, all injector shapes, per-user auth + CRUD + audit, skill composer,
@@ -369,7 +370,7 @@ upload/scan, orgs + invites, the dashboard API, CLI.
 treg/
 ├── src/treg/            # the package (api, cli, proxy, injectors, oauth, health, convert, models, …)
 │   └── web/             # dashboard, landing, tutorial, llms.txt, skill.md, install.sh
-├── tests/               # 521 tests
+├── tests/               # pytest suite (CI + local default: pytest-xdist -n auto)
 ├── docs/
 │   ├── context/         # design fragments (codemap system) + generated index
 │   └── ONBOARDING.md    # first-time bootstrap

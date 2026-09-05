@@ -93,12 +93,17 @@ agents then built against a constitution that was wrong.
 ## Development
 
 ```bash
-uv run python -m pytest -q     # the whole suite
-uv run treg --help             # the CLI from this checkout
-uv run python -m treg          # the server
-uv run lint-imports            # the import-linter contracts (CI runs this too)
-scripts/dev-local.sh up        # live dev stack on :18790 with its own sqlite DB
+uv run --with pytest-xdist pytest -n auto -q   # daily local default (same shape as CI)
+uv run --frozen python -m pytest -q            # serial: debugging one test, or order
+uv run treg --help                             # the CLI from this checkout
+uv run python -m treg                          # the server
+uv run lint-imports                            # the import-linter contracts (CI runs this too)
+scripts/dev-local.sh up                        # live dev stack on :18790 with its own sqlite DB
 ```
+
+xdist is pulled via `--with`, not the lockfile — same as CI. The Postgres CI job
+(`test-postgres`) must stay serial: every worker would share one database while
+`reset_db()` drops tables.
 
 - **Dependencies change through `uv add` or `uv lock`, never by hand.** `pyproject.toml` pins
   `required-version` so an old uv refuses to run instead of rewriting `uv.lock`; CI uses `--locked`.
