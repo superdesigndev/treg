@@ -54,6 +54,7 @@ def test_every_provider_is_registered():
         "companyenrich", "oceanio", "tomba", "predictleads", "findymail", "branddev",
         "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato",
         "spyfu", "apify", "meta-ad-library", "serpapi",
+        "parallel",
         "coingecko", "polygon", "finnhub", "twelvedata", "fmp", "eodhd", "marketstack", "tiingo",
         "microsoft-ads", "snapchat-ads", "tiktok-ads", "pinterest-ads",
         # BYOK token providers
