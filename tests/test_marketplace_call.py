@@ -352,6 +352,28 @@ async def test_empty_balance_is_a_402_an_agent_can_act_on(clients: AsyncClient, 
     assert "treg topup --auto on" in d["message"]
 
 
+async def test_caller_max_cost_header_refuses_a_direct_call_before_the_reserve(clients: AsyncClient, platform_on):
+    """`X-Treg-Route-Max-Cost` on a plain /call/: a hard ceiling the caller sets, enforced before any
+    money moves. Below the price → 402 `route_max_cost` naming both figures, balance untouched; at or
+    above it → the call proceeds and is charged as usual; garbage → 400. No default: a direct call
+    without the header is uncapped (unlike the routed path's $1)."""
+    hdr = "X-Treg-Route-Max-Cost"
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={hdr: "0.0005"})
+    assert r.status_code == 402, r.text
+    d = r.json()["detail"]
+    assert d["error"] == "route_max_cost" and d["endpoint_id"] == EP
+    assert d["max_cost_micro"] == 500 and d["estimated_cost_micro"] == EP_MICRO
+    assert "nothing was charged" in d["message"]
+    assert await _balance(clients) == 1_000_000
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={hdr: "not-money"})
+    assert r.status_code == 400, r.text
+    assert await _balance(clients) == 1_000_000
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={hdr: "0.001"})
+    assert r.status_code == 200, r.text
+    assert r.headers["X-Treg-Cost-Micro"] == str(EP_MICRO)
+    assert await _balance(clients) == 1_000_000 - EP_MICRO
+
+
 async def test_a_balance_refusal_is_a_treg_refused_event_not_a_vendor_402(
     clients: AsyncClient, platform_on, posthog_events,
 ):
@@ -902,6 +924,42 @@ def test_platform_estimate_normalizes_per_result_pricing():
     assert call_resolution._platform_estimate_micro({"type": "per_call", "usd": None}, {}) == 0
     # rounds UP — a sub-micro fraction must never round to free
     assert call_resolution._platform_estimate_micro({"type": "per_call", "usd": 0.0000005}, {}) == 1
+
+
+def test_platform_estimate_counts_input_entities_not_a_page():
+    """A price per TARGET / DOMAIN / KEYWORD is per thing asked about, never per returned row: with
+    no limit param the 20-row page default billed a one-target SE Ranking summary 20x ($0.358 for a
+    $0.0179 call) and a one-domain Serpstat overview likewise (behavehealth, 2026-09-04). The
+    request names the count — repeated or comma-separated query values, a body array (top level or
+    a JSON-RPC `params`), else exactly one — and `call` is always one."""
+    est = call_resolution._platform_estimate_micro
+    per_target = {"type": "per_result", "unit": "target", "usd": 0.0179}
+    assert est(per_target, {}) == 17_900                                       # catalog display: one call
+    assert est(per_target, {"target": "bestnotes.com", "mode": "domain"}) == 17_900
+    assert est(per_target, {"target": "a.com,b.com,c.com"}) == 3 * 17_900
+    # a real QueryValues-shaped object with repeated keys
+    class Q:
+        def __init__(self, items): self._i = items
+        def get(self, k, d=None): return next((v for kk, v in self._i if kk == k), d)
+        def multi_items(self): return list(self._i)
+    assert est(per_target, Q([("target", "a.com"), ("target", "b.com")])) == 2 * 17_900
+    assert est(per_target, Q([("targets[]", "a.com"), ("targets[]", "b.com")])) == 2 * 17_900
+    # serpstat JSON-RPC: the domains live under params
+    per_domain = {"type": "per_result", "unit": "domain", "usd": 0.0025}
+    body = b'{"id":"1","method":"SerpstatDomainProcedure.getDomainsInfo","params":{"domains":["a.com","b.com"],"se":"g_us"}}'
+    assert est(per_domain, {}, body) == 5_000
+    assert est(per_domain, {}, b'{"params":{"domains":["only.com"],"se":"g_us"}}') == 2_500
+    # seranking keywords export: a 5,000-keyword body is 5,000 keywords, not a 100-row cap
+    per_kw = {"type": "per_result", "unit": "keyword", "usd": 0.00179}
+    kw_body = ('{"keywords":' + str([f"k{i}" for i in range(5000)]).replace("'", '"') + '}').encode()
+    assert est(per_kw, {"source": "us"}, kw_body) == 5000 * 1_790
+    # a limit param on an entity-priced route is NOT a row count
+    assert est(per_target, {"target": "a.com", "limit": "50"}) == 17_900
+    # `call` is the flat case whatever the request carries
+    assert est({"type": "per_result", "unit": "call", "usd": 0.002}, {}, b'{"domain":"x.com","roles":["ceo","cto"]}') == 2_000
+    # row-priced routes keep the page semantics
+    assert est({"type": "per_result", "unit": "row", "usd": 0.0001}, {}) == 0.0001 * call_resolution._PLATFORM_PAGE_DEFAULT * 1_000_000
+    assert est({"type": "quota_rows", "unit": "quota_row", "usd": 0.006667}, {}, b'{"target":"x.com","limit":1}') == 6_667
 
 
 def test_brightdata_platform_key_injects_as_bearer(platform_on):

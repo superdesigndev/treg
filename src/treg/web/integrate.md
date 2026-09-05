@@ -53,6 +53,17 @@ Two response headers matter on every call:
 - **`X-Treg-Call-Id`** — a stable id for this call. **Store it on your side.** It is how you join
   treg's records to yours later, and it resolves via `GET {BASE}/calls/<id>`.
 
+Neither lives in the provider's body, which treg relays unchanged — including its errors. A 4xx/5xx
+from the provider costs nothing. One request header matters when you resell with a budget:
+
+- **`X-Treg-Route-Max-Cost: <usd>`** — a hard ceiling for this one call. If the reserve would exceed
+  it treg answers **402** `error: route_max_cost` with `max_cost_micro` and `estimated_cost_micro`,
+  and nothing is charged. Direct calls have no default ceiling; only the header caps them.
+
+The catalog's `~$/call` figure is an estimate at the default page size: a `per_result` price with
+`unit: row` scales with your `limit`; with `unit: target` / `domain` / `keyword` it scales with how
+many of those the request names (one target is one unit). `X-Treg-Cost-Micro` is the settled truth.
+
 ### MCP
 
 Point your client at `{BASE}/mcp/` with `Authorization: Bearer <token>`. Tools: `catalog_search`,

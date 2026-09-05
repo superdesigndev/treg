@@ -142,7 +142,11 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
   Lusha's "Daily" 429 and Hunter's "per billing period" 429 are quota exhaustion wearing a 429;
   a `retry-after ≤ 60 s` is a burst. Apollo says "out of credits" with a **422** ("Insufficient
   credits"), recorded after 2026-09-01: eleven hours of `people.enrich` 422s with overflow on and
-  not one attempt, because no row matched. Two guards against the next such vendor: `unrecorded`,
+  not one attempt, because no row matched. Moz says it with a **403** `{"issue": "insufficient-quota"}`
+  (`quota`: the row allowance resets on Moz's billing day, which the body does not name → default
+  lock), recorded after 2026-09-04: 115 of one org's calls went upstream to the spent key and came
+  back 403, and "quota" alone is not a tripwire word so nothing was even logged. Two guards against
+  the next such vendor: `unrecorded`,
   a signal kind for a 4xx no row matched whose body still names credits/quota/balance (pattern =
   the table's own phrases plus generic nouns) - never a mark, only a log line and
   `capacity_signal=unrecorded` on `tool_called`; and the coverage guard in

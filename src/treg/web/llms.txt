@@ -243,7 +243,23 @@ and where the result is (a path in the terminal response, or one more catalog ca
 Money notes for agents:
 - The price is visible before you call (`treg catalog get`, or `estimated_cost_usd` in
   `GET {BASE}/catalog/endpoints/<id>/access`). No confirmation ritual — costs are fractions
-  of a cent, so just call as normal.
+  of a cent, so just call as normal. Read the catalog `cost` block, not only the headline:
+  `type: per_result` with `unit: row` is priced per returned row and the `~$/call` figure assumes
+  a 20-row page (your `limit` sets the real count); `unit: target|domain|keyword` is priced per
+  thing you ask about — one target is one unit whatever the page size, and a body listing ten
+  domains reserves ten. `per_call` is flat.
+- **What you were actually charged is the response header `X-Treg-Cost-Micro`** (integer
+  micro-USD; `cost_usd` in the MCP `call` result), never anything in the provider's body. Store
+  `X-Treg-Call-Id` with it — support can look a call up by that id.
+- **Hard ceiling before you spend:** send `X-Treg-Route-Max-Cost: <usd>` on a `/call/` request and
+  treg refuses with **402** `error: route_max_cost` (nothing charged) when the reserve would exceed
+  it. There is no default on direct calls; the header is the only cap. On `treg.<capability>`
+  routed calls it also bounds the whole waterfall (default $1 there).
+- A failed call (HTTP 4xx/5xx from the provider) is relayed unchanged and charged nothing; the
+  CLI prints one stderr line with the status, whose answer it is, and the call id. Nothing is
+  served from cache on `/call/`; the only stored answer you can get back is an idempotency replay
+  (`X-Treg-Idempotent-Replay: true`). Empty results are the provider's own semantics — treg does
+  not normalise "no data" vs "no coverage" vs "unsupported target".
 - Out of balance → HTTP **402** with a machine-actionable body: `balance_micro`,
   `estimated_cost_micro`, `topup_url`. Recovery: `treg balance` (ledger), top up in the
   dashboard (Team → Billing), or connect the org's own key for that provider - own keys
