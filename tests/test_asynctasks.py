@@ -4,28 +4,61 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import timedelta
 
 import pytest
-from httpx import AsyncClient
+from httpx import AsyncClient, ReadTimeout
+from sqlalchemy import event
 from sqlmodel import select
 
 from treg.application import asynctasks as task_app
 from treg.application.call import service as call_service
+from treg.application.call.resolve import MarketplaceCall
 from treg.application.call.types import UpstreamResponse
 from treg.config import get_settings
 from treg import archive, audit, reconcile
 from treg.domain import asynctasks
+from treg.domain.catalog import store as catalog_store
 from treg.domain import money as ledger
 from treg.domain.money import settlement
-from treg.infra.db import session_maker
+from treg.infra.db import _engine, session_maker
 from treg.models import (
-    ArchiveKey, ArchiveSnapshot, AsyncResourceRecord, AsyncTaskRecord, Hold, LedgerEntry,
+    ArchiveKey, ArchiveSnapshot, AsyncResourceRecord, AsyncTaskRecord, CallRecord, Hold, LedgerEntry,
+    Tool,
 )
 from treg.timeutil import utcnow_naive
 
 
 EP = "replicate.image-gen.flux-schnell"
+
+
+def test_all_generation_catalog_entries_forbid_cache_including_extended():
+    entries = [ep for ep in catalog_store.load().endpoints
+               if ep["platform"] in {"image-gen", "video-gen"}]
+    assert any(".x." in ep["id"] for ep in entries)
+    assert any(ep["id"] == "minimax.image-gen.from_text" for ep in entries)
+    for ep in entries:
+        assert ep["cache"] == "forbidden", ep["id"]
+        assert not archive.storable(ep), ep["id"]
+
+
+@pytest.mark.parametrize("overrides", [
+    {"async_owner_call_id": None},  # Other free utilities still follow ordinary policy.
+    {"cost_type": "per_call"},  # A zero estimate does not prove a paid endpoint is free.
+    {"estimate_micro": 1},
+    {"tier": "platform-overflow"},
+    {"billed_oauth": True},
+])
+def test_poll_money_exception_requires_an_owned_explicitly_free_platform_read(overrides):
+    fields = dict(tool=Tool(org_id=1, name="poll", owner="test@example.invalid",
+                            base_url="https://example.invalid", host="example.invalid"),
+                  upstream="https://example.invalid/task", consumed=set(),
+                  endpoint_id="replicate.predictions.get", provider="replicate", tier="platform",
+                  cost_type="free", async_owner_call_id="original-submission")
+    mk = MarketplaceCall(**(fields | overrides))
+    assert mk.metered
+    assert not mk.free_owned_poll
 
 
 def _response(status: int, document: object) -> UpstreamResponse:
@@ -60,6 +93,196 @@ async def _submit(clients: AsyncClient, monkeypatch, document: dict):
     }})
 
 
+@pytest.mark.parametrize("legacy_cache", [False, True])
+async def test_generation_is_never_replayed_across_orgs(
+    clients: AsyncClient, monkeypatch, replicate_platform, legacy_cache,
+):
+    monkeypatch.setattr(get_settings(), "archive_mode", "serve")
+    entry = catalog_store.load().by_id[EP]
+    if legacy_cache:
+        monkeypatch.setitem(entry, "cache", "transient")
+    first = await _submit(clients, monkeypatch, {"id": "private-first-task"})
+    assert first.status_code == 201
+    await archive.drain()
+    monkeypatch.setitem(entry, "cache", "forbidden")
+    other = await clients.post("/users", json={"email": "cache-stranger@example.com"})
+    async def live(*args, **kwargs):
+        return _response(201, {"id": "private-second-task"})
+    monkeypatch.setattr(call_service, "relay", live)
+    second = await clients.post(f"/call/{EP}", json={"input": {
+        "prompt": "A red kite over a beach.", "num_outputs": 1,
+        "aspect_ratio": "1:1", "output_format": "webp",
+    }}, headers={"X-Treg-Token": other.json()["token"]})
+    assert second.status_code == 201
+    assert second.json()["id"] == "private-second-task"
+    assert second.headers.get("X-Treg-Cache") != "hit"
+
+
+async def test_worker_errors_grow_backoff_and_progress_resets_it(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    call_id = await _due_submission(clients, monkeypatch, {})
+    async def failing(row, client):
+        return 500, b'{}'
+    monkeypatch.setattr(task_app, "_poll", failing)
+    for failure in range(1, 5):
+        before = utcnow_naive()
+        await task_app.settle_due()
+        async with session_maker() as db:
+            row = await db.get(AsyncTaskRecord, call_id)
+            assert row.consecutive_failures == failure
+            assert (row.next_check_at - before).total_seconds() >= min(900, 120 * 2 ** (failure - 1))
+            row.next_check_at = utcnow_naive() - timedelta(seconds=1)
+            await db.commit()
+    async def progress(row, client):
+        return 200, b'{"status":"processing"}'
+    monkeypatch.setattr(task_app, "_poll", progress)
+    await task_app.settle_due()
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        assert row.consecutive_failures == 0
+        assert await db.get(Hold, call_id) is not None
+
+
+async def test_queued_worker_rows_are_not_claimed_before_a_poll_slot(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    await _due_submission(clients, monkeypatch, {})
+    second_id = await _due_submission(clients, monkeypatch, {})
+    monkeypatch.setattr(task_app, "PROVIDER_CONCURRENCY", 1)
+    started, release = asyncio.Event(), asyncio.Event()
+    async def slow(row, client):
+        started.set()
+        await release.wait()
+        return 200, b'{"status":"processing"}'
+    monkeypatch.setattr(task_app, "_poll", slow)
+    tick = asyncio.create_task(task_app.settle_due())
+    try:
+        await asyncio.wait_for(started.wait(), 5)
+        async with session_maker() as db:
+            row = await db.get(AsyncTaskRecord, second_id)
+            assert row.attempts == 0
+    finally:
+        release.set()
+        await tick
+
+
+@pytest.mark.parametrize("deadline", ["POLL_TIMEOUT_S", "PROCESS_TIMEOUT_S"])
+async def test_worker_bounds_whole_poll_and_keeps_hold_on_timeout(
+    clients: AsyncClient, monkeypatch, replicate_platform, deadline,
+):
+    call_id = await _due_submission(clients, monkeypatch, {})
+    monkeypatch.setattr(task_app, deadline, 0.01)
+    async def hangs(row, client):
+        await asyncio.Event().wait()
+    monkeypatch.setattr(task_app, "_poll", hangs)
+    result = await asyncio.wait_for(task_app.settle_due(), 5)
+    assert result.backed_off == 1
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        assert row.status == "pending" and row.consecutive_failures == 1
+        assert await db.get(Hold, call_id) is not None
+
+
+async def test_claim_wait_is_inside_processing_deadline(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    call_id = await _due_submission(clients, monkeypatch, {})
+    monkeypatch.setattr(task_app, "PROCESS_TIMEOUT_S", 0.01)
+    async def blocked_claim(*args):
+        await asyncio.Event().wait()
+    monkeypatch.setattr(task_app, "_claim_due", blocked_claim)
+    result = await asyncio.wait_for(task_app.settle_due(), 5)
+    assert result.claimed == 0 and result.backed_off == 1
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        assert row.attempts == 0 and row.consecutive_failures == 0
+        assert await db.get(Hold, call_id) is not None
+
+
+async def test_expired_worker_cannot_replace_new_claim_backoff(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    call_id = await _due_submission(clients, monkeypatch, {})
+    started, release = asyncio.Event(), asyncio.Event()
+    polls = 0
+    async def poll(row, client):
+        nonlocal polls
+        polls += 1
+        if polls == 1:
+            async with session_maker() as db:
+                live = await db.get(AsyncTaskRecord, call_id)
+                live.next_check_at = utcnow_naive() - timedelta(seconds=1)
+                await db.commit()
+            started.set()
+            await release.wait()
+            return 200, b'{"status":"processing"}'
+        return 500, b'{}'
+    monkeypatch.setattr(task_app, "_poll", poll)
+    first = asyncio.create_task(task_app.settle_due())
+    try:
+        await asyncio.wait_for(started.wait(), 5)
+        await task_app.settle_due()
+        async with session_maker() as db:
+            due = (await db.get(AsyncTaskRecord, call_id)).next_check_at
+    finally:
+        release.set()
+        await first
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        assert row.attempts == 2 and row.consecutive_failures == 1
+        assert row.next_check_at == due
+
+
+async def test_inline_success_waits_for_usage_and_then_closes_original_hold(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    submitted = await _submit(clients, monkeypatch, {"id": "usage-late"})
+    call_id = submitted.headers["X-Treg-Call-Id"]
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        row.settlement_basis = settlement.derive_basis(
+            {"settle": "usage", "usage": {"path": "usage.cost", "unit": "usd"},
+             "fallback": {"value": 0.003}, "type": "per_success", "currency": "USD"},
+            request={}, input_schema={}, unit_micro=1_000_000, terminal=True)
+        await db.commit()
+    document = {"status": "succeeded", "output": ["https://example.invalid/result.png"]}
+    async def live(*args, **kwargs):
+        return _response(200, document)
+    monkeypatch.setattr(call_service, "relay", live)
+    assert (await clients.get("/call/replicate.predictions.get?id=usage-late")).status_code == 200
+    async with session_maker() as db:
+        assert (await db.get(AsyncTaskRecord, call_id)).status == "pending"
+        assert await db.get(Hold, call_id) is not None
+    document["usage"] = {"cost": 0.002}
+    assert (await clients.get("/call/replicate.predictions.get?id=usage-late")).status_code == 200
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        assert row.status == "settled" and row.settled_micro == 2000
+        assert await db.get(Hold, call_id) is None
+
+
+async def test_inline_settlement_failure_preserves_response_and_cron_recovers(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    call_id = await _due_submission(clients, monkeypatch, {"status": "succeeded"})
+    real_finish = task_app._finish
+    async def unavailable(*args, **kwargs):
+        raise RuntimeError("temporary database failure")
+    monkeypatch.setattr(task_app, "_finish", unavailable)
+    async def live(*args, **kwargs):
+        return _response(200, {"status": "succeeded"})
+    monkeypatch.setattr(call_service, "relay", live)
+    response = await clients.get("/call/replicate.predictions.get?id=prediction-worker")
+    assert response.status_code == 200 and response.json() == {"status": "succeeded"}
+    assert response.headers["X-Treg-Cost-Micro"] == "0"
+    async with session_maker() as db:
+        assert (await db.get(AsyncTaskRecord, call_id)).status == "pending"
+        assert await db.get(Hold, call_id) is not None
+    monkeypatch.setattr(task_app, "_finish", real_finish)
+    assert (await task_app.settle_due()).settled == 1
+
+
 async def test_settle_fork_keeps_hold_and_writes_pending_row(
     clients: AsyncClient, monkeypatch, replicate_platform,
 ):
@@ -74,6 +297,165 @@ async def test_settle_fork_keeps_hold_and_writes_pending_row(
     assert row is not None and hold is not None
     assert (row.task_id, row.poll_url, row.status) == ("prediction-1", None, "pending")
     assert row.settlement_basis["when"] == "terminal"
+
+
+@pytest.mark.parametrize("status", [200, 500])
+async def test_owned_free_poll_creates_no_money_entries(
+    clients: AsyncClient, monkeypatch, replicate_platform, status: int,
+):
+    submitted = await _submit(clients, monkeypatch, {"id": "free-poll-task"})
+    submission_ref = submitted.headers["X-Treg-Call-Id"]
+    await audit.drain()
+
+    async def fake_poll(*args, **kwargs):
+        return _response(status, {"id": "free-poll-task", "status": "processing"})
+
+    monkeypatch.setattr(call_service, "relay", fake_poll)
+    statements = []
+
+    def capture_sql(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement.lower())
+
+    event.listen(_engine.sync_engine, "before_cursor_execute", capture_sql)
+    try:
+        response = await clients.get("/call/replicate.predictions.get?id=free-poll-task")
+        await audit.drain()
+    finally:
+        event.remove(_engine.sync_engine, "before_cursor_execute", capture_sql)
+    money_sql = [sql for sql in statements
+                 if re.search(r"\b(hold|ledgerentry|tagspend)\b", sql)
+                 or sql.startswith("update org ")]
+    assert money_sql == []
+    assert response.status_code == status
+    assert response.headers["X-Treg-Cost-Micro"] == "0"
+    poll_ref = response.headers["X-Treg-Call-Id"]
+    async with session_maker() as db:
+        entries = (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.call_id == poll_ref))).scalars().all()
+        assert entries == []
+        assert await db.get(Hold, poll_ref) is None
+        assert await db.get(Hold, submission_ref) is not None
+        assert (await db.get(AsyncTaskRecord, submission_ref)).status == "pending"
+
+
+@pytest.mark.parametrize("status", [200, 500])
+async def test_owned_free_poll_hidden_before_activity_pagination(
+    clients: AsyncClient, monkeypatch, replicate_platform, status: int,
+):
+    first = await _submit(clients, monkeypatch, {"id": "activity-task-1"})
+    await audit.drain()
+    second = await _submit(clients, monkeypatch, {"id": "activity-task-2"})
+    await audit.drain()
+
+    async def fake_poll(*args, **kwargs):
+        return _response(status, {"id": "activity-task-2", "status": "processing"})
+
+    monkeypatch.setattr(call_service, "relay", fake_poll)
+    polled = await clients.get("/call/replicate.predictions.get?id=activity-task-2")
+    assert polled.status_code == status
+    await audit.drain()
+    page = (await clients.get("/calls?limit=1&days=1")).json()
+    assert len(page) == 1 and page[0]["call_ref"] == second.headers["X-Treg-Call-Id"]
+    older = (await clients.get(f"/calls?limit=1&before_id={page[0]['id']}")).json()
+    assert len(older) == 1 and older[0]["call_ref"] == first.headers["X-Treg-Call-Id"]
+    async with session_maker() as db:
+        record = (await db.execute(select(CallRecord).where(
+            CallRecord.call_ref == polled.headers["X-Treg-Call-Id"]))).scalar_one()
+        assert record.kind == "async_poll"
+        assert record.cost_charged_micro == 0
+        if status == 500:
+            assert record.error_response
+
+
+async def test_owned_free_poll_bypasses_reserve_and_reads_fresh_status(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    await _submit(clients, monkeypatch, {"id": "fresh-poll-task"})
+
+    async def must_not_reserve(*args, **kwargs):
+        raise AssertionError("free polling reached spend caps, holds or auto-top-up")
+
+    replies = iter(["processing", "succeeded"])
+
+    async def fake_poll(*args, **kwargs):
+        return _response(200, {"id": "fresh-poll-task", "status": next(replies)})
+
+    monkeypatch.setattr(call_service, "_platform_reserve", must_not_reserve)
+    monkeypatch.setattr(call_service, "relay", fake_poll)
+    for expected in ("processing", "succeeded"):
+        response = await clients.get("/call/replicate.predictions.get?id=fresh-poll-task",
+                                     headers={"Idempotency-Key": "same-poll"})
+        assert response.status_code == 200
+        assert response.json()["status"] == expected
+        assert response.headers["X-Treg-Cost-Micro"] == "0"
+
+
+async def test_owned_free_poll_timeout_keeps_diagnostics_without_money_or_activity(
+    clients: AsyncClient, monkeypatch, replicate_platform,
+):
+    submitted = await _submit(clients, monkeypatch, {"id": "timeout-poll-task"})
+
+    async def timeout(*args, **kwargs):
+        raise ReadTimeout("poll timed out")
+
+    monkeypatch.setattr(call_service, "relay", timeout)
+    response = await clients.get("/call/replicate.predictions.get?id=timeout-poll-task")
+    assert response.status_code == 502
+    assert response.headers["X-Treg-Cost-Micro"] == "0"
+    await audit.drain()
+    activity = (await clients.get("/calls")).json()
+    assert [row["call_ref"] for row in activity] == [submitted.headers["X-Treg-Call-Id"]]
+    async with session_maker() as db:
+        row = (await db.execute(select(CallRecord).where(
+            CallRecord.kind == "async_poll"))).scalar_one()
+        assert row.error_response and row.cost_charged_micro == 0
+        assert not (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.call_id == row.call_ref))).scalars().all()
+
+
+@pytest.mark.parametrize("terminal, expected, kind, charged", [
+    ("succeeded", "settled", "settle", 3000),
+    ("failed", "released", "release", 0),
+    ("canceled", "released", "release", 0),
+])
+async def test_owned_terminal_poll_finalizes_original_task_before_response(
+    clients: AsyncClient, monkeypatch, replicate_platform, terminal, expected, kind, charged,
+):
+    submitted = await _submit(clients, monkeypatch, {"id": "instant-task"})
+    call_id = submitted.headers["X-Treg-Call-Id"]
+    document = {"id": "instant-task", "status": terminal,
+                "output": ["https://example.invalid/first.png"]}
+
+    async def fake_poll(*args, **kwargs):
+        return _response(200, document)
+
+    monkeypatch.setattr(call_service, "relay", fake_poll)
+    polled = await clients.get("/call/replicate.predictions.get?id=instant-task")
+    assert polled.status_code == 200 and polled.json() == document
+    assert polled.headers["X-Treg-Cost-Micro"] == "0"
+    async with session_maker() as db:
+        row = await db.get(AsyncTaskRecord, call_id)
+        assert row.status == expected and row.settled_micro == charged
+        assert row.completed_at is not None and row.attempts == 0
+        assert await db.get(Hold, call_id) is None
+    await audit.drain()
+    activity = (await clients.get("/calls")).json()
+    assert len(activity) == 1 and activity[0]["call_ref"] == call_id
+    assert activity[0]["async_task"]["status"] == expected
+    assert activity[0]["cost_charged_micro"] == charged
+    if terminal == "succeeded":
+        assert activity[0]["async_task"]["result_url"] == document["output"][0]
+
+    # Later observations must not charge again or replace the evidence used for settlement.
+    document = {**document, "output": ["https://example.invalid/later.png"]}
+    assert (await clients.get("/call/replicate.predictions.get?id=instant-task")).status_code == 200
+    async with session_maker() as db:
+        entries = (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.call_id == call_id, LedgerEntry.kind == kind))).scalars().all()
+        assert len(entries) == 1
+    archived = await archive.load_terminal_responses([(call_id, EP)])
+    assert json.loads(archived[call_id])["output"] == ["https://example.invalid/first.png"]
+    assert (await task_app.settle_due()).claimed == 0
 
 
 async def test_a_2xx_without_a_task_id_settles_at_zero_on_the_request_path(

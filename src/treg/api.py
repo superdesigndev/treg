@@ -636,9 +636,10 @@ async def list_calls(
     # the two wide columns on this table, this endpoint returns up to 500 rows, and a column nobody
     # reads should not cross the wire. Deferring also means adding them to the payload later has to be
     # a deliberate edit in two places, not an accident in one.
+    # Keep owned free polling in diagnostic audit, but out of Activity before applying the limit.
     q = (select(CallRecord)
          .options(defer(CallRecord.error_request), defer(CallRecord.error_response))
-         .where(CallRecord.org_id == caller.org_id))
+         .where(CallRecord.org_id == caller.org_id, CallRecord.kind != "async_poll"))
     if days is not None:
         q = q.where(CallRecord.created_at >= _day_start_utc() - timedelta(days=max(1, min(days, 365)) - 1))
     if before_id is not None:

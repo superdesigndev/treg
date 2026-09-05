@@ -612,6 +612,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             telemetry |= _tag_telemetry(meta)
         if mk is not None:
             telemetry |= {
+                **({"kind": "async_poll"} if mk.free_owned_poll else {}),
                 "endpoint_id": mk.endpoint_id, "provider": mk.provider, "credential_tier": mk.tier,
                 # The archive answered instead of the vendor; money columns are identical to a
                 # live call ON PURPOSE (the pricing of a hit is a deferred founder decision).
@@ -889,12 +890,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     upstream_request,
                     upstream_url, tool, secrets, upstream_client,
                     drop_params=drop_params or None,
-                    force_identity=mk is not None and mk.metered,
+                    force_identity=mk is not None and (mk.metered or mk.free_owned_poll),
                 )
-            if served is None and mk is not None and mk.metered:
-                # Metered calls don't stream: settling needs the provider's own reported cost, which is
-                # in the body (see _buffer_response). A failure while draining is still an upstream
-                # failure, so it becomes a 502 and the hold goes back.
+            if served is None and mk is not None and (mk.metered or mk.free_owned_poll):
+                # Settlement reads the body; owned free polls also need it to learn result ownership.
+                # A failure while draining remains an upstream failure on either path.
                 response, body = await _buffer_response(response)
                 if (platform_tier and response.status == 429 and _idempotent_read(request)
                         and (retry_s := _burst_retry_after(mk.provider, response, body)) is not None):
@@ -910,11 +910,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     smoothed.append("retry=1")
                 if mk.async_owner_call_id and 200 <= response.status < 300:
                     try:
-                        await async_task_app.remember_result_from_poll(
-                            mk.async_owner_call_id, body)
-                    except Exception:  # noqa: BLE001 - failure denies retrieval; never fail the poll
+                        await async_task_app.observe_owned_poll(
+                            mk.async_owner_call_id, response.status, body)
+                    except Exception:  # noqa: BLE001 - the worker retries; never fail the poll
                         logging.getLogger("treg.asynctasks").warning(
-                            "could not persist result ownership for %s",
+                            "could not finalize owned poll for %s; worker will retry",
                             mk.async_owner_call_id, exc_info=True)
                 if mk.resource_ownership and 200 <= response.status < 300:
                     try:
@@ -928,7 +928,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 # in memory here for the settle, so observing it costs nothing on-request. Metered
                 # 2xx only — gate 3 of eligibility is exactly 'this fact, at this line'. Off unless
                 # TREG_ARCHIVE_MODE says otherwise; record() is fire-and-forget and never raises.
-                if archive.recording() and 200 <= response.status < 300:
+                if mk.metered and archive.recording() and 200 <= response.status < 300:
                     _ct = next((v.decode("latin-1") for k, v in response.raw_headers
                                 if k.lower() == b"content-type"), "")
                     archive_key_hash, archive_content_hash = archive.record(
@@ -954,6 +954,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # The provider never produced a billable answer (our own error, a failed injection, an
         # unreachable upstream) → return the hold in full, regardless of the endpoint's billing type.
         metered = mk is not None and mk.metered
+        free_poll = mk is not None and mk.free_owned_poll
         if metered:
             try:
                 request.context.finalization = FinalizationState.FINALIZING
@@ -964,12 +965,13 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             except asyncio.CancelledError:
                 await _finish_cancelled_call(request, mk, call_ref, response)
                 raise
+        if metered or free_poll:
             # The shared exception handler builds the response and adds this zero-cost result.
             request.state.call_cost_micro = 0
         # No provider body exists on this branch. treg's own detail is the explanation instead, and
         # it is the one worth keeping: this branch carries refresh, timeout, injection and SSRF 502s.
         _renderings = _safe_secret_renderings(tool, secrets)
-        _audit(exc.status_code, charged_micro=0 if metered else None,
+        _audit(exc.status_code, charged_micro=0 if metered or free_poll else None,
                duration_ms=_now_ms() - started, answered=False,
                error_request=(
                    _ERROR_MASKING_FAILED if _renderings is None else
@@ -1168,7 +1170,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 request.headers.get("content-type", ""),
                 tool, caller_body, _renderings)
             err_response = _error_response_evidence(response.raw_headers, body, _renderings)
+    free_poll = mk is not None and mk.free_owned_poll
     _audit(response.status, duration_ms=duration_ms,
+           charged_micro=0 if free_poll else None,
+           response_bytes=len(body) if free_poll else None,
            error_request=err_request, error_response=err_response)
     if idem_key:
         # Unmetered: nothing was billed, so there is nothing to protect. Dropping the claim frees the
@@ -1181,6 +1186,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             raise
         request.state.idem_claim = None
     _set_response_header(response, "X-Treg-Call-Id", call_ref)
+    if free_poll:
+        _set_response_header(response, "X-Treg-Cost-Micro", "0")
+        if smoothed:
+            _set_response_header(response, "X-Treg-Smoothed", " ".join(smoothed))
     return response
 
 

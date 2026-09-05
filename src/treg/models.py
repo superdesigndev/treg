@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, JSON, Column, Index, UniqueConstraint, text
+from sqlalchemy import BigInteger, JSON, Column, Index, Integer, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
 
 # Role ordering for gates (owner > admin > member > viewer).
@@ -241,7 +241,8 @@ class CallRecord(SQLModel, table=True):
     method: str
     path: str
     status_code: int
-    # Which execution path produced this row: "call" (proxy /call) or "local_run" (/tools/{name}/grant).
+    # Execution path: "call", "async_poll" (owned free status read, hidden from Activity),
+    # or "local_run" (/tools/{name}/grant).
     # Server-side CLI runs live in RunRecord ("server_run"). Lets the usage view break down by kind.
     kind: str = Field(default="call")
     # The RUNTIME that made the call — "claude-code", "codex", "cursor", … — self-reported by the
@@ -703,6 +704,8 @@ class AsyncTaskRecord(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now, index=True)
     next_check_at: datetime = Field(index=True)
     attempts: int = Field(default=0)
+    consecutive_failures: int = Field(
+        default=0, sa_column=Column(Integer, nullable=False, server_default="0"))
     status: str = Field(default="pending", index=True)
     error: str = Field(default="")
     settled_micro: int | None = Field(default=None)
