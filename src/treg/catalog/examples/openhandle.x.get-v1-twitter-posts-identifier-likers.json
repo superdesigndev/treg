@@ -1,0 +1,12 @@
+{
+  "platform": "twitter",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T17:50:45.742828704Z",
+  "source": "live",
+  "data": [],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

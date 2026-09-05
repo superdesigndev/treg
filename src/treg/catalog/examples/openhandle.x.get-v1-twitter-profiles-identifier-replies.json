@@ -1,0 +1,27 @@
+{
+  "platform": "twitter",
+  "resource": "post",
+  "capturedAt": "2026-09-05T17:51:11.622947254Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "2096273963726835962",
+      "url": "https://x.com/NASA/status/2096273963726835962",
+      "type": "text",
+      "format": "post",
+      "title": null,
+      "caption": "RT @NASASpox: As Summer winds down, @NASA’s momentum is picking up 🚀\n\n🔭 Roman Space Telescope opens a new era of discovery\n🇺🇸 @POTUS congra…",
+      "publishedAt": "2026-09-05T16:27:14Z",
+      "author": "… {5 field(s) truncated}",
+      "media": "… [0 item(s) truncated]",
+      "hashtags": "… [0 item(s) truncated]",
+      "…": "5 more field(s) truncated"
+    },
+    "… 19 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AY78nL9ct7b-oSllIVdiZmz2O665EjdtCKhKwG9g3_zeykOiJJOG177e83P0eCQi8OyAGDAiTA-Yyxm1AWvb8edgtMvtBWs8fW8tL6FFb1HrZFVmYnQ14t1vPb0DZ7H7JngrsX0E5eIxUjUd94gWnhP_wXFO-Bqw3e0LnmKPvsiSoffKO3MJNCh_IDpDLaCeySUwvDJX… [346 chars]"
+    }
+  }
+}

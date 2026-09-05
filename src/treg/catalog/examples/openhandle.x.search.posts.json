@@ -1,0 +1,110 @@
+{
+  "platform": "twitter",
+  "resource": "post",
+  "capturedAt": "2026-09-05T17:43:13.833297399Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "2096292978553929759",
+      "url": "https://x.com/yajnshri/status/2096292978553929759",
+      "type": "video",
+      "format": "post",
+      "title": null,
+      "caption": "Our daughters are leading in the arts\n\nOur daughters are working in science at NASA\n\nOur daughters are CEOs of multibillion-dollar companies\n\nOur daughters are becoming doctors, engineers, and researchers\n\nOur daughters are leading universities and shaping the future of https://t.co/oDNawN81PD",
+      "publishedAt": "2026-09-05T17:42:47Z",
+      "author": {
+        "id": "977620803171762176",
+        "handle": "yajnshri",
+        "displayName": "Tehxi",
+        "avatar": {
+          "url": "https://media.openhandle.dev/A58w4Tzf-ySY36qSKN_doQSoQJfNv0diR-Qn2bkK1BNKEhdYqVUeLkf0C9ZAjFCEuwCtUlGHrD3erp9mGq5aplLH1lW4R9iUReERYGcTA9Nexp3IeCgEYMog-8JkTAy1ksdsH9yfcYHUnP-QUiU"
+        },
+        "isVerified": false
+      },
+      "media": [
+        {
+          "type": "video",
+          "url": "https://media.openhandle.dev/AzHV3VAvESKvc6QxR8RLNA8ERDW1voMZLBMhPUbm49BsnCbGPVW4TQqvIJUxcEjmlgGPPtlyVslQqMcEFt_HZwb5NNLTrFEgKNGZx5VBhH9xB8SvyGZvvc5Y0AHXG7NiLc3m11JqKeXX8D_UVkkAzbOGFenMA4ZyloK2pV4zSw",
+          "width": 720,
+          "height": 1280,
+          "duration": 31.366,
+          "thumbnail": {
+            "url": "https://media.openhandle.dev/A3xlOGQIKwQIk56jMMNQ4wbn-n_zNAzGadvJAme_JeC2xAUBD96k4OwWHO0Yoyuf6ztJxSLuLNCkFQH7NnFbo4F7EjEpoIqCNRc92a1cWcqZbDsuPKHrruxdfP2-_vwbrRD10F3w2oaQAIHUXA5VxhAoBReapVt8MG1FS9NMEQ"
+          },
+          "variants": [
+            {
+              "url": "https://media.openhandle.dev/AzHV3VAvESKvc6QxR8RLNA8ERDW1voMZLBMhPUbm49BsnCbGPVW4TQqvIJUxcEjmlgGPPtlyVslQqMcEFt_HZwb5NNLTrFEgKNGZx5VBhH9xB8SvyGZvvc5Y0AHXG7NiLc3m11JqKeXX8D_UVkkAzbOGFenMA4ZyloK2pV4zSw",
+              "bitrate": 2176000,
+              "mimeType": "video/mp4"
+            },
+            {
+              "url": "https://media.openhandle.dev/A2AS2PyzopDCHDZtHIcHYKhp2Deu7KuyDm7pTaVGTBNCI0Azo7UToRTVkPE-2hJN49HySO2wHs18_y4e5EaR4Pd0AsEbRJ-54SXLwUK_2zs1MIh9ZRD9wZlUwxhQd3SyvrsQvrUKlp2JpUY56CPsrQggrzIA5Bp4pKANzU1rGw",
+              "bitrate": 950000,
+              "mimeType": "video/mp4"
+            },
+            "… 1 more item(s) truncated"
+          ]
+        }
+      ],
+      "hashtags": [],
+      "mentions": [],
+      "commentsDisabled": null,
+      "metrics": {
+        "views": null,
+        "likes": 0,
+        "comments": 0,
+        "shares": null,
+        "reposts": 0,
+        "saves": null,
+        "quotes": 0,
+        "bookmarks": 0
+      },
+      "extended": {
+        "conversationId": "2096292978553929759",
+        "language": "en"
+      }
+    },
+    {
+      "id": "2096292898690277496",
+      "url": "https://x.com/czelu00/status/2096292898690277496",
+      "type": "text",
+      "format": "post",
+      "title": null,
+      "caption": "puro good night na nasa feed ko. 2log na tauuuu good night, Philippines! 🤟",
+      "publishedAt": "2026-09-05T17:42:28Z",
+      "author": {
+        "id": "1815406824751071232",
+        "handle": "czelu00",
+        "displayName": "Czelu",
+        "avatar": {
+          "url": "https://media.openhandle.dev/A2AZthog8rwwv37FSie8gMZd7H_So0jB_fW7jdw7yyOrJ5lyiKbUE4vmJut9EqNkiJLPGhUj_FED8IZ1abXwk-nf-9XDyVzoxkUCdbsc74ZP94LL1GRajmAkUXqmY8IJ422FiRtyB9ARTZNHdNg"
+        },
+        "isVerified": false
+      },
+      "media": [],
+      "hashtags": [],
+      "mentions": [],
+      "commentsDisabled": null,
+      "metrics": {
+        "views": null,
+        "likes": 0,
+        "comments": 0,
+        "shares": null,
+        "reposts": 0,
+        "saves": null,
+        "quotes": 0,
+        "bookmarks": 0
+      },
+      "extended": {
+        "conversationId": "2096292898690277496",
+        "language": "tl"
+      }
+    },
+    "… 18 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AbcYqk8eIaeQwMapGwy_lhPxHHw-gbGmV_To0XL2PVKuPlPolGKuakF1gM1ZvURYKPKkn_4ktp2N50AggNOVyL_T3EstTCe5s760h80geRrhybpks9G1hvGZzntLzzjbpXz8k_rmizci_CASCisBa-gTlZ3uUcWBwM3wjG8pHQllvg71wl5R3AqMAQT1nnRYvhMJRH-YvOcMs_AAv5vgopcDXrqCnRj6khJxUqeBae4R5wHEaHZtUGnurmFRneXyRAbeKAnEDJH-tvsLbb5a5TYx6H_RhLXuFmz389NwpdEDlPOo3tIoCTEtT6_SyiMM66a9BC_0_nrOQy33E0LjB8nw3Wks-6eJZf-T091v_dW1m0pqZlSukbJoI5yY94nkodzZFgIL5IMCkx3vUDm1G4-qY9n8qoQVAO__E_5zlv_NwHlD29-VqzCN0dLsFmtMVUV7v2VqVD2UdWowk8sgPAQPEN5guzmk_JPbkEklz7VLHunJ6oeh… [836 chars total]"
+    }
+  }
+}

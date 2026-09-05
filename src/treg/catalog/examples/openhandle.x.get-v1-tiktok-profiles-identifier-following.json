@@ -1,0 +1,40 @@
+{
+  "platform": "tiktok",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T17:52:23.132249992Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "6551237489917432832",
+      "handle": "tiktokcreators",
+      "displayName": "tiktok creators",
+      "bio": "The official account for TikTok Creators who inspire creativity and bring joy ✨\n\n⬇️ Creator Programs 💰⬇️",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A2_v6uzt7tDlV0a4WYPSMj6L9afAw6nTsNMhA-717Hj5Mc99m78_35yZzLQ6XnxypoVpMpZKO9zjueUDXqEFRj-8WnqFwvkF1ugCC6Pyl5HKgnOyjQ7Ob0S3dWDgSFF8n3LuGcwQNPx4heplgAqCULCAa5BcvOQ",
+        "expiresAt": "2026-09-06T17:00:00Z"
+      },
+      "externalUrl": null,
+      "isVerified": true,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": 8765507,
+        "following": 567,
+        "posts": 1111
+      },
+      "extended": {
+        "verificationType": 0,
+        "verificationLabel": "verified account",
+        "isProAccount": null,
+        "hasCommerce": false
+      }
+    }
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

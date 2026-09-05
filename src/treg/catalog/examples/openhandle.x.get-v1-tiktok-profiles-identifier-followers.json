@@ -1,0 +1,41 @@
+{
+  "platform": "tiktok",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T17:52:19.338873386Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "7542096432259466245",
+      "handle": "rora125923520wmemy1314",
+      "displayName": "金主訓我老公🐢",
+      "bio": "可以來找我混熟！\n🫀 金主訓\n嚴拒同擔\n不要貼臉❌\n不熟不要亂叫熟的隨便. 喜歡的自然會回關，混熟的一律混（不要友列重副擔的都ok）小帳@小昕（直播帳",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A_w9rwA6u-TBNEYDznjBaY0nfq1t0047VVu5NgFdt9ABnklll_0FmgphrSircxOgLZhwWPKtUkF3czSqhekW2FCeLptXSdJU0jr5vuaxBCJlPpfyxadZoNOZ78yOxs_03xkG_RVMC1DAT4T_BjoStz9SRVpmxwY",
+        "expiresAt": "2026-09-06T17:00:00Z"
+      },
+      "externalUrl": null,
+      "isVerified": false,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": 126,
+        "following": 65,
+        "posts": 19
+      },
+      "extended": {
+        "verificationType": 0,
+        "verificationLabel": null,
+        "isProAccount": null,
+        "hasCommerce": false
+      }
+    },
+    "… 9 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AW46dPjIfg4R0SDKs3C5hbSfL9TE-2n7pPpKPJVy0bqvT54SCCbNISZSdKutDiRN59URMaYOWpxSVq13L1gyA5p839IfiWxvMdA6cMPBm75Frrc-UVVdeyGcDsQqgEqF1-Gjmgm_CTQGZJMxqBcaO4Uqb2BftmZeSIbtO7G95juX0LBEUl12FlVFk6pbqhwJU1yDBSC_… [279 chars]"
+    }
+  }
+}

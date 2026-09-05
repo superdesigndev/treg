@@ -1,0 +1,20 @@
+{
+  "platform": "tiktok",
+  "resource": "entity",
+  "capturedAt": "2026-09-05T17:48:36.391315663Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "0",
+      "title": "TikTok",
+      "status": "1",
+      "likeCount": 0
+    },
+    "… 9 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "ASNTPUrgkNfnpk6xFsMGkzrdkzlSOHTWOM3quXIMztHz5ktFxhvico40RQkUHg9ykrl1kORzgBkvs2JxV9HEDwFBM06YkKtWX3P7gqDTZvtkayQVzxPkkeNLUP3NFxkRU1E28B5hjWtnOSrGybrGssPnpDE-awL1fHPey-sKJJDEHyOgDZSRp8xV2lHNHNRJuW1Vs3WA… [282 chars]"
+    }
+  }
+}

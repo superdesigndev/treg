@@ -1,0 +1,179 @@
+{
+  "platform": "twitter",
+  "resource": "post",
+  "capturedAt": "2026-09-05T17:43:06.852622399Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "2096273963726835962",
+      "url": "https://x.com/NASA/status/2096273963726835962",
+      "type": "text",
+      "format": "post",
+      "title": null,
+      "caption": "RT @NASASpox: As Summer winds down, @NASA’s momentum is picking up 🚀\n\n🔭 Roman Space Telescope opens a new era of discovery\n🇺🇸 @POTUS congra…",
+      "publishedAt": "2026-09-05T16:27:14Z",
+      "author": {
+        "id": "11348282",
+        "handle": "NASA",
+        "displayName": "NASA",
+        "avatar": {
+          "url": "https://media.openhandle.dev/AwUSXmK4n-Cqam-976k8nTqK3fQXkTHAbR7IyIyq4oDJXGRnHHQtwVrl9Uo6O9JvjmzXr2pMt3ex7_VPYy1FRAwNsvYataglBvggu9aVGAZ58ovoa4MA0ZcQPVS9g7KcKxQntZl2IVAd_E2FWd4"
+        },
+        "isVerified": false
+      },
+      "media": [],
+      "hashtags": [],
+      "mentions": [
+        "NASASpox",
+        "NASA",
+        "… 1 more item(s) truncated"
+      ],
+      "commentsDisabled": null,
+      "metrics": {
+        "views": null,
+        "likes": 0,
+        "comments": 0,
+        "shares": null,
+        "reposts": 42,
+        "saves": null,
+        "quotes": 0,
+        "bookmarks": 0
+      },
+      "repostedPost": {
+        "id": "2096272386819563573",
+        "url": "https://x.com/NASASpox/status/2096272386819563573",
+        "type": "video",
+        "format": "post",
+        "title": null,
+        "caption": "As Summer winds down, @NASA’s momentum is picking up 🚀\n\n🔭 Roman Space Telescope opens a new era of discovery\n🇺🇸 @POTUS congratulates NASA on successful launch\n🌕 Artemis III SLS engines installed\n🛰️ Another successful @Space_Station spacewalk\n\nHere’s your NASA Minute! https://t.co/K17KGEOrzF",
+        "publishedAt": "2026-09-05T16:20:58Z",
+        "author": {
+          "id": "1907894348319973378",
+          "handle": "NASASpox",
+          "displayName": "NASA Spox",
+          "avatar": {
+            "url": "https://media.openhandle.dev/A1xkdOV1cqxL9m8zflVMGHcuIydPYUxYSPKz29ISRcgUwV90NDIT2oJT01Ik0ySmTpv6ieMFf95UTd_9Uk3Uh4tk5Xm5W8-I6y8h5UwQiJGwRGPwhQQIiBYbcLq8el34NqlhDUt5fN1lazqZkCA"
+          },
+          "isVerified": false
+        },
+        "media": [
+          {
+            "type": "video",
+            "url": "https://media.openhandle.dev/A8z-H6wAtUefAAGE6Dse6Xg-1q94Lq7H9a7G_ROstPjbXznjB8AUd3Jr7V-OYoPWuCz5Oe9Vc1ExCFo2mp81n-cv_M0GezD-IjzK9WvB4jWdWFabiUhRMdTFUrd2Rj3Bi6HPuG5QUJBzngbfoiI",
+            "width": 1152,
+            "height": 2048,
+            "duration": 101.993,
+            "thumbnail": {
+              "url": "https://media.openhandle.dev/A4ANPpSjmsw41_7PIqDH8eERRcgzU-kBbkG1OuOp3_5lnv8pT2ii0RdudSfjBkv5MtBa9djua5UYlpkTFZYoQ82XsZ_7i7sUKKLi3jcn3IfqPDRcWZ2UHmXog_HyIEOWtpCKUVz-XZHGdrV7fRI"
+            },
+            "variants": [
+              {
+                "url": "https://media.openhandle.dev/A8z-H6wAtUefAAGE6Dse6Xg-1q94Lq7H9a7G_ROstPjbXznjB8AUd3Jr7V-OYoPWuCz5Oe9Vc1ExCFo2mp81n-cv_M0GezD-IjzK9WvB4jWdWFabiUhRMdTFUrd2Rj3Bi6HPuG5QUJBzngbfoiI",
+                "bitrate": 25128000,
+                "mimeType": "video/mp4"
+              },
+              {
+                "url": "https://media.openhandle.dev/A4t20Xa3_lyCpQ6_vxhOk83PzV1theEeIv3tdrGo8CZhkGY8YN9oY1uOUCOUDyIf_t0mwpazfQq80HEa2ziSzH7ZQ0gA-kfIHs0WWgPtSi27UeZu-VVApEoNm3CnDG_bsV_YivxzLF8hgHYHGlk",
+                "bitrate": 10368000,
+                "mimeType": "video/mp4"
+              },
+              "… 3 more item(s) truncated"
+            ]
+          }
+        ],
+        "hashtags": [],
+        "mentions": [
+          "NASA",
+          "POTUS",
+          "… 1 more item(s) truncated"
+        ],
+        "commentsDisabled": null,
+        "metrics": {
+          "views": null,
+          "likes": 310,
+          "comments": 28,
+          "shares": null,
+          "reposts": 42,
+          "saves": null,
+          "quotes": 2,
+          "bookmarks": 8
+        },
+        "extended": {
+          "conversationId": "2096272386819563573",
+          "language": "en"
+        }
+      },
+      "extended": {
+        "conversationId": "2096273963726835962",
+        "repostedPostId": "2096272386819563573",
+        "language": "en"
+      }
+    },
+    {
+      "id": "2095890073031966734",
+      "url": "https://x.com/NASA/status/2095890073031966734",
+      "type": "video",
+      "format": "post",
+      "title": null,
+      "caption": "AvGeeks, assemble!\n\nMAX POWER lands in Florida on Nov. 7–8, with an F‑104 flyover by the Starfighters and NASA’s ER‑2 on static display. Get the details: https://t.co/1DVwblNmua https://t.co/TkUyUUGqhM",
+      "publishedAt": "2026-09-04T15:01:47Z",
+      "author": {
+        "id": "11348282",
+        "handle": "NASA",
+        "displayName": "NASA",
+        "avatar": {
+          "url": "https://media.openhandle.dev/AwUSXmK4n-Cqam-976k8nTqK3fQXkTHAbR7IyIyq4oDJXGRnHHQtwVrl9Uo6O9JvjmzXr2pMt3ex7_VPYy1FRAwNsvYataglBvggu9aVGAZ58ovoa4MA0ZcQPVS9g7KcKxQntZl2IVAd_E2FWd4"
+        },
+        "isVerified": false
+      },
+      "media": [
+        {
+          "type": "video",
+          "url": "https://media.openhandle.dev/A0y-TI8Tb1vfhXS1uKApNT0plS4Ld1zPgQNQVpogyMVl9qVyusY2ROi5KMEuZ2uGmoyelstMabmZL511P0gaDowy4lyMDVCKnvzM5IAMVVc0CicWE7qJ_qvH0hNmXNkvdWZ3kiRsRBp-MMR9BB3FBTmSLSKMdyrIswCo26mcqw",
+          "width": 1920,
+          "height": 1080,
+          "duration": 15.548,
+          "thumbnail": {
+            "url": "https://media.openhandle.dev/A3PVDLmmrX8gvgrVNEj7aj1NdPZycvB2tIYJcCt9hwNm2Mt37cHuInM2W41EUpU5u9ztVw9j-XyWyQRIosQp2bdzhsJ2EqKQuodpvqLqvUXbdV0ki1cT5zYyynOsnJNzO4rBgB0GfVU_VRVAUI0HK7A3RGS0pm3uFWQgQV5ORA"
+          },
+          "variants": [
+            {
+              "url": "https://media.openhandle.dev/A0y-TI8Tb1vfhXS1uKApNT0plS4Ld1zPgQNQVpogyMVl9qVyusY2ROi5KMEuZ2uGmoyelstMabmZL511P0gaDowy4lyMDVCKnvzM5IAMVVc0CicWE7qJ_qvH0hNmXNkvdWZ3kiRsRBp-MMR9BB3FBTmSLSKMdyrIswCo26mcqw",
+              "bitrate": 10368000,
+              "mimeType": "video/mp4"
+            },
+            {
+              "url": "https://media.openhandle.dev/AzOlD4RnYgXw3HZ3IlQGjJbTHKrQ6ZGyLcNeQE95GEaOu6YehvUNQGuAkGK5zuYCyKx5blhX4mJjfvs8COS33GZftz7PVVEh8NXME17JO9oTaLk-bJzOvg84EQnUOjHNcNmz6j1XLVwuUW_qslYoejBGvxA81bDWtbsb2OotQw",
+              "bitrate": 2176000,
+              "mimeType": "video/mp4"
+            },
+            "… 2 more item(s) truncated"
+          ]
+        }
+      ],
+      "hashtags": [],
+      "mentions": [],
+      "commentsDisabled": null,
+      "metrics": {
+        "views": null,
+        "likes": 1584,
+        "comments": 70,
+        "shares": null,
+        "reposts": 237,
+        "saves": null,
+        "quotes": 22,
+        "bookmarks": 106
+      },
+      "extended": {
+        "conversationId": "2095890073031966734",
+        "language": "en"
+      }
+    },
+    "… 14 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AbWQLTLNwi5sAxBxmJo8zqBFS3DqtdflDeGHMO_IYKShhXfD7GjWF4_rz8YkTExuGH9GYfYGD2fGcKTH9_F_s8le_YABrcocpQJ81lQqnsjZxN8urWw-xiNiewLm7fIkMhQGT-bGr70hWpv3P1posx5ShszS1kiQUQup3gjfUwKh3uQy8aFjD2UEUZfN60H5HEmze401g-CSUEUV25Qty2YaB7ZMGYkZU5gUAEZiKy_xSh-dwNtOysnNI52mC4yAgdiu3SILoXJWCYLg3Jps2GCw-AZzMsKpiA1K_nGxB_3NOtIUr9NMDn0IhvquEe-HDvgjLaIC4rcBghQxBJNmHAU"
+    }
+  }
+}

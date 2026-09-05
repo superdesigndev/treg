@@ -114,8 +114,10 @@ the difference is margin; exact settlement on the `Openhandle-Cost` header would
 evidence, which the settlement basis does not read. `per_call` matches OpenHandle's own rule:
 answered and not-found calls bill, credential, rate-limit and upstream failures do not.
 Generated `test_request`s use real public identifiers from `OPENHANDLE_FIXTURES`; routes whose
-required input has no fixture (live rooms, shop sellers, stories) stay unverified. Instagram was
-live verified on 2026-09-05; TikTok and X answered 503 upstream that day and await a re-run.
+required input has no fixture (live rooms, shop sellers, effects, playlists) stay unverified. On
+2026-09-05 all 15 core routes and 66 of 111 extended routes passed live; the rest answered 404
+(no data for the fixture, or a retired surface) or 503 from the TikTok shop, live and trending
+upstreams and from X lists, and are worth a re-run.
 The platform-key settings are present, but activation requires maintainers' verification and allow-list.
 
 ## Authorization metadata

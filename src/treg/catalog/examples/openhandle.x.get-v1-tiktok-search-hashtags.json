@@ -1,0 +1,24 @@
+{
+  "platform": "tiktok",
+  "resource": "hashtag",
+  "capturedAt": "2026-09-05T17:48:31.723164108Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "23428",
+      "name": "tiktok",
+      "description": null,
+      "image": null,
+      "metrics": {
+        "posts": 1982043811,
+        "views": 15444108404470
+      }
+    },
+    "… 9 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AQUSgOdjqbtPlBZT617bfk9BcI6VL2g1FU3xQfCuD4WEgAO3SHD5GHrr7B3spW8kedY4EJj4wdU8oJdqco748gRoGvssHGR5a3I_cO560nrSlUONgWpkk0NSIZj5Vb-aJ2iZr_xe9ffS_55nSFZi3mgsinAWOHzchUgyi80--mqWmtcsJ35V3-KF4CijsQOYHbMv19tR… [278 chars]"
+    }
+  }
+}

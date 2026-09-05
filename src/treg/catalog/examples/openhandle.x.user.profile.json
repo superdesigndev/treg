@@ -1,0 +1,37 @@
+{
+  "platform": "twitter",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T17:41:52.927447668Z",
+  "source": "cache",
+  "data": {
+    "id": "11348282",
+    "handle": "NASA",
+    "displayName": "NASA",
+    "bio": "Making the seemingly impossible, possible. ✨",
+    "avatar": {
+      "url": "https://media.openhandle.dev/AzHwWJe2I0w19esy01vpmUEX_wb0a-MHo_cOa714rkKzK4YeepZeP3jAEvnVQB7i0gDAi8PUfqVZrfjWcudNQWzBPcr8isVEYFdkOZW-WZWeI3-f6e2xuZZf7zrzPPyTes_aflDHm-inGbp7rA"
+    },
+    "externalUrl": "http://www.nasa.gov/",
+    "isVerified": true,
+    "isPrivate": false,
+    "isBusiness": false,
+    "category": null,
+    "accountType": null,
+    "metrics": {
+      "followers": 92384652,
+      "following": 117,
+      "posts": 74276
+    },
+    "extended": {
+      "createdAt": "2007-12-19T20:20:32Z",
+      "location": "Pale Blue Dot",
+      "banner": {
+        "url": "https://media.openhandle.dev/Ayo-uIPzjw81EyPRSxM5YBc1H2X4AIAKogrAxokUMG9lKFB1sFRYt99TawTceCcObgausPsrPIji_GTB2nWH8282utv7-0YxtJKe9yHSl3CNUNHQhN8LcR1P-qxiCPo_92_Q8GSNebySfOKhlA"
+      },
+      "likes": 16985,
+      "media": 28137,
+      "pinnedPostIds": null,
+      "withheldCountries": null
+    }
+  }
+}

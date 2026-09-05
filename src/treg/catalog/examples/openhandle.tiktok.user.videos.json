@@ -1,0 +1,204 @@
+{
+  "platform": "tiktok",
+  "resource": "post",
+  "capturedAt": "2026-09-05T17:42:47.063580033Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "7681695065927912735",
+      "url": "https://www.tiktok.com/@tiktok/video/7681695065927912735",
+      "type": "video",
+      "format": "post",
+      "title": null,
+      "caption": "@Alex Warren thinks he'll never write anything better than... can you guess? Search Files has the answer 👀",
+      "publishedAt": "2026-09-04T15:00:31Z",
+      "author": {
+        "id": "107955",
+        "handle": "tiktok",
+        "displayName": "TikTok",
+        "avatar": {
+          "url": "https://media.openhandle.dev/AxikBR4pQbFKbqh2EXJdurWzGgPtXfShOAx9BlNeQTBvZSzCI2qCkHsoVcFV95a8WRCOvChjkkVKo88i07sZXOitl3BlkZLjH7mvJZAs6bxYmEUZyFOUT2J7V8vN4pZcOS0anja4gDz7g2UFWQ",
+          "expiresAt": "2026-09-06T17:00:00Z"
+        },
+        "isVerified": true
+      },
+      "media": [
+        {
+          "type": "video",
+          "url": "https://media.openhandle.dev/A04ydKcUyS1BNb6fnzdPuwXFLjop5SwHVnPGn87qqasMAl2vLk9qZUzqne_ncbxW_9CdIZ1BsqIeZ-rPRYF_goylcQDc5x2jlFkhGxfqScTU2F7BtpRJD0XZrIczlBKWVLu7mBNz7YO_KKAvqudGF89Bv-isscGZiZaeqIMN",
+          "width": 720,
+          "height": 1280,
+          "duration": 58.537,
+          "thumbnail": {
+            "url": "https://media.openhandle.dev/A2ej32w4SjgJy4E0SbvbCI_Bp-PCNzD-evDcBX-HkKQPodFPTnoLc32WDv0AQGr0gMLnsEq0vDf7M8Za_taIgw0izSvB4TbmEkjaCpkyFRBfMWXjxW775S1yFzJ6wMlbWGq3IteOu16jyqKwJzpChjDcdB3ootlftdA-IWg_",
+            "expiresAt": "2026-09-06T17:00:00Z"
+          },
+          "variants": [
+            {
+              "url": "https://media.openhandle.dev/A04ydKcUyS1BNb6fnzdPuwXFLjop5SwHVnPGn87qqasMAl2vLk9qZUzqne_ncbxW_9CdIZ1BsqIeZ-rPRYF_goylcQDc5x2jlFkhGxfqScTU2F7BtpRJD0XZrIczlBKWVLu7mBNz7YO_KKAvqudGF89Bv-isscGZiZaeqIMN",
+              "width": 720,
+              "height": 1280,
+              "role": "play_h264"
+            },
+            {
+              "url": "https://media.openhandle.dev/Ay9eINxUfpMvJ0w09I_KSQRIgqFCC7Dpxo2yqLKU5pl1T-3VwtropFvqzDbbSQK63OovyyF5BIbh2yah_x20txIWo1le0k0uS-EnH4UYIN8eCIFrNdI-P-K-WK9uNRzXZrxa8yeAVUQriPMQhSt77arDCZTidGTA_PtgjDp_",
+              "width": 720,
+              "height": 1280,
+              "role": "play_h264"
+            },
+            "… 4 more item(s) truncated"
+          ]
+        }
+      ],
+      "hashtags": [],
+      "mentions": [
+        "alex"
+      ],
+      "commentsDisabled": false,
+      "metrics": {
+        "views": 103072,
+        "likes": 3852,
+        "comments": 436,
+        "shares": 162,
+        "reposts": 0,
+        "saves": 373,
+        "downloads": 13
+      },
+      "taggedUsers": null,
+      "collaborators": null,
+      "sponsors": null,
+      "location": null,
+      "music": {
+        "id": "7681695167182670623",
+        "title": "original sound - tiktok",
+        "artist": {
+          "id": "107955",
+          "name": "TikTok"
+        },
+        "album": null,
+        "duration": 58,
+        "isOriginal": true,
+        "isExplicit": null,
+        "isCommercial": true,
+        "artwork": {
+          "url": "https://media.openhandle.dev/A5uKjAweTeU9O1S_9fJcB-HdEwOUTveyr7HbMLrf80HC7Bsk3mfvX4hFbqZhJkUJjM-_q0ESG71iHw1tnvYkW0eHo8q-o0mIwHpkc5Qy9FW3NmP7Li1b3bRAFif7bEELKsuRANl3QUPYrM5OhA",
+          "expiresAt": "2026-09-06T17:00:00Z"
+        },
+        "audio": {
+          "url": "https://media.openhandle.dev/A7VXUp7rFlBV-1tsffkijKQitrH0E9I631zFaen-5YuTHh4ECSnkVzDyl05jXHzFR1f3Lgbjq-4Q6BgeBstFz5nnHUzrGod4ymWZ8TDh0yS03Riyj3Q9qUwtHqepMLutimB4s9uS4njMWuM77Q"
+        }
+      },
+      "isAd": false,
+      "isPaidPartnership": null,
+      "extended": {
+        "isDownloadable": false,
+        "allowsDuet": true,
+        "allowsStitch": true,
+        "isAiGenerated": false,
+        "aiLabelType": 0,
+        "usesPromotionalMusic": false
+      }
+    },
+    {
+      "id": "7681414892942839071",
+      "url": "https://www.tiktok.com/@tiktok/video/7681414892942839071",
+      "type": "video",
+      "format": "post",
+      "title": null,
+      "caption": "when words aren't enough, Photo Comments say more @mama | our filipino grandma ",
+      "publishedAt": "2026-09-03T20:53:03Z",
+      "author": {
+        "id": "107955",
+        "handle": "tiktok",
+        "displayName": "TikTok",
+        "avatar": {
+          "url": "https://media.openhandle.dev/AxikBR4pQbFKbqh2EXJdurWzGgPtXfShOAx9BlNeQTBvZSzCI2qCkHsoVcFV95a8WRCOvChjkkVKo88i07sZXOitl3BlkZLjH7mvJZAs6bxYmEUZyFOUT2J7V8vN4pZcOS0anja4gDz7g2UFWQ",
+          "expiresAt": "2026-09-06T17:00:00Z"
+        },
+        "isVerified": true
+      },
+      "media": [
+        {
+          "type": "video",
+          "url": "https://media.openhandle.dev/A5iNeajzA68KkB7oy3HaSzloCDk79pLa0hPVWTgLI4DrHUKlhPK-v_Ac4iANHGMndG-40s3gntVVXSH-yOuS-hVUscDRmUlQxuecn7l8AqSqFUJ5GDKIUjWNfL0176VBDc0KECmW-IXetOeswgcu8o4ZdQMpXfZX-S4Yz48i",
+          "width": 720,
+          "height": 1280,
+          "duration": 80.171,
+          "thumbnail": {
+            "url": "https://media.openhandle.dev/Awvy71_IBkLg8XHA-8gdWAXB7Wwj0XESFjS4OtgrryUXijZn2S4gQI0dAzWO6mh_mlS96h_to26F4V1gx9wnaWtuVdPn8xO0x2OVFCeftqY916EVpDuC0JER7fcQhBnp9S2uJbqdJWDB0aY2lEfE7RvSA_7zMEyskZrXsQT0",
+            "expiresAt": "2026-09-06T17:00:00Z"
+          },
+          "variants": [
+            {
+              "url": "https://media.openhandle.dev/A5iNeajzA68KkB7oy3HaSzloCDk79pLa0hPVWTgLI4DrHUKlhPK-v_Ac4iANHGMndG-40s3gntVVXSH-yOuS-hVUscDRmUlQxuecn7l8AqSqFUJ5GDKIUjWNfL0176VBDc0KECmW-IXetOeswgcu8o4ZdQMpXfZX-S4Yz48i",
+              "width": 720,
+              "height": 1280,
+              "role": "play_h264"
+            },
+            {
+              "url": "https://media.openhandle.dev/A1V3lRtfbVxOBWZn-WcLlxF6KQ5d7UaDaie7b-MoZrHFvfbrBWsOdk_wHDcAW2Qo_vVvqDADgwBUfBkxm9sNAm0fZJ4IOJ1tWO_yp-Mf1M_8r47cr8sPLm34Gh3-0r5KntdVsa7ldZVUra9ponviIgaBirOJWd6SmR8cBtLc",
+              "width": 720,
+              "height": 1280,
+              "role": "play_h264"
+            },
+            "… 4 more item(s) truncated"
+          ]
+        }
+      ],
+      "hashtags": [],
+      "mentions": [
+        "mama"
+      ],
+      "commentsDisabled": false,
+      "metrics": {
+        "views": 71576,
+        "likes": 2041,
+        "comments": 345,
+        "shares": 114,
+        "reposts": 0,
+        "saves": 163,
+        "downloads": 9
+      },
+      "taggedUsers": null,
+      "collaborators": null,
+      "sponsors": null,
+      "location": null,
+      "music": {
+        "id": "7681414963856034591",
+        "title": "original sound - tiktok",
+        "artist": {
+          "id": "107955",
+          "name": "TikTok"
+        },
+        "album": null,
+        "duration": 80,
+        "isOriginal": true,
+        "isExplicit": null,
+        "isCommercial": true,
+        "artwork": {
+          "url": "https://media.openhandle.dev/A5uKjAweTeU9O1S_9fJcB-HdEwOUTveyr7HbMLrf80HC7Bsk3mfvX4hFbqZhJkUJjM-_q0ESG71iHw1tnvYkW0eHo8q-o0mIwHpkc5Qy9FW3NmP7Li1b3bRAFif7bEELKsuRANl3QUPYrM5OhA",
+          "expiresAt": "2026-09-06T17:00:00Z"
+        },
+        "audio": {
+          "url": "https://media.openhandle.dev/A6aURWfwwWJyebjaTqk9WPcyZnrvW-QUI3DBsoO7rd1JpdwKzqRxv8LGwae8bTyzMIAD8vb9h5BZ8kUKsvkiw_pqOkeuIdRJwx9QkhJQa8X1gyabn_RE49NgqqR4pQ8_WTS8r6zBQxeOjJBV2Q"
+        }
+      },
+      "isAd": false,
+      "isPaidPartnership": null,
+      "extended": {
+        "isDownloadable": false,
+        "allowsDuet": true,
+        "allowsStitch": true,
+        "isAiGenerated": false,
+        "aiLabelType": 0,
+        "usesPromotionalMusic": false
+      }
+    },
+    "… 5 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AUZEis1j3A652csK1BbKraUr7SByyVYmezsKyEXpBhwmmSbsLAR-kt2h_j4_iI8hAM7eK8e7X8AqeyoR7FJTqZRbCR_I-TdLfjGq6ZDxboHqTGk1TblMFVA6PCyBKLfipP9BArqvlrhhABsV9J-fo1n4jo0ECvLW0JvqKe1M10R9YFXHhbIcNy3-zhWJB7v16iKl19aCUiZ1_07WvBuCYVFxZcobSJLW54SAFicuSCVhxwrdVLS4MXUFzt_krgtNQm0muXY8X0p19wa0Dg"
+    }
+  }
+}

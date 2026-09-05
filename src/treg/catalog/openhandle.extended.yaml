@@ -91,7 +91,8 @@ endpoints:
   test_request:
     queryParams:
       limit: 1
-  unverified: Public response returned HTTP 200, but operation metadata contains undocumented fields and null values where OpenAPI requires arrays.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-test-data.json
 - id: openhandle.x.get-v1-test-data-id
   tier: extended
   platform: creators
@@ -123,7 +124,8 @@ endpoints:
   test_request:
     pathParams:
       id: instagram.profile.northstar-forge
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-test-data-id.json
 - id: openhandle.x.post-v1-urls-fetch
   tier: extended
   platform: creators
@@ -166,7 +168,8 @@ endpoints:
     body:
       url: https://www.instagram.com/instagram/
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.post-v1-urls-fetch.json
 - id: openhandle.x.get-v1-instagram-comments-identifier-likers
   tier: extended
   platform: instagram
@@ -2410,7 +2413,8 @@ endpoints:
       identifier: fyp
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-hashtags-identifier.json
 - id: openhandle.x.get-v1-tiktok-hashtags-identifier-posts
   tier: extended
   platform: tiktok
@@ -2461,7 +2465,7 @@ endpoints:
       identifier: fyp
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 503
 - id: openhandle.x.get-v1-tiktok-live-events-identifier
   tier: extended
   platform: tiktok
@@ -2555,7 +2559,7 @@ endpoints:
   test_request:
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 503
 - id: openhandle.x.get-v1-tiktok-live-rooms-identifier
   tier: extended
   platform: tiktok
@@ -2755,7 +2759,12 @@ endpoints:
     confidence: documented
     note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
-  unverified: No real public identifier is on file for this route's required input; not called.
+  test_request:
+    pathParams:
+      identifier: '22535865201205278'
+    queryParams:
+      freshness: 30d
+  unverified: http 404
 - id: openhandle.x.get-v1-tiktok-locations-identifier-posts
   tier: extended
   platform: tiktok
@@ -2801,7 +2810,13 @@ endpoints:
     confidence: documented
     note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
-  unverified: No real public identifier is on file for this route's required input; not called.
+  test_request:
+    pathParams:
+      identifier: '22535865201205278'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-locations-identifier-posts.json
 - id: openhandle.x.get-v1-tiktok-music-identifier
   tier: extended
   platform: tiktok
@@ -2843,7 +2858,13 @@ endpoints:
     confidence: documented
     note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
-  unverified: No real public identifier is on file for this route's required input; not called.
+  test_request:
+    pathParams:
+      identifier: '7240110572024645634'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-music-identifier.json
 - id: openhandle.x.get-v1-tiktok-music-identifier-posts
   tier: extended
   platform: tiktok
@@ -2889,7 +2910,13 @@ endpoints:
     confidence: documented
     note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
-  unverified: No real public identifier is on file for this route's required input; not called.
+  test_request:
+    pathParams:
+      identifier: '7240110572024645634'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-music-identifier-posts.json
 - id: openhandle.x.get-v1-tiktok-posts-identifier-comments
   tier: extended
   platform: tiktok
@@ -2940,7 +2967,8 @@ endpoints:
       identifier: '7606449212716305678'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-posts-identifier-comments.json
 - id: openhandle.x.get-v1-tiktok-posts-identifier-comments-comment-id
   tier: extended
   platform: tiktok
@@ -2988,7 +3016,13 @@ endpoints:
     confidence: documented
     note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
-  unverified: No real public identifier is on file for this route's required input; not called.
+  test_request:
+    pathParams:
+      identifier: '7606449212716305678'
+      comment_id: '7606779946837164820'
+    queryParams:
+      freshness: 30d
+  unverified: http 404
 - id: openhandle.x.get-v1-tiktok-posts-identifier-comments-comment-id-replies
   tier: extended
   platform: tiktok
@@ -3040,7 +3074,14 @@ endpoints:
     confidence: documented
     note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
-  unverified: No real public identifier is on file for this route's required input; not called.
+  test_request:
+    pathParams:
+      identifier: '7606449212716305678'
+      comment_id: '7606779946837164820'
+    queryParams:
+      freshness: 24h
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-posts-identifier-comments-comment-id-replies.json
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-followers
   tier: extended
   platform: tiktok
@@ -3091,7 +3132,8 @@ endpoints:
       identifier: '@tiktok'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-profiles-identifier-followers.json
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-following
   tier: extended
   platform: tiktok
@@ -3142,7 +3184,8 @@ endpoints:
       identifier: '@tiktok'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-profiles-identifier-following.json
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-liked-posts
   tier: extended
   platform: tiktok
@@ -3193,7 +3236,7 @@ endpoints:
       identifier: '@tiktok'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 503
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-music
   tier: extended
   platform: tiktok
@@ -3244,7 +3287,7 @@ endpoints:
       identifier: '@tiktok'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 404
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-playlists
   tier: extended
   platform: tiktok
@@ -3295,7 +3338,8 @@ endpoints:
       identifier: '@tiktok'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-profiles-identifier-playlists.json
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-playlists-playlist-id
   tier: extended
   platform: tiktok
@@ -3442,7 +3486,7 @@ endpoints:
       identifier: '@tiktok'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 503
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-stories
   tier: extended
   platform: tiktok
@@ -3493,7 +3537,7 @@ endpoints:
       identifier: '@tiktok'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 404
 - id: openhandle.x.get-v1-tiktok-search-comment-suggestions
   tier: extended
   platform: tiktok
@@ -3542,7 +3586,7 @@ endpoints:
     queryParams:
       q: tiktok
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 404
 - id: openhandle.x.get-v1-tiktok-search-hashtags
   tier: extended
   platform: tiktok
@@ -3591,7 +3635,8 @@ endpoints:
     queryParams:
       q: tiktok
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-search-hashtags.json
 - id: openhandle.x.get-v1-tiktok-search-insights
   tier: extended
   platform: tiktok
@@ -3640,7 +3685,7 @@ endpoints:
     queryParams:
       q: tiktok
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 404
 - id: openhandle.x.get-v1-tiktok-search-live
   tier: extended
   platform: tiktok
@@ -3689,7 +3734,8 @@ endpoints:
     queryParams:
       q: tiktok
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-search-live.json
 - id: openhandle.x.get-v1-tiktok-search-locations
   tier: extended
   platform: tiktok
@@ -3738,7 +3784,8 @@ endpoints:
     queryParams:
       q: tiktok
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-search-locations.json
 - id: openhandle.x.get-v1-tiktok-search-music
   tier: extended
   platform: tiktok
@@ -3787,7 +3834,8 @@ endpoints:
     queryParams:
       q: tiktok
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-search-music.json
 - id: openhandle.x.get-v1-tiktok-search-top
   tier: extended
   platform: tiktok
@@ -3836,7 +3884,7 @@ endpoints:
     queryParams:
       q: tiktok
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 404
 - id: openhandle.x.get-v1-tiktok-shop-deals-flash-sale
   tier: extended
   platform: tiktok
@@ -3878,7 +3926,7 @@ endpoints:
   test_request:
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 503
 - id: openhandle.x.get-v1-tiktok-shop-deals-new-user
   tier: extended
   platform: tiktok
@@ -3920,7 +3968,7 @@ endpoints:
   test_request:
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 503
 - id: openhandle.x.get-v1-tiktok-shop-home
   tier: extended
   platform: tiktok
@@ -3962,7 +4010,7 @@ endpoints:
   test_request:
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 503
 - id: openhandle.x.get-v1-tiktok-shop-live-identifier-products
   tier: extended
   platform: tiktok
@@ -4153,7 +4201,12 @@ endpoints:
     confidence: documented
     note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
-  unverified: No real public identifier is on file for this route's required input; not called.
+  test_request:
+    pathParams:
+      identifier: '@tiktok'
+    queryParams:
+      freshness: 30d
+  unverified: http 503
 - id: openhandle.x.get-v1-tiktok-shop-profiles-identifier-products
   tier: extended
   platform: tiktok
@@ -4199,7 +4252,12 @@ endpoints:
     confidence: documented
     note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
-  unverified: No real public identifier is on file for this route's required input; not called.
+  test_request:
+    pathParams:
+      identifier: '@tiktok'
+    queryParams:
+      freshness: 30d
+  unverified: http 503
 - id: openhandle.x.get-v1-tiktok-shop-profiles-identifier-tabs
   tier: extended
   platform: tiktok
@@ -4245,7 +4303,12 @@ endpoints:
     confidence: documented
     note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
-  unverified: No real public identifier is on file for this route's required input; not called.
+  test_request:
+    pathParams:
+      identifier: '@tiktok'
+    queryParams:
+      freshness: 30d
+  unverified: http 503
 - id: openhandle.x.get-v1-tiktok-shop-recommendations
   tier: extended
   platform: tiktok
@@ -4339,7 +4402,7 @@ endpoints:
     queryParams:
       q: tiktok
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 503
 - id: openhandle.x.get-v1-tiktok-shop-sellers-identifier
   tier: extended
   platform: tiktok
@@ -4671,7 +4734,8 @@ endpoints:
   test_request:
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-trending-categories.json
 - id: openhandle.x.get-v1-tiktok-trending-insights
   tier: extended
   platform: tiktok
@@ -4754,7 +4818,8 @@ endpoints:
   test_request:
     queryParams:
       freshness: 30d
-  unverified: Test response returned HTTP 200, but data was an array where OpenAPI requires an object. Live verification remains pending.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-tiktok-trending-music.json
 - id: openhandle.x.get-v1-tiktok-trending-posts
   tier: extended
   platform: tiktok
@@ -4796,7 +4861,7 @@ endpoints:
   test_request:
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 503
 - id: openhandle.x.get-v1-twitter-lists-identifier
   tier: extended
   platform: x
@@ -4981,7 +5046,8 @@ endpoints:
       identifier: '1808168603721650364'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-twitter-posts-identifier-comments.json
 - id: openhandle.x.get-v1-twitter-posts-identifier-comments-comment-id-replies
   tier: extended
   platform: x
@@ -5033,7 +5099,14 @@ endpoints:
     confidence: documented
     note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
-  unverified: No real public identifier is on file for this route's required input; not called.
+  test_request:
+    pathParams:
+      identifier: '1808168603721650364'
+      comment_id: '1808170286425964893'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-twitter-posts-identifier-comments-comment-id-replies.json
 - id: openhandle.x.get-v1-twitter-posts-identifier-likers
   tier: extended
   platform: x
@@ -5084,7 +5157,8 @@ endpoints:
       identifier: '1808168603721650364'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-twitter-posts-identifier-likers.json
 - id: openhandle.x.get-v1-twitter-posts-identifier-reposters
   tier: extended
   platform: x
@@ -5135,7 +5209,8 @@ endpoints:
       identifier: '1808168603721650364'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-twitter-posts-identifier-reposters.json
 - id: openhandle.x.get-v1-twitter-profiles-identifier-followers
   tier: extended
   platform: x
@@ -5186,7 +5261,8 @@ endpoints:
       identifier: '@NASA'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-twitter-profiles-identifier-followers.json
 - id: openhandle.x.get-v1-twitter-profiles-identifier-following
   tier: extended
   platform: x
@@ -5237,7 +5313,8 @@ endpoints:
       identifier: '@NASA'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-twitter-profiles-identifier-following.json
 - id: openhandle.x.get-v1-twitter-profiles-identifier-lists
   tier: extended
   platform: x
@@ -5288,7 +5365,7 @@ endpoints:
       identifier: '@NASA'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  unverified: http 503
 - id: openhandle.x.get-v1-twitter-profiles-identifier-media
   tier: extended
   platform: x
@@ -5339,7 +5416,8 @@ endpoints:
       identifier: '@NASA'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-twitter-profiles-identifier-media.json
 - id: openhandle.x.get-v1-twitter-profiles-identifier-replies
   tier: extended
   platform: x
@@ -5390,7 +5468,8 @@ endpoints:
       identifier: '@NASA'
     queryParams:
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-twitter-profiles-identifier-replies.json
 - id: openhandle.x.get-v1-twitter-search-media
   tier: extended
   platform: x
@@ -5448,7 +5527,8 @@ endpoints:
       q: NASA
       type: image
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-twitter-search-media.json
 - id: openhandle.x.get-v1-twitter-search-suggestions
   tier: extended
   platform: x
@@ -5497,4 +5577,5 @@ endpoints:
     queryParams:
       q: NASA
       freshness: 30d
-  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-twitter-search-suggestions.json

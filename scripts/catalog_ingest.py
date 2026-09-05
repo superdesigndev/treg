@@ -1236,7 +1236,7 @@ def ingest_replicate(refresh: bool) -> tuple[Path, dict]:
 # Real public identifiers for the generated Live `test_request`s. The OpenAPI examples are synthetic
 # fixtures that only answer on Test keys, so a request built from them can never verify a Live
 # route. Instagram values were resolved on 2026-09-05 from @instagram's public posts; TikTok and X
-# values are the core catalog's proven requests. A route whose required input has no fixture here
+# values were resolved the same way from @tiktok and @NASA. A route whose required input has no fixture here
 # (live rooms, shop sellers, ephemeral stories) gets no test_request and stays unverified.
 OPENHANDLE_FIXTURES = {
     "instagram": {
@@ -1245,8 +1245,12 @@ OPENHANDLE_FIXTURES = {
         "highlights": "18142207969557132", "comment_id": "18470057866113934",
         "media_id": "3978880184454783667", "q": "instagram", "comment": "great post",
     },
-    "tiktok": {"profiles": "@tiktok", "posts": "7606449212716305678", "hashtags": "fyp", "q": "tiktok"},
-    "twitter": {"profiles": "@NASA", "posts": "1808168603721650364", "q": "NASA", "type": "image"},
+    "tiktok": {
+        "profiles": "@tiktok", "posts": "7606449212716305678", "comment_id": "7606779946837164820", "hashtags": "fyp", "music": "7240110572024645634", "locations": "22535865201205278", "q": "tiktok",
+    },
+    "twitter": {
+        "profiles": "@NASA", "posts": "1808168603721650364", "comment_id": "1808170286425964893", "q": "NASA", "type": "image",
+    },
     "test-data": {"id": "instagram.profile.northstar-forge", "limit": 1},
     "urls": {"url": "https://www.instagram.com/instagram/"},
 }
@@ -1261,7 +1265,7 @@ OPENHANDLE_PRICE_NOTE = (
 def openhandle_test_request(path: str, parameters: list[dict], body: dict | None) -> dict | None:
     segments = path.split("/")
     fixtures = OPENHANDLE_FIXTURES.get(segments[2], {})
-    resource = segments[3] if len(segments) > 3 else ""
+    resource = segments[segments.index("{identifier}") - 1] if "{identifier}" in segments else ""
     request: dict = {}
     for parameter in parameters:
         name, where = parameter["name"], parameter["in"]

@@ -1,0 +1,49 @@
+{
+  "platform": "twitter",
+  "resource": "post",
+  "capturedAt": "2026-09-05T17:41:56.860446089Z",
+  "source": "cache",
+  "data": {
+    "id": "1808168603721650364",
+    "url": "https://x.com/elonmusk/status/1808168603721650364",
+    "type": "image",
+    "format": "post",
+    "title": null,
+    "caption": "The New York Times is attacking *your* freedom of speech! https://t.co/TRIa13TWdY",
+    "publishedAt": "2024-07-02T15:59:23Z",
+    "author": {
+      "id": "44196397",
+      "handle": "elonmusk",
+      "displayName": "Elon Musk",
+      "avatar": {
+        "url": "https://media.openhandle.dev/Az-RC-__8ZEX7QiG-gY4z8t8c1TP0IdpSJoQpPWKRPCzvgDRGncir6Y6TBhEht5nLVBbL4N0sJWiwnH6x_DsoMhRIs4hLozQd_s92eJ8ihTwmeRZhUG07HkrktwBGgFUbf9dkniqpSpadJHOWC4"
+      },
+      "isVerified": false
+    },
+    "media": [
+      {
+        "type": "image",
+        "url": "https://media.openhandle.dev/A0bttFrI5DHOV7mSdlW21I_dK8Xr8KHWa5QcaZGjmJF3QIuPZje8QFb9fbi5Ozw3baGdt2ZYAsxBhjNlisa9zK_Ip3VeJfhnZhvTNg2W-oqnLNkW4aFdPFCoIg4gf5RoGo89LJKDZFfdmOjs5DdP8Ql82BMOmA",
+        "width": 712,
+        "height": 355
+      }
+    ],
+    "hashtags": [],
+    "mentions": [],
+    "commentsDisabled": null,
+    "metrics": {
+      "views": null,
+      "likes": 283681,
+      "comments": 18958,
+      "shares": null,
+      "reposts": 52440,
+      "saves": null,
+      "quotes": 3899,
+      "bookmarks": 6608
+    },
+    "extended": {
+      "conversationId": "1808168603721650364",
+      "language": "en"
+    }
+  }
+}

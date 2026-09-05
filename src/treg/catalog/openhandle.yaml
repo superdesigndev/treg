@@ -285,6 +285,8 @@ endpoints:
       freshness: 30d
     pathParams:
       identifier: '@tiktok'
+  verified: '2026-09-05'
+  example_response: examples/openhandle.tiktok.user.profile.json
   cost:
     type: per_call
     value: 0.003
@@ -338,6 +340,8 @@ endpoints:
       freshness: 30d
     pathParams:
       identifier: '@tiktok'
+  verified: '2026-09-05'
+  example_response: examples/openhandle.tiktok.user.videos.json
   cost:
     type: per_call
     value: 0.003
@@ -384,6 +388,8 @@ endpoints:
     queryParams:
       freshness: 30d
       q: NASA
+  verified: '2026-09-05'
+  example_response: examples/openhandle.tiktok.search.users.json
   cost:
     type: per_call
     value: 0.003
@@ -430,6 +436,8 @@ endpoints:
     queryParams:
       freshness: 30d
       q: NASA
+  verified: '2026-09-05'
+  example_response: examples/openhandle.tiktok.search.videos.json
   cost:
     type: per_call
     value: 0.003
@@ -475,6 +483,8 @@ endpoints:
       freshness: 30d
     pathParams:
       identifier: '7606449212716305678'
+  verified: '2026-09-05'
+  example_response: examples/openhandle.tiktok.video.detail.json
   cost:
     type: per_call
     value: 0.003
@@ -520,6 +530,8 @@ endpoints:
       freshness: 30d
     pathParams:
       identifier: '@NASA'
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.user.profile.json
   cost:
     type: per_call
     value: 0.003
@@ -573,6 +585,8 @@ endpoints:
       freshness: 30d
     pathParams:
       identifier: '@NASA'
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.user.posts.json
   cost:
     type: per_call
     value: 0.003
@@ -619,6 +633,8 @@ endpoints:
     queryParams:
       freshness: 30d
       q: NASA
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.search.users.json
   cost:
     type: per_call
     value: 0.003
@@ -671,6 +687,8 @@ endpoints:
     queryParams:
       freshness: 30d
       q: NASA
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.search.posts.json
   cost:
     type: per_call
     value: 0.003
@@ -716,6 +734,8 @@ endpoints:
       freshness: 30d
     pathParams:
       identifier: '1808168603721650364'
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.post.detail.json
   cost:
     type: per_call
     value: 0.003

@@ -1,0 +1,43 @@
+{
+  "platform": "tiktok",
+  "resource": "comment",
+  "capturedAt": "2026-09-05T17:43:19.561888519Z",
+  "source": "cache",
+  "data": [
+    {
+      "id": "7606779946837164820",
+      "text": "Kimberly Kim looks different",
+      "publishedAt": "2026-02-14T17:53:54Z",
+      "author": {
+        "id": "7418277300980106245",
+        "handle": "user9950261282307",
+        "displayName": "𝓡𝓲𝓶𝓷𝓪💫",
+        "avatar": {
+          "url": "https://media.openhandle.dev/A0A1JniC3TCNfN8ckbocsss-H8Xx9hh1E1BfYdc6GAl1Zrel_CwIep_4GhIYWX5nDdSsxIp3-1fFT1D-FQCFl8V1ODkP8D2JjIthhhE_-ROvaBv-RNqP8NRFfjEX03CnuMUh2UzWiaA3WjvQFQ",
+          "expiresAt": "2026-09-06T17:00:00Z"
+        },
+        "isVerified": false
+      },
+      "metrics": {
+        "likes": 4370,
+        "replies": 7,
+        "views": null,
+        "reposts": null,
+        "quotes": null,
+        "bookmarks": null
+      },
+      "parentId": null,
+      "threadRootId": null,
+      "isPinned": false,
+      "pinnedPosition": 0,
+      "isLikedByPostAuthor": false,
+      "media": []
+    },
+    "… 9 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AdG63CzD0g-DN-T9AKdfhvwMX5tFeUgGItOKYgtZapc8BC4-T8kbtwYp6QfT6PbJQuL8Kqb2Xb0x3RzgF3X94uqxrhkHOd0V4ataqTCs7VhpT6l3eoR1KvDCTYXOJtokkPROSYtHk726B8PtO2xoKrT5qf3jFUdKItXGP9BuDZyNRSi16IhaadnuySCslKFmMX3k3qYv… [255 chars]"
+    }
+  }
+}

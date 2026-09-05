@@ -1,0 +1,50 @@
+{
+  "platform": "twitter",
+  "resource": "post",
+  "capturedAt": "2026-09-05T17:51:09.314791477Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "2095890073031966734",
+      "url": "https://x.com/NASA/status/2095890073031966734",
+      "type": "video",
+      "format": "post",
+      "title": null,
+      "caption": "AvGeeks, assemble!\n\nMAX POWER lands in Florida on Nov. 7–8, with an F‑104 flyover by the Starfighters and NASA’s ER‑2 on static display. Get the details: https://t.co/1DVwblNmua https://t.co/TkUyUUGqh… [201 chars]",
+      "publishedAt": "2026-09-04T15:01:47Z",
+      "author": {
+        "id": "11348282",
+        "handle": "NASA",
+        "displayName": "NASA",
+        "avatar": "… {1 field(s) truncated}",
+        "isVerified": false
+      },
+      "media": [
+        "… {7 field(s) truncated}"
+      ],
+      "hashtags": [],
+      "mentions": [],
+      "commentsDisabled": null,
+      "metrics": {
+        "views": null,
+        "likes": 1587,
+        "comments": 71,
+        "shares": null,
+        "reposts": 237,
+        "saves": null,
+        "quotes": 22,
+        "bookmarks": 106
+      },
+      "extended": {
+        "conversationId": "2095890073031966734",
+        "language": "en"
+      }
+    },
+    "… 9 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AcjmoFEb1NFjKQAMNusIq5Y3Mw8lh-H4fJjUmVH8ADhffVBpLUlVmzxu_rbKWTi5MmIQdci9Lhon0zeWK2VXsEGNYQBkm1O7LcjXTsudYT9x0Xd6RNuPmQW3Grdoy65tl6pXb7CKks2qRIyucaW4nNrpQX8LQeAXY0-zZFntWTY-4hCcM-5Bb7vX7wdh5MumCrzXPgE7… [316 chars]"
+    }
+  }
+}
