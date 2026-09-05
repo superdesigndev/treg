@@ -210,6 +210,7 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
             ep["platform"] = prev["platform"]
         if prev.get("verified"):
             kept += 1
+            ep.pop("unverified", None)
             if prev.get("test_request") is not None:
                 ep["test_request"] = prev["test_request"]
                 ep.pop("untestable", None)
@@ -1232,6 +1233,52 @@ def ingest_replicate(refresh: bool) -> tuple[Path, dict]:
     return out, {"models": len(endpoints)}
 
 
+# Real public identifiers for the generated Live `test_request`s. The OpenAPI examples are synthetic
+# fixtures that only answer on Test keys, so a request built from them can never verify a Live
+# route. Instagram values were resolved on 2026-09-05 from @instagram's public posts; TikTok and X
+# values are the core catalog's proven requests. A route whose required input has no fixture here
+# (live rooms, shop sellers, ephemeral stories) gets no test_request and stays unverified.
+OPENHANDLE_FIXTURES = {
+    "instagram": {
+        "profiles": "@instagram", "posts": "Dc30nJeRKKz", "comments": "18470057866113934",
+        "hashtags": "instagram", "locations": "384695225271379", "music": "27499285159675348",
+        "highlights": "18142207969557132", "comment_id": "18470057866113934",
+        "media_id": "3978880184454783667", "q": "instagram", "comment": "great post",
+    },
+    "tiktok": {"profiles": "@tiktok", "posts": "7606449212716305678", "hashtags": "fyp", "q": "tiktok"},
+    "twitter": {"profiles": "@NASA", "posts": "1808168603721650364", "q": "NASA", "type": "image"},
+    "test-data": {"id": "instagram.profile.northstar-forge", "limit": 1},
+    "urls": {"url": "https://www.instagram.com/instagram/"},
+}
+OPENHANDLE_PRICE_NOTE = (
+    "Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on "
+    "2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache "
+    "hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private "
+    "profiles are billed; invalid input, upstream failures and rate limits are not."
+)
+
+
+def openhandle_test_request(path: str, parameters: list[dict], body: dict | None) -> dict | None:
+    segments = path.split("/")
+    fixtures = OPENHANDLE_FIXTURES.get(segments[2], {})
+    resource = segments[3] if len(segments) > 3 else ""
+    request: dict = {}
+    for parameter in parameters:
+        name, where = parameter["name"], parameter["in"]
+        if where == "query" and name == "freshness":
+            request.setdefault("queryParams", {})[name] = "30d"
+            continue
+        if where != "path" and not parameter.get("required") and name not in fixtures:
+            continue
+        value = fixtures.get(resource) if name == "identifier" else fixtures.get(name)
+        if value is None:
+            return None
+        request.setdefault({"path": "pathParams", "query": "queryParams"}.get(where, "body"), {})[name] = value
+    if body is not None and "freshness" in body.get("properties", {}):
+        request.setdefault("body", {})["freshness"] = "30d"
+    return request or None
+
+
 def ingest_openhandle(refresh: bool) -> tuple[Path, dict]:
     url = "https://api.openhandle.dev/openapi.json"
     spec = json.loads(fetch(url, "openhandle_openapi.json", refresh=refresh))
@@ -1279,14 +1326,11 @@ def ingest_openhandle(refresh: bool) -> tuple[Path, dict]:
             free = family == "test-data"
             cost = {
                 "type": "free" if free else "per_call",
-                "value": 0 if free else None,
+                "value": 0 if free else 0.003,
                 "currency": "USD", "per": 1, "unit": "call",
                 "source": "docs", "source_url": url if free else "https://openhandle.dev/pricing.md",
-                "checked": "2026-09-05", "confidence": "documented" if free else "unknown",
-                "note": "Public, unmetered synthetic-fixture discovery." if free else (
-                    "Live pricing and Openhandle-Cost settlement remain unverified. "
-                    "See the core catalog for published volume and cache rates; unknown prices prevent platform billing."
-                ),
+                "checked": "2026-09-05", "confidence": "documented",
+                "note": "Public, unmetered synthetic-fixture discovery." if free else OPENHANDLE_PRICE_NOTE,
             }
             ep = {
                 "id": slug_id("openhandle", method + path), "tier": "extended",
@@ -1295,19 +1339,23 @@ def ingest_openhandle(refresh: bool) -> tuple[Path, dict]:
                 "method": method.upper(), "path": path,
                 "summary": clean(operation.get("summary") or operation.get("description") or path),
                 "input": inp, "cost": cost,
-                "unverified": "Imported from OpenAPI; no Live call or billing verification has run.",
                 "docs_url": "https://openhandle.dev/docs/api-reference",
             }
+            test = openhandle_test_request(path, parameters, body)
+            if test is None:
+                ep["unverified"] = "No real public identifier is on file for this route's required input; not called."
+            else:
+                ep["test_request"] = test
+                ep["unverified"] = "Imported from OpenAPI; a Live call has not verified this route yet."
             endpoints.append(ep)
     out = write_extended("openhandle", {"method": "openapi", "spec_urls": [url],
                                         "ingested": "2026-09-05"}, endpoints, [
         "Every documented operation outside the core catalog is included, including free Test-data discovery.",
         "Cross-platform URL dispatch and synthetic-fixture utilities share the creators platform.",
-        "OpenAPI examples may be synthetic: generation never issues data calls or claims Live verification.",
-        "Paid prices remain unknown until Live billing and settlement are verified.",
+        "Generated test requests use real public identifiers; synthetic OpenAPI examples only answer on Test keys.",
+        "Paid routes carry the published $0.003 entry rate; verified stamps come from Live calls with a real key.",
     ])
     return out, {"endpoints": len(endpoints)}
-
 
 INGESTERS = {
     "tikhub": ingest_tikhub,

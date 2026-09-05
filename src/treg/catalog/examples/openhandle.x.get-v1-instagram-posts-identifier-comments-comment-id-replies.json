@@ -1,0 +1,42 @@
+{
+  "platform": "instagram",
+  "resource": "comment",
+  "capturedAt": "2026-09-05T16:56:28.250399729Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "18124433239863222",
+      "text": "absolute mood",
+      "publishedAt": "2026-09-04T17:52:02Z",
+      "author": {
+        "id": "25025320",
+        "handle": "instagram",
+        "displayName": "Instagram",
+        "avatar": {
+          "url": "https://media.openhandle.dev/A4MoOti5SPJu8qQLrMssTKINN8YN-dw2H7GmYuJunmHVzpzFqkh8rNyaem3YOe-T_LKEkHAVIvh8cjFbOkUfUO4Hl0MnPrnPxdh968IEDTecLEkHhM-6TRPmfYvKQMJCF1PiEpRiPyd6YyhV6pf0Jg"
+        },
+        "isVerified": true
+      },
+      "metrics": {
+        "likes": 54,
+        "replies": null,
+        "views": null,
+        "reposts": null,
+        "quotes": null,
+        "bookmarks": null
+      },
+      "parentId": "18470057866113934",
+      "threadRootId": null,
+      "isPinned": null,
+      "pinnedPosition": null,
+      "isLikedByPostAuthor": null,
+      "media": []
+    },
+    "… 4 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

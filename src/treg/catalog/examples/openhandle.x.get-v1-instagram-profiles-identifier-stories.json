@@ -1,0 +1,59 @@
+{
+  "platform": "instagram",
+  "resource": "entity",
+  "capturedAt": "2026-08-28T09:47:15.888006849Z",
+  "source": "cache",
+  "data": [
+    {
+      "id": "3973068096537771318",
+      "shortcode": "DcjLGIykj02",
+      "publishedAt": "2026-08-27T16:03:52Z",
+      "expiresAt": "2026-08-28T16:03:52Z",
+      "type": "video",
+      "author": {
+        "id": "25025320",
+        "name": "Instagram",
+        "handle": "instagram",
+        "image": {
+          "url": "https://media.openhandle.dev/A1l2j_cxUiBmXoj7E7TvXgbB_PxzM6sznNqvNAumrGoq-7e7uWj4ULC0C4Ke-j3D7jbu1LdmObrPdJlk36SsOgDrd1yJEE_iQPzuTEAoAePXq7XfNILPtUnQa89_nV6AVu9CgKoJKhxEMChDDbLdeQ"
+        }
+      },
+      "media": [
+        {
+          "type": "video",
+          "url": "https://media.openhandle.dev/A1IWEL47BdgByb8-gc5SV798Tq09dJRFel_Blhf2XFkj8XcH8RgDIvo_1DRll1-4zwDPqIdY9uxFPctFr4CafRAzyfxVoS7CYljZuuZitBJ5LLStR8xOyFCz8dnlnxhc4z07kVGGIqMthR9T7_8pZg",
+          "width": 720,
+          "height": 1280,
+          "thumbnail": {
+            "url": "https://media.openhandle.dev/AyHuz_IO84egSL4DEZXZ7kaf0T2LIXGBqqTFhvr6QdaWqmCeCwA8DNwsb_yuDP0PH3Epo_GaQ81WgI5jGDcDZlEfJ0vE-7ibBJEk1umAUQ5l-sq3A7fg57iPDWCWRYmCoChF77CQOnZPracsJbPkbw"
+          },
+          "variants": [
+            "… {4 field(s) truncated}"
+          ]
+        }
+      ],
+      "mentions": [
+        {
+          "id": "4382124033",
+          "name": "Ben Shelton",
+          "handle": "benshelton",
+          "image": {
+            "url": "https://media.openhandle.dev/AxexIakevu6nB-fr4EDi5J4e1IE7UXfdFxeoFb4_OfzVZI7vO0RL4O6WqoOGRVED0ZmJW_JmJgbC-2wy3kS40gPo94MzEl0i6OMXpyC0xcM6fpjh6s2U82cIxIcZh--30OZmCuTwJi3qfRyuJbXycg"
+          }
+        }
+      ],
+      "links": [],
+      "hashtags": [],
+      "locations": [],
+      "stickers": [],
+      "canReply": false,
+      "canReshare": true
+    },
+    "… 3 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

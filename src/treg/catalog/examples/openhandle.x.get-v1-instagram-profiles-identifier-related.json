@@ -1,0 +1,34 @@
+{
+  "platform": "instagram",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T16:57:16.063396679Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "28247116907",
+      "handle": "meta",
+      "displayName": "Meta",
+      "bio": "",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A8S6BfAX76YdbMOlVzEMP3BvEosjOFf2reOm3Rndte-PSOmDa0gnLCQmrHMnJ1Bx0Mezyl2iD9ssAI58uoSqN-wfN5lQLegmYTlAI8vgMt428nRPthcjMHPDlS_t28j-lgkcuDCfgm4aJRvtJ3CiFA3J"
+      },
+      "externalUrl": null,
+      "isVerified": true,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": null,
+        "following": null,
+        "posts": null
+      }
+    },
+    "… 29 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

@@ -108,9 +108,14 @@ data endpoints. It includes public synthetic-fixture discovery and cross-platfor
 as utility entries on the creators platform. Synthetic examples carry no Live verification claim.
 The API bills in USD, so no credit conversion belongs in `fx.yaml`. The catalog includes the
 `freshness` choices, including free 30-day cache hits; cache misses can still incur Live charges.
-Prices remain unknown until Live verification and settlement support account for the authoritative
-`Openhandle-Cost` header. This prevents platform-key billing from charging a fixed estimate for
-free cache hits, allowance requests or unbilled validation errors. No endpoint is stamped verified.
+Every paid route is priced `per_call` at the published $0.003 entry rate, which the
+`Openhandle-List-Price` header confirmed on 2026-09-05. Cache hits and volume tiers cost less and
+the difference is margin; exact settlement on the `Openhandle-Cost` header would need header
+evidence, which the settlement basis does not read. `per_call` matches OpenHandle's own rule:
+answered and not-found calls bill, credential, rate-limit and upstream failures do not.
+Generated `test_request`s use real public identifiers from `OPENHANDLE_FIXTURES`; routes whose
+required input has no fixture (live rooms, shop sellers, stories) stay unverified. Instagram was
+live verified on 2026-09-05; TikTok and X answered 503 upstream that day and await a re-run.
 The platform-key settings are present, but activation requires maintainers' verification and allow-list.
 
 ## Authorization metadata

@@ -1,0 +1,24 @@
+{
+  "platform": "instagram",
+  "resource": "hashtag",
+  "capturedAt": "2026-09-05T16:57:42.37831085Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "17856118999088122",
+      "name": "instagramreels",
+      "description": null,
+      "image": null,
+      "metrics": {
+        "posts": 164173266,
+        "views": null
+      }
+    },
+    "… 54 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

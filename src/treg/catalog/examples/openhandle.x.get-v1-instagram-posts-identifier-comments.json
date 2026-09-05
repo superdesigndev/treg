@@ -1,0 +1,57 @@
+{
+  "platform": "instagram",
+  "resource": "comment",
+  "capturedAt": "2026-09-05T16:49:10.189230933Z",
+  "source": "cache",
+  "data": [
+    {
+      "id": "18470057866113934",
+      "text": "Friday vibes",
+      "publishedAt": "2026-09-04T16:38:35Z",
+      "author": {
+        "id": "55075083880",
+        "handle": "upandadamsshow",
+        "displayName": "Up & Adams",
+        "avatar": {
+          "url": "https://media.openhandle.dev/A7sXwNy37E1HSejKvsiBiRdESWUlqoEu--9--EuIsVguKXh6PYBtfisN7OXO7soDttbBecsOcwSZ24PI_98YHjbohajgHRBCjbQL6Z4K0cARcqZwzN_WVA14d8rwKHFUfVR0mHhs4JZQZ6dIl1duyA"
+        },
+        "isVerified": true
+      },
+      "metrics": {
+        "likes": 56,
+        "replies": 8,
+        "views": null,
+        "reposts": null,
+        "quotes": null,
+        "bookmarks": null
+      },
+      "parentId": null,
+      "threadRootId": null,
+      "isPinned": null,
+      "pinnedPosition": null,
+      "isLikedByPostAuthor": null,
+      "media": [],
+      "replyPreview": [
+        {
+          "id": "18124433239863222",
+          "text": "absolute mood",
+          "publishedAt": "2026-09-04T17:52:02Z",
+          "author": "… {5 field(s) truncated}",
+          "metrics": "… {6 field(s) truncated}",
+          "parentId": "18470057866113934",
+          "threadRootId": null,
+          "isPinned": null,
+          "pinnedPosition": null,
+          "isLikedByPostAuthor": null,
+          "media": "… [0 item(s) truncated]"
+        }
+      ]
+    },
+    "… 14 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "ARijvpXHWgl3gP_xDue07p41ADXEc8f4VfOXMSMSzO409EHIbUN6crKknm12h0pdhPWSRly8IGBjuuoCrVxmaf-rKLOEs8Zzms6MhGMc9GXWxKkUfHmwjiYFd8jkuRwTrMn30o9OYR9q-oPSeUY_WIl7OlUL2Gtm7TOTCv5ALB0Goaj7tpGo5SNGZqW4TG62Px1IKp_U… [719 chars]"
+    }
+  }
+}

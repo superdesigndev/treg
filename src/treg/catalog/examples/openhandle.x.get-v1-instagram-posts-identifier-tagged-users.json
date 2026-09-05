@@ -1,0 +1,33 @@
+{
+  "platform": "instagram",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T16:56:38.309612207Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "63063986032",
+      "handle": "misterbeanito",
+      "displayName": "Bean",
+      "bio": "",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A46nrpl633-8vjUqrPFzVbSUAdf3LItTHyqOl2t18-ZJpzcb25-HwTq0Pn_Rn0RyA_XQnbuNT7Ry4u6SYjkT9ujuij8ndTcPAY0CA6L4MDIwdQUTjUn4HWNNz-v0osrMjZzMEyWfaf1wl6p8n5VVUEz9"
+      },
+      "externalUrl": null,
+      "isVerified": false,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": null,
+        "following": null,
+        "posts": null
+      }
+    }
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

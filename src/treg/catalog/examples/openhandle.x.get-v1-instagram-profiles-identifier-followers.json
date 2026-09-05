@@ -1,0 +1,34 @@
+{
+  "platform": "instagram",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T16:56:52.976356563Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "79770544866",
+      "handle": "daybel._core",
+      "displayName": "𝙳𝚊𝚢 ✵",
+      "bio": "",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A6H85IVjat--casD5LvxlTCr1Lwc0q6vIUpaSLCBv_U_CGVrCL2jmN5Ti_AhjPasCZSFH3wL0Gkk_64oBCG5-LVWxyUp3BNaBCZsGr5MxlPcpZ0zH9KN1E29n8UqjCj5rV1MzO5RHqs3srQJJHduoI5h"
+      },
+      "externalUrl": null,
+      "isVerified": false,
+      "isPrivate": true,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": null,
+        "following": null,
+        "posts": null
+      }
+    },
+    "… 48 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

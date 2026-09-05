@@ -5,8 +5,8 @@
 # re-ingests by id via carry_verification. Routes curated in core openhandle.yaml are excluded here.
 # Every documented operation outside the core catalog is included, including free Test-data discovery.
 # Cross-platform URL dispatch and synthetic-fixture utilities share the creators platform.
-# OpenAPI examples may be synthetic: generation never issues data calls or claims Live verification.
-# Paid prices remain unknown until Live billing and settlement are verified.
+# Generated test requests use real public identifiers; synthetic OpenAPI examples only answer on Test keys.
+# Paid routes carry the published $0.003 entry rate; verified stamps come from Live calls with a real key.
 
 provider: openhandle
 source:
@@ -87,8 +87,11 @@ endpoints:
     checked: '2026-09-05'
     confidence: documented
     note: Public, unmetered synthetic-fixture discovery.
-  unverified: Public response returned HTTP 200, but operation metadata contains undocumented fields and null values where OpenAPI requires arrays.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      limit: 1
+  unverified: Public response returned HTTP 200, but operation metadata contains undocumented fields and null values where OpenAPI requires arrays.
 - id: openhandle.x.get-v1-test-data-id
   tier: extended
   platform: creators
@@ -116,8 +119,11 @@ endpoints:
     checked: '2026-09-05'
     confidence: documented
     note: Public, unmetered synthetic-fixture discovery.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      id: instagram.profile.northstar-forge
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.post-v1-urls-fetch
   tier: extended
   platform: creators
@@ -146,17 +152,21 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    body:
+      url: https://www.instagram.com/instagram/
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-instagram-comments-identifier-likers
   tier: extended
   platform: instagram
@@ -198,17 +208,24 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '18470057866113934'
+    queryParams:
+      media_id: '3978880184454783667'
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-comments-identifier-likers.json
 - id: openhandle.x.get-v1-instagram-hashtags-identifier
   tier: extended
   platform: instagram
@@ -240,17 +257,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: instagram
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-hashtags-identifier.json
 - id: openhandle.x.get-v1-instagram-hashtags-identifier-posts
   tier: extended
   platform: instagram
@@ -295,17 +318,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: instagram
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-hashtags-identifier-posts.json
 - id: openhandle.x.get-v1-instagram-hashtags-identifier-reels
   tier: extended
   platform: instagram
@@ -341,17 +370,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: instagram
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-hashtags-identifier-reels.json
 - id: openhandle.x.get-v1-instagram-highlights-identifier
   tier: extended
   platform: instagram
@@ -383,17 +418,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '18142207969557132'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-highlights-identifier.json
 - id: openhandle.x.get-v1-instagram-locations-identifier
   tier: extended
   platform: instagram
@@ -425,17 +466,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '384695225271379'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-locations-identifier.json
 - id: openhandle.x.get-v1-instagram-locations-identifier-guides
   tier: extended
   platform: instagram
@@ -471,17 +518,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '384695225271379'
+    queryParams:
+      freshness: 30d
+  unverified: http 404
 - id: openhandle.x.get-v1-instagram-locations-identifier-posts
   tier: extended
   platform: instagram
@@ -526,17 +578,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '384695225271379'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-locations-identifier-posts.json
 - id: openhandle.x.get-v1-instagram-music-identifier
   tier: extended
   platform: instagram
@@ -568,17 +626,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '27499285159675348'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-music-identifier.json
 - id: openhandle.x.get-v1-instagram-music-identifier-stream
   tier: extended
   platform: instagram
@@ -614,17 +678,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '27499285159675348'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-music-identifier-stream.json
 - id: openhandle.x.get-v1-instagram-posts-identifier-clip-metadata
   tier: extended
   platform: instagram
@@ -656,17 +726,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: Dc30nJeRKKz
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-posts-identifier-clip-metadata.json
 - id: openhandle.x.get-v1-instagram-posts-identifier-comment-metadata
   tier: extended
   platform: instagram
@@ -698,17 +774,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: Dc30nJeRKKz
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-posts-identifier-comment-metadata.json
 - id: openhandle.x.get-v1-instagram-posts-identifier-comment-moderation
   tier: extended
   platform: instagram
@@ -746,17 +828,24 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: Dc30nJeRKKz
+    queryParams:
+      comment: great post
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-posts-identifier-comment-moderation.json
 - id: openhandle.x.get-v1-instagram-posts-identifier-comments
   tier: extended
   platform: instagram
@@ -792,17 +881,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: Dc30nJeRKKz
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-posts-identifier-comments.json
 - id: openhandle.x.get-v1-instagram-posts-identifier-comments-comment-id-replies
   tier: extended
   platform: instagram
@@ -844,17 +939,24 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: Dc30nJeRKKz
+      comment_id: '18470057866113934'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-posts-identifier-comments-comment-id-replies.json
 - id: openhandle.x.get-v1-instagram-posts-identifier-insights
   tier: extended
   platform: instagram
@@ -886,17 +988,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: Dc30nJeRKKz
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-posts-identifier-insights.json
 - id: openhandle.x.get-v1-instagram-posts-identifier-likers
   tier: extended
   platform: instagram
@@ -932,17 +1040,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: Dc30nJeRKKz
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-posts-identifier-likers.json
 - id: openhandle.x.get-v1-instagram-posts-identifier-oembed
   tier: extended
   platform: instagram
@@ -974,17 +1088,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: Dc30nJeRKKz
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-posts-identifier-oembed.json
 - id: openhandle.x.get-v1-instagram-posts-identifier-tagged-users
   tier: extended
   platform: instagram
@@ -1020,17 +1140,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: Dc30nJeRKKz
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-posts-identifier-tagged-users.json
 - id: openhandle.x.get-v1-instagram-posts-identifier-template
   tier: extended
   platform: instagram
@@ -1062,17 +1188,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: Dc30nJeRKKz
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-posts-identifier-template.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-about
   tier: extended
   platform: instagram
@@ -1104,17 +1236,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-about.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-business-recommendations
   tier: extended
   platform: instagram
@@ -1150,17 +1288,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-business-recommendations.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-followers
   tier: extended
   platform: instagram
@@ -1196,17 +1340,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-followers.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-followers-search
   tier: extended
   platform: instagram
@@ -1248,17 +1398,24 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      q: instagram
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-followers-search.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-following
   tier: extended
   platform: instagram
@@ -1294,17 +1451,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-following.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-following-search
   tier: extended
   platform: instagram
@@ -1346,17 +1509,24 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      q: instagram
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-following-search.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-highlights
   tier: extended
   platform: instagram
@@ -1392,17 +1562,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-highlights.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-pinned-posts
   tier: extended
   platform: instagram
@@ -1438,17 +1614,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-pinned-posts.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-related
   tier: extended
   platform: instagram
@@ -1484,17 +1666,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-related.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-reposts
   tier: extended
   platform: instagram
@@ -1530,17 +1718,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-reposts.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-stories
   tier: extended
   platform: instagram
@@ -1576,17 +1770,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-stories.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-suggested
   tier: extended
   platform: instagram
@@ -1618,17 +1818,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Test response returned HTTP 200, but data was an array where OpenAPI requires an object. Live verification remains pending.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-suggested.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-tagged-posts
   tier: extended
   platform: instagram
@@ -1664,17 +1870,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-tagged-posts.json
 - id: openhandle.x.get-v1-instagram-profiles-identifier-videos
   tier: extended
   platform: instagram
@@ -1710,17 +1922,23 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-profiles-identifier-videos.json
 - id: openhandle.x.get-v1-instagram-search-hashtags
   tier: extended
   platform: instagram
@@ -1755,17 +1973,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: instagram
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-search-hashtags.json
 - id: openhandle.x.get-v1-instagram-search-music
   tier: extended
   platform: instagram
@@ -1800,17 +2023,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: instagram
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-search-music.json
 - id: openhandle.x.get-v1-instagram-search-places
   tier: extended
   platform: instagram
@@ -1845,17 +2073,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: instagram
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-search-places.json
 - id: openhandle.x.get-v1-instagram-search-reels
   tier: extended
   platform: instagram
@@ -1890,17 +2123,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: instagram
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-search-reels.json
 - id: openhandle.x.get-v1-instagram-search-top
   tier: extended
   platform: instagram
@@ -1935,17 +2173,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: instagram
+      freshness: 30d
+  verified: '2026-09-05'
+  example_response: examples/openhandle.x.get-v1-instagram-search-top.json
 - id: openhandle.x.get-v1-instagram-stories-identifier
   tier: extended
   platform: instagram
@@ -1977,17 +2220,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-effects
   tier: extended
   platform: tiktok
@@ -2022,17 +2265,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-effects-identifier
   tier: extended
   platform: tiktok
@@ -2064,17 +2307,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-effects-identifier-posts
   tier: extended
   platform: tiktok
@@ -2110,17 +2353,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-hashtags-identifier
   tier: extended
   platform: tiktok
@@ -2152,17 +2395,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: fyp
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-hashtags-identifier-posts
   tier: extended
   platform: tiktok
@@ -2198,17 +2446,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: fyp
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-live-events-identifier
   tier: extended
   platform: tiktok
@@ -2240,17 +2493,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-live-feed
   tier: extended
   platform: tiktok
@@ -2289,17 +2542,20 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-live-rooms-identifier
   tier: extended
   platform: tiktok
@@ -2337,17 +2593,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-live-rooms-identifier-ranking-types
   tier: extended
   platform: tiktok
@@ -2389,17 +2645,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-live-rooms-identifier-rankings
   tier: extended
   platform: tiktok
@@ -2447,17 +2703,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-locations-identifier
   tier: extended
   platform: tiktok
@@ -2489,17 +2745,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-locations-identifier-posts
   tier: extended
   platform: tiktok
@@ -2535,17 +2791,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-music-identifier
   tier: extended
   platform: tiktok
@@ -2577,17 +2833,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-music-identifier-posts
   tier: extended
   platform: tiktok
@@ -2623,17 +2879,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-posts-identifier-comments
   tier: extended
   platform: tiktok
@@ -2669,17 +2925,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '7606449212716305678'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-posts-identifier-comments-comment-id
   tier: extended
   platform: tiktok
@@ -2717,17 +2978,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-posts-identifier-comments-comment-id-replies
   tier: extended
   platform: tiktok
@@ -2769,17 +3030,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-followers
   tier: extended
   platform: tiktok
@@ -2815,17 +3076,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@tiktok'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-following
   tier: extended
   platform: tiktok
@@ -2861,17 +3127,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@tiktok'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-liked-posts
   tier: extended
   platform: tiktok
@@ -2907,17 +3178,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@tiktok'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-music
   tier: extended
   platform: tiktok
@@ -2953,17 +3229,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@tiktok'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-playlists
   tier: extended
   platform: tiktok
@@ -2999,17 +3280,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@tiktok'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-playlists-playlist-id
   tier: extended
   platform: tiktok
@@ -3047,17 +3333,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-playlists-playlist-id-posts
   tier: extended
   platform: tiktok
@@ -3099,17 +3385,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-qr-code
   tier: extended
   platform: tiktok
@@ -3141,17 +3427,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@tiktok'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-profiles-identifier-stories
   tier: extended
   platform: tiktok
@@ -3187,17 +3478,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@tiktok'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-search-comment-suggestions
   tier: extended
   platform: tiktok
@@ -3232,17 +3528,21 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: tiktok
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-search-hashtags
   tier: extended
   platform: tiktok
@@ -3277,17 +3577,21 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: tiktok
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-search-insights
   tier: extended
   platform: tiktok
@@ -3322,17 +3626,21 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: tiktok
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-search-live
   tier: extended
   platform: tiktok
@@ -3367,17 +3675,21 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: tiktok
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-search-locations
   tier: extended
   platform: tiktok
@@ -3412,17 +3724,21 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: tiktok
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-search-music
   tier: extended
   platform: tiktok
@@ -3457,17 +3773,21 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: tiktok
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-search-top
   tier: extended
   platform: tiktok
@@ -3502,17 +3822,21 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: tiktok
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-shop-deals-flash-sale
   tier: extended
   platform: tiktok
@@ -3541,17 +3865,20 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-shop-deals-new-user
   tier: extended
   platform: tiktok
@@ -3580,17 +3907,20 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-shop-home
   tier: extended
   platform: tiktok
@@ -3619,17 +3949,20 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-shop-live-identifier-products
   tier: extended
   platform: tiktok
@@ -3671,17 +4004,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-shop-products-identifier
   tier: extended
   platform: tiktok
@@ -3713,17 +4046,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-shop-products-identifier-reviews
   tier: extended
   platform: tiktok
@@ -3759,17 +4092,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-shop-profiles-identifier-page
   tier: extended
   platform: tiktok
@@ -3810,17 +4143,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-shop-profiles-identifier-products
   tier: extended
   platform: tiktok
@@ -3856,17 +4189,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-shop-profiles-identifier-tabs
   tier: extended
   platform: tiktok
@@ -3902,17 +4235,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-shop-recommendations
   tier: extended
   platform: tiktok
@@ -3947,17 +4280,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-shop-search
   tier: extended
   platform: tiktok
@@ -3992,17 +4325,21 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: tiktok
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-shop-sellers-identifier
   tier: extended
   platform: tiktok
@@ -4034,17 +4371,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-shop-sellers-identifier-categories
   tier: extended
   platform: tiktok
@@ -4080,17 +4417,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-shop-sellers-identifier-categories-category-id-products
   tier: extended
   platform: tiktok
@@ -4138,17 +4475,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-shop-sellers-identifier-products
   tier: extended
   platform: tiktok
@@ -4194,17 +4531,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-shop-sellers-identifier-sort-types
   tier: extended
   platform: tiktok
@@ -4240,17 +4577,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-stories-identifier
   tier: extended
   platform: tiktok
@@ -4282,17 +4619,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-trending-categories
   tier: extended
   platform: tiktok
@@ -4321,17 +4658,20 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-tiktok-trending-insights
   tier: extended
   platform: tiktok
@@ -4366,17 +4706,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-tiktok-trending-music
   tier: extended
   platform: tiktok
@@ -4401,17 +4741,20 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Test response returned HTTP 200, but data was an array where OpenAPI requires an object. Live verification remains pending.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      freshness: 30d
+  unverified: Test response returned HTTP 200, but data was an array where OpenAPI requires an object. Live verification remains pending.
 - id: openhandle.x.get-v1-tiktok-trending-posts
   tier: extended
   platform: tiktok
@@ -4440,17 +4783,20 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-twitter-lists-identifier
   tier: extended
   platform: x
@@ -4482,17 +4828,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-twitter-lists-identifier-members
   tier: extended
   platform: x
@@ -4528,17 +4874,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-twitter-lists-identifier-posts
   tier: extended
   platform: x
@@ -4574,17 +4920,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-twitter-posts-identifier-comments
   tier: extended
   platform: x
@@ -4620,17 +4966,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '1808168603721650364'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-twitter-posts-identifier-comments-comment-id-replies
   tier: extended
   platform: x
@@ -4672,17 +5023,17 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  unverified: No real public identifier is on file for this route's required input; not called.
 - id: openhandle.x.get-v1-twitter-posts-identifier-likers
   tier: extended
   platform: x
@@ -4718,17 +5069,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '1808168603721650364'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-twitter-posts-identifier-reposters
   tier: extended
   platform: x
@@ -4764,17 +5120,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '1808168603721650364'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-twitter-profiles-identifier-followers
   tier: extended
   platform: x
@@ -4810,17 +5171,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@NASA'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-twitter-profiles-identifier-following
   tier: extended
   platform: x
@@ -4856,17 +5222,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@NASA'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-twitter-profiles-identifier-lists
   tier: extended
   platform: x
@@ -4902,17 +5273,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@NASA'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-twitter-profiles-identifier-media
   tier: extended
   platform: x
@@ -4948,17 +5324,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@NASA'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-twitter-profiles-identifier-replies
   tier: extended
   platform: x
@@ -4994,17 +5375,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@NASA'
+    queryParams:
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-twitter-search-media
   tier: extended
   platform: x
@@ -5047,17 +5433,22 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: NASA
+      type: image
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.
 - id: openhandle.x.get-v1-twitter-search-suggestions
   tier: extended
   platform: x
@@ -5092,14 +5483,18 @@ endpoints:
     note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: Live pricing and Openhandle-Cost settlement remain unverified. See the core catalog for published volume and cache rates; unknown prices prevent platform billing.
-  unverified: Imported from OpenAPI; no Live call or billing verification has run.
+    confidence: documented
+    note: Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on 2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private profiles are billed; invalid input, upstream failures and rate limits are not.
   docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: NASA
+      freshness: 30d
+  unverified: Imported from OpenAPI; a Live call has not verified this route yet.

@@ -1,0 +1,54 @@
+{
+  "platform": "instagram",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T16:55:13.28452328Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "528817151",
+      "handle": "nasa",
+      "displayName": "NASA",
+      "bio": "",
+      "avatar": {
+        "url": "https://media.openhandle.dev/AyCKmzjcA5yh9kSzdOh45CFslkPLv2N2f2kTi7uD1xJbbEl4JIz_jO2I1P2BOwXhB5xt_qM12pufwPN7s6xIjdCfMk6l2c9LXyN_RQfoOwLr8dqwHNjgRHQ-jNEiBXHuClT6PtRCL7rAwOcagkIS6Q"
+      },
+      "externalUrl": null,
+      "isVerified": true,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": null,
+        "following": null,
+        "posts": null
+      }
+    },
+    {
+      "id": "673882723",
+      "handle": "nasajohnson",
+      "displayName": "NASA’s Johnson Space Center",
+      "bio": "",
+      "avatar": {
+        "url": "https://media.openhandle.dev/AxTNsEhLBO2IY1NPdT7-oezb_AFMlJrXM3p3bj9LFnjPO7iHfpRZUSyo-_PFdRMaLOMUSiOqK7Es0eV1_kutagtnFsJ8qnE2SKdo92YpCyUxKewJkXHGigBTvZmo6lvyPz_dK-JQYvDEPg_w27WrzQ"
+      },
+      "externalUrl": null,
+      "isVerified": true,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": null,
+        "following": null,
+        "posts": null
+      }
+    },
+    "… 18 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "ASRxp8YgTWhXIURfWhEwudxXkQftaYE3VZ-HpuYH0FyVWfvbB34zP4gToxLM4liLe7laznGWa6fDwM76Xi3OAEF4GjWv9I72nqlhwdVLRLi0w_dly-pXPWSpG9W7XakzsvE4lTHQvRDtjS8HNQhLzm4ZK8gsA-IJhbqZsC6BdzxaH6SiFZiZ3RlWFuTBS_GWo3Jm1mdWn_E4-jCN0ZV1mC6y3D0qL7wdG2NIn-YOeWc8upc0zWfkFKO39ZbZ7dtPQM7Z20QFT2vMxMg7P-k3dToEyQZcqrzhk-GL_ZQAZMCLHtxh4QOj7OK0"
+    }
+  }
+}

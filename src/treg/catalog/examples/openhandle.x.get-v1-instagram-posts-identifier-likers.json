@@ -1,0 +1,34 @@
+{
+  "platform": "instagram",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T16:56:32.647104669Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "72171982643",
+      "handle": "dra.izadoraargenton",
+      "displayName": "Izadora Argenton | Advogada Trabalhista",
+      "bio": "",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A5OqRbdK-8gkXdbq9lD92PZYsJyZtPSZPQ1rMxU9z0UuIWP-tLJ6vi-SMbU6db9HJHtR5w_PoeiaGUmeWjUGmO3W30ALnRyMt3bdh89Tz9Ba_R-JEq1lWUg7cJYsc1XQQ2ZHhMJg5yU0jhT6DhhhO8F8"
+      },
+      "externalUrl": null,
+      "isVerified": false,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": null,
+        "following": null,
+        "posts": null
+      }
+    },
+    "… 1998 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

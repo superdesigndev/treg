@@ -37,21 +37,22 @@ endpoints:
       freshness: 30d
     pathParams:
       identifier: '@instagram'
+  verified: '2026-09-05'
+  example_response: examples/openhandle.instagram.user.profile.json
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.instagram.user.posts
   capability: instagram.user.posts
@@ -91,21 +92,22 @@ endpoints:
       freshness: 30d
     pathParams:
       identifier: '@instagram'
+  verified: '2026-09-05'
+  example_response: examples/openhandle.instagram.user.posts.json
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.instagram.user.reels
   capability: instagram.user.reels
@@ -141,21 +143,22 @@ endpoints:
       freshness: 30d
     pathParams:
       identifier: '@instagram'
+  verified: '2026-09-05'
+  example_response: examples/openhandle.instagram.user.reels.json
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.instagram.search.users
   capability: instagram.search.users
@@ -188,21 +191,22 @@ endpoints:
     queryParams:
       freshness: 30d
       q: NASA
+  verified: '2026-09-05'
+  example_response: examples/openhandle.instagram.search.users.json
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.instagram.post.detail
   capability: instagram.post.detail
@@ -234,21 +238,22 @@ endpoints:
       freshness: 30d
     pathParams:
       identifier: DbTY2uSG3Oj
+  verified: '2026-09-05'
+  example_response: examples/openhandle.instagram.post.detail.json
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.tiktok.user.profile
   capability: tiktok.user.profile
@@ -282,19 +287,18 @@ endpoints:
       identifier: '@tiktok'
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.tiktok.user.videos
   capability: tiktok.user.videos
@@ -336,19 +340,18 @@ endpoints:
       identifier: '@tiktok'
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.tiktok.search.users
   capability: tiktok.search.users
@@ -383,19 +386,18 @@ endpoints:
       q: NASA
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.tiktok.search.videos
   capability: tiktok.search.videos
@@ -430,19 +432,18 @@ endpoints:
       q: NASA
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.tiktok.video.detail
   capability: tiktok.video.detail
@@ -476,19 +477,18 @@ endpoints:
       identifier: '7606449212716305678'
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.x.user.profile
   capability: x.user.profile
@@ -522,19 +522,18 @@ endpoints:
       identifier: '@NASA'
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.x.user.posts
   capability: x.user.posts
@@ -576,19 +575,18 @@ endpoints:
       identifier: '@NASA'
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.x.search.users
   capability: x.search.users
@@ -623,19 +621,18 @@ endpoints:
       q: NASA
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.x.search.posts
   capability: x.search.posts
@@ -676,19 +673,18 @@ endpoints:
       q: NASA
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
 - id: openhandle.x.post.detail
   capability: x.post.detail
@@ -722,17 +718,16 @@ endpoints:
       identifier: '1808168603721650364'
   cost:
     type: per_call
-    value: null
+    value: 0.003
     currency: USD
     per: 1
     unit: call
     source: docs
     source_url: https://openhandle.dev/pricing.md
     checked: '2026-09-05'
-    confidence: unknown
-    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
-      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
-      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
-      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
-      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+    confidence: documented
+    note: 'Published entry rate per answered request; the Openhandle-List-Price header reported 0.003 on
+      2026-09-05. Volume tiers ($0.0025 above 10,000 requests a month, $0.0015 above 100,000) and cache
+      hits (24h $0.0005, 7d $0.0001, 30d free) cost less and are margin. Confirmed not-found and private
+      profiles are billed; invalid input, upstream failures and rate limits are not.'
   docs_url: https://openhandle.dev/docs/api-reference
