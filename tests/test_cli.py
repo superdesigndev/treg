@@ -872,3 +872,31 @@ def test_onboard_catalog_dead_end_names_the_one_command_that_fixes_it(monkeypatc
     out = capsys.readouterr().out
     assert "treg connections connect --provider tikhub" in out
     assert not any(s.startswith("GET /call/") for s in c.seen)   # nothing was called
+
+
+def test_show_prints_failure_diagnostics_on_stderr_and_keeps_stdout_the_body(capsys):
+    """A failed call must be filable: stdout stays the exact upstream body (whatever parses it), and
+    stderr gets one line with the HTTP status, whose answer it is, and the call id. A runner that
+    saved only stdout recorded 115 Moz quota 403s as a bare "cli_error" (2026-09-04)."""
+    import httpx
+    body = b'{"error":"The account does not have enough quota remaining for current period."}'
+    relayed = httpx.Response(403, content=body, headers={
+        "content-type": "application/json", "X-Treg-Call-Id": "c2075d8d79eb4436aafc310e81081c1b"})
+    with pytest.raises(SystemExit):
+        cli._show(relayed)
+    out, err = capsys.readouterr()
+    assert json.loads(out) == json.loads(body)
+    assert "HTTP 403" in err and "provider answered" in err and "c2075d8d79eb4436aafc310e81081c1b" in err
+    assert "charged" not in err  # no cost header → no claim about money
+
+    refused = httpx.Response(402, content=b'{"detail":{"error":"route_max_cost"}}', headers={
+        "content-type": "application/json", "X-Treg-Error": "1"})
+    with pytest.raises(SystemExit):
+        cli._show(refused)
+    _, err = capsys.readouterr()
+    assert "HTTP 402" in err and "treg refused" in err
+
+    ok = httpx.Response(200, content=b'{"ok":true}', headers={"content-type": "application/json"})
+    cli._show(ok)
+    out, err = capsys.readouterr()
+    assert json.loads(out) == {"ok": True} and err == ""

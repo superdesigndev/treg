@@ -438,8 +438,20 @@ bill one row per listed item — the length of `targets`/`keywords`/`domains`/`u
 settled 20 rows, moz's one `targets` entry settled 20 quota rows; 2026-09-02: lusha decision-makers,
 catalogued FREE, answered 44 contacts for one domain and settled $5.49 from `billing.creditsCharged`
 with nothing reserved). Without any signal it is the
-20-row page, and a settle-at-estimate provider then charges that page (seranking url.metrics on a
-single `target` still does).
+20-row page, and a settle-at-estimate provider then charges that page.
+
+The page default has no meaning at all when the catalog prices per INPUT entity, and the estimator
+knows the difference since 2026-09-05: a `per_result`/`quota_rows` cost whose `unit` is `target`,
+`domain`, `keyword` or `call` (`resolve._ENTITY_UNITS`) is counted by `_entity_count` — repeated or
+comma-separated query values under an entity key, an entity array in the body (top level or inside a
+JSON-RPC `params`, serpstat's shape), one per task object in a DataForSEO-style array, else exactly
+one; `call` is always one; capped at 10,000, never at the 100-row page max, because a 5,000-keyword
+export really does cost 5,000 keywords. Before this the 20-row default billed a one-target
+`seranking.web.backlinks.summary` $0.358 for a $0.0179 call and a one-domain
+`serpstat.google.domain.overview` $0.05 for $0.0025 — 32 and 166 calls across 12 and 38 orgs since
+2026-08-12, refunded by hand — and the same number was the catalog's `~$/call` display, so the caller
+saw the wrong price before the call too. On these providers nothing reports a cost after the fact,
+so the reserve IS the charge: a wrong entity count is a wrong bill, not a hold the settle trues up.
 
 The same family carries two more derived rules. **Hunter's email finder** is the flat case: one whole
 search credit when an email comes back, nothing on a miss — Hunter documents a miss as free, but a

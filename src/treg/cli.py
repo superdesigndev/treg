@@ -286,6 +286,7 @@ def _show(resp: httpx.Response) -> None:
     except Exception:
         print(resp.text)
     if resp.status_code >= 400:
+        _show_failure_diagnostics(resp)
         # 402 = the team balance can't cover a call on treg's key. The JSON above already carries the
         # numbers an agent needs; a human gets the two commands that fix it.
         if resp.status_code == 402 and isinstance(body, dict) and isinstance(body.get("detail"), dict):
@@ -300,6 +301,23 @@ def _show(resp: httpx.Response) -> None:
                 print("(no valid active team — pick one with `treg org use <slug>`; see `treg org ls`)",
                       file=sys.stderr)
         sys.exit(1)
+
+
+def _show_failure_diagnostics(resp: httpx.Response) -> None:
+    """One stderr line an agent can file a failure under: the HTTP status, WHOSE answer it is, and the
+    call id support can look up. The body above is printed verbatim, so for a relayed upstream error it
+    is the vendor's own JSON with no status and no id — a runner saving only stdout recorded 115 Moz
+    quota 403s as a generic "cli_error" and never learned they were free (2026-09-04). `X-Treg-Error`
+    marks treg's own refusals; its absence on a 4xx/5xx means the provider answered and treg relayed
+    it unchanged. stderr only — stdout stays the exact body for whatever parses it."""
+    headers = getattr(resp, "headers", {}) or {}
+    whose = "treg refused the call" if headers.get("X-Treg-Error") else "the provider answered; treg relayed it unchanged"
+    line = f"treg: HTTP {resp.status_code} — {whose}"
+    if call_id := headers.get("X-Treg-Call-Id"):
+        line += f"; call id {call_id} (quote it to support; `treg calls` shows the record)"
+    if cost := headers.get("X-Treg-Cost-Micro"):
+        line += f"; charged ${int(cost) / 1_000_000:g}"
+    print(line, file=sys.stderr)
 
 
 def _as_list(resp: httpx.Response) -> list[dict]:

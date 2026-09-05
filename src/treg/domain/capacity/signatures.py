@@ -43,6 +43,11 @@ _TABLE: list[tuple[str, int, str, str]] = [
     # Apollo: an empty credit pool is a 422 {"error": "Insufficient credits. Please upgrade your
     # plan."} (ops/capacity.md, 2026-09-01). A 422 without the phrase is the caller's validation error.
     ("apollo", 422, r"insufficient credits", "balance"),
+    # Moz: a spent row quota is a 403 {"error": "The account does not have enough quota remaining for
+    # current period.", "data": {"issue": "insufficient-quota"}} — 115 of one org's calls hit it
+    # unrecognised on 2026-09-04 (nothing here matched a 403, and "quota" alone is not a tripwire
+    # word). The period resets on Moz's billing day, which the answer does not name.
+    ("moz", 403, r"insufficient-quota", "quota"),
     ("*", 402, r"", "balance"),
 ]
 
@@ -57,7 +62,7 @@ CAPACITY_PHRASES = (
     r"reached your credit limit", r"exceeded the monthly request limit",
     r"insufficient (?:credits?|balance|funds)", r"out of credits?", r"credits? (?:exhausted|remaining|left)",
     r"(?:account |api |credit )?(?:balance|quota)(?: (?:has been|is|was))? (?:exceeded|reached|exhausted|limit)",
-    r"upgrade your plan",
+    r"upgrade your plan", r"insufficient-quota", r"not have enough quota",
 )
 _UNRECORDED = re.compile(r"\b(?:" + "|".join(f"(?:{p})" for p in CAPACITY_PHRASES) + r")\b", re.IGNORECASE)
 

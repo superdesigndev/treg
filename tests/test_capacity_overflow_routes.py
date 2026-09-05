@@ -206,6 +206,19 @@ def test_every_recorded_phrase_arms_the_tripwire():
         assert sig is not None and sig.kind == "unrecorded", f"{provider}'s phrase {pattern!r} does not arm the tripwire"
 
 
+def test_moz_spent_row_quota_is_a_quota_mark():
+    """Moz answers a spent period allowance with 403 {"issue": "insufficient-quota"} — 115 of one
+    org's calls went upstream to a dead key on 2026-09-04 because no row matched a 403. It is a
+    `quota` exhaustion (resets on Moz's billing day, which the body does not name → default lock);
+    Moz's caller-fault 4xx stay None."""
+    body = (b'{"error":"The account does not have enough quota remaining for current period.",'
+            b'"data":{"explanation":"account does not have sufficient quota","issue":"insufficient-quota"}}')
+    sig = S.classify("moz", 403, None, body)
+    assert sig is not None and sig.kind == "quota" and sig.resets_at is None
+    assert S.classify("moz", 400, None, b'{"error":"target is required"}') is None
+    assert S.classify("moz", 403, None, b'{"error":"forbidden"}') is None
+
+
 def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
     """The next Apollo: a 4xx no row matched whose body still names credits/quota/balance. It is
     logged and counted (`capacity_signal=unrecorded`) and does nothing else."""
@@ -236,7 +249,7 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 _UNRECORDED_SIGNATURE = {
     "apify", "aviato", "branddev", "brightdata", "coingecko", "coresignal", "crustdata", "dataforseo",
     "diffbot", "exa", "fiber-ai", "finnhub", "icypeas", "influencersclub", "justoneapi", "marketstack",
-    "minimax", "moz", "oceanio", "openrouter", "pdl", "replicate", "scrapecreators", "seranking",
+    "minimax", "oceanio", "openrouter", "pdl", "replicate", "scrapecreators", "seranking",
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "tomba", "twelvedata",
 }
 

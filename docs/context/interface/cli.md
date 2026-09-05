@@ -75,7 +75,11 @@ connect. `_client(cfg)` sends `X-Treg-Token: token` plus `X-Treg-Org: <active_or
 for a per-org token, and picks the org for an identity token). `_effective_org` applies the global
 `--org` override; `_active_org_id` resolves the active org's numeric id via `GET /orgs` (for
 `/orgs/{id}/...` endpoints). `_admin_client` uses `admin_token` else the bearer. `_show` pretty-prints +
-exits non-zero on HTTP >= 400.
+exits non-zero on HTTP >= 400, and on >= 400 first prints one stderr line (`_show_failure_diagnostics`,
+2026-09-05): the HTTP status, whose answer it is (`X-Treg-Error: 1` = treg refused; absent = the
+provider answered and treg relayed it unchanged), the `X-Treg-Call-Id` to quote to support, and the
+`X-Treg-Cost-Micro` charge when the header is present. stdout stays the exact body — a runner that
+saved only stdout filed 115 relayed Moz quota 403s as a bare "cli_error" with no status or id.
 
 **Per-process identity:** `TREG_TOKEN` (+ optional `TREG_ORG`) in the environment beat
 `~/.treg/config.json`, so each coding agent on one machine can run as its own scoped agent —

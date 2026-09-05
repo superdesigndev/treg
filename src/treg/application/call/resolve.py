@@ -341,6 +341,55 @@ _LIMIT_PARAMS = ("limit", "count", "depth", "page_size", "per_page", "num", "max
                  "contactsLimit")  # camelCase: companyenrich, exa, lusha; contactsLimit: lusha decision-makers
 
 
+# Units that name an INPUT entity rather than a returned row: the caller pays per thing they asked
+# about (an SE Ranking `target`, a Serpstat `domain`, a `keyword`; `call` is the flat case). Providers
+# billing this way rarely report a per-call cost, so the reserve IS the charge — a wrong count is a
+# wrong bill, not a hold the settle trues up.
+_ENTITY_UNITS = frozenset({"target", "domain", "keyword", "call"})
+_ENTITY_KEYS = ("targets", "keywords", "domains", "urls", "target", "keyword", "domain", "url")
+_ENTITY_MAX = 10_000  # a body cannot reserve more than this many entities' worth in one call
+
+
+def _doc_entities(doc) -> int:
+    """Entities named by one JSON object: a list under an entity key (top level, or inside a
+    JSON-RPC `params` — serpstat), else one for a scalar target."""
+    if not isinstance(doc, dict):
+        return 0
+    for scope in (doc, doc.get("params")):
+        if not isinstance(scope, dict):
+            continue
+        for key in _ENTITY_KEYS:
+            val = scope.get(key)
+            if isinstance(val, list):
+                return len(val)
+            if isinstance(val, str) and val.strip():
+                return 1
+    return 0
+
+
+def _entity_count(query, body: bytes) -> int:
+    """How many billable input entities a request names. Query first (repeated keys — `target=a&
+    target=b` or `targets[]=` — and comma-separated values both count), then the JSON body (an
+    entity array, or one per task object in a DataForSEO-style array). Never below one: a request
+    that names no entity still asks about the one its path implies."""
+    n = 0
+    if query is not None:
+        items = query.multi_items() if hasattr(query, "multi_items") else list(query.items())
+        for key, val in items:
+            if key.rstrip("[]") in _ENTITY_KEYS and val is not None and str(val).strip():
+                n += max(1, len([p for p in str(val).split(",") if p.strip()]))
+    if n == 0 and body:
+        try:
+            doc = json.loads(body)
+        except (ValueError, UnicodeDecodeError):
+            doc = None
+        if isinstance(doc, list):
+            n = sum(_doc_entities(d) for d in doc) or len(doc)
+        else:
+            n = _doc_entities(doc)
+    return max(1, min(n, _ENTITY_MAX))
+
+
 def _body_limit(body: bytes) -> int | None:
     """A row-count signal from a JSON body: an explicit limit key first (dataforseo takes
     `[{..., "limit": 3}]`, lusha `{"limit": 1}`), else the ARRAY LENGTH — providers that take a
@@ -388,7 +437,12 @@ def _platform_estimate_micro(cost: dict, query, body: bytes = b"") -> int:
     if usd is None:
         return 0
     n = 1
-    if cost.get("type") in ("per_result", "quota_rows"):
+    if cost.get("type") in ("per_result", "quota_rows") and cost.get("unit") in _ENTITY_UNITS:
+        # Priced per INPUT entity, not per returned row: the page-size default below has no
+        # meaning here and billed one-target calls 20x (seranking summary, serpstat overview —
+        # 2026-09-05). The request names how many entities it asks about.
+        n = 1 if cost.get("unit") == "call" else _entity_count(query, body)
+    elif cost.get("type") in ("per_result", "quota_rows"):
         asked = None
         for name in _LIMIT_PARAMS:
             raw = query.get(name)
