@@ -1232,12 +1232,90 @@ def ingest_replicate(refresh: bool) -> tuple[Path, dict]:
     return out, {"models": len(endpoints)}
 
 
+def ingest_openhandle(refresh: bool) -> tuple[Path, dict]:
+    url = "https://api.openhandle.dev/openapi.json"
+    spec = json.loads(fetch(url, "openhandle_openapi.json", refresh=refresh))
+    skip = core_routes("openhandle")
+    endpoints = []
+    for path, item in sorted(spec["paths"].items()):
+        for method, operation in sorted(item.items()):
+            if method not in {"get", "post", "put", "patch", "delete", "head", "options"}:
+                continue
+            if (method.upper(), path) in skip:
+                continue
+            family = path.split("/")[2]
+            platform = {"twitter": "x", "urls": "creators", "test-data": "creators"}.get(family, family)
+            parameters = [*item.get("parameters", []), *operation.get("parameters", [])]
+            inp = {}
+            body = operation.get("requestBody", {}).get("content", {}).get("application/json", {}).get("schema")
+            if body:
+                inp["bodyType"] = "json"
+                for name, schema in body.get("properties", {}).items():
+                    parameters.append({"name": name, "in": "body", "schema": schema,
+                                       "required": name in body.get("required", []),
+                                       "description": schema.get("description", "")})
+            for parameter in parameters:
+                location = {"query": "queryParams", "path": "pathParams", "body": "body"}.get(parameter["in"])
+                if location is None:
+                    continue
+                schema = parameter.get("schema", {})
+                field = {"type": schema.get("type", "string"),
+                         "required": bool(parameter.get("required", False))}
+                note = clean(parameter.get("description", ""))
+                for key in ("enum", "default", "minimum", "maximum", "minLength", "format"):
+                    if key in schema:
+                        field[key] = schema[key]
+                if "example" in parameter:
+                    field["example"] = parameter["example"]
+                elif "example" in schema:
+                    field["example"] = schema["example"]
+                if note:
+                    field["note"] = note
+                inp.setdefault(location, {})[parameter["name"]] = field
+            inp["note"] = (
+                "OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. "
+                "freshness=30d makes cache hits free; cache misses still fetch and bill Live data."
+            )
+            free = family == "test-data"
+            cost = {
+                "type": "free" if free else "per_call",
+                "value": 0 if free else None,
+                "currency": "USD", "per": 1, "unit": "call",
+                "source": "docs", "source_url": url if free else "https://openhandle.dev/pricing.md",
+                "checked": "2026-09-05", "confidence": "documented" if free else "unknown",
+                "note": "Public, unmetered synthetic-fixture discovery." if free else (
+                    "Live pricing and Openhandle-Cost settlement remain unverified. "
+                    "See the core catalog for published volume and cache rates; unknown prices prevent platform billing."
+                ),
+            }
+            ep = {
+                "id": slug_id("openhandle", method + path), "tier": "extended",
+                "platform": platform, "scope": "any_account",
+                "kind": "utility" if family in {"test-data", "urls"} else "data",
+                "method": method.upper(), "path": path,
+                "summary": clean(operation.get("summary") or operation.get("description") or path),
+                "input": inp, "cost": cost,
+                "unverified": "Imported from OpenAPI; no Live call or billing verification has run.",
+                "docs_url": "https://openhandle.dev/docs/api-reference",
+            }
+            endpoints.append(ep)
+    out = write_extended("openhandle", {"method": "openapi", "spec_urls": [url],
+                                        "ingested": "2026-09-05"}, endpoints, [
+        "Every documented operation outside the core catalog is included, including free Test-data discovery.",
+        "Cross-platform URL dispatch and synthetic-fixture utilities share the creators platform.",
+        "OpenAPI examples may be synthetic: generation never issues data calls or claims Live verification.",
+        "Paid prices remain unknown until Live billing and settlement are verified.",
+    ])
+    return out, {"endpoints": len(endpoints)}
+
+
 INGESTERS = {
     "tikhub": ingest_tikhub,
     "dataforseo": ingest_dataforseo,
     "justoneapi": ingest_justoneapi,
     "openrouter": ingest_openrouter,
     "replicate": ingest_replicate,
+    "openhandle": ingest_openhandle,
 }
 
 

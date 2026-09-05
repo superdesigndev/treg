@@ -1,0 +1,738 @@
+provider: openhandle
+source:
+  docs: https://openhandle.dev/docs/api-reference
+  openapi: https://api.openhandle.dev/openapi.json
+  curated: '2026-09-05'
+limits: 'Free: 2 requests/second per key; pay as you go: 10 requests/second per key. Each page is one
+  request.'
+pricing_url: https://openhandle.dev/pricing.md
+endpoints:
+- id: openhandle.instagram.user.profile
+  capability: instagram.user.profile
+  platform: instagram
+  scope: any_account
+  method: GET
+  path: /v1/instagram/profiles/{identifier}
+  name: 'Instagram: Get a profile'
+  summary: Get a profile
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+        example: '@instagram'
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+    note: Use a Live key for public data; Test keys return synthetic data.
+  test_request:
+    queryParams:
+      freshness: 30d
+    pathParams:
+      identifier: '@instagram'
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.instagram.user.posts
+  capability: instagram.user.posts
+  platform: instagram
+  scope: any_account
+  method: GET
+  path: /v1/instagram/profiles/{identifier}/posts
+  name: 'Instagram: List profile posts'
+  summary: List profile posts
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+        example: '@instagram'
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+      since:
+        type: string
+        required: false
+        note: Return posts captured at or after this RFC 3339 timestamp.
+    note: One page per call; no page-size parameter. Omit cursor for the first page.
+  test_request:
+    queryParams:
+      freshness: 30d
+    pathParams:
+      identifier: '@instagram'
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.instagram.user.reels
+  capability: instagram.user.reels
+  platform: instagram
+  scope: any_account
+  method: GET
+  path: /v1/instagram/profiles/{identifier}/reels
+  name: 'Instagram: List profile reels'
+  summary: List profile reels
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+        example: '@instagram'
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: One page per call; no page-size parameter. Omit cursor for the first page.
+  test_request:
+    queryParams:
+      freshness: 30d
+    pathParams:
+      identifier: '@instagram'
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.instagram.search.users
+  capability: instagram.search.users
+  platform: instagram
+  scope: any_account
+  method: GET
+  path: /v1/instagram/search/profiles
+  name: 'Instagram: Search Instagram profiles'
+  summary: Search Instagram profiles
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        note: Public search query.
+        example: NASA
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: One page per call; no page-size parameter. Omit cursor for the first page.
+  test_request:
+    queryParams:
+      freshness: 30d
+      q: NASA
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.instagram.post.detail
+  capability: instagram.post.detail
+  platform: instagram
+  scope: any_account
+  method: GET
+  path: /v1/instagram/posts/{identifier}
+  name: 'Instagram: Get a post'
+  summary: Get a post
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+        example: DbTY2uSG3Oj
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+    note: Use a Live key for public data; Test keys return synthetic data.
+  test_request:
+    queryParams:
+      freshness: 30d
+    pathParams:
+      identifier: DbTY2uSG3Oj
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.tiktok.user.profile
+  capability: tiktok.user.profile
+  platform: tiktok
+  scope: any_account
+  method: GET
+  path: /v1/tiktok/profiles/{identifier}
+  name: 'TikTok: Get a profile'
+  summary: Get a profile
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+        example: '@tiktok'
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+    note: Use a Live key for public data; Test keys return synthetic data.
+  test_request:
+    queryParams:
+      freshness: 30d
+    pathParams:
+      identifier: '@tiktok'
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.tiktok.user.videos
+  capability: tiktok.user.videos
+  platform: tiktok
+  scope: any_account
+  method: GET
+  path: /v1/tiktok/profiles/{identifier}/posts
+  name: 'TikTok: List profile posts'
+  summary: List profile posts
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+        example: '@tiktok'
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+      since:
+        type: string
+        required: false
+        note: Return posts captured at or after this RFC 3339 timestamp.
+    note: One page per call; no page-size parameter. Omit cursor for the first page.
+  test_request:
+    queryParams:
+      freshness: 30d
+    pathParams:
+      identifier: '@tiktok'
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.tiktok.search.users
+  capability: tiktok.search.users
+  platform: tiktok
+  scope: any_account
+  method: GET
+  path: /v1/tiktok/search/profiles
+  name: 'TikTok: Search Tiktok profiles'
+  summary: Search Tiktok profiles
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        note: Public search query.
+        example: NASA
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: One page per call; no page-size parameter. Omit cursor for the first page.
+  test_request:
+    queryParams:
+      freshness: 30d
+      q: NASA
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.tiktok.search.videos
+  capability: tiktok.search.videos
+  platform: tiktok
+  scope: any_account
+  method: GET
+  path: /v1/tiktok/search/posts
+  name: 'TikTok: Search Tiktok posts'
+  summary: Search Tiktok posts
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        note: Public search query.
+        example: NASA
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: One page per call; no page-size parameter. Omit cursor for the first page.
+  test_request:
+    queryParams:
+      freshness: 30d
+      q: NASA
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.tiktok.video.detail
+  capability: tiktok.video.detail
+  platform: tiktok
+  scope: any_account
+  method: GET
+  path: /v1/tiktok/posts/{identifier}
+  name: 'TikTok: Get a post'
+  summary: Get a post
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+        example: '7606449212716305678'
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+    note: Use a Live key for public data; Test keys return synthetic data.
+  test_request:
+    queryParams:
+      freshness: 30d
+    pathParams:
+      identifier: '7606449212716305678'
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.x.user.profile
+  capability: x.user.profile
+  platform: x
+  scope: any_account
+  method: GET
+  path: /v1/twitter/profiles/{identifier}
+  name: 'X: Get a profile'
+  summary: Get a profile
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+        example: '@NASA'
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+    note: Use a Live key for public data; Test keys return synthetic data.
+  test_request:
+    queryParams:
+      freshness: 30d
+    pathParams:
+      identifier: '@NASA'
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.x.user.posts
+  capability: x.user.posts
+  platform: x
+  scope: any_account
+  method: GET
+  path: /v1/twitter/profiles/{identifier}/posts
+  name: 'X: List profile posts'
+  summary: List profile posts
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+        example: '@NASA'
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+      since:
+        type: string
+        required: false
+        note: Return posts captured at or after this RFC 3339 timestamp.
+    note: One page per call; no page-size parameter. Omit cursor for the first page.
+  test_request:
+    queryParams:
+      freshness: 30d
+    pathParams:
+      identifier: '@NASA'
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.x.search.users
+  capability: x.search.users
+  platform: x
+  scope: any_account
+  method: GET
+  path: /v1/twitter/search/users
+  name: 'X: Search Twitter users'
+  summary: Search Twitter users
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        note: Public search query.
+        example: NASA
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: One page per call; no page-size parameter. Omit cursor for the first page.
+  test_request:
+    queryParams:
+      freshness: 30d
+      q: NASA
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.x.search.posts
+  capability: x.search.posts
+  platform: x
+  scope: any_account
+  method: GET
+  path: /v1/twitter/search/posts
+  name: 'X: Search Twitter posts'
+  summary: Search Twitter posts
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        note: Public search query.
+        example: NASA
+      sort:
+        type: string
+        required: false
+        default: latest
+        note: 'Result ordering for this operation. Allowed values: latest | top.'
+        example: latest
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: One page per call; no page-size parameter. Omit cursor for the first page.
+  test_request:
+    queryParams:
+      freshness: 30d
+      q: NASA
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference
+- id: openhandle.x.post.detail
+  capability: x.post.detail
+  platform: x
+  scope: any_account
+  method: GET
+  path: /v1/twitter/posts/{identifier}
+  name: 'X: Get a post'
+  summary: Get a post
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+        example: '1808168603721650364'
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        default: 24h
+        note: 'Maximum accepted data age. The default is 24h. Allowed values: live | 24h | 7d | 30d. A
+          30-day cache hit is free; a miss fetches live and can cost $0.003.'
+        example: 30d
+    note: Use a Live key for public data; Test keys return synthetic data.
+  test_request:
+    queryParams:
+      freshness: 30d
+    pathParams:
+      identifier: '1808168603721650364'
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-05'
+    confidence: unknown
+    note: 'Platform price withheld pending Live verification and settlement wiring. Published Live rates:
+      $0.003 for the first 10,000 monthly requests, $0.0025 for 10,001-100,000, $0.0015 thereafter. Cache
+      hits: 24h $0.0005; 7d $0.0001; 30d $0. Cache misses fetch Live. Confirmed not-found and private
+      profiles are billed; invalid input, provider failures and rate limits are free. Openhandle-Cost
+      is the authoritative charge header. Test data and the introductory allowance do not prove paid rates.'
+  docs_url: https://openhandle.dev/docs/api-reference

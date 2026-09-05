@@ -1325,6 +1325,34 @@ REPLICATE = OAuthProvider(
     probe_path="/account",
 )
 
+OPENHANDLE = OAuthProvider(
+    service="openhandle",
+    display_name="OpenHandle",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your OpenHandle Live API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.openhandle.dev",
+    setup_action_label="Get your OpenHandle API key",
+    setup_steps=(
+        "Sign in to the OpenHandle dashboard and open API keys.",
+        "Create a Live key and copy it.",
+    ),
+    setup_note=(
+        "Live keys return public social data. Test keys return free synthetic data. "
+        "The profile connection check can cost up to $0.003."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Read public Instagram, TikTok and X profiles, posts and search results.",
+    base_url="https://api.openhandle.dev",
+    docs_url="https://openhandle.dev/docs/api-reference",
+    probe_path="/v1/instagram/profiles/@instagram?freshness=30d",
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -2673,7 +2701,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
         APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
-        TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
+        OPENHANDLE, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA,

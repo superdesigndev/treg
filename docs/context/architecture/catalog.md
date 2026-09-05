@@ -67,6 +67,8 @@ sources:
   - src/treg/catalog/examples/minimax.video-gen.result.retrieve.json
   - src/treg/catalog/examples/minimax.video-gen.from_image.json
   - src/treg/catalog/examples/minimax.video-gen.task.status.json
+  - src/treg/catalog/openhandle.yaml
+  - src/treg/catalog/openhandle.extended.yaml
   - src/treg/catalog/openrouter.yaml
   - src/treg/catalog/openrouter.extended.yaml
   - src/treg/catalog/examples/openrouter.x.alibaba-wan-3-0.json
@@ -82,6 +84,7 @@ sources:
   - tests/test_aigc_pr_b.py
   - tests/test_catalog_api.py
   - tests/test_catalog_validate.py
+  - tests/test_openhandle_ingest.py
 related:
   - architecture/money.md
   - architecture/proxy-model.md
@@ -94,6 +97,21 @@ The computed cost view uses a `cost.table` fallback as its scalar validated uppe
 eligibility and compact displays. Runtime charging evaluates the first matching row against request
 values plus catalog defaults and freezes that settlement basis. Terminal usage or the recorded table
 evidence feeds the shared money settlement function; provider variation stays declarative in YAML.
+
+## OpenHandle
+
+OpenHandle's 15 core tools cover public profiles, posts and search on Instagram, TikTok and X.
+The generated `openhandle.extended.yaml` includes the remaining 111 documented operations.
+Run `uv run --frozen python scripts/catalog_ingest.py openhandle --refresh` to regenerate it.
+The generator excludes core routes, preserves parameter and JSON-body schemas, and never calls
+data endpoints. It includes public synthetic-fixture discovery and cross-platform URL dispatch
+as utility entries on the creators platform. Synthetic examples carry no Live verification claim.
+The API bills in USD, so no credit conversion belongs in `fx.yaml`. The catalog includes the
+`freshness` choices, including free 30-day cache hits; cache misses can still incur Live charges.
+Prices remain unknown until Live verification and settlement support account for the authoritative
+`Openhandle-Cost` header. This prevents platform-key billing from charging a fixed estimate for
+free cache hits, allowance requests or unbilled validation errors. No endpoint is stamped verified.
+The platform-key settings are present, but activation requires maintainers' verification and allow-list.
 
 ## Authorization metadata
 

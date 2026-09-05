@@ -400,6 +400,14 @@ USD. Platform billing settles every call from the response's `costDollars.total`
 search or a contents call with three content types bills exactly what Exa charged, not the catalog
 base. Verified on the dev server before merge: reserve $0.007 → settle $0.009 on a 12-result search.
 
+## OpenHandle platform key
+
+`TREG_PLATFORM_KEY_OPENHANDLE` is declared for the web service and inherited by the async cron.
+The slot takes an OpenHandle Live Bearer key; no key value or allow-list entry is included.
+Paid routes remain unpriced until Live verification and settlement support handle the actual
+`Openhandle-Cost` header, including cache discounts, volume rates and unbilled failures.
+The API bills in USD, so no credit conversion belongs in `fx.yaml`.
+
 ## Worker commands and scheduled settlement
 
 `treg-worker` (console script, `[server]` extra) hosts the scheduled maintainer commands -
