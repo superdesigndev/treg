@@ -1080,6 +1080,38 @@ META_ADS = OAuthProvider(
 # key" copy. A key provider needs nothing from treg, so it is always offerable (is_configured=True).
 # No `scopes`: there is no consent screen to size, so the marketplace card leans on `summary`.
 
+ORBIT = OAuthProvider(
+    service="orbit",
+    display_name="Orbit",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Orbit API key",
+    setup_url="https://developer.orbitsearch.com/",
+    setup_action_label="Get your Orbit API key",
+    setup_steps=(
+        "Sign in to the Orbit developer dashboard and open API Keys.",
+        "Create a scoped key. Search needs search:read; profile reads need profile:read.",
+        "Enable watchers:write or webhooks:write only if you need those operations.",
+    ),
+    setup_note="The connection check validates an empty search request without starting work. "
+               "Poll returned resource IDs; do not repeat POST requests to check progress.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="The most in-depth, source-backed context about a person for deep personalization and research.",
+    base_url="https://api.orbitsearch.com",
+    docs_url="https://docs.orbitsearch.com/",
+    probe_path="/v3/search",
+    probe_method="POST",
+    probe_json={},
+    # Live: an authorized empty search is 400/status=failed; invalid keys are 403.
+    # Accept only that validation response, never a 404, rate limit, or gateway error.
+    probe_reject_statuses=tuple(code for code in range(100, 600) if code != 400),
+    token_ok_field="status",
+    token_ok_value="failed",
+)
+
 APOLLO = OAuthProvider(
     service="apollo",
     display_name="Apollo.io",
@@ -2606,7 +2638,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
+        ORBIT, APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers

@@ -1,0 +1,932 @@
+provider: orbit
+source:
+  docs: https://docs.orbitsearch.com/
+  openapi: https://docs.orbitsearch.com/openapi.json
+  curated: '2026-09-04'
+limits: Scoped API key and token-bucket limits apply. Honor Retry-After on 429; see
+  https://docs.orbitsearch.com/concepts/rate-limits.
+pricing_url: https://docs.orbitsearch.com/concepts/search
+proposed_capabilities:
+  people.search.status: Get search status
+  people.enrich.batch: Batch enrich profiles
+  people.profile.read: Read an enriched profile
+  people.enrich.status: Get enrichment status
+  people.watchers.create: Create a watcher
+  people.watchers.list: List watchers
+  people.watchers.get: Get a watcher
+  people.watchers.update: Update a watcher
+  people.watchers.delete: Delete a watcher
+  people.watchers.runs: List watcher runs
+  people.webhooks.create: Create a webhook endpoint
+  people.webhooks.list: List webhook endpoints
+  people.webhooks.delete: Delete a webhook endpoint
+  people.webhooks.test: Send a test delivery
+endpoints:
+- id: orbit.people.search
+  capability: people.search
+  platform: people
+  domain: search
+  scope: any_account
+  kind: data
+  method: POST
+  path: /v3/search
+  name: Start a people search
+  summary: Start a people search
+  input:
+    bodyType: json
+    body:
+      request_id:
+        type: string
+        minLength: 1
+        required: false
+        note: Your idempotency key. Reuse it only when retrying the same logical request.
+      query:
+        type: string
+        minLength: 1
+        required: false
+        note: A plain-English description of the people you want. When intent is also
+          present, Orbit derives a base intent from this query before applying the
+          caller-provided structured fields.
+      intent:
+        type: object
+        minProperties: 1
+        additionalProperties: false
+        properties:
+          names:
+            type: array
+            items:
+              type: string
+              minLength: 1
+          experiences:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              properties:
+                title:
+                  type: string
+                titleAnyOf:
+                  type: array
+                  items:
+                    type: string
+                organization:
+                  type: string
+                year:
+                  type: integer
+                startYear:
+                  type: integer
+                startYearLte:
+                  type: integer
+                endYear:
+                  type: integer
+                temporalScope:
+                  type: string
+                  enum:
+                  - current
+                  - historical
+                  - both
+          semanticClauses:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                anyOf:
+                  type: array
+                  minItems: 1
+                  items:
+                    type: string
+                    minLength: 1
+              anyOf:
+              - required:
+                - text
+              - required:
+                - anyOf
+          schools:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              properties:
+                school:
+                  type: string
+                schoolAnyOf:
+                  type: array
+                  items:
+                    type: string
+                graduationYear:
+                  type: integer
+                startYear:
+                  type: integer
+                endYear:
+                  type: integer
+                temporalScope:
+                  type: string
+                  enum:
+                  - current
+                  - historical
+                  - both
+                relation:
+                  type: string
+          geo:
+            oneOf:
+            - type: object
+              additionalProperties: false
+              properties:
+                place:
+                  type: string
+                isHistorical:
+                  type: boolean
+                distance:
+                  type: string
+            - type: 'null'
+          demographics:
+            oneOf:
+            - type: object
+              additionalProperties: false
+              properties:
+                ageRange:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - min
+                  - max
+                  properties:
+                    min:
+                      type: integer
+                    max:
+                      type: integer
+                birthYearRange:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - min
+                  - max
+                  properties:
+                    min:
+                      type: integer
+                    max:
+                      type: integer
+                gender:
+                  type: string
+            - type: 'null'
+          personalization:
+            oneOf:
+            - type: object
+              additionalProperties: false
+              properties:
+                network:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - scope
+                  properties:
+                    scope:
+                      type: string
+                      enum:
+                      - first_degree
+                nearMe:
+                  type: object
+                  additionalProperties: false
+                  required:
+                  - distance
+                  properties:
+                    distance:
+                      type: string
+            - type: 'null'
+        required: false
+        note: Advanced structured criteria. Do not include a `version` field.
+      signals:
+        type: object
+        minProperties: 1
+        additionalProperties: false
+        properties:
+          address:
+            type: string
+            minLength: 1
+          email:
+            type: string
+            format: email
+          phone:
+            type: string
+            minLength: 1
+          linkedin_url:
+            type: string
+            format: uri
+          urls:
+            type: array
+            items:
+              type: string
+              format: uri
+          usernames:
+            type: array
+            items:
+              type: string
+              minLength: 1
+        required: false
+        note: Known identity signals. Send only the signals you have.
+      candidate_discovery:
+        type: boolean
+        default: false
+        required: false
+        note: Continue beyond known matches to find additional people. Address, email,
+          and phone signals can each resolve to multiple associated people.
+      candidate_discovery_limit:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 10
+        required: false
+        note: Maximum number of Candidate Discovery results. Valid only with candidate_discovery
+          set to true. A lower value reduces downstream profile-generation fanout,
+          although source discovery and clustering can still dominate initial discovery
+          time.
+        min: 1
+        max: 50
+      profile_depth:
+        type: string
+        enum:
+        - partial
+        - full
+        default: partial
+        required: false
+        note: The minimum profile depth required for each ready result.
+      include_profile:
+        type: boolean
+        default: true
+        required: false
+        note: Embed profile objects in results. This changes the response shape, not
+          the enrichment work.
+      limit:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+        required: false
+        note: The maximum number of matches returned from the existing Orbit index.
+          Candidate Discovery results append outside this limit, and profile upgrades
+          update selected results in place.
+        min: 1
+        max: 100
+    note: 'Find people, optionally discover additional candidates, and build every
+      selected result to the requested profile depth. Requires the `search:read` scope.
+      Requests that include profiles also require `profile:read`. Idempotency-Key:
+      A client-generated key for a safe retry. If the body omits `request_id`, Orbit
+      can use this value as the request ID. Provide `query`, `intent`, at least one
+      identity signal, or a supported combination. When query and intent are both
+      present, Orbit derives a base intent from query and overlays the caller-provided
+      intent. Arrays, scalar values, and null replace derived values; nested objects
+      merge field by field. Reuse request_id for safe POST retries. Poll orbit.people.search.status
+      with the returned search_id while status is running. completed_with_errors is
+      terminal partial success: retain ready results and inspect failures. Do not
+      repeat POST to poll. Native treg --await is not configured.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    note: Current Orbit v3 Search and Enrich documentation states no credit consumption;
+      checked 2026-09-04. Rate limits and API-key authorization still apply.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.search.status
+  capability: people.search.status
+  platform: people
+  domain: search
+  scope: own_account
+  kind: utility
+  method: GET
+  path: /v3/search/{search_id}
+  name: Get search status
+  summary: Get search status
+  input:
+    pathParams:
+      search_id:
+        type: string
+        minLength: 1
+        required: true
+    note: 'Return the latest search snapshot. Poll while the status is `running`.
+      Requires the `search:read` scope. Searches that include profiles also require
+      `profile:read`. Reuse request_id for safe POST retries. Poll orbit.people.search.status
+      with the returned search_id while status is running. completed_with_errors is
+      terminal partial success: retain ready results and inspect failures. Do not
+      repeat POST to poll. Native treg --await is not configured.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    note: Current Orbit v3 Search and Enrich documentation states no credit consumption;
+      checked 2026-09-04. Rate limits and API-key authorization still apply.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.enrich.batch
+  capability: people.enrich.batch
+  platform: people
+  domain: enrich
+  scope: any_account
+  kind: action
+  method: POST
+  path: /v3/enrich
+  name: Batch enrich profiles
+  summary: Batch enrich profiles
+  input:
+    bodyType: json
+    body:
+      request_id:
+        type: string
+        minLength: 1
+        required: false
+        note: The parent idempotency key for the batch.
+      profile_ids:
+        type: array
+        minItems: 1
+        maxItems: 20
+        items:
+          type: string
+          minLength: 1
+        required: true
+        note: Provide between 1 and 20 Orbit profile IDs or slugs. Duplicate entries
+          within this list are normalized before work starts.
+      operation:
+        type: string
+        enum:
+        - partial
+        - full
+        - regenerate
+        required: true
+        note: Use `partial` for a useful profile, `full` for the deepest available
+          profile, or `regenerate` to rebuild a fresh full profile.
+      include_profile:
+        type: boolean
+        default: true
+        required: false
+        note: Embed available profiles in child results.
+    note: 'Apply one enrichment operation to between 1 and 20 known Orbit profile
+      IDs. Requires the `search:read` scope. Requests that include profiles also require
+      `profile:read`. Idempotency-Key: A client-generated key for a safe retry. If
+      the body omits `request_id`, Orbit can use this value as the request ID. Read
+      uses GET and starts no work. POST can build or regenerate a profile. Poll orbit.people.enrich.status
+      with request_id until completed or failed. Batch accepts 1–20 IDs; poll each
+      returned child links.status separately. Do not restart POST to poll. Native
+      treg --await is not configured.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    note: Current Orbit v3 Search and Enrich documentation states no credit consumption;
+      checked 2026-09-04. Rate limits and API-key authorization still apply.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.profile.read
+  capability: people.profile.read
+  platform: people
+  domain: enrich
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v3/enrich/{profile_id}
+  name: Read an enriched profile
+  summary: Read an enriched profile
+  input:
+    pathParams:
+      profile_id:
+        type: string
+        minLength: 1
+        required: true
+    note: Read the current public profile for an Orbit profile ID, known alias ID,
+      or public profile slug. This request does not start or upgrade enrichment. Requires
+      the `profile:read` scope. Read uses GET and starts no work. POST can build or
+      regenerate a profile. Poll orbit.people.enrich.status with request_id until
+      completed or failed. Batch accepts 1–20 IDs; poll each returned child links.status
+      separately. Do not restart POST to poll. Native treg --await is not configured.
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    note: Current Orbit v3 Search and Enrich documentation states no credit consumption;
+      checked 2026-09-04. Rate limits and API-key authorization still apply.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.enrich
+  capability: people.enrich
+  platform: people
+  domain: enrich
+  scope: any_account
+  kind: action
+  method: POST
+  path: /v3/enrich/{profile_id}
+  name: Enrich a profile
+  summary: Enrich a profile
+  input:
+    pathParams:
+      profile_id:
+        type: string
+        minLength: 1
+        required: true
+    bodyType: json
+    body:
+      request_id:
+        type: string
+        minLength: 1
+        required: false
+        note: Your idempotency key. Keep it stable across retries of the same operation.
+      operation:
+        type: string
+        enum:
+        - partial
+        - full
+        - regenerate
+        required: true
+        note: Use `partial` for a useful profile, `full` for the deepest available
+          profile, or `regenerate` to rebuild a fresh full profile.
+      include_profile:
+        type: boolean
+        default: true
+        required: false
+        note: Embed the profile when it is available.
+    note: 'Read, upgrade, or regenerate one known Orbit profile. Requires the `search:read`
+      scope. Requests that include the profile also require `profile:read`. Idempotency-Key:
+      A client-generated key for a safe retry. If the body omits `request_id`, Orbit
+      can use this value as the request ID. Read uses GET and starts no work. POST
+      can build or regenerate a profile. Poll orbit.people.enrich.status with request_id
+      until completed or failed. Batch accepts 1–20 IDs; poll each returned child
+      links.status separately. Do not restart POST to poll. Native treg --await is
+      not configured.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    note: Current Orbit v3 Search and Enrich documentation states no credit consumption;
+      checked 2026-09-04. Rate limits and API-key authorization still apply.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.enrich.status
+  capability: people.enrich.status
+  platform: people
+  domain: enrich
+  scope: own_account
+  kind: utility
+  method: GET
+  path: /v3/enrich/requests/{request_id}
+  name: Get enrichment status
+  summary: Get enrichment status
+  input:
+    pathParams:
+      request_id:
+        type: string
+        minLength: 1
+        required: true
+    note: Return the latest snapshot for one profile enrichment request. Poll while
+      the status is `running`. Requires the `search:read` scope. Requests that include
+      the profile also require `profile:read`. Read uses GET and starts no work. POST
+      can build or regenerate a profile. Poll orbit.people.enrich.status with request_id
+      until completed or failed. Batch accepts 1–20 IDs; poll each returned child
+      links.status separately. Do not restart POST to poll. Native treg --await is
+      not configured.
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    note: Current Orbit v3 Search and Enrich documentation states no credit consumption;
+      checked 2026-09-04. Rate limits and API-key authorization still apply.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.watchers.create
+  capability: people.watchers.create
+  platform: people
+  domain: watchers
+  scope: own_account
+  kind: action
+  method: POST
+  path: /v3/watchers
+  name: Create a watcher
+  summary: Create a watcher
+  input:
+    bodyType: json
+    body:
+      orbit_id:
+        type: string
+        format: uuid
+        required: true
+        note: The profile to watch — the `id` returned by search and profile reads.
+      interval_seconds:
+        type: integer
+        minimum: 3600
+        maximum: 2592000
+        required: true
+        note: How often to refresh, from `3600` (hourly) to `2592000` (every 30 days).
+        min: 3600
+        max: 2592000
+      phases:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+          enum:
+          - existing_sources
+          - existing_socials
+          - new_sources
+          description: '`existing_sources` watches sources already on the profile
+            for updates; `existing_socials` watches the person''s social activity;
+            `new_sources` looks for new sources about the person.'
+        required: false
+        note: Restrict runs to these phases. Omit or send `null` to run all three.
+    note: Start watching a profile. Orbit checks it on the schedule you choose and
+      adds what it finds to the profile. Each profile has one watcher per organization;
+      creating a watcher for a profile you already watch updates that watcher and
+      turns it back on. Requires the `watchers:write` scope.
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://docs.orbitsearch.com/
+    checked: '2026-09-04'
+    confidence: unknown
+    note: No per-operation public price was established for watcher or webhook operations.
+      BYOK only; do not treat unknown pricing as free or enable platform-key billing.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.watchers.list
+  capability: people.watchers.list
+  platform: people
+  domain: watchers
+  scope: own_account
+  kind: account
+  method: GET
+  path: /v3/watchers
+  name: List watchers
+  summary: List watchers
+  input:
+    note: All your watchers. Requires the `watchers:write` scope.
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://docs.orbitsearch.com/
+    checked: '2026-09-04'
+    confidence: unknown
+    note: No per-operation public price was established for watcher or webhook operations.
+      BYOK only; do not treat unknown pricing as free or enable platform-key billing.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.watchers.get
+  capability: people.watchers.get
+  platform: people
+  domain: watchers
+  scope: own_account
+  kind: account
+  method: GET
+  path: /v3/watchers/{watcher_id}
+  name: Get a watcher
+  summary: Get a watcher
+  input:
+    pathParams:
+      watcher_id:
+        type: string
+        format: uuid
+        required: true
+    note: One watcher, with its schedule and run counters. Requires the `watchers:write`
+      scope.
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://docs.orbitsearch.com/
+    checked: '2026-09-04'
+    confidence: unknown
+    note: No per-operation public price was established for watcher or webhook operations.
+      BYOK only; do not treat unknown pricing as free or enable platform-key billing.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.watchers.update
+  capability: people.watchers.update
+  platform: people
+  domain: watchers
+  scope: own_account
+  kind: action
+  method: PATCH
+  path: /v3/watchers/{watcher_id}
+  name: Update a watcher
+  summary: Update a watcher
+  input:
+    pathParams:
+      watcher_id:
+        type: string
+        format: uuid
+        required: true
+    bodyType: json
+    body:
+      enabled:
+        type: boolean
+        required: false
+        note: '`false` pauses the watcher; `true` resumes it and schedules the next
+          run.'
+      interval_seconds:
+        type: integer
+        minimum: 3600
+        maximum: 2592000
+        required: false
+        min: 3600
+        max: 2592000
+      phases:
+        type:
+        - array
+        - 'null'
+        items:
+          type: string
+          enum:
+          - existing_sources
+          - existing_socials
+          - new_sources
+          description: '`existing_sources` watches sources already on the profile
+            for updates; `existing_socials` watches the person''s social activity;
+            `new_sources` looks for new sources about the person.'
+        required: false
+        note: Send `null` to run all three phases.
+    note: Pause, resume, retime or rescope a watcher. Send the fields you want to
+      change. Requires the `watchers:write` scope. Send the fields you want to change.
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://docs.orbitsearch.com/
+    checked: '2026-09-04'
+    confidence: unknown
+    note: No per-operation public price was established for watcher or webhook operations.
+      BYOK only; do not treat unknown pricing as free or enable platform-key billing.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.watchers.delete
+  capability: people.watchers.delete
+  platform: people
+  domain: watchers
+  scope: own_account
+  kind: action
+  method: DELETE
+  path: /v3/watchers/{watcher_id}
+  name: Delete a watcher
+  summary: Delete a watcher
+  input:
+    pathParams:
+      watcher_id:
+        type: string
+        format: uuid
+        required: true
+    note: Deletes the watcher and its schedule. Pausing keeps the configuration for
+      later; deleting removes it. Requires the `watchers:write` scope.
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://docs.orbitsearch.com/
+    checked: '2026-09-04'
+    confidence: unknown
+    note: No per-operation public price was established for watcher or webhook operations.
+      BYOK only; do not treat unknown pricing as free or enable platform-key billing.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.watchers.runs
+  capability: people.watchers.runs
+  platform: people
+  domain: watchers
+  scope: own_account
+  kind: account
+  method: GET
+  path: /v3/watchers/{watcher_id}/runs
+  name: List watcher runs
+  summary: List watcher runs
+  input:
+    pathParams:
+      watcher_id:
+        type: string
+        format: uuid
+        required: true
+    queryParams:
+      limit:
+        type: integer
+        default: 50
+        minimum: 1
+        maximum: 200
+        required: false
+        min: 1
+        max: 200
+    note: 'The watcher''s refresh runs, newest first: outcome, the events each run
+      added with their sources, and what was billed. Requires the `watchers:write`
+      scope.'
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://docs.orbitsearch.com/
+    checked: '2026-09-04'
+    confidence: unknown
+    note: No per-operation public price was established for watcher or webhook operations.
+      BYOK only; do not treat unknown pricing as free or enable platform-key billing.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.webhooks.create
+  capability: people.webhooks.create
+  platform: people
+  domain: webhooks
+  scope: own_account
+  kind: action
+  method: POST
+  path: /v3/webhooks
+  name: Create a webhook endpoint
+  summary: Create a webhook endpoint
+  input:
+    bodyType: json
+    body:
+      url:
+        type: string
+        format: uri
+        required: true
+        note: A publicly reachable `https://` URL. Slack incoming-webhook URLs are
+          accepted and receive a formatted message instead of the raw JSON payload.
+      event_types:
+        type: array
+        items:
+          type: string
+          enum:
+          - profile.updated
+          - company.thesis.changed
+          - company.alert
+          - portfolio.changed
+        required: false
+        note: Events to deliver. Omit to subscribe to all supported events.
+      description:
+        type: string
+        required: false
+        note: Free-form label for your own bookkeeping.
+    note: Registers an HTTPS URL to receive signed event deliveries. The response
+      includes the signing `secret` once. Requires the `webhooks:write` scope.
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://docs.orbitsearch.com/
+    checked: '2026-09-04'
+    confidence: unknown
+    note: No per-operation public price was established for watcher or webhook operations.
+      BYOK only; do not treat unknown pricing as free or enable platform-key billing.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.webhooks.list
+  capability: people.webhooks.list
+  platform: people
+  domain: webhooks
+  scope: own_account
+  kind: account
+  method: GET
+  path: /v3/webhooks
+  name: List webhook endpoints
+  summary: List webhook endpoints
+  input:
+    note: Your registered endpoints, with masked signing secrets. Requires the `webhooks:write`
+      scope.
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://docs.orbitsearch.com/
+    checked: '2026-09-04'
+    confidence: unknown
+    note: No per-operation public price was established for watcher or webhook operations.
+      BYOK only; do not treat unknown pricing as free or enable platform-key billing.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.webhooks.delete
+  capability: people.webhooks.delete
+  platform: people
+  domain: webhooks
+  scope: own_account
+  kind: action
+  method: DELETE
+  path: /v3/webhooks/{webhook_id}
+  name: Delete a webhook endpoint
+  summary: Delete a webhook endpoint
+  input:
+    pathParams:
+      webhook_id:
+        type: string
+        format: uuid
+        required: true
+    note: Deletes the endpoint. Deliveries stop immediately and the signing secret
+      is invalidated. Requires the `webhooks:write` scope.
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://docs.orbitsearch.com/
+    checked: '2026-09-04'
+    confidence: unknown
+    note: No per-operation public price was established for watcher or webhook operations.
+      BYOK only; do not treat unknown pricing as free or enable platform-key billing.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
+- id: orbit.people.webhooks.test
+  capability: people.webhooks.test
+  platform: people
+  domain: webhooks
+  scope: own_account
+  kind: action
+  method: POST
+  path: /v3/webhooks/{webhook_id}/test
+  name: Send a test delivery
+  summary: Send a test delivery
+  input:
+    pathParams:
+      webhook_id:
+        type: string
+        format: uuid
+        required: true
+    bodyType: json
+    body:
+      event_type:
+        type: string
+        enum:
+        - profile.updated
+        - company.thesis.changed
+        - company.alert
+        - portfolio.changed
+        required: false
+    note: 'Delivers one signed test event to the endpoint so you can verify your handler
+      without waiting for a real event. The body is your most recent event of this
+      type when you have one and the documented example payload otherwise; either
+      way the envelope carries `"test": true` and an `evt_test_` event ID. Test deliveries
+      are free, are never retried, and are not recorded in your delivery history.
+      Requires the `webhooks:write` scope and is rate limited more tightly than other
+      routes. Optional. Defaults to the first event type the endpoint subscribes to;
+      must be one of its subscribed types.'
+  cost:
+    type: per_call
+    value: null
+    currency: USD
+    unit: call
+    source: docs
+    source_url: https://docs.orbitsearch.com/
+    checked: '2026-09-04'
+    confidence: unknown
+    note: No per-operation public price was established for watcher or webhook operations.
+      BYOK only; do not treat unknown pricing as free or enable platform-key billing.
+  docs_url: https://docs.orbitsearch.com/
+  untestable: 'No unattended replay: requires customer-owned resource IDs or can expose
+    personal/account data or change scheduled work. Request schema comes from the
+    public OpenAPI; not claimed live-verified.'
