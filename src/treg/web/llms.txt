@@ -256,7 +256,8 @@ Money notes for agents:
   it. There is no default on direct calls; the header is the only cap. On `treg.<capability>`
   routed calls it also bounds the whole waterfall (default $1 there).
 - A failed call (HTTP 4xx/5xx from the provider) is relayed unchanged and charged nothing; the
-  CLI prints one stderr line with the status, whose answer it is, and the call id. Nothing is
+  CLI prints one stderr line with the status, whose answer it is, and the call id — and on a metered
+  success, `treg: charged $<usd> · call id <id>` (stdout is always the exact body). Nothing is
   served from cache on `/call/`; the only stored answer you can get back is an idempotency replay
   (`X-Treg-Idempotent-Replay: true`). Empty results are the provider's own semantics — treg does
   not normalise "no data" vs "no coverage" vs "unsupported target".

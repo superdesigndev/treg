@@ -285,6 +285,8 @@ def _show(resp: httpx.Response) -> None:
         print(json.dumps(body, indent=2))
     except Exception:
         print(resp.text)
+    if resp.status_code < 400:
+        _show_charge_line(resp)
     if resp.status_code >= 400:
         _show_failure_diagnostics(resp)
         # 402 = the team balance can't cover a call on treg's key. The JSON above already carries the
@@ -301,6 +303,24 @@ def _show(resp: httpx.Response) -> None:
                 print("(no valid active team — pick one with `treg org use <slug>`; see `treg org ls`)",
                       file=sys.stderr)
         sys.exit(1)
+
+
+def _show_charge_line(resp: httpx.Response) -> None:
+    """The bill for a metered call, on stderr, next to the answer: `X-Treg-Cost-Micro` is the settled
+    charge and `X-Treg-Call-Id` the record to quote — neither is in the provider's body, which is all
+    stdout carries. A customer who saw only `results` and `next_token` could not tell whether a
+    $0.13 estimate or a $0.0067 row had been charged and stopped testing (2026-09-04). Silent for an
+    unmetered call (no header) — a team's own key is never billed — and for every non-call response."""
+    headers = getattr(resp, "headers", {}) or {}
+    cost = headers.get("X-Treg-Cost-Micro")
+    if cost is None:
+        return
+    line = f"treg: charged ${int(cost) / 1_000_000:g}"
+    if headers.get("X-Treg-Idempotent-Replay"):
+        line += " by the original call (this is a replay — nothing new charged)"
+    if call_id := headers.get("X-Treg-Call-Id"):
+        line += f" · call id {call_id}"
+    print(line, file=sys.stderr)
 
 
 def _show_failure_diagnostics(resp: httpx.Response) -> None:
@@ -2406,7 +2426,9 @@ def _show_call_response(response: httpx.Response) -> None:
         sys.stdout.buffer.write(response.content)
         sys.stdout.buffer.flush()
         if response.status_code >= 400:
+            _show_failure_diagnostics(response)
             raise SystemExit(1)
+        _show_charge_line(response)
         return
     _show(response)
 
