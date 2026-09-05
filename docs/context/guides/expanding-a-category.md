@@ -9,6 +9,8 @@ sources:
   - src/treg/application/connect.py
   - src/treg/routers/connections.py
   - src/treg/config.py
+  - src/treg/catalog/orbit.yaml
+  - tests/test_orbit_provider.py
 related:
   - architecture/auth-secrets.md
   - interface/api.md
@@ -31,7 +33,31 @@ pasted-key provider is **`connect_with_token`** (`POST /connections/token`) in
 [auth-secrets](../architecture/auth-secrets.md) + [api](../interface/api.md);
 this fragment is the *process*, not the mechanics reference.
 
+## Orbit (2026-09-04)
+
+Orbit uses customer-owned scoped bearer keys from https://developer.orbitsearch.com/.
+Its 16-operation catalog comes from the current public v3 OpenAPI: search and status,
+profile reads, single/batch enrichment and status, watchers, and webhooks. Profile reads
+are distinct from POST enrichment. Company enrichment is not advertised as a shipped API.
+
+The key probe is an empty POST to `/v3/search`: a live valid key returned HTTP 400 with
+`status: failed` and `developer_deep_search_input_required`; a live invalid key returned
+403. The provider accepts only the expected 400 envelope, rejecting other HTTP statuses.
+This starts no search work. Search permission is required to connect.
+
+The current public Search and Enrich docs state no credit consumption. Other operation
+prices remain unknown, not zero. No shared platform credential or settlement rate is
+configured by this contribution. Poll each returned search/request ID, and each batch
+child separately; preserve partial success and do not use POST as a polling operation.
+Native `--await` is not configured: Treg's async descriptor requires per-success billing,
+while these current v3 operations are documented as free. No artificial fee is added.
+
+Catalog entries have no live verification stamps or personal-response fixtures. Account
+and mutation routes are not safe unattended probes; public examples must not contain
+customer identities, contact details, webhook secrets, or credentials.
+
 ## The two kinds of provider
+
 - **API-key** (`auth_kind="key"`) — the user pastes a key; self-serve; **the fast path** (research → implement
   → live-test in one session). This is the workhorse and where almost all growth happens.
 - **OAuth** (`auth_kind="oauth"`) — treg holds its own registered app; **heavy** (needs a dev-app registration
