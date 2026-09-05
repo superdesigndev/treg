@@ -4,7 +4,7 @@ import ast
 import importlib
 from dataclasses import dataclass, fields
 from inspect import signature
-from typing import Awaitable, Callable, Literal, Protocol
+from typing import Awaitable, Callable, Protocol
 
 import pytest
 
@@ -20,6 +20,7 @@ from treg.application.call.types import (
     ResolutionFailed,
     ReservationFailed,
     UpstreamResponse,
+    _BLAME_BY_KIND,
 )
 
 
@@ -49,36 +50,6 @@ class UpstreamResponseContract:
     close: Callable[[], Awaitable[None]]
 
 
-Blame = Literal["caller", "treg", "upstream", "org_connection"]
-
-
-GATEWAY_FAILURES: dict[str, tuple[Blame, str, int, str]] = {
-    "refresh_failed": ("org_connection", "call_failed_502", 502, "1"),
-    "injection_failed": ("treg", "call_failed_502", 502, "1"),
-    "ssrf_refused": ("treg", "call_failed_502", 502, "1"),
-    "connect_failed": ("upstream", "call_failed_502", 502, "1"),
-    "read_timeout": ("upstream", "call_failed_502", 502, "1"),
-    "stream_interrupted": ("upstream", "call_failed_502", 502, "1"),
-}
-
-
-FINALIZATION_TABLE = {
-    "pre_reserve_refusal": ("none", "release_claim", "none"),
-    "cancel_after_claim": ("none", "release_claim_shielded", "none"),
-    "insufficient_balance": ("rollback", "release_claim", "none"),
-    "cancel_during_reserve": ("release_call_ref_shielded", "release_claim_shielded", "close_once"),
-    "ssrf_refused": ("release", "release_claim", "none"),
-    "gateway_failure": ("release_call_failed", "release_claim", "close_once"),
-    "unexpected_failure": ("release_call_crashed", "release_claim", "close_once"),
-    "cancel_after_reserve": ("release_call_cancelled", "release_claim", "close_once"),
-    "upstream_2xx": ("settle", "store_metered_replay", "close_once"),
-    "billable_upstream_4xx": ("settle", "release_claim", "close_once"),
-    "upstream_5xx": ("release_provider_failed", "release_claim", "close_once"),
-    "other_nonbillable": ("release_not_billable", "release_claim", "close_once"),
-    "unmetered_response": ("none", "current_idempotency_rule", "close_once"),
-}
-
-
 def test_call_dto_and_port_shapes_are_frozen() -> None:
     assert [field.name for field in fields(CallInputContract)] == [
         "method", "raw_rest", "raw_headers", "query_items", "raw_query", "body", "caller",
@@ -102,29 +73,15 @@ def test_call_dto_and_port_shapes_are_frozen() -> None:
     assert CallInput.__dataclass_params__.frozen is True
 
 
-def test_failure_table_pins_every_terminal_path() -> None:
-    assert set(FINALIZATION_TABLE) == {
-        "pre_reserve_refusal", "cancel_after_claim", "insufficient_balance",
-        "cancel_during_reserve", "ssrf_refused", "gateway_failure", "unexpected_failure",
-        "cancel_after_reserve", "upstream_2xx", "billable_upstream_4xx", "upstream_5xx",
-        "other_nonbillable", "unmetered_response",
-    }
-    assert FINALIZATION_TABLE["billable_upstream_4xx"][1] == "release_claim"
-    assert FINALIZATION_TABLE["cancel_after_reserve"] == (
-        "release_call_cancelled", "release_claim", "close_once")
-    assert all(close in {"none", "close_once"} for _, _, close in FINALIZATION_TABLE.values())
-
-
-def test_gateway_failure_mapping_is_one_source_of_truth() -> None:
-    assert set(GATEWAY_FAILURES) == {
-        "refresh_failed", "injection_failed", "ssrf_refused", "connect_failed", "read_timeout",
-        "stream_interrupted",
-    }
-    assert all(reason == "call_failed_502" for _, reason, _, _ in GATEWAY_FAILURES.values())
-    assert all(status == 502 for _, _, status, _ in GATEWAY_FAILURES.values())
-    assert all(header == "1" for _, _, _, header in GATEWAY_FAILURES.values())
-    assert GATEWAY_FAILURES["refresh_failed"][0] == "org_connection"
-    assert GATEWAY_FAILURES["ssrf_refused"][0] == "treg"
+def test_gateway_failure_kinds_keep_production_blame() -> None:
+    """Blame for a gateway kind is `_BLAME_BY_KIND` in types.py — a table that lived
+    only in this file could not fail unless the test itself drifted."""
+    assert _BLAME_BY_KIND["refresh_failed"] == "org_connection"
+    assert _BLAME_BY_KIND["injection_failed"] == "treg"
+    assert _BLAME_BY_KIND["ssrf_refused"] == "treg"
+    assert _BLAME_BY_KIND["connect_failed"] == "upstream"
+    assert _BLAME_BY_KIND["read_timeout"] == "upstream"
+    assert _BLAME_BY_KIND["stream_interrupted"] == "upstream"
 
 
 @pytest.mark.parametrize(
@@ -150,12 +107,6 @@ def test_provider_responses_are_data_and_billability_is_independent(
     status: int, cost_type: str, billable: bool,
 ) -> None:
     assert settle._platform_billable(status, cost_type) is billable
-
-
-def test_compatibility_surface_stays_literal_during_boundary_extraction() -> None:
-    assert {mapping[3] for mapping in GATEWAY_FAILURES.values()} == {"1"}
-    assert FINALIZATION_TABLE["ssrf_refused"][0] == "release"
-    assert FINALIZATION_TABLE["upstream_2xx"][0] == "settle"
 
 
 def test_call_application_modules_are_framework_neutral() -> None:

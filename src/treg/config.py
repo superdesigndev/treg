@@ -401,6 +401,9 @@ class Settings(BaseSettings):
     # the Facebook Login app credentials above.
     instagram_client_id: str = ""
     instagram_client_secret: str = ""
+    # Comma-separated registry review keys that do not yet have production access. Remove one key
+    # when its review is approved; set an explicit empty value when all reviews are complete.
+    oauth_review_pending: str = "instagram-login,page-messages"
     # Advertising OAuth platforms — unset by default, so these providers list as "not configured"
     # until this deployment registers its own developer app on each network.
     microsoft_ads_client_id: str = ""
@@ -473,6 +476,13 @@ class Settings(BaseSettings):
         """OAuth providers whose registry-connect calls are metered (comma-separated
         `TREG_OAUTH_BILLED_PROVIDERS`). Empty = the current free behavior."""
         return frozenset(p.strip().lower() for p in self.oauth_billed_providers.split(",") if p.strip())
+
+    @property
+    def oauth_review_pending_set(self) -> frozenset[str]:
+        """Provider-registry review keys awaiting production access."""
+        return frozenset(
+            key.strip().lower() for key in self.oauth_review_pending.split(",") if key.strip()
+        )
 
     @property
     def expose_dev_code(self) -> bool:

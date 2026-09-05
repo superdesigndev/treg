@@ -872,3 +872,57 @@ def test_onboard_catalog_dead_end_names_the_one_command_that_fixes_it(monkeypatc
     out = capsys.readouterr().out
     assert "treg connections connect --provider tikhub" in out
     assert not any(s.startswith("GET /call/") for s in c.seen)   # nothing was called
+
+
+def test_show_prints_failure_diagnostics_on_stderr_and_keeps_stdout_the_body(capsys):
+    """A failed call must be filable: stdout stays the exact upstream body (whatever parses it), and
+    stderr gets one line with the HTTP status, whose answer it is, and the call id. A runner that
+    saved only stdout recorded 115 Moz quota 403s as a bare "cli_error" (2026-09-04)."""
+    import httpx
+    body = b'{"error":"The account does not have enough quota remaining for current period."}'
+    relayed = httpx.Response(403, content=body, headers={
+        "content-type": "application/json", "X-Treg-Call-Id": "c2075d8d79eb4436aafc310e81081c1b"})
+    with pytest.raises(SystemExit):
+        cli._show(relayed)
+    out, err = capsys.readouterr()
+    assert json.loads(out) == json.loads(body)
+    assert "HTTP 403" in err and "provider answered" in err and "c2075d8d79eb4436aafc310e81081c1b" in err
+    assert "charged" not in err  # no cost header → no claim about money
+
+    refused = httpx.Response(402, content=b'{"detail":{"error":"route_max_cost"}}', headers={
+        "content-type": "application/json", "X-Treg-Error": "1"})
+    with pytest.raises(SystemExit):
+        cli._show(refused)
+    _, err = capsys.readouterr()
+    assert "HTTP 402" in err and "treg refused" in err
+
+    ok = httpx.Response(200, content=b'{"ok":true}', headers={"content-type": "application/json"})
+    cli._show(ok)
+    out, err = capsys.readouterr()
+    assert json.loads(out) == {"ok": True} and err == ""
+
+
+def test_show_prints_the_charge_and_call_id_for_a_metered_success(capsys):
+    """A metered 2xx gets one stderr line with the settled charge and the call id; stdout is the exact
+    body. No cost header (own key, or a non-call response) → nothing extra. A replay says so."""
+    import httpx
+    metered = httpx.Response(200, content=b'{"results":[{"x":1}],"next_token":"abc"}', headers={
+        "content-type": "application/json", "X-Treg-Cost-Micro": "6667",
+        "X-Treg-Call-Id": "125117d50cd3470cb25ba11f3d9789ad"})
+    cli._show(metered)
+    out, err = capsys.readouterr()
+    assert json.loads(out) == {"results": [{"x": 1}], "next_token": "abc"}
+    assert err.strip() == "treg: charged $0.006667 · call id 125117d50cd3470cb25ba11f3d9789ad"
+
+    own_key = httpx.Response(200, content=b'{"ok":true}', headers={
+        "content-type": "application/json", "X-Treg-Call-Id": "deadbeef"})
+    cli._show(own_key)
+    _, err = capsys.readouterr()
+    assert err == ""
+
+    replay = httpx.Response(200, content=b'{}', headers={
+        "content-type": "application/json", "X-Treg-Cost-Micro": "6667",
+        "X-Treg-Idempotent-Replay": "true", "X-Treg-Call-Id": "c1"})
+    cli._show(replay)
+    _, err = capsys.readouterr()
+    assert "replay" in err and "nothing new charged" in err

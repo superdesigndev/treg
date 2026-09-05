@@ -76,12 +76,14 @@ guarded local single-user identity before Uvicorn starts.
 
 ## Instagram authorization strategy
 
-`POST /oauth/start` keeps the same request shape. `provider=instagram` defaults to direct
-Instagram Login. `capability=page-tools` selects the separate Facebook Page profile. The start
-response returns `state`, `consent_url`, `redirect_uri`, and `connect_guidance`. The guidance is the
-selected authorization method's registry description, so clients do not need provider-specific
-setup text. Connection rows now include `authorization_method`, its label, method-specific resource
-discovery metadata, and setup health.
+`POST /oauth/start` keeps the same request shape. `TREG_OAUTH_REVIEW_PENDING` is the single operational
+switch for incomplete reviews; provider-registry metadata maps its keys to fallback capabilities,
+conditional warnings, and method defaults. With both Instagram keys pending, `provider=instagram`
+uses the approved Facebook Page core flow. `capability=manage` selects direct Instagram Login, and
+`capability=page-messages` explicitly widens the Page flow for reviewers and app roles. When keys are
+removed, plain Connect first expands to Page messages and then returns to direct Instagram Login.
+The response returns capability-specific `connect_guidance`, so clients need no provider-specific
+review logic. Connection rows include authorization method and setup health.
 Catalog calls accept `X-Treg-Authorization-Method` to select one of an endpoint's declared methods;
 the header is an internal routing control and is stripped before the faithful upstream relay.
 
@@ -744,6 +746,14 @@ your own records. An unexpected fault raised by `execute_call` is answered by St
 The response has no id because Starlette owns it, but treg records the row and one matching
 `tool_called` event before re-raising. Failures before `execute_call`, plus body-stream failures after
 the handler returns its `StreamingResponse`, are not covered by that compensation path.
+
+A direct metered `/call/` honours **`X-Treg-Route-Max-Cost: <usd>`** as a hard per-call ceiling
+(`service._enforce_caller_max_cost`, 2026-09-05): when the reserve with margin would exceed it the
+call is refused **402** `error: route_max_cost` (`max_cost_micro`, `estimated_cost_micro`, no charge,
+audited `refused_by=balance` like every 402) — the same header and body shape the routed path uses,
+so one agent-side handler covers both. Unlike `/do/` there is NO default on a direct call: a caller
+who named the endpoint and page size is uncapped unless they send the header. A non-numeric value is
+a 400. Asked for by a customer whose runner approved $0.23 and was billed $0.56 (2026-09-04).
 
 Metered responses also carry `X-Treg-Cost-Micro`; a reserved call that fails before a provider answer
 carries an explicit `0`. That `0` is what the call ends up costing, but the **balance can lag it**:

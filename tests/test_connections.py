@@ -278,7 +278,7 @@ async def test_business_owned_instagram_accounts_join_the_picker(clients: AsyncC
     professional accounts, a Page without one drops out instead of surviving as an id-less
     phantom row, and the directly-reachable account is not doubled."""
     _meta_test_provider(monkeypatch, "instagram")
-    st = await _connect_byo(clients, provider="instagram", capability="page-tools", name="")
+    st = await _connect_byo(clients, provider="instagram", capability="page-messages", name="")
     r = await clients.get(f"/connections/{st['secret_id']}/resources")
     assert r.status_code == 200, r.text
     got = {x["id"]: x["label"] for x in r.json()["resources"]}
@@ -299,7 +299,7 @@ async def test_instagram_selection_stores_and_binds_the_linked_page_token(
     user token stays available for future discovery and reconnect; calls inject only the Page token.
     """
     _meta_test_provider(monkeypatch, "instagram")
-    st = await _connect_byo(clients, provider="instagram", capability="page-tools", name="")
+    st = await _connect_byo(clients, provider="instagram", capability="page-messages", name="")
     sid = st["secret_id"]
 
     r = await clients.post(f"/connections/{sid}/resource", json={
@@ -332,7 +332,7 @@ async def test_instagram_selection_subscription_failure_is_atomic(
         monkeypatch, "instagram",
         resource_setup_path="/{page_id}/missing-subscription-edge",
     )
-    st = await _connect_byo(clients, provider="instagram", capability="page-tools", name="")
+    st = await _connect_byo(clients, provider="instagram", capability="page-messages", name="")
     sid = st["secret_id"]
 
     r = await clients.post(f"/connections/{sid}/resource", json={

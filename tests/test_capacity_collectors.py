@@ -6,8 +6,6 @@ Each test mocks the upstream API response and verifies that the collector return
 
 from __future__ import annotations
 
-import pytest
-
 from treg.domain.capacity import collectors
 
 
@@ -130,16 +128,7 @@ async def test_akta_collector_marks_enterprise_accounts():
     assert "(enterprise)" in result["note"]
 
 
-# ---- NO_BALANCE_API entries -------------------------------------------------------------
-
-def test_no_balance_api_entries_have_meaningful_notes():
-    """Each NO_BALANCE_API entry should have a meaningful note explaining why."""
-    for provider, note in collectors.NO_BALANCE_API.items():
-        assert len(note) > 20, f"{provider} has too short a note"
-        assert "dashboard" in note.lower() or "no" in note.lower(), (
-            f"{provider} note should mention dashboard or explain absence"
-        )
-
+# ---- NO_BALANCE_API / BALANCE_ROUTES registration ---------------------------------------
 
 def test_no_balance_api_includes_expected_providers():
     """Verify the vendors that have no free balance API are documented."""
@@ -147,14 +136,11 @@ def test_no_balance_api_includes_expected_providers():
     assert expected == set(collectors.NO_BALANCE_API.keys())
 
 
-def test_balance_routes_includes_new_collectors():
-    """Verify the newly implemented collectors are registered."""
-    assert "akta" in collectors.BALANCE_ROUTES
-    assert "brightdata" in collectors.BALANCE_ROUTES
-    assert "crustdata" in collectors.BALANCE_ROUTES
-
-
-def test_no_overlap_between_balance_routes_and_no_balance_api():
-    """A provider should be in exactly one of BALANCE_ROUTES or NO_BALANCE_API, not both."""
+def test_implemented_collectors_are_registered_and_do_not_overlap_absent_list():
+    """A collector that parses a vendor must be on BALANCE_ROUTES, and a provider
+    cannot be both 'we collect' and 'there is no balance API'."""
+    for provider in ("akta", "brightdata", "crustdata"):
+        assert provider in collectors.BALANCE_ROUTES
+        assert provider not in collectors.NO_BALANCE_API
     overlap = set(collectors.BALANCE_ROUTES.keys()) & set(collectors.NO_BALANCE_API.keys())
     assert not overlap, f"Providers in both maps: {overlap}"

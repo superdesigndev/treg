@@ -53,7 +53,7 @@ def static_descriptor(*, fetch: bool = False) -> dict:
 
 
 def test_catalog_loads_provider_defaults_and_utility_opt_out():
-    cat = catalog_store.load(refresh=True)
+    cat = catalog_store.load()
     submit = cat.by_id["minimax.video-gen.from_text"]
     status = cat.by_id["minimax.video-gen.task.status"]
     assert submit["async"]["poll"]["endpoint"] == status["id"]
@@ -63,7 +63,7 @@ def test_catalog_loads_provider_defaults_and_utility_opt_out():
 
 
 def test_openrouter_cancelled_and_expired_jobs_are_terminal_failures():
-    cat = catalog_store.load(refresh=True)
+    cat = catalog_store.load()
     endpoint_ids = (
         "openrouter.video-gen.wan-3-0.from_text",
         "openrouter.x.alibaba-happyhorse-1-0",

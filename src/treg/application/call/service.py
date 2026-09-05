@@ -70,10 +70,12 @@ from .types import (
     CallInput,
     FinalizationState,
     GatewayFailed,
+    ReservationFailed,
     ResolutionFailed,
     UpstreamRequest,
     UpstreamResponse,
 )
+from ...domain import money as ledger
 
 
 class _ApplicationRequest:
@@ -159,6 +161,32 @@ async def _await_before_reserve(awaitable, request: _ApplicationRequest, call_re
     except asyncio.CancelledError:
         await _finish_cancelled_call(request, None, call_ref)
         raise
+
+
+def _enforce_caller_max_cost(request, mk: MarketplaceCall) -> None:
+    """`X-Treg-Route-Max-Cost` on a DIRECT metered call: refuse before the reserve when what the
+    balance would be debited (estimate with margin) exceeds the caller's USD ceiling. Unlike /do/
+    there is NO default — a direct call named its endpoint and page size on purpose, so only an
+    explicit header caps it. Same header and the same `route_max_cost` 402 shape as the routed path,
+    so one agent-side handler covers both. Asked for by a customer whose runner approved $0.23 and
+    was billed $0.56 (2026-09-04): the price was knowable before the call, but nothing enforced it."""
+    raw = request.headers.get(routed.MAX_COST_HEADER)
+    if raw is None or not str(raw).strip():
+        return
+    try:
+        cap_micro = int(round(float(raw) * 1_000_000))
+    except ValueError:
+        raise ResolutionFailed("catalog_parameter_invalid", status_code=400,
+                               detail=f"{routed.MAX_COST_HEADER} must be a USD number, got {raw!r}")
+    charged = ledger.with_margin(mk.estimate_micro)
+    if charged > cap_micro:
+        raise ReservationFailed("route_max_cost", status_code=402, detail={
+            "error": "route_max_cost", "endpoint_id": mk.endpoint_id, "provider": mk.provider,
+            "max_cost_micro": cap_micro, "estimated_cost_micro": charged,
+            "message": (f"{mk.endpoint_id} would reserve ~${ledger.usd(charged):g} and "
+                        f"{routed.MAX_COST_HEADER} is ${cap_micro / 1_000_000:g}; nothing was charged. "
+                        f"Ask for fewer rows/targets or raise the ceiling."),
+        })
 
 
 def _client_name(request: _ApplicationRequest) -> str:
@@ -761,6 +789,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # Secret reads above opened the dependency session. Release its pool slot before the
             # application opens the short transaction that owns the reservation.
             await db.commit()
+            _enforce_caller_max_cost(request, mk)
             await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref)
             request.context.finalization = FinalizationState.OPEN
         except asyncio.CancelledError:

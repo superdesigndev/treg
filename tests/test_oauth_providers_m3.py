@@ -292,6 +292,8 @@ def test_meta_capabilities_are_cumulative():
         assert set(provider.scopes["read"]) < set(provider.scopes["post"]), provider.service
         assert set(provider.scopes["post"]) < set(provider.scopes["manage"]), provider.service
         assert provider.default_capability == "manage", provider.service
+    assert set(P.INSTAGRAM.scopes["page-tools"]) < set(P.INSTAGRAM.scopes["page-messages"])
+    assert P.INSTAGRAM.connect_default_capability == "page-tools"
 
 
 def test_meta_messaging_stays_out_of_the_publish_tier():
@@ -305,7 +307,12 @@ def test_meta_messaging_stays_out_of_the_publish_tier():
         for cap in ("read", "post"):
             assert not two_way & set(provider.scopes[cap]), (provider.service, cap)
     assert "instagram_business_manage_messages" in P.INSTAGRAM.scopes["manage"]
-    assert {"instagram_manage_messages", "pages_messaging"} <= set(P.INSTAGRAM.scopes["page-tools"])
+    assert not {"instagram_manage_messages", "pages_messaging"} & set(
+        P.INSTAGRAM.scopes["page-tools"]
+    )
+    assert {"instagram_manage_messages", "pages_messaging"} <= set(
+        P.INSTAGRAM.scopes["page-messages"]
+    )
 
 
 def test_lead_retrieval_brings_its_required_rider():

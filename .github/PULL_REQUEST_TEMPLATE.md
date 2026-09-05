@@ -10,7 +10,7 @@
 
 ## Checklist
 
-- [ ] `uv run pytest -q` passes locally
+- [ ] `uv run --with pytest-xdist pytest -n auto -q` passes locally
 - [ ] Added or updated tests for the change (if it affects behavior)
 - [ ] Updated the relevant `docs/context/` fragment (if a subsystem changed)
 - [ ] No secrets in the diff (keys, tokens, `.env` values)

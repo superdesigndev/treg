@@ -99,8 +99,8 @@ Provider rows, the Connect button and the pickers are all data-driven from
 `tests/test_oauth_providers_m3.py::test_every_provider_is_registered` asserts an
 **exact set** of service names. Add yours or the suite fails.
 
-Then: `uv run pytest -q` (full suite — the registry touches health, tools and
-connections).
+Then: `uv run --with pytest-xdist pytest -n auto -q` (full suite — the registry
+touches health, tools and connections).
 
 ## The platform side (the actual long pole)
 
@@ -184,7 +184,7 @@ instead of matching.
 ## Verify before calling it done
 
 ```
-uv run pytest -q                      # full suite
+uv run --with pytest-xdist pytest -n auto -q   # full suite
 scripts/dev-local.sh up               # see .agents/skills/dev-local
 ```
 

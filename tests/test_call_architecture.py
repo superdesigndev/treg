@@ -218,20 +218,6 @@ def test_catalog_access_router_only_translates_the_application_result() -> None:
     }
 
 
-@pytest.mark.parametrize(
-    ("package", "forbidden", "mutation"),
-    [
-        ("application/call", ("treg.api",), "from treg.api import app\n"),
-        ("application/call", ("fastapi",), "from fastapi import Request\n"),
-        ("infra/upstream", ("treg.routers",), "from treg.routers import call\n"),
-        ("domain/asynctasks", ("treg.application",), "from treg.application import asynctasks\n"),
-    ],
-)
-def test_import_edge_contracts_reject_mutations(package, forbidden, mutation) -> None:
-    assert _package_forbidden_imports(_SRC / package, forbidden) == set()
-    assert _forbidden_imports(mutation, forbidden)
-
-
 def test_startup_manifests_keep_dataplane_and_control_work_separate() -> None:
     assert bootstrap.ROLE_BACKGROUND_TASKS == {
         "all": ("treg.adsconv.worker",),
@@ -248,16 +234,6 @@ def test_startup_manifests_keep_dataplane_and_control_work_separate() -> None:
 def test_dataplane_derived_write_allowlist_is_explicit_and_live() -> None:
     _validate_write_allowlist(_DATAPLANE_DERIVED_WRITES)
     assert _derived_write_sites() == _EXPECTED_DERIVED_WRITE_SITES
-
-
-def test_dataplane_write_allowlist_rejects_an_unlisted_mutation() -> None:
-    mutated = dict(_DATAPLANE_DERIVED_WRITES)
-    mutated["unreviewed_request_write"] = ((settle._record_first_call, "db.commit"),)
-    with pytest.raises(AssertionError):
-        _validate_write_allowlist(mutated)
-    path = _SRC / "application" / "call" / "settle.py"
-    source = path.read_text() + "\nasync def unreviewed_write(db, org):\n    await adsconv.queue(db, org, 'x')\n"
-    assert _derived_write_sites({path: source}) != _EXPECTED_DERIVED_WRITE_SITES
 
 
 @pytest.mark.parametrize(

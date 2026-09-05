@@ -155,7 +155,9 @@
       content;</li>
     <li>use server-side runs to execute code intended to escape the sandbox, or to proxy traffic to
       destinations unrelated to a registered tool;</li>
-    <li>resell or repackage the hosted Service as your own product — see §11.</li>
+    <li>redistribute the open-source software to third parties as a competing hosted service — see §11.
+      (Using the hosted treg.to API inside your own product — with your own billing layer and the
+      pass-through attribution mechanics — is allowed; that is calling our API, not reselling it.)</li>
   </ul>
   <p>We apply per-member daily call caps, egress restrictions, and sandboxing to protect the Service.
   Circumventing them is a breach of these Terms.</p>
@@ -206,9 +208,14 @@
   <p>treg's source is public under the
   <a href="https://github.com/superdesigndev/treg/blob/main/LICENSE" target="_blank" rel="noopener">tools-registry License</a>
   (Apache 2.0 plus additional terms). You may run your own registry for your own organization — that's
-  expressly encouraged. You may <b>not</b> offer treg to third parties as a hosted, managed, or
-  embedded service without our prior written authorization. The source licence, not these Terms,
-  governs your use of the code itself.</p>
+  expressly encouraged. You may <b>not</b> redistribute the open-source software to third parties as a
+  competing hosted, managed, or embedded registry service without prior written authorization. The
+  source licence, not these Terms, governs your use of the code itself.</p>
+  <p><b>Using the hosted treg.to API is different.</b> If your product calls treg.to, uses
+  <code>X-Treg-Meta</code> to tag calls by customer, and invoices from <code>usage/by-tag</code>,
+  you are a <b>platform customer</b> of the hosted service — no special agreement is needed. That
+  use case is allowed and encouraged. The restriction above applies to <i>self-hosting the open-source
+  code</i> and offering it to third parties as a competing registry, not to calling the treg.to API.</p>
 
   <h2 class="sec" id="s12"><span class="n">12</span>Limitation of liability</h2>
   <p>To the maximum extent permitted by law, neither party is liable for indirect, incidental,

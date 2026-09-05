@@ -116,7 +116,15 @@ Notes:
 - HTTP **402** = out of balance, with a machine-actionable body (`balance_micro`,
   `estimated_cost_micro`, `topup_url`). Recovery: `treg balance` → top up in the dashboard
   (Team → Billing) → or store the org's own key for that provider (own keys are never billed
-  to the balance — they take priority automatically).
+  to the balance — they take priority automatically). A 402 with `error: route_max_cost` is
+  different: YOUR `X-Treg-Route-Max-Cost` header refused the call before anything was charged —
+  ask for fewer rows/targets or raise the ceiling.
+- The real charge is the response header `X-Treg-Cost-Micro` (micro-USD), with `X-Treg-Call-Id`
+  as the id to quote. The catalog `~$/call` figure for a `per_result` route assumes a 20-row page
+  when the price is per row; when the catalog `cost.unit` is `target`/`domain`/`keyword` you pay
+  per thing asked about, one unit per target. Failed calls (4xx/5xx relayed from the provider)
+  are free; empty results mean whatever the provider means by them — treg relays, it does not
+  normalise.
 - HTTP **503** `provider_capacity_unavailable` = treg's own account for that provider is out
   (not your balance; nothing charged). Body has `resets_at` and `alternatives` (same capability,
   other providers) — choose one, or use your own key. treg never switches providers for you.

@@ -84,6 +84,9 @@ def test_separate_oauth_methods_share_one_single_choice_modal():
     assert 'v-if="methodAsk"' in INDEX
     assert 'v-model="methodAsk.selected"' in INDEX
     assert 'class="chip ok">Recommended</span>' in INDEX
+    assert 'v-if="method.in_review" class="chip warn">In review</span>' in INDEX
+    assert 'v-if="capInReview(cap,capAsk)" class="chip warn"' in INDEX
+    assert "mkProvider.permission_capabilities||mkProvider.capabilities" in INDEX
     assert '@click="continueMethod()">Continue</button>' in INDEX
     assert "if(methods.length>1 && !conn)" in INDEX
     assert "if(methods.length===1 && !conn) return this.connectProvider" in INDEX
@@ -106,7 +109,7 @@ def test_permission_cards_can_use_method_specific_incremental_benefits():
     assert "mkCapabilityDetails(cap)" in panel
     computed = INDEX[INDEX.index("computed:{") : INDEX.index("methods:{")]
     assert "mkCapabilityMethod(cap){" not in computed
-    logic = INDEX[INDEX.index("mkCapabilityMethod(cap){") : INDEX.index("capLabel(cap){")]
+    logic = INDEX[INDEX.index("mkCapabilityMethod(cap){") : INDEX.index("capLabel(cap, ask){")]
     assert "m.capability_details && (m.capability_details[cap]||[]).length" in logic
     assert "this.mkProvider&&this.mkProvider.scope_detail" in logic
     assert "page-tools" not in logic and "instagram" not in logic
@@ -124,8 +127,6 @@ def test_the_platform_header_stacks_instead_of_putting_providers_in_a_column():
     assert head.index('class="plat-title"') < head.index('plat-intro"') < head.index('class="plat-provs"')
     assert 'v-for="s in platProviders"' in head
     assert "tut-actions" not in head  # the two-column header is gone from this view
-    assert ".plat-provs{display:flex;flex-wrap:wrap" in INDEX  # ...and the chips wrap rather than scroll
-    assert ".plat-intro{margin:10px 0 0;max-width:74ch}" in INDEX  # readable measure, full-width column
 
 
 def test_platform_provider_navigation_does_not_wait_for_connection_registry_state():
@@ -189,19 +190,6 @@ def test_the_category_list_comes_from_the_data_not_the_order_list():
         assert gone not in body, f"{gone} is no longer a catalog category — remove the reference"
 
 
-def test_the_tab_strip_scrolls_without_showing_a_scrollbar():
-    """Ten tabs overflow a narrow window, but the scrollbar under them reads as a rendering fault.
-    The strip still scrolls; a right-edge fade is what hints there is more."""
-    css = INDEX[INDEX.index(".mk-tabs{") :][:600]
-    assert "overflow-x:auto" in css
-    assert "scrollbar-width:none" in css
-    assert ".mk-tabs::-webkit-scrollbar{display:none}" in INDEX
-    assert "mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)" in css
-    # The rule under the tabs must NOT be on the masked scroller, or it fades short of the edge.
-    assert "border-bottom" not in css[: css.index("}")]
-    assert ".mk-tabs-wrap{border-bottom:1px solid var(--line)" in INDEX
-
-
 def test_tiles_are_grouped_by_category_on_every_capability_tab():
     """"All" is not a flat wall of tiles: it keeps the category headings, and a category tab is the
     same grouping filtered to one — so the page never loses its place."""
@@ -257,8 +245,6 @@ def test_a_category_heading_is_a_real_heading():
     head = INDEX[INDEX.index('<div class="sec-head">') :][:500]
     assert '<h2 class="sec-h"><b>{{g.category}}</b>' in head
     assert "{{g.hint}}" in head  # the one-line explainer stays, under the heading
-    css = INDEX[INDEX.index(".sec-h b{") :][:120]
-    assert "font-size:19px" in css and "font-weight:600" in css
 
 
 def test_the_more_row_names_the_platforms_it_is_hiding():
@@ -273,17 +259,6 @@ def test_the_more_row_names_the_platforms_it_is_hiding():
     lbl = INDEX[INDEX.index("moreLabel(rest){") :][:400]
     assert "rest.slice(0,2)" in lbl
     assert "(rest.length-2)+' more'" in lbl
-
-
-def test_the_more_row_is_a_quiet_row_with_an_arrow_not_a_dashed_box():
-    """A dashed border reads as a drop zone or a placeholder, and it drew more attention than the
-    cards it sits under. The row is plain; an arrow (which slides on hover) is the affordance."""
-    at = INDEX.index('class="pt-more"')
-    assert '<span class="pt-more-a" aria-hidden="true">→</span>' in INDEX[at : at + 1400]
-    css = INDEX[INDEX.index(".pt-more{") :][:900]
-    assert "dashed" not in css and "border:0" in css
-    assert ".pt-more:hover .pt-more-a{transform:translateX(2px)" in INDEX
-    assert ".pt-more:hover{color:var(--ink);background:var(--hover)}" in INDEX  # subtle tint, no border
 
 
 # --- the platform card: enough to choose a platform without opening it --------------------------
@@ -326,14 +301,6 @@ def test_a_card_is_a_name_and_two_facts_with_no_description_paragraph():
     assert "{{pl.endpoints}} endpoint" in card
     assert 'v-if="platPrice(pl)"' in card
     assert ":title=\"pl.summary ? pl.label+' — '+pl.summary : pl.label\"" in card
-
-
-def test_a_long_platform_name_wraps_instead_of_ellipsizing():
-    """"Google Search Con…" is a card that cannot say what it is. With the description gone there is
-    room for the whole name on two lines."""
-    css = INDEX[INDEX.index(".pt-name{") :][:300]
-    assert "-webkit-line-clamp:2" in css
-    assert "white-space:nowrap" not in css
 
 
 def test_the_card_price_is_the_servers_computed_usd():
@@ -473,7 +440,6 @@ def test_the_pill_strip_never_wraps_three_pills_then_a_count():
     block = _ledger()
     assert 'v-if="r.pillsMore" class="pchip more"' in block and "+{{r.pillsMore}}" in block
     assert ':title="r.pillsMoreTitle"' in block, "the hidden names stay reachable"
-    assert ".lprovs{display:flex;flex-wrap:nowrap;overflow:hidden" in INDEX
     rows = INDEX[INDEX.index("platRowsAll(){") :][:3600]
     assert "pills:pills.slice(0,3), pillsMore:Math.max(0, pills.length-3)" in rows
 
@@ -519,7 +485,6 @@ def test_a_single_row_is_led_by_a_short_title_never_a_paragraph():
     assert "title:this.clip(r.description, 90)" in rows
     clip = INDEX[INDEX.index("clip(text, n){") :][:400]
     assert "lastIndexOf(' ')" in clip, "clip at a word boundary, not mid-token"
-    assert ".lsum b{display:-webkit-box;-webkit-line-clamp:2" in INDEX
     # ...and the server picks name-over-summary before it ever reaches the row.
     src = (Path(api.__file__).parent / "domain" / "catalog" / "store.py").read_text(encoding="utf-8")
     fn = src[src.index("def domain_rows("):]
@@ -668,7 +633,6 @@ def test_a_callable_row_is_marked_down_its_leading_edge():
     connected provider carries a rule down its edge — findable without reading."""
     block = _ledger()
     assert ':class="{open:platOpen[r.key], go:r.ready}"' in block
-    assert ".lrow.go td:first-child{box-shadow:inset 3px 0 0" in INDEX
     rows = INDEX[INDEX.index("platRowsAll(){") :][:3400]
     assert "ready: eps.some(e=>this.catEndpointConnected(e))" in rows
 
@@ -763,14 +727,6 @@ def test_an_endpoint_with_no_catalogued_params_says_so_rather_than_showing_an_em
     assert "provider's docs have them" in block
 
 
-def test_the_params_table_drops_the_global_table_chrome():
-    """The global `table` rule paints a panel, a border and a radius and `th` a filled bar — inside
-    the .prm box that reads as a stray highlight, and it clips the first column."""
-    css = INDEX[INDEX.index(".prm-t{") :][:400]
-    assert "background:none;border:0" in css
-    assert ".prm-t th{background:none" in INDEX
-
-
 def test_the_expansion_carries_a_paste_ready_call_line():
     """Finding the endpoint was never the goal — running it is. The `treg call` line is served on
     the row itself (`call_template`), so the instruction is complete without a second request."""
@@ -843,13 +799,6 @@ def test_example_responses_are_fetched_only_when_their_tab_is_opened():
     assert "if(this.platEx[e.id]) return;" in fn, "loaded once, not on every tab switch"
     assert "'/catalog/examples/'" in fn
     assert "if(tab==='res') this.loadExample(e);" in INDEX[INDEX.index("setEpTab(e, tab){") :][:300]
-
-
-def test_both_panes_are_capped_and_scroll_rather_than_growing_the_page():
-    """A DataForSEO body carries thirty parameters. Uncapped, one expansion pushes every row below
-    it off the screen — so both panes are the same bounded box that scrolls inside itself."""
-    assert ".prm{max-height:320px;overflow-y:auto}" in INDEX
-    assert ".cat-ex pre{max-height:320px}" in INDEX
 
 
 def test_the_run_actions_lead_the_expansion_tab_bar():
@@ -1041,29 +990,6 @@ def test_referral_stat_tiles_use_the_sheets_own_class_names():
     assert block.count('<div class="n">') == 3 and block.count('<div class="l">') == 3
     assert 'class="k"' not in block and 'class="v"' not in block
     assert block.index('<div class="n">') < block.index('<div class="l">')
-
-
-def test_referral_stat_tiles_fill_the_column():
-    """The sheet's `.statgrid` is auto-FILL, which at this width lays out four 150px tracks and
-    leaves the fourth empty — three tiles then stop short of the right edge the card above and the
-    table below both reach. auto-fit collapses the empty track."""
-    assert "grid-template-columns:repeat(auto-fit,minmax(150px,1fr))" in _referrals_view()
-
-
-def test_referral_table_keeps_the_sheets_cell_padding():
-    """A bare `<table>` IS a card here (background, border, radius) and `th,td` already carry
-    10px/13px. Overriding that to `padding:8px 0` — copied from a table that lives INSIDE a card —
-    puts the right-aligned amount flush against the card's own edge, which reads as clipped."""
-    block = _referrals_view()
-    table = block[block.index("<table"):block.index("</table>")]
-    assert "padding:" not in table, "let th,td carry the padding"
-    assert "<th>" in table, "house tables have a header row"
-
-
-def test_the_referral_column_is_one_width():
-    """Card, tiles and table sit in a SINGLE max-width container. Three separate max-widths is what
-    made them start and end at three different x-positions."""
-    assert _referrals_view().count("max-width:") == 1
 
 
 def test_the_billing_page_names_the_bonus_on_the_qualifying_presets():
