@@ -51,8 +51,8 @@ related:
 # Enforced import boundaries
 
 Import Linter reads the contracts under `tool.importlinter` in `pyproject.toml`. The main CI `test`
-job installs the hand-maintained lock with `uv sync --frozen`, then runs
-`uv run --frozen lint-imports` before the test suite. Keeping the check in that job reuses the
+job installs the lock with `uv sync --locked` (failing on a stale lock), then runs
+`uv run --locked lint-imports` before the test suite. Keeping the check in that job reuses the
 development environment and avoids a second install for a fast static architecture check.
 The separate `test-postgres` job runs its database-sensitive subset serially against Postgres 16;
 it uses unbuffered Python output and a 15-minute job budget so a slow test remains diagnosable. The
