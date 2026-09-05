@@ -24,6 +24,13 @@ class AuthorizationMethod:
     missing_message: str = ""
     capability_intros: tuple[tuple[str, str], ...] = ()
     capability_details: tuple[tuple[str, tuple[str, ...]], ...] = ()
+    capability_labels: tuple[tuple[str, str], ...] = ()
+    capability_help: tuple[tuple[str, str], ...] = ()
+    capability_action_labels: tuple[tuple[str, str], ...] = ()
+    review_key: str = ""
+    review_notices: tuple[tuple[str, str], ...] = ()
+    review_capability_rollouts: tuple[tuple[str, str, str], ...] = ()
+    capability_review_help: tuple[tuple[str, str], ...] = ()
     scope_aliases: tuple[tuple[str, str], ...] = ()
     scope_riders: tuple[str, ...] = ()
     scope_riders_by_scope: tuple[tuple[str, str], ...] = ()
@@ -71,6 +78,7 @@ def provider_profile(provider: Any, method: str) -> Any:
         **dict(selected.overrides),
         authorization_methods=(),
         default_capability_name="",
+        connect_default_capability_name="",
     )
 
 
@@ -123,3 +131,110 @@ def required_scopes(endpoint: dict, method: AuthorizationMethod | None) -> list[
         rider for source, rider in method.scope_riders_by_scope if source in declared
     )
     return list(dict.fromkeys(result))
+
+
+def connect_capability(provider: Any, endpoint: dict, method: AuthorizationMethod | None) -> str:
+    """Return the smallest declared capability that satisfies one endpoint.
+
+    A grant method can have an approved core tier and a wider tier that is still under review.
+    Setup guidance must name the endpoint's real tier instead of always naming the method default.
+    """
+    eligible = method.capabilities if method else tuple(provider.capabilities)
+    required = set(required_scopes(endpoint, method))
+    candidates = [
+        capability for capability in eligible
+        if required <= set(provider.scopes.get(capability, ()))
+    ]
+    if candidates:
+        return min(candidates, key=lambda capability: len(provider.scopes[capability]))
+    if method and method.connect_capability:
+        return method.connect_capability
+    return str(endpoint.get("authorization_capability") or "")
+
+
+def action_label(method: AuthorizationMethod | None, capability: str) -> str:
+    if method is None:
+        return "Add account"
+    return dict(method.capability_action_labels).get(capability, method.action_label)
+
+
+def description(method: AuthorizationMethod, pending: frozenset[str]) -> str:
+    """Return method copy with notices for only the reviews that remain pending."""
+    notices = [text for key, text in method.review_notices if key in pending]
+    return " ".join((method.description, *notices)).strip()
+
+
+def capability_help(
+    method: AuthorizationMethod, capability: str, pending: frozenset[str],
+) -> str:
+    """Return normal help, replaced by review help while its gate is pending."""
+    rollout_key = next(
+        (key for key, gated, _fallback in method.review_capability_rollouts
+         if gated == capability),
+        "",
+    )
+    if rollout_key in pending:
+        review_help = dict(method.capability_review_help).get(capability, "")
+        if review_help:
+            return review_help
+    return dict(method.capability_help).get(capability, "")
+
+
+def connect_capabilities(
+    method: AuthorizationMethod, pending: frozenset[str],
+) -> tuple[str, ...]:
+    """Return new-grant choices, with review fallbacks only while needed."""
+    capabilities = list(method.capabilities)
+    for key, _capability, fallback in method.review_capability_rollouts:
+        if key not in pending and fallback in capabilities:
+            capabilities.remove(fallback)
+    return tuple(capabilities)
+
+
+def method_connect_capability(
+    provider: Any, method: AuthorizationMethod, pending: frozenset[str],
+) -> str:
+    """Return one method's effective default under the current review state."""
+    eligible = list(connect_capabilities(method, pending))
+    gated_pending = {
+        capability for key, capability, _fallback in method.review_capability_rollouts
+        if key in pending
+    }
+    approved = [capability for capability in eligible if capability not in gated_pending]
+    if method.connect_capability and method.connect_capability in approved:
+        return method.connect_capability
+    preferred = provider.default_capability
+    if preferred in approved:
+        return preferred
+    return max(approved, key=lambda cap: len(provider.scopes.get(cap, ())), default=preferred)
+
+
+def permission_capabilities(provider: Any, pending: frozenset[str]) -> tuple[str, ...]:
+    """Return permission-card capabilities for the current review state."""
+    capabilities = list(provider.capabilities)
+    for method in provider.authorization_methods:
+        for key, _capability, fallback in method.review_capability_rollouts:
+            if key not in pending and fallback in capabilities:
+                capabilities.remove(fallback)
+    return tuple(capabilities)
+
+
+def capability_presentation(
+    method: AuthorizationMethod, pending: frozenset[str],
+) -> tuple[dict[str, str], dict[str, str], dict[str, list[str]]]:
+    """Merge an approved wider capability into its former fallback permission card."""
+    labels = dict(method.capability_labels)
+    intros = dict(method.capability_intros)
+    details = {capability: list(items) for capability, items in method.capability_details}
+    for key, capability, fallback in method.review_capability_rollouts:
+        if key in pending:
+            continue
+        if fallback in labels:
+            labels[capability] = labels[fallback]
+        if fallback in intros:
+            intros[capability] = intros[fallback]
+        details[capability] = [
+            *details.get(fallback, []),
+            *details.get(capability, []),
+        ]
+    return labels, intros, details

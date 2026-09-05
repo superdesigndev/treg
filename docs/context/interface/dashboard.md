@@ -27,16 +27,22 @@ related:
 ## Instagram authorization state
 
 The primary **Add account** action opens one method picker for providers with several separate OAuth
-grants. For Instagram it selects **Instagram Login** by default and marks it recommended; the user
-can instead select **Facebook Page tools**, whose option explains that it requires an Instagram
-Professional account linked to a Facebook Page, then one **Continue** action starts the selected
-flow. Choosing Instagram Login then opens the existing least-privilege capability picker for
-**Read only**, **Read and publish**, or **Full access**; the single-capability Facebook Page grant
-continues directly. Providers with zero or one authorization method keep their existing
-one-click/capability flow. Reconnect stays pinned to the connection's stored method. Method labels
-come from `oauth_providers.listing()`; the shared template does not know method ids. The registry
-marks a provider configured when any declared method is configured, and the picker selects the
-recommended method only when that method is available.
+grants. Registry review metadata and `TREG_OAUTH_REVIEW_PENDING` define the effective experience.
+With both Instagram review keys pending, Instagram selects the approved **Facebook Page tools** flow
+for plain Connect. Direct **Instagram Login** stays available for app-role testing and its registry
+text states the review limit. The Page method opens a generic capability picker: core Page tools use
+approved scopes, while **Facebook Page tools + messages** is an explicit widening for reviewers and
+test roles. Pending methods and capability choices carry a registry-driven **In review** badge; an
+approved fallback method does not inherit the badge from its optional wider capability. After Page
+messaging approval, its key is removed: the badge, warning, and extra Page capability
+picker disappear, and the two Page permission cards merge into one full Page-tools card. Page
+connections then request messages. After direct approval, its key is also
+removed: direct Instagram Login returns as the recommended method and loses its review badge.
+Providers with zero or one authorization method keep their existing one-click/capability flow.
+Reconnect stays pinned to the connection's stored method and chooses its widest granted capability.
+Method, capability, help, and action labels come from `oauth_providers.listing()`; the shared template
+does not know provider or method ids. The registry marks a provider configured when any declared
+method is configured.
 
 The provider page has no method-status alert: healthy and optional states live in the connection
 rows and permission cards, while alert styling remains reserved for real errors or setup gaps. Each
@@ -762,8 +768,9 @@ selector. Changing it swaps the visible method-specific inputs and updates the A
 and direct-call representations together. The selector label comes from the provider registry,
 not a method-id lookup in the template. Instagram Login is the first/default method on shared
 Instagram endpoints. The selector appears only when both grants are connected; one connected grant
-is selected automatically, while no connected grant keeps the recommended Instagram Login default
-and the ordinary catalog access guidance.
+is selected automatically, while no connected grant keeps the endpoint's recommended method and the
+ordinary catalog access guidance. If a connected grant lacks an endpoint's scopes, the drawer gives
+the smallest registry-defined capability upgrade and its registry-defined action label.
 
 **Example responses** load when their tab is FIRST opened (`setEpTab` → `loadExample`, guarded by
 `if(this.platEx[e.id]) return`), never with the page and never twice — a platform can carry hundreds of

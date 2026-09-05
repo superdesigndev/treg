@@ -151,6 +151,12 @@ class OAuthProvider:
     # protocol profile without changing the provider id or duplicating its endpoint catalog.
     authorization_methods: tuple[OAuthAuthorizationMethod, ...] = ()
     default_capability_name: str = ""
+    # Optional rollout default for a plain Connect. Keep `default_capability` as the provider's
+    # broadest semantic tier; this can point new users at a reviewed subset while wider access is
+    # still in provider review.
+    connect_default_capability_name: str = ""
+    # Method used while the semantic default method is still behind a registry review key.
+    review_fallback_authorization_method: str = ""
     # Method assigned to grants created before explicit method identity existed. Empty means the
     # provider's normal default. This keeps compatibility policy in provider metadata.
     legacy_authorization_method: str = ""
@@ -332,6 +338,25 @@ class OAuthProvider:
         if self.default_capability_name:
             return self.default_capability_name
         return max(self.capabilities, key=lambda c: len(self.scopes[c]))
+
+    @property
+    def connect_default_capability(self) -> str:
+        if self.connect_default_capability_name:
+            return self.connect_default_capability_name
+        default = self.default_capability
+        pending = get_settings().oauth_review_pending_set
+        method = self.authorization_for_capability(default)
+        if not method or not method.review_key or method.review_key not in pending:
+            return default
+        fallback = next(
+            (item for item in self.authorization_methods
+             if item.name == self.review_fallback_authorization_method),
+            None,
+        )
+        return (
+            connection_authorization.method_connect_capability(self, fallback, pending)
+            if fallback else default
+        )
 
     def authorization_for_capability(self, capability: str) -> OAuthAuthorizationMethod | None:
         return connection_authorization.method_for_capability(self, capability)
@@ -928,11 +953,21 @@ INSTAGRAM = OAuthProvider(
             "instagram_business_content_publish", "instagram_business_manage_comments",
             "instagram_business_manage_messages",
         ],
+        # The ordinary Page connection asks only for permissions that already have Advanced
+        # Access. Messaging is a separate widening step while Meta reviews that permission, so an
+        # unrelated read, publish, comment, hashtag, mention, or shopping use is never blocked by
+        # an unapproved message scope.
         "page-tools": [
             "instagram_basic", "instagram_manage_insights", "instagram_content_publish",
-            "instagram_manage_comments", "instagram_manage_messages",
+            "instagram_manage_comments",
             "instagram_shopping_tag_products", "pages_show_list", "pages_read_engagement",
-            "pages_messaging", "business_management",
+            "business_management",
+        ],
+        "page-messages": [
+            "instagram_basic", "instagram_manage_insights", "instagram_content_publish",
+            "instagram_manage_comments", "instagram_shopping_tag_products", "pages_show_list",
+            "pages_read_engagement", "business_management", "instagram_manage_messages",
+            "pages_messaging",
         ],
     },
     client_id_setting="instagram_client_id",
@@ -948,21 +983,33 @@ INSTAGRAM = OAuthProvider(
     scope_separator=",",
     long_lived_exchange_style="instagram",
     default_capability_name="manage",
+    review_fallback_authorization_method="facebook-page",
     legacy_authorization_method="facebook-page",
     authorization_methods=(
         OAuthAuthorizationMethod(
             name="instagram-login", display_name="Instagram Login",
             capabilities=("read", "post", "manage"), connection_name="instagram",
-            description="Connect an Instagram Professional account directly. A Facebook Page is not required.",
+            description=(
+                "Connect an Instagram Professional account directly. A Facebook Page is not required."
+            ),
+            review_key="instagram-login",
+            review_notices=((
+                "instagram-login",
+                "Meta review is not complete, so this method currently works only for accounts with an app role.",
+            ),),
         ),
         OAuthAuthorizationMethod(
             name="facebook-page", display_name="Facebook Page tools",
-            capabilities=("page-tools",), connection_name="instagram-page-tools",
+            capabilities=("page-tools", "page-messages"), connection_name="instagram-page-tools",
             description=(
                 "Facebook Page tools require an Instagram Professional account that is linked "
                 "to a Facebook Page. This authorization is separate from Instagram Login."
             ),
-            connect_capability="page-tools",
+            review_notices=((
+                "page-messages",
+                "Instagram messaging is an optional permission that Meta is still reviewing.",
+            ),),
+            review_capability_rollouts=(("page-messages", "page-messages", "page-tools"),),
             action_label="Enable Facebook Page tools",
             missing_message=(
                 "This tool requires Facebook Page authorization and an Instagram Professional "
@@ -978,7 +1025,26 @@ INSTAGRAM = OAuthProvider(
                 "Read media, comments and tags that mention your account",
                 "Search the linked product catalog and inspect product appeals",
                 "Read this account's recently searched hashtags",
+            )), ("page-messages", (
+                "Read and reply to Instagram Direct messages",
+            ))),
+            capability_labels=(
+                ("page-tools", "Facebook Page tools"),
+                ("page-messages", "Facebook Page tools + messages"),
+            ),
+            capability_help=(
+                ("page-tools", (
+                    "Connect with the approved Page permissions. Instagram Direct messages are not included."
+                )),
+                ("page-messages", (
+                    "Connect with Facebook Page tools and Instagram Direct message access."
+                )),
+            ),
+            capability_review_help=(("page-messages", (
+                "Also request Instagram Direct message access. Meta review is still in progress, "
+                "so normal customer accounts might not be able to grant it yet."
             )),),
+            capability_action_labels=(("page-messages", "Enable Instagram messages"),),
             scope_aliases=(
                 ("instagram_business_basic", "instagram_basic"),
                 ("instagram_business_manage_insights", "instagram_manage_insights"),
@@ -2776,6 +2842,44 @@ def scope_label(scope: str) -> str:
 
 def listing() -> list[dict]:
     """Every known provider, flagged with whether this deployment can actually run its flow."""
+    pending_reviews = get_settings().oauth_review_pending_set
+
+    def method_listing(provider: OAuthProvider, method: OAuthAuthorizationMethod) -> dict:
+        labels, intros, details = connection_authorization.capability_presentation(
+            method, pending_reviews,
+        )
+        return {
+            "name": method.name,
+            "display_name": method.display_name,
+            "in_review": bool(method.review_key and method.review_key in pending_reviews),
+            "capabilities_in_review": [
+                capability
+                for key, capability, _fallback in method.review_capability_rollouts
+                if key in pending_reviews
+            ],
+            "capabilities": list(connection_authorization.connect_capabilities(
+                method, pending_reviews,
+            )),
+            "description": connection_authorization.description(method, pending_reviews),
+            "connect_capability": connection_authorization.method_connect_capability(
+                provider, method, pending_reviews,
+            ),
+            "action_label": method.action_label,
+            "missing_message": method.missing_message,
+            "capability_intros": intros,
+            "capability_details": details,
+            "capability_labels": labels,
+            "capability_help": {
+                capability: connection_authorization.capability_help(
+                    method, capability, pending_reviews,
+                )
+                for capability in method.capabilities
+            },
+            "capability_action_labels": dict(method.capability_action_labels),
+            "configured": is_configured(provider.profile_for_authorization(method.name)),
+            "consent_notice": provider.profile_for_authorization(method.name).consent_notice,
+        }
+
     return [
         {
             "service": p.service,
@@ -2789,7 +2893,11 @@ def listing() -> list[dict]:
                 for cap, scopes in sorted(p.scopes.items())
             },
             "capabilities": p.capabilities,
+            "permission_capabilities": list(
+                connection_authorization.permission_capabilities(p, pending_reviews)
+            ),
             "default_capability": p.default_capability,
+            "connect_default_capability": p.connect_default_capability,
             "resource_label": p.resource_label,
             "resource_plural": p.resource_plural,
             "supports_discovery": p.supports_discovery,
@@ -2808,25 +2916,7 @@ def listing() -> list[dict]:
             "docs_url": p.docs_url,
             "consent_notice": p.consent_notice,
             "configured": is_configured(p),
-            "authorization_methods": [
-                {
-                    "name": method.name,
-                    "display_name": method.display_name,
-                    "capabilities": list(method.capabilities),
-                    "description": method.description,
-                    "connect_capability": method.connect_capability,
-                    "action_label": method.action_label,
-                    "missing_message": method.missing_message,
-                    "capability_intros": dict(method.capability_intros),
-                    "capability_details": {
-                        capability: list(details)
-                        for capability, details in method.capability_details
-                    },
-                    "configured": is_configured(p.profile_for_authorization(method.name)),
-                    "consent_notice": p.profile_for_authorization(method.name).consent_notice,
-                }
-                for method in p.authorization_methods
-            ],
+            "authorization_methods": [method_listing(p, method) for method in p.authorization_methods],
             # Whether calls on this connection are metered from the team balance (the provider
             # bills treg's app per use), with the default rates — shown BEFORE consent, so nobody
             # connects an account without seeing the price. Off unless the deployment enables it.

@@ -135,6 +135,9 @@ bound to a closed maintenance loop. Calling `maintenance.upgrade()` directly doe
   Render's `fromDatabase`-injected URL works unedited (the async engine needs the asyncpg driver).
 - `db_pool_overrides` — `"admin.pool_size=4,background.pool_size=12"`, patching `POOL_SPECS` at
   startup; empty uses the defaults. Bad entries are logged and skipped. See § Three pools above.
+- `oauth_review_pending` — comma-separated provider-registry review keys. The reference deployment
+  starts with `instagram-login,page-messages`. Remove `page-messages` after Page messaging approval;
+  set an explicit empty value after direct Instagram approval. Restart the service after each change.
 - `secret_key` — the Fernet key; empty → an ephemeral key is minted at startup (secrets won't survive a
   restart). See [auth-secrets](../architecture/auth-secrets.md).
 - `public_url` — default `https://treg.to`; the reference deployment is cut over in STAGES —

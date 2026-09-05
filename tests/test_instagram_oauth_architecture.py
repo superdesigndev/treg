@@ -69,10 +69,12 @@ async def _complete(clients: AsyncClient, body: dict) -> dict:
     return {**started.json(), **status}
 
 
-async def test_plain_instagram_connect_uses_direct_login_and_records_identity(
+async def test_instagram_manage_connect_uses_direct_login_and_records_identity(
     clients: AsyncClient, instagram_apps,
 ):
-    started = await clients.post("/oauth/start", json={"provider": "instagram"})
+    started = await clients.post(
+        "/oauth/start", json={"provider": "instagram", "capability": "manage"},
+    )
     assert started.status_code == 200, started.text
     query = parse_qs(urlsplit(started.json()["consent_url"]).query)
     assert urlsplit(started.json()["consent_url"]).netloc == "www.instagram.com"
@@ -101,10 +103,49 @@ async def test_plain_instagram_connect_uses_direct_login_and_records_identity(
         assert tool.bindings[0]["secret_field"] == "access_token"
 
 
+async def test_plain_instagram_connect_defaults_to_approved_page_scopes(
+    clients: AsyncClient, instagram_apps,
+):
+    started = await clients.post("/oauth/start", json={"provider": "instagram"})
+    assert started.status_code == 200, started.text
+    query = parse_qs(urlsplit(started.json()["consent_url"]).query)
+    scopes = set(query["scope"][0].split())
+    assert urlsplit(started.json()["consent_url"]).netloc == "www.facebook.com"
+    assert "pages_show_list" in scopes
+    assert "instagram_manage_messages" not in scopes
+    assert "pages_messaging" not in scopes
+
+
+@pytest.mark.parametrize(
+    ("pending", "host", "scope_separator", "required_scope"),
+    [
+        ("instagram-login", "www.facebook.com", " ", "instagram_manage_messages"),
+        ("", "www.instagram.com", ",", "instagram_business_manage_messages"),
+    ],
+)
+async def test_review_setting_moves_plain_connect_to_each_approved_experience(
+    clients: AsyncClient, instagram_apps, monkeypatch,
+    pending, host, scope_separator, required_scope,
+):
+    monkeypatch.setenv("TREG_OAUTH_REVIEW_PENDING", pending)
+    get_settings.cache_clear()
+    try:
+        started = await clients.post("/oauth/start", json={"provider": "instagram"})
+        assert started.status_code == 200, started.text
+        query = parse_qs(urlsplit(started.json()["consent_url"]).query)
+        assert urlsplit(started.json()["consent_url"]).netloc == host
+        assert required_scope in query["scope"][0].split(scope_separator)
+        assert "review" not in started.json()["connect_guidance"].lower()
+    finally:
+        get_settings.cache_clear()
+
+
 async def test_page_tools_are_a_separate_facebook_grant(
     clients: AsyncClient, instagram_apps,
 ):
-    direct = await _complete(clients, {"provider": "instagram"})
+    direct = await _complete(
+        clients, {"provider": "instagram", "capability": "manage"},
+    )
     page = await clients.post(
         "/oauth/start", json={"provider": "instagram", "capability": "page-tools"},
     )
@@ -115,6 +156,8 @@ async def test_page_tools_are_a_separate_facebook_grant(
     assert urlsplit(page.json()["consent_url"]).netloc == "www.facebook.com"
     assert query["client_id"] == ["meta-cid"]
     assert "pages_show_list" in query["scope"][0].split()
+    assert "instagram_manage_messages" not in query["scope"][0].split()
+    assert "pages_messaging" not in query["scope"][0].split()
     state = page.json()["state"]
     assert (await clients.get(f"/oauth/callback?code=AUTHCODE&state={state}")).status_code == 200
     page_status = (await clients.get(f"/oauth/status/{state}")).json()
@@ -131,7 +174,7 @@ async def test_catalog_call_selects_instagram_grant_when_facebook_shares_the_hos
 ):
     await _complete(clients, {"provider": "facebook"})
     page = await _complete(
-        clients, {"provider": "instagram", "capability": "page-tools"},
+        clients, {"provider": "instagram", "capability": "page-messages"},
     )
     selected = await clients.post(
         f"/connections/{page['secret_id']}/resource",
@@ -174,8 +217,10 @@ async def test_marketplace_secret_uses_the_newest_grant_for_a_method(
 async def test_catalog_call_explicitly_selects_each_instagram_authorization(
     clients: AsyncClient, instagram_apps,
 ):
-    await _complete(clients, {"provider": "instagram"})
-    page = await _complete(clients, {"provider": "instagram", "capability": "page-tools"})
+    await _complete(clients, {"provider": "instagram", "capability": "manage"})
+    page = await _complete(
+        clients, {"provider": "instagram", "capability": "page-messages"},
+    )
     selected = await clients.post(
         f"/connections/{page['secret_id']}/resource",
         json={"resource_ref": "IG-DIRECT", "resource_name": "direct_ig"},
@@ -211,7 +256,7 @@ async def test_catalog_call_explicitly_selects_each_instagram_authorization(
 async def test_access_dry_run_reports_each_instagram_grant_independently(
     clients: AsyncClient, instagram_apps,
 ):
-    await _complete(clients, {"provider": "instagram", "capability": "page-tools"})
+    await _complete(clients, {"provider": "instagram", "capability": "page-messages"})
 
     direct = await clients.get(
         "/catalog/endpoints/instagram.x.user-messages/access",
@@ -227,6 +272,22 @@ async def test_access_dry_run_reports_each_instagram_grant_independently(
     assert page.status_code == 200, page.text
     assert page.json()["tier"] in {"tool", "credential"}
     assert page.json()["authorization_method"] == "facebook-page"
+
+
+async def test_page_core_grant_guides_message_calls_to_the_message_upgrade(
+    clients: AsyncClient, instagram_apps,
+):
+    await _complete(clients, {"provider": "instagram", "capability": "page-tools"})
+    response = await clients.get(
+        "/catalog/endpoints/instagram.x.user-messages/access",
+        params={"authorization_method": "facebook-page"},
+    )
+    assert response.status_code == 200, response.text
+    detail = response.json()
+    assert detail["tier"] == "none"
+    assert detail["connect_capability"] == "page-messages"
+    assert detail["connect_command"].endswith("--capability page-messages")
+    assert "needs more access" in detail["detail"]
 
 
 async def test_page_only_access_dry_run_preserves_connect_guidance(
@@ -257,7 +318,7 @@ async def test_page_only_access_dry_run_preserves_connect_guidance(
 async def test_instagram_method_rejects_the_other_methods_identifier(
     clients: AsyncClient, instagram_apps,
 ):
-    await _complete(clients, {"provider": "instagram"})
+    await _complete(clients, {"provider": "instagram", "capability": "manage"})
     response = await clients.get(
         "/call/instagram.x.user-messages",
         params={"ig_user_id": "17841400000000000", "page_id": "PAGE-DIRECT"},
@@ -290,7 +351,7 @@ async def test_required_identity_lookup_runs_after_database_session_closes(
 
     monkeypatch.setattr(connect_use_cases, "session_maker", tracked_session_maker)
     monkeypatch.setattr(connect_use_cases, "_record_connected_identity", checked_identity)
-    await _complete(clients, {"provider": "instagram"})
+    await _complete(clients, {"provider": "instagram", "capability": "manage"})
 
 
 async def test_page_discovery_runs_after_database_session_closes(
@@ -335,7 +396,9 @@ async def test_no_direct_professional_account_is_setup_required(
         "instagram",
         replace(oauth_providers.INSTAGRAM, identity_path="/missing-professional-account"),
     )
-    connected = await _complete(clients, {"provider": "instagram"})
+    connected = await _complete(
+        clients, {"provider": "instagram", "capability": "manage"},
+    )
     rows = {row["id"]: row for row in (await clients.get("/connections")).json()}
     connection = rows[connected["secret_id"]]
     assert connection["health"] == "setup_required"
@@ -378,7 +441,7 @@ async def test_empty_page_discovery_is_not_reported_as_working(
 async def test_direct_connection_does_not_satisfy_a_page_only_tool(
     clients: AsyncClient, instagram_apps,
 ):
-    await _complete(clients, {"provider": "instagram"})
+    await _complete(clients, {"provider": "instagram", "capability": "manage"})
     response = await clients.get("/call/instagram.x.hashtag-search")
     assert response.status_code == 428, response.text
     detail = response.json()["detail"]
@@ -397,7 +460,9 @@ async def test_direct_connection_does_not_satisfy_a_page_only_tool(
 async def test_expired_grant_returns_structured_reconnect_guidance(
     clients: AsyncClient, instagram_apps,
 ):
-    connected = await _complete(clients, {"provider": "instagram"})
+    connected = await _complete(
+        clients, {"provider": "instagram", "capability": "manage"},
+    )
     async with session_maker() as db:
         secret = await db.get(Secret, connected["secret_id"])
         blob = json.loads(crypto.decrypt(secret.value))

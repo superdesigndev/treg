@@ -34,21 +34,30 @@ related:
 
 `instagram` is one catalog provider with two separate grants:
 
-- `instagram-login` is the default. `treg connections connect --provider instagram` opens
-  Instagram Login. It uses an Instagram User token and `graph.instagram.com`.
-- `facebook-page` is optional. `treg connections connect --provider instagram --capability
-  page-tools` opens Facebook Login. It uses a Facebook Page token and `graph.facebook.com`. The
-  selected Instagram Professional account must be linked to that Page.
+- `instagram-login` uses an Instagram User token and `graph.instagram.com`. While its registry review
+  key is pending, its connect copy says that only app-role accounts can complete it.
+- `facebook-page` uses a Facebook Page token and `graph.facebook.com`. The selected Instagram
+  Professional account must be linked to that Page.
+
+`TREG_OAUTH_REVIEW_PENDING` controls the rollout without a code edit. The generic registry rules give
+these three states:
+
+- `instagram-login,page-messages`: plain Connect uses Page `page-tools`; warnings and the optional
+  Page-message choice remain visible for reviewers and app roles.
+- `instagram-login`: plain Connect uses full `page-messages`; its warning and extra Page permission
+  choice disappear.
+- empty: plain Connect returns to direct Instagram `manage`; all review warnings disappear.
 
 The grants have separate `Secret` rows, tool names, scopes, tokens, expiry, health, and resource
 state. A direct grant does not satisfy a Page-only endpoint. A Facebook Pages connection is also
 separate and never creates an Instagram grant.
 
-The provider registry gives the `facebook-page` method a capability intro and incremental benefit
-list for its `page-tools` permission card. The card says Page authorization also supports the core
-Instagram actions, but lists only the Page-only hashtag, discovery, mention/tag, shopping, and
-recent-search tools. The direct `read`, `post`, and `manage` cards retain their ordinary scope-driven
-copy. This presentation remains method metadata; the dashboard contains no Instagram-specific branch.
+The `facebook-page` method has two cumulative capabilities. `page-tools` contains the approved Page
+permissions for core Instagram actions plus hashtag, discovery, mention/tag, shopping, and recent
+search tools. It does not request `instagram_manage_messages` or `pages_messaging`. `page-messages`
+adds those message permissions. Method metadata supplies their labels, help, action copy, and
+permission-card details; the dashboard contains no Instagram-specific branch. Missing-scope
+guidance selects the smallest capability that satisfies the endpoint.
 
 Old Instagram grants used Facebook Login. Migration `0010` marks them as `facebook-page` without
 reading token material. Runtime metadata also treats an empty method on an old Instagram row as
@@ -137,10 +146,13 @@ session closes.
 
 The Page grant keeps the existing Page and Business discovery. The user selects the linked
 Instagram account. Treg derives and stores the Page token inside the encrypted OAuth blob. The
-dashboard's **Add account** action presents the two grants as a single-choice method picker, with
-direct Instagram Login selected and recommended by default. Selecting it opens the usual
-read/post/manage capability picker before consent; the one-capability Page grant continues directly.
-Existing connection rows retain their stored method when reconnecting.
+dashboard's **Add account** action presents the two grants as a single-choice method picker. Its
+recommended method, conditional review copy, and effective capability choices all come from the same
+registry review state. With both keys pending, Facebook Page tools is recommended and opens a core or
+messaging choice. After Page messaging approval, that method continues directly with the full Page
+grant. After direct approval, Instagram Login is recommended and opens the usual read/post/manage
+capability picker. Existing connection rows retain their stored method and widest granted capability
+when they reconnect.
 
 Before a catalog call, resolution selects a grant by endpoint provider and authorization method.
 It checks token expiry, scopes, and the selected resource before any upstream call. A missing grant
@@ -153,7 +165,8 @@ either compatible grant exists; a Page-only endpoint is connected only when the 
 grant exists. The dashboard derives this from each endpoint's `authorization_methods` and each
 connection's stored `authorization_method`, rather than special-casing endpoint ids. Its access
 dry-run preserves the selected method's registry guidance, including the Page-only
-`--capability page-tools` command and action label.
+`--capability page-tools` command and action label. A core Page grant does not mark a messaging
+endpoint as callable; its access check returns the `page-messages` upgrade command.
 
 For a dual-method endpoint, callers can select `instagram-login` or `facebook-page`. The dashboard
 shows a selector; the CLI uses `--authorization-method`; MCP tools use the
@@ -191,5 +204,6 @@ No repository task changes Meta settings. A human must do these steps:
    Then verify a linked Page account through `page-tools`. Run a safe read from each class. Test
    publishing and messaging only with deliberate test content and recipients.
 
-App Review is required for production access to accounts that the app owner does not own or
-manage. Development-mode tests with app-role accounts do not prove that review is complete.
+App Review is required for production access to accounts that the app owner does not own or manage.
+Development-mode tests with app-role accounts do not prove that review is complete. Change
+`TREG_OAUTH_REVIEW_PENDING` only after Meta marks the related access as approved.

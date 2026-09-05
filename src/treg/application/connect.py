@@ -15,6 +15,7 @@ from sqlmodel import select
 from .. import crypto, health, oauth_providers
 from ..config import get_settings
 from ..domain.catalog import store as catalog_store
+from ..domain.connections import authorization as connection_authorization
 from ..domain.connections import refresh as connection_refresh
 from ..domain.connections.oauth_flow import consent_url
 from ..infra.db import session_maker
@@ -307,7 +308,7 @@ async def start_oauth_connection(
                     "unknown_provider",
                     f"unknown provider {provider_name!r} (known: {known})",
                 )
-            chosen_capability = capability or provider.default_capability
+            chosen_capability = capability or provider.connect_default_capability
             try:
                 scopes = provider.scopes_for(chosen_capability)
                 authorization = provider.authorization_for_capability(chosen_capability)
@@ -316,7 +317,19 @@ async def start_oauth_connection(
             except ValueError as exc:
                 raise ConnectError("invalid_provider", str(exc)) from None
             authorization_method = authorization.name if authorization else ""
-            connect_guidance = authorization.description if authorization else ""
+            pending_reviews = get_settings().oauth_review_pending_set
+            connect_guidance = (
+                connection_authorization.description(authorization, pending_reviews)
+                if authorization else ""
+            )
+            capability_guidance = (
+                connection_authorization.capability_help(
+                    authorization, chosen_capability, pending_reviews,
+                )
+                if authorization else ""
+            )
+            if capability_guidance:
+                connect_guidance = f"{connect_guidance} {capability_guidance}".strip()
             auth_uri, token_uri = profile.auth_uri, profile.token_uri
             name = name or (authorization.connection_name if authorization else provider.service)
             auth_method = profile.token_endpoint_auth_method
