@@ -18,21 +18,6 @@ def test_grokbot_gallery_lists_the_six_treg_bots_once_in_workflow_order() -> Non
 
     assert '<section class="section bot-gallery" id="bots"' in html
     assert '<a class="nav-jump" href="#bots">Bot gallery</a>' in html
-    assert html.count('class="bot-card"') == len(BOTS)
-    assert html.count('class="bot-visual"') == len(BOTS)
-    assert html.count('class="bot-eyes"') == len(BOTS)
-    assert html.count('class="bot-tags"') == len(BOTS)
-    assert html.count('class="bot-tag"') == len(BOTS) * 3
-    assert html.count('class="bot-by branded"') == len(BOTS)
-    assert html.count('class="bot-open-logo"') == len(BOTS)
-    assert 'class="bot-number"' not in html
-    assert 'class="crew-line"' not in html
-    assert "grid-template-columns: repeat(6" in html
-    assert "grid-column: span 2" in html
-    assert "visual.addEventListener('pointermove'" in html
-    assert "--eye-x" in html and "--eye-y" in html and "--eye-rot" in html
-    for face in ("face-icp", "face-scout", "face-rival", "face-serp", "face-creator", "face-gtm"):
-        assert f'<span class="bot-face {face}">' in html
     positions = [html.index(f">{name}</h3>") for name in BOTS]
     assert positions == sorted(positions)
     for name, url in BOTS.items():

@@ -8,7 +8,7 @@ Thanks for your interest!
 git clone https://github.com/superdesigndev/treg
 cd treg
 uv sync                     # install deps (uv >= 0.12, pinned in pyproject - https://docs.astral.sh/uv/)
-uv run pytest -q            # the full suite should pass before you start
+uv run --with pytest-xdist pytest -n auto -q   # daily local default (same shape as CI)
 ```
 
 No `.env` needed for dev — every setting has a working default (ephemeral encryption key, local
@@ -29,7 +29,9 @@ A one-command local stack is in `scripts/dev-local.sh` (`up` / `logs` / `cli` / 
 1. Branch off `main`.
 2. Match the surrounding style — plain Python with type hints, no new dependencies without a reason.
    Commit messages follow Conventional Commits (`feat(scope): …`, `fix: …`, `docs: …`).
-3. Add or update tests; run `uv run pytest -q` (all green).
+3. Add or update tests; run `uv run --with pytest-xdist pytest -n auto -q` (all green).
+   Serial `uv run --frozen python -m pytest -q` is for debugging one test or order.
+   The Postgres CI job must stay serial (`reset_db()` drops tables on a shared database).
 4. If you changed a subsystem, update its fragment in `docs/context/` in the same PR.
 5. Open a PR. CI runs the tests + a secret scan; a maintainer reviews.
 
