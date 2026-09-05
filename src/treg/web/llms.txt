@@ -123,8 +123,11 @@ one back with its ledger entries.
 - **Isolate** the few who need it: `treg org agent-new bot --pin customer=cust_A` mints a token that
   can only ever bill `cust_A`. Tag for counting, token for control.
 
-Embedding the hosted service in a product you sell needs a written agreement with us — talk to us
-first.
+This use case — your product calling the hosted treg.to API, billing your users based on the usage
+data treg returns — is **allowed and encouraged** with no special agreement. treg.to is the API you
+call; the pass-through billing mechanics (tagging, budgets, usage/by-tag) are how it's meant to be
+used. For high-volume or partnership arrangements, contact jason@superdesign.dev — that's optional,
+not a prerequisite.
 
 **Building this?** Point your coding agent at **{BASE}/integrate.md** — the full integration skill:
 the three call methods, tagging from your backend, per-customer limits, and invoicing from the

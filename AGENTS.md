@@ -1,54 +1,140 @@
-# AGENTS.md — guide for AI coding agents
+# tools-registry (`treg`) - guide for every coding agent
 
-This file orients an AI agent (Claude Code, Codex, Cursor, …) working in this repository.
+<!-- Editors: CLAUDE.md imports this file; Codex and Cursor read it directly. -->
 
-## Read first
+treg is the tool catalog for an agent: one base URL, one token, and the agent can call a curated
+catalog of external endpoints plus its own team's tools without ever holding an API key. The
+load-bearing mechanic is a proxy that makes the caller's **real upstream request**, injects the
+credential server-side and relays the answer verbatim. We never model an upstream API.
 
-- **Design docs are the source of truth.** `docs/context/` holds one fragment per subsystem, each citing
-  the source files it covers in its frontmatter (`sources:`). Before changing code, load the fragment for
-  that area; `docs/context/README.md` is the generated index (source file → fragment).
-- **The charter:** tools-registry is a registry that turns a team's skills into shareable, callable tools;
-  the core mechanic is a proxy that injects credentials server-side so a consumer never holds the secret.
-  See `README.md`.
+## Non-negotiables
+
+Everything else in this file is guidance; these are the contract, and they win over any other passage.
+
+1. A team's own key always wins over treg's, is never metered, and is never routed or overflowed.
+2. A hold (the balance `reserve` sets aside for one call) is settled or released exactly once, on
+   every path: timeout, cancellation and exceptions included.
+3. Zero database connections are held while an upstream request is in flight. This is why
+   `reserve` and `settle` are two transactions; never merge them.
+4. Plain `/call/` is a faithful relay: the injected credential and the transport headers listed in
+   `src/treg/infra/upstream/relay.py` are the only rewrites. Never add upstream-specific modeling
+   or body buffering. Routed endpoints and overflow wrap the child's answer and say so; they never
+   alter it.
+5. Balances change only through money's five entries: grant, topup, reserve, settle, release.
+   There is deliberately no refund or adjustment entry; an ops correction is a grant.
+
+**Changing any invariant in this file means editing this file in the same PR.** Routed endpoints
+and overflow once shipped with every other doc updated while this file still said "no router";
+agents then built against a constitution that was wrong.
+
+## Where the truth lives
+
+- **Design docs are fragments.** `docs/context/` holds one per subsystem, each naming its
+  `src/treg/*` sources in frontmatter; `docs/context/README.md` is the generated index and
+  `docs/context/foundation/charter.md` the start. Read the fragment before changing an area (the
+  `tools-registry-context` skill in `.agents/skills/` loads it).
+- **Before pushing:** `bash .agents/skills/tools-registry-context/scripts/drift.sh` maps changed
+  sources to fragments. Update them and commit the docs **in the same commit as the code**.
+- **Agent-facing files are the product's front door**, not documentation: `src/treg/web/llms.txt`
+  and `src/treg/web/skill.md` (installed into every agent by `install.sh`). They, `README.md` and
+  this file must agree on how treg works; a behavior change asks whether all four move.
+- **Three files move together** or they drift: `src/treg/web/tutorial.js` (the only interactive
+  source) and its hand-kept prose mirrors `src/treg/web/tutorial.md` and `docs/TUTORIAL.md`.
+- `README.md` is the overview and quickstart, `USAGE.md` the CLI reference, `CONTRIBUTING.md` the
+  dev setup, `SECURITY.md` required reading before touching the proxy, runners, auth or secrets.
+
+## Architecture
+
+### Four layers
+
+`routers/` -> `application/` -> `domain/` -> `infra/`. Imports point inward only.
+
+| Layer | Owns | Never |
+|---|---|---|
+| `routers/` | HTTP and MCP translation in, response shape out | business rules, query orchestration, money |
+| `application/` | use-case sequencing, transaction boundaries, compensation, cross-domain composition | empty wrappers around one-domain CRUD |
+| `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money` | routers, application, concrete SDKs |
+| `infra/` | DB engine and sessions, crypto, upstream relay and SSRF, ratestore, email, Stripe | decisions |
+
+- Domains do not import each other, with three sanctioned edges: `governance -> identity`,
+  `tools -> connections`, `capacity -> catalog` (read-only). `identity` and `money` are leaves.
+  import-linter enforces the layering (`[tool.importlinter]` in `pyproject.toml`, run by CI);
+  `docs/context/architecture/import-boundaries.md` explains each contract.
+- `bootstrap.py` alone knows concrete implementations. `api.py` is the legacy `all`-role
+  entrypoint, not where logic goes. `audit.py` is best-effort and drops rows under load, so nothing
+  that must persist goes through it; `analytics` is read-only.
+
+### Writes
+
+- **Session discipline.** The application use case opens the session and is the only place that
+  commits; domain functions never commit or roll back. A commit mid-flow silently breaks
+  compensation, and no import rule can catch it. Money's public `reserve`, `settle` and `release`
+  commit by design; a few other domain commits remain. Do not add another; move one out when you
+  touch it.
+- **Table ownership.** One writer module per table; cross-domain reads are fine. Three recorded
+  exceptions: only money writes `org.balance_micro` and the auto-top-up fields; the call runtime
+  may persist an OAuth token refresh into `secret`; audit writes `callrecord`, domains only read it.
+- **The call runtime is self-contained.** `src/treg/application/call/` depends on no management
+  code (routes, login, OAuth consent, Stripe top-up), reads only membership, deny rules,
+  credentials, catalog prices and balances, and writes only what `tests/test_call_architecture.py`
+  allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
+  markers, tag budgets, capacity marks, overflow spend). Extend the test's allowlist in the same PR
+  as any new write, and expect the reviewer to ask why.
+- **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
+  only in `infra/stripe.py`, orchestration in `application/billing.py`, and `reconcile.py` is
+  read-only. See `docs/context/architecture/money.md`.
+
+### Security guards that look redundant on purpose
+
+`expose_dev_code` (dev OTP only on a local sqlite database, `config.py`), the call-time SSRF check
+(`infra/upstream/ssrf.py`), the fail-loud missing-Fernet-key check in `verify_db`, and the
+`treg run` allow-list and rlimits (`runner.py`). Read the fragment before touching any of them.
+
+## Development
+
+```bash
+uv run python -m pytest -q     # the whole suite
+uv run treg --help             # the CLI from this checkout
+uv run python -m treg          # the server
+uv run lint-imports            # the import-linter contracts (CI runs this too)
+scripts/dev-local.sh up        # live dev stack on :18790 with its own sqlite DB
+```
+
+- **Dependencies change through `uv add` or `uv lock`, never by hand.** `pyproject.toml` pins
+  `required-version` so an old uv refuses to run instead of rewriting `uv.lock`; CI uses `--locked`.
+- **The package is split.** The base install is the light CLI; the FastAPI/DB stack is the
+  `[server]` extra, the certificate authority is `[proxy]`. Never import a heavy dependency at the
+  top of a CLI-path module; the "Lightweight CLI modules" import-linter contract lists them and
+  fails the build.
+- **The dashboard** (`src/treg/web/index.html`) is a single-file Vue app with no build step, so a
+  broken view name fails silently. Verify in a browser.
+- **Schema.** Alembic owns it (`src/treg/alembic/versions/`); every schema change is a revision.
+  Startup only verifies the revision and refuses to boot when behind; migrations run only via
+  `python -m treg upgrade`.
 
 ## Working agreement
 
-- Run `uv run pytest -q` before and after changes; keep it green (add tests for new behavior).
-- Keep changes minimal and scoped; match the surrounding style.
-- When you change a subsystem, update its `docs/context/` fragment in the same change.
-- When `/mcp/`, `/mcp/v2/`, or shared MCP code changes, review both MCP surfaces. Preserve the
-  documented differences, run the paired MCP contract tests, and update
-  `docs/context/architecture/mcp-oauth.md` when the contract changes.
-- Commits follow Conventional Commits (`feat(scope): …`, `fix: …`, `docs: …`); one logical change per
-  commit. PRs should say what changed and why, and note which fragments were updated.
+- Keep the suite green; add tests for new behavior. Conventional Commits (`feat(scope): ...`,
+  `fix: ...`, `docs: ...`); one logical change per commit; the PR says what changed and why and
+  names the fragments it updated.
+- `/mcp/` and `/mcp/v2/` differ on purpose. A change to either or to shared MCP code is reviewed
+  against both; do not unify them in passing.
 
-## Do not touch (without reading the fragment first)
+## When writing user-facing copy
 
-- **The faithful-relay contract** (`src/treg/infra/upstream/relay.py`): the proxy alters only hop-by-hop headers, treg's
-  own control headers, and the injected credential — never add upstream-specific modeling or buffering.
-- **Security guards that look redundant on purpose**: the `expose_dev_code` double-guard (dev OTP only on
-  local sqlite), the call-time SSRF check, the fail-loud missing-Fernet-key startup check, and the
-  `treg run` allow-list/rlimits. Read `docs/context/architecture/` before changing any of them.
+One concept, one word. Settled deliberately - mixed vocabulary is how the old framing creeps back.
 
-## Security awareness
+| Thing | Word |
+|---|---|
+| what an agent calls | **a tool** |
+| the public half | **the catalog** |
+| the team's half | **your own tools** (your keys and skills) |
+| the server itself | **registry**, and only for that |
 
-- Never commit real secrets. Placeholder/demo values are obviously fake (see `.gitleaks.toml`); CI scans
-  every PR. Credentials belong in `.env` (gitignored), never in code, tests, or docs.
-- Read **[SECURITY.md](SECURITY.md)** for the security model and the known limitations before touching the
-  proxy, the runners, auth, or secret handling.
+**Do not** call either half a *vault*, a *marketplace*, or *the registry*. Say what the agent can
+now do, not what we store. Never use a count of endpoints or providers in this file; the catalog
+changes weekly and every stale number is a lie.
 
-## Local setup
-
-See **[CONTRIBUTING.md](CONTRIBUTING.md)**. Quick version: `uv sync && uv run pytest -q`; the live dev
-stack is `scripts/dev-local.sh up` (server on `:18790`, hot-reload, own sqlite DB, email OTP shown
-on-page) with a sandboxed CLI via `scripts/dev-local.sh cli <args>`.
-
-## Things every agent should know before editing
-
-- The API (`src/treg/api.py`) is the only brain — the CLI and the dashboard are thin clients over it.
-  Put logic in the API, not in `cli.py` or the web layer.
-- The dashboard (`src/treg/web/index.html`) is a single-file Vue app with **no build step** — edit the
-  HTML directly; there is nothing to compile.
-- Migrations run on every startup and must stay idempotent **and** portable across SQLite + Postgres
-  (see `docs/context/ops/deploy.md` for the SQL rules).
-- One fetch teaches you the product itself: `src/treg/web/llms.txt` (served at `/llms.txt`).
+**Do not document what is not built.** An agent that believes a feature exists fails in a way
+nobody can debug. Provider choice is the easiest thing to overstate: treg compares providers, and
+chooses only in the two disclosed cases of non-negotiable 4.
