@@ -7,7 +7,7 @@ Thanks for your interest!
 ```bash
 git clone https://github.com/superdesigndev/treg
 cd treg
-uv sync                     # install deps (uv — https://docs.astral.sh/uv/)
+uv sync                     # install deps (uv >= 0.12, pinned in pyproject - https://docs.astral.sh/uv/)
 uv run pytest -q            # the full suite should pass before you start
 ```
 
