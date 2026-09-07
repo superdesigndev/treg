@@ -1,0 +1,321 @@
+provider: shoparoll
+source:
+  docs: https://app.shoparoll.com/api/v1/openapi.json
+  openapi: https://app.shoparoll.com/api/v1/openapi.json
+  curated: 2026-09-03
+limits: "ad generation runs 30-90s per call; reels render asynchronously (typically 1-5 min) — poll shoparoll.reels.status, which is free. No published per-route rate limit yet."
+pricing_url: https://shoparoll.com/api-pricing
+
+# SELF-VERIFIED 2026-09-03 by the vendor against a live production key (ledger in the listing PR):
+# the bogus-key probe answers 401 with a JSON error body; the ad call billed exactly 5 credits
+# ($0.25) on success; the reel billed exactly 20 credits ($1.00) and ONLY when its render reported
+# done; every free route left the balance untouched. `verified:` stamps and example responses are
+# the maintainers' to add on their own run.
+#
+# BILLING. Per SUCCESS everywhere — a failed call charges nothing (observed: a generation that
+# errored billed 0). Prices are credits from the account's prepaid balance at $0.05/credit. The
+# meter is readable on the call itself: every generation response carries `credits_charged` and
+# `credits_left`, the free account route returns the balance, and shoparoll.rates.get is a free,
+# unauthenticated machine-readable rate card.
+#
+# ASYNC SHAPE. reels.generate answers 202 with a reel_id and charges nothing at that point; the
+# charge lands when the render finishes (status: done). treg's proxy receives no callbacks —
+# polling reels.status is the interface, and it is free.
+#
+# GENERATION, NOT DATA. These endpoints make things (a PNG creative, a narrated 9:16 mp4) rather
+# than fetch things — hence the proposed `creative` platform rather than any data shelf.
+
+proposed_capabilities:
+  creative.ad.generate: "Generate a finished, branded ad creative (image) from a photo and details"
+  creative.ad.templates: "List the ad styles and output sizes available for generation"
+  creative.reel.generate: "Generate a narrated short-form vertical video from photos and a brief"
+  creative.reel.status: "Check an async video generation job and get the finished video's URL"
+  creative.asset.upload: "Add an image to the account's media library"
+  creative.asset.list: "List the account's media library"
+  creative.asset.download: "Download a generated creative or video"
+  creative.rates: "Read the per-operation price list for creative generation"
+  creative.account: "Check the connected account's credit balance and per-generation prices"
+
+endpoints:
+  - id: shoparoll.account.get
+    kind: account
+    domain: account
+    capability: creative.account
+    platform: creative
+    scope: own_account
+    method: GET
+    path: /api/v1/account
+    name: "Account & credit balance"
+    summary: "Check the connected account's credit balance and per-generation prices"
+    input: {}
+    test_request: {}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://shoparoll.com/api-pricing
+      checked: '2026-09-03'
+      confidence: verified
+      note: "the registry's health probe — a bad key gets a 401 here. Observed 2026-09-03: balance unmoved."
+    docs_url: https://app.shoparoll.com/api/v1/openapi.json
+
+  - id: shoparoll.rates.get
+    kind: utility
+    domain: account
+    capability: creative.rates
+    platform: creative
+    scope: any_account
+    method: GET
+    path: /api/v1/rates
+    name: "Rate card"
+    summary: "Read the machine-readable per-operation prices in credits and USD"
+    input: {}
+    test_request: {}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: rate_card_api
+      source_url: https://app.shoparoll.com/api/v1/rates
+      checked: '2026-09-03'
+      confidence: verified
+      note: "free and unauthenticated — price visibility costs nothing"
+    docs_url: https://app.shoparoll.com/api/v1/openapi.json
+
+  - id: shoparoll.ads.templates
+    kind: utility
+    domain: ads
+    capability: creative.ad.templates
+    platform: creative
+    scope: any_account
+    method: GET
+    path: /api/v1/ads/templates
+    name: "Ad styles & sizes"
+    summary: "List the ad styles and output sizes, with which styles need an image"
+    input: {}
+    test_request: {}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://shoparoll.com/api-pricing
+      checked: '2026-09-03'
+      confidence: verified
+    docs_url: https://app.shoparoll.com/api/v1/openapi.json
+
+  - id: shoparoll.photos.upload
+    kind: action
+    domain: assets
+    capability: creative.asset.upload
+    platform: creative
+    scope: own_account
+    method: POST
+    path: /api/v1/photos
+    name: "Upload a photo"
+    summary: "Add an image to the account's library to seed ads and reels — free"
+    input:
+      body:
+        image_base64: {type: string, required: true, note: "PNG/JPEG/WebP as base64 or a data: URI, max 25MB"}
+        description: {type: string, required: false, note: "what the picture shows — helps the reel writer use it well", example: "close-up of a sourdough loaf on a wooden board"}
+    # No inline test_request: catalog files must not carry long base64 literals. Verify by POSTing
+    # any small PNG as image_base64 — observed 2026-09-03: 201, photo_id returned, balance unmoved.
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://shoparoll.com/api-pricing
+      checked: '2026-09-03'
+      confidence: verified
+    docs_url: https://app.shoparoll.com/api/v1/openapi.json
+
+  - id: shoparoll.photos.list
+    kind: data
+    domain: assets
+    capability: creative.asset.list
+    platform: creative
+    scope: own_account
+    method: GET
+    path: /api/v1/photos
+    name: "List photos"
+    summary: "List the account's media library with descriptions and file URLs"
+    input: {}
+    test_request: {}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://shoparoll.com/api-pricing
+      checked: '2026-09-03'
+      confidence: verified
+    docs_url: https://app.shoparoll.com/api/v1/openapi.json
+
+  - id: shoparoll.ads.generate
+    kind: action
+    domain: ads
+    capability: creative.ad.generate
+    platform: creative
+    scope: own_account
+    method: POST
+    path: /api/v1/ads
+    name: "Generate an ad creative"
+    summary: "Generate one finished, branded ad creative (PNG) from an image and details"
+    input:
+      body:
+        image_base64: {type: string, required: false, note: "the image the ad shows (base64 or data: URI, max 25MB); required for the photo and product styles"}
+        photo_id: {type: integer, required: false, note: "a previously uploaded photo instead of image_base64"}
+        topic: {type: string, required: false, note: "what the ad should say — product, angle, audience", example: "A neighbourhood bakery famous for slow-fermented sourdough"}
+        offer: {type: string, required: false, note: "a literal offer worn verbatim on the artwork, never rephrased", example: "2-for-1 Tuesdays"}
+        template: {type: string, required: false, note: "photo (default) | product | bold | asset | checklist — bold/asset/checklist need no image", example: "bold"}
+        size: {type: string, required: false, note: "story 1080x1920 (default) | portrait | square | landscape", example: "story"}
+        theme: {type: string, required: false, note: "dark | light; empty picks the style's native look"}
+        source_url: {type: string, required: false, note: "a public page to write the copy from"}
+        brand: {type: object, required: false, note: "per-call branding override {name, cta_text, brand_primary, brand_accent as #RRGGBB, website, description}; nothing is persisted"}
+      note: "runs 30-90s synchronously and answers 201 with ad_id, file_url, the full ad copy (headline, primary_text for Ads Manager), credits_charged and credits_left"
+    test_request:
+      body: {template: "bold", topic: "A neighbourhood bakery famous for slow-fermented sourdough", offer: "2-for-1 Tuesdays"}
+    cost:
+      type: per_success
+      value: 0.25
+      currency: USD
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://shoparoll.com/api-pricing
+      checked: '2026-09-03'
+      confidence: verified
+      note: "5 credits at $0.05. OBSERVED 2026-09-03: the test_request answered 201 with credits_charged: 5 and the balance moved 100 -> 95, exactly the documented price; a failed generation billed 0 (per_success). The response's credits_charged/credits_left fields are the meter."
+    docs_url: https://app.shoparoll.com/api/v1/openapi.json
+
+  - id: shoparoll.ads.file
+    kind: utility
+    domain: assets
+    capability: creative.asset.download
+    platform: creative
+    scope: own_account
+    method: GET
+    path: /api/v1/ads/{id}/file
+    name: "Download an ad creative"
+    summary: "Download the finished creative (PNG) by its ad_id"
+    input:
+      pathParams:
+        id: {type: integer, required: true, note: "ad_id from shoparoll.ads.generate", example: 107}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://shoparoll.com/api-pricing
+      checked: '2026-09-03'
+      confidence: verified
+    docs_url: https://app.shoparoll.com/api/v1/openapi.json
+
+  - id: shoparoll.reels.generate
+    kind: action
+    domain: reels
+    capability: creative.reel.generate
+    platform: creative
+    scope: own_account
+    method: POST
+    path: /api/v1/reels
+    name: "Generate a reel"
+    summary: "Generate one narrated, captioned 9:16 video from photos and a brief — async, charged only when the render finishes"
+    input:
+      body:
+        images_base64: {type: array, required: false, note: "up to 8 images (base64 or data: URIs) to cut the reel from; optional if photos were uploaded before"}
+        photo_ids: {type: array, required: false, note: "library photo ids to use; empty means the whole library"}
+        brief: {type: string, required: false, note: "what the reel is about", example: "Our sourdough, baked at 6am daily"}
+        target_secs: {type: integer, required: false, note: "10-60, default 20", example: 15}
+        music_mood: {type: string, required: false, note: "upbeat | peppy | calm; empty means no burned-in music (recommended — platforms add trending audio at post time)"}
+      note: "requires at least one photo in the library (shoparoll.photos.upload first). Answers 202 with reel_id and status_url; nothing is charged until the render reports done"
+    test_request:
+      body: {brief: "A neighbourhood bakery famous for slow-fermented sourdough", target_secs: 15}
+    # The render is a job: 202 hands back reel_id, shoparoll.reels.status is the free poll, and
+    # `status` walks rendering -> done | failed. video_url is the finished mp4 (same bytes as
+    # shoparoll.reels.file). Only this row is async; everything else in the file answers inline.
+    async:
+      id_from: reel_id
+      poll:
+        endpoint: shoparoll.reels.status
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        success: [done]
+        failure: [failed]
+      result:
+        path: video_url
+      interval: 15
+    cost:
+      type: per_success
+      value: 1.00
+      currency: USD
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://shoparoll.com/api-pricing
+      checked: '2026-09-03'
+      confidence: verified
+      note: "20 credits at $0.05, charged only when the async render lands on done. OBSERVED 2026-09-03: 202 left the balance untouched; when reels.status reported done the balance moved 95 -> 75, exactly the documented price; a failed render bills 0."
+    docs_url: https://app.shoparoll.com/api/v1/openapi.json
+
+  - id: shoparoll.reels.status
+    kind: utility
+    resource_ownership:
+      requires: {kind: "poll:shoparoll.reels.status", param: id}
+    domain: reels
+    capability: creative.reel.status
+    platform: creative
+    scope: own_account
+    method: GET
+    path: /api/v1/reels/{id}
+    name: "Reel render status"
+    summary: "Poll a reel render — rendering | done | failed; video_url appears when done"
+    input:
+      pathParams:
+        id: {type: integer, required: true, note: "reel_id from shoparoll.reels.generate", example: 14}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://shoparoll.com/api-pricing
+      checked: '2026-09-03'
+      confidence: verified
+      note: "polling is the async interface and it is free"
+    docs_url: https://app.shoparoll.com/api/v1/openapi.json
+
+  - id: shoparoll.reels.file
+    kind: utility
+    domain: assets
+    capability: creative.asset.download
+    platform: creative
+    scope: own_account
+    method: GET
+    path: /api/v1/reels/{id}/file
+    name: "Download a reel"
+    summary: "Download the finished mp4 by reel_id (add ?download=1 for an attachment)"
+    input:
+      pathParams:
+        id: {type: integer, required: true, note: "reel_id", example: 14}
+      queryParams:
+        download: {type: string, required: false, note: "1 for an attachment content-disposition"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://shoparoll.com/api-pricing
+      checked: '2026-09-03'
+      confidence: verified
+    docs_url: https://app.shoparoll.com/api/v1/openapi.json
