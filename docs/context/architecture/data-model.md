@@ -401,7 +401,7 @@ key, including first sightings that never recurred to carry their own count out.
 the shared queue is genuinely backing up (`_FAULT_QUEUE_SHARE` of `_MAX_PENDING`) - the congestion the
 throttle was ever meant to prevent, rather than a wall-clock rate that fired against an empty queue.
 
-**Losing data is ERROR, not WARNING.** `audit._write`, `audit._schedule`'s back-pressure shed, and
+**Losing data is ERROR, not WARNING.** `audit._write_batch`, `audit._enqueue`'s back-pressure shed, and
 `archive`'s `_store`/`_touch_write` drops all log at ERROR, because `FaultCaptureHandler` starts at ERROR:
 below it the loss reaches container stdout and nothing else, so it can neither be alerted on nor found
 without already suspecting it. Degradations that cost nothing (an archive lookup falling back to a live

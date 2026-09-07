@@ -206,8 +206,10 @@ _MAX_PENDING = 512
 # At most this many recordings TOUCH THE DATABASE at once (audit's discipline, and its exact
 # loop-bound pattern). Without it a traffic burst put up to 512 concurrent short sessions in
 # front of the API's 15-slot pool — SToneX's pool-pressure report, 2026-09-03. Queued recordings
-# wait INSIDE their task; the caller's response left long ago either way.
-_MAX_CONCURRENT_WRITES = 4
+# wait INSIDE their task; the caller's response left long ago either way. Two, not four: every
+# slot here is paid twice (two uvicorn workers) and again at every deploy against the database's
+# 103-connection ceiling, and a recording is one INSERT of a body that is already in memory.
+_MAX_CONCURRENT_WRITES = 2
 
 _sem: asyncio.Semaphore | None = None
 _sem_loop = None

@@ -72,7 +72,7 @@ bound to a closed maintenance loop. Calling `maintenance.upgrade()` directly doe
   |---|---|---|---|
   | `api` | `session_maker` | 5 + 10 | every request handler, via `get_session` or directly |
   | `admin` | `admin_session_maker` | 3 + **0** | `/admin/*` only, via `get_admin_session` |
-  | `background` | `background_session_maker` | 13 + **0** | audit, archive writes, ads worker, the observation reader, the error-evidence sweep |
+  | `background` | `background_session_maker` | 8 + **0** | audit (one batching writer), archive writes (two), ads worker, the observation reader, the error-evidence sweep |
 
   Each class of work can exhaust only its own slots. Before this there was ONE pool of 15, and on
   2026-09-03 a single admin browser tab polling `/admin/archive/panel` (every 5 s, no in-flight
@@ -93,15 +93,18 @@ bound to a closed maintenance loop. Calling `maintenance.upgrade()` directly doe
 
   | specs | per process | per instance | deploy peak | 103? |
   |---|---|---|---|---|
-  | code defaults 15 + 3 + 13 | 31 | 62 | **124** | over |
+  | code defaults 15 + 3 + 13 (until 2026-09-07) | 31 | 62 | **124** | over |
+  | code defaults 15 + 3 + 8 (since 2026-09-07) | 26 | 52 | 104 | over by one |
   | dashboard override 15 + 2 + 4 | 21 | 42 | 84 | fits |
 
   That is the post-mortem of the 2026-09-04 defaults: `background = 13` did not overload the
   database, it opened 124 connections at every deploy and restart until the override cut it to 84.
   Every earlier passage in this file that multiplied by two instances only was counting half the
   connections. Any resize must clear the deploy-peak column first; within it there are 2 spare
-  per process today (23 → 92), and the way to more is fewer consumers per process (batched audit
-  writes, smaller archive semaphores), `WEB_CONCURRENCY=1`, a larger database plan, or a pooler -
+  per process today (23 → 92). Batching the audit writer (4 → 1) and halving the archive semaphore
+  (4 → 2) on 2026-09-07 cut the derived `background` from 13 to 8, so a pool of 6 now serves every
+  consumer but two archive writers at once and still fits (15 + 2 + 6 = 23 → 92); the way to more
+  is `WEB_CONCURRENCY=1`, a larger database plan, or a pooler -
   not a bigger number in the override.
 
   Two sizing rules, both learned by getting them wrong first:
@@ -138,8 +141,8 @@ bound to a closed maintenance loop. Calling `maintenance.upgrade()` directly doe
   deployment ran `admin.pool_size=2,background.pool_size=4` from before the 2026-09-04 bulkhead
   work until 2026-09-05 — pinning both minor pools BELOW the defaults that work had just raised
   (`admin` to 3, `background` to the derived 13), including the exact `admin=2` whose post-mortem
-  is two bullets up. A `background` of 4 against 7 consumers needing 13 does not 503; it silently
-  drops audit rows. The knob being a dashboard edit rather than a deploy is what makes it useful
+  is two bullets up. A `background` of 4 against 7 consumers needing 13 (8 since 2026-09-07) does
+  not 503; it silently drops audit rows. The knob being a dashboard edit rather than a deploy is what makes it useful
   mid-incident and what lets it survive the fix. Today it reads
   `admin.pool_size=2,background.pool_size=4` - and those two entries are no longer "stale": with
   two uvicorn workers (§ above) they are what keeps a rolling deploy at 84 connections instead of
@@ -381,13 +384,15 @@ UTC (SQLite is lax and hid this; it only bites on Postgres — the deploy target
 and in the serial Postgres CI migration set. `env.py` bounds Postgres lock and statement wait time so
 a contended migration fails before it queues the serving database behind DDL.
 
-**Audit back-pressure (`audit.py`).** Audit rows are written off the request path (fire-and-forget), and
-each write opens a DB connection — from the **background** pool since 2026-09-03, so a burst here can no
-longer starve real requests, only other background work. Two limits still apply inside it: a loop-bound
-semaphore caps concurrent audit writes at `_MAX_CONCURRENT_WRITES` (queueing in-process rather than
-holding a pooled connection, and keeping `drain()` deterministic on SQLite, where all three makers share
-one engine), and under an extreme burst the writer **sheds** load — it drops any audit row past
-`_MAX_PENDING` rather than let the pending set grow without bound. Audit must never OOM or wedge the
+**Audit back-pressure (`audit.py`).** Audit rows are written off the request path (fire-and-forget):
+`record_call` appends to an in-process queue and ONE writer task per process drains it `_BATCH` rows
+per INSERT on a **background**-pool connection (since 2026-09-07; before that four writers each took
+one row per session, which cost four slots per process for millisecond inserts). A burst can therefore
+never starve real requests, only other background work. Two limits still apply: a loop-bound semaphore
+holds the writer to `_MAX_CONCURRENT_WRITES` (1), which keeps `drain()` deterministic on SQLite, where
+all three makers share one engine, and under an extreme burst `_enqueue` **sheds** load — it drops any
+audit row past `_MAX_PENDING` queued rows rather than let the queue grow without bound. A batch the
+database refuses is retried row by row, so one bad row costs one row. Audit must never OOM or wedge the
 server. Shedding is the *only* loss that should ever happen: `record_call` splats its telemetry dict
 into `CallRecord(**fields)`, so a key with no matching column used to raise inside `_write`, where the
 except swallowed it, and the whole row disappeared — a telemetry field deployed one commit ahead of its

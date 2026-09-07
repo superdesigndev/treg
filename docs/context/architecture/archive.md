@@ -289,8 +289,9 @@ move atomically with each strip.
 
 ## Recorder throttle (2026-09-03)
 
-At most `_MAX_CONCURRENT_WRITES` (4) recordings touch the database at once — audit's exact
-loop-bound-semaphore pattern. Before it, a burst could put up to 512 concurrent short sessions in
+At most `_MAX_CONCURRENT_WRITES` (2) recordings touch the database at once — audit's exact
+loop-bound-semaphore pattern (four until 2026-09-07; every slot is paid per uvicorn worker and
+again per rolling-deploy instance, and a recording is one INSERT of a body already in memory). Before it, a burst could put up to 512 concurrent short sessions in
 front of the API's 15-slot pool (SToneX's pool-pressure report); those writes now land on the
 BACKGROUND pool instead (`ops/deploy.md` § Three pools), so the semaphore is the inner bound rather
 than the only one — a third module reaching for the wrong maker no longer needs its author to have

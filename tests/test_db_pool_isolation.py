@@ -118,7 +118,7 @@ def test_the_background_pool_fits_every_consumer_not_just_the_throttled_ones():
     from treg import archive, audit
 
     consumers = infra_db.BACKGROUND_CONSUMERS
-    assert consumers["audit._write"] == audit._MAX_CONCURRENT_WRITES
+    assert consumers["audit._flush"] == audit._MAX_CONCURRENT_WRITES
     assert consumers["archive._store/_touch"] == archive._MAX_CONCURRENT_WRITES
     assert infra_db.POOL_SPECS["background"]["pool_size"] >= sum(consumers.values())
 

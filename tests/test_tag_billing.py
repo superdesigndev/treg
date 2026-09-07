@@ -677,10 +677,11 @@ async def test_a_pin_cannot_smuggle_what_the_header_cannot(clients: AsyncClient)
 
 # ---- the invariants an invoice actually rests on -------------------------------------------------
 async def test_usage_survives_a_dead_audit_pipeline(clients: AsyncClient, platform_on, monkeypatch):
-    """THE test that proves an invoice never depends on a lossy table. `audit._schedule` sheds rows
-    past its queue bound and swallows every exception — precisely under the load a successful builder
-    generates. With the audit pipeline entirely dead, the money must still be complete."""
-    monkeypatch.setattr(audit, "_schedule", lambda coro: coro.close())
+    """THE test that proves an invoice never depends on a lossy table. `audit._enqueue` sheds rows
+    past its queue bound and the writer swallows every exception — precisely under the load a
+    successful builder generates. With the audit pipeline entirely dead, the money must still be
+    complete."""
+    monkeypatch.setattr(audit, "_enqueue", lambda model, fields: None)
     org_id = await _org_id(clients)
     for who in ("cust_A", "cust_B"):
         r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"X-Treg-Meta": f"customer={who}"})
