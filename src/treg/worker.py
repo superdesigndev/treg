@@ -3,6 +3,7 @@
     treg-worker capacity sweep [--only provider,...] [--json]
     treg-worker overflow sync [--live]          # seed (+ live aggregator catalogs) → overflow_route
     treg-worker overflow verify [--all] [--max-usd 0.02]   # weekly re-verify of enabled routes
+    treg-worker idempotency prune [--dry-run]       # expired completed replay answers
     treg-worker asynctasks settle [--limit 50]       # complete deferred metered-call holds
 
 Not the light `treg` CLI: these need the server extra (DB, platform keys in the env) and make
@@ -201,6 +202,23 @@ async def _asynctasks_settle(args) -> int:
     return 0
 
 
+async def _idempotency_prune(args) -> int:
+    from dataclasses import asdict
+    import logging
+
+    from .infra.db import verify_db
+    from .application.call.idempotency import prune_expired_idempotency
+
+    await verify_db()
+    logging.basicConfig(level=logging.INFO)
+    result = await prune_expired_idempotency(
+        batch_size=args.batch_size, pause_s=args.pause_seconds,
+        max_batches=args.max_batches, dry_run=args.dry_run,
+    )
+    print(json.dumps(asdict(result), default=str, sort_keys=True))
+    return 0 if result.complete else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="treg-worker", description=__doc__)
     sub = ap.add_subparsers(dest="group", required=True)
@@ -224,6 +242,14 @@ def main(argv: list[str] | None = None) -> int:
     settle = tasksub.add_parser("settle", help="poll due tasks and complete their existing holds")
     settle.add_argument("--limit", type=int, default=50)
     settle.set_defaults(fn=_asynctasks_settle)
+    idem = sub.add_parser("idempotency", help="expired replay-cache maintenance")
+    idemsub = idem.add_subparsers(dest="cmd", required=True)
+    prune = idemsub.add_parser("prune", help="delete completed answers past their 24-hour window")
+    prune.add_argument("--dry-run", action="store_true")
+    prune.add_argument("--batch-size", type=int, default=200)
+    prune.add_argument("--pause-seconds", type=float, default=0.25)
+    prune.add_argument("--max-batches", type=int, default=10000)
+    prune.set_defaults(fn=_idempotency_prune)
     args = ap.parse_args(argv)
     _need_server()
     return asyncio.run(args.fn(args))

@@ -51,6 +51,32 @@ serve path does so after single-user bootstrap, and `python -m treg upgrade` doe
 tasks. The next event loop therefore creates fresh pooled connections instead of receiving connections
 bound to a closed maintenance loop. Calling `maintenance.upgrade()` directly does not dispose the engine.
 
+## Replay-cache retention
+
+`treg-idempotency-prune` runs `treg-worker idempotency prune` at minute 43 each hour (UTC) on a
+Render starter cron, using only the database URL and the secret key needed by `verify_db`.
+It runs independently of web workers and holds at most one database connection at a time.
+The command defaults to 200 rows per committed batch, a 250 ms pause outside the session, and
+10,000 batches maximum. `--dry-run` prints the fixed cutoff, upper ID and eligible count without
+writing; the final JSON includes eligible and deleted rows, batches, traversal completion, and
+page_timeouts. Counts accumulate from bounded metadata pages rather than full-table queries.
+Incomplete bounded runs exit nonzero so cron failures are visible. Render serializes runs of this cron.
+Retention uses the existing table and primary key; it requires no migration or web-service restart.
+
+**Timeout resilience.** Page SELECTs use a 60-second timeout; DELETEs use 15 seconds. On a page
+timeout the cursor advances by batch size and processing continues, but the result remains incomplete
+and the worker exits nonzero. Three consecutive timeouts stop traversal. `page_timeouts` counts
+skipped pages; the next run starts from the beginning and retries their rows.
+
+**VACUUM after large prunes.** Routine cleanup leaves vacuuming to Postgres autovacuum. After a
+large manual backlog cleanup, use throttled `VACUUM (ANALYZE, TRUNCATE FALSE) idempotentcall`
+if needed. Dead tuples can slow metadata scans even with bounded page sizes.
+
+**Snapshot blockers.** Check old `pg_stat_activity.backend_xmin` snapshots when dead tuples persist
+after vacuum: a long-running read-only report blocked reclamation during the September 2026 cleanup.
+Verify the query and transaction before canceling a stale report, then vacuum again and check
+dead-tuple statistics. Ordinary vacuum makes space reusable without shrinking the table file.
+
 ## Schema upgrade safety
 - **Alembic is authoritative:** migration scripts ship inside `src/treg/alembic/` in the wheel.
   `maintenance._alembic_config()` resolves that installed package resource, supplies the escaped

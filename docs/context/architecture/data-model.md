@@ -26,6 +26,7 @@ sources:
   - src/treg/maintenance.py
   - src/treg/web/sitetrack.js
   - src/treg/models.py
+  - src/treg/application/call/idempotency.py
   - src/treg/timeutil.py
   - src/treg/infra/db.py
   - src/treg/domain/referrals.py
@@ -215,6 +216,24 @@ uses this metadata, never the encrypted token's shape.
   the membership is revoked there is no valid caller that can replay it. `delete_membership` removes
   it explicitly and the `membership_id` foreign key uses `ON DELETE CASCADE` as the schema backstop
   (Alembic `0015`), so a cached paid response can never turn token revocation into a 500.
+  `prune_expired_idempotency` additionally sweeps completed, expired responses globally from the
+  hourly `treg-worker idempotency prune` cron. Caller-scoped lazy cleanup remains for immediate key
+  reuse. Each run fixes its UTC cutoff and upper ID, walks the primary key in batches of 200, and
+  commits before its 250 ms pause; pending claims and answers valid at the cutoff are untouched.
+  ID pages are selected before expiry filtering, so a page of live responses cannot force an
+  unbounded scan searching for expired matches. The DELETE applies the expiry and status guards.
+  Postgres transactions use a 1-second lock timeout; the page SELECT uses a 60-second statement
+  timeout and the DELETE uses 15 seconds. On a page timeout the cursor advances
+  by batch_size and the sweep continues. Three consecutive page timeouts stop the run to prevent
+  infinite loops. The `page_timeouts` field tracks skipped pages; any skipped page makes the worker exit nonzero. A failed DELETE batch rolls back,
+  earlier batches remain committed, and the next run retries remaining rows. `--dry-run` counts
+  eligible rows without writes. Counts accumulate within the metadata-only ID pages, never from a
+  separate full-table aggregate; `complete` requires traversal to reach the fixed upper ID without skipped pages.
+  An interrupted or bounded partial sweep exits nonzero and the next run starts from the front.
+  No retention index or schema migration is needed for this single cursor traversal. After a large
+  first prune, run `VACUUM (ANALYZE) idempotentcall` once to reclaim dead tuple space; routine hourly
+  cleanup leaves vacuuming to Postgres autovacuum.
+
 - **`ToolRequest`** - a "the catalog doesn't have X" report (`POST /tool-requests`, open + per-IP
   rate-limited): `capability` (the headline, ≤200 chars), `query` (the search that came up empty -
   auto-filled by agents, the dedup/priority signal), `note`, `contact`, `source` (`web` | `cli` |

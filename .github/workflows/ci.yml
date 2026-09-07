@@ -102,6 +102,7 @@ jobs:
           tests/test_alembic_baseline.py
           tests/test_archive.py
           tests/test_call_cancellation.py
+          tests/test_idempotency_retention.py
           tests/test_call_pool_discipline.py
           tests/test_postgres_reset.py
           tests/test_marketplace_call.py

@@ -167,6 +167,29 @@ services:
         sync: false
       - key: TREG_OVERFLOW_KEY_MONID
         sync: false
+  # Global expiry cleanup, including callers who never return. Each batch commits separately.
+  - type: cron
+    name: treg-idempotency-prune
+    runtime: python
+    region: oregon
+    plan: starter
+    branch: main
+    schedule: "43 * * * *"
+    buildCommand: pip install ".[server]"
+    startCommand: treg-worker idempotency prune
+    envVars:
+      - key: TREG_DATABASE_URL
+        fromDatabase:
+          name: treg-db
+          property: connectionString
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: TREG_SECRET_KEY
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_SECRET_KEY
+
   # Worker profile: the hourly capacity sweep (docs/context/ops/capacity.md). Same code, same env
   # as the web service (fromService — add a platform key in the web service only), no HTTP.
   - type: cron
