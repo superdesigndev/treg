@@ -121,7 +121,7 @@ async def test_seed_tool_and_accept_teammate(c):
             await s.commit()
         tok = sess.make_identity(user.id)
     org = (await c.post("/orgs", json={"name": "Acme"}, headers=_h(tok))).json()  # first team: identity token only, no org yet
-    oh = {**_h(tok), "X-Treg-Org": org["org"]}
+    oh = _h(org["token"])
     # seed the tool
     st = await c.post("/onboard/seed-tool", headers=oh)
     assert st.status_code == 200 and st.json()["tool"] == "echo"
@@ -166,7 +166,7 @@ async def test_reset_sweeps_deny_rules_naming_a_demo_teammate(c):
         await s.commit()
     tok = sess.make_identity(user.id)
     org = (await c.post("/orgs", json={"name": "Acme"}, headers=_h(tok))).json()
-    oh = {**_h(tok), "X-Treg-Org": org["org"]}
+    oh = _h(org["token"])
     await c.post(f"/orgs/{org['org_id']}/invites", json={"email": "alex@demo.treg.local", "role": "member"}, headers=oh)
     assert (await c.post("/onboard/accept-teammate", json={"email": "alex@demo.treg.local"}, headers=oh)).status_code == 200
     async with session_maker() as s:

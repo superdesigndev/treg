@@ -227,17 +227,17 @@ async def test_a_real_token_reads_its_OWN_balance(clients):
     assert out["balance_usd"] >= 0
 
 
-async def test_an_IDENTITY_token_resolves_its_team(clients):
-    """The bug production found. There are two kinds of token: a PER-ORG token (`treg org agent-new`)
-    has its team baked in and `/auth/me` reports it; an IDENTITY token (`treg login` — what most
-    people actually hold) belongs to a person who may be in several teams, so `/auth/me` reports no
-    org and every `/orgs/{id}/…` route must be told which one. Resolving only the first kind meant
-    `balance` answered "could not resolve the team" for the commonest token there is."""
+async def test_a_team_default_token_resolves_its_team(clients):
+    """A CLI login with a chosen team receives that team's Default key, so MCP can resolve billing
+    without a second X-Treg-Org header."""
     r = await clients.post("/users", json={"email": "identity-user@superdesign.dev"})
     per_org = r.json()["token"]
     clients.headers["X-Treg-Token"] = per_org
-    identity = (await clients.get("/auth/cli-token")).json()["token"]
-    assert identity != per_org
+    slug = (await clients.get("/orgs")).json()[0]["slug"]
+    identity = (await clients.get(
+        "/auth/cli-token", headers={"X-Treg-Org": slug},
+    )).json()["token"]
+    assert identity == per_org  # deterministic Default key for this membership generation
 
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "balance", {}, token=identity)
@@ -1129,7 +1129,10 @@ async def test_call_resolves_the_team_for_an_identity_token(clients):
     r = await clients.post("/users", json={"email": "call-identity@superdesign.dev"})
     per_org = r.json()["token"]
     clients.headers["X-Treg-Token"] = per_org
-    identity = (await clients.get("/auth/cli-token")).json()["token"]
+    slug = (await clients.get("/orgs")).json()[0]["slug"]
+    identity = (await clients.get(
+        "/auth/cli-token", headers={"X-Treg-Org": slug},
+    )).json()["token"]
     made = await clients.post("/tools", json={"name": "echo2", "base_url": "http://upstream"})
     assert made.status_code == 200, made.text
 

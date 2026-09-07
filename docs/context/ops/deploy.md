@@ -6,6 +6,8 @@ sources:
   - src/treg/__main__.py
   - src/treg/maintenance.py
   - src/treg/alembic/env.py
+  - src/treg/alembic/versions/0026_managed_api_keys.py
+  - src/treg/alembic/versions/0027_default_key_generation.py
   - src/treg/worker.py
   - src/treg/web/selfhost.sh
   - src/treg/config.py
@@ -52,6 +54,10 @@ tasks. The next event loop therefore creates fresh pooled connections instead of
 bound to a closed maintenance loop. Calling `maintenance.upgrade()` directly does not dispose the engine.
 
 ## Schema upgrade safety
+- **Managed-key rollback floor:** revision `0026` adds key controls, audit rows, Activity snapshots,
+  and a hash-only backfill for existing membership credentials. It is marked `contract = True`
+  because old code cannot enforce newly stored disable or revoke state. The migration is additive
+  and uses SQL that works on SQLite and Postgres.
 - **Alembic is authoritative:** migration scripts ship inside `src/treg/alembic/` in the wheel.
   `maintenance._alembic_config()` resolves that installed package resource, supplies the escaped
   configured URL, and runs Alembic in a worker thread so its internal event loop never nests inside
@@ -72,7 +78,7 @@ bound to a closed maintenance loop. Calling `maintenance.upgrade()` directly doe
   |---|---|---|---|
   | `api` | `session_maker` | 5 + 10 | every request handler, via `get_session` or directly |
   | `admin` | `admin_session_maker` | 3 + **0** | `/admin/*` only, via `get_admin_session` |
-  | `background` | `background_session_maker` | 8 + **0** | audit (one batching writer), archive writes (two), ads worker, the observation reader, the error-evidence sweep |
+  | `background` | `background_session_maker` | 9 + **0** | audit (one batching writer), archive writes (two), ads worker, archive prune/refresh, the observation reader, the error-evidence sweep, throttled managed-key last-used writes |
 
   Each class of work can exhaust only its own slots. Before this there was ONE pool of 15, and on
   2026-09-03 a single admin browser tab polling `/admin/archive/panel` (every 5 s, no in-flight

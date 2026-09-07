@@ -5,6 +5,8 @@ POST with a same-origin check so a phished GET link can't complete a handshake b
 
 from __future__ import annotations
 
+import time
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -152,6 +154,9 @@ async def test_approve_with_org_scopes_the_handshake(web):
     assert r.status_code == 200 and r.json()["active_org"] == "acme"
     d = (await web.get(f"/auth/cli/poll?login_id={lid}")).json()  # poll carries no code
     assert d["active_org"] == "acme" and d["token"]  # the CLI adopts the chosen team, no guessing
+    claims = sess.read_identity_claims(d["token"])
+    assert claims["scope"] == sess.TEAM_SCOPE and claims["org"] == "acme"
+    assert "exp" not in claims
 
 
 async def test_approve_rejects_a_foreign_org(web):
@@ -174,6 +179,8 @@ async def test_approve_completes_the_cli_handshake(web):
     # the CLI's (codeless) poll now yields a working identity token, exactly once
     d = (await web.get(f"/auth/cli/poll?login_id={lid}")).json()
     assert d["email"] == "pat@x.dev" and d["token"]
+    claims = sess.read_identity_claims(d["token"])
+    assert claims["scope"] == sess.BOOTSTRAP_SCOPE and claims["exp"] > int(time.time())
     me = await web.get("/auth/me", headers={"X-Treg-Token": d["token"]})  # token path wins over the cookie
     assert me.status_code == 200 and me.json()["email"] == "pat@x.dev"
     again = (await web.get(f"/auth/cli/poll?login_id={lid}")).json()

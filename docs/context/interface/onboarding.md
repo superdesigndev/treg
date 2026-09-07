@@ -30,6 +30,8 @@ seeded with teammates, a working tool, and a real audit trail — one backend br
   with `demo=True` on the unusable domain **`demo.treg.local`** (`DEMO_DOMAIN`). Reused across demo
   orgs (email is unique); they get a Membership but **no personal org** and **cannot log in** (see
   the OTP guard below).
+- **Owner key controls:** the real owner's membership gets only its default signed-key control. Fake
+  demo teammates get neither human default keys nor unreachable hash-backed compatibility keys.
 - **A working tool** (`echo` → `postman-echo.com`) + its `echo-key` secret, so **Try-it / `treg call`
   returns 200 with the injected `Authorization: Bearer sk-demo-…`** — the aha.
 - **Sample activity** (`SAMPLE_CALLS`): a few `CallRecord`s attributed to teammates so Activity is alive.
@@ -155,3 +157,9 @@ watcher; `_restoreAgent` at boot) so Getting started keeps showing the same step
 view for ANY signed-in arrival at `/app` with no deep link or hash. `/onboard/seed-tool` and
 `/onboard/accept-teammate` no longer have a dashboard caller (the CLI/demo paths don't use them either);
 **"Remove demo"** (`resetDemo` → `/onboard/reset`) remains in Help. A clay **`demo` chip** marks a demo org.
+
+Getting Started's key is the active team's signed Default key. It is intentionally revealable again:
+the server derives it from signed identity, team, and Default generation, while additional and agent
+keys are random secrets whose plaintext is shown once and then discarded. A disabled Default hides
+the token and exposes only **Enable key**; rotating it changes this team's generation and revealable
+token without changing another team's key.

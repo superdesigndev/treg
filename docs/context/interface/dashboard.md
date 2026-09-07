@@ -13,6 +13,8 @@ sources:
   - src/treg/api.py
   - src/treg/routers/web.py
   - src/treg/domain/identity/session.py
+  - src/treg/routers/api_keys.py
+  - tests/test_api_keys.py
 related:
   - interface/api.md
   - interface/landing-sandbox.md
@@ -23,6 +25,43 @@ related:
 ---
 
 # Web dashboard (Phase 1)
+
+## Team API Keys
+
+Team has an **API Keys** tab for every member. A member sees their own keys. An admin or owner sees
+the full team inventory grouped by human owner: an agent created by that human is visually nested in
+the human's table while remaining a separate agent identity, key, role, cap, and access scope. An
+agent whose creator is no longer a visible human remains a standalone group. Each compact row stacks
+the key name, type, and masked safe prefix in one identity column, followed by state, creation time, last use,
+and allowed actions; the human-owner group makes a repeated creator column unnecessary. A scoped agent group uses its
+readable name and keeps the internal machine email as secondary safe metadata. Create and rotate show
+the complete secret once in a copy card. Agent rotation first expands a compact confirmation in the
+affected row, then the one-time card says the old key stopped, provides the direct environment and
+agent-specific setup instructions, warns that any bearer can act as that agent, and closes with an
+explicit `I’ve updated <agent>` acknowledgement. The rotated predecessor is hidden from the normal
+inventory but remains in audit history. Agent-key revoke explains that it removes the agent membership
+and revokes all of that agent's keys, then reloads Members so the removed agent disappears immediately.
+The Members tab uses matching confirmations for rotate and agent revoke; access saves use one dismissible confirmation that the key
+is unchanged and the new scope applies immediately. These lifecycle messages exist only during the
+action or immediately after it, rather than as persistent page banners. The Default row derives a
+safe prefix from the same signed team token used by Getting Started. Its row offers Rotate, Disable,
+and Enable but not Revoke. Rotate confirms that the prior team token stops, then shows a compact copy
+card with the new full token and CLI/MCP update guidance. The same token remains revealable on Getting
+Started, and rotation does not create a second key row. A migrated Legacy row without recorded prefix says
+`prefix unavailable — older key`; a fresh human membership has no Legacy row.
+
+The tab provides rename, disable, enable, rotate, revoke, and hide only when the API says the caller
+can use that action. To keep dense rows readable, Activity and Rotate remain visible while Rename,
+Disable/Enable, Revoke, and Hide live in a custom overflow menu. Rotate, Disable, Revoke, and Hide use
+an impact-specific confirmation modal; Enable and Rename remain immediate. Member-row agent actions
+stay visible but use consistent spacing. Submitting an empty additional-key name marks only its input
+red; the mark clears on the next edit instead of occupying the page with a validation banner. Each key row opens Activity with that key selected. The
+Activity feed also has an all-keys selector and a Key column. Old records show no key.
+For an agent key, Who uses the readable assigned agent name and adds an `owner: <human>` chip from
+the key creator metadata; the internal `agent-{team}-{name}@agents.treg.local` identity stays hidden.
+The Key chip shows its safe prefix visibly, so Activity from pre- and post-rotation keys with the same
+name remains distinguishable.
+Human Activity rows keep their existing short email identity.
 
 ## Instagram authorization state
 
@@ -140,8 +179,9 @@ Two are **session** (cookie) paths, one is a token fallback:
   a stateless `org` claim; the endpoint only pins a team the caller is a member of). That is the point:
   the "API key" then works as a **bare bearer** — pasted into an MCP server's `Authorization` header,
   where no `X-Treg-Org` can travel, it still resolves to that team (fixing the "several teams, none
-  active" wall a multi-team user hit). `require_member` uses the token's org claim when no header is
-  sent (the header still overrides), and the MCP layer surfaces it via `_internal_auth`. `myToken` is
+  active" wall a multi-team user hit). New Default keys carry `scp=team`, so `require_member` treats
+  the token's org claim as authoritative and rejects a conflicting header; only older untyped keys
+  retain header-first compatibility. The MCP layer surfaces the signed team via `_internal_auth`. `myToken` is
   re-minted whenever the active org changes (`_myTokenOrg` guard) so it always names the shown team.
   The per-tool snippets embed it (+ `X-Treg-Org`, now redundant but harmless), and **"Copy API token"**
   (`copyToken`) puts it on the clipboard.
@@ -295,8 +335,9 @@ Server side (`domain.identity.access`): `require_identity` (who, from token OR s
   rows with a **Scope this agent** button (`promoteObserved`) that opens the Add-agent form
   prefilled and linked (`promotePending` → `promoted_from`, so the detected row disappears on
   Create and returns on revoke). "Add to this team" toggles **＋ Add member** (invite) |
-  **＋ Add agent** (mint form: name / role / cap + project picker `agentProjSel`, all-checked =
-  omitted = every project). The once-only token card renders at the top of the tab. Rotate
+  **＋ Add agent** (mint form: name / role / cap, an explicit **All tools** or **Choose tools**
+  decision, and project picker `agentProjSel`; Create stays disabled until tool scope is chosen,
+  and Choose starts with no silent grants). The once-only token card renders at the top of the tab. Rotate
   (re-POSTs the same name, so the old token dies), **Revoke**, and an inline cap editor. Rotate sends
   only `{name, role, daily_call_cap}` **on purpose**: `create_agent` leaves every field the client does
   not send exactly as it was, so the agent's tool ACL and project scope survive the rotate. They used to
@@ -316,8 +357,10 @@ Server side (`domain.identity.access`): `require_identity` (who, from token OR s
   `welcomeAgents`/`welcomeMoreAgents` with the first-run modal; "Docs" links `/tutorial`; the pick is
   remembered in `localStorage` `treg-agent`) above an **"install the treg plugin"** link for agents whose
   entry carries a `plugin` URL (Grok Bot) and the per-agent setup line (`welcomeSetupCmd` = `buildAgentPrompt` — `set up treg — <proxy>/llms.txt with token <T>, team <slug>`; the long multi-step agent prompt is retired, llms.txt itself now carries the setup flow, the do-not-stop authorization framing and the star ask, and its money rules no longer demand per-call price confirmation) and, combined into the
-  same card, **Your API key** (`myToken`, masked with a `startTokenShow` reveal + copy — the key
-  already exists, so there is no "create key" step). **② Try it out** — four copyable example
+  same card, **Your API key** (`myToken`, masked with a `startTokenShow` reveal + copy — the signed
+  team Default can be derived and revealed repeatedly, unlike one-time hash-backed additional and
+  agent secrets). If its control is disabled, no token is rendered and a compact **Enable key** action
+  is shown. **② Try it out** — four copyable example
   prompts (`tryExamples`, category-labeled `.try-card`s: Social/Trends/SEO/Enrichment — concrete
   live-data asks a bare agent can't answer), then an `.oauth-div` divider ("also connect OAuth
   accounts for new agent capabilities") over three grouped rows of `.prov-chip` logo chips

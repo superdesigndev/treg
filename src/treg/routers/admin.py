@@ -642,7 +642,7 @@ async def admin_delete_user(
     mem = (await db.execute(select(Membership).where(Membership.user_id == user_id))).scalars().all()
     affected = {m.org_id for m in mem}
     for m in mem:
-        await delete_membership(db, m)
+        await delete_membership(db, m, actor_email=principal)
     await db.flush()
     emptied = []
     for oid in affected:

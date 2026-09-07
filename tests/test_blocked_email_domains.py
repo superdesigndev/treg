@@ -303,6 +303,7 @@ def sent_invites(monkeypatch):
 async def _team_with_invite(c: AsyncClient, owner: str, invitee: str) -> dict:
     tok = await _otp_login(c, owner)
     org = (await c.post("/orgs", json={"name": "Real Team"}, headers={"X-Treg-Token": tok})).json()
+    tok = org["token"]
     r = await c.post(f"/orgs/{org['org_id']}/invites", json={"email": invitee, "role": "member"},
                      headers={"X-Treg-Token": tok, "X-Treg-Org": org["org"]})
     assert r.status_code == 200, r.text

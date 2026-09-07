@@ -306,7 +306,7 @@ async def _maybe_overflow_attempt(
         else:
             await _record_shadow_budget(budget)
         log.warning("overflow via %s failed for %s: %s %s", aggregator, mk.endpoint_id, why_agg, res.detail)
-        _audit_child(mk, child, call_ref, aggregator, res, charged=0, client=audit_client, note=why_agg)
+        _audit_child(mk, child, caller, call_ref, aggregator, res, charged=0, client=audit_client, note=why_agg)
         return OverflowOutcome(False, None, aggregator=aggregator, note=why_agg,
                                failure=_capacity_503(mk, aggregator, why_agg) if mode == "on" else None)
     if res.failure == "contract" or res.failure == "pending":
@@ -325,7 +325,7 @@ async def _maybe_overflow_attempt(
         else:
             await _record_shadow_budget(budget)
         log.warning("overflow via %s refused %s: %s", aggregator, mk.endpoint_id, res.detail)
-        _audit_child(mk, child, call_ref, aggregator, res, charged=0, client=audit_client, note=res.failure)
+        _audit_child(mk, child, caller, call_ref, aggregator, res, charged=0, client=audit_client, note=res.failure)
         return OverflowOutcome(False, None, aggregator=aggregator, note=res.failure)
     # The vendor answered through the aggregator.
     if mode == "shadow":
@@ -336,7 +336,7 @@ async def _maybe_overflow_attempt(
         log.info("overflow SHADOW %s via %s: vendor %s direct→%s relay, cost %s, delta %s, shape %s",
                  mk.endpoint_id, aggregator, status, res.upstream_status, res.cost_micro, delta, body_shape)
         await _record_shadow_budget(budget)
-        _audit_child(mk, child, call_ref, aggregator, res, charged=0, client=audit_client, note="shadow")
+        _audit_child(mk, child, caller, call_ref, aggregator, res, charged=0, client=audit_client, note="shadow")
         return OverflowOutcome(False, None, aggregator=aggregator, note="shadow")
     spend_adjustment = _overflow_spend_adjustment(budget)
     charged, observed = await _platform_settle(
@@ -348,7 +348,7 @@ async def _maybe_overflow_attempt(
     else:
         budget.finalized = True
     response = _response(res)
-    _audit_child(mk, child, call_ref, aggregator, res, charged=charged, client=audit_client)
+    _audit_child(mk, child, caller, call_ref, aggregator, res, charged=charged, client=audit_client)
     return OverflowOutcome(True, response, res.upstream_body, charged, observed, aggregator)
 
 
@@ -408,7 +408,7 @@ async def maybe_overflow(
         return None
 
 
-def _audit_child(mk: MarketplaceCall, child: MarketplaceCall, call_ref: str, aggregator: str,
+def _audit_child(mk: MarketplaceCall, child: MarketplaceCall, caller, call_ref: str, aggregator: str,
                  res: AggregatorResult, *, charged: int, client: str, note: str = "") -> None:
     """The child's own audit row: same call_ref as the primary, credential_tier platform-overflow,
     provider = the vendor. Fire-and-forget like every audit row."""
@@ -416,6 +416,8 @@ def _audit_child(mk: MarketplaceCall, child: MarketplaceCall, call_ref: str, agg
         org_id=child.tool.org_id, user_email=child.tool.owner, tool_name=mk.endpoint_id,
         method="OVERFLOW", path=f"overflow:{aggregator}/{child.tool.name}",
         status_code=int(res.upstream_status or 0), client=client,
+        api_key_id=caller.api_key_id, api_key_name=caller.api_key_name,
+        api_key_prefix=caller.api_key_prefix,
         telemetry={"call_ref": call_ref, "endpoint_id": mk.endpoint_id, "provider": mk.provider,
                    "credential_tier": "platform-overflow", "cost_estimated_micro": child.estimate_micro,
                    "cost_observed_micro": res.cost_micro, "cost_charged_micro": charged,

@@ -477,6 +477,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 org_id=caller.org_id, user_email=caller.email, tool_name=ep["id"],
                 method=request.method, path=rest, status_code=exc.status_code,
                 client=_client_name(request), refused_by=_refusal_kind(exc.status_code),
+                api_key_id=caller.api_key_id, api_key_name=caller.api_key_name,
+                api_key_prefix=caller.api_key_prefix,
                 telemetry={"call_ref": call_ref, "endpoint_id": ep["id"], "provider": "treg",
                            "credential_tier": "routed", **_tag_telemetry(meta)})
             raise
@@ -524,6 +526,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 org_id=caller.org_id, user_email=caller.email, tool_name=ep["id"],
                 method=request.method, path=rest, status_code=mkexc.status_code,
                 client=_client_name(request), refused_by=refused,
+                api_key_id=caller.api_key_id, api_key_name=caller.api_key_name,
+                api_key_prefix=caller.api_key_prefix,
                 telemetry={"call_ref": call_ref,
                            "endpoint_id": ep["id"], "provider": ep.get("provider"),
                            **_tag_telemetry(meta)})
@@ -640,6 +644,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             org_id=audit_org_id, user_email=audit_email, tool_name=audit_tool,
             method=request.method, path=upstream_url, status_code=status_code,
             client=_client_name(request), refused_by=refused_by, telemetry=telemetry,
+            api_key_id=caller.api_key_id, api_key_name=caller.api_key_name,
+            api_key_prefix=caller.api_key_prefix,
         )
         # Product analytics mirror of the row above.
         props = _tool_called_props(

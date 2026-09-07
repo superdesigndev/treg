@@ -57,6 +57,7 @@ BACKGROUND_CONSUMERS: dict[str, int] = {
     "archive.refresh_worker": 1,
     "catalog observation refresh": 1,   # singleflight, one task per process
     "admin evidence sweep": 1,    # single-flighted in routers/admin.py
+    "api_keys last used": 1,      # throttled best-effort managed-key display metadata
 }
 
 POOL_SPECS: dict[str, dict[str, int]] = {

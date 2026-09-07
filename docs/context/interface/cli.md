@@ -5,6 +5,8 @@ sources:
   - src/treg/cli.py
   - src/treg/convert.py
   - src/treg/agents.py
+  - src/treg/routers/api_keys.py
+  - tests/test_api_keys.py
 related:
   - interface/api.md
   - interface/skill.md
@@ -21,6 +23,16 @@ and `_feedback_request` prints JSON or exits nonzero with an actionable error wi
 rejected input. `cmd_feedback_get` implements `treg feedback get <feedback_id>`. Submission transport
 failures report an unconfirmed outcome, not a definite failure. Bare `treg feedback` shows help;
 `main` still accepts the original category-first submission shorthand. See [feedback](../architecture/feedback.md).
+
+## Managed key compatibility
+
+`treg login --token <key>` accepts an active managed human or agent key because the CLI verifies it
+through `/auth/me` and uses the same bearer on later requests. Disable or revoke makes that check
+fail before the CLI saves a new value. Complete credentials returned by login and key-minting
+responses use `Cache-Control: no-store`. The CLI stores no key-management state. Its team selection,
+org override, permissions, caps, and billing behavior still come from the live membership.
+The MCP installer refuses a seven-day bootstrap credential before writing any client configuration;
+the user must first choose/create/join a team and install its Default or Agent key.
 
 ## Instagram grants
 
@@ -49,9 +61,11 @@ re-runs the server's `install.sh` to upgrade the CLI in place. A global **`--jso
 `main` like `--org`) makes the human-table commands (`org ls`, `agents ls`, `catalog` in all its forms)
 emit raw JSON instead — one stable contract for agents; commands that already print JSON are unaffected.
 **`TREG_CONFIG`** points the CLI at an alternate config file (CI/agents/tests; default
-`~/.treg/config.json`). `org use` validates the slug against `/orgs` before persisting (a typo'd slug
-exits naming your real teams; offline degrades to set + warn), and the server's "choose an org" 400 is
-followed by a stderr line naming the bad `--org`/active-org value.
+`~/.treg/config.json`). `org use` validates the slug against `/orgs`, then gets that membership's
+active Default key before it saves either value. If that exchange fails, the previous team and token
+stay active. An Additional or Agent key cannot switch memberships; the user must first run `treg
+login` as a human. The server's "choose an org" 400 is followed by a stderr line naming the bad
+`--org`/active-org value.
 
 Every command builds its client via `_client(cfg)`, which returns a `_RegistryClient` (an
 `httpx.Client` subclass). It survives an upstream WAF: when a request's body is 403'd by an edge (a
@@ -71,7 +85,8 @@ marker on `catalog get`): the catalog is public, and `sys.exit` raises `SystemEx
 `~/.treg/config.json` (`CONFIG_PATH`) is v2: `{base_url, token, email, active_org, identity, admin_token}`
 — **one bearer token + an active org slug** (`_load_config` migrates a legacy multi-org or flat config on
 read, and tolerates a corrupt file as empty so a half-written config can't brick every command).
-`_save_config` writes atomically (temp + `os.replace`); `login` persists the token **before** the
+`_save_config` writes atomically (temp + `os.replace`) and forces the credential file to owner-only
+mode (`0600`); `login` persists the token **before** the
 best-effort `_pick_active_org` lookup, so a transient `/orgs` failure can't discard a freshly-minted
 token. `_pick_active_org` prefers the server's `active` flag, then the org a team-pinned identity token
 bakes into its claim (`_token_org_claim` decodes it locally, unverified — covers older servers that mark
@@ -478,18 +493,29 @@ treg usage --by customer --days 30                 # what each one consumed, fro
 Caps are **advisory** — concurrent calls can overshoot slightly — and the prepaid balance is the hard
 limit; don't resell them to your users as exact.
 
-## `treg login` pins its token to your active team
+## `treg login` replaces bootstrap with the active team's Default key
 
-The token `login` stores is an **identity** token — it names a person, not a team — but the CLI
-re-mints it with the active org baked into the claim (`GET /auth/cli-token` with `X-Treg-Org`, the
-same mechanism behind the dashboard's "your API key"). `treg org use` re-pins on every switch.
+An org-less login result is a signed `scp=bootstrap` credential: it identifies the account for
+onboarding, expires after seven days, and cannot call team resources. When browser login includes a
+team selection, the poll result is already that membership's signed, non-expiring Default key. The
+direct email-code CLI uses the response's HttpOnly browser session to request the selected team's
+Default key; it does not let the bootstrap credential perform that exchange itself.
+
+Creating a team, joining by invite, accepting a pending invite, or selecting a team replaces the
+single token in `~/.treg/config.json` with the returned/selected team Default key. That key is the
+same deterministic credential shown for that human membership in the dashboard API Keys page, so
+disable and rotation apply to CLI use and Activity attributes the real key. `treg org use` performs
+the same authenticated Default-key exchange on every switch and writes the new team and token only
+after the exchange succeeds. Old untyped login tokens remain usable during rollout; newly typed team
+keys treat their signed team as authoritative for resource calls.
 
 This matters because the token is the thing people copy *out* of the CLI: into curl, into an MCP
 client's `Authorization`, into an agent's environment. Unpinned it fails there with
 `choose an org (send X-Treg-Org)` — accurate, and useless, because the CLI had been supplying that
 header invisibly all along.
 
-Switching teams is unaffected: an explicit `X-Treg-Org` header always beats the claim.
+For a typed Default key, a conflicting `X-Treg-Org` does not override the claim. The CLI replaces its
+stored token when a deliberate team switch succeeds.
 
 `treg org overflow [on|off]` shows or sets the team's overflow-relay opt-out (`PATCH /orgs/{id}/settings`
 `platform_overflow`); see `ops/capacity.md`.

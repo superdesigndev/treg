@@ -88,7 +88,8 @@ def _legacy_token(**claims) -> str:
 async def test_typed_credentials_and_safe_legacy_boundary_end_to_end(client):
     tok = await _otp_login(client, "early@x.io")
     claims = sess.read_identity_claims(tok)
-    assert claims["aud"] == sess.IDENTITY_AUDIENCE and "exp" not in claims
+    assert claims["aud"] == sess.IDENTITY_AUDIENCE
+    assert claims["scope"] == sess.BOOTSTRAP_SCOPE and claims["exp"] > int(time.time())
     uid = claims["uid"]
 
     # New browser sessions never authenticate as bearers, even before their expiry.

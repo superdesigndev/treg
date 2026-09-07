@@ -376,6 +376,8 @@ async def test_the_whole_flow_end_to_end(clients):
         "redirect_uri": "https://client.test/cb", "client_id": client_id,
         "code_verifier": verifier, "resource": mcp_oauth.mcp_resource_url()})
     assert tok.status_code == 200, tok.text
+    assert tok.headers["cache-control"] == "no-store"
+    assert tok.headers["pragma"] == "no-cache"
     access = tok.json()["access_token"]
     assert tok.json()["token_type"] == "Bearer"
 

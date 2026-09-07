@@ -230,12 +230,14 @@ async def _stamp_call_exit(
         resp.headers["X-Treg-Cost-Micro"] = str(cost_micro)
     if not getattr(request.state, "call_audited", False):
         org_id, email = getattr(request.state, "call_identity", (None, ""))
+        key_id, key_name, key_prefix = getattr(request.state, "call_key", (None, None, None))
         context = getattr(request.state, "call_context", None)
         rest = _call_rest(request, context)
         audit.record_call(
             org_id=org_id, user_email=email, tool_name=rest.split("/", 1)[0] or "—",
             method=request.method, path=request.url.path, status_code=status_code,
             client=_client_of(request), refused_by=_refusal_kind(status_code),
+            api_key_id=key_id, api_key_name=key_name, api_key_prefix=key_prefix,
             telemetry={"call_ref": call_ref})
         if failure_kind:
             _capture_exceptional_call(
@@ -279,6 +281,11 @@ async def call_tool(
     # is the one place every such refusal passes through — but it has no Caller of its own.
     request.state.call_identity = (caller.org_id, caller.email)
     request.state.call_team_slug = caller.org.slug
+    request.state.call_key = (
+        caller.api_key.id if caller.api_key else None,
+        caller.api_key.name if caller.api_key else None,
+        caller.api_key.safe_prefix if caller.api_key else None,
+    )
     # Faithful-relay: use the RAW request path, not Starlette's decoded path param. Decoding is
     # lossy — an encoded slash (`%2f`) in `rest` would become a real `/` and change the upstream
     # route (npm's scoped publish `PUT /@scope%2fname` 404s as `/@scope/name`). httpx preserves

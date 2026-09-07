@@ -104,6 +104,7 @@ jobs:
           tests/test_archive.py
           tests/test_call_cancellation.py
           tests/test_call_pool_discipline.py
+          tests/test_api_keys.py
           tests/test_postgres_reset.py
           tests/test_marketplace_call.py
           tests/test_capacity_overflow_spend.py

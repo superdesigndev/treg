@@ -22,6 +22,7 @@ from ..infra import db as database
 from ..config import get_settings
 from ..domain.identity import session as sess
 from ..domain.identity import mcp_oauth
+from ..domain.identity import api_keys as managed_keys
 from ..domain.identity.access import (
     _is_machine_email,
     _membership_by_token,
@@ -263,7 +264,10 @@ async def verify_email_login(email: str, code: str) -> VerifiedEmail:
         if user.suspended:
             raise EmailAuthError("suspended")
         await db.commit()
-        token = sess.make_identity(user.id, user.token_version)
+        token = sess.make_identity(
+            user.id, user.token_version, ttl=sess.BOOTSTRAP_TTL_SECONDS,
+            scope=sess.BOOTSTRAP_SCOPE,
+        )
         session_cookie = sess.make_session(user.id, token_version=user.token_version)
         return VerifiedEmail(token=token, email=user.email, session_cookie=session_cookie)
 
@@ -344,6 +348,7 @@ async def approve_cli_login(
             _cli_pending[login_id] = (expected, tries_left - 1, started_at)
             raise CliPairingError("wrong_code")
         active_org: str | None = None
+        default = None
         if requested_org:
             org = await _resolve_org(requested_org, db)
             membership = (await db.execute(select(Membership).where(
@@ -353,8 +358,15 @@ async def approve_cli_login(
             if org is None or membership is None:
                 raise CliPairingError("not_member")
             active_org = org.slug
+            default = await managed_keys.ensure_default_key(db, membership, user)
+            await db.commit()
         _cli_pending.pop(login_id, None)  # code matched, so consume the pending login before publishing
-        result = {"token": sess.make_identity(user.id, user.token_version), "email": user.email}
+        result = {"token": sess.make_identity(
+            user.id, user.token_version, org=active_org,
+            ttl=None if active_org else sess.BOOTSTRAP_TTL_SECONDS,
+            key_generation=default.default_generation if default else None,
+            scope=sess.TEAM_SCOPE if active_org else sess.BOOTSTRAP_SCOPE,
+        ), "email": user.email}
         if active_org:
             result["active_org"] = active_org
         _cli_results[login_id] = (result, _utcnow_naive())
@@ -381,10 +393,26 @@ async def issue_cli_token(
                 ))).scalar_one_or_none()
                 if membership is not None:
                     org_slug = org.slug
+                    user = await db.get(User, user_id)
+                    default = await managed_keys.ensure_default_key(db, membership, user) if user else None
+                    await db.commit()
+                else:
+                    default = None
+            else:
+                default = None
+        else:
+            default = None
         return {
-            "token": sess.make_identity(user_id, token_version, org=org_slug),
+            "token": sess.make_identity(
+                user_id, token_version, org=org_slug,
+                ttl=None if org_slug else sess.BOOTSTRAP_TTL_SECONDS,
+                key_generation=default.default_generation if default else None,
+                scope=sess.TEAM_SCOPE if org_slug else sess.BOOTSTRAP_SCOPE,
+            ),
             "email": email,
             "org": org_slug,
+            "default_key_id": default.id if default else None,
+            "default_key_state": default.state if default else None,
         }
 
 
@@ -396,7 +424,10 @@ async def revoke_identity_tokens(user_id: int) -> RevokedIdentityTokens:
         user.token_version += 1
         await db.commit()
         return RevokedIdentityTokens(
-            token=sess.make_identity(user.id, user.token_version),
+            token=sess.make_identity(
+                user.id, user.token_version, ttl=sess.BOOTSTRAP_TTL_SECONDS,
+                scope=sess.BOOTSTRAP_SCOPE,
+            ),
             email=user.email,
             session_cookie=sess.make_session(user.id, token_version=user.token_version),
         )
@@ -527,6 +558,27 @@ async def current_identity(x_treg_token: str, session_cookie: str) -> CurrentIde
                     else await _user_from_identity_token(x_treg_token, db))
             if user is not None and user.suspended:
                 user = None
+            # A team-pinned signed identity credential is the membership's default key. `/auth/me`
+            # is also the CLI's login verifier, so it must enforce the same team-local disable and
+            # revoke state as `require_member`. Short-lived typed MCP OAuth bridge tokens stay on
+            # their separate audience path.
+            claims = sess.read_identity_claims(x_treg_token)
+            oauth_bridge = bool(
+                claims and claims.get("aud") == sess.IDENTITY_AUDIENCE
+                and claims.get("exp") is not None
+            )
+            if membership is None and user is not None and claims and claims.get("org") and not oauth_bridge:
+                org = await _resolve_org(claims["org"], db)
+                if org is not None:
+                    membership = (await db.execute(select(Membership).where(
+                        Membership.user_id == user.id, Membership.org_id == org.id,
+                    ))).scalar_one_or_none()
+                    if membership is not None:
+                        key = await managed_keys.ensure_default_key(db, membership, user)
+                        if key is not None and key.state != managed_keys.ACTIVE:
+                            raise IdentityLookupError
+                        await db.commit()
+                        managed_keys.touch(key)
         else:
             user = await _user_from_session(session_cookie, db)
         if user is None:

@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import json
-
-import json
+import stat
 
 import pytest
 
@@ -140,6 +139,34 @@ def test_token_org_claim_reads_a_team_pinned_token():
     assert cli._token_org_claim("") is None
 
 
+def test_token_scope_claim_reads_bootstrap_hint():
+    import base64
+    payload = base64.urlsafe_b64encode(json.dumps({"scp": "bootstrap"}).encode()).decode().rstrip("=")
+    assert cli._token_scope_claim(f"{payload}.sig") == "bootstrap"
+    assert cli._token_scope_claim("treg_opaque") is None
+
+
+def test_login_token_keeps_a_typed_default_as_a_human_identity(monkeypatch):
+    import base64
+
+    payload = base64.urlsafe_b64encode(json.dumps({"scp": "team"}).encode()).decode().rstrip("=")
+
+    class Response:
+        status_code = 200
+        def json(self): return {"email": "me@example.com"}
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def get(self, path): return Response()
+
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client())
+    monkeypatch.setattr(cli, "_pick_active_org", lambda cfg: None)
+    cfg = {"base_url": "http://x"}
+    cli.cmd_login(type("A", (), {"token": f"{payload}.sig", "email": None})(), cfg)
+    assert cfg["identity"] is True
+
+
 def test_pick_active_org_prefers_the_tokens_baked_org(monkeypatch):
     """Against an older server that marks nothing active for a team-pinned token, `_pick_active_org`
     must land on the token's own org — not the first membership, which for a multi-team user is an
@@ -184,6 +211,101 @@ def test_org_override_beats_active(monkeypatch):
         assert c.headers["X-Treg-Org"] == "team-b"
 
 
+def test_org_use_saves_team_and_active_default_together(monkeypatch):
+    class Response:
+        status_code = 200
+
+        def __init__(self, body):
+            self.body = body
+
+        def json(self):
+            return self.body
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def get(self, path, **kwargs):
+            if path == "/orgs":
+                return Response([
+                    {"slug": "team-one", "active": True},
+                    {"slug": "team-two", "active": False},
+                ])
+            assert path == "/auth/cli-token"
+            assert kwargs["headers"] == {"X-Treg-Org": "team-two"}
+            return Response({
+                "org": "team-two", "token": "team-two-default",
+                "default_key_state": "active",
+            })
+
+    monkeypatch.setattr(cli, "_client", lambda cfg, auth=True: Client())
+    cfg = {"base_url": "http://x", "token": "team-one-default",
+           "active_org": "team-one", "identity": True}
+    cli.cmd_org_use(type("A", (), {"slug": "team-two"})(), cfg)
+    assert cfg["active_org"] == "team-two" and cfg["token"] == "team-two-default"
+    saved = cli._load_config()
+    assert saved["active_org"] == "team-two" and saved["token"] == "team-two-default"
+
+
+def test_org_use_keeps_previous_team_when_default_is_disabled(monkeypatch):
+    class Response:
+        status_code = 200
+
+        def __init__(self, body):
+            self.body = body
+
+        def json(self):
+            return self.body
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def get(self, path, **kwargs):
+            if path == "/orgs":
+                return Response([
+                    {"slug": "team-one", "active": True},
+                    {"slug": "team-two", "active": False},
+                ])
+            return Response({
+                "org": "team-two", "token": "disabled-default",
+                "default_key_state": "disabled",
+            })
+
+    monkeypatch.setattr(cli, "_client", lambda cfg, auth=True: Client())
+    cfg = {"base_url": "http://x", "token": "team-one-default",
+           "active_org": "team-one", "identity": True}
+    cli._save_config(cfg)
+    before = dict(cfg)
+    with pytest.raises(SystemExit, match="Default key is disabled.*Active team unchanged"):
+        cli.cmd_org_use(type("A", (), {"slug": "team-two"})(), cfg)
+    assert cfg == before
+    saved = cli._load_config()
+    assert saved["active_org"] == before["active_org"]
+    assert saved["token"] == before["token"]
+
+
+def test_org_use_does_not_move_an_opaque_key_to_another_team(monkeypatch):
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return [{"slug": "team-one"}, {"slug": "team-two"}]
+
+    class Client:
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def get(self, path, **kwargs): return Response()
+
+    monkeypatch.setattr(cli, "_client", lambda cfg, auth=True: Client())
+    cfg = {"base_url": "http://x", "token": "opaque-agent-key",
+           "active_org": "team-one", "identity": False}
+    cli._save_config(cfg)
+    with pytest.raises(SystemExit, match="cannot switch teams.*Active team unchanged"):
+        cli.cmd_org_use(type("A", (), {"slug": "team-two"})(), cfg)
+    saved = cli._load_config()
+    assert saved["active_org"] == "team-one"
+    assert saved["token"] == "opaque-agent-key"
+
+
 def test_pop_org_flag():
     a = ["tool", "ls", "--org", "team-b"]; assert cli._pop_org_flag(a) == "team-b" and a == ["tool", "ls"]
     b = ["tool", "ls", "--org=team-c"]; assert cli._pop_org_flag(b) == "team-c" and b == ["tool", "ls"]
@@ -220,6 +342,40 @@ def test_save_config_is_atomic(tmp_path, monkeypatch):
     cli._save_config({"base_url": "http://x", "token": "T"})
     assert not (tmp_path / "config.json.tmp").exists()  # temp renamed away, no litter
     assert cli._load_config()["token"] == "T"
+    assert stat.S_IMODE((tmp_path / "config.json").stat().st_mode) == 0o600
+
+
+def test_bootstrap_token_is_never_installed_into_mcp():
+    import base64
+    payload = base64.urlsafe_b64encode(json.dumps({"scp": "bootstrap"}).encode()).decode().rstrip("=")
+    with pytest.raises(SystemExit, match="temporary login token"):
+        cli.cmd_mcp_install(object(), {"token": f"{payload}.sig"})
+
+
+def test_team_create_and_join_replace_the_saved_bootstrap(monkeypatch):
+    class Response:
+        status_code = 200
+        text = "{}"
+        def __init__(self, body): self.body = body
+        def json(self): return self.body
+
+    class Client:
+        def __init__(self, response): self.response = response
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+        def post(self, path, json): return self.response
+
+    monkeypatch.setattr(cli, "_show", lambda response: None)
+    created = Response({"token": "team-default", "org": "acme"})
+    monkeypatch.setattr(cli, "_client", lambda cfg: Client(created))
+    cfg = {"token": "bootstrap", "identity": True}
+    cli.cmd_org_create(type("A", (), {"name": "Acme"})(), cfg)
+    assert cfg == {"token": "team-default", "identity": True, "active_org": "acme"}
+
+    joined = Response({"token": "joined-default", "org": "joined"})
+    monkeypatch.setattr(cli, "_client", lambda cfg, auth=False: Client(joined))
+    cli.cmd_org_join(type("A", (), {"code": "inv", "email": "me@example.com"})(), cfg)
+    assert cfg["token"] == "joined-default" and cfg["active_org"] == "joined"
 
 
 class _FakeResp:

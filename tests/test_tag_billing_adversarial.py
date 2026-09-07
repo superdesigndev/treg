@@ -218,7 +218,10 @@ async def test_attack_4_concurrent_prechecks_overshoot_is_bounded_not_exact(
                 all_prechecked.set()
             await asyncio.wait_for(all_prechecked.wait(), timeout=5)
 
-    monkeypatch.setattr(call_service, "_enforce_tag_budgets", synchronized_precheck)
+    # The spend pass runs inside application.call.reserve. Patching the service module only wraps
+    # the earlier count/block pre-flight and leaves this race unsynchronized, which made the test
+    # pass or fail by scheduler luck instead of exercising the documented soft-cap bound.
+    monkeypatch.setattr(call_reserve, "_enforce_tag_budgets", synchronized_precheck)
     responses = await asyncio.gather(*(
         clients.get(
             f"/call/{EP}?aweme_id=race-{index}",
@@ -226,7 +229,9 @@ async def test_attack_4_concurrent_prechecks_overshoot_is_bounded_not_exact(
         )
         for index in range(4)
     ))
-    assert [response.status_code for response in responses] == [200, 200, 200, 200]
+    assert [response.status_code for response in responses] == [200, 200, 200, 200], [
+        response.text for response in responses
+    ]
 
     async with session_maker() as db:
         spent = await ledger.tag_spent_since(

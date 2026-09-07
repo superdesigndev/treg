@@ -20,6 +20,10 @@ sources:
   - src/treg/domain/tools/__init__.py
   - src/treg/domain/tools/bindings.py
   - src/treg/domain/tools/bundles.py
+  - src/treg/domain/identity/api_keys.py
+  - src/treg/domain/identity/access.py
+  - src/treg/routers/api_keys.py
+  - tests/test_api_keys.py
   - tests/test_oauth_refresh.py
   - src/treg/config.py
 related:
@@ -33,6 +37,42 @@ related:
 Tier 4 has explicit platform-key slots for MiniMax, OpenRouter and Replicate. The web and async cron
 receive them as environment secrets, and the worker constructs the same platform bindings as the call
 path. Key values are never copied into task records, logs or archive evidence.
+
+## Managed treg API keys
+
+Treg API keys authenticate callers; provider secrets authorize upstream services. These stores are
+separate. New additional human and agent keys start with `treg_`, are returned once, and are stored
+only as SHA-256 hashes plus a safe prefix. A signed identity key has no stored hash. Its stable
+`default_human` row controls that team membership. New human memberships leave the legacy
+`Membership.token_hash` compatibility field empty and return a team-pinned signed default token, so
+they do not manufacture a `legacy_human` row. Existing non-empty hashes retain their migrated rows.
+
+Authentication loads the key first and the live membership second. Disable and revoke therefore
+take effect without changing role, access, cap, or billing data. Revoke is permanent. Rotation
+uses a conditional row update as its cross-process claim, then revokes the old row and links it to
+one new row. The claim also hides the revoked predecessor from the default inventory; its row, key
+events, and Activity snapshots remain available for audit. A competing request receives 409 instead
+of creating another replacement or leaking a database error. The key audit table and Activity
+snapshot contain no complete secret.
+
+The signed human Default key is the exception to replacement-row rotation. Its control row carries
+`default_generation`; the team-pinned token carries the signed `kg` claim. Rotating increments that
+same row and returns the newly derived token, so the prior token fails as `revoked key` while Default
+keys for the user's other teams, random additional keys, agent keys, and browser sessions are unchanged.
+Default keys cannot be revoked: disable/enable is the temporary stop, and rotate is the replacement.
+Newly minted Default keys also carry `scp=team`; their signed `org` is authoritative for resource
+access, so a conflicting `X-Treg-Org` cannot redirect one team's key to another team. Org-less
+`scp=bootstrap` login tokens are seven-day onboarding credentials, not managed API keys.
+
+`last_used_at` is approximate display metadata. Authentication commits its read transaction before
+`api_keys.touch()` schedules a best-effort background update. The process and the conditional UPDATE
+both enforce a five-minute window, the in-process map is bounded, and one writer uses the background
+pool. Requests that share one key do not serialize on an `ApiKey` row write.
+
+Every response that returns a complete caller credential uses `Cache-Control: no-store`. Owners and
+admins can list, inspect Activity, disable, and enable another human's key, and revoke hash-backed
+human keys. Only the assigned human can rotate a Default or additional human key. Admins can rename,
+rotate, revoke, and hide agent keys.
 
 ## Instagram grant methods (2026-09-01)
 

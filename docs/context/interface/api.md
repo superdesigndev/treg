@@ -35,11 +35,13 @@ sources:
   - src/treg/routers/connections.py
   - src/treg/routers/onboard.py
   - src/treg/routers/orgs.py
+  - src/treg/routers/api_keys.py
   - src/treg/routers/resources.py
   - src/treg/routers/referrals.py
   - src/treg/routers/signup_cookies.py
   - src/treg/routers/web.py
   - src/treg/domain/identity/access.py
+  - src/treg/domain/identity/api_keys.py
   - src/treg/domain/governance/teams.py
   - src/treg/domain/governance/access.py
   - src/treg/domain/governance/budgets.py
@@ -60,6 +62,22 @@ related:
 ---
 
 # The API
+
+## Managed API keys
+
+`GET/POST /orgs/{id}/api-keys` lists safe metadata or creates an Additional key for the calling
+human. The action routes rename, disable, enable, rotate, revoke, or hide a key according to its
+type and the caller's role. Only creation and permitted rotation return a complete secret, and every
+credential response uses `Cache-Control: no-store`. `GET .../{key_id}/events` returns its audit trail.
+
+A human membership has one signed, team-specific Default key. Rotation increments that row's signed
+generation, so only the prior token for that team stops. Default keys can be disabled or enabled but
+not revoked. Additional and Agent keys are random, hash-stored secrets. Their rotation creates a new
+row and retains the hidden predecessor for audit. Revoking an Agent key removes its machine membership
+and revokes all its keys; revoking a human key does not remove the human membership.
+
+`GET /calls` and `GET /runs` accept `api_key_id` and return the retained key id, name, and safe prefix.
+Billing, balance, and daily-cap checks still use the resolved membership.
 
 ## Feedback
 
@@ -209,7 +227,7 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   invites via `create_invite` (`POST /orgs/{id}/invites`, admin+) → one-time code (**emailed** via
   `email.send_invite`, best-effort, along with a separate inbox-only `email_token` sign-in link - the
   token is never in the JSON response; see the invite sign-in link below), `accept_invite`
-  (`POST /invites/accept`, open) → registers/joins + mints a token. **Code-free invites:** an invite is
+  (`POST /invites/accept`, open) → registers/joins + returns the signed Default token. **Code-free invites:** an invite is
   addressed to an email, so `my_invites` (`GET /invites/mine`, `require_identity`) lists every pending
   invite for the caller's proven email and `accept_my_invite` (`POST /invites/{id}/accept`,
   `require_identity`) accepts one with no code (403 if the invite's email ≠ yours). `list_members` /
@@ -363,7 +381,8 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   disappear from discovery, and return 410 on call/access checks. `platform_blocked` entries
   remain discoverable for BYOK but cannot use treg's key.
 
-  Zero-result searches emit identity-free `SearchMiss` rows through the lossy audit queue.
+  Zero-result searches emit `SearchMiss` rows through the lossy audit queue. A team-pinned Default
+  token provides the same human and team attribution as an older hash-backed membership token.
   Sources distinguish HTTP, team MCP and the Claude connector. Tool requests may attach a token
   or same-origin session identity; cross-origin cookie submissions remain anonymous.
   `scripts/usage_report.py` reports this unserved demand.
@@ -393,23 +412,29 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   offers configured identity doors, then a team picker (including first-team creation).
   `GET /auth/cli/orgs` lists the session user's teams; `POST /auth/cli/approve` requires the
   session, same-origin CSRF check, matching code and membership in the chosen team.
-  Wrong attempts are bounded. `GET /auth/cli/poll` consumes the completed identity token and
-  selected org exactly once. Pairing dictionaries remain process-local.
+  Wrong attempts are bounded. `GET /auth/cli/poll` consumes the selected membership's Default key
+  and org exactly once. When no team was selected, it returns only a seven-day bootstrap credential.
+  Pairing dictionaries remain process-local.
 
   `GET /auth/me` accepts token or session authentication and returns identity/onboarding state.
-  `GET /auth/cli-token` uses `application.auth.issue_cli_token` for optional team pinning.
+  `GET /auth/cli-token` uses `application.auth.issue_cli_token` to return a human membership's
+  team-specific Default key. A bootstrap bearer cannot use this route to mint a team key; the direct
+  email CLI uses its new browser session, and create/join/accept routes return the Default key.
   Typed session credentials require expiry and `aud=session`; copied identity keys use
-  `aud=identity` without expiry. The two audiences are not interchangeable; MCP's internal
-  exchange token is the deliberate 120-second identity exception.
+  `aud=identity` without expiry. Bootstrap credentials also carry `scp=bootstrap` and a seven-day
+  expiry. Default keys carry `scp=team`, an authoritative org, and their generation. The two audiences
+  are not interchangeable; MCP's internal exchange token is the deliberate 120-second identity exception.
 
   Legacy untyped keys with an org claim or without expiry are identity-only. An org-less
   untyped token with expiry remains compatible only until expiry. `token_version` revokes
-  permanent keys; missing `tv` means zero. `POST /auth/revoke-tokens` bumps the version and
+  permanent keys; missing `tv` means zero. New scoped credentials do not change those compatibility
+  rules. `POST /auth/revoke-tokens` bumps the version and
   returns a replacement cookie/token for the caller. `/auth/logout` is a same-origin cookie action.
   Onboarding routes are `POST /onboard/demo|skip|reset`; see [onboarding](onboarding.md).
 
-  The shared dependencies resolve a membership token, identity bearer plus `X-Treg-Org`, or
-  session cookie plus `X-Treg-Org`. Identity and session validation live in
+  The shared dependencies resolve a membership token, a team Default key, a legacy identity bearer
+  plus `X-Treg-Org`, or a session cookie plus `X-Treg-Org`. Bootstrap credentials cannot access team
+  resources even when a caller supplies `X-Treg-Org`. Identity and session validation live in
   `domain.identity.session`; authorization belongs to `domain.identity.access`.
 
 - **Static (dashboard + tutorials):** `dashboard` (`GET /`, `FileResponse` + `Cache-Control: no-cache`),

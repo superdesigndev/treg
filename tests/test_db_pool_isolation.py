@@ -44,6 +44,7 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/call/settle.py": {API},
     "domain/capacity/marks.py": {API}, "domain/capacity/routes_view.py": {API},
     "domain/capacity/view.py": {API},
+    "domain/identity/api_keys.py": {BACKGROUND},
     # `treg-worker` is its own process; it shares the API pool because nothing else is running in it.
     "worker.py": {API},
     # Staff pages take their pool through `Depends(get_admin_session)`, not a maker import; the one

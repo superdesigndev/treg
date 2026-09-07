@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import crypto
 from ...domain.governance.teams import cascade_delete_org, drop_member_deny_rules
+from ...domain.identity import api_keys as managed_keys
 from .models import CallRecord, Membership, Org, Secret, Tool, User
 
 DEMO_DOMAIN = "demo.treg.local"      # fake teammates live here; api refuses login for this domain
@@ -76,9 +77,14 @@ async def provision(db: AsyncSession, owner: User, team_name: str) -> dict:
     db.add(org)
     await db.flush()
 
-    # owner membership (token minted but never surfaced — the human uses their session/identity token)
-    db.add(Membership(user_id=owner.id, org_id=org.id, role="owner",
-                      token_hash=crypto.hash_token(crypto.new_token())))
+    # The real owner uses the signed default credential. Do not create an unreachable legacy key.
+    owner_membership = Membership(
+        user_id=owner.id, org_id=org.id, role="owner",
+        token_hash="",
+    )
+    db.add(owner_membership)
+    await db.flush()
+    await managed_keys.ensure_default_key(db, owner_membership, owner)
 
     # fake teammates — reuse the same User row across demo orgs (email is unique)
     for full_name, handle, role in TEAMMATES:
@@ -88,8 +94,7 @@ async def provision(db: AsyncSession, owner: User, team_name: str) -> dict:
             u = User(email=email, demo=True, onboarded=True)
             db.add(u)
             await db.flush()
-        db.add(Membership(user_id=u.id, org_id=org.id, role=role,
-                          token_hash=crypto.hash_token(crypto.new_token())))
+        db.add(Membership(user_id=u.id, org_id=org.id, role=role, token_hash=""))
 
     # a working tool + its secret (echo → postman-echo, injected server-side)
     secret = Secret(org_id=org.id, name="echo-key", owner=owner.email, kind="env",
@@ -180,7 +185,7 @@ async def accept_demo_invite(db: AsyncSession, org_id: int, invite) -> dict:
         db.add(u)
         await db.flush()
     if (await db.execute(select(Membership).where(Membership.user_id == u.id, Membership.org_id == org_id))).scalar_one_or_none() is None:
-        db.add(Membership(user_id=u.id, org_id=org_id, role=invite.role, token_hash=crypto.hash_token(crypto.new_token())))
+        db.add(Membership(user_id=u.id, org_id=org_id, role=invite.role, token_hash=""))
     invite.status = "accepted"
     await db.commit()
     return {"email": email, "role": invite.role}

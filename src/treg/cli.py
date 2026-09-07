@@ -78,12 +78,14 @@ def _load_config() -> dict:
 
 
 def _save_config(cfg: dict) -> None:
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     # Write-then-rename so an interrupted save (kill / full disk) can't leave a truncated,
     # unparseable config that bricks every subsequent command.
     tmp = CONFIG_PATH.with_name(CONFIG_PATH.name + ".tmp")
     tmp.write_text(json.dumps(cfg, indent=2))
+    tmp.chmod(0o600)
     os.replace(tmp, CONFIG_PATH)
+    CONFIG_PATH.chmod(0o600)
 
 
 def _token_org_claim(token: str | None) -> str | None:
@@ -98,7 +100,17 @@ def _token_org_claim(token: str | None) -> str | None:
         return None
 
 
-def _pick_active_org(cfg: dict) -> None:
+def _token_scope_claim(token: str | None) -> str | None:
+    """Read the signed token's local scope hint; the server remains the authority."""
+    try:
+        payload = token.split(".", 1)[0]
+        claims = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+        return claims.get("scp") or None
+    except Exception:
+        return None
+
+
+def _pick_active_org(cfg: dict, *, pin: bool = True) -> None:
     """Best-effort: set the active org from GET /orgs. The token is already persisted by the
     caller, so a transient failure here (proxy hiccup, cold restart) must never lose it."""
     try:
@@ -119,35 +131,53 @@ def _pick_active_org(cfg: dict) -> None:
         pass
     # Bake the chosen team into the token so it also works OUTSIDE the CLI (curl, MCP, an agent env),
     # where no X-Treg-Org header travels.
-    _pin_token_to_active_org(cfg)
+    if pin:
+        _pin_token_to_active_org(cfg)
 
 
-def _pin_token_to_active_org(cfg: dict) -> None:
-    """Re-mint the stored identity token with the ACTIVE ORG baked into its claim.
+def _default_token_for_org(cfg: dict, org: str, *, session_cookies=None) -> tuple[str | None, str]:
+    """Get one active team Default key without changing the local configuration."""
+    try:
+        with _client(cfg, auth=session_cookies is None) as c:
+            r = c.get("/auth/cli-token", headers={"X-Treg-Org": org}, cookies=session_cookies)
+    except Exception:  # noqa: BLE001 — the caller decides whether this optional exchange is required
+        return None, "could not reach the registry"
+    try:
+        data = r.json()
+    except Exception:  # noqa: BLE001 — an edge/proxy response need not be JSON
+        data = {}
+    if r.status_code != 200:
+        return None, data.get("detail") or f"the registry returned {r.status_code}"
+    if data.get("org") != org or not data.get("token"):
+        return None, "the registry did not return this team's Default key"
+    state = data.get("default_key_state")
+    if state not in (None, "active"):  # None keeps compatibility with servers before managed keys
+        return None, f"this team's Default key is {state}"
+    return data["token"], ""
+
+
+def _pin_token_to_active_org(cfg: dict, *, session_cookies=None) -> None:
+    """Replace the stored identity credential with the active team's Default key.
 
     A plain identity token names a person, not a team, so treg cannot know which team to bill and
     answers `choose an org (send X-Treg-Org)`. The CLI hides that by sending the header itself — but
     the token is the thing people copy OUT of the CLI: into curl, into an MCP client's Authorization,
     into an agent's env. There it fails, confusingly, and the fix is invisible.
 
-    `GET /auth/cli-token` with `X-Treg-Org` returns the same identity token with the org pinned, which
-    is exactly how the dashboard's "your API key" works as a bare bearer. Switching teams still works:
-    an explicit `X-Treg-Org` header always beats the claim, and `treg org use` re-pins.
+    `GET /auth/cli-token` with `X-Treg-Org` returns the deterministic Default key that the dashboard
+    shows for that membership. A direct email login uses its fresh browser session cookie for this
+    exchange; an ordinary `org use` authenticates with the current stored credential.
 
-    Best-effort by design — the caller has already persisted a working token, and an older server
+    Best-effort by design — the caller has already persisted a credential, and an older server
     without this route must not turn a successful login into a failure.
     """
     org = cfg.get("active_org")
     if not org or not cfg.get("identity"):
         return
-    try:
-        with _client(cfg) as c:
-            r = c.get("/auth/cli-token", headers={"X-Treg-Org": org})
-        if r.status_code == 200 and r.json().get("org") == org:
-            cfg["token"] = r.json()["token"]
-            _save_config(cfg)
-    except Exception:  # noqa: BLE001 — a pin is an upgrade, never a reason to lose the session
-        pass
+    token, _ = _default_token_for_org(cfg, org, session_cookies=session_cookies)
+    if token:
+        cfg["token"] = token
+        _save_config(cfg)
 
 
 def _effective_org(cfg: dict) -> str | None:
@@ -368,7 +398,13 @@ def cmd_config(args, cfg) -> None:
 
 def cmd_login(args, cfg) -> None:
     if args.token:  # agent / CI: a token directly (a per-org token, or a dashboard identity token)
-        cfg.update(token=args.token, active_org=None, identity=False)  # drop any stale active_org
+        # A typed human Default/bootstrap is still an identity credential and may participate in
+        # the CLI's deliberate team-selection flow. Opaque Additional/Agent keys stay fixed to the
+        # membership they authenticate and must not be exchanged as a human.
+        cfg.update(
+            token=args.token, active_org=None,
+            identity=_token_scope_claim(args.token) in ("team", "bootstrap"),
+        )  # drop any stale active_org
         # VERIFY before claiming success — a rejected token used to print "Token saved" and only fail on
         # the first real call ("misleading"). /auth/me needs no org, so it validates either token kind.
         try:
@@ -408,7 +444,8 @@ def cmd_login(args, cfg) -> None:
         d = r.json()
         cfg.update(token=d["token"], email=d["email"], identity=True)
         _save_config(cfg)  # persist the freshly-minted token BEFORE the optional org lookup
-        _pick_active_org(cfg)
+        _pick_active_org(cfg, pin=False)
+        _pin_token_to_active_org(cfg, session_cookies=r.cookies)
         print(f"✓ Logged in as {cfg['email']}. Active org: {cfg.get('active_org')}")
         _maybe_offer_onboarding(cfg)
         return
@@ -1390,7 +1427,8 @@ def cmd_accept(args, cfg) -> None:
             sys.exit(f"no pending invite for '{args.org}' — run `treg invites`")
         r = c.post(f"/invites/{inv['id']}/accept")
         if r.status_code == 200:
-            cfg["active_org"] = inv["org"]
+            data = r.json()
+            cfg.update(token=data["token"], active_org=data["org"], identity=True)
             _save_config(cfg)
         _show(r)
 
@@ -3734,6 +3772,9 @@ def cmd_mcp_install(args, cfg) -> None:
     token = os.environ.get("TREG_TOKEN") or cfg.get("token")
     if not token:
         sys.exit("no token — run `treg login` first (or `treg login --token <key>`), then retry")
+    if _token_scope_claim(token) == "bootstrap":
+        sys.exit("This temporary login token cannot be installed into MCP — nothing was written. "
+                 "Choose or create a team first, then retry with its Default or Agent key.")
     # VERIFY before fanning the token out into every agent config on this machine — the same check
     # `treg login --token` runs. Without it, a garbage token (a stale TREG_TOKEN, a mangled paste)
     # is written silently into Claude/Cursor/opencode, and the failure surfaces days later inside
@@ -4087,9 +4128,7 @@ def cmd_org_create(args, cfg) -> None:
         r = c.post("/orgs", json={"name": args.name})
     if r.status_code == 200:
         d = r.json()
-        cfg["active_org"] = d["org"]
-        if not cfg.get("identity"):  # per-org-token mode needs the new org's token to act in it
-            cfg["token"] = d["token"]
+        cfg.update(token=d["token"], active_org=d["org"], identity=True)
         _save_config(cfg)
     _show(r)
 
@@ -4108,8 +4147,8 @@ def cmd_org_ls(args, cfg) -> None:
 
 def cmd_org_use(args, cfg) -> None:
     # Validate BEFORE persisting: a typo'd slug used to save silently and then fail every later
-    # command with the server's bare "choose an org (send X-Treg-Org)". Offline/older servers
-    # degrade to the old behavior (set + warn) rather than blocking the switch.
+    # command with the server's bare "choose an org (send X-Treg-Org)". The Default-key exchange
+    # below is also required before the local team and token can change.
     try:
         with _client(cfg) as c:
             r = c.get("/orgs")
@@ -4123,9 +4162,20 @@ def cmd_org_use(args, cfg) -> None:
                      f"see `treg org ls`; active org unchanged.")
     else:
         print("warning: could not verify the team against the registry", file=sys.stderr)
-    cfg["active_org"] = args.slug
+    if cfg.get("identity"):
+        # Get the new credential before changing either local value. A team-scoped Default key and
+        # a different active_org are an unusable pair, so this exchange is required during a switch.
+        token, detail = _default_token_for_org(cfg, args.slug)
+        if not token:
+            sys.exit(f"could not switch to {args.slug!r}: {detail}. Active team unchanged.")
+        cfg.update(token=token, active_org=args.slug)
+    else:
+        # Opaque Additional and Agent keys are fixed to their configured membership. They may
+        # confirm that team, but they must not be presented as human team-switching credentials.
+        if cfg.get("active_org") != args.slug:
+            sys.exit("this key cannot switch teams; run `treg login` as a human first. "
+                     "Active team unchanged.")
     _save_config(cfg)
-    _pin_token_to_active_org(cfg)  # re-pin, so the copyable token follows the switch
     print(f"active org: {args.slug}")
 
 
@@ -4541,7 +4591,7 @@ def cmd_org_join(args, cfg) -> None:
         r = c.post("/invites/accept", json={"code": args.code, "email": args.email})
     if r.status_code == 200:
         d = r.json()
-        cfg.update(token=d["token"], active_org=d["org"], email=args.email, identity=False)
+        cfg.update(token=d["token"], active_org=d["org"], email=args.email, identity=True)
         _save_config(cfg)
     _show(r)
 

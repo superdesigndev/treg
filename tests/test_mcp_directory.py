@@ -262,6 +262,28 @@ async def test_v1_and_v2_access_tokens_are_not_interchangeable():
     assert mcp_oauth.mcp_resource_version(v2_aud.rstrip("/")) == "v2"
 
 
+async def test_managed_api_key_authenticates_on_both_mcp_surfaces(clients):
+    """A managed key is a normal team bearer; OAuth bridge tokens remain a separate path."""
+    org_id = (await clients.get("/auth/me")).json()["org_id"]
+    created = (await clients.post(
+        f"/orgs/{org_id}/api-keys", json={"name": "MCP client"},
+    )).json()
+    token = created["secret"]
+    async with paired_mcp_session() as client:
+        for path in ("/mcp/", "/mcp/v2/"):
+            result = await _call_tool(client, "balance", {}, token, path=path)
+            assert "balance_micro" in result, (path, result)
+
+    assert (await clients.post(
+        f"/orgs/{org_id}/api-keys/{created['id']}/disable",
+    )).status_code == 200
+    async with paired_mcp_session() as client:
+        for path in ("/mcp/", "/mcp/v2/"):
+            result = await _call_tool(client, "balance", {}, token, path=path)
+            assert "error" in result, (path, result)
+            assert "not signed in" in str(result).lower(), (path, result)
+
+
 async def test_v2_transport_challenges_with_v2_metadata():
     async with directory_session() as client:
         response = await _rpc(client, "tools/list")

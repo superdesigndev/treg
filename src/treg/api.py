@@ -36,15 +36,19 @@ from .domain.governance.teams import _unique_slug
 from .domain.identity.access import (
     Caller,
     _membership_by_token,
+    _resolve_org,
     _require_can_register,
     _role_at_least,
     _user_from_identity_token,
     _user_from_session,
     require_member,
 )
+from .domain.identity import api_keys as managed_keys
+from .domain.identity import session as identity_session
 from .models import (CallRecord, CapabilityPin, LedgerEntry, Membership, Org, RunRecord, Secret,
                      Tool, ToolRequest, User)
 from .routers import admin as admin_routes
+from .routers import api_keys as api_key_routes
 from .routers import auth as auth_routes
 from .routers import billing as billing_routes
 from .routers import call as call_routes
@@ -109,11 +113,16 @@ async def _bootstrap_single_user() -> None:
             membership = Membership(user_id=user.id, org_id=org.id, role="owner",
                                     token_hash=crypto.hash_token(token))
             db.add(membership)
+            await db.flush()
+            await managed_keys.register_membership_token(db, membership, user, token)
         else:
             org = await db.get(Org, membership.org_id)
             if not path.exists():
                 token = crypto.new_token()  # the token file was removed — mint a replacement
-                membership.token_hash = crypto.hash_token(token)
+                await managed_keys.replace_membership_token(
+                    db, membership, user, token, actor_email=user.email,
+                    name="Local installation key",
+                )
         team = org.slug if org is not None else LOCAL_ORG_NAME
         await db.commit()
     if token:
@@ -259,6 +268,17 @@ async def create_tool_request(
         user = await db.get(User, m.user_id) if m else await _user_from_identity_token(x_treg_token, db)
         if user is not None and not user.suspended:
             org_id, user_email = (m.org_id if m else None), user.email
+            if m is None:
+                claims = identity_session.read_identity_claims(x_treg_token)
+                org = await _resolve_org((claims or {}).get("org", ""), db)
+                membership = (await db.execute(select(Membership).where(
+                    Membership.user_id == user.id,
+                    Membership.org_id == org.id,
+                ))).scalar_one_or_none() if org is not None else None
+                if membership is not None:
+                    key = await managed_keys.ensure_default_key(db, membership, user)
+                    if key is not None and key.state == managed_keys.ACTIVE:
+                        org_id = membership.org_id
     elif treg_session and _same_origin(request):
         user = await _user_from_session(treg_session, db)
         if user is not None:
@@ -315,6 +335,7 @@ router.routes.extend(referral_routes.router.routes)
 router.routes.extend(billing_routes.webhook_router.routes)
 router.routes.extend(org_routes.member_management_router.routes)
 router.routes.extend(org_routes.machine_identity_router.routes)
+router.routes.extend(api_key_routes.router.routes)
 
 
 # ---- projects: an optional sub-scope inside an org ------------------------------------------
@@ -473,7 +494,10 @@ async def _grant_audit(db: AsyncSession, caller: Caller, tool_name: str, method:
     run-report can prove it follows a real grant. One insert; this is not the hot proxy path."""
     rec = CallRecord(org_id=caller.org_id, user_email=caller.email, tool_name=tool_name,
                      method=method, path=path[:500], status_code=status, kind="local_run",
-                     client=client)
+                     client=client,
+                     api_key_id=caller.api_key.id if caller.api_key else None,
+                     api_key_name=caller.api_key.name if caller.api_key else None,
+                     api_key_prefix=caller.api_key.safe_prefix if caller.api_key else None)
     db.add(rec)
     await db.commit()
     return rec.id
@@ -625,6 +649,7 @@ router.routes.extend(resources_routes.skill_router.routes)
 @app.get("/calls")
 async def list_calls(
     limit: int = 50, days: int | None = None, before_id: int | None = None,
+    api_key_id: int | None = None,
     caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
 ) -> list[dict]:
     """This team's recent calls. `days` windows it and `before_id` pages backwards — a builder
@@ -646,6 +671,8 @@ async def list_calls(
         q = q.where(CallRecord.created_at >= _day_start_utc() - timedelta(days=max(1, min(days, 365)) - 1))
     if before_id is not None:
         q = q.where(CallRecord.id < before_id)
+    if api_key_id is not None:
+        q = q.where(CallRecord.api_key_id == api_key_id)
     rows = (await db.execute(q.order_by(CallRecord.id.desc()).limit(limit))).scalars().all()
     # A metered async submission audited its RESERVE as the charge. The task record is the account
     # of what happened afterwards (settled, refunded, timed out) and what the caller bought.
@@ -661,6 +688,9 @@ async def list_calls(
             "status_code": c.status_code,
             "kind": c.kind,
             "client": c.client,
+            "api_key_id": c.api_key_id,
+            "api_key_name": c.api_key_name,
+            "api_key_prefix": c.api_key_prefix,
             # Marketplace telemetry — all null for a plain tool call (see models.CallRecord). Kept in
             # the same row a caller already reads, so "what did this cost me" needs no second endpoint.
             "endpoint_id": c.endpoint_id,
@@ -773,6 +803,8 @@ async def get_call(
         view = {"id": row.id, "call_ref": row.call_ref, "user_email": row.user_email,
                 "tool_name": row.tool_name, "method": row.method, "path": row.path,
                 "status_code": row.status_code, "kind": row.kind, "client": row.client,
+                "api_key_id": row.api_key_id, "api_key_name": row.api_key_name,
+                "api_key_prefix": row.api_key_prefix,
                 "endpoint_id": row.endpoint_id, "provider": row.provider,
                 "credential_tier": row.credential_tier,
                 "cost_estimated_micro": row.cost_estimated_micro,
@@ -794,33 +826,43 @@ async def get_call(
 
 @app.get("/runs")
 async def list_runs(
-    limit: int = 50, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
+    limit: int = 50, api_key_id: int | None = None,
+    caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session)
 ) -> list[dict]:
     """Audit log for CLI executions (`treg run`, both tiers), scoped to the caller's org — each row
     tagged `where`: "server" (RunRecord) or "local" (a `local_run` GRANT on the member's machine).
     Local successes carry no exit code (only failures report back), so `exit_code` is null for them.
     Ids are prefixed (s/l) so the two sources never collide as list keys."""
     limit = max(1, min(limit, 500))
+    server_q = select(RunRecord).where(RunRecord.org_id == caller.org_id)
+    local_q = select(CallRecord).where(
+        CallRecord.org_id == caller.org_id, CallRecord.kind == "local_run",
+        CallRecord.method == "GRANT")
+    if api_key_id is not None:
+        server_q = server_q.where(RunRecord.api_key_id == api_key_id)
+        local_q = local_q.where(CallRecord.api_key_id == api_key_id)
     server = (await db.execute(
-        select(RunRecord).where(RunRecord.org_id == caller.org_id)
+        server_q
         .order_by(RunRecord.id.desc()).limit(limit)
     )).scalars().all()
     # A local run is audited as its GRANT (kind="local_run"); the redacted argv lives in `path`.
     local = (await db.execute(
-        select(CallRecord).where(
-            CallRecord.org_id == caller.org_id, CallRecord.kind == "local_run",
-            CallRecord.method == "GRANT")
+        local_q
         .order_by(CallRecord.id.desc()).limit(limit)
     )).scalars().all()
     rows = [
         {"id": f"s{r.id}", "user_email": r.user_email, "tool": r.bundle_name,  # bundle_name = tool (historical)
          "argv": r.argv, "exit_code": r.exit_code, "duration_ms": r.duration_ms,
-         "where": "server", "client": r.client, "created_at": r.created_at.isoformat()}
+         "where": "server", "client": r.client, "api_key_id": r.api_key_id,
+         "api_key_name": r.api_key_name, "api_key_prefix": r.api_key_prefix,
+         "created_at": r.created_at.isoformat()}
         for r in server
     ] + [
         {"id": f"l{c.id}", "user_email": c.user_email, "tool": c.tool_name,
          "argv": (c.path or "").split(), "exit_code": None, "duration_ms": None,
-         "where": "local", "client": c.client, "created_at": c.created_at.isoformat()}
+         "where": "local", "client": c.client, "api_key_id": c.api_key_id,
+         "api_key_name": c.api_key_name, "api_key_prefix": c.api_key_prefix,
+         "created_at": c.created_at.isoformat()}
         for c in local
     ]
     rows.sort(key=lambda x: x["created_at"], reverse=True)
@@ -903,6 +945,9 @@ async def run_tool_server(
         org_id=caller.org_id, user_email=caller.email, bundle_name=tool.name,
         argv=_redact_argv_list(list(body.args)),  # redact any credential typed inline before it's stored
         exit_code=result.exit_code, duration_ms=result.duration_ms, client=_client_of(request),
+        api_key_id=caller.api_key.id if caller.api_key else None,
+        api_key_name=caller.api_key.name if caller.api_key else None,
+        api_key_prefix=caller.api_key.safe_prefix if caller.api_key else None,
     )
     return {
         "tool": tool.name,

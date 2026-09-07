@@ -17,9 +17,12 @@ import time
 from ...config import get_settings
 
 TTL_SECONDS = 7 * 24 * 3600
+BOOTSTRAP_TTL_SECONDS = 7 * 24 * 3600
 COOKIE = "treg_session"
 SESSION_AUDIENCE = "session"
 IDENTITY_AUDIENCE = "identity"
+BOOTSTRAP_SCOPE = "bootstrap"
+TEAM_SCOPE = "team"
 
 # When no signing secret is configured we fall back to a RANDOM per-process key (mirrors
 # crypto._EPHEMERAL), NOT a source-visible constant: a static "dev-session-key" would let anyone
@@ -50,21 +53,28 @@ def _make(
     ttl: int | None,
     token_version: int,
     org: str | None = None,
+    key_generation: int | None = None,
+    scope: str | None = None,
 ) -> str:
     # `tv` binds the token to the user's current token_version; bumping that row invalidates every
     # token minted at an older version (see api._revoke path). Callers pass user.token_version.
     #
     # `org` is optional and stateless like the rest of the claim: an identity token that PINS a team.
     # It exists so a copyable "API key" works as a bare bearer where no `X-Treg-Org` header can travel
-    # (an MCP server's Authorization header). Omitted → an org-less token. Baking the
-    # slug in costs nothing to store and needs no rotation, because the whole token is re-derivable
-    # from (uid, tv, org) — the same reason the org-less one can be re-minted on every dashboard load.
+    # (an MCP server's Authorization header). Team-pinned Default keys additionally carry `kg`, a
+    # per-team generation that makes rotation invalidate only the prior token for that membership,
+    # and `scp=team` makes that signed org authoritative. Omitted-org `scp=bootstrap` credentials are
+    # short-lived and limited to account onboarding.
     #
     claims = {"uid": user_id, "tv": token_version, "aud": audience}
     if ttl is not None:
         claims["exp"] = int(time.time()) + ttl
     if org:
         claims["org"] = org
+    if key_generation is not None:
+        claims["kg"] = key_generation
+    if scope:
+        claims["scp"] = scope
     raw = json.dumps(claims, separators=(",", ":")).encode()
     sig = hmac.new(_key(), raw, hashlib.sha256).digest()
     return f"{_b64(raw)}.{_b64(sig)}"
@@ -83,12 +93,14 @@ def make_identity(
     org: str | None = None,
     *,
     ttl: int | None = None,
+    key_generation: int | None = None,
+    scope: str | None = None,
 ) -> str:
     """Mint a bearer credential. Copied API keys use the no-expiry default; the MCP OAuth bridge
     passes a short TTL for its internal exchange token. Both remain revocable through ``tv``."""
     return _make(
         user_id, audience=IDENTITY_AUDIENCE, ttl=ttl,
-        token_version=token_version, org=org,
+        token_version=token_version, org=org, key_generation=key_generation, scope=scope,
     )
 
 
@@ -108,8 +120,12 @@ def _read_claims(token: str) -> dict | None:
             out["exp"] = int(data["exp"])
         if data.get("org"):
             out["org"] = str(data["org"])
+        if data.get("kg") is not None:
+            out["kg"] = int(data["kg"])
         if data.get("aud") is not None:
             out["aud"] = str(data["aud"])
+        if data.get("scp") is not None:
+            out["scope"] = str(data["scp"])
         return out
     except Exception:  # noqa: BLE001 — any malformed credential is simply invalid
         return None
@@ -130,7 +146,8 @@ def read_identity_claims(token: str) -> dict | None:
     """Read an identity bearer token.
 
     Typed session credentials are always rejected. Typed identity credentials honor ``exp`` when
-    one was deliberately supplied (the MCP OAuth bridge), while normal copied keys omit it.
+    one was deliberately supplied (the MCP OAuth bridge or seven-day bootstrap), while normal copied
+    team keys omit it.
 
     Legacy untyped credentials are inherently ambiguous. An ``org`` claim safely identifies a
     team-pinned copied key, so it remains valid even after its old 30-day ``exp``. An untyped token

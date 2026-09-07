@@ -179,10 +179,11 @@ async def test_caller_headers_and_cookies_passthrough_and_token_stripped(clients
 
 async def test_control_infra_headers_and_treg_cookie_stripped(clients: AsyncClient):
     await _register(clients, "sec", "https://api.sec.com")
+    active_org = next(row["slug"] for row in (await clients.get("/orgs")).json() if row["active"])
     r = await clients.get(
         "/call/https://api.sec.com/echo",
         headers={
-            "X-Treg-Org": "superdesign", "ngrok-skip-browser-warning": "1",
+            "X-Treg-Org": active_org, "ngrok-skip-browser-warning": "1",
             "X-Forwarded-For": "1.2.3.4", "X-Forwarded-Proto": "https", "Via": "1.1 edge",
             "X-Keep": "yes", "Cookie": "treg_session=SECRET; keep=1; treg_oauth_state=xyz",
         },

@@ -1049,3 +1049,108 @@ def test_the_topup_modal_defaults_auto_on_only_without_a_mandate():
     js = INDEX[INDEX.index("openTopup(){"):]
     js = js[: js.index("tierBonus(")]
     assert "this.topupAuto=!(this.billing.autotopup.enabled||this.billing.autotopup.consented_at)" in js
+
+
+def test_api_key_dashboard_uses_server_permissions_and_safe_assignment_metadata():
+    start = INDEX.index('v-if="orgTab===\'keys\'"')
+    block = INDEX[start:INDEX.index("<!-- PROJECTS tab -->", start)]
+    menu = INDEX[INDEX.index('v-if="keyMenu"'):INDEX.index('v-if="keyConfirm"')]
+    assert "group.name" in block and "group.identity" in block and "group.type" in block
+    assert "k.created_at?when(k.created_at)" in block
+    assert '<table class="key-table"><tr><th>Key</th><th>Status</th><th>Created</th><th>Last used</th><th></th></tr>' in block
+    assert "<th>Created by</th>" not in block
+    assert "k.can_rotate" in block
+    for permission in ("can_rename", "can_disable", "can_enable", "can_revoke", "can_hide"):
+        assert f"keyMenu.key.{permission}" in menu
+    assert "{{maskedKey(k)}}" in block
+    assert "k.safe_prefix+'••••••••'" in INDEX
+    assert "k.kind==='legacy_human'?'prefix unavailable — older key':'prefix unavailable'" in INDEX
+    assert "newApiKey.secret" in block
+    assert "apiKeyGroups(){" in INDEX and "assigned_name||row.identity" in INDEX
+    assert "humanByIdentity[(row.created_by||'').toLowerCase()]" in INDEX
+    assert "owner.rows.push(row)" in INDEX
+    assert "group.type==='human' && k.assigned_type==='agent'" in block
+    assert "↳" in block and "?k.assigned_name:k.name" in block
+    assert 'class="key-meta mono"' in block
+    assert "requestKeyAction(k,'rotate')" in block
+    assert "toggleKeyMenu(k,$event)" in block
+    assert 'aria-haspopup="menu"' in block
+    assert "The current key will stop working immediately." in INDEX
+    assert "Default key rotated — copy the new key" in block
+    assert "This team-specific key remains revealable on Getting Started." in block
+    assert "CLI users can run <code>treg login</code> again to save the new key." in block
+    assert "was removed from this team, and all its keys were revoked" in INDEX
+    assert "newApiKey.assigned_type==='agent'" in block
+    assert "I’ve updated '+newApiKey.assigned_name" in block
+    assert "Replace <code>TREG_TOKEN</code> in every environment" in block
+    default_rotate = INDEX[INDEX.index("if(r.secret && k.kind==='default_human')") :]
+    default_rotate = default_rotate[: default_rotate.index("else if(r.secret)")]
+    assert "this.newApiKey={...r,rotated:true}" in default_rotate
+
+
+def test_api_key_secondary_actions_use_a_custom_menu_and_impact_modal():
+    assert 'class="key-actions-menu" role="menu"' in INDEX
+    assert 'role="menuitem"' in INDEX
+    assert "if(['rotate','disable','revoke','hide'].includes(action))" in INDEX
+    assert 'v-if="keyConfirm" class="scrim" role="dialog" aria-modal="true"' in INDEX
+    assert "Calls using this key will stop until you enable it again." in INDEX
+    assert "Historical Activity will remain available." in INDEX
+    assert "if(this.keyMenu)this.keyMenu=null" in INDEX
+    confirm = INDEX[INDEX.index('v-if="keyConfirm"'):INDEX.index('<!-- REGISTER SKILL', INDEX.index('v-if="keyConfirm"'))]
+    assert '<h3 id="key-confirm-title" style="margin:0">' in confirm
+    assert 'aria-label="Close"' not in confirm
+
+
+def test_empty_api_key_name_uses_field_validation_without_a_banner():
+    assert ":class=\"{'field-invalid':keyNameInvalid}\"" in INDEX
+    assert ':aria-invalid="keyNameInvalid"' in INDEX
+    assert '@input="keyNameInvalid=false"' in INDEX
+    create = INDEX[INDEX.index("async createApiKey(){"):INDEX.index("async renameApiKey(")]
+    assert "if(!name){ this.keyErr=''; this.keyNameInvalid=true; return; }" in create
+    assert "this.keyErr='Enter a key name.'" not in create
+
+
+def test_member_agent_actions_have_spacing_without_hiding_actions():
+    at = INDEX.index('@click="showAgentSetup(m)"')
+    actions = INDEX[at - 80:at + 900]
+    assert 'class="row-actions"' in actions
+    assert ">Setup</button>" in actions
+    assert "rotateAgent(m)" in actions
+    assert "revokeAgent(m)" in actions
+
+
+def test_agent_lifecycle_guidance_is_transient_and_action_specific():
+    start = INDEX.index("v-if=\"canAdmin && orgTab==='members'\"")
+    block = INDEX[start:INDEX.index("<!-- API KEYS tab", start)]
+    assert "Its current key will stop immediately." in block
+    assert "This removes the agent and revokes all its keys." in block
+    assert "I’ve updated '+newAgent.name" in block
+    assert "Anyone holding it can act as {{newAgent.name}}" in block
+    assert "Its key is unchanged, and the new tool and project permissions apply immediately." in INDEX
+
+
+def test_agent_key_revoke_copy_matches_membership_removal():
+    assert "This removes the agent from the team and revokes all its keys." in INDEX
+    assert "was removed from this team, and all its keys were revoked." in INDEX
+    assert "if(r.agent_revoked) await this.loadOrgAdmin()" in INDEX
+    assert "remains on Members, but it cannot authenticate" not in INDEX
+
+
+def test_activity_shows_agent_name_with_owner_badge_not_internal_identity():
+    assert "{{activityWho(a)}}" in INDEX
+    assert "owner: {{activityOwner(a)}}" in INDEX
+    assert "activityAgentKey(a)" in INDEX
+    assert "k.assigned_type==='agent'" in INDEX
+    assert "k.assigned_name||this.short(k.identity)" in INDEX
+    assert "if(!this.apiKeys.length)await this.loadApiKeys()" in INDEX
+    assert "{{a.api_key_name}}<span v-if=\"a.api_key_prefix\"" in INDEX
+
+
+def test_agent_creation_requires_explicit_tool_scope_and_default_key_has_disabled_state():
+    assert 'value="all" v-model="agentAccessMode"' in INDEX
+    assert 'value="choose" v-model="agentAccessMode"' in INDEX
+    assert "body.tool_access=this.agentAccessMode==='all' ? null" in INDEX
+    assert "agentBusy||!agentAccessMode" in INDEX
+    assert "defaultKeyState==='disabled'" in INDEX
+    assert "Additional and agent keys are random secrets shown only once" in INDEX
+    assert "This team's current Getting Started token will stop working immediately." in INDEX

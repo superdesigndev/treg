@@ -23,6 +23,8 @@ sources:
   - src/treg/alembic/versions/0024_membership_calls_today_counter.py
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
+  - src/treg/alembic/versions/0026_managed_api_keys.py
+  - src/treg/alembic/versions/0027_default_key_generation.py
   - src/treg/maintenance.py
   - src/treg/web/sitetrack.js
   - src/treg/models.py
@@ -36,6 +38,7 @@ sources:
   - src/treg/application/auth.py
   - tests/test_postgres_reset.py
   - tests/test_alembic_expand_safety.py
+  - tests/test_api_keys.py
 related:
   - architecture/archive.md
   - architecture/proxy-model.md
@@ -99,13 +102,29 @@ uses this metadata, never the encrypted token's shape.
   fake onboarding teammate - can't log in, excluded from stats), `created_at`. (The token + role moved
   to `Membership`; a user in N orgs has N memberships.)
 - **`Membership`** - links a user to an org: `user_id`, `org_id`, `role` (owner|admin|member),
-  `token_hash` (SHA-256 of the bearer token, shown once), `webhook_url` (health alerts POST here),
+  `token_hash` (the compatibility hash for the first bearer credential), `webhook_url` (health alerts POST here),
   `daily_call_cap` (per-user, per-day usage cap; **-1 = unlimited**, the default - see
   `governance/usage.enforce_daily_cap`) with `calls_today` / `calls_today_day`, the counter that cap
   is checked against (one conditional UPDATE per capped event, revision 0024; only capped members are
   counted, the roster reads the journal); unique `(user_id, org_id)`. **A token = a `(user, org)`
   pair.** `ROLE_RANK` orders the roles.
-- **`Invite`** - a one-time join code: `org_id, email, role, code_hash (idx), status`
+- **`ApiKey`** — a credential control row. It keeps `org_id`, nullable `membership_id`, the retained
+  identity label, kind, name, safe prefix, optional unique SHA-256 hash, state, `default_generation`, lifecycle times,
+  creator, and replacement id. A human membership has one `default_human` row for signed identity
+  keys and can have many `additional_human` rows. A scoped agent has one current `agent` row.
+  `legacy_human` rows keep old stored membership tokens working during the compatibility release;
+  new human memberships leave the old token-hash field empty and do not create legacy rows.
+  Revoked rows stay for audit. Additional/agent rotation marks the predecessor hidden from the normal inventory while
+  retaining its replacement link, events, and Activity snapshots. Membership removal clears their
+  membership link. Default rotation instead increments the same row's generation and invalidates only
+  that team's prior signed token. `last_used_at` is
+  throttled, best-effort display metadata; it is not written in the authentication transaction.
+- **`ApiKeyEvent`** — the key administration audit trail: team, key, actor, retained identity,
+  action, and time. It never stores the complete key.
+- **Activity key snapshot** — `CallRecord` and `RunRecord` keep nullable `api_key_id`, name, and safe
+  prefix. Old records stay unassigned. New records keep their safe key identity after rotation,
+  revoke, hide, or membership removal.
+- **`Invite`** — a one-time join code: `org_id, email, role, code_hash (idx), status`
   (pending|accepted|revoked), `invited_by`. Carries a SECOND split secret, `email_token_hash (idx,
   nullable)` - the inbox-only sign-in token embedded ONLY in the invite email's link (the
   admin-visible code is join-only, never an auth factor); nulled on first use (one sign-in per link),

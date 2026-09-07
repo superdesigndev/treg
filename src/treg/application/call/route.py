@@ -553,6 +553,8 @@ def _audit_parent(parent: CallContext, ep: dict, status: int, charged: int, clie
     c = parent.input.caller
     audit.record_call(org_id=c.org_id, user_email=c.email, tool_name=ep["id"], method="POST", path=ep["path"],
                       status_code=status, client=client,
+                      api_key_id=c.api_key_id, api_key_name=c.api_key_name,
+                      api_key_prefix=c.api_key_prefix,
                       telemetry={"call_ref": parent.call_ref, "endpoint_id": ep["id"], "provider": "treg",
                                  "credential_tier": "routed", "cost_charged_micro": charged})
 

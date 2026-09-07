@@ -281,6 +281,19 @@ addEventListener('load', function(){
   .dropdown{position:absolute;top:108%;left:0;width:300px;max-width:calc(100vw - 32px);background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(0,0,0,.28);padding:6px;z-index:30}
   .dropdown .row{padding:8px 10px;border-radius:7px;display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:pointer}
   .dropdown .row:hover{background:var(--panel2)} .dropdown .row.off{opacity:.6}
+  .row-actions{display:inline-flex;align-items:center;justify-content:flex-end;gap:6px}
+  .key-actions-menu{position:fixed;min-width:150px;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 12px 34px rgba(0,0,0,.28);padding:5px;z-index:70}
+  .key-actions-menu button{display:block;width:100%;border:0;background:none;color:var(--ink);text-align:left;
+    padding:8px 10px;border-radius:7px;font:inherit;font-size:12px;cursor:pointer}
+  .key-actions-menu button:hover,.key-actions-menu button:focus-visible{background:var(--panel2);outline:0}
+  .key-actions-menu button.danger{color:var(--red)}
+  .key-table .key-identity{min-width:220px}
+  .key-table td{padding-top:12px;padding-bottom:12px;vertical-align:middle}
+  .key-primary{display:flex;align-items:center;gap:7px;white-space:nowrap}
+  .key-primary b{font-size:13px}
+  .key-meta{margin-top:4px;color:var(--muted);font-size:11.5px;line-height:1.3}
+  .key-table th:last-child,.key-table td:last-child{width:1%}
   .search{flex:1;max-width:520px;display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:var(--rb);padding:7px 11px}
   .search input{flex:1;border:0;background:none;color:var(--ink);outline:none;font-family:var(--mono);font-size:13px}
   .iconbtn{background:var(--panel2);border:1px solid var(--line);border-radius:var(--rb);width:34px;height:34px;display:grid;place-items:center;color:var(--ink);box-sizing:border-box}
@@ -436,6 +449,7 @@ addEventListener('load', function(){
   pre{margin:0;padding:14px;background:var(--bg);border:1px solid var(--line);border-radius:10px;font-family:var(--mono);font-size:12.5px;overflow:auto;white-space:pre-wrap;word-break:break-word;max-height:50vh}
   pre.code{white-space:pre;overflow-x:auto;word-break:normal;overflow-wrap:normal;line-height:1.55}
   .field{display:flex;gap:8px;margin:8px 0} .field input,.field select,.field textarea{background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:var(--rb);padding:8px 10px;font-family:var(--mono);font-size:13px} .field input,.field textarea{flex:1}
+  .field input.field-invalid{border-color:var(--red)}
   .field.auth-method-field{flex-direction:column;align-items:flex-start;gap:6px}.auth-method-field select{min-width:170px}
   .login{min-height:100vh;display:grid;place-items:center} .loginbox{width:min(420px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:30px;text-align:center}
   .phase2{opacity:.5} .hint{font-family:var(--mono);font-size:11px;color:var(--amber);border:1px dashed var(--amber);border-radius:6px;padding:2px 7px}
@@ -2024,14 +2038,18 @@ a:hover{text-decoration-color:var(--muted)}
           <div v-if="activeOrg" style="margin-top:20px">
             <div class="tabs" style="margin:4px 0 16px">
               <button v-if="canAdmin" :class="{active:orgTab==='members'}" @click="orgTab='members'">Members</button>
+              <button :class="{active:orgTab==='keys'}" @click="orgTab='keys'; loadApiKeys()">API Keys</button>
               <button v-if="canAdmin" :class="{active:orgTab==='projects'}" @click="orgTab='projects'">Projects</button>
               <button v-if="canAdmin" :class="{active:orgTab==='policy'}" @click="orgTab='policy'">Policy</button>
               <button v-if="canAdmin" :class="{active:orgTab==='billing'}" @click="orgTab='billing'">Billing</button>
               <button :class="{active:orgTab==='danger'}" @click="orgTab='danger'">Team settings</button>
             </div>
-            <p v-if="!canAdmin && orgTab!=='danger'" class="sub" style="margin-bottom:12px">Members, projects and policy are visible to admins.</p>
+            <p v-if="!canAdmin && !['keys','danger'].includes(orgTab)" class="sub" style="margin-bottom:12px">Members, projects and policy are visible to admins.</p>
             <p v-if="myUsage && myUsage.cap>=0" class="sub" style="margin:-6px 0 12px">Your usage today: <b>{{myUsage.used_today}} / {{myUsage.cap}}</b> calls.</p>
             <div v-if="orgErr" class="banner">{{orgErr}}</div>
+            <div v-if="orgMsg" class="tut-notice" style="margin-bottom:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+              <span>{{orgMsg}}</span><button class="btn sm ico" @click="orgMsg=''" aria-label="Dismiss">✕</button>
+            </div>
 
             <template v-if="canAdmin && orgTab==='members'">
               <div v-if="agentErr" class="banner" style="margin-top:8px">{{agentErr}}</div>
@@ -2042,15 +2060,16 @@ a:hover{text-decoration-color:var(--muted)}
               <template v-else>How to use {{snipAgent.name}}</template>
               <button v-if="!newAgent" class="btn sm" style="margin-left:auto" @click="snipAgent=null">Close</button>
             </div>
-            <p v-if="newAgent" class="sub" style="margin:2px 0 10px">This is the only time it is shown. Put it in the agent's <code>TREG_TOKEN</code>.
+            <p v-if="newAgent && newAgent.rotated" class="tut-notice" style="margin:2px 0 10px"><b>The previous key stopped working immediately.</b> Update <b>{{newAgent.name}}</b> everywhere it runs before closing this card.</p>
+            <p v-if="newAgent" class="sub" style="margin:2px 0 10px">This is the only time it is shown. Put it in the agent's <code>TREG_TOKEN</code>. Anyone holding it can act as {{newAgent.name}}, so keep it in an environment variable or secret manager — never commit or share it.
               <span v-if="agentConnected" class="chip ok" style="margin-left:8px">✓ connected — {{newAgent.name}} called in as itself</span>
               <span v-else class="muted" style="margin-left:8px">waiting for its first check-in…</span></p>
             <p v-else-if="agentTokens[snipAgent.user_id]" class="sub" style="margin:2px 0 10px">Snippets carry the real token (minted this page-load — the server only keeps a hash).</p>
-            <p v-else class="sub" style="margin:2px 0 10px">The server stores only a hash of the token, so it can't be shown again — these snippets use <span class="mono">$TREG_TOKEN</span>. <button class="btn sm" @click="rotateAgent(snipAgent)">⟳ Rotate &amp; fill real token</button> <span class="muted">(the old token stops working)</span></p>
+            <p v-else class="sub" style="margin:2px 0 10px">The server stores only a hash of the token, so it can't be shown again — these snippets use <span class="mono">$TREG_TOKEN</span>. <button class="btn sm" @click="rotateAgent(snipAgent,true)">⟳ Rotate &amp; fill real token</button> <span class="muted">(the old token stops working)</span></p>
             <div v-if="newAgent" class="field">
               <input :value="newAgent.token" readonly style="font-family:var(--mono)" @focus="$event.target.select()"/>
               <button class="btn primary" @click="copy(newAgent.token,'agenttok')">{{copied==='agenttok'?'Copied':'Copy'}}</button>
-              <button class="btn" @click="newAgent=null">Done</button>
+              <button class="btn" @click="newAgent=null">{{newAgent.rotated?'I’ve updated '+newAgent.name:'Done'}}</button>
             </div>
             <!-- a bare token is a dead end: hand over the paste-ready thing, like the Tools snippets do -->
             <div class="tabs" style="margin:14px 0 8px">
@@ -2082,7 +2101,9 @@ a:hover{text-decoration-color:var(--muted)}
                 <tr v-else>
                   <td>
                     <template v-if="m.is_agent"><span style="opacity:.45">↳</span> <b>{{m.name}}</b> <span class="chip" :title="m.email">agent</span>
-                      <div class="muted" style="font-size:11px">{{m.created_by?('owned by '+short(m.created_by)):'machine identity'}}</div></template>
+                      <div class="muted" style="font-size:11px">{{m.created_by?('owned by '+short(m.created_by)):'machine identity'}}</div>
+                      <div v-if="confirmAgent==='rotate-'+m.user_id" class="sub" style="font-size:11px;margin-top:5px;max-width:360px"><b>Its current key will stop immediately.</b> The next card shows the replacement once so you can update {{m.name}}.</div>
+                      <div v-if="confirmAgent==='revoke-'+m.user_id" class="sub" style="font-size:11px;margin-top:5px;max-width:360px"><b>This removes the agent and revokes all its keys.</b> Activity stays for audit; restoring it means creating and configuring it again.</div></template>
                     <template v-else>{{m.email}}</template>
                   </td>
                   <td>
@@ -2105,9 +2126,9 @@ a:hover{text-decoration-color:var(--muted)}
                   </td>
                   <td style="text-align:right;white-space:nowrap">
                     <template v-if="m.is_agent">
-                      <button class="btn sm" @click="showAgentSetup(m)" title="how to give this agent its identity">Setup</button>
-                      <button class="btn sm" @click="rotateAgent(m)" title="issue a new token — the old one stops working immediately">Rotate</button>
-                      <button class="btn sm" :class="{danger:confirmAgent===m.user_id}" @click="revokeAgent(m)">{{confirmAgent===m.user_id?'Confirm revoke':'Revoke'}}</button>
+                      <span class="row-actions"><button class="btn sm" @click="showAgentSetup(m)" title="how to give this agent its identity">Setup</button>
+                      <button class="btn sm" :class="{danger:confirmAgent==='rotate-'+m.user_id}" @click="rotateAgent(m)" title="issue a new token — the old one stops working immediately">{{confirmAgent==='rotate-'+m.user_id?'Confirm rotate':'Rotate'}}</button>
+                      <button class="btn sm" :class="{danger:confirmAgent==='revoke-'+m.user_id}" @click="revokeAgent(m)">{{confirmAgent==='revoke-'+m.user_id?'Confirm revoke':'Revoke'}}</button></span>
                     </template>
                     <button v-else-if="m.role!=='owner'" class="btn sm" :class="{danger:confirmRemove===m.user_id}" @click="removeMember(m)">{{confirmRemove===m.user_id?'Confirm remove':'Remove'}}</button>
                   </td>
@@ -2145,7 +2166,7 @@ a:hover{text-decoration-color:var(--muted)}
 
               <div class="lbl" style="margin-top:22px;display:flex;align-items:center;gap:10px">Add to this team
                 <button v-if="!isPersonal(activeOrg)" class="btn sm" :class="{active:showInvite}" @click="showInvite=!showInvite; if(showInvite)showAddAgent=false">＋ Add member</button>
-                <button class="btn sm" :class="{active:showAddAgent}" @click="showAddAgent=!showAddAgent; if(showAddAgent)showInvite=false">＋ Add agent</button></div>
+                <button class="btn sm" :class="{active:showAddAgent}" @click="openAddAgent()">＋ Add agent</button></div>
               <p class="sub" style="margin:-2px 0 8px;font-size:12px">A member is a person who signs in. An agent is a machine identity with its own token — capped, scoped and logged as itself. Scope either with <b>Tools</b> and <b>Projects</b> above.</p>
               <div v-show="showAddAgent">
           <div class="lbl" style="margin-top:18px">New agent</div>
@@ -2154,7 +2175,19 @@ a:hover{text-decoration-color:var(--muted)}
             <input v-model="agentName" placeholder="ci-bot" @keyup.enter="createAgent"/>
             <select v-model="agentRole" class="msel"><option>viewer</option><option>member</option><option v-if="isOwner">admin</option></select>
             <input v-model.number="agentCap" type="number" min="-1" step="1" class="msel" style="width:96px" title="daily call cap (-1 = unlimited)"/>
-            <button class="btn primary" @click="createAgent" :disabled="agentBusy">{{agentBusy?'…':'Create'}}</button>
+            <button class="btn primary" @click="createAgent" :disabled="agentBusy||!agentAccessMode">{{agentBusy?'…':'Create'}}</button>
+          </div>
+          <div style="max-width:620px;margin:4px 0 8px">
+            <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+              <span class="sub" style="font-size:12px"><b>Tools:</b></span>
+              <label class="tgl"><input type="radio" value="all" v-model="agentAccessMode"/><span>All tools</span></label>
+              <label class="tgl"><input type="radio" value="choose" v-model="agentAccessMode"/><span>Choose tools</span></label>
+              <span v-if="!agentAccessMode" class="sub" style="font-size:11px;color:var(--accent)">Choose access before creating.</span>
+            </div>
+            <div v-if="agentAccessMode==='choose'" style="display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:7px">
+              <span v-if="!accessNames.length" class="muted" style="font-size:12px">No tools registered yet; this agent will have no tool access.</span>
+              <label v-for="n in accessNames" :key="n" class="tgl" style="min-width:150px"><input type="checkbox" v-model="agentToolSel[n]"/><span>{{n}}</span></label>
+            </div>
           </div>
           <div v-if="projects.length" style="max-width:620px;margin:4px 0 0;display:flex;gap:6px 16px;flex-wrap:wrap;align-items:center">
             <span class="sub" style="font-size:12px">Projects (all checked = every project):</span>
@@ -2199,6 +2232,44 @@ a:hover{text-decoration-color:var(--muted)}
               <p v-else class="sub">No pending invites.</p>
               </div>
               </template>
+            </template>
+
+            <!-- API KEYS tab. Members see their own keys; admins see the full team inventory. -->
+            <template v-if="orgTab==='keys'">
+              <div class="tut-head" style="align-items:flex-end;margin-bottom:14px"><div><div class="lbl">API Keys</div>
+                <p class="sub" style="margin:2px 0 0">Use more than one key without making a new team member. Permissions, limits, and billing stay with the assigned identity.</p></div></div>
+              <div v-if="keyErr" class="banner">{{keyErr}}</div>
+              <div v-if="keyMsg" class="tut-notice" style="margin-bottom:12px;display:flex;justify-content:space-between;gap:12px;align-items:flex-start">
+                <span>{{keyMsg.text}}</span><span style="white-space:nowrap"><button v-if="keyMsg.agent" class="btn sm" @click="orgTab='members'; keyMsg=null">Open Members</button><button class="btn sm ico" @click="keyMsg=null" aria-label="Dismiss">✕</button></span>
+              </div>
+              <div v-if="newApiKey" class="card" style="border-color:var(--accent);margin-bottom:16px">
+                <div class="lbl"><template v-if="newApiKey.kind==='default_human'">Default key rotated — copy the new key</template><template v-else-if="newApiKey.assigned_type==='agent'">New key for {{newApiKey.assigned_name}}</template><template v-else>{{newApiKey.name}} — copy it now</template></div>
+                <p v-if="newApiKey.kind==='default_human'" class="tut-notice" style="margin:2px 0 10px"><b>The previous key stopped working immediately.</b> Update every CLI, MCP installation, or other client using this team's Default key.</p>
+                <p v-if="newApiKey.assigned_type==='agent' && newApiKey.rotated" class="tut-notice" style="margin:2px 0 10px"><b>The previous key stopped working immediately and is now hidden from this list.</b> Update {{newApiKey.assigned_name}} everywhere it runs before closing this card.</p>
+                <p class="sub" style="margin:2px 0 10px"><template v-if="newApiKey.kind==='default_human'">This team-specific key remains revealable on Getting Started.</template><template v-else>This is the only time treg shows the full key. The server stores only its hash.<template v-if="newApiKey.assigned_type==='agent'"> Anyone holding it can act as {{newApiKey.assigned_name}}, so keep it in an environment variable or secret manager — never commit or share it.</template></template></p>
+                <div class="field"><input :value="newApiKey.secret" readonly class="mono" @focus="$event.target.select()"/><button class="btn primary" @click="copy(newApiKey.secret,'managedkey')">{{copied==='managedkey'?'Copied':'Copy'}}</button><button class="btn" @click="newApiKey=null">{{newApiKey.assigned_type==='agent'?'I’ve updated '+newApiKey.assigned_name:'Done'}}</button></div>
+                <p v-if="newApiKey.kind==='default_human'" class="sub" style="margin:6px 0 0;font-size:11.5px">CLI users can run <code>treg login</code> again to save the new key. Update MCP and other clients manually.</p>
+                <template v-if="newApiKey.assigned_type==='agent'">
+                  <div class="tabs" style="margin:14px 0 8px"><button :class="{active:agentSnip==='prompt'}" @click="agentSnip='prompt'">Give it to your agent</button><button :class="{active:agentSnip==='env'}" @click="agentSnip='env'">Environment</button></div>
+                  <div class="lc-codewrap"><button class="lc-cp" @click="copy(agentSnippet,'agentsnip')">{{copied==='agentsnip'?'✓ copied':'copy'}}</button><pre style="max-height:220px;overflow:auto">{{agentSnippet}}</pre></div>
+                  <p class="sub" style="margin:6px 0 0;font-size:11.5px">Replace <code>TREG_TOKEN</code> in every environment, CI secret, secret manager, or agent config where {{newApiKey.assigned_name}} runs.</p>
+                </template>
+              </div>
+              <div v-if="activeRole!=='viewer'" class="field" style="max-width:620px;margin-bottom:18px"><input v-model="keyName" :class="{'field-invalid':keyNameInvalid}" :aria-invalid="keyNameInvalid" placeholder="New key name" maxlength="80" @input="keyNameInvalid=false" @keyup.enter="createApiKey"/><button class="btn primary" :disabled="keyBusy" @click="createApiKey">{{keyBusy?'…':'Create key'}}</button></div>
+              <template v-for="group in apiKeyGroups" :key="group.identity">
+                <div class="lbl" style="margin-top:16px">{{group.name}} <span class="chip">{{group.type}}</span><span v-if="group.type==='agent' && group.name!==group.identity" class="muted mono" style="margin-left:8px;text-transform:none">{{group.identity}}</span></div>
+                <table class="key-table"><tr><th>Key</th><th>Status</th><th>Created</th><th>Last used</th><th></th></tr>
+                  <tr v-for="k in group.rows" :key="k.id">
+                    <td class="key-identity"><input v-if="editKey===k.id" v-model="editKeyName" maxlength="80" class="msel" @keyup.enter="renameApiKey(k)"/><template v-else><div class="key-primary"><span v-if="group.type==='human' && k.assigned_type==='agent'" class="muted" aria-hidden="true">↳</span><b>{{group.type==='human' && k.assigned_type==='agent'?k.assigned_name:k.name}}</b><span class="chip">{{keyKind(k.kind)}}</span></div><div class="key-meta mono">{{maskedKey(k)}}</div></template>
+                    </td>
+                    <td><span class="badge" :class="k.state==='active'?'ok':'invalid'">{{k.state}}</span></td><td class="muted">{{k.created_at?when(k.created_at):'Unknown'}}</td><td class="muted">{{k.last_used_at?when(k.last_used_at):'Never'}}</td>
+                    <td style="text-align:right;white-space:nowrap"><span v-if="editKey===k.id" class="row-actions"><button class="btn sm primary" @click="renameApiKey(k)">Save</button><button class="btn sm" @click="editKey=null">Cancel</button></span><span v-else class="row-actions">
+                      <button class="btn sm" @click="showKeyActivity(k)">Activity</button><button v-if="k.can_rotate" class="btn sm" @click="requestKeyAction(k,'rotate')">Rotate</button><button v-if="keyHasMore(k)" class="btn sm ico" aria-haspopup="menu" :aria-expanded="keyMenu&&keyMenu.key.id===k.id" :aria-label="'More actions for '+k.name" @click.stop="toggleKeyMenu(k,$event)">⋮</button>
+                    </span></td>
+                  </tr>
+                </table>
+              </template>
+              <p v-if="!keyBusy && !apiKeys.length" class="sub">No keys are available.</p>
             </template>
 
             <!-- PROJECTS tab -->
@@ -2539,8 +2610,9 @@ a:hover{text-decoration-color:var(--muted)}
 
           <template v-if="actTab==='feed'">
           <p class="sub">{{actOkOnly?'Successful calls and runs in this org.':'Every proxy call and server CLI run in this org.'}}</p>
-          <table><tr><th>When</th><th>Who</th><th v-if="anyTagged">Tagged</th><th>Tool</th><th>Action</th><th>Status</th><th style="text-align:right">Cost</th></tr>
-            <tr v-for="a in activityShown" :key="a.kind+'-'+a.id" :class="{'act-row':a.kind==='call'}" @click="a.kind==='call'&&openCall(a)" :title="a.kind==='call'?(a.has_result?'Show request and response':'Show call details'):''"><td class="muted">{{when(a.created_at)}}</td><td>{{short(a.user_email)}}<span v-if="a.client && a.client!=='cli'" class="chip" style="margin-left:6px" :title="'reported by the runtime — attribution, not authentication'">via {{a.client}}</span></td><td v-if="anyTagged"><template v-if="a.tags"><span v-for="(v,k) in a.tags" :key="k" class="chip" style="margin-right:4px" :title="'X-Treg-Meta '+k+'='+v">{{k}}={{v}}</span></template><span v-else class="muted">—</span></td><td>{{a.tool}}</td><td><span v-if="a.kind==='run'" class="chip" style="margin-right:6px" :title="a.where==='local'?'ran on this member\'s machine':'ran on the registry server'">{{a.where||'run'}}</span>{{a.action}}<!-- A generation task's artifact, once it succeeded: the provider's time-limited URL, or the CLI command that retrieves it (treg never downloads media). --><template v-if="a.task"><a v-if="a.task.result_url" :href="a.task.result_url" target="_blank" rel="noopener" style="margin-left:8px" :title="taskArtifactTitle(a.task)" @click.stop>result ↗</a><span v-else-if="a.task.fetch_command" class="chip" style="margin-left:8px" :title="'retrieve it from the CLI: '+a.task.fetch_command">result via CLI</span><span v-if="a.task.result_url||a.task.fetch_command" class="muted" style="margin-left:6px;font-size:.85em">{{a.task.ttl_note?'expires in '+a.task.ttl_note:'time-limited link'}}</span></template></td><td><span class="badge" :class="a.ok?'ok':'invalid'">{{a.status}}</span><span v-if="a.task" class="chip" style="margin-left:6px" :title="taskStateTitle(a.task)">{{taskStateLabel(a.task)}}</span><span v-if="a.has_result" class="act-view">result ›</span></td><td style="text-align:right;white-space:nowrap" class="muted" :title="a.held?'reserved - settles when the task finishes, refunded if it fails':(a.tier==='platform'?'charged to team balance':(a.cost!=null?'estimated — billed to your own provider key':''))"><span v-if="a.held" style="font-size:.85em">hold </span>{{a.cost!=null?money(a.cost):'—'}}</td></tr></table>
+          <div class="field" style="max-width:460px;margin-bottom:10px"><select class="msel" v-model="activityKey" @change="loadCalls"><option value="">All API keys</option><option v-for="k in apiKeys" :key="k.id" :value="String(k.id)">{{k.identity}} — {{k.name}}</option></select></div>
+          <table><tr><th>When</th><th>Who</th><th>Key</th><th v-if="anyTagged">Tagged</th><th>Tool</th><th>Action</th><th>Status</th><th style="text-align:right">Cost</th></tr>
+            <tr v-for="a in activityShown" :key="a.kind+'-'+a.id" :class="{'act-row':a.kind==='call'}" @click="a.kind==='call'&&openCall(a)" :title="a.kind==='call'?(a.has_result?'Show request and response':'Show call details'):''"><td class="muted">{{when(a.created_at)}}</td><td>{{activityWho(a)}}<span v-if="activityOwner(a)" class="chip" style="margin-left:6px" :title="'Agent owner: '+activityAgentKey(a).created_by">owner: {{activityOwner(a)}}</span><span v-if="a.client && a.client!=='cli'" class="chip" style="margin-left:6px" :title="'reported by the runtime — attribution, not authentication'">via {{a.client}}</span></td><td><span v-if="a.api_key_name" class="chip">{{a.api_key_name}}<span v-if="a.api_key_prefix" class="muted mono"> · {{a.api_key_prefix}}</span></span><span v-else class="muted">—</span></td><td v-if="anyTagged"><template v-if="a.tags"><span v-for="(v,k) in a.tags" :key="k" class="chip" style="margin-right:4px" :title="'X-Treg-Meta '+k+'='+v">{{k}}={{v}}</span></template><span v-else class="muted">—</span></td><td>{{a.tool}}</td><td><span v-if="a.kind==='run'" class="chip" style="margin-right:6px" :title="a.where==='local'?'ran on this member\'s machine':'ran on the registry server'">{{a.where||'run'}}</span>{{a.action}}<!-- A generation task's artifact, once it succeeded: the provider's time-limited URL, or the CLI command that retrieves it (treg never downloads media). --><template v-if="a.task"><a v-if="a.task.result_url" :href="a.task.result_url" target="_blank" rel="noopener" style="margin-left:8px" :title="taskArtifactTitle(a.task)" @click.stop>result ↗</a><span v-else-if="a.task.fetch_command" class="chip" style="margin-left:8px" :title="'retrieve it from the CLI: '+a.task.fetch_command">result via CLI</span><span v-if="a.task.result_url||a.task.fetch_command" class="muted" style="margin-left:6px;font-size:.85em">{{a.task.ttl_note?'expires in '+a.task.ttl_note:'time-limited link'}}</span></template></td><td><span class="badge" :class="a.ok?'ok':'invalid'">{{a.status}}</span><span v-if="a.task" class="chip" style="margin-left:6px" :title="taskStateTitle(a.task)">{{taskStateLabel(a.task)}}</span><span v-if="a.has_result" class="act-view">result ›</span></td><td style="text-align:right;white-space:nowrap" class="muted" :title="a.held?'reserved - settles when the task finishes, refunded if it fails':(a.tier==='platform'?'charged to team balance':(a.cost!=null?'estimated — billed to your own provider key':''))"><span v-if="a.held" style="font-size:.85em">hold </span>{{a.cost!=null?money(a.cost):'—'}}</td></tr></table>
           <p v-if="!loading && !activityRows.length" class="sub">No activity yet.</p>
           <p v-else-if="!loading && !activityShown.length" class="sub">No successful calls yet — <a href="#" @click.prevent="actOkOnly=false">show all {{activityRows.length}}</a>.</p>
           </template>
@@ -2695,6 +2767,12 @@ a:hover{text-decoration-color:var(--muted)}
                 <p class="sub" style="margin:6px 0 10px">Already created. Setup signs your agent in automatically — but if it ever asks for a key, give it this one (header <span class="mono">X-Treg-Token</span>).</p>
                 <div class="lc-codewrap"><button class="lc-cp" @click="copyStart(myToken,'gsk')">{{startCopied==='gsk'?'✓ copied':'copy'}}</button><pre>{{startTokenShow ? myToken : (myToken.slice(0,14)+'••••••••••••••••')}}</pre></div>
                 <a href="#" class="sub" style="font-size:12px;display:inline-block;margin-top:6px" @click.prevent="startTokenShow=!startTokenShow">{{startTokenShow?'Hide':'Show'}} key</a>
+                <p class="sub" style="font-size:11px;margin:8px 0 0">This team-specific Default key can be revealed here again. Additional and agent keys are random secrets shown only once because treg stores only their hashes.</p>
+              </template>
+              <template v-else-if="defaultKeyState==='disabled'">
+                <div class="lbl" style="margin-top:22px">Your API key</div>
+                <p class="sub" style="margin:6px 0 10px">This team's Default key is disabled, so it is hidden and cannot be used.</p>
+                <button class="btn sm" @click="enableDefaultKey" :disabled="keyBusy">{{keyBusy?'…':'Enable key'}}</button>
               </template>
             </div>
           </div>
@@ -3031,6 +3109,25 @@ product, including per-customer usage tracking and billing.</pre>
           </template>
         </template>
       </main>
+    </div>
+
+    <div v-if="keyMenu" class="key-actions-menu" role="menu" :style="{top:keyMenu.top+'px',right:keyMenu.right+'px'}" @click.stop>
+      <button v-if="keyMenu.key.can_rename" role="menuitem" @click="editKey=keyMenu.key.id; editKeyName=keyMenu.key.name; keyMenu=null">Rename</button>
+      <button v-if="keyMenu.key.can_disable" role="menuitem" @click="requestKeyAction(keyMenu.key,'disable')">Disable</button>
+      <button v-if="keyMenu.key.can_enable" role="menuitem" @click="requestKeyAction(keyMenu.key,'enable')">Enable</button>
+      <button v-if="keyMenu.key.can_revoke" class="danger" role="menuitem" @click="requestKeyAction(keyMenu.key,'revoke')">Revoke</button>
+      <button v-if="keyMenu.key.can_hide && keyMenu.key.state==='revoked'" role="menuitem" @click="requestKeyAction(keyMenu.key,'hide')">Hide</button>
+    </div>
+
+    <div v-if="keyConfirm" class="scrim" role="dialog" aria-modal="true" aria-labelledby="key-confirm-title" @click.self="keyConfirm=null">
+      <div class="modal" style="width:min(470px,94vw);padding:18px 20px">
+        <h3 id="key-confirm-title" style="margin:0">{{keyConfirm.action==='rotate'?'Rotate':keyConfirm.action==='disable'?'Disable':keyConfirm.action==='revoke'?'Revoke':'Hide'}} “{{keyConfirm.key.name}}”?</h3>
+        <p v-if="keyConfirm.action==='rotate'" class="sub" style="margin:12px 0 0"><template v-if="keyConfirm.key.kind==='default_human'">This team's current Getting Started token will stop working immediately. The replacement will be shown next and remain revealable on Getting Started.</template><template v-else>The current key will stop working immediately. The replacement will be shown next so you can update every client using it.</template></p>
+        <p v-else-if="keyConfirm.action==='disable'" class="sub" style="margin:12px 0 0">Calls using this key will stop until you enable it again. Its value will not change.</p>
+        <p v-else-if="keyConfirm.action==='revoke'" class="sub" style="margin:12px 0 0"><template v-if="keyConfirm.key.kind==='agent'">This removes the agent from the team and revokes all its keys. Historical Activity will remain available.</template><template v-else>This key will stop working permanently. Historical Activity will remain available.</template></p>
+        <p v-else class="sub" style="margin:12px 0 0">This revoked key will disappear from the API Keys list. Historical Activity will remain available.</p>
+        <div class="row-actions" style="display:flex;justify-content:flex-end;margin-top:20px"><button class="btn sm" @click="keyConfirm=null">Cancel</button><button class="btn sm" :class="{danger:keyConfirm.action!=='hide'}" :disabled="keyBusy" @click="confirmKeyAction">{{keyBusy?'…':'Confirm '+keyConfirm.action}}</button></div>
+      </div>
     </div>
 
     <!-- REGISTER SKILL (bundle) -->
@@ -3836,10 +3933,11 @@ createApp({
       orgMembers:[], orgInvites:[], inviteEmail:'', inviteRole:'member', lastInvite:null,
       editAccess:null, accessDraft:{}, inviteCustomize:false, inviteLocalRun:true, inviteToolSel:{}, accessNote:'',
       // agents (machine identities), projects (sub-scope) and deny rules (policy)
-      orgTab:'members', showInvite:false, showAddAgent:false,   // Team page tabs; invites live inside Members (a non-admin is moved to Team settings on open)
+      orgTab:'members', showInvite:false, showAddAgent:false,
+      apiKeys:[], keyName:'', keyNameInvalid:false, keyBusy:false, keyErr:'', keyMsg:null, newApiKey:null, editKey:null, editKeyName:'', keyMenu:null, keyConfirm:null, activityKey:'',
       agentSnip:'prompt',   // which paste-ready snippet the agent card shows (prompt = hand-to-agent, first)
       snipAgent:null,    // an EXISTING agent whose setup snippets are open (no token — placeholder)
-      agents:[], agentName:'', agentRole:'member', agentCap:-1, agentBusy:false, agentErr:'', agentProjSel:{},
+      agents:[], agentName:'', agentRole:'member', agentCap:-1, agentBusy:false, agentErr:'', agentProjSel:{}, agentAccessMode:null, agentToolSel:{},
       observedAgents:[], promoteHint:'', promotePending:null, agentTokens:{},  // minted tokens, THIS page-load only — the server stores hashes
       newAgent:null, confirmAgent:null,
       projects:[], projectName:'', projBusy:false, confirmProj:null, projDraft:{},
@@ -3923,7 +4021,7 @@ createApp({
       exPath:'<PATH>', exMethod:'GET',
       tryTool:null, tryMethod:'GET', tryPath:'', tryBody:'', trying:false, tryResp:null, tryStatus:0, tryMs:0,
       useMode:'call', runArgsStr:'', running:false, runOut:null,
-      startCopied:'', startTab:'access', startAgentOpen:false, startTokenShow:false, mdMenu:false, llmsCopied:false, myToken:null, _myTokenOrg:null, tokenCopied:false,
+      startCopied:'', startTab:'access', startAgentOpen:false, startTokenShow:false, mdMenu:false, llmsCopied:false, myToken:null, _myTokenOrg:null, defaultKeyId:null, defaultKeyState:null, tokenCopied:false,
       agentGuide:null, agentGuideCopied:false, agentRowCopied:null,
       vendorAsk:false, vendorCopied:false,
       reqAsk:false, reqDone:false, reqBusy:false, reqErr:'', reqForm:{capability:'', note:'', contact:''},
@@ -4161,9 +4259,28 @@ createApp({
       const calls=(this.calls||[]).filter(c=>c.kind!=='local_run').map(c=>({kind:'call', id:c.id, created_at:c.created_at, user_email:c.user_email, client:c.client, tool:c.tool_name, action:c.method, status:c.status_code, ok:c.status_code<400,
         task:c.async_task||null, held:!!(c.async_task&&c.async_task.status==='pending'),
         cost:(c.async_task&&c.async_task.status==='pending')?c.async_task.reserved_micro:(c.cost_charged_micro!=null?c.cost_charged_micro:(c.cost_observed_micro!=null?c.cost_observed_micro:c.cost_estimated_micro)), tier:c.credential_tier, tags:c.tags,
-        has_result:!!c.has_result, endpoint_id:c.endpoint_id, call_ref:c.call_ref, path:c.path, cached:c.cached}));
-      const runs=(this.runs||[]).map(r=>({kind:'run', where:r.where, id:r.id, created_at:r.created_at, user_email:r.user_email, client:r.client, tool:r.tool, action:(r.argv||[]).join(' ').slice(0,48)||'-', status:(r.where==='local'?'local run':'exit '+r.exit_code), ok:(r.where==='local'?true:r.exit_code===0)}));
+        has_result:!!c.has_result, endpoint_id:c.endpoint_id, call_ref:c.call_ref, path:c.path, cached:c.cached, api_key_id:c.api_key_id, api_key_name:c.api_key_name, api_key_prefix:c.api_key_prefix}));
+      const runs=(this.runs||[]).map(r=>({kind:'run', where:r.where, id:r.id, created_at:r.created_at, user_email:r.user_email, client:r.client, tool:r.tool, action:(r.argv||[]).join(' ').slice(0,48)||'-', status:(r.where==='local'?'local run':'exit '+r.exit_code), ok:(r.where==='local'?true:r.exit_code===0), api_key_id:r.api_key_id, api_key_name:r.api_key_name, api_key_prefix:r.api_key_prefix}));
       return calls.concat(runs).sort((a,b)=>a.created_at<b.created_at?1:-1);
+    },
+    apiKeyGroups(){
+      const groups=[], humanByIdentity={}, standaloneAgents={};
+      for(const row of this.apiKeys||[]){
+        if(row.assigned_type!=='human') continue;
+        const identity=(row.identity||'').toLowerCase();
+        let group=humanByIdentity[identity];
+        if(!group){ group={identity:row.identity,name:row.assigned_name||row.identity,type:'human',rows:[]}; humanByIdentity[identity]=group; groups.push(group); }
+        group.rows.push(row);
+      }
+      for(const row of this.apiKeys||[]){
+        if(row.assigned_type!=='agent') continue;
+        const owner=humanByIdentity[(row.created_by||'').toLowerCase()];
+        if(owner){ owner.rows.push(row); continue; }
+        let group=standaloneAgents[row.identity];
+        if(!group){ group={identity:row.identity,name:row.assigned_name||row.identity,type:'agent',rows:[]}; standaloneAgents[row.identity]=group; groups.push(group); }
+        group.rows.push(row);
+      }
+      return groups;
     },
     activityShown(){ return this.actOkOnly ? this.activityRows.filter(a=>a.ok) : this.activityRows; },
     callBodyPretty(){ const t=this.callView&&this.callView.response&&this.callView.response.body_text; return t?this.pretty(t):''; },  // JSON pretty-printed when it parses (a 2 MB parse is ~20 ms)
@@ -4301,9 +4418,9 @@ createApp({
       {label:'SEO on your own site',items:[{s:'google-analytics',n:'Google Analytics'},{s:'google-search-console',n:'Search Console'},{s:'google-business-profile',n:'Business Profile'}], soon:[]},
     ]; },
     // What to actually DO with a freshly minted agent token, in the three shapes people need.
-    agentSnippet(){ const a=this.newAgent||this.snipAgent; if(!a) return '';
+    agentSnippet(){ const a=this.newAgent||this.snipAgent||((this.newApiKey&&this.newApiKey.assigned_type==='agent')?this.newApiKey:null); if(!a) return '';
       const base=this.proxy||location.origin, org=a.org||this.activeSlugNow;
-      const tok=a.token||this.agentTokens[a.user_id]||'$TREG_TOKEN';  // hash-stored server-side; real value only if minted this page-load
+      const tok=a.token||a.secret||this.agentTokens[a.user_id]||'$TREG_TOKEN';  // hash-stored server-side; real value only if minted this page-load
       if(this.agentSnip==='env'){
         return [
           '# Where to persist these, per agent harness:',
@@ -4498,9 +4615,11 @@ createApp({
         this.newOrg=false; this.newOrgName=''; await this.loadAll(); this.switchOrg({slug:o.org}); }
       catch(e){ this.orgErr='Could not create: '+(e.detail||e.status); } finally{ this.orgBusy=false; } },
     async loadOrgAdmin(){ this.orgMembers=[]; this.orgInvites=[]; this.lastInvite=null;
-      if(!this.canAdmin) this.orgTab='danger';  // Team settings — the only tab a plain member can act on
+      if(!this.canAdmin && !['keys','danger'].includes(this.orgTab)) this.orgTab='keys';
       this.orgErr=''; this.confirmDel=''; this.confirmLeave=false; this.confirmRemove=null;
-      if(!this.canAdmin || !this.activeOrgId) return; const id=this.activeOrgId;
+      if(!this.activeOrgId) return; const id=this.activeOrgId;
+      await this.loadApiKeys();
+      if(!this.canAdmin) return;
       this.agentErr=''; this.confirmAgent=null;
       try{ this.orgMembers=await this.api('/orgs/'+id+'/members'); this.orgInvites=await this.api('/orgs/'+id+'/invites');
            this.projects=await this.api('/orgs/'+id+'/projects'); this.denyRules=await this.api('/orgs/'+id+'/deny');
@@ -4510,6 +4629,41 @@ createApp({
            const sel={}; this.projects.forEach(p=>{ sel[p.id]=true; }); this.agentProjSel=sel;
            this.observedAgents=await this.api('/orgs/'+id+'/agents/observed').catch(()=>[]); }
       catch(e){ this.orgErr='Load team failed: '+(e.detail||e.status); } },
+
+    async loadApiKeys(){ if(!this.activeOrgId) return; this.keyErr='';
+      try{ this.apiKeys=await this.api('/orgs/'+this.activeOrgId+'/api-keys'); }
+      catch(e){ this.keyErr='Could not load keys: '+(e.detail||e.status); } },
+    async loadDefaultToken(){
+      const issued=await this.api('/auth/cli-token').catch(()=>null);
+      this._myTokenOrg=this.activeSlugNow;
+      this.defaultKeyId=issued&&issued.default_key_id;
+      this.defaultKeyState=issued&&issued.default_key_state;
+      this.myToken=(this.defaultKeyState==='disabled')?null:((issued&&issued.token)||null);
+    },
+    async enableDefaultKey(){ if(!this.defaultKeyId) return; this.keyBusy=true; this.keyErr='';
+      try{ await this.api('/orgs/'+this.activeOrgId+'/api-keys/'+this.defaultKeyId+'/enable',{method:'POST'}); await this.loadDefaultToken(); await this.loadApiKeys(); }
+      catch(e){ this.keyErr='Could not enable key: '+(e.detail||e.status); } finally{ this.keyBusy=false; } },
+    keyKind(kind){ return ({default_human:'Default',additional_human:'Additional',legacy_human:'Legacy',agent:'Agent'})[kind]||kind; },
+    maskedKey(k){ return k.safe_prefix ? k.safe_prefix+'••••••••' : (k.kind==='legacy_human'?'prefix unavailable — older key':'prefix unavailable'); },
+    async createApiKey(){ const name=(this.keyName||'').trim(); if(!name){ this.keyErr=''; this.keyNameInvalid=true; return; } this.keyBusy=true; this.keyErr='';
+      try{ this.newApiKey=await this.api('/orgs/'+this.activeOrgId+'/api-keys',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})}); this.keyName=''; this.keyNameInvalid=false; await this.loadApiKeys(); }
+      catch(e){ this.keyErr='Could not create key: '+(e.detail||e.status); } finally{ this.keyBusy=false; } },
+    async renameApiKey(k){ const name=(this.editKeyName||'').trim(); if(!name){ this.keyErr='Enter a key name.'; return; } this.keyBusy=true;
+      try{ await this.api('/orgs/'+this.activeOrgId+'/api-keys/'+k.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({name})}); this.editKey=null; await this.loadApiKeys(); }
+      catch(e){ this.keyErr='Could not rename key: '+(e.detail||e.status); } finally{ this.keyBusy=false; } },
+    keyHasMore(k){ return k.can_rename||k.can_disable||k.can_enable||k.can_revoke||(k.can_hide&&k.state==='revoked'); },
+    toggleKeyMenu(k,e){ if(this.keyMenu&&this.keyMenu.key.id===k.id){ this.keyMenu=null; return; } const r=e.currentTarget.getBoundingClientRect(); this.keyMenu={key:k,top:r.bottom+6,right:Math.max(12,innerWidth-r.right)}; },
+    requestKeyAction(k,action){ this.keyMenu=null; if(['rotate','disable','revoke','hide'].includes(action)){ this.keyConfirm={key:k,action}; return; } this.keyAction(k,action); },
+    confirmKeyAction(){ if(!this.keyConfirm)return; const c=this.keyConfirm; this.keyConfirm=null; this.keyAction(c.key,c.action); },
+    async keyAction(k,action){ this.keyBusy=true; this.keyErr=''; this.keyMsg=null;
+      try{ const r=await this.api('/orgs/'+this.activeOrgId+'/api-keys/'+k.id+'/'+action,{method:'POST'});
+        if(r.secret && k.kind==='default_human'){ this.myToken=r.secret; this.defaultKeyId=k.id; this.defaultKeyState='active'; this._myTokenOrg=this.activeSlugNow; this.startTokenShow=false; this.newApiKey={...r,rotated:true}; }
+        else if(r.secret){ this.newAgent=null; this.snipAgent=null; this.agentSnip='prompt'; this.newApiKey={...r, assigned_name:k.assigned_name, assigned_type:k.assigned_type, user_id:k.user_id, org:this.activeSlugNow, rotated:true}; }
+        if(r.agent_revoked) this.keyMsg={agent:true,text:k.assigned_name+' was removed from this team, and all its keys were revoked. Historical Activity remains available.'};
+        if(k.kind==='default_human' && action!=='rotate') await this.loadDefaultToken();
+        if(r.agent_revoked) await this.loadOrgAdmin(); else await this.loadApiKeys(); }
+      catch(e){ this.keyErr='Key action failed: '+(e.detail||e.status); } finally{ this.keyBusy=false; } },
+    showKeyActivity(k){ this.activityKey=String(k.id); this.go('activity'); },
 
     // ---- agents: a member identity for a machine caller ----
     pollAgentConnected(){
@@ -4527,11 +4681,14 @@ createApp({
       const who=(o.member.split('@')[0]||'agent').replace(/[^a-zA-Z0-9-]/g,'-');
       this.promotePending={member:o.member, client:o.client};
       this.showAddAgent=true; this.showInvite=false;
+      this.agentAccessMode=null; this.agentToolSel={};
       this.agentName=who+'-'+o.client; this.promoteHint='Creating a token for "'+o.client+'" running as '
         +o.member+'. After Create, put the new token in that runtime\'s TREG_TOKEN — from then on it '
         +'acts as itself, with its own cap and scope, instead of as '+o.member+'.'; },
+    openAddAgent(){ this.showAddAgent=!this.showAddAgent; if(this.showAddAgent){ this.showInvite=false; this.agentAccessMode=null; this.agentToolSel={}; } },
     async createAgent(){ const name=(this.agentName||'').trim();
       if(!name){ this.agentErr='Give the agent a name, e.g. ci-bot.'; return; }
+      if(!this.agentAccessMode){ this.agentErr='Choose All tools or Choose tools before creating the agent.'; return; }
       // An admin agent can manage this team's tools, secrets and members. That is a real step up from
       // 'can call things', so make it a deliberate choice rather than a dropdown you skimmed past.
       if(this.agentRole==='admin' && !confirm(
@@ -4540,30 +4697,34 @@ createApp({
           +'Most agents only need "member".')) return;
       this.agentBusy=true; this.agentErr='';
       const body={name, role:this.agentRole, daily_call_cap:this.agentCap};
+      body.tool_access=this.agentAccessMode==='all' ? null : this.accessNames.filter(n=>this.agentToolSel[n]);
       // Only send project_access when the admin actually narrowed it — all checked = every project.
       const picked=this.projects.filter(p=>this.agentProjSel[p.id]).map(p=>p.id);
       if(this.projects.length && picked.length<this.projects.length) body.project_access=picked;
       if(this.promotePending){ body.promoted_member=this.promotePending.member; body.promoted_client=this.promotePending.client; }
       try{ const r=await this.api('/orgs/'+this.activeOrgId+'/agents',{method:'POST',headers:{'content-type':'application/json'},
              body:JSON.stringify(body)});
-           this.agentTokens[r.user_id]=r.token; this.newAgent=r; this.snipAgent=null; this.agentName=''; this.promoteHint=''; this.promotePending=null; await this.loadOrgAdmin(); this.pollAgentConnected(); }
+           this.agentTokens[r.user_id]=r.token; this.newApiKey=null; this.newAgent={...r,rotated:false}; this.snipAgent=null; this.agentName=''; this.agentAccessMode=null; this.agentToolSel={}; this.promoteHint=''; this.promotePending=null; await this.loadOrgAdmin(); this.pollAgentConnected(); }
       catch(e){ this.agentErr='Create failed: '+(e.detail||e.status); }
       this.agentBusy=false; },
     // Rotate = create with the SAME name: the server replaces the token hash, so the old one dies.
     // We deliberately send only name/role/cap — the server leaves every field we DON'T send as it is,
     // so the agent's tool ACL and project scope survive a rotate (they used to be silently cleared).
-    async rotateAgent(a){ this.agentBusy=true; this.agentErr='';
+    async rotateAgent(a, confirmed=false){ const mark='rotate-'+a.user_id;
+      if(!confirmed && this.confirmAgent!==mark){ this.confirmAgent=mark; return; }
+      this.confirmAgent=null; this.agentBusy=true; this.agentErr='';
       try{ const r=await this.api('/orgs/'+this.activeOrgId+'/agents',{method:'POST',headers:{'content-type':'application/json'},
              body:JSON.stringify({name:a.name, role:a.role, daily_call_cap:a.daily_call_cap})});
-           this.agentTokens[r.user_id]=r.token; this.newAgent=r; this.snipAgent=null; await this.loadOrgAdmin(); this.pollAgentConnected(); }
+           this.agentTokens[r.user_id]=r.token; this.newApiKey=null; this.newAgent={...r,rotated:true}; this.snipAgent=null; await this.loadOrgAdmin(); this.pollAgentConnected(); }
       catch(e){ this.agentErr='Rotate failed: '+(e.detail||e.status); }
       this.agentBusy=false; },
     showAgentSetup(a){ this.newAgent=null; this.agentSnip='prompt';
       this.snipAgent=(this.snipAgent && this.snipAgent.user_id===a.user_id) ? null : a; },
-    async revokeAgent(a){ if(this.confirmAgent!==a.user_id){ this.confirmAgent=a.user_id; return; }
-      try{ await this.api('/orgs/'+this.activeOrgId+'/agents/'+a.user_id,{method:'DELETE'}); }
-      catch(e){ this.agentErr='Revoke failed: '+(e.detail||e.status); }
-      this.confirmAgent=null; await this.loadOrgAdmin(); },
+    async revokeAgent(a){ const mark='revoke-'+a.user_id; if(this.confirmAgent!==mark){ this.confirmAgent=mark; return; }
+      this.confirmAgent=null;
+      try{ await this.api('/orgs/'+this.activeOrgId+'/agents/'+a.user_id,{method:'DELETE'}); await this.loadOrgAdmin();
+        this.orgMsg=a.name+' was removed and all its keys were revoked. Its Activity history remains; create and configure it again to restore it.'; }
+      catch(e){ this.agentErr='Revoke failed: '+(e.detail||e.status); } },
     async createProject(){ const name=(this.projectName||'').trim();
       if(!name){ this.orgErr='Give the project a name.'; return; }
       this.projBusy=true; this.orgErr='';
@@ -4837,7 +4998,8 @@ createApp({
       const tool_access = (names.length===this.accessNames.length) ? null : names;  // all checked → 'all' (NULL)
       const picked=this.projects.filter(p=>this.projDraft[p.id]).map(p=>p.id);
       const project_access = (!this.projects.length || picked.length===this.projects.length) ? null : picked;  // all checked → 'all'
-      try{ await this.api('/orgs/'+this.activeOrgId+'/members/'+m.user_id+'/access',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({tool_access, project_access, local_run_enabled:m.local_run_enabled})}); this.editAccess=null; }
+      try{ await this.api('/orgs/'+this.activeOrgId+'/members/'+m.user_id+'/access',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({tool_access, project_access, local_run_enabled:m.local_run_enabled})}); this.editAccess=null;
+        if(m.is_agent) this.orgMsg=m.name+' access updated. Its key is unchanged, and the new tool and project permissions apply immediately.'; }
       catch(e){ this.orgErr='Set access failed: '+(e.detail||e.status); }
       await this.loadOrgAdmin(); },
     async setLocalRun(m, val){
@@ -5095,6 +5257,9 @@ createApp({
       if(this.sessionMode){ fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('treg-active');location.reload();}); } else { this.cfg={active:null,orgs:{}}; this.save(); location.reload(); } },
     dot(s){ return s==='unknown'||s==='-'?'○':'●'; },
     short(e){ return (e||'').split('@')[0]; },
+    activityAgentKey(a){ return (this.apiKeys||[]).find(k=>k.id===a.api_key_id && k.assigned_type==='agent')||null; },
+    activityWho(a){ const k=this.activityAgentKey(a); return k?(k.assigned_name||this.short(k.identity)):this.short(a.user_email); },
+    activityOwner(a){ const k=this.activityAgentKey(a); return k&&k.created_by?this.short(k.created_by):''; },
     isPersonal(o){ return !!o && o.name===this.me; },  // personal org = the auto-created one named after your email
     jumpToTeam(){ const t=this.myOrgs.find(o=>!this.isPersonal(o)); if(t) this.switchOrg(t); },
     maybeOnboard(){  // first-run: a brand-new user with no team yet is asked to NAME THEIR TEAM upfront
@@ -5230,7 +5395,7 @@ createApp({
         this.cfg.active=active.slug; this.save(); this.tokenInput=''; this.addOrg=false; await this.loadAll();
       }catch(e){ this.loginErr = e.status===401?'Invalid token.':('Error: '+(e.detail||e.status)); }
       finally{ this.busy=false; } },
-    switchOrg(o){ this.orgMenu=false;
+    switchOrg(o){ this.orgMenu=false; this.newAgent=null; this.snipAgent=null; this.newApiKey=null; this.keyMsg=null;
       if(this.sessionMode){ this.activeSlug=o.slug; localStorage.setItem('treg-active',o.slug); this.loadAll(); this.intercomUpdate(); return; }
       if(!this.connected(o.slug)){ this.addOrg=true; return; }
       this.cfg.active=o.slug; this.save(); this.loadAll(); this.intercomUpdate(); },
@@ -5465,7 +5630,7 @@ createApp({
     orgSettings(o){ this.orgMenu=false;  // dropdown ⚙ - go INTO that team, then open its settings
       if(o.slug!==this.activeSlugNow){ if(!this.sessionMode && !this.connected(o.slug)){ this.addOrg=true; return; } this.switchOrg(o); }
       this.go('orgs'); },
-    resetConfirms(){ this.confirmDelTool=null; this.confirmDelSecret=null; this.confirmDelBundle=null; this.confirmRemove=null; this.confirmLeave=false; this.confirmDel=''; this.confirmAdmUser=null; this.confirmAdmOrg=null; },
+    resetConfirms(){ this.confirmDelTool=null; this.confirmDelSecret=null; this.confirmDelBundle=null; this.confirmRemove=null; this.confirmAgent=null; this.keyMenu=null; this.keyConfirm=null; this.confirmLeave=false; this.confirmDel=''; this.confirmAdmUser=null; this.confirmAdmOrg=null; },
     go(v, fromPop){ this.resetConfirms(); this.mobileNav=false;  // stale inline "Confirm" states must not survive a view switch (accidental-delete risk)
       // `usage` is a TAB of the activity page now, not a view of its own — keep the old route
       // working so an existing /app#usage link, and the balance card's deep link, still land right.
@@ -5906,11 +6071,8 @@ createApp({
         if(!this.sessionMode && !this.me){ const who=await this.api('/auth/me').catch(()=>null); if(who){ this.me=who.email; this.isAdmin=!!who.is_superadmin; } }  // token mode: learn our own email + superadmin flag (isPersonal / join-by-code)
         // Re-mint the bearer whenever the ACTIVE org changes: the token now bakes the org slug in
         // (so it works as a bare MCP Authorization bearer), and a stale one would name the old team.
-        // Stateless mint — cheap, nothing stored, nothing rotated.
-        if(this.myToken===null || this._myTokenOrg!==this.activeSlugNow){
-          this.myToken=(await this.api('/auth/cli-token').catch(()=>null)||{}).token||null;
-          this._myTokenOrg=this.activeSlugNow;
-        }
+        // Signed derivation — cheap; the selected Default row contributes its team-local generation.
+        if(this.myToken===null || this._myTokenOrg!==this.activeSlugNow) await this.loadDefaultToken();
         if(this.sessionMode){ this.pendingInvites=await this.api('/invites/mine').catch(()=>[]); }  // BEFORE the no-orgs early return: an invited user has 0 orgs but DOES have a pending invite — maybeOnboard needs it to offer joining instead of forcing create-team
         if(!this.myOrgs.length){ this.tools=[]; this.bundles=[]; this.health={}; return; }  // brand-new user: no team yet → the mandatory welcome (maybeOnboard) creates the first one; skip org-scoped fetches (they'd 400). finally{} clears loading.
         if(this.sessionMode && (!this.activeSlug || !this.myOrgs.some(o=>o.slug===this.activeSlug)) && this.myOrgs.length){
@@ -5943,7 +6105,7 @@ createApp({
     pretty(text){ try{ return JSON.stringify(JSON.parse(text), null, 2); }catch(e){ return text; } },
     fmtBytes(n){ if(n==null) return '—'; if(n<1024) return n+' B'; if(n<1048576) return (n/1024).toFixed(1)+' KB'; return (n/1048576).toFixed(2)+' MB'; },
     async copyCallBody(){ const t=this.callView&&this.callView.response&&this.callView.response.body_text; if(!t) return; if(await this.toClipboard(t)){ this.callCopied='Copied'; setTimeout(()=>{ this.callCopied=''; },1400); } },
-    async loadCalls(){ try{ const [calls,runs]=await Promise.all([this.api('/calls?limit=100'), this.api('/runs?limit=100').catch(()=>[])]); this.calls=calls; this.runs=runs; }catch(e){ this.err='Failed to load activity.'; } },
+    async loadCalls(){ try{ if(!this.apiKeys.length)await this.loadApiKeys(); const q='?limit=100'+(this.activityKey?'&api_key_id='+encodeURIComponent(this.activityKey):''); const [calls,runs]=await Promise.all([this.api('/calls'+q), this.api('/runs'+q).catch(()=>[])]); this.calls=calls; this.runs=runs; }catch(e){ this.err='Failed to load activity.'; } },
     async loadAdmin(){ this.confirmAdmUser=null; this.confirmAdmOrg=null;
       try{ this.adminStats=await this.api('/admin/stats'); this.adminOrgs=await this.api('/admin/orgs'); this.adminUsers=await this.api('/admin/users'); }
       catch(e){ this.err='Admin: '+(e.detail||e.status); } },
@@ -6114,11 +6276,11 @@ createApp({
       this.orgMenuStyle={position:'fixed', top:(r.bottom+6)+'px', left:r.left+'px'};
     },
     toggleOrgMenu(){ this.orgMenu=!this.orgMenu; if(this.orgMenu) this.placeOrgMenu(); },
-    closeOverlays(){ this.newTool=false; this.newSkill=false; this.showJoin=false; this.newOrg=false; this.addOrg=false; this.tryTool=null; this.copyTool=null; this.orgMenu=false; this.share.on=false; this.methodAsk=null; },
+    closeOverlays(){ this.newTool=false; this.newSkill=false; this.showJoin=false; this.newOrg=false; this.addOrg=false; this.tryTool=null; this.copyTool=null; this.orgMenu=false; this.keyMenu=null; this.keyConfirm=null; this.share.on=false; this.methodAsk=null; },
   },
   async mounted(){
     document.documentElement.dataset.theme=this.theme;
-    document.addEventListener('click', ()=>{ if(this.mdMenu) this.mdMenu=false; });  // outside-click closes the copy-markdown menu
+    document.addEventListener('click', ()=>{ if(this.mdMenu) this.mdMenu=false; if(this.keyMenu) this.keyMenu=null; });  // outside-click closes compact menus
     document.addEventListener('keydown', e=>{
       // Escape closes any open modal/drawer (a universal expectation the modals didn't honour)
       if(e.key==='Escape'){ this.closeOverlays(); return; }
@@ -6130,8 +6292,8 @@ createApp({
       if(this.orgMenu && !e.target.closest('.orgblock') && !e.target.closest('.dropdown')) this.orgMenu=false;
     });
     // the fixed-position dropdown must follow its trigger when anything scrolls or resizes
-    window.addEventListener('scroll', ()=>{ if(this.orgMenu) this.placeOrgMenu(); }, true);
-    window.addEventListener('resize', ()=>{ if(this.orgMenu) this.placeOrgMenu(); });
+    window.addEventListener('scroll', ()=>{ if(this.orgMenu) this.placeOrgMenu(); if(this.keyMenu)this.keyMenu=null; }, true);
+    window.addEventListener('resize', ()=>{ if(this.orgMenu) this.placeOrgMenu(); if(this.keyMenu)this.keyMenu=null; });
     window.addEventListener('popstate', e=>{  // browser Back moves between views (was exiting the app)
       const mk=(e.state&&e.state.mk)||this.mkFromPath(location.pathname);
       if(mk){ this.openProvider(mk, true); return; }
