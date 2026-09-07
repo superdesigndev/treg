@@ -54,9 +54,11 @@ consulted or affected by anything here.
 
 ## Pieces (`src/treg/domain/capacity/`)
 
-- **`collectors.py`** — the 31 providers' *free* balance/quota calls (`coroutine(client, key) →
-  {value, unit, note}`), moved byte-identically from `scripts/provider_balances.py`. Only DataForSEO,
-  TikHub, and Brightdata speak dollars; everyone else meters credits, rows, searches. `NO_BALANCE_API`
+- **`collectors.py`** — the 32 providers' *free* balance/quota calls (`coroutine(client, key) →
+  {value, unit, note}`), moved from `scripts/provider_balances.py` and extended with each platform-key
+  slot. Only DataForSEO, TikHub, and Brightdata speak dollars; everyone else meters credits, rows,
+  searches. TubeAlfred reads `data.balance` from `/v1/billing/usage`; its platform key therefore
+  carries `billing.read` alongside the `youtube.read` scope used for catalog calls. `NO_BALANCE_API`
   names the 7 providers that publish no meter (dashboard-only) so they read as "no API", never as a
   broken key.
   `provider_balance()` never raises — a failure is a row. It reads the *setting*, not
@@ -140,7 +142,9 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
 - **`signatures.py`** — the signature table: what a provider's error body means for OUR account
   (`balance` / `quota` → exhausted; `burst` → smoothed, never exhausted; `unknown` 429 → logged).
   Lusha's "Daily" 429 and Hunter's "per billing period" 429 are quota exhaustion wearing a 429;
-  a `retry-after ≤ 60 s` is a burst. Apollo says "out of credits" with a **422** ("Insufficient
+  a `retry-after ≤ 60 s` is a burst. TubeAlfred returns **402** with `Insufficient credits to call
+  this endpoint.` and required/available credit counts, observed live on 2026-09-06. Apollo says
+  "out of credits" with a **422** ("Insufficient
   credits"), recorded after 2026-09-01: eleven hours of `people.enrich` 422s with overflow on and
   not one attempt, because no row matched. Moz says it with a **403** `{"issue": "insufficient-quota"}`
   (`quota`: the row allowance resets on Moz's billing day, which the body does not name → default

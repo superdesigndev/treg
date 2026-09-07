@@ -95,6 +95,24 @@ async def test_crustdata_collector_handles_no_recurring_grant():
     assert "no recurring grant" in result["note"]
 
 
+# ---- tubealfred -------------------------------------------------------------------------
+
+async def test_tubealfred_collector_parses_wallet_balance_and_recent_usage():
+    resp = MockResponse({
+        "data": {
+            "balance": 4994,
+            "usage": {"last_30_days": {"credits_used": 106}},
+        },
+    })
+    client = MockClient(get_response=resp)
+    result = await collectors._tubealfred(client, "test-key")
+    assert result == {
+        "value": 4994,
+        "unit": "credits",
+        "note": "106 used in the last 30 days",
+    }
+
+
 # ---- akta -------------------------------------------------------------------------------
 
 async def test_akta_collector_parses_credits_and_tier():
@@ -139,7 +157,7 @@ def test_no_balance_api_includes_expected_providers():
 def test_implemented_collectors_are_registered_and_do_not_overlap_absent_list():
     """A collector that parses a vendor must be on BALANCE_ROUTES, and a provider
     cannot be both 'we collect' and 'there is no balance API'."""
-    for provider in ("akta", "brightdata", "crustdata"):
+    for provider in ("akta", "brightdata", "crustdata", "tubealfred"):
         assert provider in collectors.BALANCE_ROUTES
         assert provider not in collectors.NO_BALANCE_API
     overlap = set(collectors.BALANCE_ROUTES.keys()) & set(collectors.NO_BALANCE_API.keys())

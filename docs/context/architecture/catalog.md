@@ -20,6 +20,7 @@ sources:
   - src/treg/catalog/fx.yaml
   - src/treg/catalog/aviato.yaml
   - src/treg/catalog/crustdata.yaml
+  - src/treg/catalog/tubealfred.yaml
   - src/treg/catalog/examples/aviato.companies.acquisitions.json
   - src/treg/catalog/examples/aviato.companies.employees.json
   - src/treg/catalog/examples/aviato.companies.enrich.bulk.json
@@ -125,11 +126,19 @@ The catalog adds that operations layer:
 - **verified example responses** → captured during live testing, because docs show request params
   but choosing an API comes down to what actually comes back.
 
-Crustdata and Aviato support both BYOK and treg's platform-key tier. Their catalog costs stay in the
-vendors' native credits; `fx.yaml` converts the actual replacement rates treg pays ($0.30 per
-Crustdata credit from the configured 500-for-$150 auto-top-up, $0.01 per Aviato credit from the
-configured 1,000-for-$10 recharge and paid receipt). Every paid row therefore has a computable USD
-price and is platform-eligible when the deployment keys and allow-list are set.
+Crustdata, Aviato, and TubeAlfred support both BYOK and treg's platform-key tier. Their catalog
+costs stay in the vendors' native credits; `fx.yaml` converts the replacement rate treg pays or
+would pay. Crustdata uses $0.30 per credit from the configured 500-for-$150 auto-top-up, Aviato
+$0.01 from the configured 1,000-for-$10 recharge and paid receipt, and TubeAlfred $0.001 from its
+public $5-for-5,000-credit Creator plan. Every paid row therefore has a computable USD price and is
+platform-eligible when the deployment keys and allow-list are set.
+
+TubeAlfred's 15 curated operations cover public YouTube video metadata, transcripts, comments,
+replies, related videos, channel profiles/videos/Shorts/community posts, search, suggestions,
+trending, playlists, and URL resolution. Standard successful calls cost one credit; non-empty
+comment and reply pages carry the documented 20-credit minimum. The vendor's 2026-09-06 evidence
+ledger records two complete production sweeps, while endpoint `verified:` stamps and captured
+examples remain for maintainer-run verification.
 
 Their core catalogs use only existing marketplace platforms. Crustdata has eight live-verified,
 single-call operations: five on Company data and three on People & contact data. Batch routes are

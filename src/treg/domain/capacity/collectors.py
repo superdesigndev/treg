@@ -38,6 +38,18 @@ async def _tikhub(c, key):
     return {"value": (d.get("user_data") or {}).get("balance"), "unit": "USD", "note": ""}
 
 
+async def _tubealfred(c, key):
+    # This account route is free. The platform key supplied by the vendor must carry billing.read
+    # alongside youtube.read so the sweep can inspect the same wallet the data calls spend.
+    d = await _get(c, "https://api.tubealfred.com/v1/billing/usage",
+                   headers={"Authorization": f"Bearer {key}"})
+    data = d.get("data") or {}
+    window = (data.get("usage") or {}).get("last_30_days") or {}
+    used = window.get("credits_used")
+    return {"value": data.get("balance"), "unit": "credits",
+            "note": f"{used} used in the last 30 days"}
+
+
 async def _scrapecreators(c, key):
     d = await _get(c, "https://api.scrapecreators.com/v1/account/credit-balance",
                    headers={"x-api-key": key})
@@ -367,6 +379,7 @@ BALANCE_ROUTES = {
     "tomba": _tomba,
     "dataforseo": _dataforseo,
     "tikhub": _tikhub,
+    "tubealfred": _tubealfred,
     "scrapecreators": _scrapecreators,
     "serpapi": _serpapi,
     "moz": _moz,

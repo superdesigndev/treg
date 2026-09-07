@@ -35,6 +35,7 @@ _TABLE: list[tuple[str, int, str, str]] = [
     ("thecompaniesapi", 403, r"noCreditsRemaining", "balance"),
     ("companyenrich", 402, r"payment required", "balance"),
     ("akta", 402, r"insufficient credits", "balance"),
+    ("tubealfred", 402, r"insufficient credits", "balance"),
     ("lusha", 400, r"reached your credit limit", "balance"),
     ("predictleads", 402, r"exceeded the monthly request limit", "quota"),
     ("lusha", 429, r"daily", "quota"),

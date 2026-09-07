@@ -85,6 +85,8 @@ services:
       # tier 4 off instantly, without a redeploy. Fund each provider account upstream first.
       - key: TREG_PLATFORM_KEY_TIKHUB          # TikHub API key (Authorization: Bearer)
         sync: false
+      - key: TREG_PLATFORM_KEY_TUBEALFRED      # TubeAlfred API key (Authorization: Bearer)
+        sync: false
       - key: TREG_PLATFORM_KEY_DATAFORSEO      # base64 of "login:password" (HTTP Basic)
         sync: false
       - key: TREG_PLATFORM_KEY_SCRAPECREATORS  # ScrapeCreators API key (x-api-key)
@@ -225,6 +227,11 @@ services:
           type: web
           name: treg
           envVarName: TREG_PLATFORM_KEY_JUSTONEAPI
+      - key: TREG_PLATFORM_KEY_TUBEALFRED
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_TUBEALFRED
       - key: TREG_PLATFORM_KEY_SERPAPI
         fromService:
           type: web

@@ -159,6 +159,7 @@ class Settings(BaseSettings):
     # dataforseo's value is the base64 of "login:password" (HTTP Basic) — the same bytes a pasted
     # secret ends up as; the other two are the raw key.
     platform_key_tikhub: str = ""
+    platform_key_tubealfred: str = ""  # Bearer key; $5 Creator plan includes 5,000 credits
     platform_key_dataforseo: str = ""
     platform_key_scrapecreators: str = ""
     platform_key_brightdata: str = ""

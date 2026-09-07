@@ -30,6 +30,7 @@
 credit_rates_usd:
   cloro: {usd: 0.0008, basis: "Lite $30/mo / 37,500 credits = $0.0008/credit — the cheapest paid tier, so the upper bound. Higher tiers are cheaper (Hobby $100/250,000 = $0.0004, Business $1,000/2,800,000 = $0.00036). The free plan grants 500 credits/month, which is not a sustainable rate. Credits are charged only on a successful extraction", source: "https://cloro.dev/pricing", checked: "2026-09-05"}
   scrapecreators: {usd: 0.00188, basis: "Freelance pay-as-you-go $47 / 25,000 credits (Business tier is $497 / 500,000 = $0.000994)", source: "https://scrapecreators.com/", checked: "2026-07-28"}
+  tubealfred: {usd: 0.001, basis: "Creator $5/mo / 5,000 credits per month; the 100-credit signup grant is free but is not a sustainable replacement rate", source: "https://tubealfred.com/pricing", checked: "2026-09-06"}
   leadmagic: {usd: 0.025, basis: "Basic $49.99/mo / 2,000 credits per month (annual billing $490/yr / 24,000 = $0.0204)", source: "https://leadmagic.io/pricing", checked: "2026-07-28"}
   hunter: {usd: 0.0245, basis: "Starter $49/mo / 2,000 credits; one shared pool -- a search costs 1 credit, a verification 0.5 credit, so verification effectively $0.0123", source: "https://hunter.io/pricing", checked: "2026-07-28"}
   diffbot: {usd: 0.001196, basis: "Startup $299/mo / 250,000 credits", source: "https://www.diffbot.com/pricing/", checked: "2026-07-28"}

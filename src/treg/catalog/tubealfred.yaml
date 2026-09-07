@@ -1,0 +1,459 @@
+# Vendor-submitted listing. Every test_request was called against the production API on 2026-09-06
+# and reconciled against TubeAlfred's key-specific credit meter. Endpoint verification stamps and
+# example responses are intentionally left for the maintainers' independent live verification.
+provider: tubealfred
+source:
+  docs: https://tubealfred.com/docs
+  openapi: https://tubealfred.com/openapi.json
+  curated: '2026-09-06'
+limits: "60 requests/minute per API key or OAuth token"
+pricing_url: https://tubealfred.com/pricing
+
+proposed_capabilities:
+  youtube.video.enhanced: "Get enriched video metadata including chapters, category and related videos"
+  youtube.playlist.videos: "List the videos in a public playlist"
+  youtube.url.resolve: "Resolve a YouTube URL to its resource type and canonical ids"
+
+endpoints:
+  - id: tubealfred.youtube.video.detail
+    domain: video
+    capability: youtube.video.detail
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/video/{video_id}
+    name: "YouTube video metadata by id — views, likes, duration"
+    summary: "Title, views, likes, comments, and duration."
+    input:
+      pathParams:
+        video_id: {type: string, required: true, note: "11-character YouTube video id", example: "dQw4w9WgXcQ"}
+      queryParams:
+        fields: {type: string, required: false, note: "comma-separated response fields", example: "id,title"}
+    test_request:
+      pathParams: {video_id: "dQw4w9WgXcQ"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "The live test moved TubeAlfred's credit meter by exactly 1; failed requests are free."
+    docs_url: https://tubealfred.com/docs/video
+
+  - id: tubealfred.youtube.video.enhanced
+    domain: video
+    capability: youtube.video.enhanced
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/video/{video_id}/enhanced
+    name: "Enhanced YouTube video metadata by id — chapters, category"
+    summary: "Enhanced video details."
+    input:
+      pathParams:
+        video_id: {type: string, required: true, note: "11-character YouTube video id", example: "dQw4w9WgXcQ"}
+      queryParams:
+        fields: {type: string, required: false, note: "comma-separated response fields", example: "id,title"}
+    test_request:
+      pathParams: {video_id: "dQw4w9WgXcQ"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "The live test moved TubeAlfred's credit meter by exactly 1; failed requests are free."
+    docs_url: https://tubealfred.com/docs/video
+
+  - id: tubealfred.youtube.video.captions
+    domain: video
+    capability: youtube.video.captions
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/video/{video_id}/transcript/fast
+    name: "YouTube transcript by video id and language"
+    summary: "Optimized transcript fetch."
+    input:
+      pathParams:
+        video_id: {type: string, required: true, note: "11-character YouTube video id", example: "dQw4w9WgXcQ"}
+      queryParams:
+        language: {type: string, required: false, note: "preferred transcript language code", example: "en"}
+        kind: {type: string, required: false, note: "manual | auto | any", example: "any"}
+    test_request:
+      pathParams: {video_id: "dQw4w9WgXcQ"}
+      queryParams: {language: "en", kind: "any"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "The live caption hit charged 1 credit; unavailable captions and failed requests are free."
+    docs_url: https://tubealfred.com/docs/video
+
+  - id: tubealfred.youtube.video.comments
+    domain: video
+    capability: youtube.video.comments
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/video/{video_id}/comments
+    name: "YouTube comments by video id — top or newest"
+    summary: "First comments page for a video."
+    input:
+      pathParams:
+        video_id: {type: string, required: true, note: "11-character YouTube video id", example: "dQw4w9WgXcQ"}
+      queryParams:
+        count: {type: integer, required: false, default: 100, note: "1-100 comments; every non-empty page has a 100-comment billing minimum", example: 100}
+        sort: {type: string, required: false, default: "top", note: "top | newest", example: "top"}
+    test_request:
+      pathParams: {video_id: "dQw4w9WgXcQ"}
+      queryParams: {count: 100, sort: "top"}
+    cost:
+      type: per_success
+      value: 20
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "A non-empty page of 1-100 comments has a flat 20-credit minimum; empty and failed requests are free. The 100-comment live test charged 20."
+    docs_url: https://tubealfred.com/docs/video
+
+  - id: tubealfred.youtube.comment.replies
+    domain: video
+    capability: youtube.comment.replies
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/video/{video_id}/comments/{comment_id}/replies
+    name: "YouTube comment replies by video and parent comment id"
+    summary: "First replies page for a top-level comment."
+    input:
+      pathParams:
+        video_id: {type: string, required: true, note: "11-character YouTube video id", example: "dQw4w9WgXcQ"}
+        comment_id: {type: string, required: true, note: "top-level comment id returned by the comments endpoint", example: "Ugzge340dBgB75hWBm54AaABAg"}
+      queryParams:
+        count: {type: integer, required: false, default: 100, note: "1-100 replies; every non-empty page has a 100-comment billing minimum", example: 100}
+        sort: {type: string, required: false, default: "top", note: "top | newest", example: "top"}
+    test_request:
+      pathParams: {video_id: "dQw4w9WgXcQ", comment_id: "Ugzge340dBgB75hWBm54AaABAg"}
+      queryParams: {count: 100, sort: "top"}
+    cost:
+      type: per_success
+      value: 20
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "A non-empty page of 1-100 replies has a flat 20-credit minimum; empty and failed requests are free. The 100-reply live test charged 20."
+    docs_url: https://tubealfred.com/docs/video
+
+  - id: tubealfred.youtube.video.related
+    domain: video
+    capability: youtube.video.related
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/video/{video_id}/related
+    name: "Related YouTube videos by video id"
+    summary: "Related videos."
+    input:
+      pathParams:
+        video_id: {type: string, required: true, note: "11-character YouTube video id", example: "dQw4w9WgXcQ"}
+      queryParams:
+        continuation_token: {type: string, required: false, note: "token returned by a prior page"}
+    test_request:
+      pathParams: {video_id: "dQw4w9WgXcQ"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "The live test moved TubeAlfred's credit meter by exactly 1; failed requests are free."
+    docs_url: https://tubealfred.com/docs/video
+
+  - id: tubealfred.youtube.channel.profile
+    domain: channel
+    capability: youtube.channel.profile
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/channel/{channel_id}
+    name: "YouTube channel profile by id, handle or username"
+    summary: "Channel name, avatar, subscribers, and description."
+    input:
+      pathParams:
+        channel_id: {type: string, required: true, note: "UC channel id, @handle, or username", example: "UCBR8-60-B28hp2BmDPdntcQ"}
+      queryParams:
+        fields: {type: string, required: false, note: "comma-separated response fields", example: "id,title"}
+    test_request:
+      pathParams: {channel_id: "UCBR8-60-B28hp2BmDPdntcQ"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "The live test moved TubeAlfred's credit meter by exactly 1; failed requests are free."
+    docs_url: https://tubealfred.com/docs/channel
+
+  - id: tubealfred.youtube.channel.videos
+    domain: channel
+    capability: youtube.channel.videos
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/channel/{channel_id}/videos
+    name: "Latest YouTube videos by channel id or handle"
+    summary: "Latest videos for a channel."
+    input:
+      pathParams:
+        channel_id: {type: string, required: true, note: "UC channel id, @handle, or username", example: "UCBR8-60-B28hp2BmDPdntcQ"}
+      queryParams:
+        continuation_token: {type: string, required: false, note: "token returned by a prior page"}
+    test_request:
+      pathParams: {channel_id: "UCBR8-60-B28hp2BmDPdntcQ"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "The live test moved TubeAlfred's credit meter by exactly 1; failed requests are free."
+    docs_url: https://tubealfred.com/docs/channel
+
+  - id: tubealfred.youtube.channel.shorts
+    domain: channel
+    capability: youtube.channel.shorts
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/channel/{channel_id}/shorts
+    name: "Latest YouTube Shorts by channel id or handle"
+    summary: "Latest Shorts for a channel."
+    input:
+      pathParams:
+        channel_id: {type: string, required: true, note: "UC channel id, @handle, or username", example: "UCBR8-60-B28hp2BmDPdntcQ"}
+      queryParams:
+        continuation_token: {type: string, required: false, note: "token returned by a prior page"}
+    test_request:
+      pathParams: {channel_id: "UCBR8-60-B28hp2BmDPdntcQ"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "The live test moved TubeAlfred's credit meter by exactly 1; failed requests are free."
+    docs_url: https://tubealfred.com/docs/channel
+
+  - id: tubealfred.youtube.channel.posts
+    domain: channel
+    capability: youtube.channel.posts
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/channel/{channel_id}/community
+    name: "YouTube community posts by channel id or handle"
+    summary: "Community tab posts for a channel."
+    input:
+      pathParams:
+        channel_id: {type: string, required: true, note: "UC channel id, @handle, or username", example: "UCBR8-60-B28hp2BmDPdntcQ"}
+      queryParams:
+        continuation_token: {type: string, required: false, note: "token returned by a prior page"}
+    test_request:
+      pathParams: {channel_id: "UCBR8-60-B28hp2BmDPdntcQ"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "The live test moved TubeAlfred's credit meter by exactly 1; failed requests are free."
+    docs_url: https://tubealfred.com/docs/channel
+
+  - id: tubealfred.youtube.search.videos
+    domain: discovery
+    capability: youtube.search.videos
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/search
+    name: "Search YouTube videos by keyword and filters"
+    summary: "YouTube search."
+    input:
+      queryParams:
+        query: {type: string, required: true, note: "search query", example: "OpenAI"}
+        continuation_token: {type: string, required: false, note: "token returned by a prior page"}
+        channel_id: {type: string, required: false, note: "restrict results to one channel", example: "UCBR8-60-B28hp2BmDPdntcQ"}
+        upload_date: {type: string, required: false, note: "all | today | week | month | year", example: "month"}
+        duration: {type: string, required: false, note: "all | under_three_mins | three_to_twenty_mins | over_twenty_mins", example: "three_to_twenty_mins"}
+        sort: {type: string, required: false, default: "relevance", note: "relevance | popularity", example: "relevance"}
+        type: {type: string, required: false, default: "video", note: "video for this capability; the same route also accepts all | shorts | channel | playlist | movie", example: "video"}
+        features: {type: string, required: false, note: "comma-separated feature filters", example: "hd,subtitles"}
+        live: {type: boolean, required: false, note: "restrict results to live content", example: true}
+        shorts: {type: boolean, required: false, note: "restrict results to Shorts", example: true}
+    test_request:
+      queryParams: {query: "OpenAI", type: "video", sort: "relevance"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "The live test moved TubeAlfred's credit meter by exactly 1; failed requests are free."
+    docs_url: https://tubealfred.com/docs/discovery
+
+  - id: tubealfred.youtube.search.suggestions
+    domain: discovery
+    capability: youtube.search.suggestions
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/search/suggestions
+    name: "YouTube search suggestions by partial query"
+    summary: "Autocomplete suggestions."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "partial search query", example: "how to"}
+        prev: {type: string, required: false, note: "optional previous query"}
+    test_request:
+      queryParams: {q: "how to"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "The live test moved TubeAlfred's credit meter by exactly 1; failed requests are free."
+    docs_url: https://tubealfred.com/docs/discovery
+
+  - id: tubealfred.youtube.trending.videos
+    domain: discovery
+    capability: youtube.trending.videos
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/trending
+    name: "Currently trending YouTube videos"
+    summary: "Trending videos."
+    input: {}
+    test_request:
+      queryParams: {}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "The live test moved TubeAlfred's credit meter by exactly 1; failed requests are free."
+    docs_url: https://tubealfred.com/docs/discovery
+
+  - id: tubealfred.youtube.playlist.videos
+    domain: playlist
+    capability: youtube.playlist.videos
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/playlist/{playlist_id}
+    name: "YouTube playlist videos by playlist id"
+    summary: "Playlist contents."
+    input:
+      pathParams:
+        playlist_id: {type: string, required: true, note: "YouTube playlist id", example: "UUBR8-60-B28hp2BmDPdntcQ"}
+      queryParams:
+        continuation_token: {type: string, required: false, note: "token returned by a prior page"}
+    test_request:
+      pathParams: {playlist_id: "UUBR8-60-B28hp2BmDPdntcQ"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "The live test moved TubeAlfred's credit meter by exactly 1; failed requests are free."
+    docs_url: https://tubealfred.com/docs/playlist
+
+  - id: tubealfred.youtube.url.resolve
+    domain: utility
+    kind: utility
+    capability: youtube.url.resolve
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/utility/resolve
+    name: "Resolve a YouTube URL to its type and canonical ids"
+    summary: "Resolve any YouTube URL to its type and extracted IDs."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "full YouTube video, channel, playlist, Shorts, or other supported URL", example: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+    test_request:
+      queryParams: {url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://tubealfred.com/pricing
+      checked: '2026-09-06'
+      confidence: verified
+      note: "The live test moved TubeAlfred's credit meter by exactly 1; failed requests are free. This is also the near-free credential probe."
+    docs_url: https://tubealfred.com/docs/utility-batch

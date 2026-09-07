@@ -1024,6 +1024,15 @@ def test_exa_catalog_is_platform_priced():
     assert all(cat.cost_view(ep["cost"], "exa")["usd"] > 0 for ep in rows)
 
 
+def test_tubealfred_catalog_is_platform_priced():
+    """The public Creator-plan credit rate makes every curated TubeAlfred route computable."""
+    cat = A.catalog_store.load()
+    rows = cat.for_provider("tubealfred")
+    assert len(rows) == 15
+    assert all(cat.platform_eligible(ep) for ep in rows)
+    assert all(cat.cost_view(ep["cost"], "tubealfred")["usd"] > 0 for ep in rows)
+
+
 def test_brightdata_estimate_counts_the_body_array():
     """Bright Data bills per record delivered and takes its targets as a bare JSON array, so the
     reserve has to scale with the array's LENGTH — there is no limit param in the query to read."""

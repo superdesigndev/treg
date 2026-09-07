@@ -512,6 +512,17 @@ USD. Platform billing settles every call from the response's `costDollars.total`
 search or a contents call with three content types bills exactly what Exa charged, not the catalog
 base. Verified on the dev server before merge: reserve $0.007 → settle $0.009 on a 12-result search.
 
+## TubeAlfred platform key (2026-09-06)
+
+`TREG_PLATFORM_KEY_TUBEALFRED` is a Bearer API key with TubeAlfred's `youtube.read` scope plus
+`billing.read` for the free capacity sweep. It is an unfunded slot at merge: a new account starts
+with 100 credits, then the public Creator subscription
+replenishes 5,000 credits for $5/month ($0.001/credit in `fx.yaml`). Add `tubealfred` to
+`TREG_PLATFORM_PROVIDERS` only after the account is funded. The 15 curated routes use per-success
+prices; standard calls cost one credit and non-empty comment/reply pages cost the fixed 20-credit
+minimum. TubeAlfred publishes no machine-readable rate card, so watch the provider balance and the
+reconcile report when the key is first enabled.
+
 ## Worker commands and scheduled settlement
 
 `treg-worker` (console script, `[server]` extra) hosts the scheduled maintainer commands -

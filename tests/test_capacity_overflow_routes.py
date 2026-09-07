@@ -195,6 +195,14 @@ def test_apollo_says_out_of_credits_with_a_422():
     assert S.classify("hunter", 422, None, APOLLO_OUT_OF_CREDITS).kind == "unrecorded"
 
 
+def test_tubealfred_says_out_of_credits_with_a_402():
+    body = (b'{"message":"Insufficient credits to call this endpoint.",'
+            b'"context":{"required_credits":1,"available_credits":0}}')
+    sig = S.classify("tubealfred", 402, None, body)
+    assert sig is not None and sig.kind == "balance" and S.is_exhausting(sig)
+    assert any(provider == "tubealfred" for provider, *_ in S._TABLE)
+
+
 def test_every_recorded_phrase_arms_the_tripwire():
     """Recording one vendor's wording must arm the tripwire for every other: each literal body
     phrase in `_TABLE` (the 429 rows carry period words, not capacity phrases) is in CAPACITY_PHRASES."""
