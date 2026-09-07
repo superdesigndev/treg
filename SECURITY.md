@@ -30,13 +30,14 @@ environment) and enforcement happens server-side and in the operating system.
 - **Server runs are resource-limited.** `treg run --server` executes each CLI with a scrubbed environment
   (treg's own secrets removed), a per-run throwaway home, an allow-list of runnable commands, output
   redaction, and POSIX resource limits (CPU, file size, no core dumps).
-- **Signup abuse has a brake.** Every new team gets a small promotional balance, which makes
-  throwaway-email farming worth an attacker's time. An email-domain blocklist (throwaway-mail rules
-  and confirmed farm roots in code, plus `TREG_BLOCKED_EMAIL_DOMAINS` for a new root without a
-  redeploy; subdomains included, case-insensitive, domain only) refuses the address at every sign-up
-  and sign-in door and at both team-creating endpoints. The refusal names neither the list nor the
-  domain, every block is logged, and a classifier failure lets the sign-in through rather than
-  breaking real signups.
+- **Signup abuse has a brake.** Every new team gets a small promotional balance, which makes bulk
+  registration on throwaway addresses worth an attacker's time. `TREG_BLOCKED_EMAIL_DOMAINS` (the
+  whole blocklist — no list ships in the code, so an unset value blocks nothing; subdomains
+  included, case-insensitive, domain only) refuses the address at every sign-up and sign-in door and
+  at both team-creating endpoints. The refusal names neither the list nor the domain, every block is
+  logged, and a classifier failure lets the sign-in through rather than breaking real signups. It is
+  a speed bump, not a fix: a new domain costs the other side minutes, so treat the variable as
+  something to edit during an incident, and suspend the accounts already created separately.
 
 ## Known limitations (by design, documented on purpose)
 

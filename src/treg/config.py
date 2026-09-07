@@ -437,20 +437,19 @@ class Settings(BaseSettings):
     # must be explicitly enabled (TREG_EMAIL_DEV_MODE=true) for local testing without a mail sender.
     email_dev_mode: bool = False
 
-    # The OPS tier of the email-domain blocklist (TREG_BLOCKED_EMAIL_DOMAINS), comma-separated:
-    # "newfarm.io,other-farm.net". ADDED to the code tier in `domain/identity/access.py` (treg's
-    # confirmed farm roots and the throwaway-mail keyword rules), never replacing it. A listed domain
-    # blocks itself AND every subdomain, case-insensitively, at every sign-up and sign-in door and at
-    # the two doors that mint a promo-funded team (POST /users, POST /orgs). It exists because a
-    # signup-grant farm moves to a new root in minutes and the answer has to be a dashboard edit, not
-    # a deploy. Empty (the default) adds nothing. Existing accounts on a listed domain are suspended
-    # out of band, so listing a domain strands nobody legitimate. A blocklist, deliberately: no
-    # allowlist, no table, no admin UI.
+    # The WHOLE email-domain blocklist (TREG_BLOCKED_EMAIL_DOMAINS), comma-separated:
+    # "example-one.io,example-two.net". There is no list in the code; empty (the default) blocks
+    # nothing. A listed domain blocks itself AND every subdomain, case-insensitively, at every
+    # sign-up and sign-in door and at the two doors that create a promo-funded team (POST /users,
+    # POST /orgs). Configuration rather than code because bulk registration moves to a new domain in
+    # minutes, and a defence that needs a deploy to keep up is always behind. Existing accounts on a
+    # listed domain are suspended out of band, so listing one strands nobody legitimate. A blocklist,
+    # deliberately: no allowlist, no table, no admin UI.
     blocked_email_domains: str = ""
 
     @property
     def blocked_email_domain_set(self) -> frozenset[str]:
-        """The normalised `TREG_BLOCKED_EMAIL_DOMAINS` entries; empty = the code tier alone."""
+        """The normalised `TREG_BLOCKED_EMAIL_DOMAINS` entries; empty = nothing is blocked."""
         return _blocked_email_domains(self.blocked_email_domains)
 
     # Frictionless local mode: `curl … | sh` brings up a server you are already signed into, with no

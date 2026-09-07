@@ -1,12 +1,11 @@
-"""The email-domain blocklist: throwaway mail and abusive signup domains, refused at every door.
+"""The email-domain blocklist, refused at every door.
 
 A new team is created with a promotional balance, which makes bulk registration on throwaway
-addresses worth someone's while. Two tiers: a CODE tier (domains confirmed abusive in our own data,
-plus throwaway-mail keyword rules) and an OPS tier (`TREG_BLOCKED_EMAIL_DOMAINS`, additive, a
-dashboard edit so a new domain needs no deploy). Each rule is pinned here because the obvious
-implementation gets it wrong: match the DOMAIN only, walk parent domains but never the bare TLD,
-refuse sign-in as well as sign-up, cover BOTH doors that mint a promo-funded team, reveal nothing to
-the caller, count every block in the log, and fail open.
+addresses worth someone's while. The list is entirely configuration — `TREG_BLOCKED_EMAIL_DOMAINS`,
+a dashboard edit so a new domain needs no deploy — and unset means nothing is blocked. Each rule is
+pinned here because the obvious implementation gets it wrong: match the DOMAIN only, walk parent
+domains but never the bare TLD, refuse sign-in as well as sign-up, cover BOTH doors that create a
+promo-funded team, reveal nothing to the caller, count every block in the log, and fail open.
 """
 
 from __future__ import annotations
@@ -25,15 +24,15 @@ from treg.domain.identity.access import _is_blocked_email
 from treg.infra.db import reset_db, session_maker
 from treg.models import Org, User
 
-# The ops tier under test. Deliberately NOT the code tier's domains, so these tests prove the env
-# var itself works end to end; `.example` is reserved and can never be a real user's domain.
+# The list under test. `.example` is reserved by RFC 2606 and can never be a real user's domain, so
+# these tests can never collide with a customer.
 OPS = "farm-a.example, Farm-B.example ,@farm-c.example,.farm-d.example"
 REFUSAL = "this address cannot be used to sign in"
 
 
 @pytest.fixture
 def ops(monkeypatch):
-    """Set the ops tier on the live Settings object (the shape conftest uses for `posthog_key`)."""
+    """Set the blocklist on the live Settings object (the shape conftest uses for `posthog_key`)."""
     def _set(raw: str = OPS) -> None:
         monkeypatch.setattr(get_settings(), "blocked_email_domains", raw, raising=False)
     return _set
@@ -64,23 +63,22 @@ async def _otp_login(c: AsyncClient, email: str) -> str:
 
 # ---- the classifier ------------------------------------------------------------------------------
 
-def test_code_tier_is_in_force_with_no_setting_at_all(ops):
+def test_nothing_is_blocked_with_no_setting_at_all(ops):
+    """No list ships in the code, so an unset variable must let every address through. This is the
+    default a fresh deploy runs with, and a self-hoster's only state."""
     ops("")
     assert get_settings().blocked_email_domain_set == frozenset()
-    for email in ("a@uberip.com", "a@westcast-systems.com", "a@mailfox.win", "a@yopmail.com",
-                  "a@mail.uberip.com",                 # subdomain of a confirmed root
-                  "a@txtfromrizkirmdhn.my.id",         # any `.my.id`, via the parent walk
-                  "a@tempmail-fresh.xyz", "a@guerrillamail.info", "a@x.10minutemail.net"):  # keywords
-        assert _is_blocked_email(email), email
+    for email in ("a@farm-a.example", "a@mail.farm-a.example", "a@anything.test", "a@company.dev"):
+        assert not _is_blocked_email(email), email
 
 
 def test_match_is_on_the_domain_only_never_the_local_part(ops):
-    """The single most important rule. Matching the whole address false-flags real users whose
-    USERNAME happens to contain a keyword, which is how a blocklist starts refusing customers."""
+    """The single most important rule. Matching the whole address false-flags real people whose
+    USERNAME happens to contain a listed string, which is how a blocklist starts refusing
+    customers."""
     ops()
-    assert not _is_blocked_email("tempmail@gmail.com")
-    assert not _is_blocked_email("yopmail.fan@company.dev")
     assert not _is_blocked_email("farm-a.example@company.dev")
+    assert not _is_blocked_email("farm-a@company.dev")
 
 
 def test_ops_tier_parses_case_whitespace_and_leading_marks(ops):
@@ -89,13 +87,12 @@ def test_ops_tier_parses_case_whitespace_and_leading_marks(ops):
         {"farm-a.example", "farm-b.example", "farm-c.example", "farm-d.example"})
 
 
-def test_ops_tier_matches_domain_and_subdomains_and_adds_to_the_code_tier(ops):
+def test_a_listed_domain_matches_itself_and_every_subdomain(ops):
     ops()
     assert _is_blocked_email("a@farm-a.example")
     assert _is_blocked_email("A@FARM-B.EXAMPLE")
     assert _is_blocked_email("a@deep.mail.farm-c.example")   # the subdomain bypass that must not work
     assert _is_blocked_email("a@farm-d.example")             # listed as ".farm-d.example"
-    assert _is_blocked_email("a@uberip.com")                 # the code tier is still there
 
 
 def test_walk_strips_whole_labels_off_the_front_only(ops):
@@ -103,7 +100,6 @@ def test_walk_strips_whole_labels_off_the_front_only(ops):
     assert not _is_blocked_email("a@notfarm-a.example")      # a string suffix, not a subdomain
     assert not _is_blocked_email("a@farm-a.example.org")     # the listed domain in the middle
     assert not _is_blocked_email("a@company.dev")
-    assert not _is_blocked_email("a@uberip.co")
 
 
 def test_a_bare_public_suffix_can_never_be_an_entry(ops):
@@ -128,16 +124,16 @@ def test_the_decision_fails_open_on_a_classifier_error(monkeypatch, caplog):
         raise RuntimeError("bad blocklist")
     monkeypatch.setattr(signup, "_is_blocked_email", boom)
     with caplog.at_level(logging.ERROR, logger="treg.auth"):
-        assert not signup.blocked_email("a@uberip.com", "otp_start")   # the door stays open
+        assert not signup.blocked_email("a@farm-a.example", "otp_start")   # the door stays open
     assert any("blocklist_error" in r.getMessage() for r in caplog.records)
 
 
 # ---- the email OTP door --------------------------------------------------------------------------
 
-async def test_otp_start_refuses_both_tiers_and_mints_no_code(client, ops):
+async def test_otp_start_refuses_a_listed_domain_and_mints_no_code(client, ops):
     ops()
-    for email in ("farm@farm-a.example", "farm@mail.farm-a.example", "Farm@UBERIP.com",
-                  "farm@abc.my.id", "farm@tempmail-fresh.xyz"):
+    for email in ("farm@farm-a.example", "farm@mail.farm-a.example", "Farm@FARM-B.EXAMPLE",
+                  "farm@deep.farm-c.example", "farm@farm-d.example"):
         r = await _otp_start(client, email)
         assert r.status_code == 403, (email, r.text)
         assert r.json()["detail"] == REFUSAL
@@ -147,7 +143,7 @@ async def test_otp_start_refuses_both_tiers_and_mints_no_code(client, ops):
 async def test_otp_refusal_names_no_list_and_no_domain(client, ops):
     ops()
     body = (await _otp_start(client, "farm@farm-a.example")).text.lower()
-    for word in ("farm-a", "farm-b", "uberip", "block", "list", "domain"):
+    for word in ("farm-a", "farm-b", "block", "list", "domain"):
         assert word not in body
 
 
@@ -173,14 +169,14 @@ async def test_otp_refuses_sign_in_of_an_account_that_predates_the_listing(clien
 async def test_otp_still_works_for_an_unlisted_domain_while_the_list_is_set(client, ops):
     ops()
     assert await _otp_login(client, "real@company.dev")
-    assert await _otp_login(client, "tempmail@company.dev")   # local part is never looked at
+    assert await _otp_login(client, "farm-a.example@company.dev")   # local part is never looked at
 
 
 # ---- open registration (POST /users: user + org + the $1 promo in one call) -----------------------
 
 async def test_open_registration_refuses_a_blocked_domain_and_creates_nothing(client, ops):
     ops()
-    for email in ("farm@sub.farm-a.example", "farm@sub.uberip.com"):
+    for email in ("farm@sub.farm-a.example", "farm@farm-b.example"):
         r = await client.post("/users", json={"email": email})
         assert r.status_code == 403 and r.json()["detail"] == REFUSAL
         assert await _user_count(email) == 0
@@ -238,7 +234,7 @@ def _google_idp(email: str) -> FastAPI:
 
 @pytest.fixture
 async def social(monkeypatch):
-    """Both social doors configured against in-process fake identity providers. The ops tier goes
+    """Both social doors configured against in-process fake identity providers. The blocklist goes
     in through the environment, as an operator would set it."""
     monkeypatch.setenv("TREG_GITHUB_CLIENT_ID", "cid")
     monkeypatch.setenv("TREG_GITHUB_CLIENT_SECRET", "csec")
@@ -268,15 +264,15 @@ async def _social_callback(c: AsyncClient, door: str, idp: FastAPI):
 
 
 @pytest.mark.parametrize("door,email", [
-    ("github", "farm@farm-a.example"),          # ops tier
-    ("google", "farm@mail.uberip.com"),         # code tier, subdomain
+    ("github", "farm@farm-a.example"),          # a listed domain, exactly
+    ("google", "farm@mail.farm-b.example"),     # a subdomain of a listed domain
 ])
 async def test_social_login_on_a_blocked_domain_gets_a_refusal_page_and_no_session(social, door, email):
     idp = _github_idp(email) if door == "github" else _google_idp(email)
     cb = await _social_callback(social, door, idp)
     assert cb.status_code == 403, cb.text
     assert "cannot be used to sign in" in cb.text
-    assert "farm-a" not in cb.text and "uberip" not in cb.text
+    assert "farm-a" not in cb.text and "farm-b" not in cb.text
     assert "treg_session" not in cb.headers.get("set-cookie", "")
     assert (await social.get("/auth/me")).status_code == 401
     assert await _user_count(email) == 0

@@ -308,17 +308,17 @@ bound to a closed maintenance loop. Calling `maintenance.upgrade()` directly doe
   code is exposed only through `Settings.expose_dev_code`, which requires `email_dev_mode` **and** a
   **local sqlite** `database_url` — so even a stray `TREG_EMAIL_DEV_MODE=true` on Postgres (a real deploy)
   can never leak a login code.
-- `blocked_email_domains` (`TREG_BLOCKED_EMAIL_DOMAINS`, default empty) - the OPS tier of the
-  email-domain blocklist: comma-separated domains ADDED to the code tier (treg's confirmed farm
-  roots and the throwaway-mail keyword rules in `domain/identity/access.py`), refused at every
-  identity door and at both team-creating doors (`POST /users` and `POST /orgs`). Example:
-  `newfarm.io,other-farm.net`. Case-insensitive; a listed domain also blocks its subdomains; a
-  leading `@` or `.` and surrounding whitespace are tolerated; a dotless entry (`com`) is ignored.
-  The signup-grant-farm brake: edit it in the Render dashboard the moment a new root appears, no
-  redeploy; promote a root into the code tier in the next PR. Empty adds nothing (the code tier
-  stays in force). Existing accounts on a listed domain must be suspended separately (`/admin`);
-  the list only stops new sessions and new teams. Each block writes one
-  `event=signup_blocked_domain door=... domain=...` log line, so a wave is countable. See
+- `blocked_email_domains` (`TREG_BLOCKED_EMAIL_DOMAINS`, default empty) - the WHOLE email-domain
+  blocklist: comma-separated domains refused at every identity door and at both team-creating doors
+  (`POST /users` and `POST /orgs`). There is no list in the code, so **this variable is the only
+  thing standing between a bulk-registration run and the promo grant** — an empty value blocks
+  nothing. Example: `example-one.io,example-two.net`. Case-insensitive; a listed domain also blocks
+  its subdomains; a leading `@` or `.` and surrounding whitespace are tolerated; a dotless entry
+  (`com`) is ignored so one typo cannot refuse every address on earth. Edit it in the Render
+  dashboard the moment a new domain appears; changing it restarts the service. Existing accounts on
+  a listed domain must be suspended separately (`/admin`); the list only stops new sessions and new
+  teams, not tokens already issued. Each block writes one
+  `event=signup_blocked_domain door=... domain=...` log line, so a burst is countable. See
   [multi-tenancy](../architecture/multi-tenancy.md).
 - `run_proof` (`TREG_RUN_PROOF`) — the **isolated-runner proof** for `treg run --local`. A local run whose
   grant would return a secret the caller does **not** own (a shared-key tool a member may run but not read)
