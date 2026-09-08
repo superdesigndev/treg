@@ -288,23 +288,38 @@ The team instance is hosted on **Render** (web service + Postgres) at `treg.to`.
 
 Environment variables (prefix `TREG_`, read from `.env`):
 
+| Var                                       | Default                         | Purpose |
+| ----------------------------------------- | ------------------------------- | ------- |
+| `TREG_DATABASE_URL`                       | `sqlite+aiosqlite:///./treg.db` | DB URL (SQLite for dev, Postgres in prod) |
+| `TREG_SECRET_KEY`                         | *(empty)*                       | Fernet key for secrets-at-rest; empty → an ephemeral key is minted (secrets won't survive a restart) |
+| `TREG_PUBLIC_URL`                         | `https://treg.to`               | treg's public base, used to build the OAuth callback URI |
+| `TREG_SESSION_SECRET`                     | *(empty)*                       | signs the dashboard session cookie; falls back to `TREG_SECRET_KEY`. Set a real value in prod |
+| `TREG_GITHUB_CLIENT_ID` / `_SECRET`       | *(empty)*                       | GitHub OAuth sign-in (callback `<public_url>/auth/github/callback`); empty hides the button |
+| `TREG_GOOGLE_CLIENT_ID` / `_SECRET`       | *(empty)*                       | Google OAuth sign-in (redirect `<public_url>/auth/google/callback`); empty hides the button |
+| `TREG_INSTAGRAM_CLIENT_ID` / `_SECRET`    | *(empty)*                       | Instagram App ID and secret for direct Instagram Login (redirect `<public_url>/oauth/callback`) |
+| `TREG_META_CLIENT_ID` / `_SECRET`         | *(empty)*                       | Meta app credentials for Facebook Pages, Meta Ads, and optional Instagram `page-tools` |
+| `TREG_OAUTH_REVIEW_PENDING`               | `instagram-login,page-messages` | Registry review keys awaiting production access. Remove `page-messages` after Page messaging approval; set empty after direct Instagram approval. |
+| `TREG_EMAIL_API_URL`                      | `https://api.resend.com/emails` | transactional email API endpoint; defaults to Resend and can be pointed at a compatible self-hosted service such as useSend |
+| `TREG_RESEND_API_KEY` / `TREG_EMAIL_FROM` | *(empty)*                       | transactional email API key and sender; with the default URL these are Resend credentials |
+| `TREG_BLOCKED_EMAIL_DOMAINS`              | *(empty)*                       | comma-separated email domains refused at every sign-up/sign-in door and at team creation (subdomains included, case-insensitive). Empty blocks nothing |
+| `TREG_ADMIN_TOKEN`                        | *(empty)*                       | cross-tenant **super-admin** bearer; authorizes every `/admin/*` endpoint. Empty disables the env path |
+| `TREG_EMAIL_DEV_MODE`                     | `false`                         | when true, `/auth/email/start` returns the OTP in its response (no mail sender needed) — **dev/local only**, never in prod |
 
-| Var                                       | Default                         | Purpose                                                                                                                                                                    |
-| ----------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TREG_DATABASE_URL`                       | `sqlite+aiosqlite:///./treg.db` | DB URL (SQLite for dev, Postgres in prod)                                                                                                                                  |
-| `TREG_SECRET_KEY`                         | *(empty)*                       | Fernet key for secrets-at-rest; empty → an ephemeral key is minted (secrets won't survive a restart)                                                                       |
-| `TREG_PUBLIC_URL`                         | `https://treg.to`  | treg's public base, used to build the OAuth callback URI                                                                                                                   |
-| `TREG_SESSION_SECRET`                     | *(empty)*                       | signs the dashboard session cookie; falls back to `TREG_SECRET_KEY`. Set a real value in prod                                                                              |
-| `TREG_GITHUB_CLIENT_ID` / `_SECRET`       | *(empty)*                       | GitHub OAuth sign-in (callback `<public_url>/auth/github/callback`); empty hides the button                                                                                |
-| `TREG_GOOGLE_CLIENT_ID` / `_SECRET`       | *(empty)*                       | Google OAuth sign-in (redirect `<public_url>/auth/google/callback`); empty hides the button                                                                                |
-| `TREG_INSTAGRAM_CLIENT_ID` / `_SECRET`    | *(empty)*                       | Instagram App ID and secret for direct Instagram Login (redirect `<public_url>/oauth/callback`)                                                                           |
-| `TREG_META_CLIENT_ID` / `_SECRET`         | *(empty)*                       | Meta app credentials for Facebook Pages, Meta Ads, and optional Instagram `page-tools`                                                                                     |
-| `TREG_OAUTH_REVIEW_PENDING`               | `instagram-login,page-messages` | Registry review keys awaiting production access. Remove `page-messages` after Page messaging approval; set empty after direct Instagram approval.                         |
-| `TREG_RESEND_API_KEY` / `TREG_EMAIL_FROM` | *(empty)*                       | transactional email via Resend (OTP codes + invites); From must be a Resend-verified sender                                                                                |
-| `TREG_BLOCKED_EMAIL_DOMAINS`              | *(empty)*                       | comma-separated email domains refused at every sign-up/sign-in door and at team creation (subdomains included, case-insensitive). Empty blocks nothing — no list ships in the code |
-| `TREG_ADMIN_TOKEN`                        | *(empty)*                       | cross-tenant **super-admin** bearer; authorizes every `/admin/*` endpoint. Empty disables the env path (only `is_superadmin` users reach `/admin`). Keep it long + secret. |
-| `TREG_EMAIL_DEV_MODE`                     | `false`                         | when true, `/auth/email/start` returns the OTP in its response (no mail sender needed) — **dev/local only**, never in prod.                                                |
+### Self-hosted transactional email with useSend
 
+Treg continues to use Resend by default, so existing deployments require no configuration change.
+Self-hosters can instead use a Resend-compatible transactional email endpoint by setting
+`TREG_EMAIL_API_URL`. For a self-hosted [useSend](https://usesend.com/) instance, point it at the
+send endpoint and use the useSend API key in `TREG_RESEND_API_KEY`:
+
+```bash
+TREG_EMAIL_API_URL=https://send.example.com/api/v1/emails
+TREG_RESEND_API_KEY=your-usesend-api-key
+TREG_EMAIL_FROM="tools-registry <treg@example.com>"
+```
+
+The credential variable retains its existing name for backward compatibility. This change only
+makes the email API endpoint configurable; the default remains `https://api.resend.com/emails`.
 
 No `.env` is needed for local dev — every setting has a working default (ephemeral key, sqlite).
 
@@ -320,19 +335,17 @@ audit record. The proxy does no business logic and never buffers the body.
 
 **Module map** (`src/treg/`):
 
-
-| Module                                     | Role                                                                                                             |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `proxy.py`                                 | `relay()` — the whole product in one function: a faithful streaming proxy                                        |
-| `injectors.py`                             | the auth-shape seam: `env`, `cli_auth`, `secret_file`, `oauth` place a secret into a header/query                |
-| `oauth.py`                                 | token freshness (single-flight refresh) + the connect flow (consent URL, code exchange)                          |
-| `health.py`                                | credential health: refresh oauth, probe tools, webhook the owner of anything broken                              |
-| `convert.py`                               | scaffold a skill directory into a registerable bundle manifest                                                   |
-| `api.py`                                   | the API — the only brain; CLI + skill are thin clients over it                                                   |
-| `cli.py`                                   | the `treg` CLI                                                                                                   |
+| Module                                     | Role |
+| ------------------------------------------ | ---- |
+| `proxy.py`                                 | `relay()` — the whole product in one function: a faithful streaming proxy |
+| `injectors.py`                             | the auth-shape seam: `env`, `cli_auth`, `secret_file`, `oauth` place a secret into a header/query |
+| `oauth.py`                                 | token freshness (single-flight refresh) + the connect flow (consent URL, code exchange) |
+| `health.py`                                | credential health: refresh oauth, probe tools, webhook the owner of anything broken |
+| `convert.py`                               | scaffold a skill directory into a registerable bundle manifest |
+| `api.py`                                   | the API — the only brain; CLI + skill are thin clients over it |
+| `cli.py`                                   | the `treg` CLI |
 | `models.py`                                | SQLModel tables: `Org`, `User`, `Membership`, `Invite`, `Secret`, `Tool`, `Bundle`, `PendingOAuth`, `CallRecord` |
-| `crypto.py` `config.py` `db.py` `audit.py` | Fernet encryption + tokens · settings · async DB · deferred audit writer                                         |
-
+| `crypto.py` `config.py` `db.py` `audit.py` | Fernet encryption + tokens · settings · async DB · deferred audit writer |
 
 **The 4 auth shapes** (per binding `injector`): `env` (plain string / API key) · `secret_file` (a
 JSON token file, pull a field) · `oauth` (a JSON OAuth token, auto-refreshed if refreshable) ·

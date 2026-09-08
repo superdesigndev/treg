@@ -13,8 +13,6 @@ import httpx
 
 from .config import get_settings
 
-RESEND_URL = "https://api.resend.com/emails"
-
 # ---- Monologue-skin email chrome (matches the landing page): charcoal ground, hardware
 # card, cyan accent, mono everywhere. Inline styles + solid fallbacks only (email-safe).
 _MONO = "ui-monospace,Menlo,Consolas,'DM Mono',monospace"
@@ -34,7 +32,7 @@ _WRAP = (
 
 
 async def _send(to: str, subject: str, html: str, text: str) -> bool:
-    """POST one email to Resend. Returns True on 2xx; never raises."""
+    """POST one email to the configured transactional email API. Returns True on 2xx; never raises."""
     s = get_settings()
     if not s.resend_api_key:
         print(f"[email] no TREG_RESEND_API_KEY — skipping send to {to} ({subject!r})")
@@ -43,12 +41,12 @@ async def _send(to: str, subject: str, html: str, text: str) -> bool:
     try:
         async with httpx.AsyncClient(timeout=15) as client:
             r = await client.post(
-                RESEND_URL,
+                s.email_api_url,
                 headers={"Authorization": f"Bearer {s.resend_api_key}", "Content-Type": "application/json"},
                 json=payload,
             )
         if r.status_code >= 300:
-            print(f"[email] Resend {r.status_code} sending to {to}: {r.text[:200]}")
+            print(f"[email] email API {r.status_code} sending to {to}: {r.text[:200]}")
             return False
         return True
     except Exception as e:  # noqa: BLE001 — mail must never break the calling flow
