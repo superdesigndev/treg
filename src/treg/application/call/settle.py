@@ -108,6 +108,10 @@ def _brightdata_record_count(body: bytes) -> int | None:
         return 0
     return None
 
+# Providers whose exact charge rides a response header, in provider credits (fx.yaml rate).
+_CREDIT_HEADERS = {"crustdata": "x-credits-used", "cloro": "x-credits-charged"}
+
+
 def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int | None:
     """The provider's OWN reported charge for this call, in micro-USD, or None when it doesn't say.
 
@@ -147,6 +151,9 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         charge for a 2xx whose payload is an embedded error (verified live 2026-07-30 — see
         docs/context/architecture/catalog.md, "the provider decides what counts as success").
 
+      - crustdata / cloro: REPORTED in credits in a response HEADER (`_CREDIT_HEADERS`), the only
+        place the charge exists — cloro's ChatGPT/Google routes price their include flags and US
+        state targeting per request, so the catalog value is an upper bound and the header is the bill.
       - exa: REPORTED in dollars, `costDollars.total` on every 2xx body (same contract as
         dataforseo's `cost`) — the only place the per-result and per-content riders exist.
       - fiber-ai: REPORTED in credits, `chargeInfo.creditsCharged` on every envelope, honoured
@@ -164,9 +171,14 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         # the catalog base. Aviato simple search earned this rule from two multi-row live probes:
         # enrich=true returned only id rows and charged the same 0.25-credit base both times.
         return _usd_to_micro(float(cost["usd"]))
-    if provider == "crustdata" and headers is not None:
-        raw = headers.get("x-credits-used")
-        rate = catalog_store.load().credit_rates.get("crustdata")
+    header_name = _CREDIT_HEADERS.get(provider)
+    if header_name and headers is not None:
+        # REPORTED in a response HEADER rather than the body: Crustdata's X-Credits-Used and
+        # cloro's X-Credits-Charged are the exact per-call charge (cloro omits the header on its
+        # free routes and on a failed extraction, both of which it does not bill — an absent header
+        # therefore settles as unreported, at the estimate, not at zero).
+        raw = headers.get(header_name)
+        rate = catalog_store.load().credit_rates.get(provider)
         try:
             credits = float(raw)
         except (TypeError, ValueError):

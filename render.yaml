@@ -143,6 +143,8 @@ services:
         sync: false
       - key: TREG_PLATFORM_KEY_EXA                # Exa API key (x-api-key); every response reports costDollars
         sync: false
+      - key: TREG_PLATFORM_KEY_CLORO              # cloro API key (Authorization: Bearer sk_live_…); every billed response reports X-Credits-Charged
+        sync: false
       - key: TREG_PLATFORM_KEY_FIBER_AI           # Fiber AI key (x-api-key)
         sync: false
       - key: TREG_PLATFORM_KEY_TOMBA              # Tomba API key ta_… (X-Tomba-Key)
@@ -350,6 +352,11 @@ services:
           type: web
           name: treg
           envVarName: TREG_PLATFORM_KEY_EXA
+      - key: TREG_PLATFORM_KEY_CLORO
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_CLORO
       - key: TREG_PLATFORM_KEY_FIBER_AI
         fromService:
           type: web

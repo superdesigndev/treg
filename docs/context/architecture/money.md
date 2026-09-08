@@ -438,7 +438,8 @@ Provider-specific calculation stays outside the faithful relay.
 | Evidence | Settlement behavior |
 |---|---|
 | Reported charge | DataForSEO `cost`, ScrapeCreators `credits_charged`, Akta `credits_consumed`, Lusha `billing.creditsCharged`, Exa `costDollars.total`; credit amounts use the catalog FX rate |
-| Crustdata | Read `X-Credits-Used` from response headers using the same FX rate |
+| Crustdata, cloro | Read the charge from a response HEADER (`_CREDIT_HEADERS`: Crustdata `X-Credits-Used`, cloro `X-Credits-Charged`) using the same FX rate. cloro omits the header on its free routes and on a failed extraction, neither of which it bills, so an absent header settles at the estimate, not at zero |
+| cloro reserve | `cost.value` is the full-surface `test_request` price (ChatGPT 9, Google SERP 7); the plain call settles lower from the header (verified live 2026-09-07: reserve 7,200 µ$, settled 5,600, refunded 1,600). The top-level `state` body field is a `cost.modifiers` rider (+2 credits) reserved through the same generic path Aviato uses, which is open to any credit-priced provider with a FX rate |
 | Apollo | Known empty organization results are free |
 | Tomba domain search | Non-empty pages cost ceil(`meta.pageSize` / 10) credits, even when partially filled; empty `data.emails` is free. Reservation uses requested `limit`, default 10. Missing/malformed page evidence falls back to the estimate. Upstream duplicate discounts are not detected |
 | Hunter domain search | One whole search credit per ten returned emails, rounded up; an empty result is free |

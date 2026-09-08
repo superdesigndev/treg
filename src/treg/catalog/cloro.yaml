@@ -23,6 +23,8 @@ endpoints:
       queryParams: {}
     test_request:
       queryParams: {}
+    verified: '2026-09-07'
+    example_response: examples/cloro.account.usage.json
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://cloro.dev/docs/api-reference/endpoint/get-credits
 
@@ -41,6 +43,8 @@ endpoints:
         model: {type: string, required: false, note: "narrow the list to one provider", example: "CHATGPT"}
     test_request:
       queryParams: {model: "CHATGPT"}
+    verified: '2026-09-07'
+    example_response: examples/cloro.account.coverage.countries.json
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://cloro.dev/docs/api-reference/endpoint/countries
 
@@ -59,6 +63,8 @@ endpoints:
         country: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code", example: "US"}
     test_request:
       queryParams: {country: "US"}
+    verified: '2026-09-07'
+    example_response: examples/cloro.account.coverage.regions.json
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://cloro.dev/docs/api-reference/endpoint/states
 
@@ -90,6 +96,8 @@ endpoints:
         country: "US"
         include: {markdown: true, html: true, rawResponse: true, searchQueries: true, ads: true, shopping: true}
       bodyType: json
+    verified: '2026-09-07'
+    example_response: examples/cloro.ai-search.chatgpt.scrape.json
     cost:
       type: per_call
       value: 9
@@ -130,6 +138,8 @@ endpoints:
         country: "US"
         include: {markdown: true, html: true, rawResponse: true}
       bodyType: json
+    verified: '2026-09-07'
+    example_response: examples/cloro.ai-search.copilot.scrape.json
     cost:
       type: per_call
       value: 7
@@ -170,6 +180,8 @@ endpoints:
         country: "US"
         include: {markdown: true, html: true, rawResponse: true}
       bodyType: json
+    verified: '2026-09-07'
+    example_response: examples/cloro.ai-search.perplexity.answer.json
     cost:
       type: per_call
       value: 6
@@ -210,6 +222,8 @@ endpoints:
         country: "US"
         include: {markdown: true, html: true, rawResponse: true}
       bodyType: json
+    verified: '2026-09-07'
+    example_response: examples/cloro.ai-search.gemini.scrape.json
     cost:
       type: per_call
       value: 6
@@ -254,6 +268,8 @@ endpoints:
         gl: "US"
         include: {markdown: true, html: true, googleGoto: true}
       bodyType: json
+    verified: '2026-09-07'
+    example_response: examples/cloro.google.serp.ai_mode.json
     cost:
       type: per_call
       value: 6
@@ -298,6 +314,8 @@ endpoints:
         pages: 1
         include: {html: true, aioverview: true, paaAioverview: true, googleGoto: true}
       bodyType: json
+    verified: '2026-09-07'
+    example_response: examples/cloro.google.serp.organic.json
     cost:
       type: per_call
       value: 7
@@ -339,6 +357,8 @@ endpoints:
         pages: 1
         include: {html: true}
       bodyType: json
+    verified: '2026-09-07'
+    example_response: examples/cloro.google.serp.news.json
     cost:
       type: per_call
       value: 5
@@ -369,6 +389,8 @@ endpoints:
     test_request:
       body: {url: "https://www.google.com/url?q=https://example.com/"}
       bodyType: json
+    verified: '2026-09-07'
+    example_response: examples/cloro.google.redirect.resolve.json
     cost: {type: free, value: 0, currency: USD, unit: call}
     docs_url: https://cloro.dev/docs/api-reference/endpoint/google/resolve-goto
 

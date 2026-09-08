@@ -1,0 +1,114 @@
+{
+  "success": true,
+  "result": {
+    "model": "gpt-5-6",
+    "text": "A stock split is when a company increases the number of its shares by dividing existing shares into smaller pieces, while keeping the overall value of the company the same. FINRA+1\nThink of it like cutting a pizza into more slices:\n\n\nBefore the split: You own 1 share worth $100\n\n\nThe company does a 2-for-1 stock split\n\n\nAfter the split: You own 2 shares worth about $50 each\n\n\nYour total investment value is still about $100 (assuming the market price has not otherwise changed) Investor\n\n\nWhy do c… [1438 chars total]",
+    "sources": [
+      {
+        "position": 1,
+        "label": "Stock Splits | FINRA.org",
+        "url": "https://www.finra.org/investors/investing/investment-products/stocks/stock-splits?utm_source=chatgpt.com",
+        "description": "",
+        "footnote": false
+      },
+      {
+        "position": 2,
+        "label": "Stock Split | Investor.gov",
+        "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary/stock-split?utm_source=chatgpt.com",
+        "description": "",
+        "footnote": false
+      },
+      "… 32 more item(s) truncated"
+    ],
+    "entities": [],
+    "map": [],
+    "citationPills": [
+      {
+        "url": "https://www.finra.org/investors/investing/investment-products/stocks/stock-splits?utm_source=chatgpt.com",
+        "label": "Stock Splits | FINRA.org",
+        "domain": "finra.org",
+        "type": "groupedWebpage",
+        "citationPillId": 0,
+        "position": 1
+      },
+      {
+        "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary/stock-split?utm_source=chatgpt.com",
+        "label": "Stock Split | Investor.gov",
+        "domain": "investor.gov",
+        "type": "groupedWebpage",
+        "citationPillId": 0,
+        "position": 2
+      },
+      "… 6 more item(s) truncated"
+    ],
+    "shoppingCards": [],
+    "inlineProducts": [],
+    "ads": [],
+    "markdown": "A **stock split** is when a company increases the number of its shares by dividing existing shares into smaller pieces, while keeping the overall value of the company the same. [Stock Splits | FINRA.org](https://www.finra.org/investors/investing/investment-products/stocks/stock-splits?utm_source=chatgpt.com)[Stock Split | Investor.gov](https://www.investor.gov/introduction-investing/investing-basics/glossary/stock-split?utm_source=chatgpt.com)\n\nThink of it like cutting a pizza into more slices:\n… [2572 chars total]",
+    "searchQueries": [
+      "what is a stock split definition"
+    ],
+    "mapSearchQueries": [],
+    "rawResponse": [
+      {
+        "type": "resume_conversation_token",
+        "kind": "topic",
+        "token": "eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb25kdWl0X3V1aWQiOiJkMGFkMDdhOWQ4ZmM0NDQ4YjBlZDA5YmNiOWI4YTJmYiIsImNvbmR1aXRfbG9jYXRpb24iOiIxMC4xMjguMjExLjE1Mzo4MzAzIiwiY2x1c3RlciI6InVuaWZpZWQtNDEiLCJpYXQiOjE3ODg3NjIwMjcsImV4cCI6MTc4ODc3NjQyNywidHVybl90b3BpY19pZCI6ImNvbnZlcnNhdGlvbi10dXJuLWQ3MThhYjBmLWQ0YzUtNDc5Yi1iYzI1LTFiYWUyZDZiZGQ2YSJ9.s_jrKeQGnR6leB48nTSaKELpTl3pInRvKJWSjyL56dNgWA4NtskIgUcbliNIygDv4amv8D86gnNSHH7CToiKRQ",
+        "conversation_id": "6a9e57aa-3778-83ea-bb52-ba40f10197f8"
+      },
+      {
+        "p": "",
+        "o": "add",
+        "v": {
+          "message": {
+            "id": "0cf31d0d-3d45-4bb2-8248-fe201c8fa7d8",
+            "author": {
+              "role": "user",
+              "name": null,
+              "metadata": {}
+            },
+            "create_time": 1788762025.898,
+            "update_time": null,
+            "content": {
+              "content_type": "text",
+              "parts": [
+                "what is a stock split@Web search "
+              ]
+            },
+            "status": "finished_successfully",
+            "end_turn": null,
+            "weight": 1,
+            "metadata": {
+              "system_hints": [
+                "search"
+              ],
+              "serialization_metadata": {
+                "custom_symbol_offsets": [
+                  {
+                    "id": "search",
+                    "symbol": "ecosystemMention",
+                    "startIndex": 21,
+                    "endIndex": 32
+                  }
+                ]
+              },
+              "request_id": "565562c0-4f75-41fd-9098-d7ae92045449",
+              "message_source": null,
+              "turn_exchange_id": "d718ab0f-d4c5-479b-bc25-1bae2d6bdd6a",
+              "working_turn_id": "d718ab0f-d4c5-479b-bc25-1bae2d6bdd6a",
+              "model_switcher_deny": []
+            },
+            "recipient": "all",
+            "channel": null
+          },
+          "conversation_id": "6a9e57aa-3778-83ea-bb52-ba40f10197f8",
+          "error": null,
+          "error_code": null
+        },
+        "c": 0
+      },
+      "… 37 more item(s) truncated"
+    ],
+    "html": "https://cdn.cloro.dev/results/581ed74b-653b-4f6a-a2e1-b76502a6c53c/page-1.html"
+  }
+}

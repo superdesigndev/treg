@@ -140,7 +140,10 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
 - **`signatures.py`** — the signature table: what a provider's error body means for OUR account
   (`balance` / `quota` → exhausted; `burst` → smoothed, never exhausted; `unknown` 429 → logged).
   Lusha's "Daily" 429 and Hunter's "per billing period" 429 are quota exhaustion wearing a 429;
-  a `retry-after ≤ 60 s` is a burst. Apollo says "out of credits" with a **422** ("Insufficient
+  a `retry-after ≤ 60 s` is a burst. cloro says it with a **403** `error.code INSUFFICIENT_CREDITS`
+  (from its OpenAPI spec, 2026-09-07 — documented, not yet observed); its 429s are concurrency /
+  rate bursts with `X-RateLimit-*` headers and the allowance resets monthly at the
+  `cycleResetsAt` that `GET /v1/credits` reports. Apollo says "out of credits" with a **422** ("Insufficient
   credits"), recorded after 2026-09-01: eleven hours of `people.enrich` 422s with overflow on and
   not one attempt, because no row matched. Moz says it with a **403** `{"issue": "insufficient-quota"}`
   (`quota`: the row allowance resets on Moz's billing day, which the body does not name → default

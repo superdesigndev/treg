@@ -1024,6 +1024,54 @@ def test_exa_catalog_is_platform_priced():
     assert all(cat.cost_view(ep["cost"], "exa")["usd"] > 0 for ep in rows)
 
 
+def test_cloro_catalog_is_platform_priced():
+    """cloro prices in credits with a fx.yaml rate, so every curated route converts and is
+    eligible — except the own-account balance read, which tier 4 never serves."""
+    cat = A.catalog_store.load()
+    rows = cat.for_provider("cloro")
+    assert len(rows) == 11
+    own = [ep for ep in rows if ep.get("scope") == "own_account"]
+    assert [ep["id"] for ep in own] == ["cloro.account.usage"]
+    served = [ep for ep in rows if ep.get("scope") != "own_account"]
+    assert all(cat.platform_eligible(ep) for ep in served)
+    # 9 credits × $0.0008 — the full-surface ChatGPT call, the dearest route in the file
+    assert cat.cost_view(cat.by_id["cloro.ai-search.chatgpt.scrape"]["cost"], "cloro")["usd"] == 0.0072
+    assert cat.cost_view(cat.by_id["cloro.google.serp.news"]["cost"], "cloro")["usd"] == 0.004
+
+
+def test_cloro_state_targeting_rider_is_reserved():
+    """`state` is a top-level body field priced by a `cost.modifiers` rule (+2 credits on the four
+    engines that support it). The reserve must carry it; before the modifiers path was opened to
+    providers other than Aviato it silently did not (found reviewing #349)."""
+    cat = A.catalog_store.load()
+
+    def price(endpoint_id, body):
+        ep = cat.by_id[endpoint_id]
+        cv = cat.cost_view(ep["cost"], "cloro")
+        return call_resolution._marketplace_pricing("cloro", endpoint_id, cv, {}, json.dumps(body).encode())
+
+    plain = {"prompt": "what is a stock split", "country": "US"}
+    assert price("cloro.ai-search.perplexity.answer", plain) == (4_800, 0)            # 6 credits
+    assert price("cloro.ai-search.perplexity.answer", {**plain, "state": "CA"}) == (6_400, 0)  # 8
+    assert price("cloro.ai-search.chatgpt.scrape", {**plain, "state": "CA"}) == (8_800, 0)     # 11
+    # AI Mode has no state rider and no modifiers block: the plain estimate, untouched
+    assert price("cloro.google.serp.ai_mode", {"prompt": "x", "gl": "US"}) == (4_800, 0)
+
+
+def test_cloro_settles_from_the_response_credit_header():
+    """cloro's body has no billing field; X-Credits-Charged is the exact call charge, and it is
+    absent on the free routes and on a failed extraction (neither is billed) — which settles as
+    unreported rather than as zero."""
+    mk = _mk("cloro", endpoint_id="cloro.ai-search.chatgpt.scrape")
+    assert call_settle._observed_cost_micro(
+        mk, b'{"success": true}', httpx.Headers({"X-Credits-Charged": "7", "X-Credits-Remaining": "37493"})) == 5_600
+    assert call_settle._observed_cost_micro(
+        mk, b'{"success": true}', httpx.Headers({"X-Credits-Charged": "9"})) == 7_200
+    assert call_settle._observed_cost_micro(mk, b'{"success": true}', httpx.Headers()) is None
+    assert call_settle._observed_cost_micro(
+        mk, b'{"success": true}', httpx.Headers({"X-Credits-Charged": "?"})) is None
+
+
 def test_brightdata_estimate_counts_the_body_array():
     """Bright Data bills per record delivered and takes its targets as a bare JSON array, so the
     reserve has to scale with the array's LENGTH — there is no limit param in the query to read."""

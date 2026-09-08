@@ -159,6 +159,7 @@ CATALOG: list[dict] = [
     {"provider": "Tavily",      "tokens": ["TAVILY"],              "base_url": "https://api.tavily.com",                          "auth": {"shape": "bearer"}},
     {"provider": "Firecrawl",   "tokens": ["FIRECRAWL"],           "base_url": "https://api.firecrawl.dev/v1",                    "auth": {"shape": "bearer"}},
     {"provider": "Exa",         "tokens": ["EXA"],                 "base_url": "https://api.exa.ai",                              "auth": {"shape": "api_key_header", "header": "x-api-key"}},
+    {"provider": "cloro",       "tokens": ["CLORO"],               "base_url": "https://api.cloro.dev",                           "auth": {"shape": "bearer"}, "probe": "v1/credits"},
     {"provider": "Serper",      "tokens": ["SERPER"],              "base_url": "https://google.serper.dev",                       "auth": {"shape": "api_key_header", "header": "X-API-KEY"}},
     {"provider": "SerpAPI",     "tokens": ["SERPAPI"],             "base_url": "https://serpapi.com",                             "auth": {"shape": "query", "param": "api_key"}},
     {"provider": "Brave Search","tokens": ["BRAVE"],               "base_url": "https://api.search.brave.com/res/v1",             "auth": {"shape": "api_key_header", "header": "X-Subscription-Token"}},

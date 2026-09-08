@@ -18,6 +18,7 @@ sources:
   - scripts/catalog_validate.py
   - src/treg/catalog/aliases.yaml
   - src/treg/catalog/fx.yaml
+  - src/treg/catalog/cloro.yaml
   - src/treg/catalog/aviato.yaml
   - src/treg/catalog/crustdata.yaml
   - src/treg/catalog/examples/aviato.companies.acquisitions.json
@@ -147,7 +148,14 @@ buffering, callback receiver, or proxy branch is added. Crustdata's required
 platform-key call.
 
 Variable prices use the existing reserve→settle path. Crustdata reserves the documented maximum
-for the requested record count and settles the exact `X-Credits-Used` response header. Aviato's
+for the requested record count and settles the exact `X-Credits-Used` response header. cloro
+(2026-09-07) is the second header-reporting provider: every billed response carries
+`X-Credits-Charged`, the catalog value is the price of the full-surface `test_request` (an upper
+bound — the ChatGPT ads/shopping include family and the Google AI Overview flags are +2 each), the
+top-level `state` body field is a generic `cost.modifiers` rider, and the header settles the exact
+charge. The header is absent on cloro's free routes and on a failed extraction, which it does not
+bill, so an absent header settles as unreported rather than as zero. The `cost.modifiers` reserve
+path is open to any credit-priced provider with a fx.yaml rate, not only Aviato. Aviato's
 preview calls reserve zero; observed email/rescrape add-ons are declared in each endpoint's generic
 `cost.modifiers` map and derived from request flags; synchronous bulk
 calls reserve per lookup and settle per returned successful record. Simple people search reserves
@@ -1600,6 +1608,7 @@ long strings clipped, ~10 KB cap) by the verifier, then human-reviewed for PII b
 |---|---|---|---|
 | dataforseo | google, web | Basic (login:password base64) | SEO: web.backlinks.*, web.url.metrics |
 | exa (2026-08-27) | web, people, companies | `x-api-key` header; dollar-priced, settles from `costDollars.total` | Search: web.search*, web.contents.get, web.similar, web.answer; Enrichment: people.search, companies.search |
+| cloro (2026-09-07) | ai-search, google | `Authorization: Bearer sk_live_…`; credit-priced ($0.0008, Lite tier), settles from `X-Credits-Charged` | AEO: ai-search.chatgpt.scrape, ai-search.copilot.scrape (new), ai-search.perplexity.answer, ai-search.gemini.scrape; SERP: google.serp.organic, google.serp.news, google.serp.ai_mode (overlaps dataforseo/serpapi extended) |
 | moz | web | Basic (AccessID:SecretKey base64), POST JSON API | SEO: web.backlinks.*, web.url.metrics |
 | tikhub | tiktok (+instagram, youtube, x) | Bearer key | Social: tiktok.* |
 | justoneapi | tiktok (+instagram, xiaohongshu, weibo) | `?token=` query param | Social: tiktok.* |

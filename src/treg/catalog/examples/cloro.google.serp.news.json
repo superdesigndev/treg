@@ -1,0 +1,31 @@
+{
+  "success": true,
+  "result": {
+    "newsResults": [
+      {
+        "position": 1,
+        "title": "September Fed decision is now a coin flip as rate hike odds increase post Warsh",
+        "link": "https://www.cnbc.com/2026/08/28/-september-fed-decision-now-a-coin-flip-as-rate-hike-odds-increase.html",
+        "snippet": "Odds that the Federal Reserve will keep rates steady at its September meeting have declined in response to Kevin Warsh's keynote speech at...",
+        "source": "CNBC",
+        "date": "1 week ago",
+        "page": 1,
+        "thumbnail": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAdHx8kKDQsJCYxJx8fLT0tMTU3Ojo6Iys/RD84QzQ5OjcBCgoKDQwNGg8PGjclHyU3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N//AABEIAFwAXAMBIgACEQEDEQH/xAAbAAACAwEBAQAAAAAAAAAAAAADBAUGBwIBAP/EAD8QAAIBAwIDBAYHBgUFAAAAAAECAwAEEQUhEjFBBhNRcQciYYGRoRQjMkKxwdEVYnKi8PEkUnOS4RYlMzRD/8QAGAEAAwEBAAAAAAAAAAAAAAAAAgMEAQD/xAAhEQACAgIBBQEBAAAAAAAAAAAAAQIRAyESBDEyQnFBE//aAAwDAQACEQMRAD8AzJF5UXGK5XpXfM1LZbR8v… [3239 chars total]"
+      },
+      {
+        "position": 2,
+        "title": "Trump turns up the heat on Warsh as Fed rate hike looms",
+        "link": "https://www.cnbc.com/2026/09/05/trump-warsh-fed-september-rate-hike.html",
+        "snippet": "Ten days ahead of the next Federal Reserve meeting, the Trump administration looks to be in a full-court press to halt a rate hike in its...",
+        "source": "CNBC",
+        "date": "1 day ago",
+        "page": 1,
+        "thumbnail": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAkGBwgHBgkIBwgKCgkLDRYPDQwMDRsUFRAWIB0iIiAdHx8kKDQsJCYxJx8fLT0tMTU3Ojo6Iys/RD84QzQ5OjcBCgoKDQwNGg8PGjclHyU3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3Nzc3N//AABEIAFwAXAMBIgACEQEDEQH/xAAbAAACAwEBAQAAAAAAAAAAAAAFBgMEBwIAAf/EADkQAAEDAwIDBgQEBAcBAAAAAAECAwQABRESIQYxQRMiUWFxgQcUMpFCobHBIyRS0SYzNGJysuEV/8QAGgEAAwADAQAAAAAAAAAAAAAAAwQFAAECBv/EACURAAICAgICAgIDAQAAAAAAAAECAAMEERIhEzFBUSJhFDLwBf/aAAwDAQACEQMRAD8AZYS8rdyTjPSouJ1hMJtRI… [3827 chars total]"
+      },
+      "… 8 more item(s) truncated"
+    ],
+    "html": [
+      "https://cdn.cloro.dev/results/c03e2d93-9e12-42e3-b179-3f4f493ddc63/page-1.html"
+    ]
+  }
+}

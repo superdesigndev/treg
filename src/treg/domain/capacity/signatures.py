@@ -48,6 +48,12 @@ _TABLE: list[tuple[str, int, str, str]] = [
     # unrecognised on 2026-09-04 (nothing here matched a 403, and "quota" alone is not a tripwire
     # word). The period resets on Moz's billing day, which the answer does not name.
     ("moz", 403, r"insufficient-quota", "quota"),
+    # cloro: a spent credit allowance is a 403 ForbiddenError with `error.code: "INSUFFICIENT_CREDITS"`
+    # (OpenAPI 3.1 spec, 2026-09-07 — documented, not yet observed: the review account had 37,500
+    # credits). Its 429s are CONCURRENT_LIMIT_EXCEEDED / RATE_LIMIT_EXCEEDED bursts with
+    # X-RateLimit-* headers, never a period quota; the plan allowance resets monthly at
+    # `cycleResetsAt` from GET /v1/credits.
+    ("cloro", 403, r"insufficient_credits", "balance"),
     ("*", 402, r"", "balance"),
 ]
 

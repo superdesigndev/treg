@@ -571,10 +571,12 @@ def _marketplace_pricing(
             "domains", "names", "professional_network_profile_urls", "business_emails"
         ))
         return _usd_to_micro(float(cost.get("usd") or 0) * count), unit
-    if provider != "aviato":
+    if provider != "aviato" and not cost.get("modifiers"):
         return estimate, unit
 
-    rate = catalog_store.load().credit_rates.get("aviato")
+    # Credit-priced providers with a `cost.modifiers` block (Aviato, cloro): the request decides
+    # the price, so the reserve is base + every triggered rider, converted at the provider's rate.
+    rate = catalog_store.load().credit_rates.get(provider)
     if not rate:
         return estimate, unit
     def credit_micro(credits):
