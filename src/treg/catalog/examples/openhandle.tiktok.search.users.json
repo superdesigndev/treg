@@ -1,0 +1,68 @@
+{
+  "platform": "tiktok",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T17:42:51.352584541Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "7664638705177150477",
+      "handle": "nasa",
+      "displayName": "NASA",
+      "bio": "",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A9wN-SvuYZOeYOLbzWyjq73UO-m9pUuKk8K_q6JYd6sut3O2AWvNDBuH2ir5-IDGitbAiIVHsDjtXRhy3mvOnnctGCTmrF8li3Kg-h1m4OWs6RHUjvCfCqeSpaDmG_lddoo40aBjmCTVzIp8ZhDV99CKkphheHk",
+        "expiresAt": "2026-09-06T17:00:00Z"
+      },
+      "externalUrl": null,
+      "isVerified": true,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": 1551170,
+        "following": 23,
+        "posts": 40
+      },
+      "extended": {
+        "verificationType": 0,
+        "verificationLabel": "institution account",
+        "isProAccount": null,
+        "hasCommerce": false
+      }
+    },
+    {
+      "id": "6821202900091470853",
+      "handle": "spacedotcom",
+      "displayName": "Space.com",
+      "bio": "",
+      "avatar": {
+        "url": "https://media.openhandle.dev/AyyZpYqR7jfiNyJ0C9CnJWfQXcDcvP4NItM20GRs6OPUBMFAmOI9tGhAQTSs_cXfu8aB4jPz1mhvrYa0XalXpxYvmTr-0JLf_7ENDtXfn_Ie5Lf9xhSWiyAAE98Y97euLaJ8Ifb5bLAw2Ql8CT4hUe42Vsjnpl0",
+        "expiresAt": "2026-09-06T17:00:00Z"
+      },
+      "externalUrl": null,
+      "isVerified": true,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": 165153,
+        "following": 194,
+        "posts": 672
+      },
+      "extended": {
+        "verificationType": 0,
+        "verificationLabel": "verified account",
+        "isProAccount": null,
+        "hasCommerce": false
+      }
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AW-jI3lwIX06lXAkSQp8fedkQhfcxlS_agG95I4ebs1Q-hvSDBHpOdnR9dKCEKNVuIwZGFVg2W6mfLFAnFzN7My2rpWHEjuF9iB6hIlvpKaWRs2d4yoxitYBv83hyksvoqpLYVYYk-1E9etvymLEVgxvNdcT7ueoNNB5jeSagGSqvIYUYor0jPjg7gagbjvUrZbmqUD74Iv6qKT_lPMwBA60ueYJxwLg13bJgVZZE26JhPoF-fXKava5qrPGv2JIwzO6HyXp"
+    }
+  }
+}

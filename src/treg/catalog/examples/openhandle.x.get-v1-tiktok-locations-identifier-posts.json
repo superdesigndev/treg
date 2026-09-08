@@ -1,0 +1,54 @@
+{
+  "platform": "tiktok",
+  "resource": "post",
+  "capturedAt": "2026-09-05T17:45:21.058663466Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "7680439279939587349",
+      "url": "https://www.tiktok.com/@christianprogressivecol3/video/7680439279939587349",
+      "type": "video",
+      "format": "post",
+      "title": null,
+      "caption": "Hello New York City !🇺🇸@Rethabile Mokgatla @𝕂𝕆ℝ𝕋𝔼𝕊𝕊⭐️ #cpcstars #nyc #newyork ",
+      "publishedAt": "2026-09-01T05:47:09Z",
+      "author": {
+        "id": "7261835893013480453",
+        "handle": "christianprogressivecol3",
+        "displayName": "Christian Progressive College",
+        "avatar": "… {2 field(s) truncated}",
+        "isVerified": false
+      },
+      "media": [
+        "… {7 field(s) truncated}"
+      ],
+      "hashtags": [
+        "cpcstars",
+        "… 2 more item(s) truncated"
+      ],
+      "mentions": [
+        "rethabile",
+        "… 1 more item(s) truncated"
+      ],
+      "commentsDisabled": false,
+      "metrics": {
+        "views": 3630741,
+        "likes": 1002220,
+        "comments": 4835,
+        "shares": 8655,
+        "reposts": 0,
+        "saves": 39546,
+        "downloads": 13470
+      },
+      "taggedUsers": null,
+      "collaborators": null,
+      "…": "6 more field(s) truncated"
+    },
+    "… 9 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AVP2r7loj_PYn1ntaaxvvRms-R2rQ9aRljQe9VvGDr0kokHBk2M8XrgEFdWl1ecHglDWVeeYgo3QQDvaXgjxDMZWXBZ1LjuxlEyXP2lvE05GIEmSY-6-QwviksEvkthoeOHz_PUhSThFO6jivT7o0Uw4trCOsc1XjnS_i9t1iIwUFm9YgT5UxX_-2zJnZJ18y_VBG5qz… [263 chars]"
+    }
+  }
+}

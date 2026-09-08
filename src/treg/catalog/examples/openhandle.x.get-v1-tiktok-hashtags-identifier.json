@@ -1,0 +1,16 @@
+{
+  "platform": "tiktok",
+  "resource": "hashtag",
+  "capturedAt": "2026-09-05T17:43:28.414657603Z",
+  "source": "cache",
+  "data": {
+    "id": "229207",
+    "name": "fyp",
+    "description": null,
+    "image": null,
+    "metrics": {
+      "posts": 675224010,
+      "views": 127372444838427
+    }
+  }
+}

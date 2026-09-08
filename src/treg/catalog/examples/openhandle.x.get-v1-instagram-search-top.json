@@ -1,0 +1,38 @@
+{
+  "platform": "instagram",
+  "resource": "entity",
+  "capturedAt": "2026-09-05T16:57:52.5231185Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "3957119362626986109_2278169415",
+      "type": "1",
+      "title": "The last one was hard 😴",
+      "handle": "mrbeast",
+      "url": "https://www.instagram.com/reel/Dbqgxg3M6B9/",
+      "image": {
+        "url": "https://media.openhandle.dev/AxWguGnSW0OgaMNeVSsPkljjWc9-1ieiBtDwkZu8eK-1xVdSW92dspt6oeZweRUW-Q5uVTjfFwiWLFVjcBFlCxVyOimPKGiLs69MWrVr5AFs9rAxW2i00CoGGAbzz4MXBD1mRDH6SHT0v9JbqlpAVg"
+      },
+      "author": {
+        "id": "2278169415",
+        "name": "MrBeast",
+        "handle": "mrbeast",
+        "image": {
+          "url": "https://media.openhandle.dev/AxWguGnSW0OgaMNeVSsPkljjWc9-1ieiBtDwkZu8eK-1xVdSW92dspt6oeZweRUW-Q5uVTjfFwiWLFVjcBFlCxVyOimPKGiLs69MWrVr5AFs9rAxW2i00CoGGAbzz4MXBD1mRDH6SHT0v9JbqlpAVg"
+        }
+      },
+      "metrics": {
+        "followers": 89247479,
+        "views": 38024952,
+        "likes": 751867,
+        "comments": 23255
+      }
+    },
+    "… 40 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AfGqhGct7fE1l7SZ1SjU9oQS8yqFVgsl3f9f4pja3wXSVF7qtoPVafs8RvVFFG_OIrOrn3v9OcfNHOvvi6afL2LlzyBBiWFJoj0xKSILgwsvAEHC-q8gfTF07MXRU_ajLwVqUF8lrMrnF56kmHUpSHnld0lKIgJ9zmc_Qly3v4GOAuITo6ZR1IjGUJlWKkgUDe9xPRsY… [375 chars]"
+    }
+  }
+}

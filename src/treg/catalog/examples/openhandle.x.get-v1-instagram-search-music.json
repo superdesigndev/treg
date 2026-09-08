@@ -1,0 +1,36 @@
+{
+  "platform": "instagram",
+  "resource": "music",
+  "capturedAt": "2026-09-05T16:57:44.73407048Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "1108861913466796",
+      "title": "instagram",
+      "artist": {
+        "id": null,
+        "name": "DEAN"
+      },
+      "album": null,
+      "duration": 255.728,
+      "isOriginal": null,
+      "isExplicit": false,
+      "isCommercial": null,
+      "artwork": {
+        "url": "https://media.openhandle.dev/A0FeQUQurTrBV2NTwBMjfobHSFrlIAJoswWalv89JopO4mBcdh-6rH2-9TBLuE8qpPp7_jYlzOD6m_6NGVrx8ODnndCxpSRrerp9TlnL70lY_SFqK_Um46bMV3k8k3gLlUqW3zanVpuqu8vWacCxBw"
+      },
+      "audio": {
+        "url": "https://media.openhandle.dev/A0rPnSn5PlZRMVq6GV-c5HHWfI5-7oLyzxe_osYvxPdnfCkuqEMXVYVZndCoC3rdsrl9DyW9FRyUp02KfF5kYL0mP5jCY2UraZxq8olN3LBLQjennUH_gli31-MEevTBCz4r7Hbo4IqQdYUPti_5Jw"
+      },
+      "metrics": {
+        "posts": null
+      }
+    },
+    "… 9 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AXjJmrm5ExWLyhoZp6--i06mlbUOE6EkE0W03dXOwJGfnY2hD4Xpf1xCFq92SXjJMnc4KarVxcOrwXpx4OX8ZevN7GpilFlLqbHJTgqmZThlCs7RBxIwuC4ExrrTRvcx58vuL5E5NFqLz8tWI365utRMeYmXKIjbQwqAHvxt1d3-ZPaRYi41mOF8AjGfUxh1FG-cws-V… [282 chars]"
+    }
+  }
+}

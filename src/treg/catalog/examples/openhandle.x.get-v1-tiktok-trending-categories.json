@@ -1,0 +1,23 @@
+{
+  "platform": "tiktok",
+  "resource": "category",
+  "capturedAt": "2026-09-05T17:50:08.974617381Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "1665458567915526",
+      "name": "nychub",
+      "description": null,
+      "metrics": {
+        "posts": 9,
+        "views": 8759
+      }
+    },
+    "… 9 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AVO1UEOkAW5JN1vPkfDv9wYy23a9w198HiBFzyrZA6QTx3UbxKSvO6pUJB-_s7G76Dh6JYgmdlVoC1rUsadxukIU1iaWWiHrinI4qN7w95NoY_zHKlKgJHp-bhs8O9SjyX5f53tbYed6nFwn3O7WHSCERGnqcfTJVQIwXL_APAHMzCPx16u4meUJJyye1-jk2N7UpaPu… [283 chars]"
+    }
+  }
+}

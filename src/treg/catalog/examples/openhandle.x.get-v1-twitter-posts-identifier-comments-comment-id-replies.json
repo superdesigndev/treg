@@ -1,0 +1,49 @@
+{
+  "platform": "twitter",
+  "resource": "comment",
+  "capturedAt": "2026-09-05T17:50:45.073138639Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "1808168603721650364",
+      "text": "The New York Times is attacking *your* freedom of speech! https://t.co/TRIa13TWdY",
+      "publishedAt": "2024-07-02T15:59:23Z",
+      "author": {
+        "id": "44196397",
+        "handle": "elonmusk",
+        "displayName": "Elon Musk",
+        "avatar": {
+          "url": "https://media.openhandle.dev/Az-RC-__8ZEX7QiG-gY4z8t8c1TP0IdpSJoQpPWKRPCzvgDRGncir6Y6TBhEht5nLVBbL4N0sJWiwnH6x_DsoMhRIs4hLozQd_s92eJ8ihTwmeRZhUG07HkrktwBGgFUbf9dkniqpSpadJHOWC4"
+        },
+        "isVerified": false
+      },
+      "metrics": {
+        "likes": 283680,
+        "replies": 18958,
+        "views": null,
+        "reposts": 52443,
+        "quotes": 3896,
+        "bookmarks": 6608
+      },
+      "parentId": "1808170286425964893",
+      "threadRootId": "1808168603721650364",
+      "isPinned": null,
+      "pinnedPosition": null,
+      "isLikedByPostAuthor": null,
+      "media": [
+        {
+          "type": "image",
+          "url": "https://media.openhandle.dev/AyrcSZjsWCp-oZ3jNaZa3AHFpXmk4JJiNzFxVdjgJb5SDk-wPnGcy8CfJbpZHH_l8vEDoPZ6SgJWiukuvsULFDLdLUWR2Q6UTAnDeMXrTfxUhl_dr2Jkj5DyPLXlqOxKJpcHlK7Z9Nj6Gk9sgyg",
+          "width": 712,
+          "height": 355
+        }
+      ]
+    },
+    "… 36 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AccpgOQVgu79rAtCzMVAzfbS62_EqcHCyyMH0Uzu9Qj4OScMrR1rMXyjqva79lRGBbzcF7isoq2UPRRPRwD57FUrU4_ncOFVegJf32_TZkjaLfwjrEeagJnvFzRucRMdQOwIl3QduD6ocb0S_v99UmuyGc-b_OrfXtjDEoThFNyW60g5KctZHmQqWcazdp2UTiyCh0y0… [1106 chars]"
+    }
+  }
+}

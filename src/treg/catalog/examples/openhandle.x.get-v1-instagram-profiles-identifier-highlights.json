@@ -1,0 +1,28 @@
+{
+  "platform": "instagram",
+  "resource": "entity",
+  "capturedAt": "2026-09-05T16:57:03.573271079Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "highlight:18142207969557132",
+      "title": "creatives",
+      "owner": {
+        "id": "25025320",
+        "name": "Instagram",
+        "handle": "instagram",
+        "image": {
+          "url": "https://media.openhandle.dev/A3c2Boqr4kH215x_Zot43HtTjRbnKujGHqwutfrARef0hYZeifWE65U3vzjIl1za-eZ9Rv9-XTpVaxIx0mYPBW7NVO4TC8fSnQSSdIBtnZJzRzTayg4ISyuzPdSbWYUU46IkId_NcMesCdDmZwCpMQ"
+        }
+      },
+      "itemCount": 51,
+      "items": []
+    },
+    "… 6 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

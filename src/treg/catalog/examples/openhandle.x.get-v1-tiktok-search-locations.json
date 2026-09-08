@@ -1,0 +1,27 @@
+{
+  "platform": "tiktok",
+  "resource": "location",
+  "capturedAt": "2026-09-05T17:48:43.363898859Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "42203860807789782",
+      "name": "TIKTOK直播运营基地(洛杉矶)",
+      "category": null,
+      "address": "717 S Palm Ave, Alhambra, CA 91803, USA",
+      "city": null,
+      "region": null,
+      "countryCode": "US",
+      "postalCode": null,
+      "latitude": 34.082306,
+      "longitude": -118.146722,
+      "website": null,
+      "phone": null
+    }
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

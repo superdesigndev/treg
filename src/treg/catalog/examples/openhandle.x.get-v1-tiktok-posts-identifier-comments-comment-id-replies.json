@@ -1,0 +1,43 @@
+{
+  "platform": "tiktok",
+  "resource": "comment",
+  "capturedAt": "2026-09-05T17:45:47.01251062Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "7619413824194298655",
+      "text": "She looks the same",
+      "publishedAt": "2026-03-20T18:57:36Z",
+      "author": {
+        "id": "7025625877779481605",
+        "handle": "lolatheexploreer",
+        "displayName": "lolatheexploreer",
+        "avatar": {
+          "url": "https://media.openhandle.dev/A9h-ddOCfv9nMObgVCmIhAAppUs_xKuybVBLq1CURvjovh6SFUaWaOwETOJOe3Kmrq49uWx9K8YeLYbTehthE9S6Bj0TbOo1JXmJZYM9S2U9l4l3FPTK38QQfTTHXih5YYsbG7v01Ds3uvmTHg",
+          "expiresAt": "2026-09-06T17:00:00Z"
+        },
+        "isVerified": false
+      },
+      "metrics": {
+        "likes": 48,
+        "replies": null,
+        "views": null,
+        "reposts": null,
+        "quotes": null,
+        "bookmarks": null
+      },
+      "parentId": "7606779946837164820",
+      "threadRootId": "7606779946837164820",
+      "isPinned": false,
+      "pinnedPosition": 0,
+      "isLikedByPostAuthor": false,
+      "media": []
+    },
+    "… 6 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

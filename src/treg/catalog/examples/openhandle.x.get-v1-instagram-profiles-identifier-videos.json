@@ -1,0 +1,51 @@
+{
+  "platform": "instagram",
+  "resource": "post",
+  "capturedAt": "2026-09-05T16:57:41.56227502Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "3978880184454783667_25025320",
+      "url": "https://www.instagram.com/reel/Dc30nJeRKKz/",
+      "type": "video",
+      "format": "reel",
+      "title": null,
+      "caption": "that’s his spa now 🚰\n\n#InTheMoment\n \nVideo by @misterbeanito",
+      "publishedAt": "2026-09-04T16:32:46Z",
+      "author": {
+        "id": "25025320",
+        "handle": "instagram",
+        "displayName": "Instagram",
+        "avatar": "… {1 field(s) truncated}",
+        "isVerified": true
+      },
+      "media": [
+        "… {7 field(s) truncated}"
+      ],
+      "hashtags": [
+        "inthemoment"
+      ],
+      "mentions": [
+        "misterbeanito"
+      ],
+      "commentsDisabled": null,
+      "shortcode": "Dc30nJeRKKz",
+      "metrics": {
+        "views": 75719714,
+        "likes": 628832,
+        "comments": 8046,
+        "shares": 118039,
+        "reposts": null,
+        "saves": null
+      },
+      "taggedUsers": null,
+      "…": "7 more field(s) truncated"
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AT1feDBG3T8GL6lTCb7nbXTG1boIaTEWh3_c968VtUYl9gN_kVV1GnU9HSXQ-7E-gv3zIoLiMKz1c5FXavWvM6AlwRBXmKVBqBUh0i1izP-uxhqO8pa45tsNzr1gvvqZCGQBG6f_o9N7OzwuR7GznOyYyXTL9mhjLAHfEekPI5qpL-dk_9A5vcdCUNealbt20Yitw433… [426 chars]"
+    }
+  }
+}

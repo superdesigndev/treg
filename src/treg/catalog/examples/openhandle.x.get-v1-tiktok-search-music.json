@@ -1,0 +1,36 @@
+{
+  "platform": "tiktok",
+  "resource": "music",
+  "capturedAt": "2026-09-05T17:48:44.58594626Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "6584230890300246789",
+      "title": "TiK ToK(#1)",
+      "artist": {
+        "id": null,
+        "name": "Kesha"
+      },
+      "album": null,
+      "duration": 31,
+      "isOriginal": false,
+      "isExplicit": null,
+      "isCommercial": null,
+      "artwork": {
+        "url": "https://media.openhandle.dev/A3SQYYKlbHGg-n0kpNNoXzdL33Y26uCq-Hj5QEa9qNtDb0eaF6ItqYF3rpmyAvcpwqWIPmjZsAW4RME736Rbu0X2deRYZMR55XEs178FHcTjBZj3fP971mlaRRPHITo592zsXxVWihw_cBI5Gg"
+      },
+      "audio": {
+        "url": "https://media.openhandle.dev/A6p2jF-qOR1Qnv4Ks7ektmEx4mJ3lQb1bF-sbsq4qkF7-A4B4m-k0GNUusOauFDXhGSgwWoOTUKIMtzSO4sXvDMKKfy03a2a_xCbpDkLi_sl5ABCfQqj2vY5eWvhg0f1iOhJ4ELSqJewsL8Lbg"
+      },
+      "metrics": {
+        "posts": 152280
+      }
+    },
+    "… 19 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AT_NlTMoxF-HsZ86YRXW9I7QcC1zXM9ePluoUq7aRWscqZHklcmc6wK9jvc6N2WiztZbu8gFI_wPHDOc_XM-Q7nGrOsF1wYe49ud7wu3cq8mTjceKmG0Deh2Pk0vV0RGKczc8rNOkP4eC0KIUwVOnp5PAtUe5HDPlO36xJ15jZZWQEx2fVJKMLXCv-49tWCruIKUpJjk… [274 chars]"
+    }
+  }
+}

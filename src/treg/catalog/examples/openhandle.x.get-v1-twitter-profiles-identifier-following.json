@@ -1,0 +1,34 @@
+{
+  "platform": "twitter",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T17:50:54.320008817Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "14091091",
+      "handle": "NASAHubble",
+      "displayName": "Hubble",
+      "bio": "The official X account for the NASA Hubble Space Telescope, managed and operated by NASA's Goddard Space Flight Center.",
+      "avatar": {
+        "url": "https://media.openhandle.dev/AzitLTPDCcYq--TF3MgVRX61gHk_UMl916qgNnTLH2Y-n1SA1rqydoL3IBvYp6gGJ65-pJmjtrO3CIkEDgloVTnLTveNUmeesLH3uPJXIvXwWplW-zwZb2ydglhleKAMB43Iu8GIqmbmJ5g-LA"
+      },
+      "externalUrl": null,
+      "isVerified": true,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": 8903458,
+        "following": 44,
+        "posts": 8444
+      }
+    },
+    "… 66 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "AUUoc6urRUJu58V0uPCtYnfC7hBsMUXVy6lJyWRShrzrHj5ZBDSMQvo5n7PSxYtCIba6G5qYOMm-mfbCNh2eNOdkZKqbkPLfqaxhdSS252guOsOow0tpgYovV-MkriG9RLDupc28z3N0MkHyVftKrC7SiNXzARy3G6I9MLzr2K5RSFvbefX3ymn-XWy3svDUezZ0H7z1… [316 chars]"
+    }
+  }
+}

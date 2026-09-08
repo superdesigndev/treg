@@ -1,0 +1,105 @@
+{
+  "platform": "tiktok",
+  "resource": "post",
+  "capturedAt": "2026-09-05T17:41:55.31074513Z",
+  "source": "cache",
+  "data": {
+    "id": "7606449212716305678",
+    "url": "https://www.tiktok.com/@flighthouse/video/7606449212716305678",
+    "type": "video",
+    "format": "post",
+    "title": null,
+    "caption": "The best TikTok dance rn 😮‍💨 @Zoe Dang @kimberly kim #zoedang #kimberlykim #lamamadelamama #realcj #dancechallenge ",
+    "publishedAt": "2026-02-13T20:28:14Z",
+    "author": {
+      "id": "24645153",
+      "handle": "flighthouse",
+      "displayName": "flighthouse",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A88IdIUSEXihA_MllA19yr6v_Ux8bhv6jLuSmlIJMm_rmAIMCex5qe_J6U-u-LOc_54ogUL2OLT20KLtyhP-hwELcWagbCJtPUpXn4bNvYpdXR1Vg7XeEUif9JP_jXu57aCVqQjwjlFHdJzFhw",
+        "expiresAt": "2026-09-06T17:00:00Z"
+      },
+      "isVerified": true
+    },
+    "media": [
+      {
+        "type": "video",
+        "url": "https://media.openhandle.dev/A3moKjLSiUq4FEBMp97jRb2LcD8a6dEvwpZ_fsnjTvbjbk6VFrUXwo7TM1T8Oqtm48yXQIbaj0UtqlJFOBNjpuoQwctIduv3Ri2SEksKNn4Ce5YgCoTop5y28Kxqa97OoW-YvHUYint3284AWwP0h4-kW0sY5u2NfluNQXJz",
+        "width": 720,
+        "height": 1280,
+        "duration": 23.033,
+        "thumbnail": {
+          "url": "https://media.openhandle.dev/A_HNwGhq6S3GvWkH-N0m6n0oBd_rI0RmBKwtvqA61875rJap9Xrk_68to_LFqjtPkSlK1AW_vmeRI1IugjYp-mbIWPX7380wSZmgcpZ23JwUcyUZ8DLX9gsDPsP-T3HQkdHRINZ4O_L68cbGnmxrVuWvABFR0vTltnr_HYtT",
+          "expiresAt": "2026-09-06T17:00:00Z"
+        },
+        "variants": [
+          {
+            "url": "https://media.openhandle.dev/A3moKjLSiUq4FEBMp97jRb2LcD8a6dEvwpZ_fsnjTvbjbk6VFrUXwo7TM1T8Oqtm48yXQIbaj0UtqlJFOBNjpuoQwctIduv3Ri2SEksKNn4Ce5YgCoTop5y28Kxqa97OoW-YvHUYint3284AWwP0h4-kW0sY5u2NfluNQXJz",
+            "width": 720,
+            "height": 1280,
+            "role": "play_h264"
+          },
+          {
+            "url": "https://media.openhandle.dev/A_8sFA_uEerk5K2RE11L9P2Kiagcg__ucV5Q7bsS6zDyo2aHS9YgsF7bMULIpHIA0WwvAd3nWYwLMO7IGC8HT1tFKiHNVjl-ugzRjhEhC2_MFj873z_J0azdyOOYZ13ClUt34sEpPrWk3-YyBkqEeKo_3qp22D72GnP6iRl1",
+            "width": 720,
+            "height": 1280,
+            "role": "play_h264"
+          },
+          "… 4 more item(s) truncated"
+        ]
+      }
+    ],
+    "hashtags": [
+      "zoedang",
+      "kimberlykim",
+      "… 3 more item(s) truncated"
+    ],
+    "mentions": [
+      "zoe",
+      "kimberly"
+    ],
+    "commentsDisabled": false,
+    "metrics": {
+      "views": 33439138,
+      "likes": 2107171,
+      "comments": 1073,
+      "shares": 9874,
+      "reposts": 0,
+      "saves": 91135,
+      "downloads": 3731
+    },
+    "taggedUsers": null,
+    "collaborators": null,
+    "sponsors": null,
+    "location": null,
+    "music": {
+      "id": "7240110572024645634",
+      "title": "La Mamá de la Mamá",
+      "artist": {
+        "id": null,
+        "name": "El Alfa & El Cherry Scom & CJ"
+      },
+      "album": "SAGITARIO",
+      "duration": 60,
+      "isOriginal": false,
+      "isExplicit": null,
+      "isCommercial": true,
+      "artwork": {
+        "url": "https://media.openhandle.dev/A3nclXxj8rmoAT0BpsxiJqCUL_NNJwvuf3Xe3lniz8e7PFdd_tV_hk6S_l66XOJFz7s-svkMZCnvJS1_wLzLMQ_txKm5--NsElDIAjgKmF0Hiw4Clnqt-ch-Q19M8U9cOEqc8Yb4IhbA8KLIJQ"
+      },
+      "audio": {
+        "url": "https://media.openhandle.dev/Awnc_5kGlpBEC1lkFNuuBwqGfPGWteWgnWti3j1QVhL2f0lJbb-REy4ttoaOPJ03CtrvIgHTdr_yLhsgm5vD0XZ4vxteAxsfcPOTzJEUlwk9H7s-2v-d7i-iJ2BRccUN3ABLXGF6FebQJ4b_7w"
+      }
+    },
+    "isAd": false,
+    "isPaidPartnership": null,
+    "extended": {
+      "isDownloadable": true,
+      "allowsDuet": true,
+      "allowsStitch": true,
+      "isAiGenerated": false,
+      "aiLabelType": 0,
+      "usesPromotionalMusic": false
+    }
+  }
+}

@@ -34,6 +34,12 @@ Tier 4 has explicit platform-key slots for MiniMax, OpenRouter and Replicate. Th
 receive them as environment secrets, and the worker constructs the same platform bindings as the call
 path. Key values are never copied into task records, logs or archive evidence.
 
+OpenHandle uses an API key in `Authorization: Bearer`, with public social data on Live keys
+and synthetic data on Test keys. Its profile probe requests `freshness=30d`; a cache miss can
+still cost up to $0.003. Invalid-key rejection was observed through the connection flow.
+Live-key calls were verified on all three platforms on 2026-09-05; every paid route carries the
+published $0.003 entry rate.
+
 ## Instagram grant methods (2026-09-01)
 
 Instagram is one provider with two explicit protocol profiles. The default `instagram-login`

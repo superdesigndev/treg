@@ -1,0 +1,34 @@
+{
+  "platform": "instagram",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T16:57:01.833883433Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "1107766105",
+      "handle": "instagramforbusiness",
+      "displayName": "Instagram for Business",
+      "bio": "",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A9eDMLATG6-L3yduMwnKKihPDFBDvNm-4JuE8TOiR800irpz-KnrNzTyirKrgfjdVb-Bta9ASsOODbrf_ZGCpCTzRkB6K4xNT-kTvFkXXO7JwzamfGrKYwQKhM6nxGtSjkbzyHd_AmXcMV-RiPRpLR0"
+      },
+      "externalUrl": null,
+      "isVerified": true,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": null,
+        "following": null,
+        "posts": null
+      }
+    },
+    "… 3 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

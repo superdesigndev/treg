@@ -67,6 +67,8 @@ sources:
   - src/treg/catalog/examples/minimax.video-gen.result.retrieve.json
   - src/treg/catalog/examples/minimax.video-gen.from_image.json
   - src/treg/catalog/examples/minimax.video-gen.task.status.json
+  - src/treg/catalog/openhandle.yaml
+  - src/treg/catalog/openhandle.extended.yaml
   - src/treg/catalog/openrouter.yaml
   - src/treg/catalog/openrouter.extended.yaml
   - src/treg/catalog/examples/openrouter.x.alibaba-wan-3-0.json
@@ -82,6 +84,7 @@ sources:
   - tests/test_aigc_pr_b.py
   - tests/test_catalog_api.py
   - tests/test_catalog_validate.py
+  - tests/test_openhandle_ingest.py
 related:
   - architecture/money.md
   - architecture/proxy-model.md
@@ -94,6 +97,28 @@ The computed cost view uses a `cost.table` fallback as its scalar validated uppe
 eligibility and compact displays. Runtime charging evaluates the first matching row against request
 values plus catalog defaults and freezes that settlement basis. Terminal usage or the recorded table
 evidence feeds the shared money settlement function; provider variation stays declarative in YAML.
+
+## OpenHandle
+
+OpenHandle's 15 core tools cover public profiles, posts and search on Instagram, TikTok and X.
+The generated `openhandle.extended.yaml` includes the remaining 111 documented operations.
+Run `uv run --frozen python scripts/catalog_ingest.py openhandle --refresh` to regenerate it.
+The generator excludes core routes, preserves parameter and JSON-body schemas, and never calls
+data endpoints. It includes public synthetic-fixture discovery and cross-platform URL dispatch
+as utility entries on the creators platform. Synthetic examples carry no Live verification claim.
+The API bills in USD, so no credit conversion belongs in `fx.yaml`. The catalog includes the
+`freshness` choices, including free 30-day cache hits; cache misses can still incur Live charges.
+Every paid route is priced `per_call` at the published $0.003 entry rate, which the
+`Openhandle-List-Price` header confirmed on 2026-09-05. Cache hits and volume tiers cost less and
+the difference is margin; exact settlement on the `Openhandle-Cost` header would need header
+evidence, which the settlement basis does not read. `per_call` matches OpenHandle's own rule:
+answered and not-found calls bill, credential, rate-limit and upstream failures do not.
+Generated `test_request`s use real public identifiers from `OPENHANDLE_FIXTURES`; routes whose
+required input has no fixture (live rooms, shop sellers, effects, playlists) stay unverified. On
+2026-09-05 all 15 core routes and 66 of 111 extended routes passed live; the rest answered 404
+(no data for the fixture, or a retired surface) or 503 from the TikTok shop, live and trending
+upstreams and from X lists, and are worth a re-run.
+The platform-key settings are present, but activation requires maintainers' verification and allow-list.
 
 ## Authorization metadata
 

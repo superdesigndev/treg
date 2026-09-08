@@ -1,0 +1,50 @@
+{
+  "platform": "twitter",
+  "resource": "post",
+  "capturedAt": "2026-09-05T17:51:13.660504208Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "2094832734841536544",
+      "url": "https://x.com/ESA_Webb/status/2094832734841536544",
+      "type": "image",
+      "format": "post",
+      "title": null,
+      "caption": "In the 2026 ESA/Hubble and ESA/Webb calendar, the month of September features the Eagle Nebula! 🦅 This image shows just a small portion of the nebula, which is 9.5 light-years long and 7,000 light-yea… [298 chars]",
+      "publishedAt": "2026-09-01T17:00:18Z",
+      "author": {
+        "id": "884411868495966208",
+        "handle": "ESA_Webb",
+        "displayName": "ESA Webb Telescope",
+        "avatar": "… {1 field(s) truncated}",
+        "isVerified": false
+      },
+      "media": [
+        "… {4 field(s) truncated}"
+      ],
+      "hashtags": [],
+      "mentions": [],
+      "commentsDisabled": null,
+      "metrics": {
+        "views": null,
+        "likes": 280,
+        "comments": 0,
+        "shares": null,
+        "reposts": 46,
+        "saves": null,
+        "quotes": 1,
+        "bookmarks": 22
+      },
+      "extended": {
+        "conversationId": "2094832734841536544",
+        "language": "en"
+      }
+    },
+    "… 19 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "ATheD0Nlp1JdU9lBukk36x4g2-AujoCTM-oPPvz83iRRTJfy5oT8Px6r0jdfuw3woWhwFz-I5arxAZ5s2cjcP3L4TE_QEuSlujmTGpg4rY-AcEazhrm9SgIfoTbHgAmHDFr2ERq3fUXnQnsMC5PjYTAbMyMlUUWMfXhE84V5L-8xfPR0XZYaInoJf6JwLcFC4kWiqf25… [818 chars]"
+    }
+  }
+}

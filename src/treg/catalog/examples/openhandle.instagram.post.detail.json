@@ -1,0 +1,89 @@
+{
+  "platform": "instagram",
+  "resource": "post",
+  "capturedAt": "2026-09-05T16:55:22.727540659Z",
+  "source": "live",
+  "data": {
+    "id": "3950610611797980067_25025320",
+    "url": "https://www.instagram.com/p/DbTY2uSG3Oj/",
+    "type": "carousel",
+    "format": "post",
+    "title": null,
+    "caption": "we don’t make the rules 🙂‍↔️",
+    "publishedAt": "2026-07-27T16:25:06Z",
+    "author": {
+      "id": "25025320",
+      "handle": "instagram",
+      "displayName": "Instagram",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A1l2j_cxUiBmXoj7E7TvXgbB_PxzM6sznNqvNAumrGoq-7e7uWj4ULC0C4Ke-j3D7jbu1LdmObrPdJlk36SsOgDrd1yJEE_iQPzuTEAoAePXq7XfNILPtUnQa89_nV6AVu9CgKoJKhxEMChDDbLdeQ"
+      },
+      "isVerified": true
+    },
+    "media": [
+      {
+        "id": "3950609506668983144_25025320",
+        "type": "image",
+        "url": "https://media.openhandle.dev/A-o0flPfawW7UBDHuW9xIglCNGWfAlejCmKbBz4PhslHxX9G4c0UeK2bs3aALHMlRFS6VSvXJuO2jrgT77cw0XCU40l4W8Vlvm9PbmpWwbbksVNMrwC2ZeL0GhKyqsQ6BpttFLQcUKs8pyH5vRIrD0wXB9Zu_YOBzXkOvq5ZodEWHYoodw2I134DamaHZXTt59EJ9EdmY0Gl",
+        "width": 1170,
+        "height": 1456,
+        "variants": [
+          {
+            "url": "https://media.openhandle.dev/A-o0flPfawW7UBDHuW9xIglCNGWfAlejCmKbBz4PhslHxX9G4c0UeK2bs3aALHMlRFS6VSvXJuO2jrgT77cw0XCU40l4W8Vlvm9PbmpWwbbksVNMrwC2ZeL0GhKyqsQ6BpttFLQcUKs8pyH5vRIrD0wXB9Zu_YOBzXkOvq5ZodEWHYoodw2I134DamaHZXTt59EJ9EdmY0Gl",
+            "width": 1170,
+            "height": 1456
+          },
+          {
+            "url": "https://media.openhandle.dev/A9S-vlaekKLWWlzMrRwVKMfftSo1YTMiXL_ejGNBmJuSSv0WmPdXMAOeGZ84a3Wwtos4cD7GpuDWJ6oZRW-tR5NhVMGRHamGOrUV-UqiQ-dJrULLqUflf69NWyJgTEDU6ynTm6C69VP2tcTBQaVLWRGv88GF1hnVg8tDEM_yfDFW-YbuNB6k8LYuuj3YV5_0ycuxu4kf1t4s",
+            "width": 750,
+            "height": 933
+          }
+        ]
+      },
+      {
+        "id": "3950609507298178233_25025320",
+        "type": "image",
+        "url": "https://media.openhandle.dev/A7ds7Vit2MA_n45MlbNXzyoD-UYWv-LdwA9x-DmOUg7MOWEXRpw3-_hfIKTS3sY2trkbvj9WK6ct5AVtstQKVYL02tyGnNUBIrv01p_Q9r2xU8EuHX5eVFZ-Twp7KXFxp3mDIeDhJ3lKCkz4MTzbBTa5tkuvfca-Re5tiqyH4AoCa71Zf8mh6EJoJNCcdYQbWUGlZkKdYMQc",
+        "width": 1170,
+        "height": 1456,
+        "variants": [
+          {
+            "url": "https://media.openhandle.dev/A7ds7Vit2MA_n45MlbNXzyoD-UYWv-LdwA9x-DmOUg7MOWEXRpw3-_hfIKTS3sY2trkbvj9WK6ct5AVtstQKVYL02tyGnNUBIrv01p_Q9r2xU8EuHX5eVFZ-Twp7KXFxp3mDIeDhJ3lKCkz4MTzbBTa5tkuvfca-Re5tiqyH4AoCa71Zf8mh6EJoJNCcdYQbWUGlZkKdYMQc",
+            "width": 1170,
+            "height": 1456
+          },
+          {
+            "url": "https://media.openhandle.dev/AyOZC6KfmARSIzXPlt_X1x0Ee2NhqTUF4gWEt6HfkIKiE1SEa4QGaGAd8AplYa5gX0qSmX6p620sbw6eDHToOPWdyB2Toe4UDNs7KTzK5GN8-L7q--Y8O0mL8ahKwX_sNev3BgMAqOkKoJlLEasiar2E3AVDogEKn5Q1ia3aqNC5HSI1ibkXkljAwv8WFXLLm886hKHcQA1w",
+            "width": 750,
+            "height": 933
+          }
+        ]
+      },
+      "… 11 more item(s) truncated"
+    ],
+    "hashtags": [],
+    "mentions": [],
+    "commentsDisabled": null,
+    "shortcode": "DbTY2uSG3Oj",
+    "metrics": {
+      "views": null,
+      "likes": 132191,
+      "comments": 10393,
+      "shares": null,
+      "reposts": 5092,
+      "saves": null
+    },
+    "taggedUsers": null,
+    "collaborators": [],
+    "sponsors": null,
+    "location": null,
+    "music": null,
+    "isAd": false,
+    "isPaidPartnership": false,
+    "extended": {
+      "accessibilityCaption": "Black background with white text",
+      "productType": "carousel_container",
+      "likeCountsHidden": false
+    }
+  }
+}

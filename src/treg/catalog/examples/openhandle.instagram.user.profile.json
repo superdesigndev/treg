@@ -1,0 +1,48 @@
+{
+  "platform": "instagram",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T16:47:06.570384381Z",
+  "source": "cache",
+  "data": {
+    "id": "25025320",
+    "handle": "instagram",
+    "displayName": "Instagram",
+    "bio": "Discover what's new on Instagram 🔎✨",
+    "avatar": {
+      "url": "https://media.openhandle.dev/A7BEQFrvU5cYgCmI9f2Mjv24GSwYZBMwdDADX9xfCALrIAIkMbuBipLi6RXWo42BxOEVfkEWObK5_p5ZqP9y4VBBSVZKyVafj1i5bRLs2KL7U--ey5zXh22ZzQV1uf14FQNYF4BAfyLe3xgNfClN"
+    },
+    "externalUrl": "http://help.instagram.com",
+    "isVerified": true,
+    "isPrivate": false,
+    "isBusiness": false,
+    "category": null,
+    "accountType": null,
+    "metrics": {
+      "followers": 686423902,
+      "following": 286,
+      "posts": 8579
+    },
+    "extended": {
+      "bioLinks": [
+        {
+          "title": null,
+          "url": "http://help.instagram.com"
+        },
+        {
+          "title": "Carversations with Salma Hayek",
+          "url": "https://youtu.be/ac_qIXO0zlY"
+        }
+      ],
+      "publicEmail": null,
+      "publicPhoneCountryCode": null,
+      "publicPhoneNumber": null,
+      "businessContactMethod": "UNKNOWN",
+      "addressStreet": null,
+      "city": null,
+      "postalCode": null,
+      "latitude": null,
+      "longitude": null,
+      "accountTypeCode": 3
+    }
+  }
+}

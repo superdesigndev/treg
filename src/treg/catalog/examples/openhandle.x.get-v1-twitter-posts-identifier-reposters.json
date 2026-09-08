@@ -1,0 +1,34 @@
+{
+  "platform": "twitter",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T17:50:46.265028456Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "933456215350194176",
+      "handle": "Mistress_Lynn",
+      "displayName": "Kailin",
+      "bio": "Texas girl 🌵\nI own and run a hair studio | Coffee addict ☕️\nDog mom 🐶\nWeekend traveler ✈️\nLearning, growing, and enjoying the little things",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A2ngJLgr_yLnV8mwQy9FAOpLXllARqPNECjgPYPsibNxZv3w9pYeZSyyhXdc5dmQP4j35LxrqOmuoQ6cTjb22TEq81DRA4-qhKSrZ9PMhanIjwu4cMRW_YaT0ClpDlJ95LfxBiPyNAXUVRiYRXfoSFsqD8lken8"
+      },
+      "externalUrl": null,
+      "isVerified": false,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": 1325,
+        "following": 145,
+        "posts": 299
+      }
+    },
+    "… 15 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "ASP5VahZ1HhZlOTU_hh9_Qk-Tj5WJj4hSDbkMy3bWMriBuwjS_CvT6Mq4U8Ho7D_XXe7UwWnQItkONs0zMv0xDNkKPPgB8GARJ_We_bX2xFl2P_mPjCFRGirHwJ9LC9expS5aGKUf1XsKxwC9zaV9ApCTeBp1U7M6kXlXn9ERVJvyvBXfqJ_lrpl72UDSuakA8jZ2SBi… [291 chars]"
+    }
+  }
+}

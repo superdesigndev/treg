@@ -1,0 +1,49 @@
+{
+  "platform": "instagram",
+  "resource": "post",
+  "capturedAt": "2026-09-05T16:57:18.132915472Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "3968077665297786389_8663171404",
+      "url": "https://www.instagram.com/reel/DcRcZzhPGYV/",
+      "type": "video",
+      "format": "reel",
+      "title": null,
+      "caption": "Welcome to @kayratheodore’s creative world 🪮\nIn collaboration with the Instagram Drafts Fund, hair artist Kayra Theodore brought her debut hair show and first archival collection of hair art sculpture… [678 chars]",
+      "publishedAt": "2026-08-20T18:51:34Z",
+      "author": {
+        "id": "8663171404",
+        "handle": "creators",
+        "displayName": "Instagram’s @Creators",
+        "avatar": "… {1 field(s) truncated}",
+        "isVerified": true
+      },
+      "media": [
+        "… {7 field(s) truncated}"
+      ],
+      "hashtags": [],
+      "mentions": [
+        "kayratheodore"
+      ],
+      "commentsDisabled": null,
+      "shortcode": "DcRcZzhPGYV",
+      "metrics": {
+        "views": 50545524,
+        "likes": 111413,
+        "comments": 7885,
+        "shares": 2769,
+        "reposts": 2748,
+        "saves": 4525
+      },
+      "taggedUsers": null,
+      "…": "7 more field(s) truncated"
+    },
+    "… 11 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "ARqshMLotBfO7mKOWITBhI_od6WtPUyfMdow0jVqcZeAgca0y8jM50nWCITi6UUGWvtArAQ0iLSn34r0_O3-1Hv8O9MRlml7yDvsjUloIwIfhThX8SjLTFOkU4NwdXXXraS_IgmaQu7aoBQEG4n2Y_hJh9PbsCiqrGo3LxxSRJEj90-SBTJlJEvMbeA09Z_xxqOu3E5P… [427 chars]"
+    }
+  }
+}

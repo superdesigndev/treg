@@ -1,0 +1,56 @@
+{
+  "platform": "instagram",
+  "resource": "entity",
+  "capturedAt": "2026-09-05T17:00:13.156210663Z",
+  "source": "cache",
+  "data": {
+    "id": "highlight:18142207969557132",
+    "title": "creatives",
+    "owner": {
+      "id": "25025320",
+      "name": "Instagram",
+      "handle": "instagram",
+      "image": {
+        "url": "https://media.openhandle.dev/A6OIDvlBrpePD-SB_4z9iGM3zWdApZ9LPAWdkj_lkAzVx0PmHx_KpvLUvl4TVLFz2wT_v5q9DQV5IB-bVxQkYtrkithygN3J6ueqGcOzaeivXeNuG5UZMTspaGVqcLDEHGfs0tC16f9D6QRVNGAGpw"
+      }
+    },
+    "itemCount": 51,
+    "items": [
+      {
+        "id": "3811480328699137079_25025320",
+        "shortcode": "DTlGSo0gEw3",
+        "publishedAt": "2026-01-16T17:17:56Z",
+        "type": "video",
+        "author": {
+          "id": "25025320"
+        },
+        "media": [
+          {
+            "type": "video",
+            "url": "https://media.openhandle.dev/AyjyYA0vAnWoPi3shyl0e3TQZaudAj507qKX-zZ9T7_BDVxzjjLp2o11WRjqwqUhcRakCJvk696ofN8EwAT4pkl3nDKeTkO4cex3QF3N9U-YGPtCn_xamv_jp2cHdu5etrDFC9FD_uf7B20LHwHkFQ",
+            "width": 720,
+            "height": 1280,
+            "thumbnail": "… {1 field(s) truncated}",
+            "variants": "… [1 item(s) truncated]"
+          }
+        ],
+        "mentions": [
+          {
+            "id": "32569218876",
+            "name": "Jay",
+            "handle": "thistle_makes_art",
+            "image": "… {1 field(s) truncated}"
+          },
+          "… 1 more item(s) truncated"
+        ],
+        "links": [],
+        "hashtags": [],
+        "locations": [],
+        "stickers": [],
+        "canReply": false,
+        "canReshare": true
+      },
+      "… 50 more item(s) truncated"
+    ]
+  }
+}

@@ -249,7 +249,7 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 _UNRECORDED_SIGNATURE = {
     "apify", "aviato", "branddev", "brightdata", "coingecko", "coresignal", "crustdata", "dataforseo",
     "diffbot", "exa", "fiber-ai", "finnhub", "icypeas", "influencersclub", "justoneapi", "marketstack",
-    "minimax", "oceanio", "openrouter", "pdl", "replicate", "scrapecreators", "seranking",
+    "minimax", "oceanio", "openhandle", "openrouter", "pdl", "replicate", "scrapecreators", "seranking",
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "tomba", "twelvedata",
 }
 

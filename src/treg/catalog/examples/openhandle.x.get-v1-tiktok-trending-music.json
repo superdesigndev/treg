@@ -1,0 +1,31 @@
+{
+  "platform": "tiktok",
+  "resource": "music",
+  "capturedAt": "2026-09-05T17:50:10.276236307Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "7675366858590144513",
+      "title": "Summer Bummer (Lights On)",
+      "artist": {
+        "id": null,
+        "name": "RhyRhy"
+      },
+      "album": "Summer Bummer (Lights On)",
+      "duration": 60,
+      "isOriginal": false,
+      "isExplicit": null,
+      "isCommercial": null,
+      "artwork": {
+        "url": "https://media.openhandle.dev/A_1PXsajSc16zrI7PyjWrrwqw0RuyITWnEWvpHki8HMnbFdyRJu5yL38m-aw1cHi-ENnoY1gSHOKk0YIme1hodrdayTHwHlOELfVvBXdx09sc0zwDvy6Yk1-PS2FDs_B3LOyPondo3mJ2iAiBw"
+      },
+      "audio": {
+        "url": "https://media.openhandle.dev/A8d0SD_SuCfEkZ_q-Y1q9grU-AbrU-ETYZ3HIjN94ibPPR--D3ldKi-OmmajtNSJG_Xqd6k_96DSnzMFBCeEoAKyNNOz8kFhxF8gJ06TgMMY5kGKWlndck0a0QU_iDbjGZ-Gth4L04uo9OGqaA"
+      },
+      "metrics": {
+        "posts": 324
+      }
+    },
+    "… 99 more item(s) truncated"
+  ]
+}

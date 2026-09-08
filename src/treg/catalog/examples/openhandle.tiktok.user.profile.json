@@ -1,0 +1,33 @@
+{
+  "platform": "tiktok",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T17:41:50.250823047Z",
+  "source": "cache",
+  "data": {
+    "id": "107955",
+    "handle": "tiktok",
+    "displayName": "TikTok",
+    "bio": "One TikTok can make a big impact",
+    "avatar": {
+      "url": "https://media.openhandle.dev/A_FMdJ_-0_cn0JqBl2JLUgYMF9Umuj2dHAc91w2yWV7XrD9UtcgZ8nInQdaz4sBVUdKhCv6q52z0kEwr6owVk935EET_xyT1pT0ODsGDjD65O9a_ejXSIUmkdREDkesO6kyOdmvwVHQXXg",
+      "expiresAt": "2026-09-07T17:00:00Z"
+    },
+    "externalUrl": null,
+    "isVerified": true,
+    "isPrivate": false,
+    "isBusiness": false,
+    "category": "Media & Entertainment",
+    "accountType": null,
+    "metrics": {
+      "followers": 95595578,
+      "following": 1,
+      "posts": 1583
+    },
+    "extended": {
+      "verificationType": 0,
+      "verificationLabel": "Verified account",
+      "isProAccount": null,
+      "hasCommerce": false
+    }
+  }
+}

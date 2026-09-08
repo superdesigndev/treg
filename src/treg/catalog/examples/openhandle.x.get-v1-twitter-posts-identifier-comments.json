@@ -1,0 +1,42 @@
+{
+  "platform": "twitter",
+  "resource": "comment",
+  "capturedAt": "2026-09-05T17:43:43.870969046Z",
+  "source": "cache",
+  "data": [
+    {
+      "id": "1808170286425964893",
+      "text": "@elonmusk Translation:\n\n“We cannot control the narrative anymore!”",
+      "publishedAt": "2024-07-02T16:06:05Z",
+      "author": {
+        "id": "1313536464022646786",
+        "handle": "WarClandestine",
+        "displayName": "Clandestine",
+        "avatar": {
+          "url": "https://media.openhandle.dev/Ax-aLceCG6AxISWSnpSqsO9gbu-4p_5ypM70dx_22pNasUf6qOa6XVRkv0qDB8QnVp5M7xAjmIexQJkmOIPUkQnNfd25FVimEwNdrcUHEpJ-NeiLTTr3tlBj8qRSC6l9528VXt-7zCFiUdLmwYU"
+        },
+        "isVerified": false
+      },
+      "metrics": {
+        "likes": 8512,
+        "replies": 113,
+        "views": null,
+        "reposts": 393,
+        "quotes": 5,
+        "bookmarks": 88
+      },
+      "parentId": null,
+      "threadRootId": "1808168603721650364",
+      "isPinned": null,
+      "pinnedPosition": null,
+      "isLikedByPostAuthor": null,
+      "media": []
+    },
+    "… 35 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "ASyOnHcTHMxxMC-Zf6NXHZXhfn3-hu347qaAbh1ibvfuaBW89DUBXkRhiFIVH9tJONNwtzPJSo65qNOcYZcYUUDhkc8pYCJs34hwoRln9pBJIC_KtW_BAoR29ADGzwVQKFnT5a2nXTWUNsUkakGEbYEBr2P2PsLyX-Hv05-0Ynqb0GgN2RyiLk9S5OJ7J_8P-S_j9TPi… [1082 chars]"
+    }
+  }
+}

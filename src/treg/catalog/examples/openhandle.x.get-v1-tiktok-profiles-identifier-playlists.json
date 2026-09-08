@@ -1,0 +1,17 @@
+{
+  "platform": "tiktok",
+  "resource": "entity",
+  "capturedAt": "2026-09-05T17:43:22.953629272Z",
+  "source": "cache",
+  "data": [
+    {
+      "id": "@tiktok",
+      "name": "Songs Of The Summer 2026"
+    }
+  ],
+  "meta": {
+    "cursors": {
+      "next": null
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "platform": "instagram",
+  "resource": "music",
+  "capturedAt": "2026-09-05T16:56:21.343362352Z",
+  "source": "live",
+  "data": {
+    "id": "215631076",
+    "title": "Williamsburg",
+    "artist": null,
+    "album": null,
+    "duration": null,
+    "isOriginal": null,
+    "isExplicit": null,
+    "isCommercial": null,
+    "artwork": null,
+    "audio": null,
+    "metrics": {
+      "posts": null
+    }
+  }
+}

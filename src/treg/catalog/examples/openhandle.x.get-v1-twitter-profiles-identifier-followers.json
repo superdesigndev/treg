@@ -1,0 +1,34 @@
+{
+  "platform": "twitter",
+  "resource": "profile",
+  "capturedAt": "2026-09-05T17:50:48.944899645Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "34743251",
+      "handle": "SpaceX",
+      "displayName": "SpaceX",
+      "bio": "SpaceX designs, manufactures and launches the world’s most advanced rockets and spacecraft",
+      "avatar": {
+        "url": "https://media.openhandle.dev/A_3SRvAbqzaqIGOMaCyQkpJb3WKo4miWnkcpP-jssDpdR1biJ4x1sZac7wlKRMgTQHrFQXWd-JOH45Ua1cuE0pcZkJo-VmHPApiJxbNXE9LEBpOxNfOScibyGmO-yfmaTTpTZr3EdpSFacbu_g"
+      },
+      "externalUrl": null,
+      "isVerified": true,
+      "isPrivate": false,
+      "isBusiness": false,
+      "category": null,
+      "accountType": null,
+      "metrics": {
+        "followers": 41900550,
+        "following": 127,
+        "posts": 11701
+      }
+    },
+    "… 69 more item(s) truncated"
+  ],
+  "meta": {
+    "cursors": {
+      "next": "ARbkEFmueYwd0Q553ml0sltgz7ldj4iMcK69zIXvilhKVlUwRIL_ubguGQFIXqDgyx0pziVsNZaGASMLW_unSh6henuxR7wtKXMq4dsvktwz9W7qVJmimEKIxKXE0ZaAMnf5uz1Z7aAJlT4s7cdBJARJbMGmFmHWtBCTtxWechGOUEBTwURCP_IHP0lgG6FiGQsgcz4k… [316 chars]"
+    }
+  }
+}
