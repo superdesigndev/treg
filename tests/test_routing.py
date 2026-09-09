@@ -560,13 +560,17 @@ async def test_max_cost_skips_a_dearer_top_ranked_candidate_and_asks_the_afforda
     per-candidate skip: leadsforge is passed over, tomba is asked."""
     routed = "treg.people.phone.find"
     plan = (await clients.get(f"/catalog/endpoints/{routed}")).json()["routing"]["plan"]
-    assert plan[0]["endpoint_id"] == "tomba.people.phone.find", "the catalog view is price-ordered; the call's plan is not"
+    prices = {p["endpoint_id"]: p["usd"] for p in plan}
+    assert prices["tomba.people.phone.find"] < prices["leadsforge.people.phone.find"], \
+        "the catalog view is price-ordered; the call's plan is not"
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
         {"tomba": [(200, {"data": {"e164_format": "+15550100", "line_type": "mobile", "country_code": "US"}})]}, seen))
     before = await _balance(clients)
+    # quickenrich (2026-09-09) also covers {first_name, last_name, domain} and undercuts tomba; it is
+    # excluded so the story stays the one this test is about: dearer top-ranked, cheaper further down.
     r = await clients.post(f"/call/{routed}", json={"email": "ada@example.com", "full_name": "Ada Example"},
-                           headers={"X-Treg-Route-Max-Cost": "0.05"})
+                           headers={"X-Treg-Route-Max-Cost": "0.05", "X-Treg-Route-Exclude": "quickenrich"})
     assert r.status_code == 200, r.text
     tried = r.json()["_treg"]["tried"]
     assert tried[0] == {"endpoint_id": "leadsforge.people.phone.find", "provider": "leadsforge", "outcome": "skipped",
@@ -586,7 +590,7 @@ async def test_max_cost_below_every_candidate_refuses_naming_the_true_minimum(cl
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {})]}, seen))
     before = await _balance(clients)
     r = await clients.post(f"/call/{routed}", json={"email": "ada@example.com", "full_name": "Ada Example"},
-                           headers={"X-Treg-Route-Max-Cost": "0.01"})
+                           headers={"X-Treg-Route-Max-Cost": "0.01", "X-Treg-Route-Exclude": "quickenrich"})
     assert r.status_code == 402, r.text
     d = r.json()["detail"]
     assert d["error"] == "route_max_cost" and d["endpoint_id"] == routed and d["max_cost_micro"] == 10_000
