@@ -2509,3 +2509,123 @@ async def test_contactout_reveal_small_page_and_own_key_relay(clients, contactou
     reserves = [e for e in after["entries"]["items"] if e["kind"] == "reserve"]
     assert len(reserves) == (0 if own else 1)
     assert contactout.estimate(_contactout_cost("people.search.reveal"), {"reveal_info": True, "page_size": 1}) == 670000
+
+
+# ---- icypeas: async submissions settle at 0, bulk jobs reserve per row ----------------------------
+ICYPEAS_CREDIT = 19_000  # $0.019 per credit (fx.yaml); 1 credit per found email
+ICYPEAS_ACK = b'{"success": true, "item": {"_id": "mP6hHKABeMoKaEB1K1HF", "status": "NONE"}}'
+ICYPEAS_BULK_ACK = b'{"success": true, "status": "in_progress", "file": "L3mhHKAB9iupLhv96W-F"}'
+ICYPEAS_SYNC_ROWS = json.dumps({"success": True, "data": [
+    {"result": "https://www.linkedin.com/in/example-one", "status": "FOUND", "searchId": "a1"},
+    {"result": None, "status": "NOT_FOUND", "searchId": "a2"},
+]}).encode()
+
+
+@pytest.fixture
+def icypeas_platform_on(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "SYNTHETIC-ICYPEAS-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+async def test_icypeas_email_find_ack_settles_at_zero_and_closes_the_hold(
+        clients: AsyncClient, icypeas_platform_on, monkeypatch):
+    """/email-search answers 2xx with {item: {_id, status}} and no result: the hit that costs a
+    credit is only visible later on the free poll route. The hold reserved the 20-row page default
+    ($0.38) and used to settle at it, hit or miss (every platform success since 2026-08-20 charged
+    exactly 380000 micro; NOT_FOUND verified free upstream 2026-09-09). The ack now settles at 0:
+    the balance ends where it started and the reserve is closed by a settle, not left dangling."""
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, ICYPEAS_ACK))
+    before = await _balance(clients)
+    r = await clients.post("/call/icypeas.people.email.find",
+                           json={"firstname": "Jane", "lastname": "Doe", "domainOrCompany": "example.com"})
+    assert r.status_code == 200, r.text
+    assert r.content == ICYPEAS_ACK, "the relay stays faithful"
+    assert await _balance(clients) == before, "an acknowledgement must not charge"
+    row = await _telemetry(clients)
+    assert row["cost_estimated_micro"] == 20 * ICYPEAS_CREDIT == 380_000, "the old charge, now only the hold"
+    assert row["cost_observed_micro"] == 0
+    assert row["cost_charged_micro"] == 0
+    assert [e["kind"] for e in await _entries(clients)][:2] == ["settle", "reserve"]
+
+
+async def test_icypeas_bulk_search_reserves_one_row_per_submitted_row(
+        clients: AsyncClient, icypeas_platform_on, monkeypatch):
+    """A 25-row /bulk-search body holds 25 credits, not the 20-row page default - the rows live in
+    the top-level `data` array, which the generic body reader does not count. The job's
+    {file, status: in_progress} acknowledgement then settles at 0 like the single route."""
+    rows = [["Jane", "Doe", f"company{i}.example"] for i in range(25)]
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, ICYPEAS_BULK_ACK))
+    before = await _balance(clients)
+    r = await clients.post("/call/icypeas.bulk.search",
+                           json={"name": "q3 prospects", "task": "email-search", "data": rows})
+    assert r.status_code == 200, r.text
+    assert r.content == ICYPEAS_BULK_ACK
+    assert await _balance(clients) == before
+    row = await _telemetry(clients)
+    assert row["cost_estimated_micro"] == 25 * ICYPEAS_CREDIT == 475_000
+    assert row["cost_observed_micro"] == 0
+    assert row["cost_charged_micro"] == 0
+
+
+def test_icypeas_bulk_reserve_is_scoped_capped_and_defaults_without_rows():
+    cat = A.catalog_store.load()
+
+    def price(endpoint_id, body):
+        ep = cat.by_id[endpoint_id]
+        cv = cat.cost_view(ep["cost"], "icypeas")
+        return call_resolution._marketplace_pricing("icypeas", endpoint_id, cv, {}, json.dumps(body).encode())
+
+    unit = ICYPEAS_CREDIT
+    assert price("icypeas.bulk.search", {"task": "email-search", "data": [["A", "B", "a.example"]] * 3}) == (3 * unit, unit)
+    # capped like every other row count: a 5,000-row job cannot hold an org's whole balance
+    assert price("icypeas.bulk.search", {"task": "email-search", "data": [["A", "B", "a.example"]] * 5000}) == (100 * unit, unit)
+    # no usable `data` -> the generic page default, exactly as before
+    for body in ({"task": "email-search"}, {"data": []}, {"data": "rows"}, {"data": None}):
+        assert price("icypeas.bulk.search", body) == (20 * unit, unit)
+    # other icypeas routes with a `data` array are untouched (they keep the page default) ...
+    assert price("icypeas.people.identity.resolve.bulk",
+                 {"data": ["a@example.com", "b@example.com"]}) == (20 * 10 * unit, 10 * unit)
+    # ... and the generic body reader still does not treat `data` as a row list for anyone
+    assert call_resolution._body_limit(b'{"data": [1, 2, 3]}') is None
+
+
+@pytest.mark.parametrize("body", [ICYPEAS_ACK, ICYPEAS_BULK_ACK])
+@pytest.mark.parametrize("endpoint_id,cost_type", [
+    ("icypeas.people.email.find", "per_result"),
+    ("icypeas.bulk.search", "per_result"),
+    ("icypeas.companies.emails.role", "per_success"),
+])
+def test_icypeas_ack_shapes_settle_at_zero(body, endpoint_id, cost_type):
+    mk = _mk("icypeas", endpoint_id=endpoint_id, cost_type=cost_type, unit_micro=ICYPEAS_CREDIT)
+    assert call_settle._observed_cost_micro(mk, body) == 0
+
+
+@pytest.mark.parametrize("body", [
+    ICYPEAS_SYNC_ROWS,                                   # a synchronous answer carrying rows
+    b'{"success": true, "data": []}',                    # rows present, just none found
+    b'{"success": true, "items": [], "total": 0}',       # a poll page
+    b'{"success": false, "item": {"_id": "x"}}',         # not a success
+    b'{"item": {"_id": "x", "status": "NONE"}}',         # no success flag at all
+    b'{"success": true, "item": {"status": "NONE"}}',    # no id
+    b'{"success": true, "file": "x"}',                   # bulk shape without a status
+    b'{"success": true}', b'[]', b'not json', b'',
+])
+def test_icypeas_non_ack_bodies_keep_the_estimate(body):
+    """Only the two acknowledgement shapes settle at zero; a synchronous body with `data` rows -
+    identity.resolve.bulk, profile.url.bulk, scrape.bulk - and anything unrecognised keep the
+    existing behaviour (the estimate)."""
+    mk = _mk("icypeas", endpoint_id="icypeas.people.identity.resolve.bulk", cost_type="per_result",
+             unit_micro=10 * ICYPEAS_CREDIT)
+    assert call_settle._observed_cost_micro(mk, body) is None
+
+
+def test_icypeas_ack_rule_leaves_per_call_verify_and_the_free_poll_route_alone():
+    """/email-verification is charged per address TESTED, so its ack settles at the estimate; the
+    poll route is free in the catalog and must stay so (it is where the provider's charge shows)."""
+    mk = _mk("icypeas", endpoint_id="icypeas.people.email.verify", cost_type="per_call")
+    assert call_settle._observed_cost_micro(mk, ICYPEAS_ACK) is None
+    poll = A.catalog_store.load().by_id["icypeas.search.results.read"]
+    assert poll["cost"]["type"] == "free" and poll["cost"]["value"] == 0

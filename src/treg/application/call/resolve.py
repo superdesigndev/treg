@@ -548,7 +548,8 @@ def _marketplace_pricing(
     """Return (reserve estimate, response-count unit), in raw micro-USD.
 
     The catalog remains the price source. This helper only models provider rules that one fixed
-    scalar cannot express: Crustdata batch-shaped single calls and Aviato preview/add-on/bulk modes.
+    scalar cannot express: Crustdata batch-shaped single calls, Aviato preview/add-on/bulk modes,
+    Tomba's page blocks and Icypeas' row-counted bulk job.
     `unit` is non-zero only when the response must decide the final charge.
     """
     if not cost:
@@ -578,6 +579,16 @@ def _marketplace_pricing(
         size = int(str(raw)) if raw is not None and str(raw).isdigit() else 10
         credit = _usd_to_micro(float(cost.get("usd") or 0))
         return max(1, (size + 9) // 10) * credit, credit
+    if provider == "icypeas" and endpoint_id == "icypeas.bulk.search":
+        # A bulk job is priced per ROW SUBMITTED (1 credit each on a hit) and the rows are the
+        # top-level `data` array - a key `_body_limit` deliberately does not count, because for
+        # other providers `data` is not a row list. Scoped to this one endpoint so a 25-row job
+        # reserves 25 rows, not the 20-row page default, capped like every other row count.
+        from . import icypeas
+        rows = icypeas.bulk_rows(_json_object(body))
+        if rows is not None and unit > 0:
+            return min(rows, _PLATFORM_PAGE_MAX) * unit, unit
+        return estimate, unit
     if provider == "crustdata" and endpoint_id in (
         "crustdata.companies.enrich", "crustdata.people.enrich"
     ):

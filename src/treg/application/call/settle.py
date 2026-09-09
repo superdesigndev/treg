@@ -192,6 +192,10 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
       - fiber-ai: REPORTED in credits, `chargeInfo.creditsCharged` on every envelope, honoured
         for `method: charged-now` only (a poll repeats its job's charge). Error bodies carry no
         `chargeInfo`, which is what keeps a 400/404 on a `per_call` profile fetch unbilled.
+      - icypeas: DERIVED from the SHAPE. The async search routes answer 2xx with a bare
+        acknowledgement (`item._id` or `file` + `status`) and zero rows; the hit that costs a
+        credit shows up later on the free poll route. An acknowledgement settles at 0
+        (`application/call/icypeas.py`); synchronous bodies carrying `data` rows keep the estimate.
 
     Everyone else settles at the estimate. This is the same signal the catalog's `observed_cost`
     harvests, which is what lets phase 5's drift detector compare the two numbers directly."""
@@ -243,6 +247,19 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         # Missing or invalid charge evidence leaves the normal miss/base rules in force.
     if provider == "quickenrich":
         return _quickenrich_cost_micro(mk, doc)
+    if provider == "icypeas" and mk.cost_type in ("per_result", "per_success"):
+        # DERIVED, the async-handoff case (Bright Data's `snapshot_id` precedent above). Icypeas'
+        # /email-search, /domain-search and /bulk-search answer 2xx with an acknowledgement and no
+        # result rows - {item: {_id, status}} or {file, status: "in_progress"}; the credit for a
+        # HIT is taken later and is only visible on the free poll route. Settling the estimate here
+        # billed every submission the 20-row page default ($0.38), hit or miss (149 + 61 platform
+        # calls since 2026-08-20; NOT_FOUND verified free upstream 2026-09-09). treg cannot observe
+        # the outcome at response time, so the ack settles at 0 and the found-email credits are
+        # absorbed until terminal settlement exists. Synchronous bodies (`data` rows) and the
+        # per_call verify route (charged per address TESTED, so the estimate is honest) are untouched.
+        from . import icypeas
+        if icypeas.is_submission_ack(doc):
+            return 0
     if provider == "aviato" and mk.endpoint_id == "aviato.companies.enrich.bulk":
         rows = doc.get("companies")
         if isinstance(rows, list) and mk.unit_micro > 0:

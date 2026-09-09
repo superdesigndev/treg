@@ -13,7 +13,9 @@ sources:
   - src/treg/application/call/service.py
   - src/treg/application/call/reserve.py
   - src/treg/application/call/settle.py
+  - src/treg/application/call/icypeas.py
   - src/treg/catalog/tomba.yaml
+  - src/treg/catalog/icypeas.yaml
   - src/treg/application/asynctasks.py
   - src/treg/alembic/versions/0017_async_task_record.py
   - src/treg/alembic/versions/0018_async_resource_ownership.py
@@ -446,6 +448,7 @@ Provider-specific calculation stays outside the faithful relay.
 | Hunter email finder | One whole credit when an email is present; a known miss is free |
 | TikHub | Honor explicit no-charge prose; an embedded error that says it is charged still costs the estimate |
 | Bright Data | Count delivered JSON-array records or CSV/NDJSON lines; a JSON object containing a status/snapshot handoff has zero records |
+| Icypeas async submissions | A 2xx acknowledgement with no rows (`item._id`, or `file` + `status`) on a `per_result`/`per_success` route settles at 0 and closes the hold; the provider debits the credit later on the free poll route, which treg absorbs until terminal settlement exists (`application/call/icypeas.py`). Synchronous bodies carrying `data` rows and the `per_call` verify route keep the estimate. Reservation: `icypeas.bulk.search` holds one credit per row of the body's top-level `data` array, capped at the platform row maximum; other bodies are read as before |
 | Aviato | Fixed routes use the estimate; bulk enrichment counts successful records; catalog `settle: base` and `settle: modifiers` release documented-but-unbilled `reserve_only` riders |
 
 Bright Data snapshot downloads are billable per result, including repeat downloads. Gzip or a

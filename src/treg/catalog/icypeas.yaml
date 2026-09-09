@@ -28,6 +28,16 @@ source:
 # explicitly free, so an agent should ALWAYS size a lead-database query with a count first: the
 # search itself is 0.02 credit per row returned, and `pagination.size` (max 200) is the price dial.
 #
+# HOW TREG SETTLES THE ASYNC ROUTES TODAY (application/call/icypeas.py): the 2xx acknowledgement a
+# submission answers with carries no result, and the credit for a hit is only visible later on the
+# poll route, so a platform-key call to /email-search, /domain-search or /bulk-search settles at 0
+# and its hold is released. Icypeas debits the credit when the search lands (DEBITED on
+# icypeas.search.results.read, which stays free); treg absorbs those found-email credits until
+# terminal settlement exists for this provider. /email-verification is per_call (charged per
+# address TESTED) and still settles at its estimate. Reservation: /bulk-search holds one credit per
+# row in the request's top-level `data` array (capped at the platform row maximum); the two single
+# routes hold the generic page default.
+#
 # Auth is a single API key in a RAW `Authorization` header — no "Bearer", no second credential. The
 # ICYPEAS_SECRET a user also finds in their dashboard signs INBOUND WEBHOOKS and is not used by any
 # request here; one key is enough to serve every endpoint in this file.
@@ -77,7 +87,7 @@ endpoints:
       source_url: https://api-doc.icypeas.com/how-works/credit-cost
       checked: '2026-08-20'
       confidence: documented
-      note: "1 credit per FOUND email; a search that finds nothing is free"
+      note: "1 credit per FOUND email; a search that finds nothing is free. treg settles the submission acknowledgement at 0 today (the outcome is not visible in this response); Icypeas debits the credit when the search lands, visible on the free icypeas.search.results.read, and treg absorbs found-email credits until terminal settlement exists"
     verified: '2026-08-20'
     example_response: examples/icypeas.people.email.find.json
     docs_url: https://api-doc.icypeas.com/find-emails/email-discovery
@@ -139,7 +149,7 @@ endpoints:
       source_url: https://api-doc.icypeas.com/how-works/credit-cost
       checked: '2026-08-20'
       confidence: documented
-      note: "1 credit if any email was found for the domain, however many addresses come back; nothing when the scan is empty"
+      note: "1 credit if any email was found for the domain, however many addresses come back; nothing when the scan is empty. treg settles the submission acknowledgement at 0 today (the outcome is not visible in this response); Icypeas debits the credit when the scan lands, visible on the free icypeas.search.results.read, and treg absorbs that credit until terminal settlement exists"
     verified: '2026-08-20'
     example_response: examples/icypeas.companies.emails.role.json
     docs_url: https://api-doc.icypeas.com/find-emails/domain-scan
@@ -198,7 +208,7 @@ endpoints:
       source_url: https://api-doc.icypeas.com/how-works/credit-cost
       checked: '2026-08-20'
       confidence: documented
-      note: "the job itself is free to start; each ROW bills at its task's own rate — 1 credit per found email (email-search), 1 credit per domain with a hit (domain-search), 0.1 credit per address tested (email-verification). The figure here is the email-search rate, the dearest of the three, so a verification job costs a TENTH of what this implies"
+      note: "the job itself is free to start; each ROW bills at its task's own rate — 1 credit per found email (email-search), 1 credit per domain with a hit (domain-search), 0.1 credit per address tested (email-verification). The figure here is the email-search rate, the dearest of the three, so a verification job costs a TENTH of what this implies. treg reserves one credit per row in `data` (capped at the platform row maximum) and settles the {file, status: in_progress} acknowledgement at 0 today; Icypeas debits each row's credit as it lands, visible on the free icypeas.search.results.read, and treg absorbs those credits until terminal settlement exists"
     verified: '2026-08-20'
     example_response: examples/icypeas.bulk.search.json
     docs_url: https://api-doc.icypeas.com/find-emails/bulk-search
