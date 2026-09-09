@@ -523,5 +523,5 @@ The public treg.to ingestion token is the default only for the hosted registry a
 alias. Self-hosted URLs send nothing unless `TREG_CLI_POSTHOG_KEY` is set; the host override is
 `TREG_CLI_POSTHOG_HOST` (default EU ingestion). `TREG_TELEMETRY=0` or `DO_NOT_TRACK=1` disables
 all analytics and ID creation. SDK import and synchronous capture run in a daemon thread with
-no retries, a 0.2-second request timeout and a 0.3-second caller wait budget. Slow delivery may
+no retries, a 0.2-second request timeout and a 1-second caller wait budget. Slow delivery may
 be dropped at exit; telemetry failures are silent and preserve command output and exit status.

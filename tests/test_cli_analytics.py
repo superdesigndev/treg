@@ -39,6 +39,7 @@ def test_real_cli_sdk_delivery_and_opt_out(tmp_path, ingestion):
     host, events = ingestion
     env = {**os.environ, 'TREG_CONFIG': str(tmp_path / 'config.json'),
            'TREG_TELEMETRY': '1', 'DO_NOT_TRACK': '0',
+           'PYTHONPYCACHEPREFIX': str(tmp_path / 'bytecode'),
            'TREG_CLI_POSTHOG_KEY': 'phc_test', 'TREG_CLI_POSTHOG_HOST': host}
 
     def run(*args):
@@ -122,7 +123,7 @@ def test_slow_ingestion_does_not_block_exit(monkeypatch, tmp_path):
     try:
         cli_analytics.track_command(command='version', exit_code=0, duration_ms=1,
                                     base_url='https://treg.to', config_path=tmp_path / 'config.json')
-        assert time.monotonic() - started < 1
+        assert time.monotonic() - started < 1.5
     finally:
         finished.set()
 

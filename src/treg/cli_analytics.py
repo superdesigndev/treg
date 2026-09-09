@@ -12,7 +12,7 @@ from pathlib import Path
 # Public ingestion token, also published by https://treg.to/meta (not a personal API key).
 POSTHOG_KEY = "phc_sAgf5A7TPRRA6faCzuqGVUo8pyb3x5Nq7TJYfn6ZVif9"
 POSTHOG_HOST = "https://eu.i.posthog.com"
-EXIT_WAIT_SECONDS = 0.3
+EXIT_WAIT_SECONDS = 1.0
 
 
 def _installation_id(config_path: Path) -> str:
