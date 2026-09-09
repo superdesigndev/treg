@@ -44,8 +44,9 @@ Tests extend the existing auth, capacity and marketplace files. See [catalog](..
 Super Carl's proposed key-provider entry uses `X-API-Key` with the API root
 `https://api.supercarl.ai`; paths retain `/api/v1` or `/api/v2`. The free
 `/api/v1/credits/status` probe rejected a deliberately invalid key with HTTP 401 and
-`{"error":"Invalid API key"}` on 2026-09-09. Valid-key and local connect-flow live
-verification remain pending. Its platform-key setting is empty, and enabling the shared
+`{"error":"Invalid API key"}` on 2026-09-09. The local `/connections/token` flow also rejected
+the key with HTTP 422 and `Super Carl rejected that token (Invalid API key)`, storing no
+connection. Valid-key verification remains pending. Its platform-key setting is empty, and enabling the shared
 account is a maintainer operation. See [catalog](../architecture/catalog.md) for the approved
 usage-invoice rate and the distinction between caller-owned and shared-account metadata.
 

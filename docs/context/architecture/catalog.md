@@ -119,7 +119,8 @@ search, job search, post search, and post-author discovery. These reuse existing
 Two free `account.usage` tools expose the current-key meter, live credit rate card, and rolling
 balance through the caller's own key; they are never eligible for the shared platform key.
 
-Each completed single search, including previews, is documented as one credit. The vendor has
+Each completed single search, including previews and empty results, is documented as one credit
+(`per_call`, not hit-dependent `per_success`). The vendor has
 approved a managed usage-invoice account at $0.099 per credit. The `fx.yaml` entry states that
 account provisioning and live invoice reconciliation are pending; no top-up receipt is claimed.
 Credit-status headers describe a cumulative pool, not a per-call charge. Valid-key self-tests

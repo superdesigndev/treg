@@ -70,7 +70,7 @@ endpoints:
       limit: 1
       network_filter_mode: ignore
   cost:
-    type: per_success
+    type: per_call
     value: 1
     currency: credit
     per: 1
@@ -149,7 +149,7 @@ endpoints:
       limit: 1
       offset: 0
   cost:
-    type: per_success
+    type: per_call
     value: 1
     currency: credit
     per: 1
@@ -221,7 +221,7 @@ endpoints:
       preview_limit: 1
       result_mode: preview
   cost:
-    type: per_success
+    type: per_call
     value: 1
     currency: credit
     per: 1
@@ -274,7 +274,7 @@ endpoints:
       query: Software engineer jobs at Microsoft
       preview_limit: 1
   cost:
-    type: per_success
+    type: per_call
     value: 1
     currency: credit
     per: 1
@@ -358,7 +358,7 @@ endpoints:
       preview_limit: 1
       sort_by: recent
   cost:
-    type: per_success
+    type: per_call
     value: 1
     currency: credit
     per: 1
@@ -444,7 +444,7 @@ endpoints:
       people_limit: 1
       sort_by: recent
   cost:
-    type: per_success
+    type: per_call
     value: 1
     currency: credit
     per: 1
@@ -520,7 +520,8 @@ endpoints:
   input:
     note: 'Free key-validation probe, reachable even at the credit ceiling. Invalid key observed 2026-09-09:
       HTTP 401 with {"error":"Invalid API key"}. Valid-key verification pending.'
-  test_request: {}
+  test_request:
+    queryParams: {}
   cost:
     type: free
     value: 0
