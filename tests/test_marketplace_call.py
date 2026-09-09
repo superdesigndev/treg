@@ -2613,6 +2613,30 @@ ICYPEAS_SYNC_ROWS = json.dumps({"success": True, "data": [
 def icypeas_platform_on(monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "SYNTHETIC-ICYPEAS-KEY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
+# ---- serpstat: the JSON-RPC envelope is the bill (2026-09-09) ---------------------------------
+# Serpstat meters one API credit ("line") per RETURNED row and answers a rejected request as
+# HTTP 200 with an `error` object. Verified live against the account's own limits meter: an error
+# envelope cost 0 lines while treg settled the 20-row estimate (10,000 micro), and a getKeywordTop
+# that returned 12 rows cost exactly 12 lines while treg settled 20 credits. Two estimator misses
+# fed that: `_body_limit` never looked inside the JSON-RPC `params` (so `size` was ignored), and the
+# row-priced routes carried `unit: keyword`/`domain`, which the entity counter read as "one input".
+SERPSTAT_CREDIT = 500  # $0.00050 per API credit (fx.yaml serpstat) in micro-USD
+SERP_EP = "serpstat.google.serp.organic"
+
+
+def _rpc(method: str, **params) -> dict:
+    return {"id": "1", "method": method, "params": params}
+
+
+def _serp_rows(n: int) -> list[dict]:
+    return [{"position": i + 1, "url": f"https://site{i}.example/", "domain": f"site{i}.example"}
+            for i in range(n)]
+
+
+@pytest.fixture
+def serpstat_platform_on(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SERPSTAT", "SYNTHETIC-SERPSTAT-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "serpstat")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -2717,3 +2741,123 @@ def test_icypeas_ack_rule_leaves_per_call_verify_and_the_free_poll_route_alone()
     assert call_settle._observed_cost_micro(mk, ICYPEAS_ACK) is None
     poll = A.catalog_store.load().by_id["icypeas.search.results.read"]
     assert poll["cost"]["type"] == "free" and poll["cost"]["value"] == 0
+def test_body_limit_reads_jsonrpc_params():
+    """A JSON-RPC envelope carries the request under `params`; the row signal lives there."""
+    lim = call_resolution._body_limit
+    assert lim(json.dumps(_rpc("SerpstatKeywordProcedure.getKeywordTop", keyword="seo", se="g_us", size=10)).encode()) == 10
+    # no size: no signal, so the page default applies rather than a guess
+    assert lim(json.dumps(_rpc("SerpstatKeywordProcedure.getKeywordTop", keyword="seo", se="g_us")).encode()) is None
+    # `size` beats the optional `keywords` FILTER list that ranked_keywords also accepts
+    assert lim(json.dumps(_rpc("SerpstatDomainProcedure.getDomainKeywords", domain="a.example", se="g_us",
+                               keywords=["a", "b"], size=100)).encode()) == 100
+    # not an envelope: no `method`, or `params` is not an object
+    assert lim(b'{"params": {"size": 10}}') is None
+    assert lim(b'{"method": "x", "params": [{"size": 10}]}') is None
+    # a top-level limit still wins over the envelope, and plain bodies are unchanged
+    assert lim(b'{"method": "x", "limit": 3, "params": {"size": 10}}') == 3
+    assert lim(b'{"pagination": {"size": 4}}') == 4
+
+
+def test_serpstat_row_priced_routes_reserve_the_requested_size():
+    """The catalog's real cost blocks, priced through fx.yaml: `size` is the reserve on every route
+    priced per RETURNED row, and the request's inputs stay the reserve where the price is per input."""
+    cat = catalog_store.load()
+
+    def est(ep_id: str, **params) -> int:
+        ep = cat.by_id[ep_id]
+        method = ep["input"]["body"]["method"]["example"]
+        return call_resolution._platform_estimate_micro(
+            cat.cost_view(ep["cost"], "serpstat"), {}, json.dumps(_rpc(method, **params)).encode())
+
+    assert est(SERP_EP, keyword="seo", se="g_us", size=10) == 10 * SERPSTAT_CREDIT
+    assert est("serpstat.google.domain.ranked_keywords", domain="a.example", se="g_us", size=100) == 100 * SERPSTAT_CREDIT
+    assert est("serpstat.google.keywords.ideas", keyword="seo", se="g_us", size=25) == 25 * SERPSTAT_CREDIT
+    assert est("serpstat.web.linking_domains.list", query="a.example", size=40) == 40 * SERPSTAT_CREDIT
+    # the reserve is capped: the settle trues up a 1,000-row page from the rows that come back
+    assert est(SERP_EP, keyword="seo", se="g_us", size=1000) == call_resolution._PLATFORM_PAGE_MAX * SERPSTAT_CREDIT
+    # no size: the page default, never the one-input reading the old `unit: keyword` produced
+    assert est("serpstat.google.domain.ranked_keywords", domain="a.example", se="g_us") == call_resolution._PLATFORM_PAGE_DEFAULT * SERPSTAT_CREDIT
+    # priced per INPUT: the batch volume and overview methods count what the request names
+    assert est("serpstat.google.keywords.volume", keywords=["a", "b", "c"], se="g_us") == 3 * SERPSTAT_CREDIT
+    assert est("serpstat.google.domain.overview", domains=["a.example", "b.example"], se="g_us") == 2 * 5 * SERPSTAT_CREDIT
+
+
+@pytest.mark.parametrize(("size", "envelope", "estimate_credits", "credits"), [
+    # the live error case: HTTP 200 + `error`, 0 lines upstream, 20 credits charged before the fix
+    (None, {"id": "1", "error": {"code": -32000, "message": "Invalid params"}}, 20, 0),
+    # the live success case: 12 rows cost 12 lines, 20 credits charged before the fix
+    (None, {"id": "1", "result": {"data": {"top": _serp_rows(12)}, "summary_info": {"left_lines": 988}}}, 20, 12),
+    # `size` is the reserve; the rows are the charge
+    (10, {"id": "1", "result": {"data": {"top": _serp_rows(10)}, "summary_info": {"left_lines": 978}}}, 10, 10),
+    (10, {"id": "1", "result": {"data": {"top": _serp_rows(3)}, "summary_info": {"left_lines": 975}}}, 10, 3),
+    # a served result with no rows bills the documented 1-credit minimum, an error never does
+    (10, {"id": "1", "result": {"data": {"top": []}, "summary_info": {"left_lines": 974}}}, 10, 1),
+    (10, {"id": "1", "error": {"code": -32000, "message": "Limit exceeded"}}, 10, 0),
+])
+async def test_serpstat_settles_on_the_envelope_rows(
+    clients: AsyncClient, serpstat_platform_on, monkeypatch, size, envelope, estimate_credits, credits,
+):
+    params = {"keyword": "example keyword", "se": "g_us"}
+    if size is not None:
+        params["size"] = size
+    body = json.dumps(envelope).encode()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, body))
+    before = await _balance(clients)
+    response = await clients.post(f"/call/{SERP_EP}", json=_rpc("SerpstatKeywordProcedure.getKeywordTop", **params))
+    assert response.status_code == 200, response.text
+    assert response.content == body  # the relay stays faithful: the envelope is read, never rewritten
+    assert await _balance(clients) == before - credits * SERPSTAT_CREDIT
+    telemetry = await _telemetry(clients)
+    assert telemetry["cost_estimated_micro"] == estimate_credits * SERPSTAT_CREDIT
+    assert telemetry["cost_observed_micro"] == credits * SERPSTAT_CREDIT
+    assert telemetry["cost_charged_micro"] == credits * SERPSTAT_CREDIT
+
+
+async def test_serpstat_ranked_keywords_reserves_size_and_settles_rows(
+    clients: AsyncClient, serpstat_platform_on, monkeypatch,
+):
+    """`unit: keyword` had put this route on the per-input path: `size=100` reserved ONE credit
+    and, with no settle rule, charged one credit for a 100-row page."""
+    body = json.dumps({"id": "1", "result": {"data": _serp_rows(3), "summary_info": {"left_lines": 9}}}).encode()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, body))
+    before = await _balance(clients)
+    response = await clients.post("/call/serpstat.google.domain.ranked_keywords", json=_rpc(
+        "SerpstatDomainProcedure.getDomainKeywords", domain="a.example", se="g_us", size=100))
+    assert response.status_code == 200, response.text
+    assert await _balance(clients) == before - 3 * SERPSTAT_CREDIT
+    telemetry = await _telemetry(clients)
+    assert telemetry["cost_estimated_micro"] == 100 * SERPSTAT_CREDIT
+    assert telemetry["cost_charged_micro"] == 3 * SERPSTAT_CREDIT
+
+
+@pytest.mark.parametrize(("envelope", "rows"), [
+    ({"id": "1", "error": {"code": -32000, "message": "x"}}, 0),
+    ({"id": "1", "error": "Invalid token"}, 0),
+    ({"id": "1", "result": {"data": [{}, {}, {}], "summary_info": {"left_lines": 1}}}, 3),
+    ({"id": "1", "result": {"data": {"top": [{}, {}]}, "summary_info": {}}}, 2),
+    ({"id": "1", "result": {"data": {"top": []}}}, 1),
+    ({"id": "1", "result": {"data": []}}, 1),
+    ({"id": "1", "result": {"data": {}}}, 1),
+    # keyed by the input, under `data` or directly under `result`; `summary_info` is never a row
+    ({"id": "1", "result": {"data": {"seo": {"cost": 1}, "sem": {"cost": 2}}, "summary_info": {"left_lines": 1}}}, 2),
+    ({"id": "1", "result": {"a.example": {"visible": 1}, "b.example": {"visible": 2}, "summary_info": {"left_lines": 1}}}, 2),
+    ({"id": "1", "result": [{}, {}]}, 2),
+])
+def test_serpstat_settle_counts_envelope_rows(envelope, rows):
+    mk = _mk("serpstat", endpoint_id=SERP_EP, cost_type="per_result", unit_micro=SERPSTAT_CREDIT)
+    assert call_settle._observed_cost_micro(mk, json.dumps(envelope).encode()) == rows * SERPSTAT_CREDIT
+
+
+@pytest.mark.parametrize("body", [
+    b"{}", b"[]", b"not json", b'{"result": null}', b'{"result": "x"}', b'{"result": {"data": "x"}}',
+    b'{"result": {"data": 7}}', b'{"error": null, "result": 3}',
+])
+def test_serpstat_unknown_envelopes_keep_the_estimate(body):
+    mk = _mk("serpstat", endpoint_id=SERP_EP, cost_type="per_result", unit_micro=SERPSTAT_CREDIT)
+    assert call_settle._observed_cost_micro(mk, body) is None
+
+
+def test_serpstat_row_count_does_not_apply_to_flat_routes():
+    """backlinks.summary is 5 credits per CALL and answers one object under `data`."""
+    mk = _mk("serpstat", endpoint_id="serpstat.web.backlinks.summary", cost_type="per_call", unit_micro=5 * SERPSTAT_CREDIT)
+    assert call_settle._observed_cost_micro(mk, b'{"id": "1", "result": {"data": {"referring_domains": 3}}}') is None

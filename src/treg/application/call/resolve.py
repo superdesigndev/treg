@@ -399,24 +399,17 @@ def _entity_count(query, body: bytes) -> int:
     return max(1, min(n, _ENTITY_MAX))
 
 
-def _body_limit(body: bytes) -> int | None:
-    """A row-count signal from a JSON body: an explicit limit key first (dataforseo takes
-    `[{..., "limit": 3}]`, lusha `{"limit": 1}`), else the ARRAY LENGTH — providers that take a
-    list of inputs (brightdata's urls, dataforseo's tasks) bill one result per item, so a 1-item
-    body estimating at the 20-row default overstated 20x (seen live: $0.03 shown for a $0.0015
-    call). Under-estimating is safe either way — the settle trues up, overruns included."""
-    if not body:
-        return None
-    try:
-        doc = json.loads(body)
-    except (ValueError, UnicodeDecodeError):
-        return None
-    items = None
-    if isinstance(doc, list) and doc:
-        items = len(doc)
-        doc = doc[0]
-    if not isinstance(doc, dict):
-        return items
+def _jsonrpc_params(doc: dict) -> dict | None:
+    """The `params` object of a JSON-RPC request envelope (`{"method": "...", "params": {...}}`),
+    else None. The caller's real request lives one level down in that shape, so every request-
+    reading heuristic has to look there too: serpstat's `params.size` was invisible to the row
+    estimate and every row-priced call reserved the 20-row page default (2026-09-09)."""
+    params = doc.get("params")
+    return params if isinstance(doc.get("method"), str) and isinstance(params, dict) else None
+
+
+def _scope_limit(doc: dict) -> int | None:
+    """The row-count signal one JSON object carries, or None when it names none."""
     for name in _LIMIT_PARAMS:
         val = doc.get(name)
         if isinstance(val, int) and not isinstance(val, bool) and val > 0:
@@ -435,6 +428,32 @@ def _body_limit(body: bytes) -> int | None:
                 val = nested.get(name)
                 if isinstance(val, int) and not isinstance(val, bool) and val > 0:
                     return val
+    return None
+
+
+def _body_limit(body: bytes) -> int | None:
+    """A row-count signal from a JSON body: an explicit limit key first (dataforseo takes
+    `[{..., "limit": 3}]`, lusha `{"limit": 1}`), else the ARRAY LENGTH - providers that take a
+    list of inputs (brightdata's urls, dataforseo's tasks) bill one result per item, so a 1-item
+    body estimating at the 20-row default overstated 20x (seen live: $0.03 shown for a $0.0015
+    call). A JSON-RPC envelope is read at the top level and then inside its `params` object, where
+    the request actually is. Under-estimating is safe either way - the settle trues up, overruns
+    included."""
+    if not body:
+        return None
+    try:
+        doc = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    items = None
+    if isinstance(doc, list) and doc:
+        items = len(doc)
+        doc = doc[0]
+    if not isinstance(doc, dict):
+        return items
+    for scope in (doc, _jsonrpc_params(doc)):
+        if scope is not None and (found := _scope_limit(scope)) is not None:
+            return found
     return items
 
 

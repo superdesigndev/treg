@@ -17,6 +17,8 @@ sources:
   - src/treg/catalog/tomba.yaml
   - src/treg/catalog/icypeas.yaml
   - src/treg/catalog/companyenrich.yaml
+  - src/treg/application/call/serpstat.py
+  - src/treg/catalog/serpstat.yaml
   - src/treg/application/asynctasks.py
   - src/treg/alembic/versions/0017_async_task_record.py
   - src/treg/alembic/versions/0018_async_resource_ownership.py
@@ -447,6 +449,7 @@ Provider-specific calculation stays outside the faithful relay.
 | CompanyEnrich search pages | `items` rows times the per-row price, never below the cost block's `minimum_units` floor (one row: 2 credits on an empty people page, 1 on a company page, 5 on a lookalike page). Covers people and company search, their scroll routes and `companies.similar`; the floor is catalog data, validated by `catalog_validate.check_cost`. A body without an `items` list (gzip, buffer truncation, an error envelope) falls back to the estimate. The `expand` and `semanticQuery` riders are not modeled at reserve or settle |
 | Hunter domain search | One whole search credit per ten returned emails, rounded up; an empty result is free |
 | QuickEnrich | Frozen $0.004834/credit base list rate (Starter $29/6,000, rounded up to micro-USD, before configured margin; assumes full allowance use); prefer integer `meta.credits_used`, including zero. If absent, count documented billable results. Domain holds reserve one credit without title or 20 with title; company holds use per_page (default 10, max 100). Discovery and lookups are free. BYOK never meters |
+| Serpstat | Rows in the JSON-RPC envelope (`result.data[]`, `result.data.top[]` for `getKeywordTop`, or the entries of a result keyed by the input) times the catalog credit price (`application/call/serpstat.py`); a top-level `error` object is free even on HTTP 200; a served result with no rows bills the documented 1-credit floor; an unrecognised shape keeps the estimate. Verified live 2026-09-09: an error envelope cost 0 lines and a 12-row SERP cost 12 |
 | Hunter email finder | One whole credit when an email is present; a known miss is free |
 | TikHub | Honor explicit no-charge prose; an embedded error that says it is charged still costs the estimate |
 | Bright Data | Count delivered JSON-array records or CSV/NDJSON lines; a JSON object containing a status/snapshot handoff has zero records |
@@ -465,6 +468,11 @@ bill one row per listed item — the length of `targets`/`keywords`/`domains`/`u
 settled 20 rows, and until 2026-09-09 an EMPTY companyenrich page still settled the whole
 requested page because no rule counted its `items` - now the table row above; moz's one
 `targets` entry settled 20 quota rows; 2026-09-02: lusha decision-makers,
+`emails`. A JSON-RPC envelope (`method` plus a `params` object) is read at the top level and
+then inside `params`, where the request actually is (`_jsonrpc_params`): serpstat's
+`params.size` was invisible until 2026-09-09 and every row-priced call reserved the page
+default. Each of those was a live overcharge first (2026-08-28: companyenrich `pageSize: 2`
+settled 20 rows, moz's one `targets` entry settled 20 quota rows; 2026-09-02: lusha decision-makers,
 catalogued FREE, answered 44 contacts for one domain and settled $5.49 from `billing.creditsCharged`
 with nothing reserved). The cap key only reserves what the provider will honour: Lusha had already
 removed `/v3/contacts/decision-makers` (2026-08-12) and its legacy handler rejected `contactsLimit`
@@ -485,6 +493,11 @@ export really does cost 5,000 keywords. Before this the 20-row default billed a 
 2026-08-12, refunded by hand — and the same number was the catalog's `~$/call` display, so the caller
 saw the wrong price before the call too. On these providers nothing reports a cost after the fact,
 so the reserve IS the charge: a wrong entity count is a wrong bill, not a hold the settle trues up.
+The unit has to be honest for that to hold: serpstat's routes priced per RETURNED row
+(`ranked_keywords`, `keywords.ideas`, `linking_domains.list`) carried `unit: keyword`/`domain`
+and so reserved exactly one credit whatever `size` asked for; since 2026-09-09 they are
+`unit: row`, only the batch volume and overview methods stay per input, and the serpstat
+settle above counts the rows that came back.
 
 The estimate is never a substitute for an available response-derived charge.
 

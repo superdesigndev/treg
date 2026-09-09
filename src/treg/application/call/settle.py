@@ -199,6 +199,9 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         acknowledgement (`item._id` or `file` + `status`) and zero rows; the hit that costs a
         credit shows up later on the free poll route. An acknowledgement settles at 0
         (`application/call/icypeas.py`); synchronous bodies carrying `data` rows keep the estimate.
+      - serpstat: DERIVED from the JSON-RPC envelope - one credit per row under `result.data`
+        (or `result.data.top`, or the keyed entries), a 1-row floor on a served empty result, and
+        0 for a top-level `error` object, which Serpstat answers with HTTP 200 and does not bill.
 
     Everyone else settles at the estimate. This is the same signal the catalog's `observed_cost`
     harvests, which is what lets phase 5's drift detector compare the two numbers directly."""
@@ -349,6 +352,15 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         if isinstance(items, list) and mk.unit_micro > 0:
             return max(len(items), int(cost["minimum_units"])) * mk.unit_micro
         return None
+    if provider == "serpstat" and mk.cost_type == "per_result" and mk.unit_micro > 0:
+        # DERIVED by counting rows in the JSON-RPC envelope (`application/call/serpstat.py`).
+        # Serpstat meters one credit per returned row and answers a rejected request as HTTP 200
+        # with an `error` object that costs nothing, so status-based billing charged the estimate
+        # both ways (verified live 2026-09-09: an error envelope billed 20 credits for 0 lines, a
+        # 12-row SERP billed 20 for 12). An unrecognised shape keeps the estimate.
+        from . import serpstat
+        rows = serpstat.billed_rows(doc)
+        return None if rows is None else rows * mk.unit_micro
     if provider == "tomba" and mk.endpoint_id == "tomba.companies.emails.list":
         # Live billing evidence: a non-empty page costs ceil(pageSize / 10) credits,
         # even when fewer emails are returned. The catalog supplies the frozen credit price.
