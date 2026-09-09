@@ -227,12 +227,28 @@ async def _publish_live(clients: AsyncClient, name="leads-db") -> str:
     return tool_id
 
 
-async def test_hub_id_answers_501_until_the_runner_exists(clients: AsyncClient, hub_on):
-    tool_id = await _publish_live(clients)
-    r = await clients.get(f"/call/{tool_id}")
+async def test_a_script_tool_answers_501_until_the_script_road_exists(clients: AsyncClient, hub_on):
+    await _own_supabase(clients)
+    tool_id = (await clients.post("/hub/tools", json={
+        "manifest": _script_manifest(), "script": "export default async function run(ctx) { return {rows: [], count: 0}; }",
+        "check": {"inputs": {}, "fields": ["rows"]}, "readme": "x"})).json()["tool_id"]
+    from sqlalchemy import update
+    from treg.infra.db import session_maker
+    from treg.models import HubTool
+    async with session_maker() as s:
+        await s.execute(update(HubTool).where(HubTool.tool_id == tool_id).values(status="live"))
+        await s.commit()
+    r = await clients.post(f"/call/{tool_id}", json={})
     assert r.status_code == 501, r.text
-    assert r.json()["detail"]["error"] == "hub_not_runnable"
-    assert r.json()["detail"]["tool_id"] == tool_id
+    assert r.json()["detail"]["error"] == "hub_not_runnable" and r.json()["detail"]["tool_id"] == tool_id
+    assert r.headers.get("x-treg-error") == "1"
+
+
+async def test_a_steps_tool_refuses_a_missing_required_input_by_name(clients: AsyncClient, hub_on):
+    tool_id = await _publish_live(clients)
+    r = await clients.post(f"/call/{tool_id}", json={})          # `domain` has no default
+    assert r.status_code == 422, r.text
+    assert r.json()["detail"] == {"error": "hub_input_invalid", "field": "domain", "rule": "required (it has no default)"}
     assert r.headers.get("x-treg-error") == "1"
 
 
@@ -266,3 +282,88 @@ async def test_a_catalog_id_is_never_a_hub_tool(clients: AsyncClient, hub_on):
         assert await hub_app.tool_for(s, EP) is None
     r = await clients.get(f"/call/{EP}")
     assert r.status_code != 501
+
+
+
+# ---------------------------------------------------------------------------------------------
+# The reference language and the graph (phase 2), pure
+
+from treg.domain.hub import graph as hub_graph
+from treg.domain.hub import refs
+
+
+def test_refs_parse_every_form_and_nothing_else():
+    assert refs.parse("$input.domain").root == "input"
+    assert refs.parse("$company.data.domain").path == ("data", "domain")
+    assert refs.parse("$news.results[0].title").path == ("results", 0, "title")
+    assert refs.parse("$verify[]").path == (None,)
+    assert refs.parse("$verify.length").path == ("length",)
+    assert refs.parse("$0.data").is_positional
+    for bad in ("company.data", "$", "$Company", "$a.b c", "$a[x]"):
+        with pytest.raises(refs.RefError):
+            refs.parse(bad)
+
+
+def test_refs_read_and_resolve():
+    scope = {"input": {"domain": "figma.com"},
+             "company": {"data": {"name": "Figma", "employee_count": 1200}},
+             "news": {"results": [{"title": "Funding"}, {"title": "Launch"}]},
+             "verify": [{"status": "valid"}, {"status": "invalid"}, None]}
+    pos = {"0": "company"}
+    assert refs.resolve("$company.data.name", scope, pos) == "Figma"
+    assert refs.resolve("$news.results[0].title", scope, pos) == "Funding"
+    assert refs.resolve("$news.results[9].title", scope, pos) is None        # missing is data
+    assert refs.resolve("$verify[]", scope, pos) == scope["verify"]
+    assert refs.resolve("$verify.length", scope, pos) == 3
+    assert refs.resolve("$0.data.employee_count", scope, pos) == 1200
+    assert refs.resolve("$company.data.name: $verify.length leads", scope, pos) == "Figma: 3 leads"
+    assert refs.resolve({"q": "$input.domain funding", "n": 3}, scope, pos) == {"q": "figma.com funding", "n": 3}
+    with pytest.raises(refs.RefError):
+        refs.resolve("$nobody.x", scope, pos)
+
+
+def _g(*steps):
+    return hub_graph.build([{"name": n, "call": "c", "input": i} for n, i in steps])
+
+
+def test_graph_examples_from_the_decisions():
+    # four needs nobody; two needs one; three needs two ⇒ one+four together, then two, then three
+    g = _g(("one", {}), ("two", {"a": "$one.x"}), ("three", {"b": "$two.y"}), ("four", {}))
+    assert g.wave == {"one": 0, "four": 0, "two": 1, "three": 2}
+    # three needs one and two; four needs nobody ⇒ one, two, four together; three after both
+    g = _g(("one", {}), ("two", {}), ("three", {"a": "$one.x", "b": "$two.y"}), ("four", {}))
+    assert g.wave == {"one": 0, "two": 0, "four": 0, "three": 1}
+    assert g.parents["three"] == frozenset({"one", "two"})
+    assert g.positions == {"0": "one", "1": "two", "2": "three", "3": "four"}
+
+
+def test_graph_refuses_cycles_and_unknown_steps():
+    with pytest.raises(ManifestError) as e:
+        _g(("a", {"x": "$b.y"}), ("b", {"x": "$a.y"}))
+    assert "cycle" in e.value.rule
+    with pytest.raises(ManifestError) as e:
+        _g(("a", {"x": "$ghost.y"}))
+    assert "$ghost" in e.value.rule
+    with pytest.raises(ManifestError) as e:
+        _g(("a", {"x": "$a.y"}))
+    assert "itself" in e.value.rule
+
+
+def test_a_cycle_is_refused_at_publish():
+    m = _steps_manifest(steps=[
+        {"name": "people", "call": EP, "input": {"aweme_id": "$rows.body"}},
+        {"name": "rows", "call": "supabase/rest/v1/x", "input": {"q": "$people.data"}},
+    ])
+    err = _refused(m)
+    assert "cycle" in err.rule
+
+
+def test_own_tool_step_takes_a_path_and_a_method():
+    m = _steps_manifest(steps=[
+        {"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}},
+        {"name": "rows", "call": "supabase/rest/v1/leads", "method": "POST", "input": {"q": "$people.data"}},
+    ])
+    v = validate(m, catalog_ids=CATALOG, own_tools=OWN)
+    assert v.steps[1]["call"] == "supabase/rest/v1/leads" and v.steps[1]["method"] == "POST"
+    err = _refused(_steps_manifest(steps=[{"name": "a", "call": EP + "/extra", "input": {}}]))
+    assert err.field == "steps[0].call" and "takes no path" in err.rule

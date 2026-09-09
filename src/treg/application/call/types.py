@@ -21,6 +21,8 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     "tool_access_denied": "caller",
     "target_not_found": "caller",
     "hub_not_runnable": "treg",
+    "hub_input_invalid": "caller",
+    "hub_run_failed": "upstream",
     "target_ambiguous": "caller",
     "catalog_retired": "caller",
     "catalog_parameter_invalid": "caller",

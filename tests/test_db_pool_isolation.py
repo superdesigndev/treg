@@ -42,6 +42,7 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/call/reserve.py": {API}, "application/call/resolve.py": {API},
     "application/call/route.py": {API}, "application/call/service.py": {API},
     "application/call/settle.py": {API},
+    "application/hub/runner.py": {API},   # a run lives inside the caller's /call/; its record write is part of that request
     "domain/capacity/marks.py": {API}, "domain/capacity/routes_view.py": {API},
     "domain/capacity/view.py": {API},
     # `treg-worker` is its own process; it shares the API pool because nothing else is running in it.

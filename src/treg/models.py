@@ -1176,6 +1176,32 @@ class HubTool(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now)
 
 
+class HubRun(SQLModel, table=True):
+    """One run of a hub tool: who called, which version, what ran, what it cost. Kept 30 days.
+    Every step is ALSO an ordinary CallRecord under `{run_id}:s{n}`, so nothing here is a second
+    source of truth for money — the ledger holds the holds and settles; this row holds the trace
+    a caller and a maker read (docs/HUB-DECISIONS.md rounds 2 and 5)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    run_id: str = Field(index=True)                  # `r_<hex>`, also the parent call_ref
+    tool_id: str = Field(index=True)
+    version: int
+    caller_org_id: int = Field(foreign_key="org.id", index=True)
+    maker_org_id: int = Field(index=True)
+    caller_email: str = Field(default="")
+    status: str                                      # ok | failed | stopped
+    steps: int = Field(default=0)                    # steps counted against the caps (items included)
+    cost_micro: int = Field(default=0)               # what the steps charged the caller
+    price_micro: int = Field(default=0)              # the seller's price paid (phase 6; 0 until then)
+    duration_ms: int = Field(default=0)
+    inputs: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))   # secrets masked
+    trace: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    log: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    error: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    started_at: datetime = Field(default_factory=_now, index=True)
+    finished_at: datetime | None = Field(default=None)
+
+
 class ToolRequest(SQLModel, table=True):
     """A "the catalog doesn't have X" report — filed from the catalog page, the CLI, or by an
     agent mid-search over MCP. Demand signal for which provider to key next; reviewed by querying

@@ -31,7 +31,7 @@ MAX_COST_USD = 100.0
 
 INPUT_TYPES = ("string", "int", "float", "bool", "list", "object")
 INPUT_KEYS = frozenset({"type", "default", "max", "min", "secret", "example", "note"})
-STEP_KEYS = frozenset({"name", "call", "input", "for_each", "as", "skip_if_empty", "writes"})
+STEP_KEYS = frozenset({"name", "call", "method", "input", "for_each", "as", "skip_if_empty", "writes", "allow_fail"})
 LIMIT_KEYS = frozenset({"steps", "wall_s", "cost_usd"})
 MANIFEST_KEYS = frozenset({
     "name", "version", "summary", "writes", "inputs", "uses", "limits", "price_usd",
@@ -269,8 +269,17 @@ def _validate_steps(raw: Any, uses: list[str], max_steps: int) -> list[dict[str,
             raise _fail(f"{path}.name", "`input` is reserved for the caller's inputs")
         names.add(name)
         call = step.get("call")
-        if call not in uses:
+        # A catalog id as is, or one of the maker's own tools as `<tool>/<path>` (the tool name
+        # must be in `uses`; the path is the upstream path under its base url).
+        target = call.split("/", 1)[0] if isinstance(call, str) else None
+        if not isinstance(call, str) or target not in uses:
             raise _fail(f"{path}.call", f"{call!r} is not in `uses`; every tool a step calls must be declared there")
+        if "/" in call and "." in target:
+            raise _fail(f"{path}.call", f"{target!r} is a catalog id; it takes no path (a path belongs to one of your own tools)")
+        method = step.get("method", None)
+        if method is not None and (not isinstance(method, str)
+                                   or method.upper() not in ("GET", "POST", "PUT", "PATCH", "DELETE")):
+            raise _fail(f"{path}.method", "one of GET, POST, PUT, PATCH, DELETE")
         inp = step.get("input", {})
         if not isinstance(inp, dict):
             raise _fail(f"{path}.input", "an object of parameter → value or reference")
@@ -287,8 +296,47 @@ def _validate_steps(raw: Any, uses: list[str], max_steps: int) -> list[dict[str,
             raise _fail(f"{path}.skip_if_empty", "a reference; the step is skipped when it is empty")
         if "writes" in step and not isinstance(step["writes"], bool):
             raise _fail(f"{path}.writes", "true or false")
+        if "allow_fail" in step and not isinstance(step["allow_fail"], bool):
+            raise _fail(f"{path}.allow_fail", "true or false")
+        for where, value in (("input", inp), ("for_each", for_each), ("skip_if_empty", skip)):
+            bad = _bad_ref(value)
+            if bad is not None:
+                raise _fail(f"{path}.{where}", f"{bad!r} is not a valid reference (see the reference language)")
         out.append({k: step[k] for k in STEP_KEYS if k in step} | {"input": inp})
+    from . import graph as _graph   # local: graph imports ManifestError from here
+    _graph.build(out)               # unknown-step references and cycles are refused at publish
     return out
+
+
+def own_names(uses: list[str]) -> set[str]:
+    """The entries of `uses` that are a team's own tool names (no dot) rather than catalog ids."""
+    return {u for u in uses if "." not in u}
+
+
+def _bad_ref(value: Any) -> str | None:
+    """The first reference-looking token that does not parse, or None."""
+    from . import refs
+    if isinstance(value, str):
+        for m in re.finditer(r"\$[A-Za-z0-9_.\[\]]+", value):
+            token = m.group(0)
+            try:
+                refs.parse(token)
+            except refs.RefError:
+                # a template may end a reference at punctuation; accept if a prefix parses
+                if not any(refs.find(token)):
+                    return token
+        return None
+    if isinstance(value, dict):
+        for v in value.values():
+            b = _bad_ref(v)
+            if b is not None:
+                return b
+    if isinstance(value, list):
+        for v in value:
+            b = _bad_ref(v)
+            if b is not None:
+                return b
+    return None
 
 
 def _validate_output_steps(raw: Any) -> dict[str, Any]:
@@ -301,6 +349,11 @@ def _validate_output_steps(raw: Any) -> dict[str, Any]:
             raise _fail(f"output.{key}", "field names are 1-32 characters, lowercase letters, digits and underscores")
         if not isinstance(ref, str) or not ref.startswith("$"):
             raise _fail(f"output.{key}", "a reference starting with $ (a literal value is not an output)")
+        from . import refs
+        try:
+            refs.parse(ref)
+        except refs.RefError:
+            raise _fail(f"output.{key}", f"{ref!r} is not a valid reference") from None
     return dict(raw)
 
 
