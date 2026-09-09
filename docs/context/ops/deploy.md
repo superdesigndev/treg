@@ -29,6 +29,12 @@ the settings slot and a `sync: false` web-service key entry in `render.yaml`. Th
 sweep cron reads the same key through `fromService`. Operators supply the secret and enable
 the provider on deployment. Teams can connect their own keys without platform configuration.
 
+QuickEnrich uses `TREG_PLATFORM_KEY_QUICKENRICH` plus `quickenrich` in
+`TREG_PLATFORM_PROVIDERS`. The Render blueprint forwards the key to the capacity worker.
+Capacity uses the API-reported remaining credits; no separate plan setting is required.
+No auto-purchase or auto-top-up is configured. Supplying the key does not alter the serving
+allow-list. Local verification used the supplied root `.env`; no production secrets were changed.
+
 ## Entry point (`__main__.py`)
 `python -m treg upgrade` runs the explicit release phase. `maintenance._upgrade_schema()` runs
 `alembic upgrade head` for an empty or stamped database. A non-empty unstamped database is now refused

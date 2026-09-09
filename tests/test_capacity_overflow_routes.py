@@ -251,6 +251,7 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 _UNRECORDED_SIGNATURE = {
     "apify", "aviato", "branddev", "brightdata", "coingecko", "coresignal", "crustdata", "dataforseo",
     "diffbot", "exa", "fiber-ai", "finnhub", "icypeas", "justoneapi", "marketstack",
+    "quickenrich",  # subscription exhaustion not observed; do not spend the trial to force it
     "millionverifier",  # funded-account exhaustion not observed; trial still has credits
     "minimax", "oceanio", "openrouter", "pdl", "replicate", "scrapecreators", "seranking",
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "tomba", "twelvedata",

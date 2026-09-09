@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from . import paths as P
 from .contracts import Adapter, Contract, adapter_accepts
 
 MAX_ERROR_FALLBACKS = 2
@@ -20,13 +21,18 @@ def ignored_filters(adapter: Adapter, contract: Contract, identity: dict[str, An
     return tuple(k for k in (contract.filters or ()) if identity.get(k) not in (None, "") and k not in used)
 
 
-def cost_at(cost_view: dict | None, request: dict | None = None) -> int | None:
+def cost_at(cost_view: dict | None, request: dict | None = None, adapter: Adapter | None = None) -> int | None:
     """Micro-USD this request will cost at its requested size (plan §3, bench 08-27): per-result
     prices × the requested `limit` (default 1 for a lookup); flat per-call/per-success as listed;
     a credit-with-minimum (`per: N`) is one whole unit. None when unpriced."""
     if not cost_view or cost_view.get("usd") is None:
         return None
     usd = float(cost_view["usd"])
+    if adapter and adapter.cost_units:
+        units = P.evaluate(adapter.cost_units, request or {})
+        if type(units) is not int or units < 0:
+            return None
+        return int(round(usd * units * 1_000_000))
     t = cost_view.get("type")
     per = cost_view.get("per") or 1
     if t == "per_result":

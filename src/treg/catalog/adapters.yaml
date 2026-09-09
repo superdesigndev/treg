@@ -1997,6 +1997,53 @@ adapters:
   # search whose rows need a $0.026 reveal each is a search→reveal chain, not one answer (bench mode C did exactly
   # that and it rescued 2 of 8 hard queries). Fixture kept; callable by id.
 
+  # QuickEnrich: free discovery returns profiles and availability flags, not revealed contact data.
+  quickenrich.people.email.find:
+    accepts: [[linkedin_url], [first_name, last_name, domain]]
+    in: {linkedin_url: queryParams.linkedin_url, first_name: queryParams.first_name, last_name: queryParams.last_name, domain: queryParams.company_url}
+    out: {email: "null_if(data.email, '', 'n/a', 'null', 'none')", first_name: data.first_name, last_name: data.last_name}
+    miss: "null_if(data.email, '', 'n/a', 'null', 'none') == null"
+  quickenrich.people.phone.find:
+    accepts: [[linkedin_url], [first_name, last_name, domain]]
+    in: {linkedin_url: queryParams.linkedin_url, first_name: queryParams.first_name, last_name: queryParams.last_name, domain: queryParams.company_url}
+    out: {phone: "null_if(data.employee_phone, '', 'n/a', 'null', 'none')", line_type: "null_if(data.employee_phone_type, '', 'n/a', 'null', 'none')"}
+    miss: "null_if(data.employee_phone, '', 'n/a', 'null', 'none') == null"
+  quickenrich.people.enrich:
+    accepts: [[email]]
+    in: {email: queryParams.email}
+    out: {full_name: "join(null_if(data.first_name, '', 'n/a'), null_if(data.last_name, '', 'n/a'))", first_name: data.first_name, last_name: data.last_name,
+          title: data.title, company: data.company_name, company_domain: data.company_url, linkedin_url: data.employee_linkedin, location: data.city}
+    miss: "join(null_if(data.first_name, '', 'n/a'), null_if(data.last_name, '', 'n/a')) == null"
+  quickenrich.people.search.domain:
+    accepts: [[title, company_domain], [company_domain]]
+    in: {company_domain: queryParams.company_url, title: queryParams.title}
+    # Fixed 20-row pages: title costs up to 20 credits; no title costs one credit per page.
+    cost_units: "choose(title, 20, 1)"
+    out: {people: data, count: "len(data)"}
+    miss: "coalesce(data, []) == []"
+  quickenrich.people.search:
+    accepts: [[title, company_domain], [company_domain], [title]]
+    in: {company_domain: body.company_url.include, title: body.title.include}
+    in_expr:
+      body.company_url: "obj('include', list(company_domain), 'exclude', choose(company_domain, [], null))"
+      body.title: "obj('include', list(title), 'exclude', choose(title, [], null))"
+      body.country_code: "obj('include', list(upper(country)), 'exclude', choose(country, [], null))"
+      body.locality: "obj('include', list(location), 'exclude', choose(location, [], null))"
+      body.per_page: limit
+    out: {people: data, count: "len(data)", next_cursor: meta.next_cursor}
+    miss: "coalesce(data, []) == []"
+  quickenrich.companies.search:
+    accepts: [[domain], [name], [industry]]
+    in: {domain: body.company_url, name: body.company_name.include, industry: body.industry.include}
+    in_expr:
+      body.company_name: "obj('include', list(name), 'exclude', choose(name, [], null))"
+      body.industry: "obj('include', list(industry), 'exclude', choose(industry, [], null))"
+      body.country_code: "obj('include', list(upper(country)), 'exclude', choose(country, [], null))"
+      body.per_page: limit
+    out: {companies: data, count: "len(data)", next_cursor: meta.next_cursor}
+    miss: "coalesce(data, []) == []"
+
+
 
   # ContactOut people search/profile adapters are omitted: the PII rule excludes
   # their verification fixtures. Direct tools remain available. Company discovery:

@@ -1212,3 +1212,23 @@ async def test_search_caps_a_routed_group_at_a_few_children(clients: AsyncClient
     kids = [r for r in rows if r["capability"] == "people.search" and r.get("kind") != "routed"]
     assert len(kids) <= 5 and parent["children_hidden"] >= 1
     assert "treg.people.email.find" in {r["id"] for r in rows}, "the next job fits on the page now"
+
+
+async def test_enrichment_catalog_prices_and_routed_child_rates(clients):
+    from treg.domain.catalog import store
+    cat = store.load()
+    endpoints = [e for e in cat.by_id.values() if e['provider'] == 'quickenrich']
+    assert len(endpoints) == 11
+    assert sum(e['cost']['type'] == 'free' for e in endpoints) == 6
+    for ep in endpoints:
+        cost = cat.cost_view(ep['cost'], ep['provider'])
+        assert cost['usd'] == (0 if cost['type'] == 'free' else 0.004834)
+    for cap in ('people.email.find', 'people.phone.find', 'people.enrich', 'people.search', 'companies.search'):
+        response = await clients.get('/catalog/endpoints/treg.' + cap)
+        assert response.status_code == 200
+        doc = response.json()
+        children = [c for c in doc['routing']['plan'] if c['endpoint_id'].startswith('quickenrich.')]
+        assert children
+        for child in children:
+            ep = cat.by_id[child['endpoint_id']]
+            assert child['usd'] == cat.cost_view(ep['cost'], ep['provider'])['usd']

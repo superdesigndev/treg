@@ -76,6 +76,23 @@ async def _seranking(c, key):
                     f"{sub.get('expire_at', '?')}); access via {reason}"}
 
 
+async def _quickenrich(c, key):
+    # Free discovery carries the remaining subscription allowance; no account endpoint exists.
+    r = await c.post("https://app.quickenrich.io/api/employees/contact-finder",
+                     headers={"Authorization": f"Bearer {key}"},
+                     json={"company_url": {"include": ["treg-probe-nonexistent.invalid"], "exclude": []},
+                           "per_page": 1})
+    r.raise_for_status()
+    doc = r.json()
+    meta = doc.get("meta") if isinstance(doc, dict) else None
+    remaining = meta.get("remaining_credits") if isinstance(meta, dict) else None
+    # Missing or unclear allowance data is unknown, never evidence of an unlimited plan.
+    if not isinstance(doc, dict) or doc.get("success") is not True or type(remaining) is not int or remaining < 0:
+        return {"value": None, "unit": "credits", "note": "No finite subscription allowance reported; check QuickEnrich plan"}
+    return {"value": remaining, "unit": "credits",
+            "note": "Subscription allowance; resets at renewal, no auto-top-up. Reset date not reported."}
+
+
 async def _hunter(c, key):
     d = await _get(c, "https://api.hunter.io/v2/account", params={"api_key": key})
     req = (d.get("data") or {}).get("requests", {})
@@ -418,6 +435,7 @@ BALANCE_ROUTES = {
     "moz": _moz,
     "seranking": _seranking,
     "hunter": _hunter,
+    "quickenrich": _quickenrich,
     "trykitt": _trykitt,
     "contactout": _contactout,
     "millionverifier": _millionverifier,

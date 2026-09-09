@@ -109,6 +109,45 @@ def _brightdata_record_count(body: bytes) -> int | None:
         return 0
     return None
 
+def _quickenrich_cost_micro(mk: MarketplaceCall, doc: dict) -> int | None:
+    """Subscription credits at the frozen list rate, independent of the upstream plan fee."""
+    if mk.cost_type == "free":
+        return 0
+    meta = doc.get("meta")
+    if isinstance(meta, dict) and "credits_used" in meta:
+        credits = meta["credits_used"]
+        # The documented meter is whole credits. Reject booleans, negative and malformed usage.
+        return credits * mk.unit_micro if type(credits) is int and credits >= 0 else None
+    if "data" not in doc or doc.get("success") is not True:
+        return None
+    data = doc["data"]
+    if data is None or data == [] or data == {}:
+        return 0
+
+    def present(value):
+        return isinstance(value, str) and value.strip().lower() not in ("", "n/a", "null", "none")
+
+    if mk.endpoint_id == "quickenrich.people.search.domain" and isinstance(data, list):
+        if not all(isinstance(row, dict) for row in data):
+            return None
+        title = (mk.request_data.get("queryParams") or {}).get("title", "")
+        credits = (sum(present(row.get("email")) or present(row.get("employee_phone")) for row in data)
+                   if title else 1)
+        return credits * mk.unit_micro
+    if mk.endpoint_id == "quickenrich.companies.search" and isinstance(data, list):
+        return len(data) * mk.unit_micro if all(isinstance(row, dict) for row in data) else None
+    if isinstance(data, dict):
+        if mk.endpoint_id == "quickenrich.people.email.find":
+            if "email" not in data and "employee_phone" not in data:
+                return None
+            return int(present(data.get("email")) or present(data.get("employee_phone"))) * mk.unit_micro
+        if mk.endpoint_id == "quickenrich.people.phone.find" and "employee_phone" in data:
+            return int(present(data["employee_phone"])) * mk.unit_micro
+        if mk.endpoint_id == "quickenrich.people.enrich":
+            return mk.unit_micro
+    return None
+
+
 def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int | None:
     """The provider's OWN reported charge for this call, in micro-USD, or None when it doesn't say.
 
@@ -202,6 +241,8 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
             except (InvalidOperation, ValueError, OverflowError):
                 pass
         # Missing or invalid charge evidence leaves the normal miss/base rules in force.
+    if provider == "quickenrich":
+        return _quickenrich_cost_micro(mk, doc)
     if provider == "aviato" and mk.endpoint_id == "aviato.companies.enrich.bulk":
         rows = doc.get("companies")
         if isinstance(rows, list) and mk.unit_micro > 0:

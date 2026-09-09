@@ -278,7 +278,7 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
         st = stats.get(e["id"]) or {}
         tier = "tool" if e["provider"] in own_tools else "credential" if e["provider"] in own else "platform"
         cv = cat.cost_view(e.get("cost"), e["provider"])
-        price = 0 if tier != "platform" else cost_at(cv, identity)
+        price = 0 if tier != "platform" else cost_at(cv, identity, ad)
         c = Candidate(endpoint=e, adapter=ad, variant=v, tier=tier, price_micro=price, hit_rate=st.get("hit_rate"),
                       ok_rate=st.get("ok_rate"), p50_ms=st.get("p50_ms"), last_ok_days=st.get("last_ok_days"),
                       exhausted=(tier == "platform" and capacity_view.is_exhausted(e["provider"], e["id"])),

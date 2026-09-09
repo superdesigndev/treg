@@ -47,7 +47,7 @@ def test_every_provider_is_registered():
         "google-ads", "youtube", "linkedin", "slack", "x", "tiktok",
         "facebook", "instagram", "meta-ads",
         # API-key providers (auth_kind="key")
-        "apollo", "pdl", "akta", "hunter", "contactout", "millionverifier", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush", "justoneapi",
+        "apollo", "pdl", "akta", "hunter", "quickenrich", "contactout", "millionverifier", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush", "justoneapi",
         "scrapecreators",
         "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
         "cloro",

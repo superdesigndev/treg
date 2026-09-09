@@ -1,0 +1,439 @@
+# Full surface: six authenticated data routes here; five public lookup utilities in quickenrich.extended.yaml.
+# No account balance or email verification endpoint exists in the published API.
+# Live key verified on Free and Starter at app.quickenrich.io; api.quickenrich.io is not required.
+# Platform base rate: $0.004834/credit, from Starter $29/6000 rounded up to micro-USD. BYOK is never metered.
+# Pricing plans: Free/Starter/Growth renew credits monthly; GTM Unlimited has unlimited API credits.
+# No auto-top-up, prepaid packs or automatic upgrade.
+provider: quickenrich
+source:
+  docs: https://app.quickenrich.io/docs
+  openapi: null
+  curated: '2026-09-08'
+limits: 'Search/phone/reverse: 1000 rpm; domain: 300 rpm; contact/company finder: 120 rpm. GTM Unlimited: 6000 rpm.
+  Free-plan pagination is capped.'
+pricing_url: https://quickenrich.io/
+endpoints:
+- id: quickenrich.people.email.find
+  capability: people.email.find
+  platform: people
+  scope: any_account
+  domain: contacts
+  method: GET
+  path: /api/employees/search
+  name: Find a business email
+  summary: Search for employees using LinkedIn URL AND/OR company URL, first name, and last name.
+  input: &id001
+    queryParams:
+      linkedin_url:
+        type: string
+        required: false
+        example: https://linkedin.com/in/satyanadella
+      company_url:
+        type: string
+        required: false
+        example: microsoft.com
+      first_name:
+        type: string
+        required: false
+        example: Satya
+      last_name:
+        type: string
+        required: false
+        example: Nadella
+    note: Provide linkedin_url OR company_url + first_name + last_name. When all four are supplied, LinkedIn lookup
+      runs first, then name/company fallback. All calls are synchronous. No dedicated SMTP verification endpoint.
+  test_request: &id002
+    queryParams:
+      linkedin_url: https://linkedin.com/in/treg-nonexistent-probe-20260908
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://app.quickenrich.io/docs
+    checked: '2026-09-08'
+    confidence: documented
+    note: One credit for a contact with email and/or phone; observed email hit 1 and miss 0. Prefer meta.credits_used;
+      verification date is not a fresh SMTP verification.
+  docs_url: https://app.quickenrich.io/docs
+  verified: '2026-09-08'
+  example_response: examples/quickenrich.people.email.find.json
+- id: quickenrich.people.phone.find
+  capability: people.phone.find
+  platform: people
+  scope: any_account
+  domain: contacts
+  method: GET
+  path: /api/employees/phone-search
+  name: Find a business phone
+  summary: Search for employee phone numbers.
+  input: *id001
+  test_request: *id002
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://app.quickenrich.io/docs
+    checked: '2026-09-08'
+    confidence: documented
+    note: One credit when a phone is returned; zero on miss. Both observed live.
+  docs_url: https://app.quickenrich.io/docs
+  verified: '2026-09-08'
+  example_response: examples/quickenrich.people.phone.find.json
+- id: quickenrich.people.enrich
+  capability: people.enrich
+  platform: people
+  scope: any_account
+  domain: contacts
+  method: GET
+  path: /api/employees/email-search
+  name: Find a person from an email
+  summary: Reverse Email Lookup
+  input:
+    queryParams:
+      email:
+        type: string
+        required: true
+        example: nobody-quickenrich-treg-20260908@stripe.com
+  test_request:
+    queryParams:
+      email: nobody-quickenrich-treg-20260908@stripe.com
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://app.quickenrich.io/docs
+    checked: '2026-09-08'
+    confidence: documented
+    note: One credit on match, zero on miss. Prefer meta.credits_used.
+  docs_url: https://app.quickenrich.io/docs
+  verified: '2026-09-08'
+  example_response: examples/quickenrich.people.enrich.json
+- id: quickenrich.people.search.domain
+  capability: people.search
+  platform: people
+  scope: any_account
+  domain: contacts
+  method: GET
+  path: /api/employees/dataset-search
+  name: Find people at a company
+  summary: Domain Search(URL + Title)
+  input:
+    queryParams:
+      company_url:
+        type: string
+        required: true
+        example: stripe.com
+      title:
+        type: string
+        required: false
+        example: CEO
+        note: Optional comma-separated titles. Omit for flat one-credit page billing.
+      page:
+        type: integer
+        required: false
+        example: 1
+        default: 1
+      has_email:
+        type: boolean
+        required: false
+        example: true
+    note: Fixed pages of up to 20 employees; no per_page parameter. A title changes billing to per contact with
+      email/phone. N/A does not count as contact data.
+  test_request:
+    queryParams:
+      company_url: stripe.com
+      title: CEO
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://app.quickenrich.io/docs
+    checked: '2026-09-08'
+    confidence: documented
+    note: 'Without title: one credit per nonempty page. With title: one per employee with email and/or phone (both
+      together still one). Empty pages are free. Holds reserve at most 20 credits with title, one without.'
+  docs_url: https://app.quickenrich.io/docs
+  verified: '2026-09-08'
+  example_response: examples/quickenrich.people.search.domain.json
+- id: quickenrich.people.search
+  capability: people.search
+  platform: people
+  scope: any_account
+  domain: contacts
+  method: POST
+  path: /api/employees/contact-finder
+  name: Discover contacts for free
+  summary: Contact Finder
+  input:
+    bodyType: json
+    body:
+      title:
+        type: object
+        required: false
+        example:
+          include:
+          - CEO
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      locality:
+        type: object
+        required: false
+        example:
+          include:
+          - San Francisco
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      company_name:
+        type: object
+        required: false
+        example:
+          include:
+          - Stripe
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      company_url:
+        type: object
+        required: false
+        example:
+          include:
+          - stripe.com
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      number_of_employees:
+        type: object
+        required: false
+        example:
+          include:
+          - 51-200
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      revenue:
+        type: object
+        required: false
+        example:
+          include:
+          - 10M-50M
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      city:
+        type: object
+        required: false
+        example:
+          include:
+          - San Francisco
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      country_code:
+        type: object
+        required: false
+        example:
+          include:
+          - US
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      industry_linkedin:
+        type: object
+        required: false
+        example:
+          include:
+          - Computer Software
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      bio_li:
+        type: object
+        required: false
+        example:
+          include:
+          - payments
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      services:
+        type: object
+        required: false
+        example:
+          include:
+          - Software
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      has_email:
+        type: boolean
+        required: false
+        example: true
+      has_phone:
+        type: boolean
+        required: false
+        example: true
+      page: &id003
+        type: integer
+        required: false
+        example: 1
+        default: 1
+      per_page: &id004
+        type: integer
+        required: false
+        example: 1
+        default: 10
+        min: 1
+        max: 100
+      cursor: &id005
+        type: string
+        required: false
+        example: opaque cursor from meta.next_cursor
+    note: 'At least one filter is required. Use exact lookup values for country, industry, size, revenue and services.
+      Cursor from meta.next_cursor overrides page; repeat until null. Docs support cursor beyond 10,000 rows, but
+      free plan reports max_pages=5; respect plan limits. Discovery returns has_email/has_phone flags, not the email
+      or phone: selectively call email/phone find with employee_linkedin or name/company.'
+  test_request:
+    body:
+      company_url:
+        include:
+        - stripe.com
+        exclude: []
+      has_email: true
+      per_page: 1
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://app.quickenrich.io/docs
+    checked: '2026-09-08'
+    confidence: documented
+    note: Free discovery; meta.credits_used=0. Authentication is still required.
+  docs_url: https://app.quickenrich.io/docs
+  verified: '2026-09-08'
+  example_response: examples/quickenrich.people.search.json
+- id: quickenrich.companies.search
+  capability: companies.search
+  platform: companies
+  scope: any_account
+  domain: companies
+  method: POST
+  path: /api/companies/company-finder
+  name: Search companies
+  summary: Search companies by home page text, LinkedIn description, services offered, industry, employee size,
+    revenue, country, city, URL, and company name.
+  input:
+    bodyType: json
+    body:
+      home_page_text:
+        type: object
+        required: false
+        example:
+          include:
+          - payments
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      bio_li:
+        type: object
+        required: false
+        example:
+          include:
+          - payments
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      services:
+        type: object
+        required: false
+        example:
+          include:
+          - Software
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      industry:
+        type: object
+        required: false
+        example:
+          include:
+          - Computer Software
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      number_of_employees:
+        type: object
+        required: false
+        example:
+          include:
+          - 51-200
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      revenue:
+        type: object
+        required: false
+        example:
+          include:
+          - 10M-50M
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      country_code:
+        type: object
+        required: false
+        example:
+          include:
+          - US
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      city:
+        type: object
+        required: false
+        example:
+          include:
+          - San Francisco
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      company_name:
+        type: object
+        required: false
+        example:
+          include:
+          - Stripe
+          exclude: []
+        note: Include/exclude string arrays; OR within include, AND across dimensions.
+      company_url:
+        type: string
+        required: false
+        example: stripe.com
+        note: Single string, NOT include/exclude arrays; matches URL and email domains.
+      include_full_text:
+        type: boolean
+        required: false
+        example: false
+        default: false
+      page: *id003
+      per_page: *id004
+      cursor: *id005
+    note: At least one filter or company_url required. Company industry uses industry, whereas Contact Finder uses
+      industry_linkedin. Exact lookup values required for enumerated filters. Default 10, maximum 100 results. Echo
+      meta.next_cursor unchanged beyond 10,000 results; cursor overrides page. Free plan reports max_pages=5.
+  test_request:
+    body:
+      company_url: stripe.com
+      per_page: 1
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://app.quickenrich.io/docs
+    checked: '2026-09-08'
+    confidence: documented
+    note: One credit per company returned; empty results free. Prefer meta.credits_used, including zero for an upstream
+      plan waiver. Web-app-only subscriptions are not an API product.
+  docs_url: https://app.quickenrich.io/docs
+  verified: '2026-09-08'
+  example_response: examples/quickenrich.companies.search.json

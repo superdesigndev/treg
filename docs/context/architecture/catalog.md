@@ -2,6 +2,19 @@
 title: Endpoint catalog — what you can DO with a connected key, and which provider should do it
 status: shipped
 sources:
+  - src/treg/catalog/quickenrich.yaml
+  - src/treg/catalog/quickenrich.extended.yaml
+  - src/treg/catalog/examples/quickenrich.companies.search.json
+  - src/treg/catalog/examples/quickenrich.people.email.find.json
+  - src/treg/catalog/examples/quickenrich.people.enrich.json
+  - src/treg/catalog/examples/quickenrich.people.phone.find.json
+  - src/treg/catalog/examples/quickenrich.people.search.domain.json
+  - src/treg/catalog/examples/quickenrich.people.search.json
+  - src/treg/catalog/examples/quickenrich.x.company-services.json
+  - src/treg/catalog/examples/quickenrich.x.country-codes.json
+  - src/treg/catalog/examples/quickenrich.x.employee-ranges.json
+  - src/treg/catalog/examples/quickenrich.x.industries.json
+  - src/treg/catalog/examples/quickenrich.x.revenue-ranges.json
   - src/treg/catalog/trykitt.yaml
   - src/treg/catalog/examples/trykitt.people.email.find.json
   - src/treg/catalog/examples/trykitt.people.email.verify.json
@@ -102,6 +115,68 @@ The computed cost view uses a `cost.table` fallback as its scalar validated uppe
 eligibility and compact displays. Runtime charging evaluates the first matching row against request
 values plus catalog defaults and freezes that settlement basis. Terminal usage or the recorded table
 evidence feeds the shared money settlement function; provider variation stays declarative in YAML.
+
+## QuickEnrich enrichment (2026-09-08)
+
+`quickenrich.yaml` exposes email and phone finding, reverse email, people at a domain,
+free contact discovery and company search. `quickenrich.extended.yaml` contains the five
+public lookup utilities (countries, industries, employee ranges, revenue ranges, services).
+This is the complete documented API surface; no account-usage or SMTP-verification endpoint
+is invented. Company Finder accepts a domain filter but remains a search tool, not a duplicate
+company-enrichment listing. Six adapters add the core tools to five existing routed capabilities:
+`people.email.find`, `people.phone.find`, `people.enrich` (email input only), `people.search`
+(discovery and domain search), and `companies.search` (domain, name or industry inputs).
+Free discovery returns profiles and availability flags, not revealed emails or phones. It can
+satisfy a people-search request without a paid reveal. Domain search retains its fixed 20-row
+page; its adapter quotes one credit without a title and up to 20 with a title, independently of
+`limit`. The router discloses unsupported filters, including the domain route's row limit.
+No company-enrichment, email-verification or lookup-utility adapter is added.
+
+A free-plan key was supplied and verified against `https://app.quickenrich.io`; the alternative
+marketing hostname `api.quickenrich.io` is unnecessary. The authenticated Contact Finder probe
+returns 401 `Invalid or inactive API key` for a bogus key and 200 with `credits_used: 0` for a
+valid key. This satisfies key-in-hand verification; self-serve provisioning of a new Growth key
+was not independently tested. Setup copy retains the docs' support fallback.
+
+Discover first with `quickenrich.people.search`, then selectively call email/phone find using
+the returned profile URL or name/company. Discovery exposes availability flags, not email/phone
+values. Contact filters use `industry_linkedin`, company filters use `industry`; Company Finder's
+`company_url` is a string, unlike the discovery include/exclude object. Lookup values must match
+exactly. Finder pagination defaults to 10 and caps at 100 rows; `meta.next_cursor` overrides page
+and supports deep pagination according to docs. The actual Free subscription reports `max_pages: 5`;
+paid deep-pagination behavior has not been exercised.
+
+Billing evidence from the initial live run (credits before 300, after 289):
+
+| Request | Observed credits |
+|---|---:|
+| Five public lookups; one-contact discovery | 0 |
+| Email hit / phone hit / reverse-email hit | 1 each |
+| Email miss / phone miss / empty domain | 0 each |
+| Domain without title: 20 returned | 1 flat |
+| Domain with title: 8 returned, 6 with email/phone | 6 |
+| Company search: 1 result / empty result | 1 / 0 |
+
+The standard verifier subsequently passed every core and utility test request. Total live
+verification used 18 trial credits, leaving 282. A live request through treg’s `/connections/token`
+returned 422 for the bogus key and provisioned no tool. Reverse misses
+must use a valid mail domain: `.invalid` and `example.com` were rejected with HTTP 422 by the
+upstream email validator; a unique nonexistent address at `stripe.com` returned a free 200 miss.
+Captured public examples have contact names, email, phone and personal profile URLs replaced
+with synthetic values. Shared billing tests use small inline payloads, following the existing
+provider tests. Dollar provenance stays documented: the live meter
+proved credit counts, not cash spent on the free account.
+
+The base list rate in `fx.yaml` is $0.004834 per credit before configured platform margin.
+It uses the purchased Starter monthly plan: $29 / 6,000 credits, rounded up to 4,834 micro-USD.
+This assumes all monthly credits are used; unused credits increase effective cost. Direct tools,
+settlement and routed estimates share this rate.
+Free/Starter/Growth are subscription allowances; GTM Unlimited is a subscription with no finite
+API allowance. The free subscription does not make billed enrichment a treg trial-priced product.
+See [money](money.md) for reservation/settlement and [capacity](../ops/capacity.md) for renewal
+and API balance reporting. Unlimited-plan status requires live verification; missing balance data remains unknown.
+Starter has been purchased. Six routed live checks on Starter used three credits and confirmed
+the existing response and credit rules. This price change does not enable production.
 
 ## MillionVerifier email verification (2026-09-08)
 
@@ -1435,14 +1510,18 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   expression over the body), `miss`. The expression language (`domain/catalog/routing/paths.py`)
   is deliberately tiny: dotted paths with `[i]` (root `[0]`, `.` = the whole body), `coalesce`,
   `/ N`, `==`/`!=` against literals, and named transforms (`split_first`, `split_last`, `join`,
-  `has_type`, `len`, `list`, `obj`, `fmt`, `csv`, `lower`/`upper`, `at_least`, `linkedin_handle`/
+  `has_type`, `len`, `list`, `obj`, `fmt`, `csv`, `lower`/`upper`, `at_least`, `null_if`, `choose`, `linkedin_handle`/
   `linkedin_url`, `email_domain`, `host`, `dfs_location`, `seranking_source`, `tca_filter`).
   `values` reads rows from object-keyed or list responses; `get` applies dotted/indexed lookup
   to another expression result (for example, the first company in a domain-keyed response).
   These are generic helpers, not provider-specific rewrites.
   `in_expr` builds provider params from expressions (URL-array bodies, DSL objects); `test_identity`
   states the fixture's identity when `in` builds a value rather than copying one; `filters` carry
-  defaults and are always sent.
+  defaults and are always sent. `null_if` removes explicitly declared empty markers while retaining
+  other values; `choose` selects between two expression values. Optional adapter `cost_units`
+  expresses an upper bound in catalog-priced units (for example, fixed-page billing). Both the
+  public quote and call-time plan use it through `routing/plan.py::cost_at`; invalid unit values
+  remain unpriced. It does not replace the child's normal reserve/settle rules.
 - **Verified at load, or absent** — `routing/contracts.py::verify`: `in` must reproduce the
   endpoint's own `test_request` and `out` must fill every required core field from its
   `example_response` (an example that is itself a miss passes with the hit half unverified).
@@ -1451,7 +1530,8 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
 - **The generated row** — `routing/synthetic.py`: every capability with ≥ 2 verified children gets
   `treg.<capability>` (`provider: treg`, `kind: routed`, `POST /<capability>`, `input` = the
   contract, `cost` = the children's range, `routed_children`). Never hand-written; not in any
-  provider file. `catalog_get` on it returns the contract and the ranked **plan** (the quote) —
+  provider file.
+  `catalog_get` on it returns the contract and the ranked **plan** (the quote) —
   nothing is reserved.
 - **Ranking** — `routing/plan.py`: own keys (tier 2) first at cost 0; then
   `expected_cost_per_hit = cost_at(request) × P(billed) / P(hit)` where `cost_at` prices *this*

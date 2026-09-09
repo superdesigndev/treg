@@ -60,6 +60,24 @@ endpoint using query auth `api`. Both the balance script and sweep use this coll
 not add `bulk_credits` to the balance. No overflow route is claimed. Verify the funded
 account's empty-credit response before adding a signature or enabling overflow.
 
+## QuickEnrich subscriptions
+
+`collectors._quickenrich` reads `meta.remaining_credits` from a free Contact Finder miss;
+there is no account/balance endpoint to list. Default policy is `monthly_quota` / `quota_reset`,
+with auto-funding disabled. The API does not report the renewal timestamp, so no calendar reset
+is guessed. Subsequent sweeps discover replenished credits. Do not model this as prepaid packs
+or auto-top-up. Hunter also uses renewal quotas: monthly plans reset monthly, yearly plans
+annually ([Hunter reset rules](https://help.hunter.io/en/articles/1911597-when-do-credits-reset)).
+
+Free, Starter and Growth use the API-reported remaining allowance. No manual plan setting
+can override that value. A reported zero means exhausted; missing, negative or non-numeric
+balance data means unknown, not unlimited. The unlimited-plan API response has not been
+verified. Inspect its actual status and balance fields before adding common unlimited-plan
+support. Per-call billing remains separate: use `meta.credits_used` at the treg list rate.
+
+Exhaustion behavior is acknowledged as unrecorded in the existing shared signature guard;
+we did not exhaust the trial to manufacture evidence. No overflow route is claimed.
+
 ## Pieces (`src/treg/domain/capacity/`)
 
 - **`collectors.py`** — the providers' *free* balance/quota calls (`coroutine(client, key) →

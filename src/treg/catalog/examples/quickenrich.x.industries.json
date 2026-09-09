@@ -1,0 +1,27 @@
+{
+  "success": true,
+  "message": "Industries fetched",
+  "code": 200,
+  "data": [
+    "Abrasives and Nonmetallic Minerals Manufacturing",
+    "Accessible Architecture and Design",
+    "Accessible Hardware Manufacturing",
+    "Accommodation",
+    "Accommodation and Food Services",
+    "Accounting",
+    "Administration of Justice",
+    "Administrative and Support Services",
+    "Advertising Services",
+    "Agricultural Chemical Manufacturing",
+    "Agriculture",
+    "Agriculture, Construction, Mining Machinery Manufacturing",
+    "Air, Water, and Waste Program Management",
+    "Airlines and Aviation",
+    "Alternative Dispute Resolution",
+    "Alternative Fuel Vehicle Manufacturing",
+    "Alternative Medicine",
+    "Ambulance Services",
+    "Amusement Parks and Arcades",
+    "Animal Feed Manufacturing"
+  ]
+}

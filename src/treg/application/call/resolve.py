@@ -560,6 +560,17 @@ def _marketplace_pricing(
     estimate = _platform_estimate_micro(cost, query, body)
     unit = (_usd_to_micro(cost["usd"])
             if cost.get("type") in ("per_result", "quota_rows") and cost.get("usd") else 0)
+    if provider == "quickenrich":
+        credit = _usd_to_micro(float(cost.get("usd") or 0))
+        if endpoint_id == "quickenrich.people.search.domain":
+            # Fixed 20-row page; title queries charge each contactable employee, otherwise one page.
+            return credit * (20 if query.get("title") else 1), credit
+        if endpoint_id == "quickenrich.companies.search":
+            doc = _json_object(body)
+            size = doc.get("per_page", 10)
+            size = max(1, min(size, 100)) if type(size) is int else 100
+            return size * credit, credit
+        return estimate, credit
     if provider == "tomba" and endpoint_id == "tomba.companies.emails.list":
         # Tomba bills requested page slots in blocks of ten, with a ten-slot default.
         # A partial non-empty page still costs the full block; settlement frees empty pages.

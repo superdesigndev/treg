@@ -31,6 +31,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "thecompaniesapi": ("credits", "manual", "api"),
     "tomba": ("monthly_quota", "quota_reset", "api"),
     "hunter": ("monthly_quota", "quota_reset", "api"),
+    "quickenrich": ("monthly_quota", "quota_reset", "api"),
     "predictleads": ("monthly_quota", "quota_reset", "api"),
     "companyenrich": ("credits", "manual", "api"),
     "apollo": ("credits", "manual", "api"),
@@ -58,6 +59,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
 _QUOTAS: dict[str, dict] = {
     "lusha": {"limit": None, "period": "day", "resets_at_rule": "local_midnight"},
     "hunter": {"limit": None, "period": "billing", "resets_at_rule": "account.reset_date"},
+    "quickenrich": {"limit": None, "period": "billing", "resets_at_rule": "subscription renewal; no reset timestamp in API"},
 }
 _RATE_LIMITS: dict[str, dict] = {
     "leadsforge": {"limit": 120, "window_s": 60, "source": "headers"},

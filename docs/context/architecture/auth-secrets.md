@@ -30,6 +30,11 @@ related:
 
 # Auth & secrets
 
+QuickEnrich uses `QUICKENRICH`, a pasted Bearer key on `app.quickenrich.io`. The free
+POST Contact Finder probe rejects invalid keys with HTTP 401 and does not require a positive credit
+balance to accept a successful probe. `platform_key_quickenrich` supplies the separate server-held platform credential.
+No OAuth app or special injector is needed. See the QuickEnrich section in [catalog](catalog.md).
+
 Tier 4 has explicit platform-key slots for MiniMax, OpenRouter and Replicate. The web and async cron
 receive them as environment secrets, and the worker constructs the same platform bindings as the call
 path. Key values are never copied into task records, logs or archive evidence.

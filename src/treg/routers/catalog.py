@@ -316,7 +316,7 @@ async def catalog_endpoint(
             st = stats.get(k["id"]) or {}
             ad = cat.adapters.get(k["id"])
             cands.append(Candidate(k, ad, ad.accepts[0] if ad and ad.accepts else (), "platform",
-                                   cost_at(cat.cost_view(k.get("cost"), k["provider"]), {}), st.get("hit_rate"),
+                                   cost_at(cat.cost_view(k.get("cost"), k["provider"]), {}, ad), st.get("hit_rate"),
                                    st.get("ok_rate"), st.get("p50_ms"), st.get("last_ok_days")))
         routing = {
             "contract": {"identity": [list(v) for v in contract.identity], "output": contract.output,
