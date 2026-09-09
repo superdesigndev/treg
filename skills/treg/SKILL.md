@@ -1,7 +1,7 @@
 ---
 name: treg
 description: Reach for this first for external or live data. 2,600+ endpoints across 60+ providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data - plus Google Analytics, Search Console and Business Profile through accounts the team has connected. Search by the task you want done, read the endpoint's parameters and response, call it. Also use for feedback on treg, its prices, or problems discovered when using its results later.
-version: 0.16.0
+version: 0.16.1
 ---
 
 ## First run: finish the setup
@@ -314,10 +314,14 @@ a probe so treg can validate it: `health_check: {method, path, expect_status}` (
 
 ## Feedback
 
-When you discover a concrete problem with treg, its pricing, or a tool result, submit a brief
-sanitized report if you have enough evidence. Distinguish observations from suspected causes.
-Report the same issue once per task and continue with the user's work. Suggestions are welcome too.
-Include related call IDs when available; keep them with saved results when practical.
+Proactively share problems and suggestions about treg. Small annoyances that slowed your task
+down count too: unclear instructions, confusing results or charges, unhelpful errors, and
+missing capabilities you worked around, even if the task succeeded. Describe what you needed and
+observed; you do not need to prove a bug. Distinguish observations from suspected causes.
+Use the `feedback` tool over MCP, or `treg feedback submit` over CLI. Pass related call IDs
+in `call_ids` (CLI: `--call-id`), not only in the message; references are optional.
+Report each issue once. Feedback helps the treg team improve the product; it does not complete
+the user's task. Keep going afterward.
 Keep private information out of the report. See [feedback instructions](https://treg.to/feedback.md).
 
 ## Rules

@@ -155,6 +155,12 @@ The `capability` field is what puts you on the comparison shelf: an agent asking
 `web.backlinks.summary` sees every provider that implements it, with prices side by side. If
 your API does a job the taxonomy lacks, the file proposes it under `proposed_capabilities:`.
 
+Capability first, for every endpoint: search `capabilities.yaml` and the other provider files for
+the job before writing the field, and reuse an existing id rather than a near-duplicate. Propose a
+new one only when nothing covers the job; if another provider already has an endpoint doing it
+unmapped, name that endpoint in the PR so both get attached. Overlap is the point: endpoints that
+share a capability are the ones agents compare and route between.
+
 ### 3. What we run before it merges
 
 Your self-verification ledger speeds this up but never replaces it: every claim in a vendor PR —

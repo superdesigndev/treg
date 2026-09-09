@@ -1,0 +1,17 @@
+{
+  "jobId": "REDACTED",
+  "fullName": "erol Toker",
+  "domain": "trykitt.ai",
+  "companyName": null,
+  "email": "erol@trykitt.ai",
+  "validIdentity": true,
+  "validSMTP": true,
+  "validity": "valid",
+  "displayText": "erol@trykitt.ai",
+  "botGeneratedEmail": "erol@trykitt.ai",
+  "mxDomain": "aspmx.l.google.com",
+  "credits": {
+    "jobCredits": 0.005,
+    "remainingCredits": "10.00000"
+  }
+}

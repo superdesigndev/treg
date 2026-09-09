@@ -15,6 +15,12 @@
 
 adapters:
   # ---- people.email.find --------------------------------------------------------------------
+  trykitt.people.email.find:
+    accepts: [[full_name, domain], [first_name, last_name, domain]]
+    in: {full_name: body.fullName, domain: body.domain, linkedin_url: body.linkedinStandardProfileURL}
+    const: {body.realtime: true}
+    out: {email: email, verified: "validity == 'valid'"}
+    miss: "coalesce(email, 'no-results-found') == 'no-results-found'"
   hunter.people.email.find:
     accepts: [[full_name, domain], [first_name, last_name, domain]]
     in:  {full_name: queryParams.full_name, domain: queryParams.domain}
@@ -252,6 +258,20 @@ adapters:
     miss: "results[0].phones[0].number == null"
 
   # ---- people.email.verify ------------------------------------------------------------------
+  trykitt.people.email.verify:
+    accepts: [[email]]
+    in: {email: body.email}
+    const: {body.realtime: true}
+    out: {valid: "validity == 'valid'", status: validity}
+    miss: "validity == null"
+  contactout.people.email.verify:
+    accepts: [[email]]
+    in: {email: queryParams.email}
+    out: {valid: "data.status == 'valid'", status: data.status}
+    # Preserve uncertain verdict words; only explicit valid confirms deliverability.
+    # Require both a successful envelope and a nonempty verdict, using existing expressions.
+    # at_least takes the maximum of the two predicates (0/1): either failure is a miss.
+    miss: "at_least(status_code != 200, coalesce(data.status) == null)"
   millionverifier.people.email.verify:
     accepts: [[email]]
     in:  {email: queryParams.email}
@@ -265,7 +285,7 @@ adapters:
     miss: "email_status == null"
   tomba.people.email.verify:
     accepts: [[email]]
-    in:  {email: pathParams.email}
+    in:  {email: queryParams.email}
     out: {valid: "data.email.status == 'valid'", status: data.email.status, score: data.email.score}
     miss: "data.email.status == null"
   hunter.people.email.verify:
@@ -1976,3 +1996,32 @@ adapters:
   # apollo.people.search: not routed — free, but rows come with OBFUSCATED last names (`Sl***a`) and no URL; a
   # search whose rows need a $0.026 reveal each is a search→reveal chain, not one answer (bench mode C did exactly
   # that and it rescued 2 of 8 hard queries). Fixture kept; callable by id.
+
+
+  # ContactOut people search/profile adapters are omitted: the PII rule excludes
+  # their verification fixtures. Direct tools remain available. Company discovery:
+  contactout.companies.search:
+    accepts: [[domain], [name], [industry], [technology]]
+    in: {domain: body.domain, name: body.name, industry: body.industry, technology: body.technologies}
+    in_expr:
+      body.domain: "list(domain)"
+      body.name: "list(name)"
+      body.industry: "list(industry)"
+      body.technologies: "list(technology)"
+    out: {companies: "values(companies)", count: "len(values(companies))"}
+    miss: "at_least(status_code != 200, coalesce(values(companies)) == null)"
+  contactout.companies.enrich:
+    accepts: [[domain]]
+    in: {domain: body.domains}
+    in_expr: {body.domains: "list(domain)"}
+    out:
+      name: "get(values(companies), '[0].name')"
+      domain: "get(values(companies), '[0].domain')"
+      website: "get(values(companies), '[0].website')"
+      description: "get(values(companies), '[0].description')"
+      industry: "get(values(companies), '[0].industry')"
+      employees: "fmt('{0}', get(values(companies), '[0].size'))"
+      founded: "get(values(companies), '[0].founded_at')"
+      location: "get(values(companies), '[0].headquarter')"
+      linkedin_url: "get(values(companies), '[0].li_vanity')"
+    miss: "at_least(status_code != 200, get(values(companies), '[0].name') == null)"

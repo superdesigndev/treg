@@ -47,7 +47,7 @@ for _k in (
     # …and the tier-4 platform keys + their allow-list. A developer's .env carries real, FUNDED keys:
     # without this a suite run on their laptop could resolve tier 4 and spend actual money on the
     # in-process upstream's echo. Tests that exercise tier 4 set both halves via monkeypatch.
-    "PLATFORM_PROVIDERS", "PLATFORM_KEY_TIKHUB", "PLATFORM_KEY_DATAFORSEO", "PLATFORM_KEY_SCRAPECREATORS",
+    "PLATFORM_KEY_TRYKITT", "PLATFORM_PROVIDERS", "PLATFORM_KEY_TIKHUB", "PLATFORM_KEY_DATAFORSEO", "PLATFORM_KEY_SCRAPECREATORS",
 ):
     os.environ[f"TREG_{_k}"] = ""  # the test upstream is an in-process ASGI transport, not real DNS
 
@@ -59,6 +59,7 @@ from httpx import ASGITransport, AsyncClient  # noqa: E402
 from treg import audit  # noqa: E402
 from treg.api import app  # noqa: E402
 from treg import archive  # noqa: E402
+from treg.config import get_settings  # noqa: E402
 from treg.infra.db import reset_db  # noqa: E402
 
 
@@ -372,3 +373,24 @@ def _no_ambient_treg_identity(monkeypatch):
     them beat any config). The suite must not change behavior because of who is running it."""
     for var in ("TREG_TOKEN", "TREG_ORG", "TREG_URL", "TREG_CLIENT"):
         monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture
+def kitt_on(monkeypatch):
+    from treg.config import get_settings
+    monkeypatch.setenv('TREG_PLATFORM_KEY_TRYKITT', 'TEST-KITT-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'trykitt')
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+# ---- ContactOut ----
+
+@pytest.fixture
+def contactout_platform(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CONTACTOUT", "PLATFORM-TEST")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "contactout")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()

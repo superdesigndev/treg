@@ -195,6 +195,24 @@ def _finite_number(value: object) -> bool:
             and math.isfinite(float(value)))
 
 
+def check_platform_request(rule: object, input_schema: object, where: str,
+                           errors: list[str]) -> None:
+    """Platform-only fixed body values; BYOK input remains an upstream contract."""
+    if not isinstance(rule, dict) or not rule:
+        fail(errors, where, "platform_request must be a non-empty mapping")
+        return
+    fields = _input_fields(input_schema)
+    for path, value in rule.items():
+        spec = fields.get(path) if isinstance(path, str) else None
+        if not isinstance(path, str) or not path.startswith("body.") or spec is None:
+            fail(errors, where, "platform_request must name a declared body field")
+            continue
+        allowed = spec.get("enum")
+        if (not isinstance(allowed, list) or len(allowed) != 1
+                or type(value) is not type(allowed[0]) or value != allowed[0]):
+            fail(errors, where, "platform_request value must match the field's singleton enum")
+
+
 def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[str]) -> None:
     """Validate a first-match AIGC price table and its explicit reserve upper bound."""
     table = cost.get("table")
@@ -482,6 +500,26 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
     per = cost.get("per")
     if per is not None and (not isinstance(per, int) or isinstance(per, bool) or per < 1):
         fail(errors, where, f"cost.per '{per}' must be a positive integer (the quantity `value` covers)")
+    reported = cost.get("reported_charge")
+    if reported is not None:
+        if (not isinstance(reported, dict) or set(reported) != {"path", "unit"}
+                or not isinstance(reported.get("path"), str)
+                or not JSON_PATH.fullmatch(reported["path"]) or reported.get("unit") != "usd"):
+            fail(errors, where, "cost.reported_charge requires a JSON path and unit: usd")
+        if "table" in cost or "settle" in cost or cost.get("type") == "free":
+            fail(errors, where, "cost.reported_charge requires a paid scalar price without cost.settle")
+    if "contactout" in cost:
+        rule = cost["contactout"]
+        jobs = {"contact", "person", "email", "linkedin", "search", "decision",
+                "company_search", "domains", "reverse"}
+        rates = rule.get("rates_micro") if isinstance(rule, dict) else None
+        if not isinstance(rule, dict) or rule.get("job") not in jobs:
+            fail(errors, where, "cost.contactout needs a supported job")
+        if not isinstance(rates, dict) or set(rates) != {"work_email", "personal_email", "phone", "search"} \
+                or any(isinstance(v, bool) or not isinstance(v, int) or v <= 0 for v in rates.values()):
+            fail(errors, where, "cost.contactout.rates_micro needs four positive integer micro-USD rates")
+        if cost.get("currency") != "USD":
+            fail(errors, where, "cost.contactout requires USD")
     has_table = "table" in cost
     if has_table:
         if "value" in cost:
@@ -789,6 +827,8 @@ def main(argv: list[str]) -> int:
                 fail(errors, where, f"bad method '{ep.get('method')}'")
             check_status_marker(ep, where, endpoint_status, errors)
             inp = ep.get("input") or {}
+            if "platform_request" in ep:
+                check_platform_request(ep["platform_request"], inp, where, errors)
             default_array_encoding = inp.get("queryArrayEncoding")
             if (default_array_encoding is not None
                     and default_array_encoding not in QUERY_ARRAY_ENCODINGS):

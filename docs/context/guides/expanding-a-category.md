@@ -171,3 +171,8 @@ Instagram direct Login plus optional Facebook Page tools is the reference implem
 - `test_default_capability_is_the_broadest` — OAuth: `write ⊇ read` (or one capability).
 - `test_every_requested_scope_has_a_label` — a `SCOPE_LABELS` entry per OAuth scope (key providers have none).
 - `test_key_providers` — the offerable + connect-flow coverage for `auth_kind="key"`.
+
+ContactOut uses the same pasted-key path with `token` header auth and a free `/v1/stats` probe.
+Its garbage-token rejection and valid connection were verified live; its independent pools stay
+informational, with monitoring and top-ups managed by the designated account manager.
+See [ContactOut](../architecture/contactout.md).

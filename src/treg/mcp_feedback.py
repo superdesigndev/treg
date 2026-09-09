@@ -15,9 +15,12 @@ from .config import get_settings
 FLAG = "mcp-feedback-hint"
 DISTINCT_ID = "treg-mcp-feedback-hint"
 HINT = (
-    "If this result fell short of your task or took extra work to use, consider using the "
-    "feedback tool. Briefly describe what you needed and what got in the way; omit private "
-    "data. Include this call_id when available. Report the same issue once per task."
+    "Proactively share friction using treg's feedback tool. Small annoyances count: "
+    "confusing results or charges, unclear instructions, or a limitation you worked around, "
+    "even if your task succeeded. Describe what you observed; you do not need to prove a bug. "
+    "Pass related call IDs in call_ids when available. Omit private data and report each "
+    "issue once. Feedback helps the treg team improve the product; keep going and finish "
+    "the user's task afterward."
 )
 REFRESH_SECONDS = 60
 MAX_AGE_SECONDS = 90

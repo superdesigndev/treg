@@ -5956,7 +5956,7 @@ createApp({
     admSuspendOrg(o){ this._adm('/admin/orgs/'+o.id+'/suspend','POST',{value:!o.suspended}); },
     admDeleteOrg(o){ if(this.confirmAdmOrg!==o.id){ this.confirmAdmOrg=o.id; return; } this.confirmAdmOrg=null; this._adm('/admin/orgs/'+o.id,'DELETE'); },
     samplePath(host){ // known-good, runnable GET paths (relative to each tool's base_url) for common hosts
-      return ({'httpbin.org':'headers','postman-echo.com':'get',
+      return ({'api.trykitt.ai':'credit','httpbin.org':'headers','postman-echo.com':'get',
         'api.intercom.io':'me','api.stripe.com':'balance','api.render.com':'services?limit=1',
         'api.vercel.com':'v2/user','app.posthog.com':'api/projects/@current','eu.posthog.com':'api/projects/@current',
         'searchconsole.googleapis.com':'webmasters/v3/sites','googleads.googleapis.com':'v25/customers:listAccessibleCustomers',

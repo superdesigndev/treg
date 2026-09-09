@@ -216,6 +216,56 @@ async def test_routed_plan_keeps_per_success_hit_fallback_from_the_cache(
 
 # ---- the call path ---------------------------------------------------------------------------
 
+@pytest.mark.parametrize("routed", [False, True])
+@pytest.mark.parametrize("verdict", ["valid", "invalid"])
+async def test_tomba_verification_keeps_email_in_query_and_settles(
+    clients: AsyncClient, enrichment_on, monkeypatch, routed, verdict,
+):
+    email = "person+tag@example.com"
+    payload = {"data": {"email": {"status": verdict, "score": 99}}}
+    seen = []
+
+    async def relay(request, upstream_url, tool, secrets, client, drop_params=None, **kwargs):
+        seen.append(upstream_url)
+        assert upstream_url == "https://api.tomba.io/v1/email-verifier"
+        assert request.method == "GET"
+        assert dict(request.query_items) == {"email": email}
+        assert "email" not in (drop_params or ())
+
+        async def body():
+            yield json.dumps(payload).encode()
+
+        async def close():
+            pass
+
+        return UpstreamResponse(200, ((b"content-type", b"application/json"),), body(), close)
+
+    monkeypatch.setattr(call_service, "relay", relay)
+    before = await _balance(clients)
+    if routed:
+        response = await clients.post(
+            "/call/treg.people.email.verify", json={"email": email},
+            headers={"X-Treg-Route-Prefer": "tomba"},
+        )
+    else:
+        response = await clients.get("/call/tomba.people.email.verify", params={"email": email})
+
+    assert response.status_code == 200, response.text
+    assert len(seen) == 1
+    if routed:
+        doc = response.json()
+        assert doc["raw"] == payload
+        assert doc["output"] == {"valid": verdict == "valid", "status": verdict, "score": 99}
+        assert doc["_treg"]["served_by"] == "tomba.people.email.verify"
+        assert doc["_treg"]["outcome"] == "hit", "an invalid verdict is still a verification answer"
+    else:
+        assert response.json() == payload
+    assert int(response.headers["X-Treg-Cost-Micro"]) == 8_900
+    assert before - await _balance(clients) == 8_900
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == []
+
+
 async def test_routed_call_runs_the_cheapest_child_and_returns_output_raw_and_provenance(clients: AsyncClient, enrichment_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
@@ -642,7 +692,8 @@ def test_filters_reach_adapters_through_in_expr_and_array_bodies():
     q, b = cat.adapters["serpapi.google.keywords.ideas"].to_upstream(req)
     assert q == {"q": "coffee", "gl": "gb", "hl": "en", "engine": "google_autocomplete"}
     q, b = cat.adapters["tomba.people.email.verify"].to_upstream({"email": "a@b.io"})
-    assert q == {"email": "a@b.io"}, "a pathParams target travels as a query value the proxy folds into the path"
+    assert q == {"email": "a@b.io"}, "Tomba verification requires the email query parameter"
+    assert cat.by_id["tomba.people.email.verify"]["path"] == "/v1/email-verifier"
     assert cost_at({"usd": 0.00179, "type": "per_result", "per": 1}, req) == 8_950, "priced at the requested limit"
     ep = cat.by_id["treg.google.keywords.ideas"]
     assert ep["input"]["body"]["country"]["note"].startswith("filter — default 'us'")
@@ -1137,6 +1188,11 @@ async def test_strict_filters_refuses_a_looser_answer_instead_of_billing_it(clie
     monkeypatch.setenv("TREG_PLATFORM_KEY_CRUSTDATA", "PLATFORM-CRUSTDATA-KEY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,aviato,fiber-ai,crustdata")
     get_settings.cache_clear()
+    # This regression compares Crustdata with Aviato, independently of other catalog additions.
+    cat = catalog_store.load()
+    for eid in cat.by_id["treg.people.search"]["routed_children"]:
+        if not eid.startswith(("crustdata.", "aviato.")):
+            monkeypatch.delitem(cat.adapters, eid)
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {"profiles": [{"name": "Someone"}], "total_count": 1})] * 3}, seen))
     before = await _balance(clients)
@@ -1264,3 +1320,172 @@ async def test_millionverifier_platform_billing(clients, enrichment_on, monkeypa
     delta = before - await _balance(clients)
     assert delta == (1780 if charged else 0)
     assert response.json()["result"] == result
+
+
+@pytest.mark.parametrize('cap,identity,doc,expected',[
+    ('find',{'first_name':'Erol','last_name':'Toker','domain':'trykitt.ai'}, {'email':'erol@trykitt.ai','validity':'valid','credits':{'jobCredits':.005}},5000),
+    ('verify',{'email':'erol@trykitt.ai'}, {'validity':'unknown','credits':{'jobCredits':.0015}},1500),
+])
+async def test_trykitt_routed_calls(clients,monkeypatch,kitt_on,cap,identity,doc,expected):
+    seen=[]
+    monkeypatch.setattr(call_service,'relay',_relay_by_provider({'trykitt':[(200,doc)]},seen))
+    before=await _balance(clients)
+    r=await clients.post('/call/treg.people.email.'+cap,json=identity)
+    assert r.status_code==200,r.text
+    assert seen[0][3]['realtime'] is True
+    if cap=='find':
+        assert seen[0][3]['fullName']=='Erol Toker'
+        assert r.json()['output']['verified'] is True
+    else: assert r.json()['output']['status']=='unknown'
+    assert await _balance(clients)==before-expected
+
+
+
+async def test_trykitt_throttle_releases_and_routes_to_next_provider(clients,monkeypatch,kitt_on):
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS','trykitt,leadmagic')
+    monkeypatch.setenv('TREG_PLATFORM_KEY_LEADMAGIC','TEST-LEADMAGIC')
+    get_settings.cache_clear()
+    seen=[]
+    monkeypatch.setattr(call_service,'relay',_relay_by_provider({'trykitt':[(418,{'message': 'temporarily throttled', 'response_code': 418})],'leadmagic':[(200,{'email':'a@example.com','status':'valid','credits_consumed':1})]},seen))
+    before=await _balance(clients)
+    r=await clients.post('/call/treg.people.email.find',json={'full_name':'A B','domain':'example.com'})
+    assert r.status_code==200,r.text
+    assert [row[0] for row in seen]==['trykitt','leadmagic']
+    assert await _balance(clients)==before-25000
+
+
+@pytest.mark.parametrize("verdict", ["valid", "invalid", "accept_all", "disposable", "unknown"])
+async def test_contactout_routed_verification_preserves_verdict_and_is_free(
+    clients, contactout_platform, monkeypatch, verdict,
+):
+    cat = catalog_store.load()
+    assert cat.adapters["contactout.people.email.verify"].verified
+    assert "contactout.people.email.verify" in cat.by_id["treg.people.email.verify"]["routed_children"]
+    payload = {"status_code": 200, "data": {"status": verdict}}
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"contactout": [(200, payload)]}, seen))
+    before = await _balance(clients)
+    response = await clients.post("/call/treg.people.email.verify", json={"email": "person+tag@example.test"})
+    assert response.status_code == 200, response.text
+    doc = response.json()
+    assert doc["output"] == {"valid": verdict == "valid", "status": verdict}
+    assert doc["raw"] == payload
+    assert doc["_treg"]["served_by"] == "contactout.people.email.verify"
+    assert doc["_treg"]["outcome"] == "hit"
+    assert seen == [("contactout", "GET", {"email": "person+tag@example.test"}, None)]
+    assert int(response.headers["X-Treg-Cost-Micro"]) == 0
+    assert before == await _balance(clients)
+    async with session_maker() as db:
+        assert not (await db.execute(select(Hold))).scalars().all()
+        entries = (await db.execute(select(LedgerEntry).where(LedgerEntry.kind.in_(["reserve", "settle"])))).scalars().all()
+        assert all(e.amount_micro == 0 for e in entries)
+
+
+@pytest.mark.parametrize("payload", [
+    {}, {"status_code": 200, "data": {}}, {"status_code": 200, "data": {"status": ""}},
+    {"status_code": 403, "message": "No access", "data": {"status": "valid"}},
+])
+async def test_contactout_verifier_missing_verdict_and_embedded_errors_fall_back(
+    clients, enrichment_on, monkeypatch, payload,
+):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CONTACTOUT", "PLATFORM-TEST")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "contactout,tomba")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "contactout": [(200, payload)],
+        "tomba": [(200, {"data": {"email": {"status": "invalid", "score": 0}}})],
+    }, seen))
+    response = await clients.post("/call/treg.people.email.verify", json={"email": "person@example.test"})
+    assert response.status_code == 200, response.text
+    assert [r[0] for r in seen] == ["contactout", "tomba"]
+    assert response.json()["_treg"]["served_by"] == "tomba.people.email.verify"
+    assert response.json()["output"]["status"] == "invalid"
+
+
+async def test_own_verifier_key_precedes_free_contactout_platform_candidate(
+    clients, contactout_platform, monkeypatch,
+):
+    await clients.post('/secrets', json={'name': 'hunter', 'value': 'OWN-TEST'})
+    seen = []
+    monkeypatch.setattr(call_service, 'relay', _relay_by_provider({
+        'hunter': [(200, {'data': {'status': 'valid'}})],
+    }, seen))
+    before = await _balance(clients)
+    response = await clients.post('/call/treg.people.email.verify', json={'email': 'person@example.test'})
+    assert response.status_code == 200, response.text
+    assert response.json()['_treg']['served_by'] == 'hunter.people.email.verify'
+    assert [row[0] for row in seen] == ['hunter']
+    assert before == await _balance(clients)
+
+
+@pytest.mark.parametrize('value,expected', [
+    ({'a.example': {'name': 'A'}, 'b.example': {'name': 'B'}}, [{'name': 'A'}, {'name': 'B'}]),
+    ([{'name': 'A'}], [{'name': 'A'}]), ({}, []), ([], []), (None, None), ('bad', None),
+])
+def test_row_values_and_nested_lookup_expressions(value, expected):
+    assert P.evaluate('values(rows)', {'rows': value}) == expected
+    assert P.evaluate("get(values(rows), '[0].name')", {'rows': value}) == (
+        'A' if expected else None)
+
+
+_CONTACTOUT_DISCOVERY = [
+    ('companies.search', 'companies.search', {'domain': 'example.test'},
+     'POST', {}, {'domain': ['example.test']},
+     {'status_code': 200, 'companies': [{'name': 'Example'}]}, 'companies', [{'name': 'Example'}], 20_000),
+    ('companies.enrich', 'companies.enrich', {'domain': 'example.test'},
+     'POST', {}, {'domains': ['example.test']},
+     {'status_code': 200, 'companies': {'example.test': {'name': 'Example', 'domain': 'example.test'}}},
+     'name', 'Example', 20_000),
+]
+
+
+@pytest.mark.parametrize('cap,child,identity,method,query,body,payload,field,expected,charge', _CONTACTOUT_DISCOVERY)
+async def test_contactout_discovery_routes_preserve_selectors_and_settle(
+    clients, contactout_platform, monkeypatch,
+    cap, child, identity, method, query, body, payload, field, expected, charge,
+):
+    cat = catalog_store.load()
+    eid = 'contactout.' + child
+    assert cat.adapters[eid].verified and not cat.adapters[eid].verify_note
+    assert eid in cat.by_id['treg.' + cap]['routed_children']
+    seen = []
+    monkeypatch.setattr(call_service, 'relay', _relay_by_provider({'contactout': [(200, payload)]}, seen))
+    before = await _balance(clients)
+    response = await clients.post('/call/treg.' + cap, json=identity)
+    assert response.status_code == 200, response.text
+    doc = response.json()
+    assert doc['raw'] == payload and doc['output'][field] == expected
+    assert doc['_treg']['served_by'] == eid and doc['_treg']['outcome'] == 'hit'
+    assert seen == [('contactout', method, query, body)]
+    assert int(response.headers['X-Treg-Cost-Micro']) == charge
+    assert before - await _balance(clients) == charge
+    async with session_maker() as db:
+        assert not (await db.execute(select(Hold))).scalars().all()
+
+
+@pytest.mark.parametrize('cap,child,identity,method,query,body,payload,field,expected,charge', _CONTACTOUT_DISCOVERY)
+@pytest.mark.parametrize('failed', [False, True])
+async def test_contactout_discovery_empty_or_error_response_is_not_a_hit(
+    clients, contactout_platform, monkeypatch,
+    cap, child, identity, method, query, body, payload, field, expected, charge, failed,
+):
+    payload = {'status_code': 403, **{k: v for k, v in payload.items() if k != 'status_code'}} if failed else {'status_code': 200}
+    seen = []
+    monkeypatch.setattr(call_service, 'relay', _relay_by_provider({'contactout': [(200, payload)]}, seen))
+    before = await _balance(clients)
+    response = await clients.post('/call/treg.' + cap, json=identity)
+    assert response.status_code == 200, response.text
+    assert response.json()['_treg']['outcome'] == 'miss'
+    assert before == await _balance(clients)
+    async with session_maker() as db:
+        assert not (await db.execute(select(Hold))).scalars().all()
+
+
+def test_contactout_pii_routes_are_not_enabled_without_verification_examples():
+    cat = catalog_store.load()
+    for cap, child in [('people.search', 'people.search'), ('people.enrich', 'people.enrich'),
+                       ('linkedin.user.profile', 'people.linkedin.enrich')]:
+        eid = 'contactout.' + child
+        assert eid not in cat.adapters
+        assert eid not in cat.by_id['treg.' + cap]['routed_children']

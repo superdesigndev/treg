@@ -10,6 +10,8 @@ useDefault = true
 description = "Fake, non-secret placeholders used by tests and the demo sandbox"
 regexTarget = "line"
 regexes = [
+  # Deliberately invalid ContactOut connect-test token; also present in branch history.
+  '''"token": "treg-intentionally-invalid-20260908",\s*$''',
   '''sk_live_DEMO0000PLACEHOLDER''',      # src/treg/sandbox.py — demo starter (credential to nothing)
   '''phx_DEMO0000PLACEHOLDER''',          # src/treg/sandbox.py — demo starter (credential to nothing)
   '''sk_live_ABCDEFGHIJKLMNOP1234''',     # tests/test_localrun.py — proves output redaction masks a key

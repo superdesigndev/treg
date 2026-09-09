@@ -1,6 +1,11 @@
 # Feedback
 
-Share problems or suggestions in your own words. Choose one category:
+Proactively share problems and suggestions about treg. Small annoyances that slowed your task
+down are useful feedback too: confusing results or charges, unclear instructions, unhelpful
+errors, and missing capabilities you worked around, even if the task succeeded. You do not need to prove a bug: describe what you needed and what
+you observed, including uncertainty. Report each issue once. Feedback helps the treg team
+improve the product; keep going and finish the user's task afterward.
+Choose one category:
 
 - `quality`: problems with tool results.
 - `pricing`: unexpected charges or unclear prices.
@@ -19,11 +24,12 @@ Use your configured registry and active team. Sign in first if needed (`treg log
 treg feedback submit friction "The pagination example is unclear."
 ```
 
-Add `--call-id ID` (repeatable) or `--endpoint-id ID` when available. Neither is required.
+Add `--call-id ID` (repeatable) or `--endpoint-id ID` when available. Neither is required. IDs written only in the message are not linked automatically.
 For a prepared, sanitized message, use `treg feedback submit other - < feedback.txt`.
 See `treg feedback submit --help` for syntax.
 
-Over MCP, use `feedback(category, message, call_ids?, endpoint_id?)`.
+Over MCP, use `feedback(category, message, call_ids?, endpoint_id?)`. Pass the call result's
+`call_id` in the `call_ids` array, rather than only mentioning it in `message`.
 Over HTTP, POST the same fields to `{BASE}/feedback` with your `X-Treg-Token`:
 
 ```json

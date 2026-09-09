@@ -31,6 +31,7 @@ from ... import audit
 from ...config import get_settings
 from ...infra.db import session_maker
 from ...domain.capacity.view import view as capacity_view
+from ...domain.capacity.signatures import classify as classify_capacity
 from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing.contracts import canonical_identity
@@ -425,9 +426,11 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
                 continue
             winner = (cand, {}, {}, raw)
             break
+        capacity_signal = classify_capacity(cand.endpoint["provider"], response.status, body=raw)
+        temporary_capacity = capacity_signal is not None and capacity_signal.kind in ("burst", "unknown")
         platform_auth_failure = cand.tier == "platform" and response.status in (401, 403)
         if (400 <= response.status < 500 and response.status not in (402, 408, 429)
-                and not platform_auth_failure):
+                and not platform_auth_failure and not temporary_capacity):
             # The vendor rejected the REQUEST. Usually the caller's mistake and the same answer
             # everywhere — but a scraper's "Request failed. Please retry" is also a 400 (tikhub,
             # live 2026-08-28), so the waterfall goes on to providers that are FREE ON FAILURE

@@ -26,6 +26,9 @@ related:
 registry (distinct from `.claude/skills/tools-registry-context/`, which maintains *these* design docs).
 Its frontmatter `name: treg` + `description` make it loadable by a coding agent.
 
+The feedback section encourages proactive reports of small annoyances and concrete friction and workarounds even when a task succeeds,
+asks for observations rather than a proven bug, and names MCP `call_ids` / CLI `--call-id`.
+
 One skill, three personas:
 - **consumer** — discover + call tools with no credentials locally. Teaches the agent-native
   **URL-passthrough** first: take the real upstream URL and prefix it with `{BASE}/call/`

@@ -532,8 +532,9 @@ first as a cron service (`treg-capacity-sweep`, hourly), with the DB URL, Fernet
 > as a statement of intent until a Blueprint is registered - and register one only after the file
 > has been reconciled to the live services, because a Blueprint sync overwrites what it manages.
 > The overflow re-verify cron (`treg-overflow-verify`, Mondays 06:00 UTC, dashboard-made, command
-> `treg-worker overflow verify --all` since 2026-09-02) is deliberately absent from the file for
-> that reason.
+> `treg-worker overflow verify --all && treg-worker overflow sync` since 2026-09-08 - before that
+> `verify --all` alone, so its stamps never opened or decayed a route until someone synced by hand)
+> is deliberately absent from the file for that reason.
 
 **Running the overflow routine by hand** (until a Blueprint schedules verify → sync): two one-off
 jobs on the verify cron service, in order - `render jobs create <cron-id> --start-command
@@ -541,6 +542,15 @@ jobs on the verify cron service, in order - `render jobs create <cron-id> --star
 `verified N, failed N, inconclusive N, aggregator errors N, skipped N` line of the first and the
 `enabled` count of the second. Verify only
 stamps; sync is what opens routes.
+
+Pricier routes need no special run since 2026-09-08: a route that is enabled or was stamped
+before renews under `--renew-max-usd` (default $1), which covers Influencers Club's $0.66
+enrichment and the 3¢–65¢ routes the 2¢ cap had let decay; the whole run is bounded by
+`--budget-usd` (default $15). The 2¢ `--max-usd` only gates never-verified pairs under `--all`.
+A one-off `--only <provider>` run (comma-separated IDs) is still the way to bring a newly seeded
+provider in mid-week: `treg-worker overflow verify --only influencersclub`, then `overflow sync`.
+Email enrichment for Influencers Club has no test request and stays unverified. A verification
+run alone does not enable routes.
 
 Aggregator keys
 (`TREG_OVERFLOW_KEY_ORTHOGONAL` / `_MONID`) are dashboard-managed on the web service and flow the same
@@ -598,3 +608,13 @@ the ALTER, both instances starved, and the shared Postgres stayed wedged until a
 If a deploy fails with a lock timeout in the logs, that is the mechanism working. If the database
 itself stops accepting connections, restart the POSTGRES resource, not the web service — an app
 restart cannot release server-side slots (learned the hard way).
+
+Kitt AI platform serving requires `TREG_PLATFORM_KEY_TRYKITT` and `trykitt` in the
+platform-provider allow-list. `render.yaml` declares the secret on the web service
+and passes it to the capacity worker. Adding the code does not enable the provider
+on an existing deployment or copy a local `.env` key to production.
+
+
+The ContactOut server platform-key slot (`TREG_PLATFORM_KEY_CONTACTOUT`) is forwarded to the
+worker by `render.yaml`. The provider allow-list still controls serving; see
+[ContactOut](../architecture/contactout.md) for informational capacity checks.

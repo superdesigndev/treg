@@ -388,6 +388,14 @@ When the resolver already knows the account is out (the exhausted view) **and** 
 ladder skips the direct attempt entirely (`MarketplaceCall.skip_direct`): no parent hold, no vendor
 402, straight to the child - the plan's tier 4b.
 
+Influencers Club discovery/search and similar-creators routes have a verified flat Orthogonal
+price against our per-creator direct price. Both entry points pass the direct request estimate
+to the route view: `routes.route_for` excludes these routes when the fixed fee exceeds 4× that
+estimate, before any child hold or aggregator budget is reserved. The worker also bounds the fee
+by the verified $0.03 ceiling. A one-creator request currently cannot overflow; a request for two
+or more can. The original paging/filter body is relayed unchanged and the child settles once at
+the aggregator's reported price, even if the page is empty. See `ops/capacity.md` for verification.
+
 **An aggregator failure is data.** Its own 401/402/403 or a malformed envelope releases the child
 hold and marks `overflow:<name>` unhealthy for everyone; a relayed vendor answer the signature table
 reads as that vendor's own out-of-credit or quota dialect (`VENDOR_DRY`: a 402, Apollo's 422 through

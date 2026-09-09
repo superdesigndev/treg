@@ -553,6 +553,10 @@ def _marketplace_pricing(
     """
     if not cost:
         return 0, 0
+    if provider == "contactout":
+        from . import contactout
+        request = _json_object(body) if body else dict(query.multi_items())
+        return contactout.estimate(cost, request), 0
     estimate = _platform_estimate_micro(cost, query, body)
     unit = (_usd_to_micro(cost["usd"])
             if cost.get("type") in ("per_result", "quota_rows") and cost.get("usd") else 0)
@@ -935,15 +939,18 @@ def _document_value(document: object, dotted: str) -> object:
     return current
 
 
-def _enforce_platform_pricing_selectors(ep: dict, body: bytes) -> None:
-    """Bind a platform-priced row to its fixed request discriminator before reserve/relay.
+def _enforce_platform_request(ep: dict, body: bytes) -> None:
+    """Check explicit platform constraints and fixed pricing selectors before reserve/relay.
 
     Catalog tables may price several rows on one upstream path. A table condition whose body field
     has a singleton enum is the row identity, not caller choice: accepting another value lets a cheap
     row reserve for an expensive model. Full schema validation remains out of the faithful BYOK path.
     """
     input_schema = ep.get("input") or {}
-    selectors: dict[str, object] = {}
+    selectors: dict[str, object] = {
+        path.removeprefix("body."): value
+        for path, value in (ep.get("platform_request") or {}).items()
+    }
     for row in (ep.get("cost") or {}).get("table") or []:
         for path in (row.get("when") or {}):
             if not str(path).startswith("body."):
@@ -958,7 +965,7 @@ def _enforce_platform_pricing_selectors(ep: dict, body: bytes) -> None:
     document = _strict_json_object(body, ep["id"])
     for path, expected in sorted(selectors.items()):
         actual = _document_value(document, path)
-        if actual != expected:
+        if actual != expected or (isinstance(expected, bool) and type(actual) is not bool):
             raise ResolutionFailed(
                 "catalog_parameter_invalid", status_code=400, detail={
                     "error": "catalog_parameter_invalid",
@@ -967,7 +974,7 @@ def _enforce_platform_pricing_selectors(ep: dict, body: bytes) -> None:
                     "expected": expected,
                     "message": (
                         f"{ep['id']} fixes body.{path} to {expected!r}; "
-                        "choose the catalog endpoint for the requested value"
+                        "use the required value for a platform call"
                     ),
                 },
             )
@@ -1337,7 +1344,31 @@ async def _resolve_marketplace_call(
     cost = _platform_offer(ep, provider, caller.org)
     async_owner_call_id = None
     if cost is not None:
-        _enforce_platform_pricing_selectors(ep, body)
+        _enforce_platform_request(ep, body)
+        if service == "contactout":
+            # Fixed catalog splits must not silently fall into ContactOut's personal+work default.
+            inputs = ep.get("input") or {}
+            values = _json_object(body) if body else dict(query.multi_items())
+            if ep["id"] == "contactout.people.search.reveal":
+                size = values.get("page_size")
+                if not isinstance(size, int) or isinstance(size, bool) or not 1 <= size <= 25:
+                    raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": "page_size",
+                        "message": "Specify page_size from 1 to 25; each result reserves up to $0.67.",
+                    })
+            for name, spec in (inputs.get("body") or inputs.get("queryParams") or {}).items():
+                if not isinstance(spec, dict) or not spec.get("required") or len(spec.get("enum", [])) != 1:
+                    continue
+                expected, actual = spec["enum"][0], values.get(name)
+                if isinstance(expected, bool) and isinstance(actual, str):
+                    actual = actual.lower() == "true" if actual.lower() in ("true", "false") else actual
+                if actual != expected:
+                    raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": name, "expected": expected,
+                        "message": f"{ep['id']} requires {name}={expected!r}; use the matching catalog tool.",
+                    })
         async_owner_call_id = await _enforce_platform_async_ownership(ep, query, caller, db)
     skip_direct = False
     probe_lock_id = None
@@ -1351,7 +1382,7 @@ async def _resolve_marketplace_call(
         if lock is not None and capacity_marks.probe_due(lock.key):
             probe_lock_id = lock.lock_id
         elif (get_settings().overflow_mode == "on" and not caller.org.platform_overflow_disabled
-                and overflow_routes_view.for_endpoint(ep["id"])):
+                and overflow_routes_view.for_endpoint(ep["id"], estimate_micro=info_est)):
             skip_direct = True
         else:
             raise _provider_capacity_unavailable(

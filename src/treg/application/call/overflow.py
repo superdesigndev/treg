@@ -240,7 +240,7 @@ async def _maybe_overflow_attempt(
     why = force_trigger or _trigger(mk, status, headers, body)
     if why is None:
         return None
-    routes = routes_view.for_endpoint(mk.endpoint_id)
+    routes = routes_view.for_endpoint(mk.endpoint_id, estimate_micro=mk.estimate_micro)
     routes = [r for r in routes if settings.overflow_key_for(r.aggregator)
               and not capacity_view.is_exhausted(f"overflow:{r.aggregator}")
               and not capacity_view.is_exhausted(f"overflow:{r.aggregator}:{mk.provider}")]

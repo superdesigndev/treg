@@ -790,3 +790,27 @@ success convention. An undecidable rule does not imply a free call.
 Coverage remains a catalog concern: providers without an adapter or `expect` can still return
 embedded errors. In particular, verify TikHub's success convention before adding a file-level rule;
 its existing explicit charge/no-charge prose handling is a separate billing signal.
+
+## Kitt AI response billing
+
+`_observed_cost_micro` reads the catalog's `cost.reported_charge.path` in USD
+(`unit: usd`), converting with Decimal to integer micro-USD. Kitt's two realtime
+endpoints declare `credits.jobCredits`; there is no provider-specific billing branch. Finite nonnegative values,
+including zero, override the estimate; malformed, negative, boolean or null values
+fall through to the verified miss rule and documented base estimate. Find misses
+(`no-results-found`) settle at zero. Completed verification verdicts including invalid,
+unknown and catchall settle at the reported charge or $0.0015 fallback.
+
+The base find price is $0.005. The documented volume discount is not tracked locally;
+an upstream reported discount is honored. The internal `/credit` check and `remainingCredits`
+are account balances, never charge evidence. Paid live tests reconciled $0.008 after a delayed
+balance update. Free-plan null charge fields use the same documented fallback policy.
+
+
+## ContactOut contact hits
+
+`application.call.contactout` calculates request-sized holds and derives contact/search charges
+from returned profiles using the YAML Starter micro-USD rates. It reuses the existing money lifecycle.
+Profile-only LinkedIn enrichment reserves and settles 20,000 micro-USD when a profile is found;
+misses remain free. Platform reveal search requires an explicit page size to bound its hold.
+Own keys are unmetered; see [ContactOut](contactout.md) for prices, free verification and evidence limits.

@@ -300,6 +300,10 @@ def test_cli_feedback_without_arguments_shows_help_without_network(monkeypatch, 
     args.fn(args, {})
     output = capsys.readouterr().out
     assert "submit" in output and "get" in output
+    for field in ("category", "message", "--call-id", "--endpoint-id", "feedback_id"):
+        assert field in output
+    assert "call_ids" in output and "not linked automatically" in output
+    assert "1-2000" in output and "up to 100" in output
 
 
 def test_cli_feedback_keeps_category_first_shorthand(monkeypatch):

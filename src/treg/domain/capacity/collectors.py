@@ -91,6 +91,37 @@ async def _hunter(c, key):
                     f"resets {(d.get('data') or {}).get('reset_date')}"}
 
 
+async def _trykitt(c, key):
+    d = await _get(c, "https://api.trykitt.ai/credit", headers={"x-api-key": key})
+    value = d.get("credits")
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        return {"value": None, "unit": "USD", "note": "Missing Kitt balance"}
+    return {"value": value, "unit": "USD", "note": ""}
+
+
+async def _contactout(c, key):
+    d = await _get(c, "https://api.contactout.com/v1/stats",
+                   headers={"token": key, "Accept": "application/json"})
+    if not isinstance(d, dict) or d.get("status_code") != 200 or not isinstance(d.get("usage"), dict):
+        raise ValueError("ContactOut returned no valid usage stats")
+    usage = d["usage"]
+    pools = []
+    for label, prefix in (("email", ""), ("phone", "phone_"), ("search", "search_")):
+        count, quota = usage.get(prefix + "count"), usage.get(prefix + "quota")
+        if any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in (count, quota)):
+            raise ValueError("ContactOut returned incomplete credit pools")
+        remaining = usage.get(prefix + "remaining")
+        if remaining is not None and (isinstance(remaining, bool) or not isinstance(remaining, (int, float))):
+            raise ValueError("ContactOut returned invalid remaining credits")
+        # Prepaid: quota is remaining already. Postpaid supplies remaining explicitly.
+        pools.append(f"{label}: used={count}, quota={quota}" +
+                     (f", remaining={remaining}" if remaining is not None else ""))
+    # Three non-interchangeable pools cannot become one provider-wide exhaustion number.
+    # Pools are independent; the account manager monitors usage and arranges top-ups.
+    return {"value": None, "unit": "credit pools", "informational": True,
+            "note": "; ".join(pools) + "; informational: independent pools; account-manager-managed top-ups"}
+
+
 async def _millionverifier(c, key):
     # Free balance probe. Do not add bulk_credits to credits: they can name the same pool.
     try:
@@ -387,6 +418,8 @@ BALANCE_ROUTES = {
     "moz": _moz,
     "seranking": _seranking,
     "hunter": _hunter,
+    "trykitt": _trykitt,
+    "contactout": _contactout,
     "millionverifier": _millionverifier,
     "leadmagic": _leadmagic,
     "lusha": _lusha,

@@ -2,11 +2,16 @@
 title: Endpoint catalog — what you can DO with a connected key, and which provider should do it
 status: shipped
 sources:
+  - src/treg/catalog/trykitt.yaml
+  - src/treg/catalog/examples/trykitt.people.email.find.json
+  - src/treg/catalog/examples/trykitt.people.email.verify.json
   - src/treg/catalog/contracts.yaml
   - src/treg/catalog/millionverifier.yaml
   - src/treg/catalog/examples/millionverifier.people.email.verify.json
   - src/treg/catalog/examples/millionverifier.account.usage.json
   - src/treg/catalog/adapters.yaml
+  - src/treg/catalog/tomba.yaml
+  - src/treg/catalog/examples/tomba.people.email.verify.json
   - src/treg/catalog/examples/findymail.search.business-profile.json
   - src/treg/domain/catalog/routing/__init__.py
   - src/treg/domain/catalog/routing/contracts.py
@@ -118,9 +123,23 @@ verdict is an answer, while error bodies (no `quality`) are misses. `settle._obs
 separately makes unknown/catch-all results free. The upstream `free` flag means a free email
 service, and `credits` is a delayed balance; neither is per-call usage.
 
+ContactOut also joins this contract via `contactout.people.email.verify`. Its direct price is free
+under the agreed commercial terms. The captured `accept_all` response verifies the adapter; only
+`valid` confirms deliverability, other status words remain intact, and unsuccessful envelopes or
+missing verdicts fall through. See `architecture/contactout.md` for capture evidence and tests.
+
 Bulk upload, file info/list/download, stop and delete are excluded: those operations use
 `bulkapi.millionverifier.com` with `key` auth and a multipart file lifecycle, rather than this
 provider's Single API host and `api` auth. The YAML records the complete eight-operation map.
+
+## Tomba email verification (2026-09-08)
+
+Tomba email verification uses `GET /v1/email-verifier?email=…`; its catalog input and routing
+adapter both send `email` in query parameters. A live comparison with the same address and
+credentials returned HTTP 200 with a verification verdict on this documented query route and
+HTTP 422 `params_invalid` on the former `/v1/email-verifier/{email}` path. The response fixture
+captures the returned verdict fields; the mapping remains `data.email.status` / `data.email.score`.
+Historical failure-only samples do not establish coverage for the corrected request shape.
 
 ## Authorization metadata
 
@@ -1418,6 +1437,9 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   `/ N`, `==`/`!=` against literals, and named transforms (`split_first`, `split_last`, `join`,
   `has_type`, `len`, `list`, `obj`, `fmt`, `csv`, `lower`/`upper`, `at_least`, `linkedin_handle`/
   `linkedin_url`, `email_domain`, `host`, `dfs_location`, `seranking_source`, `tca_filter`).
+  `values` reads rows from object-keyed or list responses; `get` applies dotted/indexed lookup
+  to another expression result (for example, the first company in a domain-keyed response).
+  These are generic helpers, not provider-specific rewrites.
   `in_expr` builds provider params from expressions (URL-array bodies, DSL objects); `test_identity`
   states the fixture's identity when `in` builds a value rather than copying one; `filters` carry
   defaults and are always sent.
@@ -1638,3 +1660,43 @@ long strings clipped, ~10 KB cap) by the verifier, then human-reviewed for PII b
 
 The SEO pair and the social pair each implement the same capabilities on purpose — they are the
 first real test that the capability taxonomy supports cross-provider comparison.
+
+## Kitt AI (`trykitt`)
+
+`trykitt.yaml` lists only realtime email find/verify. Account checks are not public
+catalog tools; `/credit` remains the internal key probe and balance collector.
+`adapters.yaml` adds both email tools to their existing routed parents. Find maps
+`full_name`/derived first+last name and domain to `fullName` and `domain`; optional LinkedIn
+URLs are passed as `linkedinStandardProfileURL`. Both adapters set `realtime: true`.
+A find's `email: no-results-found` (or absent/empty email) is a miss; successful finds
+preserve `verified` from `validity == valid`. Verification verdicts, including invalid
+and unknown/catchall, are answers rather than waterfall misses.
+
+The scalar prices reserve the published base rate. `platform_request: {body.realtime: true}`
+binds platform calls to that value through `_enforce_platform_request`, before reserve.
+This shared rule accepts declared body fields with a matching singleton enum; the catalog
+validator rejects other forms. Existing fixed pricing selectors still use the same guard.
+The loader preserves the rule; BYOK returns before the guard and remains a faithful relay.
+`cost.reported_charge: {path: credits.jobCredits, unit: usd}` supplies the actual charge
+through the common response-field reader. The validator permits this only with paid scalar
+prices and no competing `settle` rule. Missing evidence uses the normal miss/base policy.
+Polling `/job?id=` returned 500 in repeated live tests and is excluded, along with
+asynchronous/webhook submission. The surface map is in the catalog header.
+
+Paid evidence on 2026-09-09: find hit $0.005, miss $0, valid verification $0.0015,
+invalid verification $0.0015; account balance eventually moved $10 → $9.992.
+`credits.jobCredits` is USD; `remainingCredits` lags. Unknown/catchall pricing is
+documented, not live-verified. Public API-doc example contact is used in fixtures; job IDs
+are redacted. Billing and BYOK regressions live in `tests/test_marketplace_call.py`;
+routing lives in `tests/test_routing.py`. Capacity tests use the shared collector, policy,
+and signature test files. The reusable setup is in `tests/conftest.py`.
+
+
+## ContactOut
+
+`contactout.yaml` adds the core LinkedIn/contact surface with explicit work/personal selectors,
+on-hit Starter rates supplied by the account owner, free verification, and deferred batches.
+People lookup/search entries are `untestable:` without test requests or stored examples under the
+PII rule. Their routing adapters are omitted; company search/enrichment and email verification
+retain verified adapters. Profile-only LinkedIn enrichment costs $0.02 when found.
+See [ContactOut](contactout.md) for request limitations, derived settlement and live evidence.

@@ -1,0 +1,1045 @@
+# ContactOut v1. Starter rates are the account owner's commercial terms, not public plan estimates.
+# Deferred: sync/async LinkedIn batches, batch email verification, hashed email and campaigns.
+# Work/personal splits use real documented parameters; no invented upstream endpoints.
+# Logo supplied by the account owner.
+provider: contactout
+source:
+  docs: https://api.contactout.com/
+  openapi: null
+  curated: '2026-09-08'
+pricing_url: https://api.contactout.com/
+expect:
+  json_path: status_code
+  equals: 200
+endpoints:
+- id: contactout.people.count
+  domain: contacts
+  capability: people.count
+  platform: people
+  scope: any_account
+  method: POST
+  path: /v1/people/count
+  name: Count matching profiles
+  summary: Count matching profiles
+  input:
+    bodyType: json
+    body:
+      job_title: &id002
+        type: array
+      past_job_title: &id003
+        type: array
+      job_function: &id004
+        type: array
+      seniority: &id005
+        type: array
+      skills: &id006
+        type: array
+      languages: &id007
+        type: array
+      education: &id008
+        type: array
+      educations: &id009
+        type: array
+      location: &id010
+        type: array
+      current_work_location: &id011
+        type: array
+      past_work_location: &id012
+        type: array
+      company: &id013
+        type: array
+      past_company: &id014
+        type: array
+      domain: &id015
+        type: array
+      industry: &id016
+        type: array
+      company_size: &id017
+        type: array
+      years_of_experience: &id018
+        type: array
+      years_in_current_role: &id019
+        type: array
+      exclude_job_titles: &id020
+        type: array
+      exclude_companies: &id021
+        type: array
+      name: &id022
+        type: string
+      keyword: &id023
+        type: string
+      company_filter: &id024
+        type: string
+      match_experience: &id025
+        type: string
+      current_titles_only: &id026
+        type: boolean
+      include_related_job_titles: &id027
+        type: boolean
+      recently_changed_jobs: &id028
+        type: boolean
+      is_currently_working: &id029
+        type: boolean
+      detailed_experience: &id030
+        type: boolean
+      detailed_education: &id031
+        type: boolean
+      location_radius: &id032
+        type: integer
+        min: 1
+        max: 500
+    note: Use the documented filters. recently_changed_jobs cannot combine with years_in_current_role.
+      match_experience cannot combine with current_titles_only or company_filter.
+      See docs for accepted industry, seniority and size values. Free; paid ContactOut
+      account required.
+  test_request:
+    body:
+      company:
+      - ContactOut
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    note: Use the documented filters. recently_changed_jobs cannot combine with years_in_current_role.
+      match_experience cannot combine with current_titles_only or company_filter.
+      See docs for accepted industry, seniority and size values. Free; paid ContactOut
+      account required.
+  docs_url: https://api.contactout.com/
+- id: contactout.people.personal_email.available
+  domain: contacts
+  capability: linkedin.email.personal.availability
+  platform: linkedin
+  scope: any_account
+  method: GET
+  path: /v1/people/linkedin/personal_email_status
+  name: Check personal email availability
+  summary: Check personal email availability for a LinkedIn profile
+  input:
+    queryParams:
+      profile: &id001
+        type: string
+        required: true
+        note: Full regular LinkedIn profile URL; Sales Navigator and Recruiter URLs
+          are not supported.
+        example: https://www.linkedin.com/in/YOUR-PROFILE
+    note: Availability only; no contact reveal. Free; paid ContactOut account required.
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    note: Availability only; no contact reveal. Free; paid ContactOut account required.
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.work_email.available
+  domain: contacts
+  capability: linkedin.email.work.availability
+  platform: linkedin
+  scope: any_account
+  method: GET
+  path: /v1/people/linkedin/work_email_status
+  name: Check work email availability
+  summary: Check work email availability for a LinkedIn profile
+  input:
+    queryParams:
+      profile: *id001
+    note: Availability only; no contact reveal. Free; paid ContactOut account required.
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    note: Availability only; no contact reveal. Free; paid ContactOut account required.
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.phone.available
+  domain: contacts
+  capability: linkedin.phone.availability
+  platform: linkedin
+  scope: any_account
+  method: GET
+  path: /v1/people/linkedin/phone_status
+  name: Check phone number availability
+  summary: Check phone availability for a LinkedIn profile
+  input:
+    queryParams:
+      profile: *id001
+    note: Availability only; no contact reveal. Free; paid ContactOut account required.
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    note: Availability only; no contact reveal. Free; paid ContactOut account required.
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.email.verify
+  domain: contacts
+  capability: people.email.verify
+  platform: people
+  scope: any_account
+  method: GET
+  path: /v1/email/verify
+  name: Verify email deliverability
+  summary: Verify email deliverability
+  input:
+    queryParams:
+      email: &id034
+        type: string
+        required: true
+        example: support@contactout.com
+    note: 'Free under current commercial terms: verifier credits are not charged.
+      Recheck this rate if ContactOut starts metering verification.'
+  test_request:
+    queryParams:
+      email: support@contactout.com
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    note: 'Free under current commercial terms: verifier credits are not charged.
+      Recheck this rate if ContactOut starts metering verification.'
+  verified: 2026-09-09
+  example_response: examples/contactout.people.email.verify.json
+  docs_url: https://api.contactout.com/
+- id: contactout.people.search
+  domain: contacts
+  capability: people.search
+  platform: people
+  scope: any_account
+  method: POST
+  path: /v1/people/search
+  name: Search people without revealing contacts
+  summary: Search people without revealing contacts
+  input:
+    bodyType: json
+    body:
+      job_title: *id002
+      past_job_title: *id003
+      job_function: *id004
+      seniority: *id005
+      skills: *id006
+      languages: *id007
+      education: *id008
+      educations: *id009
+      location: *id010
+      current_work_location: *id011
+      past_work_location: *id012
+      company: *id013
+      past_company: *id014
+      domain: *id015
+      industry: *id016
+      company_size: *id017
+      years_of_experience: *id018
+      years_in_current_role: *id019
+      exclude_job_titles: *id020
+      exclude_companies: *id021
+      name: *id022
+      keyword: *id023
+      company_filter: *id024
+      match_experience: *id025
+      current_titles_only: *id026
+      include_related_job_titles: *id027
+      recently_changed_jobs: *id028
+      is_currently_working: *id029
+      detailed_experience: *id030
+      detailed_education: *id031
+      location_radius: *id032
+      page:
+        type: integer
+        default: 1
+      page_size:
+        type: integer
+        min: 1
+        max: 25
+        default: 25
+      data_types:
+        type: array
+        note: Availability filter, NOT a reveal selector.
+      reveal_info:
+        type: boolean
+        required: true
+        enum:
+        - false
+      output_fields:
+        type: array
+        note: Custom profile fields; do not omit contact_info when revealing contacts.
+    note: Use the documented filters. recently_changed_jobs cannot combine with years_in_current_role.
+      match_experience cannot combine with current_titles_only or company_filter.
+      See docs for accepted industry, seniority and size values. reveal_info=true
+      can return both email types and phones. For work-only contacts, search without
+      reveal then use the work-email contact tool.
+  cost:
+    type: per_result
+    value: 0.02
+    currency: USD
+    per: 1
+    unit: result
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. Use the documented filters. recently_changed_jobs
+      cannot combine with years_in_current_role. match_experience cannot combine with
+      current_titles_only or company_filter. See docs for accepted industry, seniority
+      and size values. reveal_info=true can return both email types and phones. For
+      work-only contacts, search without reveal then use the work-email contact tool.
+    contactout:
+      job: search
+      rates_micro: &id033
+        work_email: 150000
+        personal_email: 250000
+        phone: 250000
+        search: 20000
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.decision-makers
+  domain: contacts
+  capability: people.search
+  platform: people
+  scope: any_account
+  method: GET
+  path: /v1/people/decision-makers
+  name: Find company decision makers without revealing contacts
+  summary: Find company decision makers without revealing contacts
+  input:
+    queryParams:
+      linkedin_url:
+        type: string
+      domain:
+        type: string
+      name:
+        type: string
+      page:
+        type: integer
+        default: 1
+      reveal_info:
+        type: boolean
+        required: true
+        enum:
+        - false
+    note: Supply at least one of linkedin_url, domain or name. Pages contain up to
+      25 profiles. The platform hold is up to $0.50; this route has no page_size
+      control. Reveal may return both email types and phones; use no-reveal then
+      work-email contact for work-only enrichment.
+  cost:
+    type: per_result
+    value: 0.02
+    currency: USD
+    per: 1
+    unit: result
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. Supply at least one of linkedin_url,
+      domain or name. Pages contain up to 25 profiles. The platform hold is up to $0.50; this route has no page_size
+      control. Reveal may return both email
+      types and phones; use no-reveal then work-email contact for work-only enrichment.
+    contactout:
+      job: decision
+      rates_micro: *id033
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.search.reveal
+  domain: contacts
+  capability: people.search
+  platform: people
+  scope: any_account
+  method: POST
+  path: /v1/people/search
+  name: Search people and reveal contacts
+  summary: Search people and reveal contacts
+  input:
+    bodyType: json
+    body:
+      job_title: *id002
+      past_job_title: *id003
+      job_function: *id004
+      seniority: *id005
+      skills: *id006
+      languages: *id007
+      education: *id008
+      educations: *id009
+      location: *id010
+      current_work_location: *id011
+      past_work_location: *id012
+      company: *id013
+      past_company: *id014
+      domain: *id015
+      industry: *id016
+      company_size: *id017
+      years_of_experience: *id018
+      years_in_current_role: *id019
+      exclude_job_titles: *id020
+      exclude_companies: *id021
+      name: *id022
+      keyword: *id023
+      company_filter: *id024
+      match_experience: *id025
+      current_titles_only: *id026
+      include_related_job_titles: *id027
+      recently_changed_jobs: *id028
+      is_currently_working: *id029
+      detailed_experience: *id030
+      detailed_education: *id031
+      location_radius: *id032
+      page:
+        type: integer
+        default: 1
+      page_size:
+        type: integer
+        min: 1
+        max: 25
+        required: true
+        example: 1
+        note: Platform calls require an explicit page_size; 1 reserves at most $0.67.
+      data_types:
+        type: array
+        note: Availability filter, NOT a reveal selector.
+      reveal_info:
+        type: boolean
+        required: true
+        enum:
+        - true
+      output_fields:
+        type: array
+        note: Custom profile fields; do not omit contact_info when revealing contacts.
+    note: Use the documented filters. recently_changed_jobs cannot combine with years_in_current_role.
+      match_experience cannot combine with current_titles_only or company_filter.
+      See docs for accepted industry, seniority and size values. reveal_info=true
+      can return both email types and phones. For work-only contacts, search without
+      reveal then use the work-email contact tool.
+  cost:
+    type: per_result
+    value: 0.67
+    currency: USD
+    per: 1
+    unit: result
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. Use the documented filters. recently_changed_jobs
+      cannot combine with years_in_current_role. match_experience cannot combine with
+      current_titles_only or company_filter. See docs for accepted industry, seniority
+      and size values. reveal_info=true can return both email types and phones. For
+      work-only contacts, search without reveal then use the work-email contact tool.
+    contactout:
+      job: search
+      rates_micro: *id033
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.decision-makers.reveal
+  domain: contacts
+  capability: people.search
+  platform: people
+  scope: any_account
+  method: GET
+  path: /v1/people/decision-makers
+  name: Find company decision makers and reveal contacts
+  summary: Find company decision makers and reveal contacts
+  input:
+    queryParams:
+      linkedin_url:
+        type: string
+      domain:
+        type: string
+      name:
+        type: string
+      page:
+        type: integer
+        default: 1
+      reveal_info:
+        type: boolean
+        required: true
+        enum:
+        - true
+    note: Supply at least one of linkedin_url, domain or name. Pages contain up to
+      25 profiles. The platform hold is up to $16.75; this route has no page_size
+      control. Reveal may return both email types and phones; use no-reveal then
+      work-email contact for work-only enrichment.
+  cost:
+    type: per_result
+    value: 0.67
+    currency: USD
+    per: 1
+    unit: result
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. Supply at least one of linkedin_url,
+      domain or name. Pages contain up to 25 profiles. The platform hold is up to $16.75; this route has no page_size
+      control. Reveal may return both email
+      types and phones; use no-reveal then work-email contact for work-only enrichment.
+    contactout:
+      job: decision
+      rates_micro: *id033
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.companies.search
+  domain: companies
+  capability: companies.search
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /v1/company/search
+  name: Search companies
+  summary: Search companies
+  input:
+    bodyType: json
+    body:
+      name:
+        type: array
+      domain:
+        type: array
+      size:
+        type: array
+      location:
+        type: array
+      industry:
+        type: array
+      technologies:
+        type: array
+      page:
+        type: integer
+      min_revenue:
+        type: integer
+      max_revenue:
+        type: integer
+      year_founded_from:
+        type: integer
+      year_founded_to:
+        type: integer
+      hq_only:
+        type: boolean
+    note: $0.02 per company returned, not total_results. Default page contains 25
+      companies.
+  test_request:
+    body:
+      domain:
+      - contactout.com
+  cost:
+    type: per_result
+    value: 0.02
+    currency: USD
+    per: 1
+    unit: result
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. $0.02 per company returned, not total_results.
+      Default page contains 25 companies.
+    contactout:
+      job: company_search
+      rates_micro: *id033
+  verified: 2026-09-09
+  example_response: examples/contactout.companies.search.json
+  docs_url: https://api.contactout.com/
+- id: contactout.companies.enrich
+  domain: companies
+  capability: companies.enrich
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /v1/domain/enrich
+  name: Enrich company domains
+  summary: Enrich company domains
+  input:
+    bodyType: json
+    body:
+      domains:
+        type: array
+        required: true
+        note: Up to 30 domain names.
+    note: $0.02 per company found. Unmatched domains cost nothing.
+  test_request:
+    body:
+      domains:
+      - contactout.com
+  cost:
+    type: per_result
+    value: 0.02
+    currency: USD
+    per: 1
+    unit: result
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. $0.02 per company found. Unmatched domains
+      cost nothing.
+    contactout:
+      job: domains
+      rates_micro: *id033
+  verified: 2026-09-09
+  example_response: examples/contactout.companies.enrich.json
+  docs_url: https://api.contactout.com/
+- id: contactout.people.linkedin.from-email
+  domain: contacts
+  capability: linkedin.profile.from_email
+  platform: linkedin
+  scope: any_account
+  method: GET
+  path: /v1/people/person
+  name: Find LinkedIn URL from email
+  summary: Find LinkedIn URL from email
+  input:
+    queryParams:
+      email: *id034
+    note: $0.06 per served call; rejected upstream requests are unbilled.
+  cost:
+    type: per_call
+    value: 0.06
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. $0.06 per served call; rejected upstream
+      requests are unbilled.
+    contactout:
+      job: reverse
+      rates_micro: *id033
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.contact.work
+  domain: contacts
+  capability: linkedin.email.work.find
+  platform: linkedin
+  scope: any_account
+  method: GET
+  path: /v1/people/linkedin
+  name: Get work email, optionally phone from LinkedIn
+  summary: Get work email, optionally phone from LinkedIn
+  input:
+    queryParams:
+      profile: *id001
+      email_type:
+        type: string
+        required: true
+        enum:
+        - work
+      include_phone:
+        type: boolean
+        default: false
+    note: Set email_type explicitly as shown. Phone adds $0.25 only on a hit; never
+      charged per phone/address in the returned array.
+  cost:
+    type: per_success
+    value: 0.15
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. Set email_type explicitly as shown.
+      Phone adds $0.25 only on a hit; never charged per phone/address in the returned
+      array.
+    contactout:
+      job: contact
+      rates_micro: *id033
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.contact.personal
+  domain: contacts
+  capability: linkedin.email.personal.find
+  platform: linkedin
+  scope: any_account
+  method: GET
+  path: /v1/people/linkedin
+  name: Get personal email, optionally phone from LinkedIn
+  summary: Get personal email, optionally phone from LinkedIn
+  input:
+    queryParams:
+      profile: *id001
+      email_type:
+        type: string
+        required: true
+        enum:
+        - personal
+      include_phone:
+        type: boolean
+        default: false
+    note: Set email_type explicitly as shown. Phone adds $0.25 only on a hit; never
+      charged per phone/address in the returned array.
+  cost:
+    type: per_success
+    value: 0.25
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. Set email_type explicitly as shown.
+      Phone adds $0.25 only on a hit; never charged per phone/address in the returned
+      array.
+    contactout:
+      job: contact
+      rates_micro: *id033
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.contact.phone
+  domain: contacts
+  capability: linkedin.phone.find
+  platform: linkedin
+  scope: any_account
+  method: GET
+  path: /v1/people/linkedin
+  name: Get phone only from LinkedIn
+  summary: Get phone only from LinkedIn
+  input:
+    queryParams:
+      profile: *id001
+      email_type:
+        type: string
+        required: true
+        enum:
+        - none
+      include_phone:
+        type: boolean
+        required: true
+        enum:
+        - true
+    note: Set email_type explicitly as shown. Phone adds $0.25 only on a hit; never
+      charged per phone/address in the returned array.
+  cost:
+    type: per_success
+    value: 0.25
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. Set email_type explicitly as shown.
+      Phone adds $0.25 only on a hit; never charged per phone/address in the returned
+      array.
+    contactout:
+      job: contact
+      rates_micro: *id033
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.linkedin.enrich
+  domain: contacts
+  capability: linkedin.user.profile
+  platform: linkedin
+  scope: any_account
+  method: GET
+  path: /v1/linkedin/enrich
+  name: Enrich LinkedIn profile and contacts
+  summary: Enrich LinkedIn profile and contacts
+  input:
+    queryParams:
+      profile: *id001
+      profile_only:
+        type: boolean
+        default: false
+    note: This route does not document email_type or include selectors. It may return
+      both email types and phones. Use the dedicated work-email contact tool to avoid
+      personal-email reveal. Profile-only results cost $0.02 when a profile is found.
+      Contact misses cost $0 at treg, though ContactOut still consumes a search credit.
+  cost:
+    type: per_success
+    value: 0.65
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. This route does not document email_type
+      or include selectors. It may return both email types and phones. Use the dedicated
+      work-email contact tool to avoid personal-email reveal. Profile-only results cost
+      $0.02 when a profile is found. Contact misses cost $0 at treg, though ContactOut
+      still consumes a search credit.
+    contactout:
+      job: linkedin
+      rates_micro: *id033
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.enrich
+  domain: contacts
+  capability: people.enrich
+  platform: people
+  scope: any_account
+  method: POST
+  path: /v1/people/enrich
+  name: Enrich person by identifiers
+  summary: Enrich person by identifiers
+  input:
+    bodyType: json
+    body:
+      linkedin_url: &id035
+        type: string
+      email: &id036
+        type: string
+      phone: &id037
+        type: string
+      full_name: &id038
+        type: string
+      first_name: &id039
+        type: string
+      last_name: &id040
+        type: string
+      location: &id041
+        type: string
+      job_title: &id042
+        type: string
+      company: &id043
+        type: array
+      company_domain: &id044
+        type: array
+      education: &id045
+        type: array
+      include:
+        type: array
+        note: 'Contact fields to reveal: work_email, personal_email, phone. Omit for
+          profile only.'
+    note: Provide linkedin_url, email or phone, OR name plus company/location/education.
+      $0.02 if a profile is found, plus requested contacts on hit.
+  cost:
+    type: per_success
+    value: 0.02
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. Provide linkedin_url, email or phone,
+      OR name plus company/location/education. $0.02 if a profile is found, plus requested
+      contacts on hit.
+    contactout:
+      job: person
+      rates_micro: *id033
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.enrich.work_email
+  domain: contacts
+  capability: people.enrich
+  platform: people
+  scope: any_account
+  method: POST
+  path: /v1/people/enrich
+  name: Enrich person with work email
+  summary: Enrich person with work email
+  input:
+    bodyType: json
+    body:
+      linkedin_url: *id035
+      email: *id036
+      phone: *id037
+      full_name: *id038
+      first_name: *id039
+      last_name: *id040
+      location: *id041
+      job_title: *id042
+      company: *id043
+      company_domain: *id044
+      education: *id045
+      include:
+        type: array
+        required: true
+        enum:
+        - - work_email
+        note: This split selects only work_email. Use the general enrich tool to combine
+          with phone.
+    note: Provide linkedin_url, email or phone, OR name plus company/location/education.
+      $0.02 if a profile is found, plus requested contacts on hit.
+  cost:
+    type: per_success
+    value: 0.17
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. Provide linkedin_url, email or phone,
+      OR name plus company/location/education. $0.02 if a profile is found, plus requested
+      contacts on hit.
+    contactout:
+      job: person
+      rates_micro: *id033
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.enrich.personal_email
+  domain: contacts
+  capability: people.enrich
+  platform: people
+  scope: any_account
+  method: POST
+  path: /v1/people/enrich
+  name: Enrich person with personal email
+  summary: Enrich person with personal email
+  input:
+    bodyType: json
+    body:
+      linkedin_url: *id035
+      email: *id036
+      phone: *id037
+      full_name: *id038
+      first_name: *id039
+      last_name: *id040
+      location: *id041
+      job_title: *id042
+      company: *id043
+      company_domain: *id044
+      education: *id045
+      include:
+        type: array
+        required: true
+        enum:
+        - - personal_email
+        note: This split selects only personal_email. Use the general enrich tool
+          to combine with phone.
+    note: Provide linkedin_url, email or phone, OR name plus company/location/education.
+      $0.02 if a profile is found, plus requested contacts on hit.
+  cost:
+    type: per_success
+    value: 0.27
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. Provide linkedin_url, email or phone,
+      OR name plus company/location/education. $0.02 if a profile is found, plus requested
+      contacts on hit.
+    contactout:
+      job: person
+      rates_micro: *id033
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+- id: contactout.people.email.enrich
+  domain: contacts
+  capability: people.enrich
+  platform: people
+  scope: any_account
+  method: GET
+  path: /v1/email/enrich
+  name: Enrich profile from email
+  summary: Enrich profile from email
+  input:
+    queryParams:
+      email: *id034
+      include:
+        type: string
+        enum:
+        - work_email
+        note: Only documented include value; optional work email lookup.
+    note: May return personal email and phone; only work_email is a documented include
+      selector. Returned input email is not a new contact reveal.
+  cost:
+    type: per_success
+    value: 0.65
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://api.contactout.com/
+    checked: '2026-09-08'
+    confidence: documented
+    note: Starter commercial rates supplied by the account owner. Work email $0.15,
+      personal email $0.25, phone $0.25 per profile with a hit; search $0.02 per returned
+      profile/company. Multiple addresses of one type consume one credit per profile.
+      No contact hit means no contact charge. May return personal email and phone;
+      only work_email is a documented include selector. Returned input email is not
+      a new contact reveal.
+    contactout:
+      job: email
+      rates_micro: *id033
+  docs_url: https://api.contactout.com/
+  untestable: Requires a person lookup or returns named individuals; no automated
+    verification request or stored example under the catalog PII rule.
+proposed_capabilities:
+  people.count: Count profiles matching filters without returning profiles
+  linkedin.email.personal.availability: Check personal email availability for a LinkedIn
+    profile
+  linkedin.email.work.availability: Check work email availability for a LinkedIn profile
+  linkedin.phone.availability: Check phone availability for a LinkedIn profile
+  linkedin.profile.from_email: Find LinkedIn profile URL from an email address
+  linkedin.email.work.find: Find work email from a LinkedIn profile, optionally with
+    phone
+  linkedin.email.personal.find: Find personal email from a LinkedIn profile, optionally
+    with phone
+  linkedin.phone.find: Find phone number from a LinkedIn profile

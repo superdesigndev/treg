@@ -129,8 +129,11 @@ slash in `probe_path`), 200-with-error-body (read a body field), CSV/text respon
    `source.openapi: null`.
 2. **Select** ~8–15 endpoints; ALWAYS include ones matching capabilities other providers already
    implement (overlap enables comparison).
-3. **Map** each to a capability from `capabilities.yaml`; missing jobs go under
-   `proposed_capabilities:` in the provider file, not straight into the shared taxonomy.
+3. **Map** each to a capability from `capabilities.yaml`. Search the taxonomy AND the other
+   provider files for the job first; reuse an existing id, never a near-duplicate. Missing jobs go
+   under `proposed_capabilities:` in the provider file, not straight into the shared taxonomy —
+   and if another provider's endpoint already does the job unmapped, name it in the PR so the
+   reviewer attaches both to the new capability.
 4. **Describe** `input` (param names, types, required, location; constraints into `note`).
 5. **Cost** with full provenance: `type/value/currency/per/unit` + `source/source_url/checked/
    confidence`. Unknown price → `value: null` + `confidence: unknown` + a note. Prefer a

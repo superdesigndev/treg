@@ -22,7 +22,9 @@ related:
 `FeedbackCategory` is the shared four-value vocabulary: `quality`, `pricing`, `friction`, `other`.
 `FeedbackIn` accepts only `category`, `message` (trimmed, 1-2,000 characters), optional `call_ids`
 (at most 100 bounded opaque references, deduplicated), and optional public `endpoint_id`.
-Extra fields are rejected. Privacy instructions ask callers to replace sensitive values and omit
+Guidance encourages proactive reports of small annoyances and observed friction even after successful workarounds, without requiring
+a proven bug. It directs agents to pass references in `call_ids` (CLI `--call-id`), not only prose,
+and to continue the task after reporting an issue once. Extra fields are rejected. Privacy instructions ask callers to replace sensitive values and omit
 raw payloads; free-text content is not guaranteed anonymous or automatically sanitized.
 
 `POST /feedback` uses `require_member`, including agent identities and the existing public-demo

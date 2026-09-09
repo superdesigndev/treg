@@ -37,6 +37,13 @@ def get_path(doc: Any, path: str) -> Any:
     return cur
 
 
+def values(value: Any) -> list | None:
+    """Read rows from an object keyed by ID/domain, or preserve an existing row list."""
+    if isinstance(value, dict):
+        return list(value.values())
+    return value if isinstance(value, list) else None
+
+
 def set_path(doc: dict, path: str, value: Any) -> None:
     """`body.enrichmentType.getWorkEmails` → nested set (creating dicts)."""
     cur = doc
@@ -196,7 +203,7 @@ def as_list(v: Any) -> Any:
     return v if isinstance(v, list) else [v]
 
 
-TRANSFORMS = {"split_first": split_first, "split_last": split_last, "join": join, "has_type": has_type, "len": length,
+TRANSFORMS = {"values": values, "get": get_path, "split_first": split_first, "split_last": split_last, "join": join, "has_type": has_type, "len": length,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name}

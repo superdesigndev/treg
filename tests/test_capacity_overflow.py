@@ -11,6 +11,11 @@ import pytest
 from httpx import AsyncClient
 from sqlmodel import select
 
+from dataclasses import replace
+from datetime import datetime, timedelta
+from treg.domain.capacity import marks, policy, signatures
+from treg.domain.capacity import routes as R
+from treg.domain.catalog import store
 from treg import audit, ratestore
 from treg.application.call import overflow as O
 from treg.application.call import service as call_service
@@ -661,3 +666,180 @@ async def test_a_vendor_402_overflow_did_not_rescue_keeps_the_vendor_error_event
     (e,) = await posthog_events()
     p = e["properties"]
     assert p["status_code"] == 402 and p["outcome"] == "vendor_error" and p["tier"] == "platform" and "served_via" not in p
+
+
+# ---- the weekly verify: renewals are held to their own cap and the run to a budget -------------
+# On 2026-09-07 the cron (`verify --all`, 2¢ cap) skipped every stamped route priced above 2¢ - 46
+# routes mapped and verified on 2026-08-26 decayed off and no run could ever bring them back. A
+# stamped route renews under `--renew-max-usd`; the 2¢ `--max-usd` is only for discovery.
+
+def test_verify_plan_renews_stamped_routes_first_and_discovers_only_with_all():
+    from datetime import timedelta
+    from types import SimpleNamespace
+    from treg import worker
+    now = utcnow_naive()
+    old = SimpleNamespace(endpoint_id="a.old", provider="a", enabled=True, last_verified_at=now - timedelta(days=6))
+    fresh = SimpleNamespace(endpoint_id="a.fresh", provider="a", enabled=True, last_verified_at=now - timedelta(days=1))
+    lapsed = SimpleNamespace(endpoint_id="b.lapsed", provider="b", enabled=False, last_verified_at=now - timedelta(days=9))
+    never = SimpleNamespace(endpoint_id="b.never", provider="b", enabled=False, last_verified_at=None)
+    plan = worker._verify_plan([fresh, never, old, lapsed], all_rows=True, only=None, max_usd=0.02, renew_max_usd=1.0)
+    assert [(r.endpoint_id, cap) for r, cap in plan] == [
+        ("b.lapsed", 1.0), ("a.old", 1.0), ("a.fresh", 1.0), ("b.never", 0.02)]
+    without_all = worker._verify_plan([fresh, never, old, lapsed], all_rows=False, only=None, max_usd=0.02, renew_max_usd=1.0)
+    assert [r.endpoint_id for r, _ in without_all] == ["b.lapsed", "a.old", "a.fresh"]
+    only_b = worker._verify_plan([fresh, never, old, lapsed], all_rows=True, only={"b"}, max_usd=0.02, renew_max_usd=1.0)
+    assert [r.endpoint_id for r, _ in only_b] == ["b.lapsed", "b.never"]
+
+
+async def test_verify_run_visits_pricey_renewals_within_budget_and_skips_pricey_discovery(
+    clients, overflow_on, monkeypatch,
+):
+    from datetime import timedelta
+    from types import SimpleNamespace
+    from treg import worker
+    from treg.domain.capacity import verify as V
+    from treg.domain.catalog import store as catalog_store
+    monkeypatch.setattr(get_settings(), "secret_key", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+    eps = [e for e in catalog_store.load().endpoints if e.get("test_request")][:3]
+    assert len(eps) == 3
+    now = utcnow_naive()
+    specs = [  # (endpoint, price, enabled, stamped)
+        (eps[0], 500_000, True, now - timedelta(days=6)),   # renewal, 50¢: above the 2¢ discovery cap
+        (eps[1], 10_000, True, now - timedelta(days=1)),    # renewal, 1¢
+        (eps[2], 500_000, False, None),                     # discovery, 50¢: held to the 2¢ cap
+    ]
+    async with session_maker() as db:
+        for ep, price, enabled, stamped in specs:
+            db.add(OverflowRoute(endpoint_id=ep["id"], aggregator="orthogonal", provider=ep["provider"],
+                                 method=ep["method"], path=ep["path"], agg_slug=ep["provider"], agg_path=ep["path"],
+                                 agg_price_micro=price, agg_unit="call", ratio=1.0, enabled=enabled,
+                                 last_verified_at=stamped))
+        await db.commit()
+    from treg import oauth_providers
+    monkeypatch.setattr(oauth_providers, "get", lambda *_: None)  # no direct key: spend = relay fee
+    seen = []
+    async def verify(client, route, **kwargs):
+        seen.append(route.endpoint_id)
+        return V.Verification(route.endpoint_id, route.aggregator, None, 200, True,
+                              route.agg_price_micro, utcnow_naive())
+    monkeypatch.setattr(V, "verify_route", verify)
+    args = SimpleNamespace(all=True, only=None, max_usd=0.02, renew_max_usd=1.0, budget_usd=15.0)
+    assert await worker._overflow_verify(args) == 0
+    assert seen == [eps[0]["id"], eps[1]["id"]]   # oldest renewal first; the 50¢ discovery pair is skipped
+    seen.clear()
+    args.budget_usd = 0.30                          # the 50¢ renewal no longer fits; the 1¢ one still does
+    assert await worker._overflow_verify(args) == 0
+    assert seen == [eps[1]["id"]]
+
+
+# ---- ContactOut ----
+
+CONTACTOUT_EP = 'contactout.people.contact.work'
+CONTACTOUT_PATH = '/v1/people/linkedin'
+CONTACTOUT_QUERY = {'profile': 'https://linkedin.com/in/synthetic-test', 'email_type': 'work'}
+CONTACTOUT_QUOTA = b'{"status_code":403,"message":"You\'re out of credits, please email your sales manager"}'
+CONTACTOUT_BODY = {'status_code': 200, 'profile': {'work_email': ['test@example.test']}}
+
+@pytest.fixture
+def contactout_on(monkeypatch, overflow_on):
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'contactout')
+    monkeypatch.setenv('TREG_PLATFORM_KEY_CONTACTOUT', 'DIRECT-TEST')
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def test_contactout_credit_exhaustion_is_endpoint_scoped_and_access_refusal_is_not_capacity():
+    signal = signatures.classify('contactout', 403, {}, CONTACTOUT_QUOTA)
+    assert signal.kind == 'quota' and signatures.is_exhausting(signal)
+    assert marks.lock_key('contactout', CONTACTOUT_EP, signal.kind) == CONTACTOUT_EP
+    assert signatures.classify('contactout', 403, {}, b'{"message":"No access to endpoint"}') is None
+    assert signatures.classify('contactout', 429, httpx.Headers({'Retry-After':'2'}), b'').kind == 'burst'
+    assert policy.default_policy('contactout', has_key=True).overflow_allowed
+
+
+@pytest.mark.parametrize('status,body', [(403,CONTACTOUT_QUOTA),(429,b'{"message":"Rate limit reached"}')])
+async def test_contactout_capacity_failure_uses_existing_child_billing(clients, contactout_on, monkeypatch, status, body):
+    await _route(endpoint_id=CONTACTOUT_EP, provider='contactout', path=CONTACTOUT_PATH, price_micro=550000)
+    fake = _fake_relay(status, body)
+    async def relay(*args, **kwargs):
+        response = await fake(*args, **kwargs)
+        return replace(response, raw_headers=((b'retry-after', b'0'),)) if status == 429 else response
+    monkeypatch.setattr(call_service, 'relay', relay)
+    seen=[]
+    monkeypatch.setattr(O, '_send', _orthogonal([(200,{'success':True,'data':CONTACTOUT_BODY,'priceCents':55})],seen))
+    before=await _balance(clients)
+    r=await clients.get('/call/'+CONTACTOUT_EP,params=CONTACTOUT_QUERY)
+    assert r.status_code==200
+    assert r.json()==CONTACTOUT_BODY
+    assert r.headers['X-Treg-Served-Via']=='overflow:orthogonal'
+    assert before-await _balance(clients)==550000
+    assert not await _holds()
+    assert seen[0].json['query']['email_type']=='work'
+
+
+@pytest.mark.parametrize('own,optout,status,body', [
+    (True,False,403,CONTACTOUT_QUOTA), (False,True,403,CONTACTOUT_QUOTA),
+    (False,False,404,b'{}'), (False,False,403,b'{"message":"No access to endpoint"}')])
+async def test_contactout_byok_optout_and_noncapacity_errors_never_overflow(clients,contactout_on,monkeypatch,own,optout,status,body):
+    await _route(endpoint_id=CONTACTOUT_EP,provider='contactout',path=CONTACTOUT_PATH,price_micro=550000)
+    if own:
+        await clients.post('/secrets',json={'name':'contactout','value':'OWN-TEST'})
+    if optout:
+        org=(await clients.get('/orgs')).json()[0]['org_id']
+        await clients.patch(f'/orgs/{org}/settings',json={'platform_overflow':False})
+    monkeypatch.setattr(call_service,'relay',_fake_relay(status,body))
+    seen=[]
+    monkeypatch.setattr(O,'_send',_orthogonal([],seen))
+    r=await clients.get('/call/'+CONTACTOUT_EP,params=CONTACTOUT_QUERY)
+    assert r.status_code==status and seen==[]
+    assert not await _holds()
+
+
+def test_contactout_only_verified_compatible_candidates_enable():
+    enabled=[]
+    cat=store.load()
+    for row in R.load_seed():
+        if row['provider']!='contactout': continue
+        ep=cat.by_id[row['endpoint_id']];cv=cat.cost_view(ep['cost'],'contactout')
+        route=OverflowRoute(**{k:row[k] for k in ('endpoint_id','aggregator','provider','method','path','agg_slug','agg_path','agg_unit')},agg_price_micro=round(row['agg_price_usd']*1e6),ratio=R.price_ratio(row['agg_price_usd'],R.our_event_usd(cv)),last_verified_at=datetime.fromisoformat(row['verified_at']) if row['verified_at'] else None)
+        verdict=R.eligible(route,our_cost=ep['cost'],platform_eligible=True,policy=None,our_usd=cv['usd'])
+        if verdict.enabled:
+            enabled.append((row['endpoint_id'],row['aggregator']))
+            assert row['verified_at']
+            expired=R.eligible(route,our_cost=ep['cost'],platform_eligible=True,policy=None,our_usd=cv['usd'],now=route.last_verified_at+timedelta(days=8))
+            assert not expired.enabled
+    assert len(enabled)==13
+    assert (CONTACTOUT_EP,'orthogonal') in enabled
+    assert (CONTACTOUT_EP,'monid') not in enabled
+    assert ('contactout.companies.enrich','orthogonal') not in enabled
+
+
+
+@pytest.mark.parametrize('budget,expected_calls', [(0.5,0),(1.0,1)])
+async def test_contactout_renewal_budget_includes_direct_cost_and_uses_ephemeral_profile(monkeypatch,budget,expected_calls):
+    import runpy
+    from types import SimpleNamespace
+    from treg.domain.capacity import verify as V
+    namespace=runpy.run_path('scripts/contactout_overflow_verify.py')
+    main=namespace['main']
+    globals_=main.__globals__
+    candidate=next(dict(r) for r in R.load_seed() if r['endpoint_id']==CONTACTOUT_EP and r['aggregator']=='orthogonal')
+    monkeypatch.setattr(R,'load_seed',lambda:[candidate])
+    globals_['get_settings']=lambda:SimpleNamespace(platform_key_contactout='DIRECT-TEST',overflow_key_for=lambda p:'AGG-TEST')
+    class Client:
+        async def __aenter__(self):return self
+        async def __aexit__(self,*args):pass
+        async def post(self,*args,**kwargs):
+            return httpx.Response(200,json={'profiles':{'one':{'li_vanity':'synthetic-renewal'}}})
+    monkeypatch.setattr(httpx,'AsyncClient',lambda **kwargs:Client())
+    seen=[]
+    async def verify(client,route,**kwargs):
+        seen.append(kwargs)
+        assert kwargs['test_request']['queryParams']['profile'].endswith('/synthetic-renewal')
+        assert kwargs['test_request']['queryParams']['include_phone']=='true'
+        return V.Verification(CONTACTOUT_EP,'orthogonal',200,200,True,550000,utcnow_naive())
+    monkeypatch.setattr(V,'verify_route',verify)
+    result=await main(SimpleNamespace(budget_usd=budget,apply=False))
+    assert len(seen)==expected_calls
+    assert result==(0 if expected_calls else 1)

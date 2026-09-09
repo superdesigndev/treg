@@ -141,14 +141,14 @@ endpoints:
     platform: people
     scope: any_account
     method: GET
-    path: /v1/email-verifier/{email}
+    path: /v1/email-verifier
     name: "Verify an email address is deliverable"
     summary: "Deliverability status, score, MX/SMTP checks, catch-all, disposable, gibberish and role-address flags for one address"
     input:
-      pathParams:
-        email: {type: string, required: true, note: "the address to verify, in the path (not a query param)", example: "patrick@stripe.com"}
+      queryParams:
+        email: {type: string, required: true, note: "the address to verify, sent as the email query parameter", example: "m@wordpress.org"}
     test_request:
-      pathParams: {email: "patrick@stripe.com"}
+      queryParams: {email: "m@wordpress.org"}
     cost:
       type: per_call
       value: 1
@@ -160,7 +160,7 @@ endpoints:
       checked: '2026-08-20'
       confidence: verified
       note: "1 credit per verification; the Growth plan grants 5,000 verification credits on top of the 5,000 finder credits, so verification is effectively bundled. /v1/logs reported cost=1"
-    verified: '2026-08-20'
+    verified: '2026-09-08'
     example_response: examples/tomba.people.email.verify.json
     docs_url: https://docs.tomba.io/api/verifier
 

@@ -31,6 +31,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 import time
 import webbrowser
@@ -6017,18 +6018,42 @@ def build_parser() -> argparse.ArgumentParser:
 
     fb = mk(sub, "feedback", "Submit or retrieve private team feedback.",
             'treg feedback submit friction "The pagination example is unclear."',
+            'treg feedback submit quality "The result is outdated." --call-id CALL_ID --endpoint-id PROVIDER.ENDPOINT',
+            'treg feedback submit other - < sanitized-feedback.txt',
             'treg feedback get 123')
+    fb.description = textwrap.fill(FEEDBACK_DESCRIPTION, width=88)
+    feedback_fields = (
+        "\n\nSubmission fields:\n"
+        "  category       Required: quality (results), pricing (charges/prices),\n"
+        "                 friction (using treg), other (requests/suggestions).\n"
+        "  message        Required: what you needed and what happened, 1-2000 characters.\n"
+        "                 State uncertainty; use - to read sanitized text from stdin.\n"
+        "  --call-id ID   Optional: the treg call ID returned with the relevant call.\n"
+        "                 Repeat for multiple calls (up to 100); sent as call_ids.\n"
+        "                 IDs written only in message are not linked automatically.\n"
+        "  --endpoint-id ID\n"
+        "                 Optional: public catalog endpoint ID; sent as endpoint_id.\n"
+        "\nReceipt: JSON with feedback_id and status=received. Retrieve with:\n"
+        "  treg feedback get FEEDBACK_ID\n"
+        "Reports go to your configured registry and active team, cost nothing, and\n"
+        "are visible to that team and registry administrators. No automatic reply.\n"
+    )
+    fb.epilog += feedback_fields + "\nFull syntax: treg feedback submit --help"
     fb.set_defaults(fn=lambda args, cfg: fb.print_help())
     feedback_commands = fb.add_subparsers(dest="sub", metavar="<subcommand>")
-    submit = mk(feedback_commands, "submit", FEEDBACK_DESCRIPTION,
+    submit = mk(feedback_commands, "submit", "Submit a problem or suggestion.",
                 'treg feedback submit friction "The pagination example is unclear."',
                 'treg feedback submit quality "The returned data is outdated." --call-id CALL_ID',
                 'treg feedback submit other - < sanitized-feedback.txt')
-    submit.add_argument("category", choices=FEEDBACK_CATEGORIES, help="the kind of feedback")
-    submit.add_argument("message", help="sanitized description, 1-2000 characters; - reads stdin")
-    submit.add_argument("--call-id", action="append", help="related treg call ID (repeat, up to 100)")
+    submit.description = textwrap.fill(FEEDBACK_DESCRIPTION, width=88)
+    submit.add_argument("category", choices=FEEDBACK_CATEGORIES,
+                        help="quality: results; pricing: charges/prices; friction: using treg; other: requests/suggestions")
+    submit.add_argument("message",
+                        help="what you needed and observed, 1-2000 characters; state uncertainty; - reads stdin")
+    submit.add_argument("--call-id", action="append",
+                        help="returned treg call ID; repeat up to 100; sent as call_ids, not extracted from message")
     submit.add_argument("--endpoint-id", help="public catalog endpoint ID, if known")
-    submit.epilog += "\nMore: <your registry base URL>/feedback.md"
+    submit.epilog += feedback_fields + "\nMore: <your registry base URL>/feedback.md"
     submit.set_defaults(fn=cmd_feedback)
     get = mk(feedback_commands, "get", "Retrieve a feedback report from the active team.",
              "treg feedback get 123")
