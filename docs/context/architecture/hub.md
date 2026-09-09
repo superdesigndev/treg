@@ -1,6 +1,6 @@
 ---
 title: The tool hub — tools a maker publishes, made of other tools
-status: in-progress (phase 2 of 8: the JSON road runs; behind TREG_HUB_ENABLED, off)
+status: in-progress (phase 3 of 8: both roads run; behind TREG_HUB_ENABLED, off)
 sources:
   - src/treg/domain/hub/__init__.py
   - src/treg/domain/hub/manifest.py
@@ -8,11 +8,14 @@ sources:
   - src/treg/domain/hub/graph.py
   - src/treg/application/hub/__init__.py
   - src/treg/application/hub/runner.py
+  - src/treg/application/hub/sandbox.py
+  - src/treg/hub_sandbox.py
   - src/treg/routers/hub.py
   - src/treg/alembic/versions/0026_hub_tools.py
   - src/treg/alembic/versions/0027_hub_runs.py
   - tests/test_hub.py
   - tests/callmatrix/test_hub_run.py
+  - tests/test_hub_sandbox.py
 related:
   - architecture/proxy-model.md
   - architecture/money.md
@@ -28,10 +31,9 @@ access rules, key injection and money already exist once per call. The decisions
 request each into `dev/hub`, behind `hub_enabled` (`TREG_HUB_ENABLED`, default off) so no merge
 along the way changes what users see.
 
-**Build state: phase 2 of 8.** A steps recipe runs end to end on the call road; a script recipe
-still answers **501 `hub_not_runnable`** (the sandbox is phase 3). The maker's check run, the
-seller's money and every surface are later phases, and no agent-facing file mentions the hub
-(CLAUDE.md: do not document what is not built).
+**Build state: phase 3 of 8.** Both roads run end to end on the call road: a steps recipe and a
+script in the sandbox. The maker's check run, the seller's money and every surface are later
+phases, and no agent-facing file mentions the hub (CLAUDE.md: do not document what is not built).
 
 ## The manifest (`domain/hub/manifest.py`)
 
@@ -120,3 +122,28 @@ cost_micro, key (treg|team), item`. `Idempotency-Key` covers the whole run throu
 store, exactly like a routed endpoint. `HubRun` (migration 0027) keeps one row per run — status,
 steps, cost, duration, masked inputs, trace, error — for 30 days; in the org cascade by
 `caller_org_id`.
+
+## The script road: the sandbox (`application/hub/sandbox.py`, `treg/hub_sandbox.py`)
+
+A script recipe's `run.js` runs in a separate short-lived process per run: `python -m
+treg.hub_sandbox`, spawned with `runner.py`'s discipline — a scrubbed environment (never the
+server's), a private temporary HOME, its own process group, POSIX rlimits (CPU, file size, no
+core, RLIMIT_AS on Linux), a wall-clock kill, the whole group killed on every exit. Inside, QuickJS
+(the `quickjs` package, server extra; Python 3.12 wheels in production, sdist locally) has no
+network, no file system, no `require`, no `process`, no timers: `typeof fetch` is `undefined`.
+The engine's own heap is capped at 64 MB and its clock at the manifest's `wall_s`; a memory bomb
+ends as `memory`, an endless loop as `timeout`, a thrown error as `script`, each one line the
+maker reads in the run log.
+
+The whole surface a script gets: `ctx.inputs` (coerced by the same rules as the JSON road),
+`ctx.call(target, {method, query, body})` → `{status, headers, json, text}`, and `ctx.log(text)`
+(50 lines × 2 KB). `ctx.call` crosses to the parent as one JSON line over stdin/stdout and is
+run through the same child call the JSON road makes: `uses` enforced per call (a call outside the
+list, a URL, or an unknown catalog id is refused and the run stops), the 20-call cap, the run
+ceiling, `{run}:s{n}` holds, a catalog call as the caller, an own-tool call as the maker. The
+returned object must be JSON under 2 MB and carry every field in `output.fields`, else 424
+`hub_output_invalid`. A failed run is 424 `hub_run_failed` with `{error: hub_script_failed,
+kind, message, trace, log, charged_micro}`; money spent on completed calls stays spent.
+
+Known limit of version one: `ctx.call` is synchronous underneath the engine, so two calls inside
+one `Promise.all` run one after the other; real parallelism is the JSON road's.

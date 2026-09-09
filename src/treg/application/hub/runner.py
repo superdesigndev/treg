@@ -136,10 +136,6 @@ async def run_hub_tool(
     upstream_client: httpx.AsyncClient, execute_child, *, audit_client: str = "",
 ) -> tuple[UpstreamResponse, int]:
     """Execute one run under `parent`. Returns (the JSON reply, total charged to the caller)."""
-    if tool.kind != "steps":
-        raise ResolutionFailed("hub_not_runnable", status_code=501, detail={
-            "error": "hub_not_runnable", "tool_id": tool.tool_id, "version": tool.version,
-            "message": "this hub tool is a script; the script road is not deployed yet"})
     manifest = tool.manifest
     run_id = parent.call_ref
     started = time.monotonic()
@@ -159,10 +155,13 @@ async def run_hub_tool(
         raise ResolutionFailed("hub_input_invalid", status_code=422, detail={
             "error": "hub_input_invalid", "field": exc.field, "rule": exc.rule})
     ceiling = _ceiling(get_header(RUN_MAX_COST_HEADER))
-    g = hub_graph.build(manifest["steps"])
     maker = await _maker_snapshot(parent, tool)
     catalog = catalog_store.load()
     own_tools = {u for u in manifest["uses"] if "." not in u}
+    if tool.kind == "script":
+        return await _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_tools,
+                                      upstream_client, execute_child, started, audit_client)
+    g = hub_graph.build(manifest["steps"])
 
     scope: dict[str, Any] = {"input": inputs}
     trace: list[dict[str, Any]] = []
@@ -356,14 +355,15 @@ def _short(v: Any) -> Any:
     return s[:300]
 
 
-def _child_input(parent: CallContext, call: str, method: str, inp: dict[str, Any], as_who) -> CallInput:
+def _child_input(parent: CallContext, call: str, method: str, inp: dict[str, Any], as_who,
+                 extra_query: dict[str, Any] | None = None) -> CallInput:
     has_body = method in ("POST", "PUT", "PATCH")
     payload = json.dumps(inp, ensure_ascii=False).encode() if has_body else b""
     headers = [(k, v) for k, v in parent.input.raw_headers if k.lower() not in _DROP_FROM_CHILD]
     if has_body:
         headers += [(b"content-type", b"application/json"), (b"content-length", str(len(payload)).encode())]
-    items = tuple() if has_body else tuple(
-        (k, v if isinstance(v, str) else json.dumps(v)) for k, v in inp.items() if v is not None)
+    q = (extra_query or {}) if has_body else inp
+    items = tuple((k, v if isinstance(v, str) else json.dumps(v)) for k, v in q.items() if v is not None)
     return CallInput(method=method, raw_rest=call, raw_headers=tuple(headers), query_items=items,
                      raw_query=urlencode(items), body=_Bytes(payload), caller=as_who,
                      client_ip=parent.input.client_ip, catalog_only=False)
@@ -403,14 +403,15 @@ def _header(response: UpstreamResponse, name: str) -> str | None:
 
 
 async def _record(tool: HubTool, parent: CallContext, run_id: str, status: str, steps: int,
-                  cost: int, ms: int, inputs: dict, trace: list, error: dict | None = None) -> None:
+                  cost: int, ms: int, inputs: dict, trace: list, error: dict | None = None,
+                  log: list | None = None) -> None:
     from datetime import datetime, timezone
     caller = parent.input.caller
     async with session_maker() as s:
         s.add(HubRun(run_id=run_id, tool_id=tool.tool_id, version=tool.version,
                      caller_org_id=caller.org_id, maker_org_id=tool.org_id, caller_email=caller.email,
                      status=status, steps=steps, cost_micro=cost, duration_ms=ms, inputs=inputs,
-                     trace=trace, log=[], error=error,
+                     trace=trace, log=log or [], error=error,
                      finished_at=datetime.now(timezone.utc).replace(tzinfo=None)))
         await s.commit()
 
@@ -435,3 +436,118 @@ def _json(value, status: int, headers: dict[str, str]) -> UpstreamResponse:
     raw = [(b"content-length", str(len(body)).encode()), (b"content-type", b"application/json")]
     raw += [(k.lower().encode("latin-1"), v.encode("latin-1")) for k, v in headers.items()]
     return UpstreamResponse(status, tuple(raw), _one(), _closed)
+
+
+# ---------------------------------------------------------------------------------------------
+# The script road: the same child call, asked for by run.js through the sandbox bridge
+
+async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_tools,
+                           upstream_client, execute_child, started, audit_client):
+    from . import sandbox
+
+    manifest = tool.manifest
+    run_id = parent.call_ref
+    uses = set(manifest["uses"])
+    trace: list[dict[str, Any]] = []
+    log: list[str] = []
+    spent = 0
+    counted = 0
+    fields = manifest["output"]["fields"]
+
+    def estimate_for(call: str) -> int:
+        target = call.split("/", 1)[0]
+        if target in own_tools:
+            return 0
+        ep = catalog.by_id.get(call)
+        cv = catalog.cost_view(ep.get("cost"), ep.get("provider")) if ep else None
+        usd = (cv or {}).get("usd")
+        return int(round(float(usd) * 1_000_000)) if usd else 0
+
+    async def execute(req: sandbox.CallRequest) -> dict[str, Any]:
+        nonlocal spent, counted
+        call = req.target
+        target = call.split("/", 1)[0]
+        if call.startswith("http"):
+            raise sandbox.SandboxError("refused", "a script calls a catalog id or one of the team's tools by name, never a URL")
+        if not (call in uses or (target in own_tools and "/" in call) or target in uses and target in own_tools):
+            raise sandbox.SandboxError("refused", f"{call!r} is not in the manifest's `uses`")
+        if target not in own_tools and call not in catalog.by_id:
+            raise sandbox.SandboxError("refused", f"{call!r} is not a catalog id")
+        if counted + 1 > manifest["limits"]["steps"]:
+            raise sandbox.SandboxError("refused", f"the run would pass its step cap ({manifest['limits']['steps']})")
+        est = estimate_for(call)
+        if spent + est > ceiling:
+            raise sandbox.SandboxError("refused", f"the next call would pass {RUN_MAX_COST_HEADER}")
+        counted += 1
+        n = counted - 1
+        opts = req.opts
+        ep = None if target in own_tools else catalog.by_id.get(call)
+        method = str(opts.get("method") or (ep["method"] if ep else "GET")).upper()
+        query = opts.get("query") if isinstance(opts.get("query"), dict) else {}
+        body = opts.get("body")
+        inp = body if (isinstance(body, dict) and method in ("POST", "PUT", "PATCH")) else query
+        if method in ("POST", "PUT", "PATCH") and not isinstance(inp, dict):
+            inp = {}
+        as_who = maker if target in own_tools else parent.input.caller
+        step = _Step(name=f"call{n + 1}", spec={"call": call}, ref=f"{run_id}:s{n}", wave=n)
+        child = CallContext(input=_child_input(parent, call, method, inp, as_who, extra_query=query if inp is not query else None),
+                            call_ref=step.ref, meta=parent.meta)
+        t0 = time.monotonic()
+        try:
+            response = await execute_child(child, upstream_client)
+        except CallFailure as exc:
+            ms = int((time.monotonic() - t0) * 1000)
+            trace.append(_entry(step, "failed", exc.status_code, ms, 0, key=None, error=_short(exc.detail)))
+            if exc.kind in _GLOBAL_REFUSALS:
+                raise sandbox.SandboxError("refused", f"{exc.kind}: a refusal that applies to every call")
+            return {"status": exc.status_code, "headers": {}, "json": exc.detail if isinstance(exc.detail, dict) else None,
+                    "text": str(exc.detail)[:4000]}
+        raw = await _read(response)
+        ms = int((time.monotonic() - t0) * 1000)
+        charged = int(_header(response, "X-Treg-Cost-Micro") or 0)
+        spent += charged
+        key = "treg" if _header(response, "X-Treg-Cost-Micro") is not None else "team"
+        ok = 200 <= response.status < 300
+        try:
+            doc = json.loads(raw) if raw else None
+        except ValueError:
+            doc = None
+        trace.append(_entry(step, "ok" if ok else "failed", response.status, ms, charged, key=key,
+                            error=None if ok else _short(doc if doc is not None else raw[:300].decode("utf-8", "replace"))))
+        headers = {k.decode("latin-1"): v.decode("latin-1") for k, v in response.raw_headers
+                   if not k.lower().startswith(b"x-treg-")}
+        return {"status": response.status, "headers": headers, "json": doc,
+                "text": raw[:MAX_TEXT].decode("utf-8", "replace")}
+
+    try:
+        output = await sandbox.run_script(tool.script or "", inputs, wall_s=manifest["limits"]["wall_s"],
+                                          execute=execute, log=log)
+    except sandbox.SandboxError as exc:
+        ms_total = int((time.monotonic() - started) * 1000)
+        detail = {"error": "hub_script_failed", "kind": exc.kind, "message": exc.message,
+                  "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}",
+                  "charged_micro": spent, "trace": trace, "log": log}
+        await _record(tool, parent, run_id, "failed", counted, spent, ms_total,
+                      masked(manifest["inputs"], inputs), trace, error=detail, log=log)
+        _audit_parent(parent, tool, 424, spent, audit_client)
+        raise ResolutionFailed("hub_run_failed", status_code=424, detail=detail)
+    missing = [f for f in fields if f not in output]
+    ms_total = int((time.monotonic() - started) * 1000)
+    if missing:
+        detail = {"error": "hub_output_invalid", "missing": missing, "run_id": run_id,
+                  "recipe": f"{tool.tool_id}@{tool.version}", "charged_micro": spent,
+                  "trace": trace, "log": log,
+                  "message": "run(ctx) returned an object without the fields the manifest declares"}
+        await _record(tool, parent, run_id, "failed", counted, spent, ms_total,
+                      masked(manifest["inputs"], inputs), trace, error=detail, log=log)
+        _audit_parent(parent, tool, 424, spent, audit_client)
+        raise ResolutionFailed("hub_run_failed", status_code=424, detail=detail)
+    body_out = {"run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}", "output": output,
+                "usage": {"cost_micro": spent, "steps": counted, "ms": ms_total}, "trace": trace, "log": log}
+    await _record(tool, parent, run_id, "ok", counted, spent, ms_total,
+                  masked(manifest["inputs"], inputs), trace, log=log)
+    _audit_parent(parent, tool, 200, spent, audit_client)
+    return _json(body_out, 200, {"X-Treg-Run-Id": run_id, "X-Treg-Steps": str(counted)}), spent
+
+
+MAX_TEXT = 1_000_000

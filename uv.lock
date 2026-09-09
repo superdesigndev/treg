@@ -853,6 +853,18 @@ wheels = [
 ]
 
 [[package]]
+name = "quickjs"
+version = "1.19.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f1/a7/8fac2e213db8108d8108e9f1ee8d6c2abfcbe943238b0960585c26666862/quickjs-1.19.4.tar.gz", hash = "sha256:1205953abc24ff757f4a795304d5d61e4bf1e555c9ef6ec96a132d4b95535484", size = 456179 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/95/4f/df90bde103703cd052fd76ad7bddfcb9a4f908ab6c940ad05fdb3997e173/quickjs-1.19.4-cp312-cp312-macosx_10_9_universal2.whl", hash = "sha256:1bc38a840144a54e90668fb1f99441148429ab1d1b1355ecafbbe656eaeff788", size = 1004472 },
+    { url = "https://files.pythonhosted.org/packages/26/59/1689a6f59f26d8f68c082dc6dfbbb38d9b7eaa3e243a775f8be2c876b561/quickjs-1.19.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:45d0e68570425d8322c48fb8989865df9b8c3e3ad3a01726151e0451d3c637eb", size = 2179639 },
+    { url = "https://files.pythonhosted.org/packages/f5/cd/8fd683236b976487bbd4c99e24334b25fc0542367164f2348bca08572490/quickjs-1.19.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ac4b6d40b90553e9b135b35b3eaca264d10cdf92bfafce36ed9fb9acfdc5b420", size = 2173664 },
+    { url = "https://files.pythonhosted.org/packages/be/10/58064fe6beeb72c122f2ecb4729cf437055d89891d29cc2cd20ed88c1d66/quickjs-1.19.4-cp312-cp312-win_amd64.whl", hash = "sha256:3ebe018eaef1957a21264b98877c6217d7bfc4e28cbc5d87e75f879e1f45fc85", size = 382359 },
+]
+
+[[package]]
 name = "referencing"
 version = "0.37.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1037,6 +1049,7 @@ server = [
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "mcp" },
+    { name = "quickjs" },
     { name = "pydantic-settings" },
     { name = "pyyaml" },
     { name = "sqlalchemy", extra = ["asyncio"] },
@@ -1066,6 +1079,7 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'server'", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "mcp", marker = "extra == 'server'", specifier = ">=2" },
+    { name = "quickjs", marker = "extra == 'server'", specifier = ">=1.19.4" },
     { name = "pydantic-settings", marker = "extra == 'server'", specifier = ">=2.5" },
     { name = "pyyaml", marker = "extra == 'server'", specifier = ">=6" },
     { name = "questionary", specifier = ">=2.0" },

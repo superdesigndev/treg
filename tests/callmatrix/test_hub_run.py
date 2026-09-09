@@ -214,3 +214,99 @@ async def test_idempotency_key_covers_the_whole_run(
     assert r2.headers.get("X-Treg-Idempotent-Replay") == "true"
     assert r2.json()["run_id"] == r1.json()["run_id"]
     assert len(fake_provider.hits) == 1
+
+
+# ---------------------------------------------------------------------------------------------
+# The script road on the real call path (phase 3)
+
+SCRIPT = """
+export default async function run(ctx) {
+  const c = await ctx.call("%s", { query: { aweme_id: ctx.inputs.domain } });
+  ctx.log("company status " + c.status);
+  const rows = await ctx.call("supabase/rest/v1/leads", { query: { select: c.json.data.domain } });
+  return { name: c.json.data.domain, rows: rows.json.rows.length, cost_seen: c.status };
+}
+""" % EP
+
+
+async def _publish_script(clients: AsyncClient, script: str, uses, fields) -> str:
+    r = await clients.post("/hub/tools", json={
+        "manifest": {"name": "scripted", "summary": "A scripted flow.", "uses": uses,
+                     "inputs": {"domain": {"type": "string", "example": "figma.com"}},
+                     "script": "run.js", "output": {"fields": fields}},
+        "script": script,
+        "check": {"inputs": {"domain": "figma.com"}, "fields": fields}, "readme": "test"})
+    assert r.status_code == 201, r.text
+    tool_id = r.json()["tool_id"]
+    from sqlalchemy import update
+    from treg.infra.db import session_maker
+    from treg.models import HubTool
+    async with session_maker() as s:
+        await s.execute(update(HubTool).where(HubTool.tool_id == tool_id).values(status="live"))
+        await s.commit()
+    return tool_id
+
+
+async def test_a_script_runs_a_catalog_call_and_an_own_tool_call(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    sid = (await matrix_clients.post("/secrets", json={"name": "sb", "value": "MAKER-SB-KEY"})).json()["id"]
+    await matrix_clients.post("/tools", json={"name": "supabase", "base_url": "https://fake-provider.invalid/sb", "secret_id": sid})
+    tool_id = await _publish_script(matrix_clients, SCRIPT, [EP, "supabase"], ["name", "rows", "cost_seen"])
+    before = await snapshot(matrix_clients, fake_provider)
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "figma.com"}, headers=FAKE)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["output"] == {"name": "figma.com", "rows": 3, "cost_seen": 200}
+    assert body["log"] == ["company status 200"]
+    assert body["usage"]["steps"] == 2 and body["usage"]["cost_micro"] == EP_MICRO
+    assert [(e["call"], e["key"], e["cost_micro"]) for e in body["trace"]] == [(EP, "treg", EP_MICRO), ("supabase/rest/v1/leads", "team", 0)]
+    assert r.headers["X-Treg-Cost-Micro"] == str(EP_MICRO)
+    hits = fake_provider.hits[before.hit_count:]
+    assert len(hits) == 2
+    assert hits[1].path == "/sb/rest/v1/leads" and ("select", "figma.com") in hits[1].query
+    assert hits[1].headers["authorization"] == "Bearer MAKER-SB-KEY"
+    assert await _balance(matrix_clients) - before.balance_micro == -EP_MICRO
+
+
+async def test_a_script_call_outside_uses_is_refused_and_the_run_stops(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    tool_id = await _publish_script(matrix_clients, """
+export default async function run(ctx) {
+  await ctx.call("hunter.people.email.find", { query: { domain: "x" } });
+  return { ok: true };
+}""", [EP], ["ok"])
+    before = await snapshot(matrix_clients, fake_provider)
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "figma.com"}, headers=FAKE)
+    assert r.status_code == 424, r.text
+    d = r.json()["detail"]
+    assert d["error"] == "hub_script_failed" and d["kind"] == "refused" and "uses" in d["message"]
+    assert len(fake_provider.hits) - before.hit_count == 0
+    assert await _balance(matrix_clients) == before.balance_micro
+
+
+async def test_a_script_missing_a_declared_output_field_is_refused(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    tool_id = await _publish_script(matrix_clients,
+        "export default async function run(ctx) { return { name: 'x' }; }", [EP], ["name", "rows"])
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "figma.com"}, headers=FAKE)
+    assert r.status_code == 424 and r.json()["detail"]["error"] == "hub_output_invalid"
+    assert r.json()["detail"]["missing"] == ["rows"]
+
+
+async def test_a_script_failure_keeps_the_money_of_calls_that_completed(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    tool_id = await _publish_script(matrix_clients, """
+export default async function run(ctx) {
+  await ctx.call("%s", { query: { aweme_id: "x" } });
+  throw new Error("after paying");
+}""" % EP, [EP], ["ok"])
+    before = await snapshot(matrix_clients, fake_provider)
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "figma.com"}, headers=FAKE)
+    assert r.status_code == 424
+    d = r.json()["detail"]
+    assert d["kind"] == "script" and "after paying" in d["message"] and d["charged_micro"] == EP_MICRO
+    assert await _balance(matrix_clients) - before.balance_micro == -EP_MICRO

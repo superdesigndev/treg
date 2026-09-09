@@ -45,6 +45,7 @@ server = [
     "pyyaml>=6",   # the endpoint catalog's data files (src/treg/catalog/*.yaml) — server-side only
     "stripe>=12",  # balance top-ups (src/treg/infra/stripe.py) — the payment rail, server-side only
     "mcp>=2",      # the MCP front door (src/treg/mcp.py) — server-side only; pulls httpx2 ALONGSIDE
+    "quickjs>=1.19.4",  # the hub's script sandbox engine (src/treg/hub_sandbox.py) — server-side only
                    # httpx (they coexist), so the light CLI's dependency set is untouched
 ]
 # The LOCAL PROXY (`treg shell` catching the agent's own outgoing calls). It needs to generate a
