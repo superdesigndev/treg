@@ -351,3 +351,156 @@ async def test_a_step_never_accepts_a_compressed_answer(
                                   headers={**FAKE, "Accept-Encoding": "gzip, deflate, br"})
     assert r.status_code == 200
     assert fake_provider.hits[hits_before].headers.get("accept-encoding") == "identity"
+
+
+# ---------------------------------------------------------------------------------------------
+# The seller's money (phase 6): the price rides one hold, lands as `earned`, invariant on both teams
+
+async def _invariant(org_id: int) -> None:
+    from sqlalchemy import func, select
+    from treg.infra.db import session_maker
+    from treg.models import CreditBlock, Hold, Org
+    async with session_maker() as s:
+        bal = (await s.execute(select(Org.balance_micro).where(Org.id == org_id))).scalar_one()
+        blocks = (await s.execute(select(func.coalesce(func.sum(CreditBlock.remaining_micro), 0))
+                                  .where(CreditBlock.org_id == org_id))).scalar_one()
+        holds = (await s.execute(select(func.coalesce(func.sum(Hold.amount_micro), 0))
+                                 .where(Hold.org_id == org_id))).scalar_one()
+    assert bal == blocks - holds, (bal, blocks, holds)
+
+
+async def _second_team(clients: AsyncClient, email: str) -> tuple[dict, int]:
+    """A stranger with their own token and the $1 welcome credit."""
+    token = (await clients.post("/users", json={"email": email})).json()["token"]
+    h = {"X-Treg-Token": token}
+    org_id = (await clients.get("/orgs", headers=h)).json()[0]["org_id"]
+    return h, org_id
+
+
+async def _balance_of(clients: AsyncClient, h: dict, org_id: int) -> dict:
+    return (await clients.get(f"/orgs/{org_id}/balance", headers=h)).json()
+
+
+async def test_a_paid_run_moves_the_price_to_the_maker_as_earned_credit(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    maker_org = (await matrix_clients.get("/orgs")).json()[0]["org_id"]
+    tool_id = await _publish(matrix_clients, _manifest(
+        steps=[{"name": "a", "call": EP, "input": {"aweme_id": "$input.domain"}}],
+        output={"x": "$a.data"}, price_usd=0.01))
+    caller_h, caller_org = await _second_team(matrix_clients, "stranger@example.com")
+    maker_before = await _balance(matrix_clients)
+    caller_before = (await _balance_of(matrix_clients, caller_h, caller_org))["balance_micro"]
+
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "figma.com"}, headers={**FAKE, **caller_h})
+    assert r.status_code == 200, r.text
+    u = r.json()["usage"]
+    assert u == {**u, "steps_micro": EP_MICRO, "price_micro": 10_000, "cost_micro": EP_MICRO + 10_000}
+    assert r.headers["X-Treg-Cost-Micro"] == str(EP_MICRO + 10_000)
+    # the caller paid the step and the price; the maker earned the price, whole
+    assert (await _balance_of(matrix_clients, caller_h, caller_org))["balance_micro"] == caller_before - EP_MICRO - 10_000
+    assert await _balance(matrix_clients) == maker_before + 10_000
+    blocks = (await matrix_clients.get(f"/orgs/{maker_org}/balance")).json()["blocks"]
+    assert any(b["kind"] == "earned" and b["remaining_micro"] == 10_000 for b in blocks)
+    await _invariant(maker_org); await _invariant(caller_org)
+    # the ledger tells the story on both sides: settle on the payer names the payee, grant on the payee names the payer
+    caller_entries = (await _balance_of(matrix_clients, caller_h, caller_org))["entries"]["items"]
+    price_settle = next(e for e in caller_entries if e["call_id"] == f"{r.json()['run_id']}:price" and e["kind"] == "settle")
+    assert price_settle["meta"]["payee_org_id"] == maker_org
+    maker_entries = (await matrix_clients.get(f"/orgs/{maker_org}/balance")).json()["entries"]["items"]
+    grant = next(e for e in maker_entries if e["kind"] == "grant" and e["meta"].get("block_kind") == "earned")
+    assert grant["meta"]["payer_org_id"] == caller_org and grant["amount_micro"] == 10_000
+
+
+async def test_a_failed_run_pays_the_maker_nothing(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    tool_id = await _publish(matrix_clients, _manifest(
+        steps=[{"name": "a", "call": EP, "input": {"aweme_id": "x"}}], output={"x": "$a.data"}, price_usd=0.05))
+    caller_h, caller_org = await _second_team(matrix_clients, "stranger2@example.com")
+    maker_before = await _balance(matrix_clients)
+    caller_before = (await _balance_of(matrix_clients, caller_h, caller_org))["balance_micro"]
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers={**FAKE, **caller_h, "X-Fake-Status": "500"})
+    assert r.status_code == 424 and r.json()["detail"]["price_micro"] == 0
+    assert await _balance(matrix_clients) == maker_before                                # nothing earned
+    assert (await _balance_of(matrix_clients, caller_h, caller_org))["balance_micro"] == caller_before   # price released, 5xx step released
+    assert (await _balance_of(matrix_clients, caller_h, caller_org))["holds"] == []
+    await _invariant(caller_org)
+
+
+async def test_the_maker_never_pays_their_own_price_and_the_check_is_free_of_it(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    before = await _balance(matrix_clients)
+    tool_id = await _publish(matrix_clients, _manifest(
+        steps=[{"name": "a", "call": EP, "input": {"aweme_id": "x"}}], output={"x": "$a.data"}, price_usd=0.10))
+    # the publish's check run: only the step was charged, never the 0.10 price
+    assert await _balance(matrix_clients) == before - EP_MICRO
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers=FAKE)
+    assert r.status_code == 200 and r.json()["usage"]["price_micro"] == 0
+
+
+async def test_earned_credit_is_spent_before_purchased_money(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    from treg.domain import money as ledger
+    from treg.infra.db import session_maker
+    maker_org = (await matrix_clients.get("/orgs")).json()[0]["org_id"]
+    async with session_maker() as s:                     # the maker also holds purchased money
+        await ledger.topup(s, maker_org, 500_000, "pi_test_hub_6")
+        await s.commit()
+    tool_id = await _publish(matrix_clients, _manifest(
+        steps=[{"name": "a", "call": EP, "input": {"aweme_id": "x"}}], output={"x": "$a.data"}, price_usd=0.02))
+    caller_h, _ = await _second_team(matrix_clients, "stranger3@example.com")
+    assert (await matrix_clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers={**FAKE, **caller_h})).status_code == 200
+    blocks = {b["kind"]: b["remaining_micro"] for b in (await matrix_clients.get(f"/orgs/{maker_org}/balance")).json()["blocks"]}
+    assert blocks["earned"] == 20_000 and blocks["purchased"] == 500_000
+    # the maker spends: promotional is gone by now? not necessarily — force the order by draining it
+    await matrix_clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers=FAKE)   # one step as the maker
+    after = {b["kind"]: b["remaining_micro"] for b in (await matrix_clients.get(f"/orgs/{maker_org}/balance")).json()["blocks"]}
+    assert after["purchased"] == 500_000                  # purchased money untouched while earned/promo remain
+    assert after["earned"] + after.get("promotional", 0) == blocks["earned"] + blocks.get("promotional", 0) - EP_MICRO
+
+
+async def test_the_ceiling_counts_the_price(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    tool_id = await _publish(matrix_clients, _manifest(
+        steps=[{"name": "a", "call": EP, "input": {"aweme_id": "x"}}], output={"x": "$a.data"}, price_usd=0.05))
+    caller_h, caller_org = await _second_team(matrix_clients, "stranger4@example.com")
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "x"},
+                                  headers={**FAKE, **caller_h, "X-Treg-Run-Max-Cost": "0.05"})   # room for the price, not the step
+    assert r.status_code == 402 and r.json()["detail"]["error"] == "hub_run_max_cost"
+    assert (await _balance_of(matrix_clients, caller_h, caller_org))["holds"] == []          # the price hold was released
+
+
+async def test_a_caller_who_cannot_afford_the_price_is_refused_before_any_step(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    tool_id = await _publish(matrix_clients, _manifest(
+        steps=[{"name": "a", "call": EP, "input": {"aweme_id": "x"}}], output={"x": "$a.data"}, price_usd=5.00))
+    caller_h, _ = await _second_team(matrix_clients, "poor@example.com")     # $1 welcome credit only
+    hits = len(fake_provider.hits)
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers={**FAKE, **caller_h})
+    assert r.status_code == 402 and r.json()["detail"]["price_micro"] == 5_000_000
+    assert len(fake_provider.hits) == hits
+
+
+async def test_the_earnings_report_counts_runs_and_credit_never_callers(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    tool_id = await _publish(matrix_clients, _manifest(
+        steps=[{"name": "a", "call": EP, "input": {"aweme_id": "x"}}], output={"x": "$a.data"}, price_usd=0.01))
+    caller_h, _ = await _second_team(matrix_clients, "stranger5@example.com")
+    await matrix_clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers={**FAKE, **caller_h})
+    await matrix_clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers={**FAKE, **caller_h, "X-Fake-Status": "500"})
+    r = await matrix_clients.get(f"/hub/tools/{tool_id}/earnings")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["earned_micro"] == 10_000 and d["runs"] == 2
+    assert d["by_day"][0] == {**d["by_day"][0], "runs": 2, "ok": 1, "failed": 1, "earned_micro": 10_000}
+    assert "stranger" not in r.text
+    csv = await matrix_clients.get(f"/hub/tools/{tool_id}/earnings?format=csv")
+    assert csv.headers["content-type"].startswith("text/csv") and csv.text.startswith("day,runs,ok,failed,earned_usd")
+    # another team cannot read it
+    assert (await matrix_clients.get(f"/hub/tools/{tool_id}/earnings", headers=caller_h)).status_code == 404

@@ -12,6 +12,8 @@ from typing import Any
 import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
+from sqlalchemy import case
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -194,3 +196,47 @@ class _Bytes:
 
     async def read(self) -> bytes:
         return self._data
+
+
+@app.get("/hub/tools/{tool_id}/earnings")
+async def hub_tool_earnings(
+    tool_id: str, days: int = 90, format: str = "json",
+    caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
+) -> Response:
+    """The seller's view (docs/HUB-DECISIONS.md round 3 q10, round 5 q9): per day, runs,
+    successes, failures and what was earned, for one of the team's tools. Counts and amounts only;
+    never who called. `format=csv` for a download."""
+    _require_hub()
+    from datetime import timedelta
+    from sqlalchemy import func
+    from ..models import HubRun
+    from ..timeutil import utcnow_naive
+    base, _ = hub_app.split_id(tool_id)
+    owned = (await db.execute(select(HubTool.id).where(
+        HubTool.tool_id == base, HubTool.org_id == caller.org_id).limit(1))).scalar_one_or_none()
+    if owned is None:
+        raise HTTPException(status_code=404, detail=f"your team has no hub tool {base!r}")
+    days = max(1, min(days, 365))
+    since = utcnow_naive() - timedelta(days=days)
+    day = func.date(HubRun.started_at)
+    rows = (await db.execute(
+        select(day.label("day"), func.count(HubRun.id),
+               func.sum(case((HubRun.status == "ok", 1), else_=0)),
+               func.sum(case((HubRun.status != "ok", 1), else_=0)),
+               func.coalesce(func.sum(HubRun.price_micro), 0))
+        # Sales only: the maker's own runs (the publish check, their own tests) carry no price and
+        # would inflate the run count of a view that answers "what did this tool sell".
+        .where(HubRun.tool_id == base, HubRun.maker_org_id == caller.org_id,
+               HubRun.caller_org_id != caller.org_id,
+               HubRun.started_at >= since, HubRun.version > 0)
+        .group_by(day).order_by(day.desc()))).all()
+    table = [{"day": str(d), "runs": int(n), "ok": int(ok or 0), "failed": int(bad or 0),
+              "earned_micro": int(earned)} for d, n, ok, bad, earned in rows]
+    total = sum(r["earned_micro"] for r in table)
+    if format == "csv":
+        lines = ["day,runs,ok,failed,earned_usd"] + [
+            f"{r['day']},{r['runs']},{r['ok']},{r['failed']},{r['earned_micro'] / 1e6:.6f}" for r in table]
+        return Response("\n".join(lines) + "\n", media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="{base}-earnings.csv"'})
+    return JSONResponse({"tool_id": base, "days": days, "earned_micro": total,
+                         "runs": sum(r["runs"] for r in table), "by_day": table})

@@ -5195,6 +5195,27 @@ def cmd_hub_publish(args, cfg) -> None:
     _hub_report(r, json_out=getattr(args, "json", False))
 
 
+def cmd_hub_earnings(args, cfg) -> None:
+    with _client(cfg) as c:
+        if args.csv:
+            r = c.get(f"/hub/tools/{args.tool_id}/earnings", params={"days": args.days, "format": "csv"})
+            if r.status_code != 200:
+                _hub_report(r, json_out=False)
+            sys.stdout.write(r.text); return
+        r = c.get(f"/hub/tools/{args.tool_id}/earnings", params={"days": args.days})
+    if r.status_code != 200:
+        _hub_report(r, json_out=getattr(args, "json", False))
+    d = r.json()
+    if getattr(args, "json", False):
+        print(json.dumps(d, indent=2)); return
+    _section(f"Earnings — {d['tool_id']}, last {d['days']} days")
+    _kv("earned", f"${d['earned_micro'] / 1e6:.4f}   from {d['runs']} runs")
+    if d["by_day"]:
+        print(f"  {_M}{'DAY':<12}{'RUNS':>5}{'OK':>5}{'FAILED':>8}{'EARNED $':>11}{_R}")
+        for r in d["by_day"]:
+            print(f"  {r['day']:<12}{r['runs']:>5}{r['ok']:>5}{r['failed']:>8}{r['earned_micro'] / 1e6:>11.4f}")
+
+
 def cmd_hub_ls(args, cfg) -> None:
     with _client(cfg) as c:
         r = c.get("/hub/tools/mine")
@@ -5608,7 +5629,7 @@ HELP_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("skill", "Register / manage skills (a recipe + its secrets + tool(s), as one bundle)."),
         ("secret", "Manage stored credentials (encrypted server-side, never returned)."),
         ("connections", "Your connected accounts: connect providers, health, expiry."),
-        ("hub", "Publish a tool made of tools (JSON steps or a script): init, run, publish, ls."),
+        ("hub", "Publish a tool made of tools (JSON steps or a script): init, run, publish, ls, earnings."),
     ]),
     ("ON YOUR MACHINE — use the team's credentials locally", [
         ("cli", "Run vendor CLIs with the org's credential injected (run · shell · setup)."),
@@ -6249,6 +6270,12 @@ def build_parser() -> argparse.ArgumentParser:
     h_pub.set_defaults(fn=cmd_hub_publish)
     h_ls = mk(hs, "ls", "Your team's hub tools, every version.", "treg hub ls")
     h_ls.set_defaults(fn=cmd_hub_ls)
+    h_earn = mk(hs, "earnings", "What one of your tools earned: runs, successes, failures and credit, per day.",
+                "treg hub earnings acme.leads-db", "treg hub earnings acme.leads-db --days 30 --csv > earnings.csv")
+    h_earn.add_argument("tool_id")
+    h_earn.add_argument("--days", type=int, default=90)
+    h_earn.add_argument("--csv", action="store_true", help="print CSV instead of the table")
+    h_earn.set_defaults(fn=cmd_hub_earnings)
 
     fb = mk(sub, "feedback", "Submit or retrieve private team feedback.",
             'treg feedback submit friction "The pagination example is unclear."',
