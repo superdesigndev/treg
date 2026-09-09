@@ -42,6 +42,8 @@ agents then built against a constitution that was wrong.
   source) and its hand-kept prose mirrors `src/treg/web/tutorial.md` and `docs/TUTORIAL.md`.
 - `README.md` is the overview and quickstart, `USAGE.md` the CLI reference, `CONTRIBUTING.md` the
   dev setup, `SECURITY.md` required reading before touching the proxy, runners, auth or secrets.
+- If available, `../treg-internal` holds private operational configuration and tools; read its
+  `README.md` before changing production settings. Public development does not depend on it.
 
 ## Architecture
 
