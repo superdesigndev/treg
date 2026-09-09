@@ -24,7 +24,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [ContactOut — LinkedIn enrichment, Starter billing and independent credit pools](architecture/contactout.md) | implemented; live connect and core surface verified, informational capacity monitoring | contactout.yaml, adapters.yaml, contactout.people.email.verify.json, test_routing.py, … |
 | [Data model — the registry tables, async DB, audit writer](architecture/data-model.md) | shipped | alembic.ini, env.py, 0001_baseline_current_schema.py, 0002_archive_tables.py, … |
 | [Feedback - private intake for problems and suggestions](architecture/feedback.md) | shipped | feedback_contract.py, feedback.py, feedback.py, feedback.py, … |
-| [The tool hub — tools a maker publishes, made of other tools](architecture/hub.md) | in-progress (phase 1 of 8: the manifest and the table; behind TREG_HUB_ENABLED, off) | __init__.py, manifest.py, __init__.py, hub.py, … |
+| [The tool hub — tools a maker publishes, made of other tools](architecture/hub.md) | in-progress (phase 2 of 8: the JSON road runs; behind TREG_HUB_ENABLED, off) | __init__.py, manifest.py, refs.py, graph.py, … |
 | [Enforced import boundaries](architecture/import-boundaries.md) | shipped | pyproject.toml, ci.yml, __init__.py, __init__.py, … |
 | [Instagram OAuth — direct Login and optional Facebook Page tools](architecture/instagram-oauth.md) | built; Meta configuration and live verification pending | catalog_ingest.py, access.py, resolve.py, service.py, … |
 | [Local proxy — catch a program's own outgoing calls (`treg <command>`)](architecture/local-proxy.md) | shipped | localproxy.py, server.js |

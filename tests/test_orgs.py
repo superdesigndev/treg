@@ -23,7 +23,7 @@ async def test_org_delete_clears_EVERY_org_scoped_table(clients):
     # is not named `org_id`: OAuthGrant.current_org_id (whole-family revocation) and
     # Referral.referred_org_id. A column-name walk missed Referral for as long as referrals existed,
     # so this walks FOREIGN KEYS to `org` instead: any way at all of pointing at a team counts.
-    handled_by_hand = {"OAuthGrant", "Referral"}
+    handled_by_hand = {"OAuthGrant", "Referral", "HubRun"}   # HubRun: caller_org_id, deleted by hand
     missing = []
     for name, obj in vars(m).items():
         if not (inspect.isclass(obj) and issubclass(obj, SQLModel) and obj is not SQLModel):
