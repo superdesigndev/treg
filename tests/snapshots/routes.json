@@ -291,6 +291,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "admin_tool_requests",
+    "path": "/admin/tool-requests"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "auth_github",
     "path": "/auth/github"
   },

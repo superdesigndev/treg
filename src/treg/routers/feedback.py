@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..application import feedback as feedback_app
-from ..domain import feedback
+from ..domain import feedback, toolrequest
 from ..domain.identity.access import Caller, require_member, require_superadmin
 from ..feedback_contract import FeedbackCategory
 from ..infra.db import get_admin_session, get_session
@@ -67,3 +67,25 @@ async def admin_feedback(
     rows = await feedback.recent(db, limit=limit, before=before, category=category)
     return {"items": [row.model_dump() for row in rows],
             "next_before": rows[-1].id if len(rows) == limit else None}
+
+
+TOOLREQ_SOURCES = {"web", "cli", "mcp", "claude-connector", "api"}
+TOOLREQ_STATUSES = {"open", "done", "dismissed"}
+
+
+@app.get("/admin/tool-requests", include_in_schema=False)
+async def admin_tool_requests(
+    limit: int = Query(50, ge=1, le=100), before: int | None = Query(None, ge=1),
+    status: str | None = Query(None), source: str | None = Query(None),
+    _admin: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session),
+) -> dict:
+    if status is not None and status not in TOOLREQ_STATUSES:
+        raise HTTPException(400, f"status must be one of {sorted(TOOLREQ_STATUSES)}")
+    if source is not None and source not in TOOLREQ_SOURCES:
+        raise HTTPException(400, f"source must be one of {sorted(TOOLREQ_SOURCES)}")
+    rows = await toolrequest.recent(db, limit=limit, before=before, status=status, source=source)
+    return {"items": [{
+        "id": r.id, "created_at": r.created_at, "capability": r.capability, "query": r.query,
+        "note": r.note, "contact": r.contact, "source": r.source, "status": r.status,
+        "org_id": r.org_id, "user_email": r.user_email,
+    } for r in rows], "next_before": rows[-1].id if len(rows) == limit else None}

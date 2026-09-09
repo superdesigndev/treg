@@ -265,11 +265,11 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   from unlimited to capped, so a cap set mid-day does not start from zero. Until 2026-09-06 the gate
   itself ran that journal count - 2.8 s per call for a member with 110k rows that day.
 - **Super-admin (cross-tenant, `require_superadmin`):** `/admin/stats|orgs|orgs/{id}|users|tools|calls|
-  errors|health` (reads - `errors` is failed calls across every credential tier with captured,
-  admin-only request/response evidence, supports a `tier` filter, and runs the 14-day retention pass;
-  see [super-admin](../architecture/super-admin.md))
-  + `/admin/users/{id}/superadmin|suspend`, `DELETE /admin/users/{id}`,
-  `/admin/orgs/{id}/suspend`, `DELETE /admin/orgs/{id}` (Phase-2). See
+  errors|health|feedback|tool-requests` (reads - `errors` is failed calls across every credential tier
+  with captured, admin-only request/response evidence, supports a `tier` filter, and runs the 14-day
+  retention pass; `tool-requests` supports `status` and `source` filters; see
+  [super-admin](../architecture/super-admin.md)) + `/admin/users/{id}/superadmin|suspend`,
+  `DELETE /admin/users/{id}`, `/admin/orgs/{id}/suspend`, `DELETE /admin/orgs/{id}` (Phase-2). See
   [super-admin](../architecture/super-admin.md).
 - **Secrets:** `create_secret` / `list_secrets` / `update_secret` (re-encrypts on value change) /
   `delete_secret` (409 if a tool binding references it). Values never returned (`_secret_view`).
