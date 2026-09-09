@@ -13,8 +13,18 @@ from httpx import AsyncClient
 from treg.config import get_settings
 from treg.domain.hub import ManifestError, validate, validate_check
 from treg.domain.catalog import store as catalog_store
+from tests.test_marketplace_call import platform_on  # noqa: F401 — tier 4 on, so catalog steps resolve
 
 EP = "tikhub.tiktok.video.comments"      # a real catalog id
+
+from treg.application.call import service as call_service
+
+
+def _fake_relay(status: int, body: bytes):
+    from tests.test_marketplace_call import _fake_relay as real
+    return real(status, body)
+
+
 CATALOG = set(catalog_store.load().by_id)
 
 
@@ -142,7 +152,12 @@ def test_check_file_is_validated_against_the_manifest():
 
 @pytest.fixture
 def hub_on(monkeypatch):
-    monkeypatch.setattr(get_settings(), "hub_enabled", True)
+    """Through the ENVIRONMENT, like platform_on: that fixture clears the settings cache, and a
+    value patched onto the old settings object would vanish with it."""
+    monkeypatch.setenv("TREG_HUB_ENABLED", "1")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 async def _own_supabase(clients: AsyncClient) -> None:
@@ -157,13 +172,14 @@ async def test_hub_routes_do_not_exist_with_the_flag_off(clients: AsyncClient):
     assert (await clients.get("/hub/tools/mine")).status_code == 404
 
 
-async def test_publish_stores_unchecked_and_reads_back(clients: AsyncClient, hub_on):
+async def test_publish_stores_unchecked_and_reads_back(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": {"domain": "figma.com"}, "body": [1]}'))
     await _own_supabase(clients)
     r = await clients.post("/hub/tools", json={
         "manifest": _steps_manifest(), "check": CHECK, "readme": "Leads from my table."})
     assert r.status_code == 201, r.text
     body = r.json()
-    assert body["version"] == 1 and body["status"] == "unchecked" and body["kind"] == "steps"
+    assert body["version"] == 1 and body["status"] == "live" and body["kind"] == "steps"
     tool_id = body["tool_id"]
     assert tool_id.endswith(".leads-db") and "." in tool_id
 
@@ -261,7 +277,8 @@ async def test_unchecked_version_is_not_on_the_call_road(clients: AsyncClient, h
 
 async def test_flag_off_the_call_road_is_exactly_as_today(clients: AsyncClient, hub_on, monkeypatch):
     tool_id = await _publish_live(clients)
-    monkeypatch.setattr(get_settings(), "hub_enabled", False)
+    monkeypatch.setenv("TREG_HUB_ENABLED", "0")
+    get_settings.cache_clear()
     assert (await clients.get(f"/call/{tool_id}")).status_code == 404
 
 
@@ -367,3 +384,126 @@ def test_own_tool_step_takes_a_path_and_a_method():
     assert v.steps[1]["call"] == "supabase/rest/v1/leads" and v.steps[1]["method"] == "POST"
     err = _refused(_steps_manifest(steps=[{"name": "a", "call": EP + "/extra", "input": {}}]))
     assert err.field == "steps[0].call" and "takes no path" in err.rule
+
+
+# ---------------------------------------------------------------------------------------------
+# Phase 4: the check run, versions, the dry run, the team limiter
+
+async def test_publish_runs_the_check_and_goes_live_on_pass(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    """The maker's own balance pays the check's steps; the answer carries the verdict and the call line."""
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": {"domain": "figma.com"}}'))
+    await _own_supabase(clients)
+    m = _steps_manifest(steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}}],
+                        output={"leads": "$people.data", "count": "$people.data.length"})
+    r = await clients.post("/hub/tools", json={"manifest": m, "check": CHECK, "readme": "x"})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["status"] == "live" and body["check"]["status"] == "passed" and body["check"]["run_id"]
+    assert body["call"] == f"POST /call/{body['tool_id']}"
+    assert (await clients.get(f"/hub/tools/{body['tool_id']}")).json()["check_result"]["status"] == "passed"
+    # and it is on the call road now, without any hand flip
+    r2 = await clients.post(f"/call/{body['tool_id']}", json={"domain": "figma.com"})
+    assert r2.status_code == 200 and r2.json()["output"]["leads"] == {"domain": "figma.com"}
+
+
+async def test_publish_keeps_a_failed_version_with_the_reason(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _fake_relay(500, b'{"error": "down"}'))
+    await _own_supabase(clients)
+    m = _steps_manifest(steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}}],
+                        output={"leads": "$people.data"})
+    r = await clients.post("/hub/tools", json={"manifest": m, "check": CHECK, "readme": "x"})
+    assert r.status_code == 201
+    body = r.json()
+    assert body["status"] == "failed" and body["check"]["status"] == "failed"
+    assert body["check"]["error"]["error"] == "hub_step_failed" and body["check"]["error"]["step"] == "people"
+    assert "call" not in body
+    # a failed version is never on the call road
+    assert (await clients.post(f"/call/{body['tool_id']}", json={"domain": "x"})).status_code == 404
+
+
+async def test_a_check_that_needs_a_missing_field_fails_honestly(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": {}}'))
+    await _own_supabase(clients)
+    m = _steps_manifest(steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}}],
+                        output={"leads": "$people.data.rows"})
+    r = await clients.post("/hub/tools", json={"manifest": m, "check": CHECK, "readme": "x"})
+    body = r.json()
+    assert body["status"] == "failed" and body["check"]["error"]["missing"] == ["leads"]
+
+
+async def test_put_publishes_a_new_version_and_pins_the_old_one(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": {"domain": "v"}}'))
+    await _own_supabase(clients)
+    m = _steps_manifest(steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}}],
+                        output={"leads": "$people.data"})
+    tool_id = (await clients.post("/hub/tools", json={"manifest": m, "check": CHECK, "readme": "v1"})).json()["tool_id"]
+    r = await clients.put(f"/hub/tools/{tool_id}", json={"manifest": {**m, "summary": "second"}, "check": CHECK, "readme": "v2"})
+    assert r.status_code == 200, r.text
+    assert r.json()["version"] == 2 and r.json()["status"] == "live"
+    assert (await clients.post(f"/call/{tool_id}", json={"domain": "x"})).json()["recipe"] == f"{tool_id}@2"
+    assert (await clients.post(f"/call/{tool_id}@1", json={"domain": "x"})).json()["recipe"] == f"{tool_id}@1"
+    # a name that does not match the id is refused by field and rule
+    bad = await clients.put(f"/hub/tools/{tool_id}", json={"manifest": {**m, "name": "other"}, "check": CHECK, "readme": "x"})
+    assert bad.status_code == 422 and bad.json()["detail"]["field"] == "name"
+    # PUT on a tool the team does not have
+    assert (await clients.put("/hub/tools/x.nope", json={"manifest": {**m, "name": "nope"}, "check": CHECK, "readme": "x"})).status_code == 404
+
+
+async def test_an_old_version_stops_serving_thirty_days_after_a_newer_one(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": {"domain": "v"}}'))
+    await _own_supabase(clients)
+    m = _steps_manifest(steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}}],
+                        output={"leads": "$people.data"})
+    tool_id = (await clients.post("/hub/tools", json={"manifest": m, "check": CHECK, "readme": "v1"})).json()["tool_id"]
+    await clients.put(f"/hub/tools/{tool_id}", json={"manifest": m, "check": CHECK, "readme": "v2"})
+    from datetime import timedelta
+    from sqlalchemy import update
+    from treg.infra.db import session_maker
+    from treg.models import HubTool
+    from sqlalchemy import select as _select
+    async with session_maker() as s:                 # v2 landed 31 days ago
+        v2 = (await s.execute(_select(HubTool).where(HubTool.tool_id == tool_id, HubTool.version == 2))).scalars().one()
+        v2.created_at = v2.created_at - timedelta(days=31)
+        s.add(v2)
+        await s.commit()
+    assert (await clients.post(f"/call/{tool_id}@1", json={"domain": "x"})).status_code == 404
+    assert (await clients.post(f"/call/{tool_id}", json={"domain": "x"})).status_code == 200
+
+
+async def test_a_dry_run_from_a_folder_runs_but_stores_nothing(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": {"domain": "dry"}}'))
+    await _own_supabase(clients)
+    m = _steps_manifest(steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}}],
+                        output={"leads": "$people.data"})
+    r = await clients.post("/hub/run", json={"manifest": m, "check": CHECK, "readme": "x", "inputs": {"domain": "figma.com"}})
+    assert r.status_code == 200, r.text
+    assert r.json()["output"] == {"leads": {"domain": "dry"}} and r.json()["recipe"].endswith("@0")
+    assert (await clients.get("/hub/tools/mine")).json() == []
+    bad = await clients.post("/hub/run", json={"manifest": {**m, "uses": ["ghost"]}, "check": CHECK, "readme": "x", "inputs": {}})
+    assert bad.status_code == 422 and bad.json()["detail"]["field"] == "uses[0]"
+
+
+async def test_the_fifth_concurrent_run_is_refused_with_a_retry_time(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    import asyncio
+    from treg.application.hub import limits
+    tool_id = await _publish_live(clients)
+    gate = asyncio.Event()
+
+    async def slow_relay(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False):
+        await gate.wait()
+        from tests.test_marketplace_call import _fake_relay as real
+        return await real(200, b'{"data": {"domain": "x"}}')(request, upstream_url, tool, secrets, client)
+    monkeypatch.setattr(call_service, "relay", slow_relay)
+    m = {"domain": "figma.com"}
+    tasks = [asyncio.create_task(clients.post(f"/call/{tool_id}", json=m)) for _ in range(4)]
+    for _ in range(50):                               # let the four take their slots
+        await asyncio.sleep(0.01)
+        if limits.active(1) >= 4 or any(limits.active(o) >= 4 for o in list(limits._active)):
+            break
+    fifth = await clients.post(f"/call/{tool_id}", json=m)
+    assert fifth.status_code == 429, fifth.text
+    assert fifth.json()["detail"]["error"] == "hub_busy" and fifth.json()["detail"]["retry_after_s"] == 5
+    gate.set()
+    done = await asyncio.gather(*tasks)
+    assert all(r.status_code in (200, 424) for r in done)
+    assert not limits._active                         # every slot given back

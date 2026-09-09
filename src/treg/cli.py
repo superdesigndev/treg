@@ -5001,6 +5001,157 @@ def cmd_feedback(args, cfg) -> None:
     _feedback_request(cfg, "POST", "/feedback", json=body)
 
 
+# ---- the tool hub: tools made of tools (docs/HUB-DECISIONS.md) --------------------------------
+
+HUB_FILES = ("recipe.json", "run.js", "check.json", "README.md")
+
+_HUB_STEPS_SKELETON = {
+    "name": None,
+    "summary": "One sentence an agent reads first: what this tool returns.",
+    "inputs": {"domain": {"type": "string", "example": "figma.com"},
+               "limit": {"type": "int", "default": 10, "max": 100}},
+    "uses": ["hunter.people.email.find"],
+    "steps": [{"name": "people", "call": "hunter.people.email.find",
+               "input": {"domain": "$input.domain", "limit": "$input.limit"}}],
+    "output": {"people": "$people.data"},
+    "price_usd": 0,
+}
+_HUB_SCRIPT_SKELETON = {
+    "name": None,
+    "summary": "One sentence an agent reads first: what this tool returns.",
+    "inputs": {"search": {"type": "string", "default": ""},
+               "limit": {"type": "int", "default": 20, "max": 100}},
+    "uses": ["supabase"],
+    "script": "run.js",
+    "output": {"fields": ["rows", "count"]},
+    "price_usd": 0,
+}
+_HUB_RUN_JS = """// The whole surface a script gets: ctx.inputs, ctx.call(target, {method, query, body}), ctx.log(text).
+// No network, no files, no require: every road out is ctx.call. Never paste a key here - register
+// it first (treg secret add / treg tool add) and name the tool in `uses`.
+export default async function run(ctx) {
+  const { search, limit } = ctx.inputs;
+  const r = await ctx.call("supabase/rest/v1/leads", {
+    query: { select: "*", limit: String(limit), ...(search ? { email: `ilike.*${search}*` } : {}) },
+  });
+  ctx.log(`${r.status} from supabase`);
+  const rows = Array.isArray(r.json) ? r.json : [];
+  return { rows, count: rows.length };
+}
+"""
+_HUB_README = """# {name}
+
+What it returns, for a human. Inputs, what each one does, and what a caller should know.
+"""
+
+
+def _hub_read_folder(path: str) -> dict:
+    """The four files as the publish body. A missing manifest or check is an error here, so the
+    server's field-and-rule answer is about content, never about a file that was never sent."""
+    folder = Path(path)
+    if not (folder / "recipe.json").is_file():
+        sys.exit(f"treg hub: no recipe.json in {folder} (treg hub init <name> writes one)")
+    manifest = json.loads((folder / "recipe.json").read_text())
+    body = {"manifest": manifest, "check": {}, "readme": ""}
+    if (folder / "check.json").is_file():
+        body["check"] = json.loads((folder / "check.json").read_text())
+    if (folder / "README.md").is_file():
+        body["readme"] = (folder / "README.md").read_text()
+    if (folder / "run.js").is_file():
+        body["script"] = (folder / "run.js").read_text()
+    return body
+
+
+def _hub_report(r, *, json_out: bool) -> None:
+    payload = r.json() if r.headers.get("content-type", "").startswith("application/json") else {"text": r.text}
+    if json_out:
+        print(json.dumps(payload, indent=2))
+    elif r.status_code in (200, 201):
+        print(f"{payload.get('tool_id')}@{payload.get('version')}  {payload.get('status')}")
+        if payload.get("call"):
+            print(f"  call it:  {payload['call']}")
+        chk = payload.get("check") or {}
+        if chk.get("error"):
+            print(f"  check failed: {json.dumps(chk['error'])[:400]}")
+        elif chk:
+            print(f"  check passed  run {chk.get('run_id')}  charged {chk.get('charged_micro', 0)} micro-USD")
+    else:
+        d = payload.get("detail", payload)
+        if isinstance(d, dict) and d.get("error") == "manifest_invalid":
+            print(f"refused: {d['field']}: {d['rule']}")
+        else:
+            print(f"HTTP {r.status_code}: {json.dumps(d)[:600]}")
+    if r.status_code not in (200, 201):
+        sys.exit(1)
+
+
+def cmd_hub_init(args, cfg) -> None:
+    name = args.name
+    folder = Path(args.dir or name)
+    folder.mkdir(parents=True, exist_ok=True)
+    skeleton = dict(_HUB_SCRIPT_SKELETON if args.script else _HUB_STEPS_SKELETON)
+    skeleton["name"] = name
+    (folder / "recipe.json").write_text(json.dumps(skeleton, indent=2) + "\n")
+    if args.script:
+        (folder / "run.js").write_text(_HUB_RUN_JS)
+        check = {"inputs": {"search": "", "limit": 3}, "fields": ["rows"]}
+    else:
+        check = {"inputs": {"domain": "figma.com", "limit": 2}, "fields": ["people"]}
+    (folder / "check.json").write_text(json.dumps(check, indent=2) + "\n")
+    (folder / "README.md").write_text(_HUB_README.format(name=name))
+    print(f"wrote {folder}/: " + ", ".join(f for f in HUB_FILES if (folder / f).exists()))
+    print("next: edit recipe.json (every tool in `uses` must exist: a catalog id, or one of your team's tools),")
+    print("      treg hub run . --input k=v   (a real run on your own token, nothing stored)")
+    print("      treg hub publish .            (validate, run check.json once, live on pass)")
+
+
+def cmd_hub_run(args, cfg) -> None:
+    body = _hub_read_folder(args.dir)
+    inputs = {}
+    for kv in args.input or []:
+        k, _, v = kv.partition("=")
+        try:
+            inputs[k] = json.loads(v)
+        except ValueError:
+            inputs[k] = v
+    body["inputs"] = inputs
+    with _client(cfg) as c:
+        r = c.post("/hub/run", json=body, timeout=httpx.Timeout(190.0, connect=10.0))
+    if r.status_code == 200 and not getattr(args, "json", False):
+        out = r.json()
+        print(json.dumps(out.get("output"), indent=2))
+        u = out.get("usage", {})
+        print(f"-- run {out.get('run_id')}: {u.get('steps')} steps, {u.get('cost_micro')} micro-USD, {u.get('ms')} ms")
+        for e in out.get("trace", []):
+            print(f"   wave {e['wave']}  {e['name']:<14} {e['call']:<40} {e['outcome']:<8} {e.get('status')}  {e['cost_micro']} µ$  {e['ms']} ms")
+        for line in out.get("log", []):
+            print(f"   log: {line}")
+        return
+    _hub_report(r, json_out=getattr(args, "json", False))
+
+
+def cmd_hub_publish(args, cfg) -> None:
+    body = _hub_read_folder(args.dir)
+    with _client(cfg) as c:
+        r = c.post("/hub/tools", json=body, timeout=httpx.Timeout(240.0, connect=10.0))
+    _hub_report(r, json_out=getattr(args, "json", False))
+
+
+def cmd_hub_ls(args, cfg) -> None:
+    with _client(cfg) as c:
+        r = c.get("/hub/tools/mine")
+    if r.status_code != 200:
+        _hub_report(r, json_out=getattr(args, "json", False))
+    rows = r.json()
+    if getattr(args, "json", False):
+        print(json.dumps(rows, indent=2)); return
+    if not rows:
+        print("no hub tools yet (treg hub init <name>)"); return
+    print(f"{'TOOL':<40} {'VER':>3}  {'STATUS':<8} {'KIND':<6} {'PRICE':>8}  USES")
+    for t in rows:
+        print(f"{t['tool_id']:<40} {t['version']:>3}  {t['status']:<8} {t['kind']:<6} ${t['price_usd']:<7g}  {', '.join(t['uses'])[:60]}")
+
+
 def cmd_feedback_get(args, cfg) -> None:
     if args.feedback_id < 1:
         _feedback_error("invalid_id", "Feedback ID must be a positive integer from a submission receipt.")
@@ -5397,6 +5548,7 @@ HELP_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("skill", "Register / manage skills (a recipe + its secrets + tool(s), as one bundle)."),
         ("secret", "Manage stored credentials (encrypted server-side, never returned)."),
         ("connections", "Your connected accounts: connect providers, health, expiry."),
+        ("hub", "Publish a tool made of tools (JSON steps or a script): init, run, publish, ls."),
     ]),
     ("ON YOUR MACHINE — use the team's credentials locally", [
         ("cli", "Run vendor CLIs with the org's credential injected (run · shell · setup)."),
@@ -6015,6 +6167,28 @@ def build_parser() -> argparse.ArgumentParser:
     # instructions), but it is deliberately absent from --help: we only teach scan/upload.
     im = sub.add_parser("import", description="(deprecated) old name for `treg upload`.", formatter_class=_RAWFMT)
     _upload_args(im)
+
+    hub = mk(sub, "hub", "Publish a tool made of tools: a JSON steps recipe or a script in a sandbox.",
+             "treg hub init leads-db --script", "treg hub run ./leads-db --input search=acme",
+             "treg hub publish ./leads-db", "treg hub ls")
+    hs = hub.add_subparsers(dest="hub_cmd", required=True)
+    h_init = mk(hs, "init", "Write the four files of a new hub tool into a folder.",
+                "treg hub init leads-db", "treg hub init leads-db --script --dir ./tools/leads")
+    h_init.add_argument("name", help="the tool's name: lowercase letters, digits, dashes (the id becomes <team>.<name>)")
+    h_init.add_argument("--script", action="store_true", help="a script recipe (run.js) instead of JSON steps")
+    h_init.add_argument("--dir", help="the folder to write (default: ./<name>)")
+    h_init.set_defaults(fn=cmd_hub_init)
+    h_run = mk(hs, "run", "Run the folder for real on your own token; nothing is stored, every step is charged as usual.",
+               "treg hub run . --input domain=figma.com --input limit=3")
+    h_run.add_argument("dir", nargs="?", default=".")
+    h_run.add_argument("--input", action="append", metavar="KEY=VALUE", help="an input (JSON values are parsed)")
+    h_run.set_defaults(fn=cmd_hub_run)
+    h_pub = mk(hs, "publish", "Validate the folder, run check.json once on your balance, and go live on pass (a new version each time).",
+               "treg hub publish .")
+    h_pub.add_argument("dir", nargs="?", default=".")
+    h_pub.set_defaults(fn=cmd_hub_publish)
+    h_ls = mk(hs, "ls", "Your team's hub tools, every version.", "treg hub ls")
+    h_ls.set_defaults(fn=cmd_hub_ls)
 
     fb = mk(sub, "feedback", "Submit or retrieve private team feedback.",
             'treg feedback submit friction "The pagination example is unclear."',

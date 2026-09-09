@@ -67,6 +67,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/alembic/versions/0025_feedback.py` | architecture/feedback.md |
 | `src/treg/alembic/versions/0026_hub_tools.py` | architecture/hub.md |
 | `src/treg/alembic/versions/0027_hub_runs.py` | architecture/hub.md |
+| `src/treg/alembic/versions/0028_hubtool_check_result.py` | architecture/hub.md |
 | `src/treg/analytics.py` | architecture/data-model.md |
 | `src/treg/api.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/super-admin.md, interface/api.md, interface/dashboard.md, interface/landing-sandbox.md, interface/seo.md |
 | `src/treg/application/__init__.py` | architecture/import-boundaries.md |
@@ -90,6 +91,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/connect.py` | architecture/auth-secrets.md, architecture/composition.md, guides/expanding-a-category.md, interface/api.md |
 | `src/treg/application/feedback.py` | architecture/feedback.md |
 | `src/treg/application/hub/__init__.py` | architecture/hub.md |
+| `src/treg/application/hub/limits.py` | architecture/hub.md |
 | `src/treg/application/hub/runner.py` | architecture/hub.md |
 | `src/treg/application/hub/sandbox.py` | architecture/hub.md |
 | `src/treg/application/onboard.py` | interface/api.md |
@@ -179,7 +181,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/catalog/tikhub.extended.yaml` | architecture/catalog.md |
 | `src/treg/catalog/tomba.yaml` | architecture/catalog.md, architecture/money.md |
 | `src/treg/catalog/trykitt.yaml` | architecture/catalog.md |
-| `src/treg/cli.py` | architecture/instagram-oauth.md, interface/cli.md, interface/onboarding.md, interface/shell.md |
+| `src/treg/cli.py` | architecture/hub.md, architecture/instagram-oauth.md, interface/cli.md, interface/onboarding.md, interface/shell.md |
 | `src/treg/client_identity.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/config.py` | architecture/auth-secrets.md, architecture/super-admin.md, guides/expanding-a-category.md, ops/deploy.md |
 | `src/treg/convert.py` | interface/cli.md |
@@ -257,7 +259,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/localproxy.py` | architecture/local-proxy.md |
 | `src/treg/localrun.py` | architecture/local-run.md |
 | `src/treg/maintenance.py` | architecture/data-model.md, ops/deploy.md |
-| `src/treg/mcp.py` | architecture/instagram-oauth.md, architecture/mcp-oauth.md |
+| `src/treg/mcp.py` | architecture/hub.md, architecture/instagram-oauth.md, architecture/mcp-oauth.md |
 | `src/treg/mcp_feedback.py` | architecture/mcp-oauth.md |
 | `src/treg/mcp_install.py` | interface/skill.md |
 | `src/treg/models.py` | architecture/data-model.md, architecture/money.md, architecture/multi-tenancy.md |
@@ -372,7 +374,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/contactout.md` | `contactout.yaml`, `adapters.yaml`, `contactout.people.email.verify.json`, `test_routing.py`, `contactout.companies.search.json`, `contactout.companies.enrich.json`, `resolve.py`, `contactout.py`, `contactout.svg`, `test_marketplace_call.py`, `test_key_providers.py`, `test_capacity_collectors.py`, `test_catalog_validate.py`, `test_capacity_overflow.py`, `contactout_overflow_verify.py`, `contactout.json` |
 | `architecture/data-model.md` | `alembic.ini`, `env.py`, `0001_baseline_current_schema.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0005_capacity_policy_snapshot.py`, `0006_overflow_route.py`, `0007_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `0009_callrecord_hit.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `0020_callrecord_created_at_indexes.py`, `0021_ledgerentry_org_created_at_index.py`, `0022_org_spent_today_counter.py`, `0023_callrecord_org_user_created_at_index.py`, `0024_membership_calls_today_counter.py`, `0011_callrecord_archive_link.py`, `0015_idempotentcall_membership_cascade.py`, `maintenance.py`, `sitetrack.js`, `models.py`, `timeutil.py`, `db.py`, `referrals.py`, `audit.py`, `analytics.py`, `bootstrap_handlers.py`, `ratestore.py`, `auth.py`, `test_postgres_reset.py`, `test_alembic_expand_safety.py` |
 | `architecture/feedback.md` | `feedback_contract.py`, `feedback.py`, `feedback.py`, `feedback.py`, `0025_feedback.py`, `feedback.md`, `test_feedback.py` |
-| `architecture/hub.md` | `__init__.py`, `manifest.py`, `refs.py`, `graph.py`, `__init__.py`, `runner.py`, `sandbox.py`, `hub_sandbox.py`, `hub.py`, `0026_hub_tools.py`, `0027_hub_runs.py`, `test_hub.py`, `test_hub_run.py`, `test_hub_sandbox.py` |
+| `architecture/hub.md` | `__init__.py`, `manifest.py`, `refs.py`, `graph.py`, `__init__.py`, `runner.py`, `sandbox.py`, `limits.py`, `0028_hubtool_check_result.py`, `mcp.py`, `cli.py`, `hub_sandbox.py`, `hub.py`, `0026_hub_tools.py`, `0027_hub_runs.py`, `test_hub.py`, `test_hub_run.py`, `test_hub_sandbox.py` |
 | `architecture/import-boundaries.md` | `pyproject.toml`, `ci.yml`, `__init__.py`, `__init__.py`, `access.py`, `authorize.py`, `idempotency.py`, `overflow.py`, `route.py`, `__init__.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `client_identity.py`, `__init__.py`, `__init__.py`, `access.py`, `budgets.py`, `publicdemo.py`, `teams.py`, `usage.py`, `__init__.py`, `__init__.py`, `authorization.py`, `oauth_flow.py`, `refresh.py`, `__init__.py`, `feedback.py`, `__init__.py`, `__init__.py`, `__init__.py`, `injectors.py`, `relay.py`, `__init__.py`, `limiter.py`, `test_call_architecture.py`, `test_import_lightness.py` |
 | `architecture/instagram-oauth.md` | `catalog_ingest.py`, `access.py`, `resolve.py`, `service.py`, `instagram.yaml`, `instagram.extended.yaml`, `cli.py`, `store.py`, `authorization.py`, `oauth_flow.py`, `oauth_exchange.py`, `mcp.py`, `call.py`, `index.html`, `0010_oauth_authorization_method.py`, `test_instagram_oauth_architecture.py` |
 | `architecture/local-proxy.md` | `localproxy.py`, `server.js` |

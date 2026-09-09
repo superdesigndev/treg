@@ -1,6 +1,6 @@
 ---
 title: The tool hub — tools a maker publishes, made of other tools
-status: in-progress (phase 3 of 8: both roads run; behind TREG_HUB_ENABLED, off)
+status: in-progress (phase 4 of 8: the maker's road; behind TREG_HUB_ENABLED, off)
 sources:
   - src/treg/domain/hub/__init__.py
   - src/treg/domain/hub/manifest.py
@@ -9,6 +9,10 @@ sources:
   - src/treg/application/hub/__init__.py
   - src/treg/application/hub/runner.py
   - src/treg/application/hub/sandbox.py
+  - src/treg/application/hub/limits.py
+  - src/treg/alembic/versions/0028_hubtool_check_result.py
+  - src/treg/mcp.py
+  - src/treg/cli.py
   - src/treg/hub_sandbox.py
   - src/treg/routers/hub.py
   - src/treg/alembic/versions/0026_hub_tools.py
@@ -31,9 +35,11 @@ access rules, key injection and money already exist once per call. The decisions
 request each into `dev/hub`, behind `hub_enabled` (`TREG_HUB_ENABLED`, default off) so no merge
 along the way changes what users see.
 
-**Build state: phase 3 of 8.** Both roads run end to end on the call road: a steps recipe and a
-script in the sandbox. The maker's check run, the seller's money and every surface are later
-phases, and no agent-facing file mentions the hub (CLAUDE.md: do not document what is not built).
+**Build state: phase 4 of 8.** Both roads run; a maker (or their agent over MCP, or the CLI)
+publishes a tool, the check runs once for real, and a passing version is live at once. The
+seller's money and every surface are later phases, and no agent-facing file mentions the hub
+(CLAUDE.md: do not document what is not built) — the MCP verbs exist on the server but the flag
+keeps every hub route 404 until launch.
 
 ## The manifest (`domain/hub/manifest.py`)
 
@@ -60,14 +66,34 @@ writes only this) | `live` | `failed` | `retired`. Stores the four files a maker
 `price_micro`, `created_by`. `HubTool` is in `ORG_SCOPED_MODELS`, so a team holding hub tools can
 still be deleted.
 
-## The routes (`routers/hub.py`)
+## The maker's road (`routers/hub.py`, `application/hub`)
 
 Flag off ⇒ every route 404. `POST /hub/tools` (member+) takes the four files as fields —
 `manifest`, `script`, `check`, `readme` — validates them against the team's world (catalog ids,
-the team's own tools, existing hub ids), stores the next version, and answers 201 with
-`{tool_id, version, status: "unchecked", kind}`; a refusal is 422 `{error: manifest_invalid,
-field, rule}`. `GET /hub/tools/mine` lists the team's versions; `GET /hub/tools/{tool_id}[@N]`
-returns one (the maker also gets script, check and readme; another team sees only live versions).
+the team's own tools, existing hub ids; 422 `{error: manifest_invalid, field, rule}`), stores
+the next version as `checking`, then **runs `check.json` once for real**: an in-process request to
+`POST /call/<id>@<version>` carrying the maker's own identity headers, so the steps are charged to
+the MAKER's balance at the normal prices (seller price not charged) through the real call road.
+Pass (every `check.fields` present and non-empty, `min_rows` met) ⇒ `live`, and the 201 carries
+`call: "POST /call/<id>"`; fail ⇒ the version is kept as `failed` with the reason in
+`check_result` (migration 0028) — a 402 there says the maker could not afford the run. `PUT
+/hub/tools/{id}` publishes a new version of a tool the team owns (same body; the name must match
+the id). `POST /hub/run` is the dry run behind `treg hub run .`: the four files plus `inputs`,
+run for real as the maker, nothing stored, version 0 on every trace. `GET /hub/tools/mine`,
+`GET /hub/tools/{id}[@N]` read back (the maker also gets script, check, readme and the verdict;
+another team sees only live versions).
+
+Versions: the newest `live` serves `/call/<id>`; `<id>@N` pins one, and a pinned old version stays
+callable for 30 days after a newer live one exists (`application/hub.tool_for`). Four runs at a
+time per team (`application/hub/limits.py`, in-process, exact for the one-process production
+deploy): the fifth answers 429 `hub_busy` with `retry_after_s`.
+
+Over MCP (`/mcp/`): `hub_create` (the four files; returns tool_id, version, status, the call line,
+the check verdict, or the manifest's field and rule), `hub_update` (a new version), `hub_mine`.
+Calling stays the existing `call`. The CLI mirrors it: `treg hub init <name> [--script]` writes the
+four files, `treg hub run <dir> --input k=v` dry-runs the folder, `treg hub publish <dir>`
+publishes, `treg hub ls` lists. `hub_create`'s description carries the owner's rule: a credential
+the team does not hold is never hard-coded into a script — register it first, then name the tool.
 
 ## The call road
 

@@ -118,7 +118,8 @@ async def test_the_server_lists_the_shared_tools(clients):
                                      "clientInfo": {"name": "t", "version": "1"}}, token)
         r = await _rpc(c, "tools/list", token=token)
         names = {t["name"] for t in r.json()["result"]["tools"]}
-    assert names == {"catalog_search", "catalog_get", "call", "balance", "my_tools", "catalog_request", "feedback"}
+    assert names == {"catalog_search", "catalog_get", "call", "balance", "my_tools", "catalog_request", "feedback",
+                     "hub_create", "hub_update", "hub_mine"}
 
 
 async def test_catalog_search_returns_priced_results(clients):
@@ -350,7 +351,7 @@ async def test_every_tool_declares_what_it_can_do(clients):
 
     ann = {t.name: t.annotations for t in await server.list_tools()}
     assert set(ann) == {"catalog_search", "catalog_get", "call", "balance", "my_tools",
-                        "catalog_request", "feedback"}
+                        "catalog_request", "feedback", "hub_create", "hub_update", "hub_mine"}
     assert all(a.title is None for a in ann.values())
     for name in ("catalog_search", "catalog_get", "balance", "my_tools"):
         a = ann[name]
@@ -1416,3 +1417,37 @@ async def test_the_SEARCH_TOOL_itself_ranks_on_evidence_not_just_the_helper(clie
     good_row = next(r for r in out["results"] if r["endpoint_id"] == good)
     broken_row = next(r for r in out["results"] if r["endpoint_id"] == broken)
     assert good_row["works"] == 0.8 and broken_row["works"] == 0.0
+
+
+
+from test_marketplace_call import platform_on  # noqa: F401,E402 — tier 4 on for the check run
+
+
+# ---------------------------------------------------------------------------------------------
+# The hub over MCP (phase 4): a maker's agent publishes a tool with no person in the loop
+
+async def test_hub_create_over_mcp_publishes_and_names_refusals(clients, monkeypatch, platform_on):
+    from treg.config import get_settings
+    monkeypatch.setenv("TREG_HUB_ENABLED", "1")
+    get_settings.cache_clear()
+    from treg.application.call import service as call_service
+    from test_marketplace_call import _fake_relay
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": {"domain": "figma.com"}}'))
+    token = (await clients.post("/users", json={"email": "maker@superdesign.dev"})).json()["token"]
+    h = {"X-Treg-Token": token}
+    sid = (await clients.post("/secrets", json={"name": "sb", "value": "K"}, headers=h)).json()["id"]
+    await clients.post("/tools", json={"name": "supabase", "base_url": "https://x.supabase.co", "secret_id": sid}, headers=h)
+    manifest = {"name": "leads-db", "summary": "Leads.", "inputs": {"domain": {"type": "string", "example": "figma.com"}},
+                "uses": ["tikhub.tiktok.video.comments", "supabase"],
+                "steps": [{"name": "people", "call": "tikhub.tiktok.video.comments", "input": {"aweme_id": "$input.domain"}}],
+                "output": {"leads": "$people.data"}}
+    check = {"inputs": {"domain": "figma.com"}, "fields": ["leads"]}
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "hub_create", {"manifest": manifest, "check": check, "readme": "x"}, token=token)
+        assert out["status"] == "live" and out["tool_id"].endswith(".leads-db") and out["call"].startswith("POST /call/")
+        mine = await _call_tool(c, "hub_mine", {}, token=token)
+        assert [t["tool_id"] for t in mine["tools"]] == [out["tool_id"]]
+        bad = await _call_tool(c, "hub_create", {"manifest": {**manifest, "uses": ["ghost"]}, "check": check, "readme": "x"}, token=token)
+        assert bad["error"] == "manifest_invalid" and bad["field"] == "uses[0]"
+        v2 = await _call_tool(c, "hub_update", {"tool_id": out["tool_id"], "manifest": manifest, "check": check, "readme": "v2"}, token=token)
+        assert v2["version"] == 2 and v2["status"] == "live"

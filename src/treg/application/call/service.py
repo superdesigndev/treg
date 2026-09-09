@@ -15,6 +15,7 @@ import httpx
 from ... import analytics, archive, audit, oauth
 from ...application import hub as hub_app
 from ...application.hub import runner as hub_runner
+from ...application.hub import limits as hub_limits
 from ... import sandbox as demo_sandbox
 from ...client_identity import _norm_client
 from ...config import get_settings
@@ -454,9 +455,17 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         await db.commit()   # no pooled connection held across the steps' own sessions
         try:
             body_bytes = await _await_before_reserve(request.body(), request, call_ref)
-            response, charged = await hub_runner.run_hub_tool(
-                request.context, hub_row, body_bytes, request.headers.get, upstream_client,
-                execute_call, audit_client=_client_name(request))
+            try:
+                with hub_limits.slot(caller.org_id):
+                    response, charged = await hub_runner.run_hub_tool(
+                        request.context, hub_row, body_bytes, request.headers.get, upstream_client,
+                        execute_call, audit_client=_client_name(request))
+            except hub_limits.TeamBusy as busy:
+                raise ResolutionFailed("hub_busy", status_code=429, detail={
+                    "error": "hub_busy", "active": busy.active,
+                    "max": hub_limits.MAX_RUNS_PER_TEAM, "retry_after_s": hub_limits.RETRY_AFTER_S,
+                    "message": f"your team already has {busy.active} hub runs in flight; "
+                               f"try again in {hub_limits.RETRY_AFTER_S} s"}) from None
         except asyncio.CancelledError:
             await _finish_cancelled_call(request, None, call_ref)
             raise
