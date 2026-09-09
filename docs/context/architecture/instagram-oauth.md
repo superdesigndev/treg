@@ -155,7 +155,11 @@ capability picker. Existing connection rows retain their stored method and wides
 when they reconnect.
 
 Before a catalog call, resolution selects a grant by endpoint provider and authorization method.
-It checks token expiry, scopes, and the selected resource before any upstream call. A missing grant
+The same selector (`_provider_tool_grant`) serves endpoints that declare no method, with the method
+filter bypassed: it picks the provider's connection on the upstream host by identity, so a second
+account or a same-host provider such as `meta-ads` beside `instagram-page-tools` never ties on host
+(see the proxy fragment). For annotated endpoints it also checks token expiry, scopes, and the
+selected resource before any upstream call. A missing grant
 returns HTTP 428 with stable fields: error, provider, endpoint id, method, capability, scopes,
 message, CLI command, and dashboard action. Both MCP surfaces return this object unchanged inside
 the call result body.

@@ -317,6 +317,49 @@ async def test_search_requires_every_token_to_match(clients: AsyncClient):
     assert empty["hints"], "a dead end still has to say what to try next"
 
 
+async def test_a_site_audit_query_finds_the_one_shot_route_before_the_async_task(clients: AsyncClient):
+    """`website audit` used to return ONLY DataForSEO's on_page task_post - a row that enqueues a
+    crawl whose results treg cannot serve on the shared key - because the one-shot instant_pages
+    row says "on-page", never "website" or "site" (aliases.yaml bridges the two, 2026-09-09)."""
+    for q in ("website audit", "site audit"):
+        body = (await clients.get("/catalog/search", params={"q": q})).json()
+        ids = [e["id"] for e in body["results"]]
+        assert ids and ids[0] == "dataforseo.web.page.audit", (q, ids)
+        assert body["results"][0]["platform_eligible"] is True
+        assert any("key injected server-side" in h for h in body["hints"]), (q, body["hints"])
+        # the async task_post is still discoverable - a team's own key serves it - but it is
+        # never sold as treg's own offer
+        task_post = next((e for e in body["results"] if e["id"] == "dataforseo.x.on-page-task-post"), None)
+        if task_post is not None:
+            assert task_post["platform_blocked"] and task_post["platform_eligible"] is False
+
+
+async def test_a_blocked_row_is_never_hinted_as_key_injected(clients: AsyncClient):
+    """`platform_blocked` means "your own key or nothing", and the paste-ready hint has to say so
+    on both discovery surfaces - the old hint promised "key injected server-side" for rows
+    treg's key cannot serve, and callers paid to enqueue DataForSEO tasks whose results never came."""
+    body = (await clients.get("/catalog/endpoints/dataforseo.x.on-page-task-post")).json()
+    assert body["endpoint"]["platform_blocked"] and body["endpoint"]["platform_eligible"] is False
+    run = body["hints"][0]
+    assert run.startswith(body["call_template"])
+    assert "injected" not in run
+    assert "your team's own dataforseo key" in run and "treg connections connect --provider dataforseo" in run
+    assert "dataforseo.web.page.audit" in run, "the one-shot alternative rides on the hint"
+
+    # search: the first row decides the run hint, so a query whose best match is blocked says so too
+    body = (await clients.get("/catalog/search", params={"q": "trustpilot reviews task_post"})).json()
+    assert body["results"][0]["id"] == "dataforseo.x.business-data-trustpilot-reviews-task-post", \
+        [e["id"] for e in body["results"]]
+    run = next(h for h in body["hints"] if h.startswith("treg call"))
+    assert "injected" not in run and "your team's own dataforseo key" in run
+    assert "brightdata.x.trustpilot-reviews" in run, "the one-shot sibling that treg's key does serve"
+
+    # …and an eligible row keeps the promise it can make
+    body = (await clients.get("/catalog/endpoints/dataforseo.web.page.audit")).json()
+    assert body["endpoint"]["platform_eligible"] is True
+    assert "key injected server-side" in body["hints"][0]
+
+
 async def test_search_respects_limit_and_an_empty_query(clients: AsyncClient):
     body = (await clients.get("/catalog/search", params={"q": "tiktok", "limit": 3})).json()
     assert len(body["results"]) == 3 and body["total"] > 3
@@ -1232,3 +1275,29 @@ async def test_enrichment_catalog_prices_and_routed_child_rates(clients):
         for child in children:
             ep = cat.by_id[child['endpoint_id']]
             assert child['usd'] == cat.cost_view(ep['cost'], ep['provider'])['usd']
+def test_lusha_decision_makers_is_a_tombstone_pointing_at_buying_group():
+    """Lusha removed POST /v3/contacts/decision-makers on 2026-08-12 (changelog 2.9.0); the legacy
+    handler still answered companies-only bodies but rejected `contactsLimit`, so the documented
+    spend cap never applied. The id stays as a tombstone with its story; the successor is the only
+    operation that honours the cap and is the row an agent may now discover and spend against."""
+    cat = cs.load()
+    retired, successor = "lusha.x.decision-makers", "lusha.x.buying-group"
+    old, new = cat.by_id[retired], cat.by_id[successor]
+    assert old["status"] == "retired"
+    assert old["superseded_by"] == successor
+    assert "contactsLimit" in old["status_note"] and "2026-08-12" in old["status_note"]
+    assert retired not in {ep["id"] for ep in cat.endpoints}
+    assert not cat.platform_eligible(old), "a tombstone is never an offer"
+
+    assert not new.get("status")
+    assert new["path"] == "/v3/contacts/buying-group" and new["method"] == "POST"
+    assert new["capability"] == old["capability"] == "people.decision_makers"
+    assert new["cost"]["type"] == "per_result" and new["cost"]["value"] == 1
+    assert new["cost"]["currency"] == "credit"
+    assert new["test_request"]["body"] == {"companies": [{"domain": "lusha.com"}], "contactsLimit": 1}
+    assert new["input"]["body"]["contactsLimit"]["type"] == "integer"
+    assert "60" in new["input"]["note"] and "contactsLimit" in new["input"]["note"]
+    assert not new.get("verified") and not new.get("example_response"), "no live probe was run"
+    assert cat.platform_eligible(new), "the successor must stay servable on treg's key"
+    live = {ep["id"] for ep in cat.endpoints if ep.get("capability") == "people.decision_makers"}
+    assert successor in live and retired not in live

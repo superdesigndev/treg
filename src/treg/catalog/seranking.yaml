@@ -155,12 +155,20 @@ endpoints:
       value: 10
       currency: credit
       per: 1
-      unit: keyword
-      source: docs
+      unit: row
+      page_default: 100
+      source: observed
       source_url: https://seranking.com/pricing.html
-      checked: '2026-07-28'
-      confidence: documented
-      note: 10 credits per keyword RETURNED, 0 per request — so `limit` is the entire cost. The default limit of 100 spends 1,000 credits; always set it explicitly.
+      checked: '2026-09-09'
+      confidence: verified
+      note: '10 credits per keyword RETURNED, 0 per request - so `limit` is the entire cost. The
+        default limit of 100 spends 1,000 credits; always set it explicitly. OBSERVED 2026-09-09
+        on treg''s own meter: a call that returned 5 keywords moved units_left by exactly 50, and
+        one that returned none moved it by 0. `unit: row` (not `keyword`) because the bill counts
+        the RETURNED rows, not the one seed keyword the request names - the sibling
+        keywords.volume is the per-INPUT route. treg reserves `limit` rows (`page_default`: the
+        API''s own 100 when the caller omits it) and settles on the length of the returned
+        `keywords` list, so an empty answer is free.'
     verified: 2026-07-31
     example_response: examples/seranking.google.keywords.ideas.json
     docs_url: https://seranking.com/api/data/keyword-research/#related

@@ -1152,6 +1152,7 @@ adapters:
     accepts: [[target]]
     in:  {target: body.targets}
     in_expr: {body.targets: "list(target)"}
+    const: {body.distributions: true}  # what makes url_metrics the summary, and what its 2-row price observed
     out: {summary: "results[0]", backlinks: "results[0].pages_to_subdomain", referring_domains: "results[0].root_domains_to_subdomain"}
     miss: "results == []"
 
@@ -1937,8 +1938,12 @@ adapters:
     out: {people: people, count: count, next_cursor: next_cursor}
     miss: "people == []"
   findymail.search.domain:
-    accepts: [[company_domain]]
-    in:  {company_domain: body.domain}
+    # `roles` is REQUIRED upstream: with `{company_domain}` alone every routed call was a vendor
+    # 4xx by construction, which the router read as the caller's fault (422 route_caller_fault,
+    # earlier children's charges kept). Title-bearing briefs only; `title` is the role list.
+    accepts: [[company_domain, title]]
+    in:  {company_domain: body.domain, title: body.roles}
+    in_expr: {body.roles: "list(title)"}
     out: {people: contacts, count: "len(contacts)"}
     miss: "contacts == []"
 

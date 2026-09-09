@@ -10,13 +10,16 @@ source:
     - https://docs.lusha.com/apis/openapi/signals.md
     - https://docs.lusha.com/apis/openapi/webhooks.md
     - https://docs.lusha.com/apis/openapi/decision-makers.md
+    - https://docs.lusha.com/apis/openapi/buying-group.md
+    - https://docs.lusha.com/_bundle/apis/@v3/openapi.yaml
     - https://docs.lusha.com/apis/openapi/website-visits.md
     - https://docs.lusha.com/apis/openapi/account-usage-api/get-account-usage
 # Everything below is V3 (V2 sunsets 2026-11-18, see lusha.yaml's header note). These are the
 # routes the V3 surface exposes BEYOND the six curated in lusha.yaml (search-and-enrich x2,
 # prospecting search x2, contacts/enrich, account/usage) — filter/type discovery, lookalikes,
-# signals, decision-makers, website-visits and the webhook-subscription family. Auth is the same
-# `api_key` header, no scheme prefix. No calls were made while writing this file.
+# signals, buying-group (the retired decision-makers route is kept as a tombstone), website-visits
+# and the webhook-subscription family. Auth is the same `api_key` header, no scheme prefix. No calls
+# were made while writing this file.
 endpoints:
   - id: lusha.x.contacts-prospecting-filters
     kind: utility
@@ -233,26 +236,52 @@ endpoints:
     docs_url: https://docs.lusha.com/apis/openapi/signals
 
   - id: lusha.x.decision-makers
+    status: retired
+    status_note: "Lusha removed POST /v3/contacts/decision-makers on 2026-08-12 (API changelog 2.9.0) in favour of POST /v3/contacts/buying-group, the only operation that accepts contactsLimit and personas. A legacy handler still answers companies-only bodies on the old path, but it rejects contactsLimit and personas with 400 'property … should not exist', so the per-company spend cap documented here never applied: every call ran uncapped at Lusha's 60-contacts-per-company default, 1 credit per contact. Retired 2026-09-09."
+    superseded_by: lusha.x.buying-group
     domain: contacts
     tier: extended
     platform: people
     method: POST
     path: /v3/contacts/decision-makers
-    name: "Find the buying-committee contacts at a company"
-    summary: "Resolve a company to a Lusha company id, rank the most relevant decision makers with the buying-committee-ranker model, and return them grouped per company (1 credit per contact returned — pass contactsLimit)"
+    name: "Buying-committee contacts (retired path)"
+    summary: "RETIRED - the same operation now lives at lusha.x.buying-group. Resolve a company to a Lusha company id, rank the most relevant decision makers with the buying-committee-ranker model, and return them grouped per company (1 credit per contact returned)"
     input:
       bodyType: json
       body:
         companies: {type: "array[object]", required: true, note: "up to 25 entries; each needs exactly one of domain (resolved server-side) or id (encrypted vN.… Lusha company id). Optional clientReferenceId echoes back per company. The key is `domain` INSIDE each entry — a top-level domain / company_domain / website / company_name is rejected with 'property … should not exist' (all four seen live 2026-09-02)", example: [{"domain": "lusha.com"}]}
-        contactsLimit: {type: integer, required: false, note: "MAX CONTACTS RETURNED PER COMPANY — and therefore the bill, since every contact returned costs 1 credit. Lusha's default is 60. Always set it: microsoft.com with no limit answered 44 contacts = 44 credits = $5.49 in one call (observed 2026-09-02)", example: 5}
-        personas: {type: "array[string]", required: false, note: "filter to buying-committee roles: decision_maker | potential_champion | end_user; omit for all three (Lusha now documents this route as /v3/contacts/buying-group; the decision-makers path still answers)", example: ["decision_maker"]}
-      note: "returns previews (name, title, company, location, LinkedIn, seniority, department) grouped per company under `results[].decisionMakers`; call lusha.people.contacts.enrich on the returned ids for emails/phones (a further 1 credit per email, 5 per phone). NOT free: every preview row costs 1 credit — see cost"
+        contactsLimit: {type: integer, required: false, note: "REJECTED on this path since 2026-08-12 (400 'property contactsLimit should not exist'): the legacy handler ignores any cap and answers up to 60 contacts per company, 1 credit each - microsoft.com with no limit answered 44 contacts = 44 credits = $5.49 in one call (observed 2026-09-02). Use lusha.x.buying-group, where this parameter is honoured", example: 5}
+        personas: {type: "array[string]", required: false, note: "REJECTED on this path since 2026-08-12 (400 'property personas should not exist'); use lusha.x.buying-group", example: ["decision_maker"]}
+      note: "returned previews (name, title, company, location, LinkedIn, seniority, department) grouped per company; every preview row costs 1 credit - see cost. Retired: see status_note"
     test_request:
       body: {companies: [{domain: "lusha.com"}], contactsLimit: 1}
     cost: {type: per_result, value: 1, currency: credit, per: 1, unit: result, source: observed, source_url: 'https://docs.lusha.com/_bundle/apis/@v3/openapi.yaml', checked: '2026-09-03', confidence: verified, note: 'OBSERVED live 2026-09-02: billing.creditsCharged 44 for resultsReturned 44 (one company, no contactsLimit). Lusha''s OpenAPI bundle says "Charged per contact returned via the buyingGroupContact action". Previously catalogued as free from the docs prose — wrong, like lusha.people.search: trust billing.creditsCharged, never the prose. treg settles from that field, so the estimate is the reservation only; the bill is the row count'}
     verified: 2026-09-02
     example_response: examples/lusha.x.decision-makers.json
     docs_url: https://docs.lusha.com/apis/openapi/decision-makers
+    capability: people.decision_makers
+
+  - id: lusha.x.buying-group
+    domain: contacts
+    tier: extended
+    platform: people
+    method: POST
+    path: /v3/contacts/buying-group
+    name: "Find the buying-committee contacts at a company"
+    summary: "Resolve up to 25 companies to Lusha company ids, rank their buying committee (decision makers, champions, end users) with Lusha's persona model, and return lightweight contact previews grouped per company (1 credit per contact returned - always pass contactsLimit)"
+    input:
+      bodyType: json
+      body:
+        companies: {type: "array[object]", required: true, note: "1-25 entries (V3BuyingGroupCompanyItem); each needs exactly one of `domain` (resolved server-side) or `id` (Lusha company id, vN.… form, e.g. from lusha.companies.search). Optional `clientReferenceId` is echoed back on the matching result. The key is `domain` INSIDE each entry - a top-level domain / company_domain / website / company_name is rejected with 'property … should not exist' (seen live on the retired sibling path 2026-09-02)", example: [{"domain": "lusha.com"}]}
+        personas: {type: "array[string]", required: false, note: "filter to buying-committee roles: decision_maker (budget or sign-off authority) | potential_champion (likely internal advocate) | end_user (likely day-to-day user); omit for all three", example: ["decision_maker"]}
+        contactsLimit: {type: integer, required: false, note: "THE SPEND CAP: maximum contacts returned PER COMPANY, minimum 1, and every contact returned costs 1 credit - so the bill is at most companies × contactsLimit credits. Lusha's default is 60, i.e. an uncapped single-company call can cost 60 credits ($7.49 at the catalog rate) and a 25-company call 1,500. Always set it", example: 5}
+        pagination: {type: object, required: false, note: "optional {page, size}; page >= 0 (default 0), size 10-100 (default 100). Pages across the ranked contacts; contactsLimit still bounds what one company can return", example: {"page": 0, "size": 100}}
+      note: "contactsLimit is the only spend control on this route and Lusha defaults it to 60 contacts per company, so set it on every call. Returns previews (name, title, company, location, social links, `has`/`canReveal` data-point flags, persona `roles`, relevance `score` 0-1) grouped per company under `results[].contacts`; call lusha.people.contacts.enrich on the returned contact ids for emails/phones (a further 1 credit per email, 5 per phone). NOT free: every preview row costs 1 credit - see cost. Successor of the retired lusha.x.decision-makers path (removed by Lusha 2026-08-12, changelog 2.9.0), which is the only operation that accepts contactsLimit and personas"
+    test_request:
+      body: {companies: [{domain: "lusha.com"}], contactsLimit: 1}
+    cost: {type: per_result, value: 1, currency: credit, per: 1, unit: result, source: docs, source_url: 'https://docs.lusha.com/_bundle/apis/@v3/openapi.yaml', checked: '2026-09-09', confidence: documented, note: 'Lusha''s OpenAPI bundle: "Charged per contact returned via the buyingGroupContact action". The same action was OBSERVED on the retired decision-makers path 2026-09-02 (billing.creditsCharged 44 for resultsReturned 44); this path has not been called by treg yet. treg settles from billing.creditsCharged, so the per_result estimate (contactsLimit) is the reservation only; the bill is the row count'}
+    skipped: "not called while cataloguing (2026-09-09): the request shape and billing action are copied from Lusha's OpenAPI bundle, and the 1-credit-per-contact bill was already observed on the retired decision-makers path, which ran the same buyingGroupContact action. No example_response is shipped rather than inventing one; re-verify with the test_request (1 contact = 1 credit) when a Lusha credit is worth spending"
+    docs_url: https://docs.lusha.com/apis/openapi/buying-group
     capability: people.decision_makers
 
   - id: lusha.x.companies-website-visits

@@ -5193,7 +5193,13 @@ def _catalog_get(endpoint_id: str, cfg) -> None:
     if e.get("async") and "--await" not in template:
         template += " --await --timeout 900"
     print(f"  {template}")
-    _dim("  the key is injected server-side — you never hold it")
+    if e.get("platform_blocked"):
+        # the row is listed because a team's OWN key serves it; treg's never will, and saying
+        # "injected server-side" here is the promise the call would then break
+        _dim(f"  needs your team's own {e['provider']} key (treg connections connect --provider {e['provider']}) -")
+        _dim(f"  not served on treg's key: {e['platform_blocked']}")
+    else:
+        _dim("  the key is injected server-side — you never hold it")
     # Which credential tier would serve THIS caller (registered tool / org credential / treg's own
     # metered key / none)? Authenticated + best-effort: signed-out readers and older servers skip it.
     if cfg.get("token"):

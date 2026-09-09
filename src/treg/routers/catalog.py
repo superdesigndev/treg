@@ -196,6 +196,18 @@ async def _observed_or_empty(
         return {}
 
 
+def _run_hint(ep: dict) -> str:
+    """The paste-ready call line, honest about WHOSE key runs it. A `platform_blocked` row stays
+    discoverable because a team's own key serves it, but treg's key never will - a hint that still
+    promised "key injected server-side" sent callers to enqueue DataForSEO tasks whose results the
+    shared key could not fetch (found 2026-09-09)."""
+    line = catalog_store.call_template(ep)
+    if ep.get("platform_blocked"):
+        return (f"{line}   # needs your team's own {ep['provider']} key (treg connections connect "
+                f"--provider {ep['provider']}) - not served on treg's key: {ep['platform_blocked']}")
+    return f"{line}   # run it — key injected server-side"
+
+
 @app.get("/catalog/search")
 async def catalog_search(q: str = "", limit: int = 25,
                          observations: endpoint_stats.EndpointObservationReader = Depends(
@@ -236,7 +248,7 @@ async def catalog_search(q: str = "", limit: int = 25,
                  "requests steer which provider gets added next"]
     else:
         hints = [f"treg catalog get {results[0]['id']}   # params, cost and an example response",
-                 f"{catalog_store.call_template(cat.by_id.get(results[0]['id'], ranked[0][0]))}   # run it — key injected server-side"]
+                 _run_hint(cat.by_id.get(results[0]['id'], ranked[0][0]))]
         routed_row = next((r for r in results if r.get("kind") == "routed"), None)
         if routed_row is not None:
             hints.insert(1, f"{routed_row['id']} is ROUTED: treg picks among {len(routed_row.get('routed_children') or [])} "
@@ -367,7 +379,7 @@ async def catalog_endpoint(
         **({"routing": routing} if routing is not None else {}),
         "call_template": catalog_store.call_template(ep),
         "example_response": example,
-        "hints": [f"{catalog_store.call_template(ep)}   # run it — key injected server-side"]
+        "hints": [_run_hint(ep)]
                  + ([f"when treg's own {ep['provider']} account is out this may be served through the "
                      f"overflow relay ({overflow['overflow_via']}) and bill "
                      f"${overflow['overflow_price_usd']:g} per {overflow['overflow_price_unit']} instead "

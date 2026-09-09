@@ -2288,6 +2288,7 @@ endpoints:
   observed_cost: 0.0033
   observed_time: 105.51
 - id: dataforseo.x.app-data-apple-app-info-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: app-store
   method: POST
@@ -2355,6 +2356,7 @@ endpoints:
   example_response: examples/dataforseo.x.app-data-apple-app-info-task-post.json
   observed_cost: 0.0006
 - id: dataforseo.x.app-data-apple-app-list-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: app-store
   method: POST
@@ -2513,6 +2515,7 @@ endpoints:
   example_response: examples/dataforseo.x.app-data-apple-app-listings-search-live.json
   observed_cost: 0
 - id: dataforseo.x.app-data-apple-app-reviews-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: app-store
   method: POST
@@ -2590,6 +2593,7 @@ endpoints:
   example_response: examples/dataforseo.x.app-data-apple-app-reviews-task-post.json
   observed_cost: 0.006
 - id: dataforseo.x.app-data-apple-app-searches-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: app-store
   method: POST
@@ -2940,6 +2944,7 @@ endpoints:
   docs_url: https://docs.dataforseo.com/v3/serp/baidu/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.serp-baidu-organic-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: baidu
   method: POST
@@ -4164,6 +4169,7 @@ endpoints:
   observed_cost: 0.004
   capability: ai-search.gemini.scrape
 - id: dataforseo.x.business-data-google-extended-reviews-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google
   method: POST
@@ -4529,6 +4535,7 @@ endpoints:
   example_response: examples/dataforseo.x.business-data-google-my-business-info-live.json
   observed_cost: 0.0054
 - id: dataforseo.x.business-data-google-my-business-updates-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google
   method: POST
@@ -4659,6 +4666,7 @@ endpoints:
   example_response: examples/dataforseo.x.business-data-google-questions-and-answers-live.json
   observed_cost: 0.0054
 - id: dataforseo.x.business-data-google-reviews-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google
   method: POST
@@ -7257,6 +7265,7 @@ endpoints:
   docs_url: https://docs.dataforseo.com/v3/merchant/google/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.merchant-google-product-info-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google
   method: POST
@@ -7340,6 +7349,7 @@ endpoints:
   example_response: examples/dataforseo.x.merchant-google-product-info-task-post.json
   observed_cost: 0.001
 - id: dataforseo.x.merchant-google-products-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google
   method: POST
@@ -7456,6 +7466,7 @@ endpoints:
   docs_url: https://docs.dataforseo.com/v3/merchant/google/sellers/ad_url/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.merchant-google-sellers-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google
   method: POST
@@ -7605,6 +7616,7 @@ endpoints:
   example_response: examples/dataforseo.x.serp-ai-summary.json
   observed_cost: 0.01
 - id: dataforseo.x.serp-google-ads-advertisers-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google
   method: POST
@@ -7665,6 +7677,7 @@ endpoints:
   example_response: examples/dataforseo.x.serp-google-ads-advertisers-task-post.json
   observed_cost: 0.0006
 - id: dataforseo.x.serp-google-ads-search-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google
   method: POST
@@ -8410,6 +8423,7 @@ endpoints:
   example_response: examples/dataforseo.x.serp-google-images-live-advanced.json
   observed_cost: 0.002
 - id: dataforseo.x.serp-google-jobs-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google
   method: POST
@@ -8905,6 +8919,7 @@ endpoints:
   example_response: examples/dataforseo.x.serp-google-organic-live-advanced.json
   observed_cost: 0.004
 - id: dataforseo.x.serp-google-search-by-image-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google
   method: POST
@@ -9053,6 +9068,7 @@ endpoints:
   example_response: examples/dataforseo.x.serp-screenshot.json
   observed_cost: 0.004
 - id: dataforseo.x.app-data-google-app-info-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google-play
   method: POST
@@ -9120,6 +9136,7 @@ endpoints:
   example_response: examples/dataforseo.x.app-data-google-app-info-task-post.json
   observed_cost: 0.0006
 - id: dataforseo.x.app-data-google-app-list-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google-play
   method: POST
@@ -9280,6 +9297,7 @@ endpoints:
   example_response: examples/dataforseo.x.app-data-google-app-listings-search-live.json
   observed_cost: 0.11
 - id: dataforseo.x.app-data-google-app-reviews-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google-play
   method: POST
@@ -9361,6 +9379,7 @@ endpoints:
   example_response: examples/dataforseo.x.app-data-google-app-reviews-task-post.json
   observed_cost: 0.00075
 - id: dataforseo.x.app-data-google-app-searches-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: google-play
   method: POST
@@ -9445,6 +9464,7 @@ endpoints:
   docs_url: https://docs.dataforseo.com/v3/app_data/google/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.serp-naver-organic-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: naver
   method: POST
@@ -9633,6 +9653,7 @@ endpoints:
   docs_url: https://docs.dataforseo.com/v3/serp/seznam/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.serp-seznam-organic-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: seznam
   method: POST
@@ -9756,6 +9777,7 @@ endpoints:
   docs_url: https://docs.dataforseo.com/v3/business_data/tripadvisor/locations/
   untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
 - id: dataforseo.x.business-data-tripadvisor-reviews-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: tripadvisor
   method: POST
@@ -9854,6 +9876,7 @@ endpoints:
   observed_cost: 0.00075
   capability: tripadvisor.business.reviews
 - id: dataforseo.x.business-data-tripadvisor-search-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: tripadvisor
   method: POST
@@ -9914,6 +9937,7 @@ endpoints:
   observed_cost: 0.00075
   capability: tripadvisor.search.businesses
 - id: dataforseo.x.business-data-trustpilot-reviews-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key, or use brightdata.x.trustpilot-reviews for a one-shot Trustpilot review list on treg's key."
   tier: extended
   platform: trustpilot
   method: POST
@@ -9968,6 +9992,7 @@ endpoints:
   observed_cost: 0.0015
   capability: trustpilot.business.reviews
 - id: dataforseo.x.business-data-trustpilot-search-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key."
   tier: extended
   platform: trustpilot
   method: POST
@@ -12645,7 +12670,7 @@ endpoints:
         required: false
         note: 'return page content as markdown optional field if set to true, the markdown-formatted content of the page will be returned in the page_as_markdown field of the response; default value: false'
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-duplicate-content
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
@@ -12686,7 +12711,7 @@ endpoints:
         required: false
         note: user-defined task identifier optional field the character limit is 255 you can use this parameter to identify the task and match it with the result you will find the specified tag value in the data object of the response
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-duplicate-tags
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
@@ -12728,7 +12753,7 @@ endpoints:
         required: false
         note: user-defined task identifier optional field the character limit is 255 you can use this parameter to identify the task and match it with the result you will find the specified tag value in the data object of the response
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-keyword-density
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
@@ -12778,7 +12803,7 @@ endpoints:
         required: false
         note: user-defined task identifier optional field the character limit is 255 you can use this parameter to identify the task and match it with the result you will find the specified tag value in the data object of the response
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-lighthouse-audits
   kind: utility
   tier: extended
@@ -12864,7 +12889,7 @@ endpoints:
         note: <em>user-defined task identifier</em><br>optional field<br><em>the character limit is 255</em><br>you can use this parameter to identify the task and match it with the result<br>you will find the specified <code>tag</code> value in the <code>data</code> object of the response
         example: some_string_123
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-links
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
@@ -12922,7 +12947,7 @@ endpoints:
         required: false
         note: user-defined task identifier optional field the character limit is 255 you can use this parameter to identify the task and match it with the result you will find the specified tag value in the data object of the response
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-microdata
   tier: extended
   platform: web
@@ -12949,7 +12974,7 @@ endpoints:
         required: false
         note: user-defined task identifier optional field the character limit is 255 you can use this parameter to identify the task and match it with the result you will find the specified tag value in the data object of the response
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-non-indexable
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
@@ -12990,7 +13015,7 @@ endpoints:
           - like
           - '%go%'
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-page-screenshot
   tier: extended
   platform: web
@@ -13049,7 +13074,7 @@ endpoints:
         required: false
         note: 'proxy pool optional field you can choose a location of the proxy pool that will be used to obtain the requested data; the parameter can be used if page content is inaccessible in one of the locations, resulting in occasional site_unreachable errors possible values: us, de'
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-pages
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
@@ -13104,7 +13129,7 @@ endpoints:
         required: false
         note: user-defined task identifier optional field the character limit is 255 you can use this parameter to identify the task and match it with the result you will find the specified tag value in the data object of the response
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-pages-by-resource
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
@@ -13149,7 +13174,7 @@ endpoints:
         required: false
         note: user-defined task identifier optional field the character limit is 255 you can use this parameter to identify the task and match it with the result you will find the specified tag value in the data object of the response
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-raw-html
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
@@ -13174,7 +13199,7 @@ endpoints:
         note: 'page url required field the absolute URL of a page to request HTML Note: this field is optional if the task was set using the Instant Pages endpoint'
         example: https://dataforseo.com/apis
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-redirect-chains
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
@@ -13215,7 +13240,7 @@ endpoints:
         required: false
         note: user-defined task identifier optional field the character limit is 255 you can use this parameter to identify the task and match it with the result you will find the specified tag value in the data object of the response
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-resources
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
@@ -13278,7 +13303,7 @@ endpoints:
         required: false
         note: user-defined task identifier optional field the character limit is 255 you can use this parameter to identify the task and match it with the result you will find the specified tag value in the data object of the response
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-summary-id
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
@@ -13289,8 +13314,16 @@ endpoints:
   name: "Site crawl summary and issues, by task id"
   summary: Using this function, you can get the overall information on a website as well as drill down into exact on-page issues of a website that has been scanned.
   docs_url: https://docs.dataforseo.com/v3/on_page/summary/
-  untestable: the OpenAPI spec ships no example request body for this route, so no test request could be generated
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: ID of the task; the id returned in tasks[].id by dataforseo.x.on-page-task-post (POST /on_page/task_post) once the crawl has finished
+        example: 07131248-1535-0216-1000-17384017ad04
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-task-post
+  platform_blocked: "Results are retrieved through task_get, which treg does not serve on the shared key, so a shared-key task_post pays for work whose answer never arrives; connect your own DataForSEO key, or use dataforseo.web.page.audit (POST /on_page/instant_pages) for a one-shot audit of a URL on treg's key."
   tier: extended
   platform: web
   method: POST
@@ -13540,7 +13573,7 @@ endpoints:
           - like
           - '%go%'
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.on-page-waterfall
   platform_blocked: "Shared-key task ownership is not available for this legacy endpoint; connect your own DataForSEO key."
   tier: extended
@@ -13569,7 +13602,7 @@ endpoints:
         required: false
         note: user-defined task identifier optional field the character limit is 255 you can use this parameter to identify the task and match it with the result you will find the specified tag value in the data object of the response
     note: the POST body is an ARRAY of task objects with these fields — one object per task
-  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.x.on-page-instant-pages
+  untestable: needs the id of a completed on_page crawl (task_post plus polling); the one-shot route of this family is verified via dataforseo.web.page.audit
 - id: dataforseo.x.serp-yahoo-locations-country
   kind: utility
   tier: extended

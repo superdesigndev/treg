@@ -16,7 +16,7 @@ from httpx import AsyncClient
 from sqlmodel import select
 
 from treg import api as A
-from treg import crypto, oauth
+from treg import audit, crypto, oauth
 from treg.application import connect as connect_use_cases
 from treg.application.connect import _backfill_provider_extra_tools
 from treg.config import get_settings
@@ -630,6 +630,74 @@ async def test_a_second_account_gets_its_own_tool(clients: AsyncClient, treg_goo
     tools = {t["name"]: t for t in (await clients.get("/tools")).json()}
     assert tools["google-search-console"]["bindings"][0]["secret_id"] == first["secret_id"]
     assert tools["google-search-console-2"]["bindings"][0]["secret_id"] == second["secret_id"]
+
+
+async def _newest_call(clients: AsyncClient) -> dict:
+    await audit.drain()
+    return (await clients.get("/calls")).json()[0]
+
+
+async def test_a_second_account_makes_a_catalog_call_name_the_account(clients: AsyncClient, treg_google_app):
+    """Both accounts sit on the same host with a provider-tagged credential, so nothing in a
+    catalog call says which one the caller means. A silent default to the first account would
+    send a site owned by the second through the first's key (an upstream 403 nobody can read), so
+    the call refuses with the named form of EACH account instead."""
+    await _connect_byo(clients, provider="google-search-console", capability="read", name="")
+    await _connect_byo(clients, provider="google-search-console", capability="read", name="")
+
+    r = await clients.post(
+        "/call/google-search-console.performance", params={"siteUrl": "sc-domain:example.com"},
+        json={"startDate": "2026-07-01", "endDate": "2026-07-21", "rowLimit": 2},
+    )
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    assert detail["error"] == "target_ambiguous"
+    assert detail["endpoint_id"] == "google-search-console.performance"
+    assert detail["tools"] == ["google-search-console", "google-search-console-2"]
+    path = "/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query"
+    assert detail["named_forms"] == [f"/call/google-search-console{path}", f"/call/google-search-console-2{path}"]
+    assert f"/call/google-search-console-2{path}" in detail["message"]
+
+    # Named, each account serves its own call on its own credential.
+    r = await clients.post(f"/call/google-search-console-2{path}",
+                           json={"startDate": "2026-07-01", "endDate": "2026-07-21", "rowLimit": 2})
+    assert r.status_code == 200, r.text
+    call = await _newest_call(clients)
+    assert call["tool_name"] == "google-search-console-2"
+
+
+async def test_a_second_account_by_url_is_still_ambiguous(clients: AsyncClient, treg_google_app):
+    """URL passthrough carries no provider identity, so two accounts of ONE provider stay a real
+    409 there - with both connection names, so the caller can pick one by name."""
+    await _connect_byo(clients, provider="google-search-console", capability="read", name="")
+    await _connect_byo(clients, provider="google-search-console", capability="read", name="")
+    r = await clients.get("/call/https://searchconsole.googleapis.com/webmasters/v3/sites")
+    assert r.status_code == 409, r.text
+    assert "'google-search-console'" in r.json()["detail"]
+    assert "'google-search-console-2'" in r.json()["detail"]
+
+
+async def test_meta_ads_catalog_call_ignores_the_instagram_page_tool(
+    clients: AsyncClient, treg_meta_app, monkeypatch,
+):
+    """meta-ads and instagram-page-tools both live on graph.facebook.com and both are bound to a
+    provider-tagged credential. The catalog id says which provider it belongs to; resolution must
+    use that instead of collapsing into "two provider-owned tools, ambiguous"."""
+    _meta_test_provider(monkeypatch, "meta-ads")
+    _meta_test_provider(monkeypatch, "instagram")
+    await _connect_byo(clients, provider="instagram", capability="page-tools", name="")
+    ads = await _connect_byo(clients, provider="meta-ads", name="")
+
+    tools = {t["name"]: t for t in (await clients.get("/tools")).json()}
+    assert tools["meta-ads"]["host"] == tools["instagram-page-tools"]["host"]
+
+    r = await clients.get("/call/meta-ads.campaigns", params={
+        "ad_account_id": "act_1234567890", "fields": "id,name,status"})
+    assert r.status_code == 200, r.text
+    assert r.json()["raw_path"] == "/v25.0/act_1234567890/campaigns"
+    call = await _newest_call(clients)
+    assert call["tool_name"] == "meta-ads"
+    assert tools["meta-ads"]["bindings"][0]["secret_id"] == ads["secret_id"]
 
 
 async def test_reconnect_cannot_be_aimed_at_another_provider(clients: AsyncClient, treg_google_app):

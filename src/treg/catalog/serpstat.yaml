@@ -4,9 +4,10 @@ source:
   openapi: null # the Stoplight docs render client-side and expose no fetchable spec
   curated: 2026-07-28
 
-# UNVERIFIED — no credential available at curation time; every method, parameter and price below is
-# transcribed from Serpstat's official v4 docs and its own open-source MCP server 2026-07-28.
-# Nothing here has been called.
+# Every method, parameter and price below was transcribed from Serpstat's official v4 docs and its
+# own open-source MCP server 2026-07-28 without a credential. Since then two things have been called
+# live: the limits probe (2026-08-11, see the discrepancy note) and `getKeywordTop` (2026-09-09,
+# see rule 5). Everything else remains documented, not verified.
 #
 # SOURCING NOTE: Serpstat's api-docs.serpstat.com is a Stoplight app that renders client-side, so
 # the reference pages could not be read directly. The method strings and `params` schemas below were
@@ -34,13 +35,18 @@ source:
 #     `g_uk`, `g_de` … (Google per country, ~200 values) plus `bing_us`. It selects which index
 #     answers, so the same keyword returns different volumes per `se`.
 #  5. BILLING IS IN API CREDITS ("lines"), metered per RESULT ROW on the list methods — the `size`
-#     parameter is therefore the cost dial on most of this file. Credits come with a plan rather
-#     than at a published per-credit price, so `cost.value` is null throughout and the per-method
-#     credit counts live in `cost.note`. Read `summary_info.left_lines` off any real response to
-#     confirm the rate against the account's own plan.
-#     ⚠️ EMPTY RESULTS ARE STILL BILLED: since 2025-06-15 every metered method charges a minimum of
-#     1 credit even when it matches nothing. A speculative sweep over domains that turn out to have
-#     no data is NOT free, which is the opposite of how most providers in this catalog behave.
+#     parameter is therefore the cost dial on most of this file. `cost.value` is the credit count
+#     and fx.yaml's serpstat rate (Team plan, $100/mo for 200K credits) converts it to dollars.
+#     Read `summary_info.left_lines` off any real response to confirm the rate against the
+#     account's own plan.
+#     VERIFIED LIVE 2026-09-09 against that meter: a `getKeywordTop` that returned 12 rows cost
+#     exactly 12 lines, and an ERROR ENVELOPE (HTTP 200 with `error.code -32000`) cost 0 lines.
+#     treg settles accordingly (application/call/serpstat.py): one credit per returned row and
+#     nothing for an `error` envelope, whatever the HTTP status says. Serpstat's docs also state a
+#     1-credit minimum on a SERVED result that matches nothing; that floor is documented, not yet
+#     verified live, and treg charges it. `unit` in each cost block says what the row is: `row`
+#     where the price is per RETURNED row and `size` is the dial, `keyword`/`domain` where it is
+#     per INPUT the request names (the batch volume and overview methods).
 #  6. RESPONSE SHAPES ARE NOT UNIFORM. `result` is sometimes an object keyed by the thing you asked
 #     about and sometimes a `data` array, and getKeywordTop nests its rows one level deeper again
 #     (result.data.top[]). Each entry below records where its rows actually live — do not assume
@@ -83,7 +89,7 @@ endpoints:
       source_url: https://serpstat.com/pay/
       checked: '2026-07-28'
       confidence: documented
-      note: 5 API credits per DOMAIN in `domains` — the most expensive per-row method in this file. A 10-domain batch is 50 credits, and an empty result still bills the 1-credit minimum.
+      note: 5 API credits per DOMAIN in `domains` - the most expensive per-row method in this file. A 10-domain batch is 50 credits; an `error` envelope is free, and a served result with no rows bills the documented 1-credit minimum.
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/
 
   - id: serpstat.google.domain.ranked_keywords
@@ -117,12 +123,12 @@ endpoints:
       value: 1
       currency: credit
       per: 1
-      unit: keyword
+      unit: row
       source: docs
       source_url: https://serpstat.com/pay/
       checked: '2026-07-28'
       confidence: documented
-      note: 1 API credit per returned keyword — `size` (default 100, max 1,000) is the cost dial, and an empty result still bills the 1-credit minimum.
+      note: 1 API credit per RETURNED row - `size` (default 100, max 1,000) is the cost dial and treg settles on the rows in `result.data[]`; an `error` envelope is free, and a served result with no rows bills the documented 1-credit minimum.
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/
 
   - id: serpstat.google.domain.competitors
@@ -154,7 +160,7 @@ endpoints:
       source_url: https://serpstat.com/pay/
       checked: '2026-07-28'
       confidence: documented
-      note: 1 API credit per returned competitor — `size` (default 20, max 100) is the cost dial, and an empty result still costs 1 credit.
+      note: 1 API credit per returned competitor - `size` (default 20, max 100) is the cost dial and treg settles on the rows in `result.data[]`; an `error` envelope is free, and a served result with no rows bills the documented 1-credit minimum.
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/6vpejje0stt4k-get-competitors
 
   # --- Keyword analytics ------------------------------------------------------------------------
@@ -188,7 +194,7 @@ endpoints:
       source_url: https://serpstat.com/pay/
       checked: '2026-07-28'
       confidence: documented
-      note: 1 API credit per keyword RETURNED (Serpstat meters per result row), and an empty result still bills the 1-credit minimum.
+      note: 1 API credit per keyword in `keywords` - priced per INPUT, so the reserve counts the request and the settle counts the keyed entries Serpstat answers with; an `error` envelope is free, and a served result with no rows bills the documented 1-credit minimum.
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/2brcbdgmr6rcx-get-keywords-info
 
   - id: serpstat.google.keywords.ideas
@@ -221,12 +227,12 @@ endpoints:
       value: 1
       currency: credit
       per: 1
-      unit: keyword
+      unit: row
       source: docs
       source_url: https://serpstat.com/pay/
       checked: '2026-07-28'
       confidence: documented
-      note: 1 API credit per returned keyword — `size` (default 100, max 1,000) is the cost dial, and an empty result still bills the 1-credit minimum.
+      note: 1 API credit per RETURNED row - `size` (default 100, max 1,000) is the cost dial and treg settles on the rows in `result.data[]`; an `error` envelope is free, and a served result with no rows bills the documented 1-credit minimum.
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/7yidbv07n5q9u-get-related-keywords
 
   - id: serpstat.google.serp.organic
@@ -264,7 +270,7 @@ endpoints:
       source_url: https://serpstat.com/pay/
       checked: '2026-07-28'
       confidence: documented
-      note: 1 API credit per returned SERP row — `size` is the cost dial, and an empty result still bills the 1-credit minimum.
+      note: 1 API credit per returned SERP row - `size` is the cost dial and treg settles on `result.data.top[]` (verified live 2026-09-09 - 12 returned rows cost exactly 12 lines); an `error` envelope is free, and a served result with no rows bills the documented 1-credit minimum.
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/env4osjb1ev9c-get-keyword-top
 
   # --- Backlinks --------------------------------------------------------------------------------
@@ -336,7 +342,7 @@ endpoints:
       source_url: https://serpstat.com/pay/
       checked: '2026-07-28'
       confidence: documented
-      note: 1 API credit per returned backlink — `size` (default 100, max 1,000) is the cost dial, and an empty result still bills the 1-credit minimum.
+      note: 1 API credit per returned backlink - `size` (default 100, max 1,000) is the cost dial and treg settles on the rows in `result.data[]`; an `error` envelope is free, and a served result with no rows bills the documented 1-credit minimum.
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
 
   - id: serpstat.web.linking_domains.list
@@ -366,12 +372,12 @@ endpoints:
       value: 1
       currency: credit
       per: 1
-      unit: domain
+      unit: row
       source: docs
       source_url: https://serpstat.com/pay/
       checked: '2026-07-28'
       confidence: documented
-      note: 1 API credit per returned referring domain — `size` is the cost dial, and an empty result still bills the 1-credit minimum.
+      note: 1 API credit per RETURNED row (one per referring domain) - `size` is the cost dial and treg settles on the rows in `result.data[]`; an `error` envelope is free, and a served result with no rows bills the documented 1-credit minimum.
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
 
   - id: serpstat.web.anchors.list
@@ -408,7 +414,7 @@ endpoints:
       source_url: https://serpstat.com/pay/
       checked: '2026-07-28'
       confidence: documented
-      note: 1 API credit per returned anchor — `size` is the cost dial, and an empty result still bills the 1-credit minimum.
+      note: 1 API credit per returned anchor - `size` is the cost dial and treg settles on the rows in `result.data[]`; an `error` envelope is free, and a served result with no rows bills the documented 1-credit minimum.
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
 
   - id: serpstat.web.site.top_pages
@@ -443,7 +449,7 @@ endpoints:
       source_url: https://serpstat.com/pay/
       checked: '2026-07-28'
       confidence: documented
-      note: 1 API credit per returned page — `size` is the cost dial, and an empty result still bills the 1-credit minimum.
+      note: 1 API credit per returned page - `size` is the cost dial and treg settles on the rows in `result.data[]`; an `error` envelope is free, and a served result with no rows bills the documented 1-credit minimum.
     docs_url: https://api-docs.serpstat.com/docs/serpstat-public-api/xu9jnzib39dsn-backlinks-api
 
   # --- Account (free) ---------------------------------------------------------------------------

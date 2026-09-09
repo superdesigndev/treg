@@ -19,7 +19,7 @@ from treg.config import get_settings
 from treg.infra.db import session_maker
 from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing import paths as P
-from treg.domain.catalog.routing.contracts import canonical_identity
+from treg.domain.catalog.routing.contracts import Adapter, adapter_accepts, canonical_identity, missing_required_inputs, verify
 from treg.domain.catalog.routing.plan import Candidate, cost_at, rank
 from treg.infra.catalog_observations import CachedEndpointObservationReader
 from treg.models import CallRecord, Hold, LedgerEntry
@@ -89,6 +89,39 @@ def test_every_shipped_adapter_round_trips_its_fixture():
     assert b == {"firstName": "Patrick", "lastName": "Collison", "companyDomain": "stripe.com"} and q == {}
     assert ad.from_upstream({"email": "p@stripe.com", "status": "succeeded"}) == {"email": "p@stripe.com", "verified": True}
     assert ad.is_miss({"email": None}) and not ad.is_miss({"email": "x"})
+
+
+def test_the_verifier_rejects_an_adapter_that_cannot_fill_a_required_input():
+    """`findymail.search.domain` shipped accepting `{company_domain}` alone against a body whose
+    `roles` is `required: true`: every routed call to it was a vendor 4xx by construction, which
+    the router took for the caller's fault (422 route_caller_fault, earlier children's charges
+    kept). The fixture round-trip never saw it, because it compares only the keys the adapter maps.
+    Now every accepted variant must be able to fill every required input, or the adapter is not a
+    candidate at all."""
+    cat = catalog_store.load()
+    contract, ep = cat.contracts["people.search"], cat.by_id["findymail.search.domain"]
+    example = json.loads(catalog_store.example_path(ep["id"]).read_text())
+    shipped = cat.adapters["findymail.search.domain"]
+    malformed = Adapter(endpoint_id=ep["id"], accepts=(("company_domain",),), in_map={"company_domain": "body.domain"},
+                        out_map=shipped.out_map, miss=shipped.miss, _filter_keys=shipped._filter_keys)
+    assert missing_required_inputs(malformed, contract, ep, ("company_domain",)) == ["body.roles"]
+    assert verify(malformed, contract, ep, example) == (False, "in: {company_domain} cannot produce required ['body.roles']")
+    # the shipped adapter takes only briefs that carry a role, and sends it as the list the vendor wants
+    assert shipped.verified and shipped.accepts == (("company_domain", "title"),)
+    ident, _ = canonical_identity(contract, {"company_domain": "example.com", "title": "CEO"})
+    assert shipped.to_upstream(ident, ("company_domain", "title")) == ({}, {"domain": "example.com", "roles": ["CEO"]})
+    assert adapter_accepts(shipped, canonical_identity(contract, {"company_domain": "example.com"})[0]) is None
+    # the check sends what the ROUTER would send: a `{first_name, last_name, domain}` caller fills
+    # findymail's `body.name` through the derived `full_name` variant, not the literal one
+    find = cat.contracts["people.email.find"]
+    assert missing_required_inputs(cat.adapters["findymail.search.name"], find, cat.by_id["findymail.search.name"],
+                                   ("domain", "first_name", "last_name")) == []
+    # a bare-array body (brightdata's `[{url}]`) satisfies the `input: {type: array}` that labels it
+    assert missing_required_inputs(cat.adapters["brightdata.instagram.user.profile"], cat.contracts["instagram.user.profile"],
+                                   cat.by_id["brightdata.instagram.user.profile"], ("username",)) == []
+    # a const fills a required input as well as the identity does
+    assert missing_required_inputs(cat.adapters["moz.web.backlinks.summary"], cat.contracts["web.backlinks.summary"],
+                                   cat.by_id["moz.web.backlinks.summary"], ("target",)) == []
 
 
 def test_identity_variants_derive_and_never_cross():
@@ -332,6 +365,51 @@ async def test_a_people_search_hit_always_carries_verify_advice(clients: AsyncCl
     assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]), "the find, nothing chained"
 
 
+async def test_a_companyenrich_people_search_miss_bills_the_documented_page_floor(
+    clients: AsyncClient, platform_on, monkeypatch
+):
+    """CompanyEnrich bills a people-search page per person RETURNED with a 2-credit floor on an
+    empty page (verified live 2026-09-09). The child used to settle at its reserve, the whole
+    requested page: a 10-row miss inside the ladder charged $0.196 for an answer that cost $0.0196.
+    The routed parent now carries exactly the floor for that child."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_COMPANYENRICH", "PLATFORM-COMPANYENRICH-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "companyenrich")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"companyenrich": [(200, {"items": [], "page": 1, "totalPages": 0, "totalItems": 0})]}, seen))
+    before = await _balance(clients)
+    r = await clients.post("/call/treg.people.search", json={"company_domain": "company.example", "limit": 10},
+                           headers={"X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["outcome"] == "miss" and r.headers["X-Treg-Route-Outcome"] == "miss"
+    assert len(seen) == 1 and seen[0][0] == "companyenrich" and seen[0][3]["pageSize"] == 10, \
+        "one child, asked for the caller's 10-row page"
+    tried = [t for t in d["_treg"]["tried"] if t["outcome"] != "skipped"]
+    assert len(tried) == 1 and tried[0]["provider"] == "companyenrich" and tried[0]["outcome"] == "miss"
+    assert tried[0]["charged_micro"] == 19_600, "the 2-credit floor, not the 10-row reserve (196,000)"
+    assert d["_treg"]["charged_micro"] == 19_600 == before - await _balance(clients)
+async def test_a_domain_only_people_search_never_reaches_the_child_that_needs_a_role(clients: AsyncClient, enrichment_on, monkeypatch):
+    """Live: a `{company_domain}` search walked the ladder to `findymail.search.domain`, whose
+    body lacked the required `roles`; the vendor's 4xx ended the call as 422 route_caller_fault
+    and the earlier children's charges stood. The adapter is no longer a candidate for that
+    identity, so the ladder misses honestly and the caller pays only for the misses it made."""
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"findymail": [(422, {"message": "The roles field is required."})] * 3,
+         "*": [(200, {"persons": []})] * 12}, seen))
+    before = await _balance(clients)
+    r = await clients.post("/call/treg.people.search", json={"company_domain": "example.com", "limit": 5})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["outcome"] == "miss" and "findymail" not in [p for p, *_ in seen] and seen, "never asked"
+    assert {t["endpoint_id"] for t in d["_treg"]["tried"]}.isdisjoint({"findymail.search.domain"})
+    dropped = next(x for x in d["_treg"]["dropped"] if x["endpoint_id"] == "findymail.search.domain")
+    assert dropped["why"] == "needs {company_domain, title}"
+    assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]), "the misses, nothing held back"
+
+
 async def test_error_on_the_first_child_falls_back_to_the_second(clients: AsyncClient, enrichment_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(
@@ -471,6 +549,58 @@ async def test_max_cost_below_the_cheapest_refuses_before_any_call(clients: Asyn
     assert r.status_code == 402 and r.json()["detail"]["error"] == "route_max_cost" and seen == []
     async with session_maker() as db:
         assert (await db.execute(select(Hold))).scalars().all() == []
+
+
+async def test_max_cost_skips_a_dearer_top_ranked_candidate_and_asks_the_affordable_one(clients: AsyncClient, enrichment_on, monkeypatch):
+    """The plan is ranked by specificity first, price second, so the top candidate is often NOT the
+    cheapest: phone.find for `{email, full_name}` leads with leadsforge ($0.245 - its variant covers
+    both keys through `derive`) ahead of tomba ($0.0445, `{email}` alone). A $0.05 ceiling used to
+    be checked against the top candidate only and refused the whole call, calling leadsforge "the
+    cheapest candidate" while the embedded plan showed tomba's affordable row. The ceiling is a
+    per-candidate skip: leadsforge is passed over, tomba is asked."""
+    routed = "treg.people.phone.find"
+    plan = (await clients.get(f"/catalog/endpoints/{routed}")).json()["routing"]["plan"]
+    prices = {p["endpoint_id"]: p["usd"] for p in plan}
+    assert prices["tomba.people.phone.find"] < prices["leadsforge.people.phone.find"], \
+        "the catalog view is price-ordered; the call's plan is not"
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [(200, {"data": {"e164_format": "+15550100", "line_type": "mobile", "country_code": "US"}})]}, seen))
+    before = await _balance(clients)
+    # quickenrich (2026-09-09) also covers {first_name, last_name, domain} and undercuts tomba; it is
+    # excluded so the story stays the one this test is about: dearer top-ranked, cheaper further down.
+    r = await clients.post(f"/call/{routed}", json={"email": "ada@example.com", "full_name": "Ada Example"},
+                           headers={"X-Treg-Route-Max-Cost": "0.05", "X-Treg-Route-Exclude": "quickenrich"})
+    assert r.status_code == 200, r.text
+    tried = r.json()["_treg"]["tried"]
+    assert tried[0] == {"endpoint_id": "leadsforge.people.phone.find", "provider": "leadsforge", "outcome": "skipped",
+                        "status": None, "charged_micro": 0, "detail": call_route.OVER_CAP}, "top-ranked, over the cap, skipped"
+    assert tried[1]["endpoint_id"] == "tomba.people.phone.find" and tried[1]["outcome"] == "hit"
+    assert r.json()["_treg"]["served_by"] == "tomba.people.phone.find" and r.json()["output"]["phone"] == "+15550100"
+    assert [p for p, *_ in seen] == ["tomba"], "leadsforge was never asked"
+    assert r.json()["_treg"]["charged_micro"] == 44_500 and before - await _balance(clients) == 44_500
+
+
+async def test_max_cost_below_every_candidate_refuses_naming_the_true_minimum(clients: AsyncClient, enrichment_on, monkeypatch):
+    """When no candidate fits under the ceiling the call is refused before any reserve, and the
+    402 names the cheapest candidate in the plan (tomba, $0.0445) - not the top-ranked one
+    (leadsforge, $0.245), which is what the old top-candidate pre-check reported as "cheapest"."""
+    routed = "treg.people.phone.find"
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {})]}, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{routed}", json={"email": "ada@example.com", "full_name": "Ada Example"},
+                           headers={"X-Treg-Route-Max-Cost": "0.01", "X-Treg-Route-Exclude": "quickenrich"})
+    assert r.status_code == 402, r.text
+    d = r.json()["detail"]
+    assert d["error"] == "route_max_cost" and d["endpoint_id"] == routed and d["max_cost_micro"] == 10_000
+    assert d["plan"][0]["endpoint_id"] == "leadsforge.people.phone.find" and d["plan"][0]["price_micro"] == 245_000
+    assert d["cheapest_micro"] == min(c["price_micro"] for c in d["plan"]) == 44_500
+    assert d["cheapest_endpoint_id"] == "tomba.people.phone.find" and "tomba.people.phone.find" in d["message"]
+    assert "leadsforge" not in d["message"]
+    assert seen == [] and await _balance(clients) == before, "nothing asked, nothing charged"
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == [], "nothing reserved"
 
 
 async def test_identity_no_provider_accepts_is_422_naming_variants(clients: AsyncClient, enrichment_on):

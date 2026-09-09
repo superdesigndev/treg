@@ -64,6 +64,10 @@ def _platform_billable(status_code: int, cost_type: str) -> bool:
 
 
 _PLATFORM_BODY_MAX = 8 * 1024 * 1024  # buffer ceiling for a metered response (API JSON, not downloads)
+# SE Ranking routes priced per RETURNED keyword row (catalog `unit: row`), whose answer carries the
+# rows under `keywords`. The per-INPUT sibling (keywords.volume, `unit: keyword`, a top-level array
+# of the keywords the caller sent) is deliberately not here: its reserve is its bill.
+_SERANKING_RETURNED_KEYWORD_ROUTES = frozenset({"seranking.google.keywords.ideas"})
 def _brightdata_record_count(body: bytes) -> int | None:
     """How many RECORDS a Bright Data Web Scraper response delivered, or None for "settle at the
     estimate". Bright Data bills $1.50/1000 records *delivered* and reports no charge field, so the
@@ -146,6 +150,20 @@ def _quickenrich_cost_micro(mk: MarketplaceCall, doc: dict) -> int | None:
         if mk.endpoint_id == "quickenrich.people.enrich":
             return mk.unit_micro
     return None
+def _apify_item_count(body: bytes) -> int | None:
+    """How many dataset items an Apify run-sync-get-dataset-items response delivered, or None for
+    "settle at the estimate". A pay-per-result or pay-per-event actor bills per item produced and
+    the response IS the dataset: a bare JSON array, one element per item, no envelope (the catalog
+    entries say so and the captured examples are arrays). Nothing else is counted: gzip, a body the
+    8MB metered buffer truncated mid-array, or an object shape we did not expect all mean the
+    count is unknown, and the estimate is then the honest number - the Bright Data rule."""
+    if body[:2] == b"\x1f\x8b":
+        return None
+    try:
+        doc = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return len(doc) if isinstance(doc, list) else None
 
 
 def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int | None:
@@ -176,6 +194,9 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         enrich, an empty `organizations` page on search) and charges nothing for it, so status-based
         billing alone would bill the caller for a response Apollo gave away. The body says whether
         the charged thing came back; when it didn't, the call settles at 0.
+      - companyenrich (search pages): DERIVED. `items` is the bill, per returned row and never
+        below the catalog's `minimum_units` floor (the vendor's documented charge for an empty
+        page). Settling at the estimate billed the whole requested page for an empty answer.
       - hunter (domain search): DERIVED too, and for the opposite reason — its price is not
         per row but one whole SEARCH credit per 10 emails returned, rounded up, with an empty
         domain free. `data.emails` is the only place that number exists.
@@ -187,11 +208,21 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         charge for a 2xx whose payload is an embedded error (verified live 2026-07-30 — see
         docs/context/architecture/catalog.md, "the provider decides what counts as success").
 
+      - apify: DERIVED by counting, like Bright Data. A run-sync-get-dataset-items answer is the
+        dataset itself (a bare JSON array) and the actor bills per item, so its length is the
+        bill; any other shape settles at the estimate (`_apify_item_count`).
       - exa: REPORTED in dollars, `costDollars.total` on every 2xx body (same contract as
         dataforseo's `cost`) — the only place the per-result and per-content riders exist.
       - fiber-ai: REPORTED in credits, `chargeInfo.creditsCharged` on every envelope, honoured
         for `method: charged-now` only (a poll repeats its job's charge). Error bodies carry no
         `chargeInfo`, which is what keeps a 400/404 on a `per_call` profile fetch unbilled.
+      - icypeas: DERIVED from the SHAPE. The async search routes answer 2xx with a bare
+        acknowledgement (`item._id` or `file` + `status`) and zero rows; the hit that costs a
+        credit shows up later on the free poll route. An acknowledgement settles at 0
+        (`application/call/icypeas.py`); synchronous bodies carrying `data` rows keep the estimate.
+      - serpstat: DERIVED from the JSON-RPC envelope - one credit per row under `result.data`
+        (or `result.data.top`, or the keyed entries), a 1-row floor on a served empty result, and
+        0 for a top-level `error` object, which Serpstat answers with HTTP 200 and does not bill.
 
     Everyone else settles at the estimate. This is the same signal the catalog's `observed_cost`
     harvests, which is what lets phase 5's drift detector compare the two numbers directly."""
@@ -220,6 +251,12 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         # the only place that number exists (see _brightdata_record_count for the shapes).
         n = _brightdata_record_count(body)
         return None if n is None else n * mk.unit_micro
+    if provider == "apify" and mk.cost_type == "per_result" and mk.unit_micro > 0:
+        # DERIVED by counting items, like Bright Data: the actor bills per dataset item and the
+        # run-sync response is that dataset. Before this every job search settled at the 20-row
+        # estimate whatever came back - a one-job answer billed $0.02 for a $0.001 item.
+        n = _apify_item_count(body)
+        return None if n is None else n * mk.unit_micro
     try:
         doc = json.loads(body)
     except (ValueError, UnicodeDecodeError):
@@ -243,6 +280,19 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         # Missing or invalid charge evidence leaves the normal miss/base rules in force.
     if provider == "quickenrich":
         return _quickenrich_cost_micro(mk, doc)
+    if provider == "icypeas" and mk.cost_type in ("per_result", "per_success"):
+        # DERIVED, the async-handoff case (Bright Data's `snapshot_id` precedent above). Icypeas'
+        # /email-search, /domain-search and /bulk-search answer 2xx with an acknowledgement and no
+        # result rows - {item: {_id, status}} or {file, status: "in_progress"}; the credit for a
+        # HIT is taken later and is only visible on the free poll route. Settling the estimate here
+        # billed every submission the 20-row page default ($0.38), hit or miss (149 + 61 platform
+        # calls since 2026-08-20; NOT_FOUND verified free upstream 2026-09-09). treg cannot observe
+        # the outcome at response time, so the ack settles at 0 and the found-email credits are
+        # absorbed until terminal settlement exists. Synchronous bodies (`data` rows) and the
+        # per_call verify route (charged per address TESTED, so the estimate is honest) are untouched.
+        from . import icypeas
+        if icypeas.is_submission_ack(doc):
+            return 0
     if provider == "aviato" and mk.endpoint_id == "aviato.companies.enrich.bulk":
         rows = doc.get("companies")
         if isinstance(rows, list) and mk.unit_micro > 0:
@@ -263,6 +313,18 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         # envelope without `accounts` (an error shape) counts zero: pay-per-result means an answer
         # with no rows costs nothing.
         rows = doc.get("accounts")
+        return (sum(item is not None for item in rows) if isinstance(rows, list) else 0) * mk.unit_micro
+    if mk.endpoint_id in _SERANKING_RETURNED_KEYWORD_ROUTES and mk.cost_type == "per_result" \
+            and mk.unit_micro > 0:
+        # DERIVED by counting rows, the influencersclub rule: SE Ranking's keyword ideas bill 10
+        # credits per keyword RETURNED and report no charge, so the `keywords` list is the only
+        # bill there is. Before this the route was priced per INPUT keyword, and every call
+        # reserved and settled ONE unit whatever `limit` asked or the answer carried (verified live
+        # 2026-09-09 on treg's own meter: 5 keywords returned cost 50 credits against 10 charged,
+        # an empty answer cost 0 against 10 charged). An envelope without a `keywords` list (an
+        # error shape) counts zero: pay-per-row means an answer with no rows costs nothing. A body
+        # that is not a JSON object never reaches here and settles at the estimate.
+        rows = doc.get("keywords")
         return (sum(item is not None for item in rows) if isinstance(rows, list) else 0) * mk.unit_micro
     if provider == "dataforseo":
         cost = doc.get("cost")
@@ -317,6 +379,27 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
                 and isinstance(credits, (int, float)) and not isinstance(credits, bool) and credits >= 0):
             return int(credits * rate * 1_000_000 + 0.5)
         return None
+    if provider == "companyenrich" and cost and "minimum_units" in cost:
+        # DERIVED: CompanyEnrich's search pages bill per row RETURNED (`items`), with a documented
+        # floor on an empty page (2 credits for a person search, 1 for a company search). No rule
+        # here meant every 2xx settled at the estimate, i.e. the whole requested page: live
+        # 2026-09-09 an empty pageSize 10 people search cost 2 credits upstream and treg charged
+        # 20. The floor is catalog data (`cost.minimum_units`, in the cost block's own units), so
+        # this branch carries no number of its own. Anything that is not a JSON object with an
+        # `items` list (gzip, a buffer-truncated page, an error envelope) keeps the estimate.
+        items = doc.get("items")
+        if isinstance(items, list) and mk.unit_micro > 0:
+            return max(len(items), int(cost["minimum_units"])) * mk.unit_micro
+        return None
+    if provider == "serpstat" and mk.cost_type == "per_result" and mk.unit_micro > 0:
+        # DERIVED by counting rows in the JSON-RPC envelope (`application/call/serpstat.py`).
+        # Serpstat meters one credit per returned row and answers a rejected request as HTTP 200
+        # with an `error` object that costs nothing, so status-based billing charged the estimate
+        # both ways (verified live 2026-09-09: an error envelope billed 20 credits for 0 lines, a
+        # 12-row SERP billed 20 for 12). An unrecognised shape keeps the estimate.
+        from . import serpstat
+        rows = serpstat.billed_rows(doc)
+        return None if rows is None else rows * mk.unit_micro
     if provider == "tomba" and mk.endpoint_id == "tomba.companies.emails.list":
         # Live billing evidence: a non-empty page costs ceil(pageSize / 10) credits,
         # even when fewer emails are returned. The catalog supplies the frozen credit price.

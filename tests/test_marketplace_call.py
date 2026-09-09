@@ -140,6 +140,24 @@ async def test_tier1_registered_tool_wins(clients: AsyncClient):
     assert (await _telemetry(clients))["tool_name"] == "our-tikhub"
 
 
+async def test_tier1_two_hand_registered_same_host_tools_stay_ambiguous(clients: AsyncClient):
+    """Two hand-registered tools on the provider's host, neither tied to a registry connection:
+    nothing says which credential the caller meant, so the catalog call still 409s - and the
+    detail names the catalog id, both tools, and the named form that disambiguates."""
+    a = (await clients.post("/secrets", json={"name": "key-a", "value": "A"})).json()["id"]
+    b = (await clients.post("/secrets", json={"name": "key-b", "value": "B"})).json()["id"]
+    await clients.post("/tools", json={"name": "tikhub-a", "base_url": "https://api.tikhub.io", "secret_id": a})
+    await clients.post("/tools", json={"name": "tikhub-b", "base_url": "https://api.tikhub.io", "secret_id": b})
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    assert detail["error"] == "target_ambiguous"
+    assert detail["endpoint_id"] == EP
+    assert detail["tools"] == ["tikhub-a", "tikhub-b"]
+    assert detail["named_forms"] == [f"/call/tikhub-a{EP_PATH}", f"/call/tikhub-b{EP_PATH}"]
+    assert EP in detail["message"] and f"/call/tikhub-a{EP_PATH}" in detail["message"]
+
+
 async def test_catalog_only_route_cannot_be_shadowed_by_same_named_team_tool(clients: AsyncClient):
     """The directory route resolves the curated id directly; legacy `/call` still gives an exact
     same-named team tool precedence, preserving both contracts at once."""
@@ -488,9 +506,36 @@ def test_body_limit_reads_camel_case_and_nested_pagination_keys():
     # one row per listed item: moz `targets` (a 1-target body settled 20 quota rows live, $0.27 for $0.013)
     assert call_resolution._body_limit(json.dumps({"targets": ["moz.com"], "distributions": True}).encode()) == 1
     assert call_resolution._body_limit(json.dumps({"domains": ["a.com", "b.com"]}).encode()) == 2
-    # lusha decision-makers: `contactsLimit` caps contacts PER COMPANY and is the whole bill (1 credit
-    # each) — without it the route answered 44 rows for microsoft.com, $5.49 in one call (2026-09-02)
+    # lusha buying-group: `contactsLimit` caps contacts PER COMPANY and is the whole bill (1 credit
+    # each) - without it the route answered 44 rows for one company, $5.49 in one call (2026-09-02,
+    # on the since-retired decision-makers path, whose legacy handler never honoured the cap)
     assert call_resolution._body_limit(json.dumps({"companies": [{"domain": "microsoft.com"}], "contactsLimit": 5}).encode()) == 5
+
+
+async def test_retired_lusha_decision_makers_answers_410_with_its_successor_and_reserves_nothing(
+    clients: AsyncClient, monkeypatch,
+):
+    """A cached `lusha.x.decision-makers` call used to reach a legacy handler that ignored the
+    `contactsLimit` cap the reservation followed (Lusha removed the route 2026-08-12). The id is now
+    a tombstone: the platform key never loads, no hold is placed and the answer names the successor."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LUSHA", "PLATFORM-LUSHA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "lusha")
+    get_settings.cache_clear()
+    try:
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            200, b'{"results": [], "billing": {"creditsCharged": 44, "resultsReturned": 44}}'))
+        before, ledger_before = await _balance(clients), await _entries(clients)
+        r = await clients.post("/call/lusha.x.decision-makers",
+                               json={"companies": [{"domain": "example.com"}], "contactsLimit": 1})
+        assert r.status_code == 410, r.text
+        detail = r.json()["detail"]
+        assert "lusha.x.decision-makers is retired" in detail
+        assert "Use lusha.x.buying-group instead." in detail
+        assert "contactsLimit" in detail
+        assert await _balance(clients) == before
+        assert await _entries(clients) == ledger_before, "no hold was placed, so nothing to settle or release"
+    finally:
+        get_settings.cache_clear()
 
 
 async def test_provider_5xx_releases_the_hold(clients: AsyncClient, platform_on, monkeypatch):
@@ -2096,6 +2141,94 @@ def test_platform_request_constraints_do_not_require_a_price_table(body, valid):
 
 # ---- ContactOut ----
 
+@pytest.fixture
+def companyenrich_platform_on(monkeypatch):
+    """Enable only CompanyEnrich tier 4 for its page-settlement regressions."""
+    monkeypatch.setenv('TREG_PLATFORM_KEY_COMPANYENRICH', 'PLATFORM-COMPANYENRICH-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'companyenrich')
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def _companyenrich_page(count: int) -> bytes:
+    return json.dumps({'items': [{'id': i, 'name': f'Person {i}'} for i in range(count)],
+                       'page': 1, 'totalPages': 1, 'totalItems': count}).encode()
+
+
+@pytest.mark.parametrize(('endpoint', 'request_body', 'count', 'unit', 'reserved_rows', 'charged_units'), [
+    # people search: 2 credits ($0.0196) per person, 2-credit floor. Live 2026-09-09 an empty
+    # pageSize 10 page cost 2 credits upstream while treg settled the 10-row estimate (196,000).
+    ('companyenrich.people.search', {'pageSize': 10, 'domains': ['company.example']}, 0, 19_600, 10, 1),
+    ('companyenrich.people.search', {'pageSize': 10, 'domains': ['company.example']}, 3, 19_600, 10, 3),
+    ('companyenrich.people.search', {'pageSize': 10, 'domains': ['company.example']}, 10, 19_600, 10, 10),
+    ('companyenrich.people.search', {'positionQuery': ['Engineer']}, 0, 19_600, 20, 1),
+    ('companyenrich.people.search.scroll', {'pageSize': 5, 'domains': ['company.example']}, 0, 19_600, 5, 1),
+    ('companyenrich.people.search.scroll', {'pageSize': 5, 'domains': ['company.example']}, 2, 19_600, 5, 2),
+    # company search: 1 credit ($0.0098) per company, 1-credit floor; lookalikes 5 per company, 5 floor
+    ('companyenrich.companies.search', {'pageSize': 10, 'countries': ['US']}, 0, 9_800, 10, 1),
+    ('companyenrich.companies.search', {'pageSize': 10, 'countries': ['US']}, 2, 9_800, 10, 2),
+    ('companyenrich.companies.search.scroll', {'pageSize': 3, 'countries': ['US']}, 0, 9_800, 3, 1),
+    ('companyenrich.companies.similar', {'pageSize': 4, 'domains': ['company.example']}, 0, 49_000, 4, 1),
+    ('companyenrich.companies.similar.scroll', {'pageSize': 4, 'domains': ['company.example']}, 3, 49_000, 4, 3),
+])
+async def test_companyenrich_search_pages_settle_on_returned_items(
+    clients: AsyncClient, companyenrich_platform_on, monkeypatch,
+    endpoint, request_body, count, unit, reserved_rows, charged_units,
+):
+    """The reserve is the requested page; the bill is the returned rows, never below the
+    catalog's `minimum_units` floor. Before the rule every 2xx settled at the reserve."""
+    body = _companyenrich_page(count)
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(200, body))
+    before = await _balance(clients)
+    response = await clients.post(f'/call/{endpoint}', json=request_body)
+    assert response.status_code == 200, response.text
+    assert response.content == body, 'the relay stays faithful'
+    assert await _balance(clients) == before - charged_units * unit
+    telemetry = await _telemetry(clients)
+    assert telemetry['cost_estimated_micro'] == reserved_rows * unit, 'what the old settle charged'
+    assert telemetry['cost_observed_micro'] == charged_units * unit
+    assert telemetry['cost_charged_micro'] == charged_units * unit
+
+
+@pytest.mark.parametrize('body', [
+    b'not json', b'\x1f\x8b\x08\x00compressed', b'{"error": "unauthorized"}',
+    b'{"items": null}', b'{"items": {"0": {}}}', b'[]', b'',
+])
+async def test_companyenrich_unreadable_page_settles_at_the_estimate(
+    clients: AsyncClient, companyenrich_platform_on, monkeypatch, body,
+):
+    """No `items` list means the row count is unknown: the hold settles at the reserved page."""
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(200, body))
+    before = await _balance(clients)
+    response = await clients.post('/call/companyenrich.people.search',
+                                  json={'pageSize': 10, 'domains': ['company.example']})
+    assert response.status_code == 200
+    assert await _balance(clients) == before - 10 * 19_600
+    telemetry = await _telemetry(clients)
+    assert telemetry['cost_observed_micro'] is None
+    assert telemetry['cost_charged_micro'] == 10 * 19_600
+
+
+def test_companyenrich_page_floor_is_catalog_data_not_a_number_in_settle():
+    """The rule multiplies the catalog floor by the per-row price; endpoints without a declared
+    `minimum_units` (enrich, get-by-id, the async routes) keep their existing settlement."""
+    cat = catalog_store.load()
+    for eid in ('companyenrich.people.search', 'companyenrich.people.search.scroll',
+                'companyenrich.companies.search', 'companyenrich.companies.search.scroll',
+                'companyenrich.companies.similar', 'companyenrich.companies.similar.scroll'):
+        assert cat.by_id[eid]['cost']['minimum_units'] == 1, eid
+    mk = _mk('companyenrich', endpoint_id='companyenrich.people.search', cost_type='per_result', unit_micro=19_600)
+    assert call_settle._observed_cost_micro(mk, b'{"items": []}') == 19_600
+    assert call_settle._observed_cost_micro(mk, b'{"items": [{}, {}, {}]}') == 3 * 19_600
+    assert call_settle._observed_cost_micro(mk, b'{"page": 1}') is None
+    assert call_settle._observed_cost_micro(_mk('companyenrich', endpoint_id='companyenrich.people.search',
+                                                cost_type='per_result', unit_micro=0), b'{"items": []}') is None
+    assert 'minimum_units' not in cat.by_id['companyenrich.companies.enrich']['cost']
+    flat = _mk('companyenrich', endpoint_id='companyenrich.companies.enrich', cost_type='per_call', unit_micro=9_800)
+    assert call_settle._observed_cost_micro(flat, b'{"items": []}') is None
+
+
 def _contactout_cost(eid):
     return catalog_store.load().cost_view(
         catalog_store.load().by_id["contactout." + eid]["cost"], "contactout"
@@ -2482,3 +2615,448 @@ async def test_contactout_reveal_small_page_and_own_key_relay(clients, contactou
     reserves = [e for e in after["entries"]["items"] if e["kind"] == "reserve"]
     assert len(reserves) == (0 if own else 1)
     assert contactout.estimate(_contactout_cost("people.search.reveal"), {"reveal_info": True, "page_size": 1}) == 670000
+
+
+# ---- icypeas: async submissions settle at 0, bulk jobs reserve per row ----------------------------
+ICYPEAS_CREDIT = 19_000  # $0.019 per credit (fx.yaml); 1 credit per found email
+ICYPEAS_ACK = b'{"success": true, "item": {"_id": "mP6hHKABeMoKaEB1K1HF", "status": "NONE"}}'
+ICYPEAS_BULK_ACK = b'{"success": true, "status": "in_progress", "file": "L3mhHKAB9iupLhv96W-F"}'
+ICYPEAS_SYNC_ROWS = json.dumps({"success": True, "data": [
+    {"result": "https://www.linkedin.com/in/example-one", "status": "FOUND", "searchId": "a1"},
+    {"result": None, "status": "NOT_FOUND", "searchId": "a2"},
+]}).encode()
+
+
+@pytest.fixture
+def icypeas_platform_on(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "SYNTHETIC-ICYPEAS-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+# ---- serpstat: the JSON-RPC envelope is the bill (2026-09-09) ---------------------------------
+# Serpstat meters one API credit ("line") per RETURNED row and answers a rejected request as
+# HTTP 200 with an `error` object. Verified live against the account's own limits meter: an error
+# envelope cost 0 lines while treg settled the 20-row estimate (10,000 micro), and a getKeywordTop
+# that returned 12 rows cost exactly 12 lines while treg settled 20 credits. Two estimator misses
+# fed that: `_body_limit` never looked inside the JSON-RPC `params` (so `size` was ignored), and the
+# row-priced routes carried `unit: keyword`/`domain`, which the entity counter read as "one input".
+SERPSTAT_CREDIT = 500  # $0.00050 per API credit (fx.yaml serpstat) in micro-USD
+SERP_EP = "serpstat.google.serp.organic"
+
+
+def _rpc(method: str, **params) -> dict:
+    return {"id": "1", "method": method, "params": params}
+
+
+def _serp_rows(n: int) -> list[dict]:
+    return [{"position": i + 1, "url": f"https://site{i}.example/", "domain": f"site{i}.example"}
+            for i in range(n)]
+
+
+@pytest.fixture
+def serpstat_platform_on(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SERPSTAT", "SYNTHETIC-SERPSTAT-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "serpstat")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+async def test_icypeas_email_find_ack_settles_at_zero_and_closes_the_hold(
+        clients: AsyncClient, icypeas_platform_on, monkeypatch):
+    """/email-search answers 2xx with {item: {_id, status}} and no result: the hit that costs a
+    credit is only visible later on the free poll route. The hold reserved the 20-row page default
+    ($0.38) and used to settle at it, hit or miss (every platform success since 2026-08-20 charged
+    exactly 380000 micro; NOT_FOUND verified free upstream 2026-09-09). The ack now settles at 0:
+    the balance ends where it started and the reserve is closed by a settle, not left dangling."""
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, ICYPEAS_ACK))
+    before = await _balance(clients)
+    r = await clients.post("/call/icypeas.people.email.find",
+                           json={"firstname": "Jane", "lastname": "Doe", "domainOrCompany": "example.com"})
+    assert r.status_code == 200, r.text
+    assert r.content == ICYPEAS_ACK, "the relay stays faithful"
+    assert await _balance(clients) == before, "an acknowledgement must not charge"
+    row = await _telemetry(clients)
+    assert row["cost_estimated_micro"] == 20 * ICYPEAS_CREDIT == 380_000, "the old charge, now only the hold"
+    assert row["cost_observed_micro"] == 0
+    assert row["cost_charged_micro"] == 0
+    assert [e["kind"] for e in await _entries(clients)][:2] == ["settle", "reserve"]
+
+
+async def test_icypeas_bulk_search_reserves_one_row_per_submitted_row(
+        clients: AsyncClient, icypeas_platform_on, monkeypatch):
+    """A 25-row /bulk-search body holds 25 credits, not the 20-row page default - the rows live in
+    the top-level `data` array, which the generic body reader does not count. The job's
+    {file, status: in_progress} acknowledgement then settles at 0 like the single route."""
+    rows = [["Jane", "Doe", f"company{i}.example"] for i in range(25)]
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, ICYPEAS_BULK_ACK))
+    before = await _balance(clients)
+    r = await clients.post("/call/icypeas.bulk.search",
+                           json={"name": "q3 prospects", "task": "email-search", "data": rows})
+    assert r.status_code == 200, r.text
+    assert r.content == ICYPEAS_BULK_ACK
+    assert await _balance(clients) == before
+    row = await _telemetry(clients)
+    assert row["cost_estimated_micro"] == 25 * ICYPEAS_CREDIT == 475_000
+    assert row["cost_observed_micro"] == 0
+    assert row["cost_charged_micro"] == 0
+
+
+def test_icypeas_bulk_reserve_is_scoped_capped_and_defaults_without_rows():
+    cat = A.catalog_store.load()
+
+    def price(endpoint_id, body):
+        ep = cat.by_id[endpoint_id]
+        cv = cat.cost_view(ep["cost"], "icypeas")
+        return call_resolution._marketplace_pricing("icypeas", endpoint_id, cv, {}, json.dumps(body).encode())
+
+    unit = ICYPEAS_CREDIT
+    assert price("icypeas.bulk.search", {"task": "email-search", "data": [["A", "B", "a.example"]] * 3}) == (3 * unit, unit)
+    # capped like every other row count: a 5,000-row job cannot hold an org's whole balance
+    assert price("icypeas.bulk.search", {"task": "email-search", "data": [["A", "B", "a.example"]] * 5000}) == (100 * unit, unit)
+    # no usable `data` -> the generic page default, exactly as before
+    for body in ({"task": "email-search"}, {"data": []}, {"data": "rows"}, {"data": None}):
+        assert price("icypeas.bulk.search", body) == (20 * unit, unit)
+    # other icypeas routes with a `data` array are untouched (they keep the page default) ...
+    assert price("icypeas.people.identity.resolve.bulk",
+                 {"data": ["a@example.com", "b@example.com"]}) == (20 * 10 * unit, 10 * unit)
+    # ... and the generic body reader still does not treat `data` as a row list for anyone
+    assert call_resolution._body_limit(b'{"data": [1, 2, 3]}') is None
+
+
+@pytest.mark.parametrize("body", [ICYPEAS_ACK, ICYPEAS_BULK_ACK])
+@pytest.mark.parametrize("endpoint_id,cost_type", [
+    ("icypeas.people.email.find", "per_result"),
+    ("icypeas.bulk.search", "per_result"),
+    ("icypeas.companies.emails.role", "per_success"),
+])
+def test_icypeas_ack_shapes_settle_at_zero(body, endpoint_id, cost_type):
+    mk = _mk("icypeas", endpoint_id=endpoint_id, cost_type=cost_type, unit_micro=ICYPEAS_CREDIT)
+    assert call_settle._observed_cost_micro(mk, body) == 0
+
+
+@pytest.mark.parametrize("body", [
+    ICYPEAS_SYNC_ROWS,                                   # a synchronous answer carrying rows
+    b'{"success": true, "data": []}',                    # rows present, just none found
+    b'{"success": true, "items": [], "total": 0}',       # a poll page
+    b'{"success": false, "item": {"_id": "x"}}',         # not a success
+    b'{"item": {"_id": "x", "status": "NONE"}}',         # no success flag at all
+    b'{"success": true, "item": {"status": "NONE"}}',    # no id
+    b'{"success": true, "file": "x"}',                   # bulk shape without a status
+    b'{"success": true}', b'[]', b'not json', b'',
+])
+def test_icypeas_non_ack_bodies_keep_the_estimate(body):
+    """Only the two acknowledgement shapes settle at zero; a synchronous body with `data` rows -
+    identity.resolve.bulk, profile.url.bulk, scrape.bulk - and anything unrecognised keep the
+    existing behaviour (the estimate)."""
+    mk = _mk("icypeas", endpoint_id="icypeas.people.identity.resolve.bulk", cost_type="per_result",
+             unit_micro=10 * ICYPEAS_CREDIT)
+    assert call_settle._observed_cost_micro(mk, body) is None
+
+
+def test_icypeas_ack_rule_leaves_per_call_verify_and_the_free_poll_route_alone():
+    """/email-verification is charged per address TESTED, so its ack settles at the estimate; the
+    poll route is free in the catalog and must stay so (it is where the provider's charge shows)."""
+    mk = _mk("icypeas", endpoint_id="icypeas.people.email.verify", cost_type="per_call")
+    assert call_settle._observed_cost_micro(mk, ICYPEAS_ACK) is None
+    poll = A.catalog_store.load().by_id["icypeas.search.results.read"]
+    assert poll["cost"]["type"] == "free" and poll["cost"]["value"] == 0
+def test_body_limit_reads_jsonrpc_params():
+    """A JSON-RPC envelope carries the request under `params`; the row signal lives there."""
+    lim = call_resolution._body_limit
+    assert lim(json.dumps(_rpc("SerpstatKeywordProcedure.getKeywordTop", keyword="seo", se="g_us", size=10)).encode()) == 10
+    # no size: no signal, so the page default applies rather than a guess
+    assert lim(json.dumps(_rpc("SerpstatKeywordProcedure.getKeywordTop", keyword="seo", se="g_us")).encode()) is None
+    # `size` beats the optional `keywords` FILTER list that ranked_keywords also accepts
+    assert lim(json.dumps(_rpc("SerpstatDomainProcedure.getDomainKeywords", domain="a.example", se="g_us",
+                               keywords=["a", "b"], size=100)).encode()) == 100
+    # not an envelope: no `method`, or `params` is not an object
+    assert lim(b'{"params": {"size": 10}}') is None
+    assert lim(b'{"method": "x", "params": [{"size": 10}]}') is None
+    # a top-level limit still wins over the envelope, and plain bodies are unchanged
+    assert lim(b'{"method": "x", "limit": 3, "params": {"size": 10}}') == 3
+    assert lim(b'{"pagination": {"size": 4}}') == 4
+
+
+def test_serpstat_row_priced_routes_reserve_the_requested_size():
+    """The catalog's real cost blocks, priced through fx.yaml: `size` is the reserve on every route
+    priced per RETURNED row, and the request's inputs stay the reserve where the price is per input."""
+    cat = catalog_store.load()
+
+    def est(ep_id: str, **params) -> int:
+        ep = cat.by_id[ep_id]
+        method = ep["input"]["body"]["method"]["example"]
+        return call_resolution._platform_estimate_micro(
+            cat.cost_view(ep["cost"], "serpstat"), {}, json.dumps(_rpc(method, **params)).encode())
+
+    assert est(SERP_EP, keyword="seo", se="g_us", size=10) == 10 * SERPSTAT_CREDIT
+    assert est("serpstat.google.domain.ranked_keywords", domain="a.example", se="g_us", size=100) == 100 * SERPSTAT_CREDIT
+    assert est("serpstat.google.keywords.ideas", keyword="seo", se="g_us", size=25) == 25 * SERPSTAT_CREDIT
+    assert est("serpstat.web.linking_domains.list", query="a.example", size=40) == 40 * SERPSTAT_CREDIT
+    # the reserve is capped: the settle trues up a 1,000-row page from the rows that come back
+    assert est(SERP_EP, keyword="seo", se="g_us", size=1000) == call_resolution._PLATFORM_PAGE_MAX * SERPSTAT_CREDIT
+    # no size: the page default, never the one-input reading the old `unit: keyword` produced
+    assert est("serpstat.google.domain.ranked_keywords", domain="a.example", se="g_us") == call_resolution._PLATFORM_PAGE_DEFAULT * SERPSTAT_CREDIT
+    # priced per INPUT: the batch volume and overview methods count what the request names
+    assert est("serpstat.google.keywords.volume", keywords=["a", "b", "c"], se="g_us") == 3 * SERPSTAT_CREDIT
+    assert est("serpstat.google.domain.overview", domains=["a.example", "b.example"], se="g_us") == 2 * 5 * SERPSTAT_CREDIT
+
+
+@pytest.mark.parametrize(("size", "envelope", "estimate_credits", "credits"), [
+    # the live error case: HTTP 200 + `error`, 0 lines upstream, 20 credits charged before the fix
+    (None, {"id": "1", "error": {"code": -32000, "message": "Invalid params"}}, 20, 0),
+    # the live success case: 12 rows cost 12 lines, 20 credits charged before the fix
+    (None, {"id": "1", "result": {"data": {"top": _serp_rows(12)}, "summary_info": {"left_lines": 988}}}, 20, 12),
+    # `size` is the reserve; the rows are the charge
+    (10, {"id": "1", "result": {"data": {"top": _serp_rows(10)}, "summary_info": {"left_lines": 978}}}, 10, 10),
+    (10, {"id": "1", "result": {"data": {"top": _serp_rows(3)}, "summary_info": {"left_lines": 975}}}, 10, 3),
+    # a served result with no rows bills the documented 1-credit minimum, an error never does
+    (10, {"id": "1", "result": {"data": {"top": []}, "summary_info": {"left_lines": 974}}}, 10, 1),
+    (10, {"id": "1", "error": {"code": -32000, "message": "Limit exceeded"}}, 10, 0),
+])
+async def test_serpstat_settles_on_the_envelope_rows(
+    clients: AsyncClient, serpstat_platform_on, monkeypatch, size, envelope, estimate_credits, credits,
+):
+    params = {"keyword": "example keyword", "se": "g_us"}
+    if size is not None:
+        params["size"] = size
+    body = json.dumps(envelope).encode()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, body))
+    before = await _balance(clients)
+    response = await clients.post(f"/call/{SERP_EP}", json=_rpc("SerpstatKeywordProcedure.getKeywordTop", **params))
+    assert response.status_code == 200, response.text
+    assert response.content == body  # the relay stays faithful: the envelope is read, never rewritten
+    assert await _balance(clients) == before - credits * SERPSTAT_CREDIT
+    telemetry = await _telemetry(clients)
+    assert telemetry["cost_estimated_micro"] == estimate_credits * SERPSTAT_CREDIT
+    assert telemetry["cost_observed_micro"] == credits * SERPSTAT_CREDIT
+    assert telemetry["cost_charged_micro"] == credits * SERPSTAT_CREDIT
+
+
+async def test_serpstat_ranked_keywords_reserves_size_and_settles_rows(
+    clients: AsyncClient, serpstat_platform_on, monkeypatch,
+):
+    """`unit: keyword` had put this route on the per-input path: `size=100` reserved ONE credit
+    and, with no settle rule, charged one credit for a 100-row page."""
+    body = json.dumps({"id": "1", "result": {"data": _serp_rows(3), "summary_info": {"left_lines": 9}}}).encode()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, body))
+    before = await _balance(clients)
+    response = await clients.post("/call/serpstat.google.domain.ranked_keywords", json=_rpc(
+        "SerpstatDomainProcedure.getDomainKeywords", domain="a.example", se="g_us", size=100))
+    assert response.status_code == 200, response.text
+    assert await _balance(clients) == before - 3 * SERPSTAT_CREDIT
+    telemetry = await _telemetry(clients)
+    assert telemetry["cost_estimated_micro"] == 100 * SERPSTAT_CREDIT
+    assert telemetry["cost_charged_micro"] == 3 * SERPSTAT_CREDIT
+
+
+@pytest.mark.parametrize(("envelope", "rows"), [
+    ({"id": "1", "error": {"code": -32000, "message": "x"}}, 0),
+    ({"id": "1", "error": "Invalid token"}, 0),
+    ({"id": "1", "result": {"data": [{}, {}, {}], "summary_info": {"left_lines": 1}}}, 3),
+    ({"id": "1", "result": {"data": {"top": [{}, {}]}, "summary_info": {}}}, 2),
+    ({"id": "1", "result": {"data": {"top": []}}}, 1),
+    ({"id": "1", "result": {"data": []}}, 1),
+    ({"id": "1", "result": {"data": {}}}, 1),
+    # keyed by the input, under `data` or directly under `result`; `summary_info` is never a row
+    ({"id": "1", "result": {"data": {"seo": {"cost": 1}, "sem": {"cost": 2}}, "summary_info": {"left_lines": 1}}}, 2),
+    ({"id": "1", "result": {"a.example": {"visible": 1}, "b.example": {"visible": 2}, "summary_info": {"left_lines": 1}}}, 2),
+    ({"id": "1", "result": [{}, {}]}, 2),
+])
+def test_serpstat_settle_counts_envelope_rows(envelope, rows):
+    mk = _mk("serpstat", endpoint_id=SERP_EP, cost_type="per_result", unit_micro=SERPSTAT_CREDIT)
+    assert call_settle._observed_cost_micro(mk, json.dumps(envelope).encode()) == rows * SERPSTAT_CREDIT
+
+
+@pytest.mark.parametrize("body", [
+    b"{}", b"[]", b"not json", b'{"result": null}', b'{"result": "x"}', b'{"result": {"data": "x"}}',
+    b'{"result": {"data": 7}}', b'{"error": null, "result": 3}',
+])
+def test_serpstat_unknown_envelopes_keep_the_estimate(body):
+    mk = _mk("serpstat", endpoint_id=SERP_EP, cost_type="per_result", unit_micro=SERPSTAT_CREDIT)
+    assert call_settle._observed_cost_micro(mk, body) is None
+
+
+def test_serpstat_row_count_does_not_apply_to_flat_routes():
+    """backlinks.summary is 5 credits per CALL and answers one object under `data`."""
+    mk = _mk("serpstat", endpoint_id="serpstat.web.backlinks.summary", cost_type="per_call", unit_micro=5 * SERPSTAT_CREDIT)
+    assert call_settle._observed_cost_micro(mk, b'{"id": "1", "result": {"data": {"referring_domains": 3}}}') is None
+# ---------------------------------------------------------------------------------------------
+# 2026-09-09: SE Ranking keyword ideas bill per keyword RETURNED, not per seed keyword
+
+SERANKING_IDEAS = "seranking.google.keywords.ideas"
+SERANKING_ROW_MICRO = 1_790  # 10 credits × $0.000179 (fx.yaml) per returned keyword
+
+
+def _seranking_ideas_body(count: int) -> bytes:
+    return json.dumps({"total": 3372, "keywords": [
+        {"keyword": f"avocado idea {i}", "volume": 100 + i, "cpc": 0.03} for i in range(count)
+    ]}).encode()
+
+
+def test_seranking_ideas_catalog_prices_per_returned_row():
+    """The catalog fact the fix rests on: the route is `unit: row` with the API's 100-row default,
+    while the per-INPUT sibling keeps `unit: keyword` (its reserve is its bill)."""
+    cat = catalog_store.load()
+    ideas = cat.by_id[SERANKING_IDEAS]["cost"]
+    assert (ideas["unit"], ideas["page_default"]) == ("row", 100)
+    assert cat.by_id["seranking.google.keywords.volume"]["cost"]["unit"] == "keyword"
+    assert call_resolution._usd_to_micro(cat.cost_view(ideas, "seranking")["usd"]) == SERANKING_ROW_MICRO
+
+
+def test_platform_estimate_reserves_the_requested_rows_or_the_provider_page():
+    """Row-priced: `limit` rows; with no limit, the catalog's own `page_default` (the API's 100),
+    capped at the platform max; an absent or malformed page_default keeps the 20-row default."""
+    est = call_resolution._platform_estimate_micro
+    per_row = {"type": "per_result", "unit": "row", "usd": 0.00179, "page_default": 100}
+    assert est(per_row, {"keyword": "avocado", "limit": "5"}) == 5 * SERANKING_ROW_MICRO
+    assert est(per_row, {"keyword": "avocado"}) == 100 * SERANKING_ROW_MICRO
+    assert est(per_row, {"keyword": "avocado", "limit": "500"}) == 100 * SERANKING_ROW_MICRO
+    assert est({**per_row, "page_default": 250}, {}) == 100 * SERANKING_ROW_MICRO, "capped at the platform max"
+    for bad in (None, 0, -1, True, "100", 1.5):
+        assert est({**per_row, "page_default": bad}, {}) == 20 * SERANKING_ROW_MICRO
+    # the per-INPUT sibling still counts the keywords the caller SENT, whatever limit says
+    per_kw = {"type": "per_result", "unit": "keyword", "usd": 0.00179}
+    assert est(per_kw, {"source": "us", "limit": "5"}, b'{"keywords": ["a", "b"]}') == 2 * SERANKING_ROW_MICRO
+
+
+@pytest.mark.parametrize(("query", "count", "reserved_rows", "charged_rows"), [
+    ("&limit=5", 5, 5, 5),        # the live case: 5 keywords returned cost 50 credits, treg took 10
+    ("&limit=5", 0, 5, 0),        # the live case: an empty answer cost 0, treg took 10
+    ("&limit=10", 3, 10, 3),      # fewer rows than asked settle at the rows
+    ("&limit=5", 7, 5, 7),        # more rows than asked is an overrun the settle trues up
+    ("", 100, 100, 100),          # no limit: the API answers (and bills) its 100-row default
+])
+async def test_seranking_ideas_settles_on_returned_keywords(
+    clients: AsyncClient, monkeypatch, query, count, reserved_rows, charged_rows,
+):
+    """Reproduces the 2026-09-09 finding through the platform tier: every call used to reserve and
+    settle ONE keyword unit ($0.00179) because the route was priced per input keyword. Now the hold
+    is `limit` rows and the charge is the returned `keywords` list, in integer micro-USD."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SERANKING", "SYNTHETIC-SERANKING-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "seranking")
+    get_settings.cache_clear()
+    body = _seranking_ideas_body(count)
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, body))
+    before = await _balance(clients)
+    r = await clients.get(f"/call/{SERANKING_IDEAS}?source=us&keyword=avocado{query}")
+    assert r.status_code == 200, r.text
+    assert r.content == body, "the relay stays faithful: counting rows never rewrites the answer"
+    assert await _balance(clients) == before - charged_rows * SERANKING_ROW_MICRO
+    telemetry = await _telemetry(clients)
+    assert telemetry["cost_estimated_micro"] == reserved_rows * SERANKING_ROW_MICRO
+    assert telemetry["cost_observed_micro"] == charged_rows * SERANKING_ROW_MICRO
+    assert telemetry["cost_charged_micro"] == charged_rows * SERANKING_ROW_MICRO
+    get_settings.cache_clear()
+
+
+async def test_seranking_ideas_unparseable_body_settles_at_the_estimate(clients: AsyncClient, monkeypatch):
+    """A 2xx whose body is not JSON carries no row count: the hold settles at what was reserved."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SERANKING", "SYNTHETIC-SERANKING-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "seranking")
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b"<html>gateway</html>"))
+    before = await _balance(clients)
+    r = await clients.get(f"/call/{SERANKING_IDEAS}?source=us&keyword=avocado&limit=5")
+    assert r.status_code == 200
+    assert await _balance(clients) == before - 5 * SERANKING_ROW_MICRO
+    telemetry = await _telemetry(clients)
+    assert telemetry["cost_observed_micro"] is None
+    assert telemetry["cost_charged_micro"] == 5 * SERANKING_ROW_MICRO
+    get_settings.cache_clear()
+
+
+def test_seranking_ideas_observed_cost_counts_the_keywords_list():
+    mk = _mk("seranking", endpoint_id=SERANKING_IDEAS, cost_type="per_result", unit_micro=SERANKING_ROW_MICRO)
+    assert call_settle._observed_cost_micro(mk, _seranking_ideas_body(5)) == 5 * SERANKING_ROW_MICRO
+    assert call_settle._observed_cost_micro(mk, _seranking_ideas_body(0)) == 0
+    assert call_settle._observed_cost_micro(mk, b'{"keywords": [null, {"keyword": "x"}]}') == SERANKING_ROW_MICRO
+    # an envelope with no rows (an error shape on a 2xx) costs nothing: pay-per-row
+    assert call_settle._observed_cost_micro(mk, b'{"error": "bad source"}') == 0
+    assert call_settle._observed_cost_micro(mk, b'{"keywords": null}') == 0
+    # no JSON object, no count: the estimate stands
+    for body in (b"not json", b"[1, 2, 3]", b""):
+        assert call_settle._observed_cost_micro(mk, body) is None
+    # the rule is keyed on the route, not the provider: the per-INPUT sibling and the row-priced
+    # backlink lists keep settling at their reserve
+    for other in ("seranking.google.keywords.volume", "seranking.web.backlinks.list"):
+        sibling = _mk("seranking", endpoint_id=other, cost_type="per_result", unit_micro=SERANKING_ROW_MICRO)
+        assert call_settle._observed_cost_micro(sibling, b'{"keywords": []}') is None
+# ---- apify: the run-sync response IS the dataset, and the actor bills per item -----------------
+
+def test_body_limit_reads_apify_max_items_and_results_limit():
+    """Apify actors take their per-query cap as `maxItems` in the input body (`resultsLimit` for the
+    Facebook actor). Neither was a limit signal, so every job search reserved the 20-row page and,
+    with nothing to settle on, charged it: 3,019 calls at a flat $0.02 between 2026-08-20 and
+    2026-09-09. `maxItems: 0` means "every page" for the actor and must keep the page default."""
+    assert call_resolution._body_limit(json.dumps({"jobTitles": ["attorney"], "maxItems": 5}).encode()) == 5
+    assert call_resolution._body_limit(json.dumps({"startUrls": [{"url": "https://x.example"}], "resultsLimit": 3}).encode()) == 3
+    assert call_resolution._body_limit(json.dumps({"jobTitles": ["attorney"], "maxItems": 0}).encode()) is None
+    assert call_resolution._body_limit(json.dumps({"jobTitles": ["attorney"], "maxItems": True}).encode()) is None
+    assert call_resolution._body_limit(json.dumps({"jobTitles": ["attorney"], "maxItems": "5"}).encode()) is None
+
+
+def test_apify_per_result_estimate_reserves_the_requested_items():
+    """A `maxItems: 5` body on a $0.001/item actor reserves 5 rows, and the query-string cap counts
+    the same way; without either signal the estimate stays the 20-row page."""
+    cost = {"type": "per_result", "usd": 0.001}
+    assert call_resolution._platform_estimate_micro(cost, {}, json.dumps({"jobTitles": ["x"], "maxItems": 5}).encode()) == 5_000
+    assert call_resolution._platform_estimate_micro(cost, {"maxItems": "5"}, json.dumps({"jobTitles": ["x"]}).encode()) == 5_000
+    assert call_resolution._platform_estimate_micro(cost, {"maxItems": "0"}, json.dumps({"jobTitles": ["x"]}).encode()) == 20_000
+    assert call_resolution._platform_estimate_micro(cost, {}, json.dumps({"jobTitles": ["x"]}).encode()) == 20_000
+
+
+@pytest.mark.parametrize(("body", "micro"), [
+    (json.dumps([{"id": "1", "title": "Attorney"}]).encode(), 1_000),
+    (json.dumps([{"id": str(i)} for i in range(30)]).encode(), 30_000),
+    (b"[]", 0),
+])
+def test_apify_per_result_settles_on_the_items_delivered(body, micro):
+    mk = _mk("apify", endpoint_id="apify.linkedin.search.jobs", cost_type="per_result", unit_micro=1_000)
+    assert call_settle._observed_cost_micro(mk, body) == micro
+
+
+@pytest.mark.parametrize("body", [
+    b"not json", b'[{"id": "1"}, {"id": "2"', b"\x1f\x8b\x08\x00garbage", b'{"error": {"type": "run-failed"}}', b"42",
+])
+def test_apify_unknown_shapes_settle_at_the_estimate(body):
+    """Gzip, a body the metered buffer truncated mid-array, or an envelope we did not expect: the
+    count is unknown, so the estimate stands rather than a guess."""
+    mk = _mk("apify", endpoint_id="apify.linkedin.search.jobs", cost_type="per_result", unit_micro=1_000)
+    assert call_settle._observed_cost_micro(mk, body) is None
+
+
+def test_apify_item_count_does_not_apply_outside_per_result():
+    assert call_settle._observed_cost_micro(_mk("apify", cost_type="per_call", unit_micro=1_000), b"[1, 2]") is None
+    assert call_settle._observed_cost_micro(_mk("apify", cost_type="per_result", unit_micro=0), b"[1, 2]") is None
+
+
+@pytest.mark.parametrize(("query", "body_extra", "items", "estimate", "charged"), [
+    ("", {}, 1, 20_000, 1_000),          # the old flat $0.02: no cap read, one job answered
+    ("", {"maxItems": 5}, 3, 5_000, 3_000),
+    ("?maxItems=5&maxTotalChargeUsd=0.05", {"maxItems": 5}, 30, 5_000, 30_000),  # overrun: settle bills what came back
+    ("", {"maxItems": 5}, 0, 5_000, 0),
+])
+async def test_apify_job_search_reserves_the_cap_and_settles_on_the_array(
+    clients: AsyncClient, platform_on, monkeypatch, query, body_extra, items, estimate, charged,
+):
+    """End to end through the real catalog row ($0.001 per job): the estimate follows `maxItems`
+    and the settle follows the dataset array, so a one-job answer no longer costs the 20-row page."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_APIFY", "PLATFORM-APIFY-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apify")
+    get_settings.cache_clear()
+    upstream = json.dumps([{"id": str(i), "title": "Attorney"} for i in range(items)]).encode()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, upstream))
+    before = await _balance(clients)
+    response = await clients.post(f"/call/apify.linkedin.search.jobs{query}",
+                                  json={"jobTitles": ["attorney"], "postedLimit": "month", **body_extra})
+    assert response.status_code == 200
+    assert response.content == upstream
+    assert await _balance(clients) == before - charged
+    telemetry = await _telemetry(clients)
+    assert telemetry["cost_estimated_micro"] == estimate
+    assert telemetry["cost_observed_micro"] == charged
+    assert telemetry["cost_charged_micro"] == charged

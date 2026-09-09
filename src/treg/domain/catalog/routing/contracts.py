@@ -163,12 +163,73 @@ def adapter_accepts(adapter: Adapter, identity: dict[str, Any]) -> tuple[str, ..
 
 # ---- verification ---------------------------------------------------------------------------
 
+_PLACEHOLDER = {"list": ["x"], "int": 1, "url": "https://www.example.com/x"}
+
+
+def required_inputs(endpoint: dict) -> tuple[str, ...]:
+    """Every input the endpoint's own YAML marks `required: true`, as adapter targets
+    (`body.roles`, `queryParams.domain`, `pathParams.id`). A param required only under another
+    authorization method (`authorization_methods`) is not required of this route."""
+    inp = endpoint.get("input") or {}
+    method = str(endpoint.get("authorization_method") or "") or next(iter(endpoint.get("authorization_methods") or ()), "")
+    out: list[str] = []
+    for where in ("pathParams", "queryParams", "body"):
+        params = inp.get(where)
+        if not isinstance(params, dict):
+            continue
+        for k, v in params.items():
+            if not (isinstance(v, dict) and v.get("required")):
+                continue
+            if v.get("authorization_methods") and method not in v["authorization_methods"]:
+                continue
+            out.append(f"{where}.{k}")
+    return tuple(out)
+
+
+def missing_required_inputs(adapter: Adapter, contract: Contract, endpoint: dict, variant: tuple[str, ...]) -> list[str]:
+    """The endpoint's required inputs this variant CANNOT produce - through `in`, `in_expr` or
+    `const`, with only the variant's keys, the contract's derivations and the filters' defaults
+    in hand. Built by running the adapter itself on a placeholder identity, so the answer is the
+    request the router would actually send, not a reading of the YAML. `findymail.search.domain`
+    once accepted `{company_domain}` alone against a body whose `roles` is required: every routed
+    call to it was a vendor 4xx by construction, which the router took for the caller's fault."""
+    ident = {k: _PLACEHOLDER.get(contract.identity_types.get(k, "str"), "x") for k in variant}
+    ident, _ = canonical_identity(contract, ident)
+    # The variant the router would send for THIS caller: the first accepted one the derived identity
+    # completes (`plan.py`), which is how `{first_name, last_name, domain}` reaches a `body.name`.
+    q, b = adapter.to_upstream(ident, adapter_accepts(adapter, ident) or variant)
+    bare_array = isinstance(b, list)
+    if bare_array:
+        b = b[0] if b and isinstance(b[0], dict) else {}
+    doc = {"queryParams": q, "pathParams": q, "body": b}  # path params travel as query values
+    missing = []
+    for target in required_inputs(endpoint):
+        where, name = target.split(".", 1)
+        spec = ((endpoint.get("input") or {}).get(where) or {}).get(name) or {}
+        if bare_array and where == "body" and str(spec.get("type") or "").startswith("array"):
+            # `input: {type: array}` on a bare-array body (brightdata) labels the array itself,
+            # not a wrapper key; dataforseo's task fields are read from the first task.
+            if not b:
+                missing.append(target)
+            continue
+        if P.get_path(doc, target) in (None, "", [], {}):
+            missing.append(target)
+    return missing
+
+
 def verify(adapter: Adapter, contract: Contract, endpoint: dict, example: Any) -> tuple[bool, str]:
     """Fixture round-trip: `in` must reproduce the endpoint's own `test_request` from the contract's
-    view of it, and `out` must fill every required core field from the example response (or the
-    example must be a recognised miss). Anything else = not a candidate."""
+    view of it, every accepted identity variant must be able to fill every `required: true` input
+    of the endpoint, and `out` must fill every required core field from the example response (or
+    the example must be a recognised miss). Anything else = not a candidate."""
     if not adapter.accepts or not adapter.out_map or not adapter.miss:
         return False, "adapter incomplete"
+    for variant in adapter.accepts:
+        if not all(k in contract.identity_types for k in variant):
+            return False, f"accepts {{{', '.join(variant)}}}, which is not an identity of the contract"
+        missing = missing_required_inputs(adapter, contract, endpoint, variant)
+        if missing:
+            return False, f"in: {{{', '.join(variant)}}} cannot produce required {missing}"
     tr = endpoint.get("test_request") or {}
     # Reconstruct the identity from the test request through the adapter's own `in` map.
     ident: dict[str, Any] = {}

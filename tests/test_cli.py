@@ -777,6 +777,35 @@ def test_catalog_get_renders_params_siblings_and_the_command(monkeypatch, capsys
     assert '"comments"' in out                                      # the example response, inline
 
 
+def test_catalog_get_says_own_key_for_a_platform_blocked_row(monkeypatch, capsys):
+    """The CLI's RUN IT block mirrors the API hint: a `platform_blocked` row is listed because a
+    team's OWN key serves it, so "the key is injected server-side" would be the promise the call
+    then breaks."""
+    reason = "Results are retrieved through task_get, which treg does not serve on the shared key; connect your own DataForSEO key."
+    body = {
+        "endpoint": {
+            "id": "dataforseo.x.on-page-task-post", "provider": "dataforseo", "provider_display": "DataForSEO",
+            "summary": "Start a crawl", "method": "POST", "path": "/on_page/task_post",
+            "scope": "any_account", "tier": "extended", "platform_blocked": reason, "platform_eligible": False,
+            "cost": {"type": "per_call", "value": 0.018, "currency": "USD", "usd": 0.018},
+            "verified": None, "docs_url": "", "has_example": False, "input": None,
+            "capability": "", "platform": "web", "platform_label": "Web"},
+        "provider": {"service": "dataforseo", "display_name": "DataForSEO"},
+        "siblings": [],
+        "call_template": "treg call dataforseo /on_page/task_post --body '[{\"target\":\"example.com\"}]'",
+        "example_response": None,
+        "hints": [],
+    }
+    _stub_catalog_client(monkeypatch, {"/catalog/endpoints/dataforseo.x.on-page-task-post": _CatalogResp(body)})
+    cli.cmd_catalog(cli.build_parser().parse_args(
+        ["catalog", "get", "dataforseo.x.on-page-task-post"]), {"base_url": "http://x"})
+    out = capsys.readouterr().out
+    assert body["call_template"] in out
+    assert "injected" not in out
+    assert "your team's own dataforseo key" in out
+    assert "treg connections connect --provider dataforseo" in out and reason in out
+
+
 def test_a_credit_price_reads_as_dollars_with_the_credits_behind_it():
     """A bare credit count is not a price — a reader cannot compare "1 credit" to "$0.001". When
     the server priced the credit, dollars lead; only an unpriced credit shows alone."""

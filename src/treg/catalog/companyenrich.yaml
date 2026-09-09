@@ -312,11 +312,12 @@ endpoints:
       currency: credit
       per: 1
       unit: record
+      minimum_units: 1  # an empty page still bills one row's credits; settle reads this floor
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
       confidence: verified
-      note: "1 credit PER COMPANY RETURNED — `pageSize` is the price. 1-credit minimum when nothing matches. A `semanticQuery` search is 2 credits per company instead. VERIFIED 2026-08-20: pageSize 1 moved the meter by exactly 1."
+      note: "1 credit PER COMPANY RETURNED — `pageSize` is the price. 1-credit minimum when nothing matches. A `semanticQuery` search is 2 credits per company instead. VERIFIED 2026-08-20: pageSize 1 moved the meter by exactly 1. treg settles on the returned `items` count with that floor (`minimum_units`), not on the requested pageSize."
     docs_url: https://docs.companyenrich.com/reference/post_companies-search
     verified: '2026-08-20'
     example_response: examples/companyenrich.companies.search.json
@@ -343,11 +344,12 @@ endpoints:
       currency: credit
       per: 1
       unit: record
+      minimum_units: 1  # an empty page still bills one row's credits; settle reads this floor
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
       confidence: verified
-      note: "1 credit per company returned, 1-credit minimum on an empty page. VERIFIED live 2026-08-20."
+      note: "1 credit per company returned, 1-credit minimum on an empty page. VERIFIED live 2026-08-20. treg settles on the returned `items` count with that floor (`minimum_units`)."
     docs_url: https://docs.companyenrich.com/reference/post_companies-search-scroll
     verified: '2026-08-20'
     example_response: examples/companyenrich.companies.search.scroll.json
@@ -426,11 +428,12 @@ endpoints:
       currency: credit
       per: 1
       unit: record
+      minimum_units: 1  # an empty page still bills one row's credits; settle reads this floor
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
       confidence: verified
-      note: "5 credits PER COMPANY RETURNED, and 5 credits even when nothing matches. VERIFIED 2026-08-20: pageSize 1 moved the credit meter by exactly 5."
+      note: "5 credits PER COMPANY RETURNED, and 5 credits even when nothing matches. VERIFIED 2026-08-20: pageSize 1 moved the credit meter by exactly 5. treg settles on the returned `items` count with that floor (`minimum_units`)."
     docs_url: https://docs.companyenrich.com/reference/post_companies-similar
     verified: '2026-08-20'
     example_response: examples/companyenrich.companies.similar.json
@@ -458,11 +461,12 @@ endpoints:
       currency: credit
       per: 1
       unit: record
+      minimum_units: 1  # an empty page still bills one row's credits; settle reads this floor
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
       confidence: verified
-      note: "5 credits per company returned, 5 on an empty page. VERIFIED live 2026-08-20."
+      note: "5 credits per company returned, 5 on an empty page. VERIFIED live 2026-08-20. treg settles on the returned `items` count with that floor (`minimum_units`)."
     docs_url: https://docs.companyenrich.com/reference/post_companies-similar-scroll
     verified: '2026-08-20'
     example_response: examples/companyenrich.companies.similar.scroll.json
@@ -689,11 +693,12 @@ endpoints:
       currency: credit
       per: 1
       unit: record
+      minimum_units: 1  # an empty page still bills one row's credits; settle reads this floor
       source: docs
       source_url: https://companyenrich.com/pricing
-      checked: '2026-08-20'
+      checked: '2026-09-09'
       confidence: verified
-      note: "2 credits PER PERSON RETURNED — pageSize is the price — with a 2-credit minimum on an empty result. VERIFIED 2026-08-20: pageSize 1 moved the credit meter by exactly 2."
+      note: "2 credits PER PERSON RETURNED — pageSize is the price — with a 2-credit minimum on an empty result. VERIFIED 2026-08-20: pageSize 1 moved the credit meter by exactly 2; RE-VERIFIED 2026-09-09: an empty pageSize 10 page moved it by exactly 2. treg settles on the returned `items` count with that floor (`minimum_units`), not on the requested pageSize."
     docs_url: https://docs.companyenrich.com/reference/post_people-search
     verified: '2026-08-20'
     example_response: examples/companyenrich.people.search.json
@@ -722,11 +727,12 @@ endpoints:
       currency: credit
       per: 1
       unit: record
+      minimum_units: 1  # an empty page still bills one row's credits; settle reads this floor
       source: docs
       source_url: https://companyenrich.com/pricing
       checked: '2026-08-20'
       confidence: verified
-      note: "2 credits per person returned, 2-credit minimum on an empty page. VERIFIED live 2026-08-20."
+      note: "2 credits per person returned, 2-credit minimum on an empty page. VERIFIED live 2026-08-20. treg settles on the returned `items` count with that floor (`minimum_units`)."
     docs_url: https://docs.companyenrich.com/reference/post_people-search-scroll
     verified: '2026-08-20'
     example_response: examples/companyenrich.people.search.scroll.json

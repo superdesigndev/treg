@@ -26,6 +26,7 @@ sources:
   - src/treg/catalog/tomba.yaml
   - src/treg/catalog/examples/tomba.people.email.verify.json
   - src/treg/catalog/examples/findymail.search.business-profile.json
+  - src/treg/catalog/lusha.yaml
   - src/treg/domain/catalog/routing/__init__.py
   - src/treg/domain/catalog/routing/contracts.py
   - src/treg/domain/catalog/routing/paths.py
@@ -85,6 +86,7 @@ sources:
   - src/treg/catalog/akta.extended.yaml
   - src/treg/catalog/dataforseo.extended.yaml
   - src/treg/catalog/tikhub.extended.yaml
+  - src/treg/catalog/lusha.extended.yaml
   - src/treg/catalog/examples/minimax.video-gen.result.retrieve.json
   - src/treg/catalog/examples/minimax.video-gen.from_image.json
   - src/treg/catalog/examples/minimax.video-gen.task.status.json
@@ -287,6 +289,11 @@ catalog YAML while the billing code reads the rules without provider-specific cr
 An optional `cost.settle: base` keeps documented riders in the reserve but settles the successful
 call at the catalog base when repeat live evidence proves that the provider neither bills nor
 delivers those riders.
+An optional `cost.minimum_units` on a `per_result` price is the vendor's floor on a page, in the
+cost block's own units: CompanyEnrich search pages carry `minimum_units: 1` because an empty page
+still bills one row's credits, and settle charges the returned `items` count, never below that
+floor (money.md, "Call settlement and provider evidence"). The validator requires a non-negative
+integer on a `per_result` price and nothing else.
 
 A verification stamp proves the request shape, response shape, and paid behavior that the evidence
 actually observed. A placeholder path value or a free miss does not prove a paid hit. Such rows keep
@@ -562,6 +569,13 @@ boundary by hand.
 Generated legacy task consumers for which no trustworthy producer→id chain is represented are
 explicitly `platform_blocked` instead: Akta request status, TikHub's captions-result route, and the
 DataForSEO on-page/SERP task consumers remain callable with BYOK but never receive treg's shared key.
+So do the DataForSEO `task_post` PRODUCERS (2026-09-09): a task_post only enqueues work whose answer
+comes back through `task_get` (which ingest drops) or one of those blocked readers, so offering it
+on the shared key charged callers for results treg could never serve. Their reason names the
+one-shot sibling treg does serve where one exists (`dataforseo.web.page.audit` for on-page,
+`brightdata.x.trustpilot-reviews` for Trustpilot reviews), and `tests/test_catalog_validate.py`
+holds the rule rather than the list: a task_post may be platform-eligible only while a consumer of
+its family is.
 `carry_verification` preserves that reviewed block across re-ingestion just like a verification
 stamp; silently regenerating it away would reopen the tenant boundary.
 
@@ -815,6 +829,18 @@ which is the whole reason the provenance keys exist.
 charges 1 credit per 10 emails (`per: 10, unit: record`), Akta 1.5 credits per 50 reviews. Without
 `per`, every one of those had to be either wrong or rounded into prose.
 
+**`unit` also says WHO is counted.** `target`, `domain`, `keyword` and `call` name an INPUT entity:
+the caller pays per thing they asked about, the request names how many, and the reserve is the
+bill (`resolve._ENTITY_UNITS`; the money fragment has the history). `row`, `result`, `record` and
+the rest name a RETURNED row: the reserve is the caller's `limit` and the settle counts the answer
+where the provider reports nothing. Choosing between the two is a billing fact, not a synonym:
+SE Ranking's `keywords.volume` takes a list of keywords and bills each one (`unit: keyword`), while
+its `keywords.ideas` takes ONE seed and bills the 10..100 rows it answers with (`unit: row`) - the
+route sat under `unit: keyword` until 2026-09-09 and charged one row for every call. A row-priced
+block may add **`page_default`**, the number of rows the provider answers when the caller names no
+limit, when that differs from treg's 20-row assumption (SE Ranking answers, and bills, 100). The
+validator accepts it only as a positive integer on a `per_result` / `quota_rows` price.
+
 **Three kinds of denomination convert, and they convert differently:**
 
 - **A real currency** (`currency: USD`, `CNY`) uses `fx.yaml`'s `rates_to_usd`, keyed by currency.
@@ -935,7 +961,12 @@ Do these steps in order; each has a hard success criterion.
 3. **Map.** Assign each endpoint a capability from `capabilities.yaml`. Missing job → add it under
    `proposed_capabilities:` in your provider file, don't edit the shared taxonomy in parallel work.
 4. **Describe.** Fill `input` from the spec/docs: param names, types, which are required, where
-   they ride (path/query/body). Copy real constraints ("one of A|B") into `note`.
+   they ride (path/query/body). A closed set of accepted values goes in `enum:` as the exact
+   strings the API's schema validates, never as prose in `note` and never as the display labels a
+   README or UI shows (apify's LinkedIn job actor takes `month` and `office`; its README says
+   "Past month" and "On-site", and an agent that followed the note was rejected before the run
+   started - 2026-09-09). The validator reads `enum` for cost tables and `platform_request`; other
+   constraints (ranges, formats, mutual exclusions) stay in `note`.
 5. **Cost.** Record the provider's price model per endpoint from their pricing page — with its
    provenance (`source`, `source_url`, `checked`, `confidence`) and its unit (`per`, `unit`), per
    "Cost" above. `quota_rows` is for row-quota APIs (Moz). Unknown exact value → `value: null` +
@@ -1044,6 +1075,19 @@ needs a non-empty note; `status_note` and `superseded_by` cannot float without `
 successor must be a different, existing, live catalog id. A marked id is therefore an explanation,
 not an alias chain or a route treg will still spend against.
 
+The marker is not TikHub-specific, and the provider does not have to answer 404 for a row to be
+dead. `lusha.x.decision-makers` (2026-09-09) is the second shape: Lusha removed
+`POST /v3/contacts/decision-makers` on 2026-08-12 in favour of `/v3/contacts/buying-group`, the only
+operation that accepts `contactsLimit` and `personas` - but a legacy handler kept answering
+companies-only bodies on the old path and rejected the cap parameter with a 400. A route that still
+returns 200 while silently ignoring the caller's spend control is broken in the way that costs the
+most (every call ran at the 60-contacts-per-company default, 1 credit each), so it is retired with
+`superseded_by: lusha.x.buying-group` even though the old URL "works". The successor was written from
+the provider's OpenAPI bundle without a live probe and says so with `skipped` and no
+`example_response`; an invented fixture would be worse than none. `lusha.extended.yaml` is
+hand-maintained (no ingester reads Lusha's client-rendered reference), so the "regenerated wholesale"
+caveat above does not apply to it and the tombstone survives.
+
 ### `platform_blocked:` — works upstream, but not on treg's plan
 
 A third state sits between "offer" and "tombstone": the route works and the price is real, but
@@ -1054,7 +1098,11 @@ free 403 "Your current subscription does not include access to this endpoint". M
 them unmarked sold them as platform offers — a customer ran a whole evaluation lane into that wall
 of 403s before learning the gate existed. `platform_blocked: <reason>` keeps the row in discovery
 but makes `platform_eligible()` refuse it, and the reason rides on the served row so every surface
-can say "bring your own key" *before* the call instead of relaying the 403 after it.
+can say "bring your own key" *before* the call instead of relaying the 403 after it. The paste-ready
+run hint follows the same fact: `_run_hint` in `routers/catalog.py` (search's first row and the
+endpoint detail, which MCP `catalog_get` relays) and the `RUN IT` footer of `treg catalog get` say
+"needs your team's own <provider> key" with the reason for a blocked row, never "key injected
+server-side" - the promise that hint kept making for DataForSEO task_post rows until 2026-09-09.
 
 - **Platform is the system the data is ABOUT**, not the API family it lives under: DataForSEO's
   `/v3/merchant/amazon/products/live/advanced` is `amazon`, not `merchant`. Anything not tied to
@@ -1403,7 +1451,9 @@ Tokens matching over `SOFT_DF_SHARE` (25%) of the catalog ("data" 33%, "api" 50%
 SOFT: they still add score where they match, but a row is never punished for missing them — a
 statistical stopword list no hand list would keep up with. And `aliases.yaml` bridges vocabulary:
 substring containment only works in one direction, so "cryptocurrency" never finds the catalog's
-"crypto" without the map. A token matches under its own spelling or any curated alias, same field
+"crypto" without the map, and "website audit" found only DataForSEO's async on_page task_post
+until `website`/`site` were bridged to `on-page`, the word the one-shot instant_pages row actually
+uses (2026-09-09). A token matches under its own spelling or any curated alias, same field
 weight. NOUNS ONLY: aliasing a verb to a commoner verb poisons the key (`lookup: [search, find]`
 inflated lookup's match set 27 → 689 endpoints and destroyed its ranking power). The file is
 query-side only — it rewrites no provider text, survives every re-ingest, and the validator
@@ -1535,10 +1585,30 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   public quote and call-time plan use it through `routing/plan.py::cost_at`; invalid unit values
   remain unpriced. It does not replace the child's normal reserve/settle rules.
 - **Verified at load, or absent** — `routing/contracts.py::verify`: `in` must reproduce the
-  endpoint's own `test_request` and `out` must fill every required core field from its
-  `example_response` (an example that is itself a miss passes with the hit half unverified).
-  A failing adapter is not a candidate; the endpoint is still callable via `/call/` exactly as
-  before. `tests/test_routing.py` pins that every shipped adapter passes.
+  endpoint's own `test_request`; every accepted identity variant must be able to fill every
+  input the endpoint's YAML marks `required: true` (`missing_required_inputs`, 2026-09-09); and
+  `out` must fill every required core field from its `example_response` (an example that is
+  itself a miss passes with the hit half unverified). A failing adapter is not a candidate; the
+  endpoint is still callable via `/call/` exactly as before. `tests/test_routing.py` pins that
+  every shipped adapter passes.
+  The required-input check runs the adapter itself on a placeholder identity for each accepted
+  variant, choosing the variant the router would send (the first accepted one the derived
+  identity completes, as `plan.py` does - so `{first_name, last_name, domain}` reaches
+  findymail's `body.name` through the derived `full_name`), and reads the result the way the
+  endpoint documents its input: path params as query values, a bare-array body (brightdata's
+  `[{url}]`, dataforseo's task list) through its first element, with an `input: {type: array}`
+  that labels the array itself satisfied by a non-empty array. Why it exists: the fixture
+  round-trip compared only the keys an adapter maps, so `findymail.search.domain` shipped
+  accepting `{company_domain}` alone against a body whose `roles` is required. Every routed call
+  to it was a vendor 4xx by construction, which the router read as the caller's fault: a
+  `{company_domain}` `people.search` walked five children of misses, reached findymail, and ended
+  as 422 `route_caller_fault` with the earlier children's charges kept. The adapter now accepts
+  only `{company_domain, title}` and sends `roles: [title]`. The same check found two more
+  malformed-on-paper children and fixed them in the same commit: `moz.web.backlinks.summary`
+  never sent the `distributions: true` that makes url_metrics the summary and that its 2-row
+  price observed (now a `const`), and both `lusha.*.search` entries still documented the
+  pagination field as `pages` although the note, the `test_request` and the adapters had all
+  moved to `pagination` (the input block now says `pagination`).
 - **The generated row** — `routing/synthetic.py`: every capability with ≥ 2 verified children gets
   `treg.<capability>` (`provider: treg`, `kind: routed`, `POST /<capability>`, `input` = the
   contract, `cost` = the children's range, `routed_children`). Never hand-written; not in any
@@ -1578,7 +1648,14 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   2026-08-28: the endpoint's job is to find the thing, and misses on the per-success children are
   free); `X-Treg-Route-Waterfall: 0` stops at the first miss. Every attempt is settled at its real
   price and `X-Treg-Route-Max-Cost` (default $1) bounds the sum before each reserve (a candidate
-  that would breach it is `skipped`). Response: `{output, raw, _treg: {served_by, provider, tier,
+  that would breach it is `skipped`, detail `route.OVER_CAP`, and the next one is tried). The
+  ceiling is applied per candidate, never to the top-ranked one alone: the plan is ranked by
+  specificity before price, so the leader is often not the cheapest (`people.phone.find` for
+  `{email, full_name}` leads with leadsforge at $0.245 ahead of tomba's `{email}` at $0.0445, and
+  a $0.05 cap must skip leadsforge and ask tomba). Only when every candidate is over the cap - so
+  nothing was asked and nothing reserved - is the call refused **402** `route_max_cost`, naming
+  `cheapest_micro`/`cheapest_endpoint_id` = the minimum price in the plan, with the plan embedded.
+  Response: `{output, raw, _treg: {served_by, provider, tier,
   outcome, tried[], charged_micro}}`, `X-Treg-Served-By`, `X-Treg-Providers-Tried`,
   `X-Treg-Route-Outcome`, `X-Treg-Cost-Micro` = the sum, one `X-Treg-Call-Id`. The parent owns
   the idempotency label (a success, or a terminal failure after a paid child, replays without
@@ -1597,7 +1674,14 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
 - **Ranking, specificity (2026-08-29)**: among candidates of the same tier, one that USES more of the
   keys the caller actually sent outranks a cheaper one that uses fewer — `{company_domain, title}`
   goes to a title-aware search, not a free domain-only one that would answer the whole company.
-  Only caller-supplied keys count (`rank(given=…)`), never keys reached through `derive`. Price
+  Specificity counts how many of the CALLER's keys (`rank(given=…)`) a variant covers: a key the
+  variant names, or one it was derived from through the contract's `derive` rules (`first_name`
+  + `last_name` cover a supplied `full_name`; `domain` covers a supplied `email`). So
+  `{first_name, last_name, domain}` and `{full_name, domain}` are equally specific for a caller
+  who sent a full name and a domain, and price decides between them - while a key the caller
+  never sent earns nothing. The consequence for the cost cap: given `{email, full_name}`, a
+  variant derived from both outranks a cheaper `{email}`-only one, which is why
+  `X-Treg-Route-Max-Cost` skips per candidate instead of judging the leader (above). Price
   decides among equals.
 - **Ranking, dropped filters (2026-08-29)**: a candidate whose adapter cannot express a filter the
   caller SENT ranks below every candidate that can — `len(candidate.ignored)` sits in `rank()`'s key
@@ -1658,7 +1742,8 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   the other five. Apollo cannot join: its phone reveal is webhook-only, never inline.
 - **people.\* sweep (2026-08-29)**: people.search 6 → 16 children (aviato dsl/simple, companyenrich
   scroll, crustdata, fiber-ai, leadsforge, leadmagic search + role-finder, findymail employees +
-  domain — the last retagged from email.find, it returns a list), people.enrich 9 → 14 (aviato bulk,
+  domain — the last retagged from email.find, it returns a list; since 2026-09-09 it takes only
+  `{company_domain, title}`, its `roles` being required), people.enrich 9 → 14 (aviato bulk,
   fiber-ai, tomba profile/combined, hunter combined-find), people.email.find 9 → 11 (fiber-ai turbo,
   leadmagic personal), identity.resolve 3 → 4 (findymail reverse-email); five examples captured live.
   Still out: apollo/coresignal people.search (no fixture; apollo's `person_titles[]` needs a

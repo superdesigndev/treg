@@ -38,6 +38,28 @@ def test_cost_modifiers_accept_only_supported_declarative_credit_rules():
     assert any("cost.settle currently supports only 'base' or 'modifiers'" in error for error in bad_settle)
 
 
+def test_cost_minimum_units_is_an_integer_floor_on_a_per_result_price():
+    base = {
+        "type": "per_result", "value": 2, "currency": "credit", "per": 1,
+        "unit": "record", "source": "docs", "source_url": "https://example.com/pricing",
+        "checked": "2026-09-09", "confidence": "verified",
+    }
+    for floor in (0, 1, 5):
+        errors: list[str] = []
+        validator.check_cost(base | {"minimum_units": floor}, "catalog:test", errors, [])
+        assert errors == [], floor
+
+    for bad in (-1, True, 1.5, "1"):
+        broken: list[str] = []
+        validator.check_cost(base | {"minimum_units": bad}, "catalog:test", broken, [])
+        assert any("cost.minimum_units must be a non-negative integer" in error for error in broken), bad
+
+    wrong_type: list[str] = []
+    validator.check_cost(base | {"type": "per_call", "unit": "call", "minimum_units": 1},
+                         "catalog:test", wrong_type, [])
+    assert any("only valid with type: per_result" in error for error in wrong_type)
+
+
 def test_status_marker_references_must_exist_and_end_at_a_live_endpoint():
     statuses = {"provider.old": "retired", "provider.live": "", "provider.dead": "broken"}
 
@@ -277,6 +299,56 @@ def test_untracked_extended_async_consumers_are_explicitly_byok_only():
         endpoint = catalog.by_id[endpoint_id]
         assert endpoint["platform_blocked"]
         assert not catalog.platform_eligible(endpoint)
+
+
+def test_dataforseo_task_posts_without_a_servable_consumer_are_platform_blocked():
+    """A task_post only ENQUEUES work; the answer comes back through task_get or an id-keyed reader
+    of the same family. Ingest drops task_get (scripts/catalog_ingest.py) and the id-keyed readers
+    are BYOK-only, so a shared-key task_post charged the caller for a result treg could never fetch
+    (213 platform calls across 21 orgs before 2026-09-09). The rule, not the list: a task_post may
+    be offered on treg's key only while at least one consumer of its family is."""
+    catalog = catalog_store.load()
+    dataforseo = [ep for ep in catalog.endpoints if ep["provider"] == "dataforseo"]
+    task_posts = [ep for ep in dataforseo if ep["path"].endswith("/task_post")]
+    assert len(task_posts) >= 20, "the whole legacy async surface, not a sample"
+
+    def consumes_a_task(ep: dict) -> bool:
+        inputs = ep.get("input") or {}
+        return (any(seg in ep["path"] for seg in ("/task_get", "/tasks_ready", "{id}"))
+                or "id" in (inputs.get("body") or {}))
+
+    for post in task_posts:
+        family = post["path"][: -len("/task_post")] + "/"
+        consumers = [ep for ep in dataforseo
+                     if ep is not post and ep["path"].startswith(family) and consumes_a_task(ep)]
+        if any(catalog.platform_eligible(ep) for ep in consumers):
+            continue
+        reason = post["platform_blocked"]
+        assert reason and not catalog.platform_eligible(post), post["id"]
+        # the reason must say what happens and what to do instead, not just "no"
+        assert "task_get" in reason and "own DataForSEO key" in reason, post["id"]
+        for alternative in ("dataforseo.web.page.audit", "brightdata.x.trustpilot-reviews"):
+            if alternative in reason:
+                assert catalog.platform_eligible(catalog.by_id[alternative]), alternative
+    # the two families with a one-shot sibling on treg's key point at it by id
+    assert "dataforseo.web.page.audit" in catalog.by_id["dataforseo.x.on-page-task-post"]["platform_blocked"]
+    assert "brightdata.x.trustpilot-reviews" in \
+        catalog.by_id["dataforseo.x.business-data-trustpilot-reviews-task-post"]["platform_blocked"]
+
+
+def test_on_page_consumer_notes_point_at_a_real_one_shot_route():
+    """The task consumers' notes named `dataforseo.x.on-page-instant-pages`, an id that never
+    existed; an agent following it got a 404 instead of the one-shot audit."""
+    catalog = catalog_store.load()
+    summary = catalog.by_id["dataforseo.x.on-page-summary-id"]
+    assert summary["input"]["pathParams"]["id"]["required"] is True, "the {id} in the path is declared"
+    for ep in catalog.endpoints:
+        if ep["provider"] != "dataforseo":
+            continue
+        for text in (str(ep.get("untestable") or ""), str(ep.get("platform_blocked") or "")):
+            for word in text.replace("(", " ").replace(")", " ").replace(",", " ").split():
+                if word.startswith("dataforseo.") or word.startswith("brightdata."):
+                    assert word in catalog.by_id, f"{ep['id']} names unknown id {word!r}"
 
 
 def _valid_table():
@@ -586,3 +658,55 @@ def test_contactout_person_routes_cannot_recapture_pii():
         assert not (path.parent / "examples" / (ep["id"] + ".json")).exists()
     work = next(ep for ep in endpoints if ep["id"] == "contactout.people.enrich.work_email")
     assert work["cost"]["value"] == 0.17
+
+
+@pytest.mark.parametrize('page,cost_type,ok', [
+    (100, 'per_result', True), (10, 'quota_rows', True),
+    (0, 'per_result', False), (-5, 'per_result', False), (True, 'per_result', False),
+    ('100', 'per_result', False), (1.5, 'per_result', False),
+    (100, 'per_call', False), (100, 'per_success', False),
+])
+def test_page_default_is_a_positive_row_count_on_a_row_priced_entry(page, cost_type, ok):
+    """`cost.page_default` is what the reserve assumes when the caller names no limit (SE Ranking's
+    keyword ideas answer 100 rows by default, not treg's 20); it has no meaning on a flat price."""
+    cost = {
+        'type': cost_type, 'value': 10, 'currency': 'credit', 'per': 1, 'unit': 'row',
+        'source': 'docs', 'source_url': 'https://example.com/pricing',
+        'checked': '2026-09-09', 'confidence': 'documented', 'page_default': page,
+    }
+    errors = []
+    validator.check_cost(cost, 'test', errors, [])
+    assert (not errors) is ok, errors
+# ---- apify LinkedIn job search: enum values, not README labels ---------------------------------
+
+_APIFY_JOBS_ENUMS = {
+    "postedLimit": ["1h", "24h", "week", "month"],
+    "workplaceType": ["remote", "hybrid", "office"],
+    "employmentType": ["full-time", "part-time", "contract", "internship", "temporary"],
+    "experienceLevel": ["internship", "entry", "associate", "mid-senior", "director", "executive"],
+    "sortBy": ["date", "relevance"],
+}
+
+
+def test_apify_job_search_documents_its_enums_as_enum_lists_not_labels():
+    """The actor's input schema takes `month`, `office`, `full-time`; its README shows 'Past month',
+    'On-site', 'Full-time'. The catalog once copied the labels into prose notes, and an agent that
+    followed them was rejected by schema validation. Each of the five fields now carries the
+    schema's `enum`, its example is a member, and the test_request exercises one so a re-verify
+    catches the actor renaming a value."""
+    from treg.domain.catalog import store as catalog_store
+
+    ep = catalog_store.load().by_id["apify.linkedin.search.jobs"]
+    body = ep["input"]["body"]
+    for field, values in _APIFY_JOBS_ENUMS.items():
+        spec = body[field]
+        assert spec.get("enum") == values, field
+        assert "/" not in spec.get("note", ""), f"{field}: README labels belong in enum, not prose"
+        example = spec.get("example")
+        for value in (example if isinstance(example, list) else [example]):
+            assert value in values, f"{field} example {value!r} is not in its enum"
+    test_body = ep["test_request"]["body"]
+    exercised = [f for f in _APIFY_JOBS_ENUMS if f in test_body]
+    assert exercised, "test_request must send at least one enum field"
+    for field in exercised:
+        assert test_body[field] in _APIFY_JOBS_ENUMS[field], field

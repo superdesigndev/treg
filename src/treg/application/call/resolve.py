@@ -53,6 +53,35 @@ def _normalize_scheme(rest: str) -> str:
     return rest
 
 
+class AmbiguousTarget(ResolutionFailed):
+    """Several caller-usable tools tie for one upstream URL.
+
+    Carries the tie itself so a catalog call can restate it in catalog terms (the endpoint id and
+    the named form of each colliding tool) instead of echoing a host the caller never typed.
+    """
+
+    def __init__(self, host: str, tools: list[Tool]) -> None:
+        self.tools = sorted(tools, key=lambda t: t.name)
+        names = ", ".join(repr(t.name) for t in self.tools)
+        super().__init__(
+            "target_ambiguous", status_code=409, detail=(
+                f"ambiguous: multiple tools match {host!r}: {names}; call one by name as "
+                "/call/<name>/<path>"))
+
+
+def _providers_owning(host: str) -> set[str]:
+    """The registry providers whose API lives on `host`: a provider's base URL, a grant method's
+    base-URL override (Instagram's Page tools on graph.facebook.com), or a companion tool."""
+    owners: set[str] = set()
+    for provider in oauth_providers.REGISTRY.values():
+        urls = [provider.base_url]
+        urls.extend(dict(m.overrides).get("base_url", "") for m in provider.authorization_methods)
+        urls.extend(extra.get("base_url", "") for extra in provider.extra_tools or ())
+        if any(url and _host_of(url) == host for url in urls):
+            owners.add(provider.service)
+    return owners
+
+
 async def _resolve_call(rest: str, caller: Caller, db: AsyncSession) -> ResolvedTarget:
     """Resolve `/call/<rest>` to (tool, full upstream URL), scoped to the caller's org. Shapes:
 
@@ -111,22 +140,24 @@ async def _resolve_call(rest: str, caller: Caller, db: AsyncSession) -> Resolved
             # auto-provisioned. Both are real tools, so neither base_url is "longer" — but they are
             # not equally intended: the registry-provisioned one is the live connection the user
             # just authorised, and URL-passthrough is the AGENT-facing mode, so 409-ing here breaks
-            # exactly the callers who never typed a tool name. Prefer the provider-backed tool.
+            # exactly the callers who never typed a tool name. Prefer the provider-backed tool -
+            # and "provider-backed" means a connection to a provider that OWNS this host, so a
+            # credential for some other provider's API can never claim it. Two connections of one
+            # provider (a second account) or two providers sharing a host (Meta) are a genuine tie
+            # here: a URL carries no provider identity, only a catalog id does.
+            owners = _providers_owning(host)
             provider_owned = []
             for t in top:
                 sids = {b.get("secret_id") for b in (t.bindings or []) if b.get("secret_id") is not None}
                 for sid in sids:
                     s = await db.get(Secret, sid)
-                    if s is not None and s.org_id == org_id and s.provider:
+                    if (s is not None and s.org_id == org_id and s.provider
+                            and (not owners or s.provider in owners)):
                         provider_owned.append(t)
                         break
             if len(provider_owned) == 1:
                 return ResolvedTarget(provider_owned[0], norm)
-            names = ", ".join(repr(t.name) for t in sorted(top, key=lambda t: t.name))
-            raise ResolutionFailed(
-                "target_ambiguous", status_code=409, detail=(
-                    f"ambiguous: multiple tools match {host!r}: {names}; call one by name as "
-                    "/call/<name>/<path>"))
+            raise AmbiguousTarget(host, top)
         return ResolvedTarget(top[0], norm)
 
     name, _, path = rest.partition("/")
@@ -341,13 +372,21 @@ class MarketplaceCall:
 
 
 # A `per_result` price is per ROW, so an estimate needs a row count. The caller's own limit param is
-# the best available signal; without one, assume a page. Capped, because `limit=100000` must not be
-# able to reserve an org's whole balance for a single call — the settle corrects the estimate either way.
+# the best available signal; without one, assume a page - the catalog's `cost.page_default` when the
+# provider's own default differs (SE Ranking's keyword ideas answer 100 rows to a call that names no
+# `limit`, and bill all 100), else 20. Capped, because `limit=100000` must not be able to reserve an
+# org's whole balance for a single call - the settle corrects the estimate either way.
 _PLATFORM_PAGE_DEFAULT = 20
 _PLATFORM_PAGE_MAX = 100
 _LIMIT_PARAMS = ("limit", "count", "depth", "page_size", "per_page", "num", "max_results", "size",
                  "pageSize", "perPage", "numResults", "maxResults",
-                 "contactsLimit")  # camelCase: companyenrich, exa, lusha; contactsLimit: lusha decision-makers
+                 "contactsLimit",  # camelCase: companyenrich, exa, lusha; contactsLimit: lusha buying-group
+                 # apify: `maxItems` rides the query (the platform cap) AND the actor input body
+                 # (the actor's own per-query cap); `resultsLimit` is the Facebook actor's input.
+                 # Neither was read, so every run reserved the 20-row page and, with nothing to
+                 # settle on, charged it (2026-08-20..09-09: 3,019 job searches at a flat $0.02).
+                 # A `maxItems: 0` means "everything" and keeps the page default like any absent key.
+                 "maxItems", "resultsLimit")
 
 
 # Units that name an INPUT entity rather than a returned row: the caller pays per thing they asked
@@ -399,24 +438,17 @@ def _entity_count(query, body: bytes) -> int:
     return max(1, min(n, _ENTITY_MAX))
 
 
-def _body_limit(body: bytes) -> int | None:
-    """A row-count signal from a JSON body: an explicit limit key first (dataforseo takes
-    `[{..., "limit": 3}]`, lusha `{"limit": 1}`), else the ARRAY LENGTH — providers that take a
-    list of inputs (brightdata's urls, dataforseo's tasks) bill one result per item, so a 1-item
-    body estimating at the 20-row default overstated 20x (seen live: $0.03 shown for a $0.0015
-    call). Under-estimating is safe either way — the settle trues up, overruns included."""
-    if not body:
-        return None
-    try:
-        doc = json.loads(body)
-    except (ValueError, UnicodeDecodeError):
-        return None
-    items = None
-    if isinstance(doc, list) and doc:
-        items = len(doc)
-        doc = doc[0]
-    if not isinstance(doc, dict):
-        return items
+def _jsonrpc_params(doc: dict) -> dict | None:
+    """The `params` object of a JSON-RPC request envelope (`{"method": "...", "params": {...}}`),
+    else None. The caller's real request lives one level down in that shape, so every request-
+    reading heuristic has to look there too: serpstat's `params.size` was invisible to the row
+    estimate and every row-priced call reserved the 20-row page default (2026-09-09)."""
+    params = doc.get("params")
+    return params if isinstance(doc.get("method"), str) and isinstance(params, dict) else None
+
+
+def _scope_limit(doc: dict) -> int | None:
+    """The row-count signal one JSON object carries, or None when it names none."""
     for name in _LIMIT_PARAMS:
         val = doc.get(name)
         if isinstance(val, int) and not isinstance(val, bool) and val > 0:
@@ -435,6 +467,32 @@ def _body_limit(body: bytes) -> int | None:
                 val = nested.get(name)
                 if isinstance(val, int) and not isinstance(val, bool) and val > 0:
                     return val
+    return None
+
+
+def _body_limit(body: bytes) -> int | None:
+    """A row-count signal from a JSON body: an explicit limit key first (dataforseo takes
+    `[{..., "limit": 3}]`, lusha `{"limit": 1}`), else the ARRAY LENGTH - providers that take a
+    list of inputs (brightdata's urls, dataforseo's tasks) bill one result per item, so a 1-item
+    body estimating at the 20-row default overstated 20x (seen live: $0.03 shown for a $0.0015
+    call). A JSON-RPC envelope is read at the top level and then inside its `params` object, where
+    the request actually is. Under-estimating is safe either way - the settle trues up, overruns
+    included."""
+    if not body:
+        return None
+    try:
+        doc = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    items = None
+    if isinstance(doc, list) and doc:
+        items = len(doc)
+        doc = doc[0]
+    if not isinstance(doc, dict):
+        return items
+    for scope in (doc, _jsonrpc_params(doc)):
+        if scope is not None and (found := _scope_limit(scope)) is not None:
+            return found
     return items
 
 
@@ -460,7 +518,10 @@ def _platform_estimate_micro(cost: dict, query, body: bytes = b"") -> int:
                 break
         if asked is None:
             asked = _body_limit(body)  # POST providers put the row count in the body, not the query
-        n = max(1, min(asked or _PLATFORM_PAGE_DEFAULT, _PLATFORM_PAGE_MAX))
+        page = cost.get("page_default")
+        if not isinstance(page, int) or isinstance(page, bool) or page < 1:
+            page = _PLATFORM_PAGE_DEFAULT
+        n = max(1, min(asked or page, _PLATFORM_PAGE_MAX))
     # Round to 9 dp BEFORE the ceil: float artifacts (0.0015 × 3 → 4500.000000001) must not
     # over-reserve a phantom micro-dollar.
     raw_micro = round(usd * n * 1_000_000, 9)
@@ -548,7 +609,8 @@ def _marketplace_pricing(
     """Return (reserve estimate, response-count unit), in raw micro-USD.
 
     The catalog remains the price source. This helper only models provider rules that one fixed
-    scalar cannot express: Crustdata batch-shaped single calls and Aviato preview/add-on/bulk modes.
+    scalar cannot express: Crustdata batch-shaped single calls, Aviato preview/add-on/bulk modes,
+    Tomba's page blocks and Icypeas' row-counted bulk job.
     `unit` is non-zero only when the response must decide the final charge.
     """
     if not cost:
@@ -578,6 +640,16 @@ def _marketplace_pricing(
         size = int(str(raw)) if raw is not None and str(raw).isdigit() else 10
         credit = _usd_to_micro(float(cost.get("usd") or 0))
         return max(1, (size + 9) // 10) * credit, credit
+    if provider == "icypeas" and endpoint_id == "icypeas.bulk.search":
+        # A bulk job is priced per ROW SUBMITTED (1 credit each on a hit) and the rows are the
+        # top-level `data` array - a key `_body_limit` deliberately does not count, because for
+        # other providers `data` is not a row list. Scoped to this one endpoint so a 25-row job
+        # reserves 25 rows, not the 20-row page default, capped like every other row count.
+        from . import icypeas
+        rows = icypeas.bulk_rows(_json_object(body))
+        if rows is not None and unit > 0:
+            return min(rows, _PLATFORM_PAGE_MAX) * unit, unit
+        return estimate, unit
     if provider == "crustdata" and endpoint_id in (
         "crustdata.companies.enrich", "crustdata.people.enrich"
     ):
@@ -1123,12 +1195,29 @@ async def _enforce_capability_pin(ep: dict, caller: Caller, db: AsyncSession) ->
 
 async def _provider_tool_grant(
     service: str, methods: tuple[str, ...], caller: Caller, db: AsyncSession,
-    endpoint: dict | None = None,
+    endpoint: dict | None = None, host: str = "", upstream: str = "",
 ) -> tuple[Tool, Secret, str] | None:
     """Resolve a named catalog endpoint by provider and grant identity, not only by host.
 
     This is the generic fix for providers that share one upstream host. It stays in catalog-call
     resolution; the faithful relay still receives one resolved tool and knows no provider rules.
+
+    Candidates are the org's tools bound to a `service` connection that the caller may use. With
+    `methods` (an endpoint declaring authorization methods) the grant method filters and ranks
+    them; without, every connection of the provider is a candidate - connect provisions each
+    account of a provider on the same host with the same provider tag, so host matching alone
+    can never tell a second account apart. With methods, the bare service name wins among several
+    (connect guarantees it to the first account), then the newest connection. Without methods,
+    several connections of one provider are a genuine tie: nothing in the request says which
+    account the caller means, and a silent default would send one account's request through
+    another's credential (a Search Console site owned by account 2 answers 403 from account 1's
+    key), so the call refuses with a 409 that names each account's `/call/<name>/<path>` form.
+    `host` restricts candidates to tools on the upstream's host, so a companion tool on another
+    host (`google-analytics-admin`) never serves a data-host call.
+
+    A caller-denied candidate refuses only when the endpoint declares methods: a plain endpoint
+    falls back to host matching, which already tells "not yours" (403) from "not registered"
+    (404) and may still find a hand-registered tool the caller can use.
     """
     tools = (await db.execute(select(Tool).where(Tool.org_id == caller.org_id))).scalars().all()
     secrets = (await db.execute(select(Secret).where(
@@ -1142,6 +1231,8 @@ async def _provider_tool_grant(
     matches: list[tuple[bool, int, bool, int, Tool, Secret, str]] = []
     denied = False
     for tool in tools:
+        if host and tool.host != host:
+            continue
         for binding in tool.bindings or []:
             sid = binding.get("secret_id")
             if sid is None:
@@ -1150,12 +1241,12 @@ async def _provider_tool_grant(
             if secret is None:
                 continue
             method = _authorization_method(secret)
-            if method not in methods:
+            if methods and method not in methods:
                 continue
             if not access_policy._tool_usable(caller, tool):
                 denied = True
                 continue
-            priority = methods.index(method)
+            priority = methods.index(method) if methods else 0
             exact = tool.name == connection_names.get(method, service)
             authorization = (
                 connection_authorization.method_spec(provider, method) if provider else None
@@ -1170,15 +1261,43 @@ async def _provider_tool_grant(
                 (scope_gap, priority, not exact, -(secret.id or 0), tool, secret, method)
             )
     if not matches:
-        if denied:
+        if denied and methods:
             raise ResolutionFailed(
                 "tool_access_denied", status_code=403,
                 detail=f"a {service} authorization exists, but you do not have access to its tool",
             )
         return None
     matches.sort(key=lambda item: item[:4])
+    if not methods and endpoint is not None:
+        tied = {m[4].id: m[4] for m in matches}
+        if len(tied) > 1:
+            raise _catalog_ambiguous(endpoint, upstream, list(tied.values()))
     _, _, _, _, tool, secret, method = matches[0]
     return tool, secret, method
+
+
+def _catalog_ambiguous(ep: dict, upstream: str, tools: list[Tool]) -> ResolutionFailed:
+    """Restate a tie in catalog terms: the id the caller typed, every colliding tool, and the
+    named form of each. Two kinds of tie land here - several connected accounts of the
+    endpoint's provider, or hand-registered same-host tools with no provider connection - and
+    the fix is the same for both: name the one you mean."""
+    host = _host_of(upstream)
+    names = [tool.name for tool in tools]
+    # Every colliding tool tied on base_url prefix length, so the upstream path is the same
+    # remainder for each; the named form is exactly what `_resolve_call`'s named shape reads.
+    forms = [f"/call/{tool.name}{upstream[len(tool.base_url.rstrip('/')):]}" for tool in tools]
+    return ResolutionFailed("target_ambiguous", status_code=409, detail={
+        "error": "target_ambiguous",
+        "endpoint_id": ep["id"],
+        "provider": ep["provider"],
+        "tools": names,
+        "named_forms": forms,
+        "message": (
+            f"{ep['id']} matches several of your tools on {host!r} ({', '.join(names)}) and "
+            f"nothing in the request says which {ep['provider']} account you mean; call the one "
+            "you mean by name: " + " or ".join(forms)
+        ),
+    })
 
 
 def _authorization_error(
@@ -1242,11 +1361,12 @@ async def _resolve_marketplace_call(
     resolve_call: Callable[[str, Caller, AsyncSession], Awaitable[ResolvedTarget]],
     authorization_method: str = "",
 ) -> MarketplaceCall:
-    """Resolve a catalog call, selecting an explicit OAuth grant before host matching.
+    """Resolve a catalog call, selecting the org's connection by provider identity before host.
 
-    Endpoints without authorization metadata retain the normal tool → credential → platform
-    ladder. Annotated endpoints select by provider plus grant method. That generic identity avoids
-    ambiguous same-host tools without teaching the faithful relay about Instagram or Meta.
+    Every endpoint walks the tool → credential → platform ladder. Tier 1 first looks for a tool
+    bound to a connection of the endpoint's provider (annotated endpoints add the grant method to
+    that identity), and only then matches by host for hand-registered tools. That generic identity
+    avoids ambiguous same-host tools without teaching the faithful relay about Instagram or Meta.
     """
     await _enforce_capability_pin(ep, caller, db)
     _enforce_catalog_status(ep)
@@ -1332,12 +1452,23 @@ async def _resolve_marketplace_call(
         return MarketplaceCall(tool=chosen_tool, tier="tool", **common)
 
     if not methods:
-        try:  # tier 1 - the org registered this provider: their tool, their bindings, their ACLs
+        # tier 1 - the org registered this provider: their tool, their bindings, their ACLs.
+        # A catalog id names its provider, so a tool bound to that provider's connection is
+        # chosen by identity first: two accounts of one provider, or two providers on one host
+        # (meta-ads beside instagram-page-tools), are not ambiguous to a caller who typed the
+        # endpoint id. Host matching remains for hand-registered tools with no connection.
+        grant = await _provider_tool_grant(
+            service, (), caller, db, endpoint=ep, host=_host_of(upstream), upstream=upstream)
+        if grant is not None:
+            return MarketplaceCall(tool=grant[0], tier="tool", **common)
+        try:
             target = await resolve_call(upstream, caller, db)
             return MarketplaceCall(
                 tool=target.tool, tier="tool", **{**common, "upstream": target.upstream})
+        except AmbiguousTarget as exc:
+            raise _catalog_ambiguous(ep, upstream, exc.tools) from None
         except ResolutionFailed as exc:
-            if exc.status_code != 404:  # 403 (ACL) / 409 (ambiguous) are real answers, not fall-through
+            if exc.status_code != 404:  # 403 (ACL) is a real answer, not fall-through
                 raise
 
     secret = chosen_secret or await _marketplace_secret(service, caller.org_id, db)  # tier 2

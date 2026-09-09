@@ -13,7 +13,14 @@ sources:
   - src/treg/application/call/service.py
   - src/treg/application/call/reserve.py
   - src/treg/application/call/settle.py
+  - src/treg/application/call/icypeas.py
   - src/treg/catalog/tomba.yaml
+  - src/treg/catalog/icypeas.yaml
+  - src/treg/catalog/companyenrich.yaml
+  - src/treg/application/call/serpstat.py
+  - src/treg/catalog/serpstat.yaml
+  - src/treg/catalog/seranking.yaml
+  - src/treg/catalog/apify.yaml
   - src/treg/application/asynctasks.py
   - src/treg/alembic/versions/0017_async_task_record.py
   - src/treg/alembic/versions/0018_async_resource_ownership.py
@@ -441,11 +448,16 @@ Provider-specific calculation stays outside the faithful relay.
 | Crustdata | Read `X-Credits-Used` from response headers using the same FX rate |
 | Apollo | Known empty organization results are free |
 | Tomba domain search | Non-empty pages cost ceil(`meta.pageSize` / 10) credits, even when partially filled; empty `data.emails` is free. Reservation uses requested `limit`, default 10. Missing/malformed page evidence falls back to the estimate. Upstream duplicate discounts are not detected |
+| CompanyEnrich search pages | `items` rows times the per-row price, never below the cost block's `minimum_units` floor (one row: 2 credits on an empty people page, 1 on a company page, 5 on a lookalike page). Covers people and company search, their scroll routes and `companies.similar`; the floor is catalog data, validated by `catalog_validate.check_cost`. A body without an `items` list (gzip, buffer truncation, an error envelope) falls back to the estimate. The `expand` and `semanticQuery` riders are not modeled at reserve or settle |
+| SE Ranking keyword ideas | `seranking.google.keywords.ideas` bills 10 credits per keyword RETURNED and reports nothing, so the returned `keywords` list is the bill (`settle._SERANKING_RETURNED_KEYWORD_ROUTES`, the influencersclub rule): an empty list, or a JSON envelope without one, settles at 0; a non-JSON body settles at the estimate. Reservation is the requested `limit` (the catalog's `page_default` of 100, the API's own, when omitted) at the per-row price, capped at the 100-row platform max. Verified live 2026-09-09 on treg's own meter: 5 keywords cost 50 credits, an empty answer 0, where the route had charged one keyword unit (1,790 micro-USD) for every call since 2026-08-20. The per-INPUT sibling `keywords.volume` is untouched |
 | Hunter domain search | One whole search credit per ten returned emails, rounded up; an empty result is free |
 | QuickEnrich | Frozen $0.004834/credit base list rate (Starter $29/6,000, rounded up to micro-USD, before configured margin; assumes full allowance use); prefer integer `meta.credits_used`, including zero. If absent, count documented billable results. Domain holds reserve one credit without title or 20 with title; company holds use per_page (default 10, max 100). Discovery and lookups are free. BYOK never meters |
+| Serpstat | Rows in the JSON-RPC envelope (`result.data[]`, `result.data.top[]` for `getKeywordTop`, or the entries of a result keyed by the input) times the catalog credit price (`application/call/serpstat.py`); a top-level `error` object is free even on HTTP 200; a served result with no rows bills the documented 1-credit floor; an unrecognised shape keeps the estimate. Verified live 2026-09-09: an error envelope cost 0 lines and a 12-row SERP cost 12 |
 | Hunter email finder | One whole credit when an email is present; a known miss is free |
 | TikHub | Honor explicit no-charge prose; an embedded error that says it is charged still costs the estimate |
 | Bright Data | Count delivered JSON-array records or CSV/NDJSON lines; a JSON object containing a status/snapshot handoff has zero records |
+| Icypeas async submissions | A 2xx acknowledgement with no rows (`item._id`, or `file` + `status`) on a `per_result`/`per_success` route settles at 0 and closes the hold; the provider debits the credit later on the free poll route, which treg absorbs until terminal settlement exists (`application/call/icypeas.py`). Synchronous bodies carrying `data` rows and the `per_call` verify route keep the estimate. Reservation: `icypeas.bulk.search` holds one credit per row of the body's top-level `data` array, capped at the platform row maximum; other bodies are read as before |
+| Apify | `per_result` rows count a bare top-level JSON array (the run-sync response IS the dataset, one element per billed item); gzip, a truncated body or any other shape falls back to the estimate. Before 2026-09-09 every LinkedIn job search settled at the 20-row page - 3,019 calls at a flat $0.02 for $0.001 items |
 | Aviato | Fixed routes use the estimate; bulk enrichment counts successful records; catalog `settle: base` and `settle: modifiers` release documented-but-unbilled `reserve_only` riders |
 
 Bright Data snapshot downloads are billable per result, including repeat downloads. Gzip or a
@@ -454,13 +466,26 @@ buffer-truncated response falls back to the estimate because the record count is
 
 The row-count signal for that estimate (`resolve._LIMIT_PARAMS` / `_body_limit`) reads the caller's
 `limit`/`count`/`size`/`per_page`… in the query or body, the camelCase spellings (`pageSize`,
-`numResults`, `perPage`, `maxResults`, lusha's per-company `contactsLimit`), a nested `pagination.{size,…}`, and — for providers that
+`numResults`, `perPage`, `maxResults`, lusha's per-company `contactsLimit`, apify's `maxItems` in the query or the actor input
+body and `resultsLimit`, where a `maxItems` of 0 means "everything" and keeps the page default), a nested `pagination.{size,…}`, and — for providers that
 bill one row per listed item — the length of `targets`/`keywords`/`domains`/`urls`/`lookups`/
-`emails`. Each of those was a live overcharge first (2026-08-28: companyenrich `pageSize: 2`
-settled 20 rows, moz's one `targets` entry settled 20 quota rows; 2026-09-02: lusha decision-makers,
+`emails`. A JSON-RPC envelope (`method` plus a `params` object) is read at the top level and
+then inside `params`, where the request actually is (`_jsonrpc_params`): serpstat's
+`params.size` was invisible until 2026-09-09 and every row-priced call reserved the page
+default. Each of those was a live overcharge first (2026-08-28: companyenrich `pageSize: 2`
+settled 20 rows, and until 2026-09-09 an EMPTY companyenrich page still settled the whole
+requested page because no rule counted its `items` - now the table row above; moz's one
+`targets` entry settled 20 quota rows; 2026-09-02: lusha decision-makers,
 catalogued FREE, answered 44 contacts for one domain and settled $5.49 from `billing.creditsCharged`
-with nothing reserved). Without any signal it is the
-20-row page, and a settle-at-estimate provider then charges that page.
+with nothing reserved; 2026-09-09: apify job searches ignored `maxItems` and, with no settle rule
+counting the dataset, charged the page on every call). The cap key only reserves what the provider
+will honour: Lusha had already removed `/v3/contacts/decision-makers` (2026-08-12) and its legacy
+handler rejected `contactsLimit` with a 400, so the reservation followed a cap the bill ignored;
+`lusha.x.decision-makers` is a retired tombstone since 2026-09-09 and `lusha.x.buying-group` is the
+path where `contactsLimit` is the spend cap. Without any signal it is the
+catalog's `cost.page_default` when the entry carries one (the rows the provider answers to a call
+that names no limit - SE Ranking's keyword ideas answer and bill 100), else the 20-row page, and a
+settle-at-estimate provider then charges that page. Both stay under the 100-row platform max.
 
 The page default has no meaning at all when the catalog prices per INPUT entity, and the estimator
 knows the difference since 2026-09-05: a `per_result`/`quota_rows` cost whose `unit` is `target`,
@@ -474,6 +499,11 @@ export really does cost 5,000 keywords. Before this the 20-row default billed a 
 2026-08-12, refunded by hand — and the same number was the catalog's `~$/call` display, so the caller
 saw the wrong price before the call too. On these providers nothing reports a cost after the fact,
 so the reserve IS the charge: a wrong entity count is a wrong bill, not a hold the settle trues up.
+The unit has to be honest for that to hold: serpstat's routes priced per RETURNED row
+(`ranked_keywords`, `keywords.ideas`, `linking_domains.list`) carried `unit: keyword`/`domain`
+and so reserved exactly one credit whatever `size` asked for; since 2026-09-09 they are
+`unit: row`, only the batch volume and overview methods stay per input, and the serpstat
+settle above counts the rows that came back.
 
 The estimate is never a substitute for an available response-derived charge.
 
