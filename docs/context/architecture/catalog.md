@@ -1648,7 +1648,14 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   2026-08-28: the endpoint's job is to find the thing, and misses on the per-success children are
   free); `X-Treg-Route-Waterfall: 0` stops at the first miss. Every attempt is settled at its real
   price and `X-Treg-Route-Max-Cost` (default $1) bounds the sum before each reserve (a candidate
-  that would breach it is `skipped`). Response: `{output, raw, _treg: {served_by, provider, tier,
+  that would breach it is `skipped`, detail `route.OVER_CAP`, and the next one is tried). The
+  ceiling is applied per candidate, never to the top-ranked one alone: the plan is ranked by
+  specificity before price, so the leader is often not the cheapest (`people.phone.find` for
+  `{email, full_name}` leads with leadsforge at $0.245 ahead of tomba's `{email}` at $0.0445, and
+  a $0.05 cap must skip leadsforge and ask tomba). Only when every candidate is over the cap - so
+  nothing was asked and nothing reserved - is the call refused **402** `route_max_cost`, naming
+  `cheapest_micro`/`cheapest_endpoint_id` = the minimum price in the plan, with the plan embedded.
+  Response: `{output, raw, _treg: {served_by, provider, tier,
   outcome, tried[], charged_micro}}`, `X-Treg-Served-By`, `X-Treg-Providers-Tried`,
   `X-Treg-Route-Outcome`, `X-Treg-Cost-Micro` = the sum, one `X-Treg-Call-Id`. The parent owns
   the idempotency label (a success, or a terminal failure after a paid child, replays without
@@ -1667,7 +1674,14 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
 - **Ranking, specificity (2026-08-29)**: among candidates of the same tier, one that USES more of the
   keys the caller actually sent outranks a cheaper one that uses fewer — `{company_domain, title}`
   goes to a title-aware search, not a free domain-only one that would answer the whole company.
-  Only caller-supplied keys count (`rank(given=…)`), never keys reached through `derive`. Price
+  Specificity counts how many of the CALLER's keys (`rank(given=…)`) a variant covers: a key the
+  variant names, or one it was derived from through the contract's `derive` rules (`first_name`
+  + `last_name` cover a supplied `full_name`; `domain` covers a supplied `email`). So
+  `{first_name, last_name, domain}` and `{full_name, domain}` are equally specific for a caller
+  who sent a full name and a domain, and price decides between them - while a key the caller
+  never sent earns nothing. The consequence for the cost cap: given `{email, full_name}`, a
+  variant derived from both outranks a cheaper `{email}`-only one, which is why
+  `X-Treg-Route-Max-Cost` skips per candidate instead of judging the leader (above). Price
   decides among equals.
 - **Ranking, dropped filters (2026-08-29)**: a candidate whose adapter cannot express a filter the
   caller SENT ranks below every candidate that can — `len(candidate.ignored)` sits in `rank()`'s key

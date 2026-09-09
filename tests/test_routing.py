@@ -551,6 +551,54 @@ async def test_max_cost_below_the_cheapest_refuses_before_any_call(clients: Asyn
         assert (await db.execute(select(Hold))).scalars().all() == []
 
 
+async def test_max_cost_skips_a_dearer_top_ranked_candidate_and_asks_the_affordable_one(clients: AsyncClient, enrichment_on, monkeypatch):
+    """The plan is ranked by specificity first, price second, so the top candidate is often NOT the
+    cheapest: phone.find for `{email, full_name}` leads with leadsforge ($0.245 - its variant covers
+    both keys through `derive`) ahead of tomba ($0.0445, `{email}` alone). A $0.05 ceiling used to
+    be checked against the top candidate only and refused the whole call, calling leadsforge "the
+    cheapest candidate" while the embedded plan showed tomba's affordable row. The ceiling is a
+    per-candidate skip: leadsforge is passed over, tomba is asked."""
+    routed = "treg.people.phone.find"
+    plan = (await clients.get(f"/catalog/endpoints/{routed}")).json()["routing"]["plan"]
+    assert plan[0]["endpoint_id"] == "tomba.people.phone.find", "the catalog view is price-ordered; the call's plan is not"
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"tomba": [(200, {"data": {"e164_format": "+15550100", "line_type": "mobile", "country_code": "US"}})]}, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{routed}", json={"email": "ada@example.com", "full_name": "Ada Example"},
+                           headers={"X-Treg-Route-Max-Cost": "0.05"})
+    assert r.status_code == 200, r.text
+    tried = r.json()["_treg"]["tried"]
+    assert tried[0] == {"endpoint_id": "leadsforge.people.phone.find", "provider": "leadsforge", "outcome": "skipped",
+                        "status": None, "charged_micro": 0, "detail": call_route.OVER_CAP}, "top-ranked, over the cap, skipped"
+    assert tried[1]["endpoint_id"] == "tomba.people.phone.find" and tried[1]["outcome"] == "hit"
+    assert r.json()["_treg"]["served_by"] == "tomba.people.phone.find" and r.json()["output"]["phone"] == "+15550100"
+    assert [p for p, *_ in seen] == ["tomba"], "leadsforge was never asked"
+    assert r.json()["_treg"]["charged_micro"] == 44_500 and before - await _balance(clients) == 44_500
+
+
+async def test_max_cost_below_every_candidate_refuses_naming_the_true_minimum(clients: AsyncClient, enrichment_on, monkeypatch):
+    """When no candidate fits under the ceiling the call is refused before any reserve, and the
+    402 names the cheapest candidate in the plan (tomba, $0.0445) - not the top-ranked one
+    (leadsforge, $0.245), which is what the old top-candidate pre-check reported as "cheapest"."""
+    routed = "treg.people.phone.find"
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({"*": [(200, {})]}, seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{routed}", json={"email": "ada@example.com", "full_name": "Ada Example"},
+                           headers={"X-Treg-Route-Max-Cost": "0.01"})
+    assert r.status_code == 402, r.text
+    d = r.json()["detail"]
+    assert d["error"] == "route_max_cost" and d["endpoint_id"] == routed and d["max_cost_micro"] == 10_000
+    assert d["plan"][0]["endpoint_id"] == "leadsforge.people.phone.find" and d["plan"][0]["price_micro"] == 245_000
+    assert d["cheapest_micro"] == min(c["price_micro"] for c in d["plan"]) == 44_500
+    assert d["cheapest_endpoint_id"] == "tomba.people.phone.find" and "tomba.people.phone.find" in d["message"]
+    assert "leadsforge" not in d["message"]
+    assert seen == [] and await _balance(clients) == before, "nothing asked, nothing charged"
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == [], "nothing reserved"
+
+
 async def test_identity_no_provider_accepts_is_422_naming_variants(clients: AsyncClient, enrichment_on):
     r = await clients.post(f"/call/{ROUTED}", json={"full_name": "Patrick Collison"})
     assert r.status_code == 422 and r.json()["detail"]["error"] == "identity_incomplete"

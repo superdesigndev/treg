@@ -88,6 +88,7 @@ _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
 
 MAX_WEAK_FALLBACKS = 2   # extra providers asked after a thin-but-real answer (see min_results)
 CHEAP_RETRY_MICRO = 10_000  # ≤ 1¢: a per_call provider cheap enough to be asked after another's 4xx
+OVER_CAP = "would exceed max cost"  # the `skipped` detail for a candidate the X-Treg-Route-Max-Cost ceiling rules out
 
 
 def _free_on_failure(cand: Candidate) -> bool:
@@ -369,12 +370,6 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
                         f"no provider for {ep['id']} can honour every filter you sent for this identity "
                         f"(X-Treg-Route-Strict-Filters): " + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in strict_drop)
                         + ". Send an identity a filter-aware provider accepts, or drop the header to accept a looser answer")})
-    first = plan.candidates[0]
-    if options.max_cost_micro is not None and (first.price_micro or 0) > options.max_cost_micro:
-        raise ResolutionFailed("route_max_cost", status_code=402, detail={
-            "error": "route_max_cost", "endpoint_id": ep["id"], "max_cost_micro": options.max_cost_micro,
-            "cheapest_micro": first.price_micro, "plan": plan.view()["plan"],
-            "message": f"the cheapest candidate ({first.endpoint['id']}) costs more than {MAX_COST_HEADER}"})
     tried: list[Attempt] = []
     spent = 0
     errors = 0
@@ -385,7 +380,14 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
     best: tuple[int, tuple[Candidate, dict, dict, bytes]] | None = None   # best WEAK answer seen
     for n, cand in enumerate(plan.candidates):
         if options.max_cost_micro is not None and spent + (cand.price_micro or 0) > options.max_cost_micro:
-            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0, "would exceed max cost"))
+            # The ceiling is checked per candidate, in rank order, and an over-cap candidate is
+            # SKIPPED, not the end of the plan: the ranking is by specificity first and price second,
+            # so the top candidate is often not the cheapest (phone.find for `{email, full_name}`
+            # leads with leadsforge at $0.245 because its variant covers both keys, while tomba's
+            # `{email}` costs $0.0445). A pre-check on the top candidate alone refused that call
+            # under a $0.05 cap and called leadsforge "the cheapest candidate"; the 402 now comes
+            # only when every candidate is over the cap (below), and names the true minimum.
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0, OVER_CAP))
             continue
         if rejected_by and (cand.endpoint["provider"] in rejected_by or not _free_on_failure(cand)):
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0,
@@ -500,9 +502,20 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
     if winner is None and best is not None:
         winner = best[1]          # nobody cleared min_results — the fullest answer we paid for wins
     if winner is None:
+        if tried and all(t.outcome == "skipped" and t.detail == OVER_CAP for t in tried):
+            # Nothing was asked and nothing was reserved: every candidate was over the ceiling. A
+            # refusal the caller can act on, not a miss - it names the cheapest candidate in the
+            # plan (the minimum price, which is not the top-ranked candidate) and the ceiling.
+            cheapest = min(plan.candidates, key=lambda c: c.price_micro or 0)
+            raise ResolutionFailed("route_max_cost", status_code=402, detail={
+                "error": "route_max_cost", "endpoint_id": ep["id"], "max_cost_micro": options.max_cost_micro,
+                "cheapest_micro": cheapest.price_micro or 0, "cheapest_endpoint_id": cheapest.endpoint["id"],
+                "plan": plan.view()["plan"],
+                "message": f"every candidate for {ep['id']} costs more than {MAX_COST_HEADER} "
+                           f"({options.max_cost_micro} micro-USD); the cheapest is {cheapest.endpoint['id']} "
+                           f"at {cheapest.price_micro or 0} micro-USD. Nothing was charged"})
         outcome = "miss" if tried and all(t.outcome in ("miss", "skipped", "weak") for t in tried) else "error"
         if outcome == "miss":
-            last = next(t for t in reversed(tried) if t.outcome == "miss")
             body_out = {"output": {k: None for k in plan.contract.output}, "raw": None,
                         "_treg": {"served_by": None, "outcome": "miss", "tried": [t.view() for t in tried], "charged_micro": spent,
                                   **({"dropped": plan.dropped} if plan.dropped else {})}}
