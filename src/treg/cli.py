@@ -5008,35 +5008,40 @@ HUB_FILES = ("recipe.json", "run.js", "check.json", "README.md")
 _HUB_STEPS_SKELETON = {
     "name": None,
     "summary": "One sentence an agent reads first: what this tool returns.",
-    "inputs": {"domain": {"type": "string", "example": "figma.com"},
+    "inputs": {"query": {"type": "string", "example": "example query"},
                "limit": {"type": "int", "default": 10, "max": 100}},
-    "uses": ["hunter.people.email.find"],
-    "steps": [{"name": "people", "call": "hunter.people.email.find",
-               "input": {"domain": "$input.domain", "limit": "$input.limit"}}],
-    "output": {"people": "$people.data"},
+    "uses": ["my-api"],
+    "steps": [{"name": "fetch", "call": "my-api/v1/items",
+               "input": {"q": "$input.query", "limit": "$input.limit"}}],
+    "output": {"items": "$fetch"},
     "price_usd": 0,
 }
 _HUB_SCRIPT_SKELETON = {
     "name": None,
     "summary": "One sentence an agent reads first: what this tool returns.",
-    "inputs": {"search": {"type": "string", "default": ""},
+    "inputs": {"query": {"type": "string", "default": ""},
                "limit": {"type": "int", "default": 20, "max": 100}},
-    "uses": ["supabase"],
+    "uses": ["my-api"],
     "script": "run.js",
-    "output": {"fields": ["rows", "count"]},
+    "output": {"fields": ["items", "count"]},
     "price_usd": 0,
 }
-_HUB_RUN_JS = """// The whole surface a script gets: ctx.inputs, ctx.call(target, {method, query, body}), ctx.log(text).
+_HUB_RUN_JS = """// The whole surface a script gets:
+//   ctx.inputs                                  the caller's inputs, checked against recipe.json
+//   ctx.call(target, {method, query, body, headers})   one treg call -> {status, headers, json, text}
+//   ctx.log(text)                               one line the maker reads in the run log
 // No network, no files, no require: every road out is ctx.call. Never paste a key here - register
-// it first (treg secret add / treg tool add) and name the tool in `uses`.
+// it first (treg secret add / treg tool add), list the tool in `uses`, and name it in ctx.call.
+//
+// `target` is a catalog id (treg catalog search) or one of your team's tools as "<tool>/<path>".
+// Replace `my-api` below with the name from `treg tool ls`.
 export default async function run(ctx) {
-  const { search, limit } = ctx.inputs;
-  const r = await ctx.call("supabase/rest/v1/leads", {
-    query: { select: "*", limit: String(limit), ...(search ? { email: `ilike.*${search}*` } : {}) },
-  });
-  ctx.log(`${r.status} from supabase`);
-  const rows = Array.isArray(r.json) ? r.json : [];
-  return { rows, count: rows.length };
+  const { query, limit } = ctx.inputs;
+  const r = await ctx.call("my-api/v1/items", { query: { q: query, limit: String(limit) } });
+  if (r.status !== 200) throw new Error("my-api answered " + r.status);
+  const items = Array.isArray(r.json) ? r.json : [];
+  ctx.log(items.length + " items");
+  return { items, count: items.length };
 }
 """
 _HUB_README = """# {name}
@@ -5062,25 +5067,74 @@ def _hub_read_folder(path: str) -> dict:
     return body
 
 
+def _hub_refusal(payload: dict, status: int) -> None:
+    """One refusal, the house way: what was refused, the field and the rule, and the command that fixes it."""
+    d = payload.get("detail", payload) if isinstance(payload, dict) else payload
+    _section("✗ Refused")
+    if isinstance(d, dict) and d.get("error") == "manifest_invalid":
+        _kv("field", f"{_B}{d['field']}{_R}")
+        _kv("rule", d["rule"])
+        rule = str(d.get("rule", ""))
+        if "register it first" in rule or "not one of your team's tools" in rule:
+            _arrow("treg secret add <NAME> --value <key>     then  treg tool add <name> --base-url <url> --secret <NAME>")
+        elif "not a catalog id" in rule:
+            _arrow("treg catalog search \"<what you want to do>\"  finds the id")
+    elif isinstance(d, dict) and d.get("error") == "hub_busy":
+        _kv("error", f"{d['active']} of {d['max']} runs in flight for your team")
+        _arrow(f"try again in {d.get('retry_after_s', 5)} s")
+    elif isinstance(d, dict):
+        _kv("status", str(status))
+        for k in ("error", "message", "step", "kind", "field", "rule"):
+            if d.get(k):
+                _kv(k, str(d[k])[:300])
+        for e in d.get("trace", [])[-3:]:
+            if e.get("error"):
+                _kv("step", f"{e['name']} → {e['call']}: {str(e['error'])[:400]}")
+    else:
+        _kv("status", str(status)); _kv("detail", str(d)[:400])
+
+
+def _hub_trace(out: dict) -> None:
+    u = out.get("usage", {})
+    _section("③ What ran")
+    print(f"  {_M}{'WAVE':<5}{'STEP':<14}{'CALL':<42}{'RESULT':<9}{'STATUS':<7}{'COST µ$':>8}  {'MS':>6}{_R}")
+    for e in out.get("trace", []):
+        colour = _G if e["outcome"] == "ok" else _M if e["outcome"] == "skipped" else _AM
+        name = e["name"] + (f"[{e['item']}]" if e.get("item") is not None else "")
+        print(f"  {e['wave']:<5}{name:<14}{e['call'][:41]:<42}{colour}{e['outcome']:<9}{_R}{str(e.get('status') or ''):<7}{e['cost_micro']:>8}  {e['ms']:>6}")
+    for line in out.get("log", []):
+        _dim(f"  log  {line}")
+    _kv("run", str(out.get("run_id")))
+    _kv("steps", f"{u.get('steps')}   cost {u.get('cost_micro')} µ$ (${(u.get('cost_micro') or 0) / 1e6:.4f})   {u.get('ms')} ms")
+
+
 def _hub_report(r, *, json_out: bool) -> None:
     payload = r.json() if r.headers.get("content-type", "").startswith("application/json") else {"text": r.text}
     if json_out:
         print(json.dumps(payload, indent=2))
     elif r.status_code in (200, 201):
-        print(f"{payload.get('tool_id')}@{payload.get('version')}  {payload.get('status')}")
-        if payload.get("call"):
-            print(f"  call it:  {payload['call']}")
         chk = payload.get("check") or {}
-        if chk.get("error"):
-            print(f"  check failed: {json.dumps(chk['error'])[:400]}")
-        elif chk:
-            print(f"  check passed  run {chk.get('run_id')}  charged {chk.get('charged_micro', 0)} micro-USD")
+        live = payload.get("status") == "live"
+        _section("✓ Published" if live else "Published, but the check failed")
+        _kv("tool", f"{_B}{payload.get('tool_id')}{_R}  version {payload.get('version')}  {_G if live else _AM}{payload.get('status')}{_R}")
+        if chk:
+            if chk.get("status") == "passed":
+                _ok(f"check passed   run {chk.get('run_id')}   charged {chk.get('charged_micro', 0)} µ$ to your balance")
+            else:
+                err = chk.get("error") or {}
+                _kv("check", f"{_AM}failed{_R}  {err.get('error', '')}  {err.get('message', '')}".strip())
+                for k in ("step", "status", "missing", "hint"):
+                    if err.get(k) is not None:
+                        _kv(k, str(err[k]))
+                for e in (chk.get("trace") or err.get("trace") or [])[-3:]:
+                    if e.get("error"):
+                        _kv("step", f"{e['name']} → {e['call']}: {str(e['error'])[:400]}")
+        if live:
+            _section("④ Call it")
+            _arrow(f"treg call {payload.get('tool_id')} --data '{{\"domain\": \"figma.com\"}}'")
+            _arrow(f"POST /call/{payload.get('tool_id')}   with X-Treg-Token, a JSON body of inputs")
     else:
-        d = payload.get("detail", payload)
-        if isinstance(d, dict) and d.get("error") == "manifest_invalid":
-            print(f"refused: {d['field']}: {d['rule']}")
-        else:
-            print(f"HTTP {r.status_code}: {json.dumps(d)[:600]}")
+        _hub_refusal(payload, r.status_code)
     if r.status_code not in (200, 201):
         sys.exit(1)
 
@@ -5094,15 +5148,23 @@ def cmd_hub_init(args, cfg) -> None:
     (folder / "recipe.json").write_text(json.dumps(skeleton, indent=2) + "\n")
     if args.script:
         (folder / "run.js").write_text(_HUB_RUN_JS)
-        check = {"inputs": {"search": "", "limit": 3}, "fields": ["rows"]}
+        check = {"inputs": {"query": "example query", "limit": 3}, "fields": ["items", "count"]}
     else:
-        check = {"inputs": {"domain": "figma.com", "limit": 2}, "fields": ["people"]}
+        check = {"inputs": {"query": "example query", "limit": 2}, "fields": ["items"]}
     (folder / "check.json").write_text(json.dumps(check, indent=2) + "\n")
     (folder / "README.md").write_text(_HUB_README.format(name=name))
-    print(f"wrote {folder}/: " + ", ".join(f for f in HUB_FILES if (folder / f).exists()))
-    print("next: edit recipe.json (every tool in `uses` must exist: a catalog id, or one of your team's tools),")
-    print("      treg hub run . --input k=v   (a real run on your own token, nothing stored)")
-    print("      treg hub publish .            (validate, run check.json once, live on pass)")
+    _section(f"① New hub tool: {name}")
+    for f in HUB_FILES:
+        if (folder / f).exists():
+            what = {"recipe.json": "the manifest: inputs, uses, output, price",
+                    "run.js": "the script: one exported run(ctx)",
+                    "check.json": "sample inputs + the fields the check must find",
+                    "README.md": "what it does, for a human"}[f]
+            _ok(f"{folder / f}   {_M}{what}{_R}")
+    _section("② Next")
+    _arrow("edit recipe.json — every tool in `uses` must exist: a catalog id, or one of your team's tools")
+    _arrow(f"treg hub run {folder} --input k=v     a real run on your own token; nothing stored")
+    _arrow(f"treg hub publish {folder}              validate, run check.json once, live on pass")
 
 
 def cmd_hub_run(args, cfg) -> None:
@@ -5119,13 +5181,9 @@ def cmd_hub_run(args, cfg) -> None:
         r = c.post("/hub/run", json=body, timeout=httpx.Timeout(190.0, connect=10.0))
     if r.status_code == 200 and not getattr(args, "json", False):
         out = r.json()
-        print(json.dumps(out.get("output"), indent=2))
-        u = out.get("usage", {})
-        print(f"-- run {out.get('run_id')}: {u.get('steps')} steps, {u.get('cost_micro')} micro-USD, {u.get('ms')} ms")
-        for e in out.get("trace", []):
-            print(f"   wave {e['wave']}  {e['name']:<14} {e['call']:<40} {e['outcome']:<8} {e.get('status')}  {e['cost_micro']} µ$  {e['ms']} ms")
-        for line in out.get("log", []):
-            print(f"   log: {line}")
+        _section(f"② Output of {out.get('recipe')}")
+        print(json.dumps(out.get("output"), indent=2, ensure_ascii=False)[:6000])
+        _hub_trace(out)
         return
     _hub_report(r, json_out=getattr(args, "json", False))
 
@@ -5145,11 +5203,13 @@ def cmd_hub_ls(args, cfg) -> None:
     rows = r.json()
     if getattr(args, "json", False):
         print(json.dumps(rows, indent=2)); return
+    _section("Your hub tools")
     if not rows:
-        print("no hub tools yet (treg hub init <name>)"); return
-    print(f"{'TOOL':<40} {'VER':>3}  {'STATUS':<8} {'KIND':<6} {'PRICE':>8}  USES")
+        _dim("  none yet — treg hub init <name>"); return
+    print(f"  {_M}{'TOOL':<44}{'VER':>3}  {'STATUS':<8}{'KIND':<7}{'PRICE':>7}  USES{_R}")
     for t in rows:
-        print(f"{t['tool_id']:<40} {t['version']:>3}  {t['status']:<8} {t['kind']:<6} ${t['price_usd']:<7g}  {', '.join(t['uses'])[:60]}")
+        colour = _G if t["status"] == "live" else _AM if t["status"] == "failed" else _M
+        print(f"  {t['tool_id']:<44}{t['version']:>3}  {colour}{t['status']:<8}{_R}{t['kind']:<7}${t['price_usd']:<6g}  {', '.join(t['uses'])[:60]}")
 
 
 def cmd_feedback_get(args, cfg) -> None:

@@ -316,3 +316,38 @@ export default async function run(ctx) {
     d = r.json()["detail"]
     assert d["kind"] == "script" and "after paying" in d["message"] and d["charged_micro"] == EP_MICRO
     assert await _balance(matrix_clients) - before.balance_micro == -EP_MICRO
+
+
+async def test_a_script_header_reaches_the_upstream_but_identity_headers_do_not(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    sid = (await matrix_clients.post("/secrets", json={"name": "sb", "value": "MAKER-SB-KEY"})).json()["id"]
+    await matrix_clients.post("/tools", json={"name": "supabase", "base_url": "https://fake-provider.invalid/sb", "secret_id": sid})
+    tool_id = await _publish_script(matrix_clients, """
+export default async function run(ctx) {
+  const r = await ctx.call("supabase/rest/v1/keyword_rankings", {
+    query: { select: "keyword" },
+    headers: { "Accept-Profile": "hubdemo", "Authorization": "Bearer STOLEN", "X-Treg-Token": "nope", "apikey": "x" },
+  });
+  return { n: r.json.rows.length };
+}""", ["supabase"], ["n"])
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "figma.com"}, headers=FAKE)
+    assert r.status_code == 200, r.text
+    hit = fake_provider.hits[-1]
+    assert hit.headers.get("accept-profile") == "hubdemo"
+    assert hit.headers["authorization"] == "Bearer MAKER-SB-KEY"      # the tool's binding, never the script's
+    assert "x-treg-token" not in hit.headers and hit.headers.get("apikey") != "x"
+
+
+async def test_a_step_never_accepts_a_compressed_answer(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    """The runner reads every step's bytes itself, so a step asks for identity encoding whatever
+    the caller sent (live 2026-09-09: a gzip-compressed 20-row answer read as an empty list)."""
+    tool_id = await _publish(matrix_clients, _manifest(
+        steps=[{"name": "a", "call": EP, "input": {"aweme_id": "x"}}], output={"x": "$a.data"}))
+    hits_before = len(fake_provider.hits)
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "figma.com"},
+                                  headers={**FAKE, "Accept-Encoding": "gzip, deflate, br"})
+    assert r.status_code == 200
+    assert fake_provider.hits[hits_before].headers.get("accept-encoding") == "identity"

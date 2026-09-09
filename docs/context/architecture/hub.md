@@ -1,6 +1,6 @@
 ---
 title: The tool hub — tools a maker publishes, made of other tools
-status: in-progress (phase 4 of 8: the maker's road; behind TREG_HUB_ENABLED, off)
+status: in-progress (phase 5 of 8: the case study ran end to end; behind TREG_HUB_ENABLED, off)
 sources:
   - src/treg/domain/hub/__init__.py
   - src/treg/domain/hub/manifest.py
@@ -173,3 +173,31 @@ kind, message, trace, log, charged_micro}`; money spent on completed calls stays
 
 Known limit of version one: `ctx.call` is synchronous underneath the engine, so two calls inside
 one `Promise.all` run one after the other; real parallelism is the JSON road's.
+
+## The case study (phase 5, 2026-09-09) and what it taught
+
+The owner and the assistant walked the maker's road by hand against a real Supabase table
+(2,592 SEO rank-tracking rows in schema `hubdemo` of the owner's `krew-saas` project), on a
+local server with the flag on: `treg hub init` (neutral skeleton) → the four files written
+together → a run with no tool registered (refused: `uses[0]`, the rule, the two fix commands) →
+`treg secret add` + `treg tool add supabase` with two bindings (`Authorization: Bearer` and
+`apikey`) → `treg hub run .` → `treg hub publish .` (check passed, 0 µ$: the only step ran on the
+maker's own key) → a second team called `unclecode-superdesign-dev.keyword-rankings` and got rows,
+the maker's key served the step, and neither the Supabase URL nor any key material appeared in
+the reply or headers.
+
+Two runner rules came out of it:
+
+- **A step is never answered compressed.** The runner reads every step's bytes itself (a script
+  gets `json` and `text`), so the caller's `Accept-Encoding` is dropped from every child call and
+  `identity` is asked instead. Found live: a 20-row Supabase answer came back gzip (Cloudflare
+  compresses bigger bodies) and the script saw an empty list, while a 2-row answer was fine.
+- **A script may set headers on `ctx.call`** (`Accept-Profile` for a PostgREST schema, a vendor's
+  `Accept`), minus the ones that carry identity or framing: `authorization`, `cookie`, `apikey`,
+  `host`, `content-length`, `x-treg-*` are treg's and are dropped; the tool's binding always wins.
+
+Also from the walk: `init` writes a vendor-neutral skeleton (`my-api`, a `query` input, comments
+that say what to replace); the hub commands print in the house style (numbered section bars,
+ticks, a trace table, refusals as a "✗ Refused" block with field, rule and the fix command);
+`treg hub init --from <template>` is backlog (templates for data providers); `treg hub retire`
+is phase 7.

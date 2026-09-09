@@ -282,7 +282,7 @@ caller sent, with `secret` inputs masked.
 
 ## The backlog, in the order it was named
 
-1. Templates for more data providers (the data tool as a template system).
+1. Templates for more data providers (the data tool as a template system), including `treg hub init --from <template>` (owner, 2026-09-09).
 2. Withdrawal of earned credit as cash.
 3. The listing road: pull request, verification, the three catalog states in search.
 4. A private-to-my-team switch on a hub tool.
