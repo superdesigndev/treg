@@ -140,6 +140,24 @@ async def test_tier1_registered_tool_wins(clients: AsyncClient):
     assert (await _telemetry(clients))["tool_name"] == "our-tikhub"
 
 
+async def test_tier1_two_hand_registered_same_host_tools_stay_ambiguous(clients: AsyncClient):
+    """Two hand-registered tools on the provider's host, neither tied to a registry connection:
+    nothing says which credential the caller meant, so the catalog call still 409s - and the
+    detail names the catalog id, both tools, and the named form that disambiguates."""
+    a = (await clients.post("/secrets", json={"name": "key-a", "value": "A"})).json()["id"]
+    b = (await clients.post("/secrets", json={"name": "key-b", "value": "B"})).json()["id"]
+    await clients.post("/tools", json={"name": "tikhub-a", "base_url": "https://api.tikhub.io", "secret_id": a})
+    await clients.post("/tools", json={"name": "tikhub-b", "base_url": "https://api.tikhub.io", "secret_id": b})
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    assert detail["error"] == "target_ambiguous"
+    assert detail["endpoint_id"] == EP
+    assert detail["tools"] == ["tikhub-a", "tikhub-b"]
+    assert detail["named_forms"] == [f"/call/tikhub-a{EP_PATH}", f"/call/tikhub-b{EP_PATH}"]
+    assert EP in detail["message"] and f"/call/tikhub-a{EP_PATH}" in detail["message"]
+
+
 async def test_catalog_only_route_cannot_be_shadowed_by_same_named_team_tool(clients: AsyncClient):
     """The directory route resolves the curated id directly; legacy `/call` still gives an exact
     same-named team tool precedence, preserving both contracts at once."""

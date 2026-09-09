@@ -185,7 +185,26 @@ catalog fall-through and is attached only if the marketplace credential ladder a
 near-id matching remains provider-local and takes precedence for genuine misspellings.
 
 If both shapes miss with 404, a dotted target gets one final lookup in the endpoint catalog. A live
-row enters `_resolve_marketplace_call` and its credential ladder. `_marketplace_upstream` fills catalog
+row enters `_resolve_marketplace_call` and its credential ladder.
+
+**Tier 1 selects by provider identity before host.** A catalog id names its provider, and connect
+provisions every account of a provider on the same host with the same provider-tagged `Secret`, so
+host matching alone can never tell a second connected account (`google-search-console-2`) from the
+first, nor `meta-ads` from `instagram-page-tools` (both on `graph.facebook.com`). So
+`_resolve_marketplace_call` first asks `_provider_tool_grant` for an org tool, on the upstream's
+host, bound to a `Secret` whose `provider` is the endpoint's provider and that the caller may use.
+An endpoint declaring authorization methods adds the grant method to that identity (Instagram's
+two grants); a plain endpoint takes every connection of the provider. Among several, the bare
+service name wins - connect guarantees it to the first account and every skill and doc calls it -
+then the newest connection. Only when no connection-backed tool exists does `resolve_call` match by
+host, which is where a hand-registered tool with a plain secret still serves the call; a tie there
+(`AmbiguousTarget`) is restated by `_catalog_ambiguous` as a `409` naming the endpoint id, the
+colliding tools and the `/call/<tool>/<path>` form of each. A caller-denied connection tool refuses
+(`403`) only for an annotated endpoint; a plain one falls through to host matching, which already
+tells "not yours" from "not registered". Own-account tools stay unmetered and unrouted on every
+branch of this step.
+
+`_marketplace_upstream` fills catalog
 path placeholders by percent-encoding raw values, but preserves a value containing a valid `%HH` escape;
 this prevents an already encoded Search Console property id such as `sc-domain%3Aexample.com` becoming
 double-encoded as `%253A`. Literal/invalid percent signs remain encoded. A `retired`/`broken` tombstone is
@@ -262,10 +281,14 @@ Never relabel a stream failure as a new 500 after response headers have already 
 (`norm == base` or `base + "/"`), so `.../v1` no longer matches `.../v10/...` and inject the wrong
 credential; the longest-prefix tiebreak compares rstripped lengths (a trailing-slash duplicate is a real
 `409`, not a silent winner). When two same-host tools still tie on prefix length, `_resolve_call`
-**prefers the registry-provider-backed tool** (one whose binding points at a `Secret` with a `provider`)
-over a hand-registered one that often holds a stale credential - a `409` there would break exactly the
-agent-facing URL-passthrough callers who never typed a tool name; only a genuine ambiguity (neither or
-both provider-owned) still `409`s. That 409 names every caller-usable colliding tool and directs the
+**prefers the registry-provider-backed tool** - one whose binding points at a `Secret` whose `provider`
+**owns the host** (`_providers_owning`: a provider's base URL, a grant method's base-URL override, or a
+companion tool) - over a hand-registered one that often holds a stale credential; a credential for some
+other provider's API can never claim the host. A `409` there would break exactly the agent-facing
+URL-passthrough callers who never typed a tool name, so only a genuine ambiguity still `409`s: neither
+tool provider-owned, a second account of one provider, or two providers sharing a host (Meta). A URL
+carries no provider identity - a catalog id does, which is why the catalog path above chooses by
+identity first. That 409 (`AmbiguousTarget`) names every caller-usable colliding tool and directs the
 caller to the unambiguous `/call/<name>/<path>` form. Binding validity is checked at **registration** (`_validate_bindings` rejects
 an unknown `injector` and a cross-org/dangling `secret_id`; `register_skill` runs the same gate), and
 `call_tool` translates a call-time injector `ValueError` and an upstream `httpx.RequestError` into a
