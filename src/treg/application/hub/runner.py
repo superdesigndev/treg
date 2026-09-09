@@ -164,9 +164,16 @@ async def run_hub_tool(
     maker = await _maker_snapshot(parent, tool)
     catalog = catalog_store.load()
     own_tools = {u for u in manifest["uses"] if "." not in u}
+    price_held = await _reserve_price(parent, tool, run_id)
+    if price_held > ceiling:
+        await _close_price(tool, run_id, price_held, success=False, reason="hub_run_max_cost")
+        raise ResolutionFailed("hub_run_failed", status_code=402, detail={
+            "error": "hub_run_max_cost", "max_cost_micro": ceiling, "price_micro": price_held,
+            "run_id": run_id, "charged_micro": 0, "trace": [],
+            "message": f"the tool's own price ({price_held} µ$) already passes {RUN_MAX_COST_HEADER}"})
     if tool.kind == "script":
         return await _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_tools,
-                                      upstream_client, execute_child, started, audit_client)
+                                      upstream_client, execute_child, started, audit_client, price_held)
     g = hub_graph.build(manifest["steps"])
 
     scope: dict[str, Any] = {"input": inputs}
@@ -263,7 +270,7 @@ async def run_hub_tool(
                                 "message": f"the run would pass its step cap ({manifest['limits']['steps']})"})
                             break
                         est = estimate(u.spec)
-                        if spent + _reserved(running, pending_units, estimate) + est > ceiling:
+                        if price_held + spent + _reserved(running, pending_units, estimate) + est > ceiling:
                             stop = RunStopped("hub_run_max_cost", 402, {
                                 "error": "hub_run_max_cost", "step": name, "max_cost_micro": ceiling,
                                 "message": f"the next step would pass {RUN_MAX_COST_HEADER}"})
@@ -306,23 +313,75 @@ async def run_hub_tool(
     trace.sort(key=lambda e: (e["wave"], e["name"], e.get("item") or 0))
     ms_total = int((time.monotonic() - started) * 1000)
     if stop is not None:
+        await _close_price(tool, run_id, price_held, success=False, reason=stop.kind)
         detail = {**stop.detail, "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}",
-                  "charged_micro": spent, "trace": trace}
+                  "charged_micro": spent, "price_micro": 0, "trace": trace}
         await _record(tool, parent, run_id, "failed" if stop.kind == "hub_step_failed" else "stopped",
                       counted, spent, ms_total, masked(manifest["inputs"], inputs), trace, error=detail)
         _audit_parent(parent, tool, stop.status, spent, audit_client)
         raise ResolutionFailed("hub_run_failed", status_code=stop.status, detail=detail)
 
     output = refs.resolve(manifest["output"], scope, g.positions)
+    earned = await _close_price(tool, run_id, price_held, success=True)
     body_out = {
         "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}", "output": output,
-        "usage": {"cost_micro": spent, "steps": counted, "ms": ms_total},
+        "usage": {"cost_micro": spent + earned, "steps_micro": spent, "price_micro": earned,
+                  "steps": counted, "ms": ms_total},
         "trace": trace, "log": [],
     }
     await _record(tool, parent, run_id, "ok", counted, spent, ms_total,
-                  masked(manifest["inputs"], inputs), trace)
-    _audit_parent(parent, tool, 200, spent, audit_client)
-    return _json(body_out, 200, {"X-Treg-Run-Id": run_id, "X-Treg-Steps": str(counted)}), spent
+                  masked(manifest["inputs"], inputs), trace, price=earned)
+    _audit_parent(parent, tool, 200, spent + earned, audit_client)
+    return _json(body_out, 200, {"X-Treg-Run-Id": run_id, "X-Treg-Steps": str(counted)}), spent + earned
+
+
+# ---------------------------------------------------------------------------------------------
+# The seller's price (docs/HUB-DECISIONS.md round 3): one extra hold `{run}:price` on the CALLER
+# at run start, settled to the MAKER as `earned` credit on success, released on failure. Not
+# charged when the caller IS the maker (their own tool, and the publish check run), so the check
+# never costs the seller their own price.
+
+async def _reserve_price(parent: CallContext, tool: HubTool, run_id: str) -> int:
+    """Open the price hold. Returns the amount held (0 when nothing is owed). Raises
+    ResolutionFailed 402 `hub_price_unaffordable` when the caller cannot afford it."""
+    from ...domain import money as ledger
+    caller = parent.input.caller
+    if tool.price_micro <= 0 or caller.org_id == tool.org_id:
+        return 0
+    async with session_maker() as s:
+        try:
+            await ledger.reserve_in_transaction(
+                s, caller.org_id, tool.tool_id, tool.price_micro, call_id=f"{run_id}:price",
+                meta={"tier": "hub_price", "tool_id": tool.tool_id, "version": tool.version,
+                      "maker_org_id": tool.org_id}, tags=dict(getattr(parent.meta, "tags", {}) or {}))
+        except ledger.InsufficientBalance as exc:
+            await s.rollback()
+            raise ResolutionFailed("hub_price_unaffordable", status_code=402, detail={
+                "error": "insufficient_balance", "tool_id": tool.tool_id,
+                "balance_micro": exc.balance_micro, "price_micro": tool.price_micro,
+                "message": f"this tool costs ${tool.price_micro / 1e6:.6g} per run from its maker, "
+                           f"before its steps; your balance is ${exc.balance_micro / 1e6:.4f}"}) from None
+        await s.commit()
+    return tool.price_micro
+
+
+async def _close_price(tool: HubTool, run_id: str, held: int, *, success: bool, reason: str = "") -> int:
+    """Settle the price to the maker (success) or give it back to the caller (failure).
+    Returns what the maker earned."""
+    if held <= 0:
+        return 0
+    from ...domain import money as ledger
+    async with session_maker() as s:
+        if success:
+            earned = await ledger.settle_to_in_transaction(
+                s, f"{run_id}:price", tool.org_id,
+                meta={"tool_id": tool.tool_id, "version": tool.version, "run_id": run_id})
+        else:
+            earned = 0
+            await ledger.release_in_transaction(s, f"{run_id}:price", reason=reason or "hub_run_failed",
+                                                meta={"tool_id": tool.tool_id, "run_id": run_id})
+        await s.commit()
+    return earned
 
 
 class _StepFailed:
@@ -419,13 +478,13 @@ def _header(response: UpstreamResponse, name: str) -> str | None:
 
 async def _record(tool: HubTool, parent: CallContext, run_id: str, status: str, steps: int,
                   cost: int, ms: int, inputs: dict, trace: list, error: dict | None = None,
-                  log: list | None = None) -> None:
+                  log: list | None = None, price: int = 0) -> None:
     from datetime import datetime, timezone
     caller = parent.input.caller
     async with session_maker() as s:
         s.add(HubRun(run_id=run_id, tool_id=tool.tool_id, version=tool.version,
                      caller_org_id=caller.org_id, maker_org_id=tool.org_id, caller_email=caller.email,
-                     status=status, steps=steps, cost_micro=cost, duration_ms=ms, inputs=inputs,
+                     status=status, steps=steps, cost_micro=cost, price_micro=price, duration_ms=ms, inputs=inputs,
                      trace=trace, log=log or [], error=error,
                      finished_at=datetime.now(timezone.utc).replace(tzinfo=None)))
         await s.commit()
@@ -457,7 +516,7 @@ def _json(value, status: int, headers: dict[str, str]) -> UpstreamResponse:
 # The script road: the same child call, asked for by run.js through the sandbox bridge
 
 async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_tools,
-                           upstream_client, execute_child, started, audit_client):
+                           upstream_client, execute_child, started, audit_client, price_held=0):
     from . import sandbox
 
     manifest = tool.manifest
@@ -491,7 +550,7 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
         if counted + 1 > manifest["limits"]["steps"]:
             raise sandbox.SandboxError("refused", f"the run would pass its step cap ({manifest['limits']['steps']})")
         est = estimate_for(call)
-        if spent + est > ceiling:
+        if price_held + spent + est > ceiling:
             raise sandbox.SandboxError("refused", f"the next call would pass {RUN_MAX_COST_HEADER}")
         counted += 1
         n = counted - 1
@@ -546,9 +605,10 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
                                           execute=execute, log=log)
     except sandbox.SandboxError as exc:
         ms_total = int((time.monotonic() - started) * 1000)
+        await _close_price(tool, run_id, price_held, success=False, reason="hub_script_failed")
         detail = {"error": "hub_script_failed", "kind": exc.kind, "message": exc.message,
                   "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}",
-                  "charged_micro": spent, "trace": trace, "log": log}
+                  "charged_micro": spent, "price_micro": 0, "trace": trace, "log": log}
         await _record(tool, parent, run_id, "failed", counted, spent, ms_total,
                       masked(manifest["inputs"], inputs), trace, error=detail, log=log)
         _audit_parent(parent, tool, 424, spent, audit_client)
@@ -556,20 +616,23 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
     missing = [f for f in fields if f not in output]
     ms_total = int((time.monotonic() - started) * 1000)
     if missing:
+        await _close_price(tool, run_id, price_held, success=False, reason="hub_output_invalid")
         detail = {"error": "hub_output_invalid", "missing": missing, "run_id": run_id,
                   "recipe": f"{tool.tool_id}@{tool.version}", "charged_micro": spent,
-                  "trace": trace, "log": log,
+                  "price_micro": 0, "trace": trace, "log": log,
                   "message": "run(ctx) returned an object without the fields the manifest declares"}
         await _record(tool, parent, run_id, "failed", counted, spent, ms_total,
                       masked(manifest["inputs"], inputs), trace, error=detail, log=log)
         _audit_parent(parent, tool, 424, spent, audit_client)
         raise ResolutionFailed("hub_run_failed", status_code=424, detail=detail)
+    earned = await _close_price(tool, run_id, price_held, success=True)
     body_out = {"run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}", "output": output,
-                "usage": {"cost_micro": spent, "steps": counted, "ms": ms_total}, "trace": trace, "log": log}
+                "usage": {"cost_micro": spent + earned, "steps_micro": spent, "price_micro": earned,
+                          "steps": counted, "ms": ms_total}, "trace": trace, "log": log}
     await _record(tool, parent, run_id, "ok", counted, spent, ms_total,
-                  masked(manifest["inputs"], inputs), trace, log=log)
-    _audit_parent(parent, tool, 200, spent, audit_client)
-    return _json(body_out, 200, {"X-Treg-Run-Id": run_id, "X-Treg-Steps": str(counted)}), spent
+                  masked(manifest["inputs"], inputs), trace, log=log, price=earned)
+    _audit_parent(parent, tool, 200, spent + earned, audit_client)
+    return _json(body_out, 200, {"X-Treg-Run-Id": run_id, "X-Treg-Steps": str(counted)}), spent + earned
 
 
 MAX_TEXT = 1_000_000

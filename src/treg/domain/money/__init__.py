@@ -65,7 +65,9 @@ from ...models import AsyncTaskRecord, CreditBlock, Hold, LedgerEntry, Org, TagS
 # kind must be added here or it silently gets the most expensive treatment available.
 # `bonus` (the tiered extra on a manual top-up, `billing.bonus_for_topup`) is the same kind of thing:
 # marketing spend keyed to a payment, never refundable, so it burns first too.
-_KIND_ORDER = {"promotional": 0, "referral": 0, "bonus": 0, "purchased": 1}
+# `earned`: a hub seller's credit (docs/HUB-DECISIONS.md round 3) — spent after the free kinds and
+# before purchased money, so a maker's own dollars are used last.
+_KIND_ORDER = {"promotional": 0, "referral": 0, "bonus": 0, "earned": 1, "purchased": 2}
 
 
 class InsufficientBalance(Exception):
@@ -420,6 +422,45 @@ async def _settle_in_transaction(
     await db.execute(update(TagSpend).where(TagSpend.hold_id == call_id)
                      .values(amount_micro=consumed, settled=True, created_at=settled_at))
     return consumed, True
+
+
+async def settle_to_in_transaction(
+    db: AsyncSession, call_id: str, payee_org_id: int, *, meta: dict | None = None,
+) -> int:
+    """Close a hold at its FULL reserved amount and credit that amount to `payee_org_id` as an
+    `earned` block — a hub seller's price (docs/HUB-DECISIONS.md round 3 q5, q7). One
+    transaction, two ledger entries: a `settle` on the payer (meta names the payee) and a `grant`
+    on the payee (block kind `earned`, meta names the payer's run). The invariant holds on BOTH
+    teams at every instant: the payer's balance was debited at reserve, its blocks are consumed
+    here; the payee's balance and blocks rise together. No margin: the seller's price is the
+    seller's, whole (round 3 q4). Returns the amount moved; 0 when the hold was already closed
+    (a double settle moves nothing twice). Does not commit."""
+    hold = await _claim_hold(db, call_id)
+    if hold is None:
+        return 0
+    amount = hold.amount_micro
+    settled_at = _now()
+    consumed, shortfall = await _consume_blocks(db, hold.org_id, amount, call_id, hold.endpoint_id)
+    spent_delta = consumed - (amount if hold.created_at >= _day_start() else 0)
+    if amount != consumed or spent_delta:
+        await _add_balance(db, hold.org_id, amount - consumed, spent_delta_micro=spent_delta)
+    await _entry(
+        db, org_id=hold.org_id, kind="settle", amount_micro=-consumed, call_id=call_id,
+        endpoint_id=hold.endpoint_id, created_at=settled_at,
+        meta={**(meta or {}), "payee_org_id": payee_org_id, "reserved_micro": amount,
+              "settled_micro": amount, "consumed_micro": consumed, "refunded_micro": amount - consumed,
+              "margin": 0.0, "block_shortfall_micro": shortfall})
+    await db.execute(update(TagSpend).where(TagSpend.hold_id == call_id)
+                     .values(amount_micro=consumed, settled=True, created_at=settled_at))
+    if consumed > 0:
+        block = CreditBlock(id=_id(), org_id=payee_org_id, kind="earned",
+                            amount_micro=consumed, remaining_micro=consumed)
+        db.add(block)
+        await _add_balance(db, payee_org_id, consumed)
+        await _entry(db, org_id=payee_org_id, kind="grant", amount_micro=consumed, block_id=block.id,
+                     call_id=call_id, endpoint_id=hold.endpoint_id, created_at=settled_at,
+                     meta={**(meta or {}), "block_kind": "earned", "payer_org_id": hold.org_id})
+    return consumed
 
 
 async def release(db: AsyncSession, call_id: str, *, reason: str = "", meta: dict | None = None) -> int:

@@ -1,6 +1,6 @@
 ---
 title: The tool hub — tools a maker publishes, made of other tools
-status: in-progress (phase 5 of 8: the case study ran end to end; behind TREG_HUB_ENABLED, off)
+status: in-progress (phase 6 of 8: the seller's money; behind TREG_HUB_ENABLED, off)
 sources:
   - src/treg/domain/hub/__init__.py
   - src/treg/domain/hub/manifest.py
@@ -10,6 +10,7 @@ sources:
   - src/treg/application/hub/runner.py
   - src/treg/application/hub/sandbox.py
   - src/treg/application/hub/limits.py
+  - src/treg/domain/money/__init__.py
   - src/treg/alembic/versions/0028_hubtool_check_result.py
   - src/treg/mcp.py
   - src/treg/cli.py
@@ -201,3 +202,32 @@ that say what to replace); the hub commands print in the house style (numbered s
 ticks, a trace table, refusals as a "✗ Refused" block with field, rule and the fix command);
 `treg hub init --from <template>` is backlog (templates for data providers); `treg hub retire`
 is phase 7.
+
+## The seller's money (phase 6, docs/HUB-DECISIONS.md round 3)
+
+A maker writes `price_usd` in the manifest (stored as `price_micro`). A caller's run then pays
+two things: every metered step as before, plus the price. The price rides the same money
+primitives as a step: one extra hold `{run}:price` opened on the CALLER at run start
+(`reserve_in_transaction`; 402 `hub_price_unaffordable` with the amount when the balance is not
+there, before any step runs), settled on success, released on any failure or stop. The settle is
+the one cross-team money movement in treg: `money.settle_to_in_transaction(db, call_id,
+payee_org_id)` closes the caller's hold at its full amount, consumes the caller's blocks, and in
+the same transaction credits the maker's team with an `earned` block of the same amount, writing
+a `settle` entry on the payer (meta names the payee) and a `grant` entry on the payee (block kind
+`earned`, meta names the payer's run). The invariant holds on both teams at every instant. No
+margin: the seller's price is the seller's, whole (no platform share in the MVP).
+
+Not charged when the caller IS the maker: their own runs, and the publish check run, cost the
+maker only the steps. The ceiling (`X-Treg-Run-Max-Cost`) covers price plus steps: a price alone
+above it is 402 `hub_run_max_cost` before any step, with the hold released. The reply's `usage`
+carries `cost_micro` (the total), `steps_micro`, `price_micro`; `X-Treg-Cost-Micro` is the
+total; `HubRun.price_micro` is what the maker earned on that run.
+
+`earned` sits in the spend order between the free kinds and purchased money
+(`_KIND_ORDER`: promotional/referral/bonus 0, earned 1, purchased 2), so a maker's own dollars
+are used last. Withdrawal is backlog.
+
+The seller's view: `GET /hub/tools/{id}/earnings?days=90[&format=csv]` and `treg hub earnings
+<id> [--days N] [--csv]`: per day, runs, successes, failures and what was earned, for a tool the
+team owns. Sales only (the maker's own runs are excluded), counts and amounts only, never who
+called.

@@ -24,6 +24,7 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     "hub_input_invalid": "caller",
     "hub_run_failed": "upstream",
     "hub_busy": "caller",
+    "hub_price_unaffordable": "caller",
     "target_ambiguous": "caller",
     "catalog_retired": "caller",
     "catalog_parameter_invalid": "caller",

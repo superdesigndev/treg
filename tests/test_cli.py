@@ -956,3 +956,5 @@ def test_hub_is_in_the_help_and_parses():
     if parser is not None:
         a = parser.parse_args(["hub", "run", ".", "--input", "domain=figma.com", "--input", "limit=3"])
         assert a.hub_cmd == "run" and a.input == ["domain=figma.com", "limit=3"]
+        e = parser.parse_args(["hub", "earnings", "acme.leads-db", "--days", "30", "--csv"])
+        assert e.hub_cmd == "earnings" and e.days == 30 and e.csv
