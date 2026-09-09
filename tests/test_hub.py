@@ -227,10 +227,10 @@ async def _publish_live(clients: AsyncClient, name="leads-db") -> str:
     return tool_id
 
 
-async def test_a_script_tool_answers_501_until_the_script_road_exists(clients: AsyncClient, hub_on):
+async def test_a_script_tool_runs_in_the_sandbox(clients: AsyncClient, hub_on):
     await _own_supabase(clients)
     tool_id = (await clients.post("/hub/tools", json={
-        "manifest": _script_manifest(), "script": "export default async function run(ctx) { return {rows: [], count: 0}; }",
+        "manifest": _script_manifest(), "script": "export default async function run(ctx) { return {rows: [ctx.inputs.search], count: ctx.inputs.limit}; }",
         "check": {"inputs": {}, "fields": ["rows"]}, "readme": "x"})).json()["tool_id"]
     from sqlalchemy import update
     from treg.infra.db import session_maker
@@ -238,10 +238,10 @@ async def test_a_script_tool_answers_501_until_the_script_road_exists(clients: A
     async with session_maker() as s:
         await s.execute(update(HubTool).where(HubTool.tool_id == tool_id).values(status="live"))
         await s.commit()
-    r = await clients.post(f"/call/{tool_id}", json={})
-    assert r.status_code == 501, r.text
-    assert r.json()["detail"]["error"] == "hub_not_runnable" and r.json()["detail"]["tool_id"] == tool_id
-    assert r.headers.get("x-treg-error") == "1"
+    r = await clients.post(f"/call/{tool_id}", json={"search": "figma", "limit": 500})   # limit clamps to max 100
+    assert r.status_code == 200, r.text
+    assert r.json()["output"] == {"rows": ["figma"], "count": 100}
+    assert r.headers["X-Treg-Steps"] == "0" and r.headers["X-Treg-Cost-Micro"] == "0"
 
 
 async def test_a_steps_tool_refuses_a_missing_required_input_by_name(clients: AsyncClient, hub_on):
