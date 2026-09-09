@@ -13,6 +13,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 import httpx
 
 from ... import analytics, archive, audit, oauth
+from ...application import hub as hub_app
 from ... import sandbox as demo_sandbox
 from ...client_identity import _norm_client
 from ...config import get_settings
@@ -436,6 +437,16 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # Only the 404 falls through, so an org tool with the same name always wins.
             ep = _catalog_endpoint_for(rest) if exc.status_code == 404 else None
             if ep is None:
+                # Third and last: a hub tool (`<team-slug>.<name>`), only when nothing above
+                # claimed the id — an own tool or a catalog id always wins. Phase 1 stores hub
+                # tools but cannot run them yet, so a found tool answers 501, never a silent 404.
+                hub_row = await hub_app.tool_for(db, rest) if exc.status_code == 404 else None
+                if hub_row is not None:
+                    raise ResolutionFailed("hub_not_runnable", status_code=501, detail={
+                        "error": "hub_not_runnable",
+                        "tool_id": hub_row.tool_id, "version": hub_row.version,
+                        "message": "this hub tool exists but the hub runner is not deployed yet",
+                    })
                 raise
             if (isinstance(exc.detail, dict)
                     and str(exc.detail.get("hint", "")).startswith("your org has tool ")):

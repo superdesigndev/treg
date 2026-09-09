@@ -1146,6 +1146,36 @@ class Feedback(SQLModel, table=True):
     created_at: datetime = Field(default_factory=_now)
 
 
+class HubTool(SQLModel, table=True):
+    """One version of a tool a maker published on the hub (docs/HUB-DECISIONS.md). A tool is
+    made of other tools: either a JSON list of steps or a script that runs in a sandbox. The row
+    stores the four files a maker ships (manifest, script, check, readme) plus what the runner
+    and the catalog read straight off the row.
+
+    `tool_id` is the callable id, `<team slug>.<name>`; one row per (tool_id, version). The
+    newest `live` version serves `/call/<tool_id>`; `<tool_id>@N` pins one.
+    """
+
+    __table_args__ = (UniqueConstraint("tool_id", "version", name="uq_hubtool_id_version"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    org_id: int = Field(foreign_key="org.id", index=True)
+    tool_id: str = Field(index=True)                 # `<slug>.<name>`
+    name: str
+    version: int = Field(default=1)
+    kind: str                                        # steps | script
+    status: str = Field(default="unchecked")         # unchecked | live | failed | retired
+    summary: str
+    writes: bool = Field(default=False)
+    price_micro: int = Field(default=0)              # the seller's price per successful run
+    manifest: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    script: str | None = Field(default=None)         # run.js, script road only
+    check: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    readme: str = Field(default="")
+    created_by: str = Field(default="")              # the maker's email
+    created_at: datetime = Field(default_factory=_now)
+
+
 class ToolRequest(SQLModel, table=True):
     """A "the catalog doesn't have X" report — filed from the catalog page, the CLI, or by an
     agent mid-search over MCP. Demand signal for which provider to key next; reviewed by querying
