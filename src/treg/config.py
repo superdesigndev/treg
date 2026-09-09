@@ -172,6 +172,7 @@ class Settings(BaseSettings):
     platform_key_trykitt: str = ""  # x-api-key; credits.jobCredits reports USD
     platform_key_contactout: str = ""  # raw API token; injected into the token header
     platform_key_millionverifier: str = ""  # raw key; injected as ?api=…
+    platform_key_supercarl: str = ""  # X-API-Key; managed usage account, $0.099/search credit
     platform_key_hunter: str = ""
     platform_key_quickenrich: str = ""  # Bearer; monthly subscription credits, not auto-top-up
     platform_key_leadmagic: str = ""

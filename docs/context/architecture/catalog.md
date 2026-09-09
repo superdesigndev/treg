@@ -15,6 +15,7 @@ sources:
   - src/treg/catalog/examples/quickenrich.x.employee-ranges.json
   - src/treg/catalog/examples/quickenrich.x.industries.json
   - src/treg/catalog/examples/quickenrich.x.revenue-ranges.json
+  - src/treg/catalog/supercarl.yaml
   - src/treg/catalog/trykitt.yaml
   - src/treg/catalog/examples/trykitt.people.email.find.json
   - src/treg/catalog/examples/trykitt.people.email.verify.json
@@ -110,6 +111,28 @@ related:
 ---
 
 # Endpoint catalog — platform-grouped operations per provider
+
+## Super Carl vendor proposal (2026-09-09)
+
+`supercarl.yaml` adds natural-language people search, its unenriched preview tier, company
+search, job search, post search, and post-author discovery. These reuse existing capabilities.
+Two free `account.usage` tools expose the current-key meter, live credit rate card, and rolling
+balance through the caller's own key; they are never eligible for the shared platform key.
+
+Each completed single search, including previews, is documented as one credit. The vendor has
+approved a managed usage-invoice account at $0.099 per credit. The `fx.yaml` entry states that
+account provisioning and live invoice reconciliation are pending; no top-up receipt is claimed.
+Credit-status headers describe a cumulative pool, not a per-call charge. Valid-key self-tests
+and independent maintainer verification are still required; this proposal includes no verified
+stamps, example responses, or routing adapters. The empty platform-key setting is wiring only.
+
+The shared account must have no personal networks or inbox connections: graph annotations
+belong to the API-key owner, and do not become the Treg end user's personal graph. The v2
+people-search test explicitly selects `network_filter_mode=ignore`. The initial scope excludes
+legacy automatic enrichment, cached person-ID lookups, contacts/reconciliation, messaging,
+project mutations, and account-specific job-to-network joins. Company search includes both
+preview and detailed modes; its test request selects preview and does not establish detailed
+mode's metered cost. The public custom JSON schema is not OpenAPI.
 
 The computed cost view uses a `cost.table` fallback as its scalar validated upper bound for
 eligibility and compact displays. Runtime charging evaluates the first matching row against request

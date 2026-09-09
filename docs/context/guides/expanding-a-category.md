@@ -41,6 +41,14 @@ Contact Finder probe. All six data tools and five lookup utilities were live che
 subscription capacity uses API balance data and is separate from platform list pricing.
 Tests extend the existing auth, capacity and marketplace files. See [catalog](../architecture/catalog.md).
 
+Super Carl's proposed key-provider entry uses `X-API-Key` with the API root
+`https://api.supercarl.ai`; paths retain `/api/v1` or `/api/v2`. The free
+`/api/v1/credits/status` probe rejected a deliberately invalid key with HTTP 401 and
+`{"error":"Invalid API key"}` on 2026-09-09. Valid-key and local connect-flow live
+verification remain pending. Its platform-key setting is empty, and enabling the shared
+account is a maintainer operation. See [catalog](../architecture/catalog.md) for the approved
+usage-invoice rate and the distinction between caller-owned and shared-account metadata.
+
 ## The two kinds of provider
 - **API-key** (`auth_kind="key"`) — the user pastes a key; self-serve; **the fast path** (research → implement
   → live-test in one session). This is the workhorse and where almost all growth happens.

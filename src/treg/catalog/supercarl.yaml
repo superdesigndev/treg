@@ -1,0 +1,535 @@
+# Vendor proposal: valid-key self-verification is pending; no verified stamps or examples.
+# Public schema: https://supercarl.ai/docs/endpoints.json (custom JSON, not OpenAPI).
+# Scope: six search tools and two free own-account credit/rate-card reads.
+# Shared-key activation and routing adapters require independent maintainer verification.
+provider: supercarl
+source:
+  docs: https://supercarl.ai/docs/endpoints
+  openapi: null
+  curated: '2026-09-09'
+pricing_url: https://supercarl.ai/docs#credits
+limits: Shared account credit pool; HTTP 402 on credit exhaustion. Public docs do not publish a numeric
+  requests-per-second limit. Use bounded result limits and consult /api/v1/credits before scaling.
+endpoints:
+- id: supercarl.people.search
+  capability: people.search
+  platform: people
+  scope: any_account
+  method: POST
+  path: /api/v2/search/people/query
+  name: Search people with natural-language criteria
+  summary: Run a natural-language people search. The service converts the text to typed filters and returns
+    the applied request with matching people rows.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+        example: Software engineers at Microsoft
+        maxLength: 2000
+      limit:
+        type: integer
+        required: false
+        example: 1
+        default: 10
+        min: 1
+        max: 25
+      offset:
+        type: integer
+        required: false
+        example: 0
+        default: 0
+        min: 0
+        max: 10000
+      network_filter_mode:
+        type: string
+        required: false
+        example: ignore
+        default: boost
+        enum:
+        - boost
+        - filter
+        - ignore
+        - connected_to
+      include_profile_text:
+        type: boolean
+        required: false
+        example: false
+        default: false
+      delegate_user_id:
+        type: string
+        required: false
+        note: UUID of an authorized teammate; entitlement-checked. Omit for shared-key calls.
+    note: Uses the v2 natural-language contract and returns people rows plus applied filters. Network
+      filters use the API key owner's graph; shared-key callers do not inherit their personal Carl network.
+      Use ignore for a public-data query.
+  test_request:
+    body:
+      query: Software engineers at Microsoft
+      limit: 1
+      network_filter_mode: ignore
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://supercarl.ai/docs#credits
+    checked: '2026-09-09'
+    confidence: documented
+    note: One credit per completed single search, including preview. This is a per-search charge, not
+      per returned row. Live meter reconciliation is pending. The shared account credit headers are cumulative
+      balances, not a per-call charge.
+  docs_url: https://supercarl.ai/docs/endpoints
+- id: supercarl.people.search.preview
+  capability: people.search
+  platform: people
+  scope: any_account
+  method: POST
+  path: /api/v1/search/people/preview
+  name: Preview people search without enrichment
+  summary: Run a preview people search (auto-translated description/query, no enrichment, not enrichable).
+    LinkedIn lookup is not supported. include_evidence_text is optional when you need inline profile evidence
+    on preview rows.
+  input:
+    bodyType: json
+    body:
+      description:
+        type: string
+        required: false
+        example: Software engineers at Microsoft
+      filters:
+        type: object
+        required: false
+        note: AdvancedFilters from https://supercarl.ai/docs/filters
+      limit:
+        type: integer
+        required: false
+        example: 1
+      offset:
+        type: integer
+        required: false
+        example: 0
+      include_evidence_text:
+        type: boolean
+        required: false
+        example: false
+      delegate_user_id:
+        type: string
+        required: false
+        note: UUID of an authorized teammate; entitlement-checked. Omit for shared-key calls.
+      query:
+        type: string
+        required: false
+        note: Legacy alias for description.
+      keywords:
+        type: string
+        required: false
+        note: Deprecated string or array; prefer description or filters.
+      search_metadata:
+        type: object
+        required: false
+      evidence_text_mode:
+        type: string
+        required: false
+        enum:
+        - base
+        - full
+      evidence_posts_limit:
+        type: integer
+        required: false
+    note: Supply natural-language description or structured filters. A preview costs one credit; it is
+      not a free count endpoint. It does not enrich and returns no enrichable search_id. LinkedIn direct
+      lookup is unsupported on this route.
+  test_request:
+    body:
+      description: Software engineers at Microsoft
+      limit: 1
+      offset: 0
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://supercarl.ai/docs#credits
+    checked: '2026-09-09'
+    confidence: documented
+    note: One credit per completed single search, including preview. This is a per-search charge, not
+      per returned row. Live meter reconciliation is pending. The shared account credit headers are cumulative
+      balances, not a per-call charge.
+  docs_url: https://supercarl.ai/docs/endpoints
+- id: supercarl.companies.search
+  capability: companies.search
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /api/v1/companies/search/preview
+  name: Search companies with optional detailed results
+  summary: Search companies in preview or detailed mode. Natural language queries are translated into
+    company filters; returns a company search_id for follow-on people search joins. Set result_mode=detailed
+    to expand each row with richer company fields, and include_evidence_text=true to inline evidence text
+    built from stored company docs/posts.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: false
+        example: Microsoft
+      filters:
+        type: object
+        required: false
+        note: Company filters from https://supercarl.ai/docs/filters
+      preview_limit:
+        type: integer
+        required: false
+        example: 1
+      result_mode:
+        type: string
+        required: false
+        example: preview
+        default: preview
+        enum:
+        - preview
+        - detailed
+      include_evidence_text:
+        type: boolean
+        required: false
+        example: false
+      evidence_post_limit:
+        type: integer
+        required: false
+        example: 1
+      delegate_user_id:
+        type: string
+        required: false
+        note: UUID of an authorized teammate; entitlement-checked. Omit for shared-key calls.
+      description:
+        type: string
+        required: false
+        note: Alias for query.
+    note: Supply query or company filters. Preview and detailed modes are documented as one search credit.
+      Detailed-mode meter verification remains pending. Returns a company search reference for subsequent
+      people-search joins.
+  test_request:
+    body:
+      query: Microsoft
+      preview_limit: 1
+      result_mode: preview
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://supercarl.ai/docs#credits
+    checked: '2026-09-09'
+    confidence: documented
+    note: One credit per completed single search, including preview. This is a per-search charge, not
+      per returned row. Live meter reconciliation is pending. The shared account credit headers are cumulative
+      balances, not a per-call charge.
+  docs_url: https://supercarl.ai/docs/endpoints
+- id: supercarl.companies.jobs.search
+  capability: companies.jobs.search
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /api/v1/search/jobs/preview
+  name: Search job postings across companies
+  summary: Natural-language job search scored against the viewer social-graph overlay. Accepts the full
+    AdvancedFilters doc (hiring.*, companies.include/exclude, industries, company_stage, locations), including
+    hiring.workplace_types for derived remote/hybrid/onsite/unknown filtering and hiring.published_within_days/published_after/published_before
+    for hard posting-date filters. Each result row is decorated with a network block summarizing 1st/2nd-degree
+    connections the viewer has at the posting company.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: false
+        example: Software engineer jobs at Microsoft
+      filters:
+        type: object
+        required: false
+        note: AdvancedFilters; job date/workplace fields under hiring.
+      preview_limit:
+        type: integer
+        required: false
+        example: 1
+        default: 10
+        max: 25
+      delegate_user_id:
+        type: string
+        required: false
+        note: UUID of an authorized teammate; entitlement-checked. Omit for shared-key calls.
+    note: Returns job rows. The optional network block belongs to the API key owner, not the Treg caller.
+      A shared platform account should have no personal networks connected.
+  test_request:
+    body:
+      query: Software engineer jobs at Microsoft
+      preview_limit: 1
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://supercarl.ai/docs#credits
+    checked: '2026-09-09'
+    confidence: documented
+    note: One credit per completed single search, including preview. This is a per-search charge, not
+      per returned row. Live meter reconciliation is pending. The shared account credit headers are cumulative
+      balances, not a per-call charge.
+  docs_url: https://supercarl.ai/docs/endpoints
+- id: supercarl.linkedin.search.posts
+  capability: linkedin.search.posts
+  platform: linkedin
+  scope: any_account
+  method: POST
+  path: /api/v1/search/posts/preview
+  name: Search indexed posts and activity
+  summary: Direct post/activity search. Supports a hard known-author cohort via filters.posts.author_user_ids
+    (UUIDs) or author_user_id_ints (positive integers), literal mentions, expanded topic keywords, authored-account
+    type, action types, engagement counts, date windows, and target constraints. Returned post rows use
+    a Super Carl post id suitable for post://<id> inline references; ingestion-provider identifiers are
+    not part of the API contract. For companies qualified by official posts, combine author_entity_types:["company"]
+    with action_types:["post"] and with_companies:true; matching company actors are deduped into answer-ready
+    companies[] rows with compact matched_posts evidence and explicit resolved/observed identity status.
+    Without with_companies:true, the same filters remain post-primary. Returns matching post rows plus
+    a people_search_binding for pivoting into profile search.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: false
+        example: Microsoft
+      filters:
+        type: object
+        required: false
+        note: Activity filters under filters.posts; see public filter docs.
+      preview_limit:
+        type: integer
+        required: false
+        example: 1
+        default: 10
+        max: 50
+      offset:
+        type: integer
+        required: false
+        example: 0
+      sort_by:
+        type: string
+        required: false
+        example: recent
+        enum:
+        - relevance
+        - recent
+        - engagement
+        - reactions
+        - comments
+      sort_order:
+        type: string
+        required: false
+        example: desc
+        enum:
+        - asc
+        - desc
+      with_companies:
+        type: boolean
+        required: false
+        example: false
+        default: false
+      delegate_user_id:
+        type: string
+        required: false
+        note: UUID of an authorized teammate; entitlement-checked. Omit for shared-key calls.
+    note: Returns indexed post rows and a people_search_binding. Public-company queries keep the verification
+      target reproducible; no raw responses or contact details are committed.
+  test_request:
+    body:
+      query: Microsoft
+      preview_limit: 1
+      sort_by: recent
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://supercarl.ai/docs#credits
+    checked: '2026-09-09'
+    confidence: documented
+    note: One credit per completed single search, including preview. This is a per-search charge, not
+      per returned row. Live meter reconciliation is pending. The shared account credit headers are cumulative
+      balances, not a per-call charge.
+  docs_url: https://supercarl.ai/docs/endpoints
+- id: supercarl.people.search.from_posts
+  capability: people.search
+  platform: people
+  scope: any_account
+  method: POST
+  path: /api/v1/search/posts/with-people
+  name: Find people through matching posts and activity
+  summary: Post/activity search plus a deduped people set derived from matching person actors/authors.
+    Set with_companies:true to additionally request the same PostMatchedCompany[] cohort as preview. Use
+    for post-first "who" questions, then execute people_search_binding when full profile search, relationship
+    detail, or additional structured constraints are needed.
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: false
+        example: Microsoft
+      filters:
+        type: object
+        required: false
+        note: Post/activity criteria, not general person profile filters.
+      preview_limit:
+        type: integer
+        required: false
+        example: 1
+        default: 10
+        max: 50
+      people_limit:
+        type: integer
+        required: false
+        example: 1
+        default: 25
+        max: 100
+      offset:
+        type: integer
+        required: false
+        example: 0
+      sort_by:
+        type: string
+        required: false
+        example: recent
+        enum:
+        - relevance
+        - recent
+        - engagement
+        - reactions
+        - comments
+      sort_order:
+        type: string
+        required: false
+        example: desc
+        enum:
+        - asc
+        - desc
+      with_companies:
+        type: boolean
+        required: false
+        example: false
+        default: false
+      delegate_user_id:
+        type: string
+        required: false
+        note: UUID of an authorized teammate; entitlement-checked. Omit for shared-key calls.
+    note: Searches posts first and deduplicates matching person authors. Use the ordinary people search
+      for role/company/location requirements. No raw responses are committed.
+  test_request:
+    body:
+      query: Microsoft
+      preview_limit: 1
+      people_limit: 1
+      sort_by: recent
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://supercarl.ai/docs#credits
+    checked: '2026-09-09'
+    confidence: documented
+    note: One credit per completed single search, including preview. This is a per-search charge, not
+      per returned row. Live meter reconciliation is pending. The shared account credit headers are cumulative
+      balances, not a per-call charge.
+  docs_url: https://supercarl.ai/docs/endpoints
+- id: supercarl.account.usage
+  capability: account.usage
+  platform: account
+  scope: own_account
+  kind: account
+  method: GET
+  path: /api/v1/credits
+  name: Read account credits and the live search rate card
+  summary: Fetch the shared account credit-pool summary for the authenticated API key, current-key usage
+    counters, the active search rate card, and billing semantics for each public API operation.
+  input:
+    queryParams:
+      range:
+        type: string
+        required: false
+        example: today
+        enum:
+        - 7d
+        - 14d
+        - 30d
+        - 90d
+        - today
+        - all_time
+      start_date:
+        type: string
+        required: false
+        note: ISO date/time for a custom usage interval.
+      end_date:
+        type: string
+        required: false
+        note: ISO date/time for a custom usage interval.
+    note: Contains current-key usage and account identity; for the customer's own key only. Keep only
+      redacted status and billing measurements as verification evidence.
+  test_request:
+    queryParams:
+      range: today
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://supercarl.ai/docs#credits
+    checked: '2026-09-09'
+    confidence: documented
+    note: Account status/rate-card read; no search debit.
+  docs_url: https://supercarl.ai/docs/endpoints
+- id: supercarl.account.usage.status
+  capability: account.usage
+  platform: account
+  scope: own_account
+  kind: account
+  method: GET
+  path: /api/v1/credits/status
+  name: Check the rolling credit balance
+  summary: "Lightweight rolling-window credit status for the authenticated API key owner. Returns { tier,\
+    \ limit, used, remaining, window_start, window_days, reset_at, as_of }. Mirrors the X-Carl-Credits-*\
+    \ response headers emitted on every authenticated call. Safe to poll \u2014 remains reachable at or\
+    \ over the credit ceiling."
+  input:
+    note: 'Free key-validation probe, reachable even at the credit ceiling. Invalid key observed 2026-09-09:
+      HTTP 401 with {"error":"Invalid API key"}. Valid-key verification pending.'
+  test_request: {}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://supercarl.ai/docs#credits
+    checked: '2026-09-09'
+    confidence: documented
+    note: Account status/rate-card read; no search debit.
+  docs_url: https://supercarl.ai/docs/endpoints

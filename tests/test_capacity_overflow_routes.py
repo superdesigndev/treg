@@ -253,6 +253,7 @@ _UNRECORDED_SIGNATURE = {
     "diffbot", "exa", "fiber-ai", "finnhub", "icypeas", "justoneapi", "marketstack",
     "quickenrich",  # subscription exhaustion not observed; do not spend the trial to force it
     "millionverifier",  # funded-account exhaustion not observed; trial still has credits
+    "supercarl",  # documented 402 credits_exhausted; funded-account exhaustion not yet observed
     "minimax", "oceanio", "openrouter", "pdl", "replicate", "scrapecreators", "seranking",
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "tomba", "twelvedata",
 }

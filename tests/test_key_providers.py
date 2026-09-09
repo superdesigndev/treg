@@ -22,7 +22,7 @@ from treg import oauth_providers as P
 def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,
     not shown as 'not configured' the way an unset OAuth provider is."""
-    for svc in ("apollo", "pdl", "akta", "hunter", "quickenrich", "contactout", "millionverifier", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush",
+    for svc in ("apollo", "pdl", "akta", "hunter", "quickenrich", "supercarl", "contactout", "millionverifier", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush",
                 "justoneapi", "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
                 "cloro",
                 "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
@@ -51,6 +51,30 @@ def test_key_providers_appear_in_the_marketplace_listing():
     assert listing["replicate"]["base_url"] == "https://api.replicate.com/v1"
     assert "Enrichment" in P.CATEGORY_ORDER
     assert "Market data" in P.CATEGORY_ORDER
+
+
+def test_supercarl_search_prices_do_not_expose_platform_account_metadata():
+    """Search is $0.099 per call; the shared account's balance must remain private."""
+    catalog = catalog_store.load()
+    rows = catalog.for_provider("supercarl")
+    assert len(rows) == 8
+    for endpoint in rows:
+        price = catalog.cost_view(endpoint["cost"], "supercarl")
+        if endpoint["platform"] == "account":
+            assert price["usd"] == 0
+            assert endpoint["scope"] == "own_account"
+            assert not catalog.platform_eligible(endpoint)
+        else:
+            assert price["usd"] == 0.099
+            assert endpoint["cost"]["unit"] == "call"
+            assert catalog.platform_eligible(endpoint)
+    provider = P.get("supercarl")
+    assert provider.token_header == "X-API-Key"
+    assert provider.token_format == "{secret}"
+    assert provider.base_url + provider.probe_path == (
+        "https://api.supercarl.ai/api/v1/credits/status"
+    )
+    assert Settings(_env_file=None).platform_key_supercarl == ""
 
 
 def test_aigc_token_providers_are_offerable_without_deployment_credentials():

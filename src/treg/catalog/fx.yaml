@@ -29,6 +29,11 @@
 # from the text before that key, so anything below it is discarded on the next FX refresh.
 credit_rates_usd:
   quickenrich: {usd: 0.004834, basis: "Starter monthly subscription: $29 / 6000 credits = $0.004833333 per credit, rounded up to 4834 micro-USD. treg base list rate before configured platform margin, assuming all monthly credits are used; unused credits increase effective cost. Free, Starter and Growth use subscription allowances. Unlimited-plan API status is not yet verified", source: "https://quickenrich.io/", checked: "2026-09-09"}
+  supercarl:
+    usd: 0.099
+    basis: "Vendor-approved managed usage-invoice rate of $0.099 per credit; one completed single search is one credit. Treg account provisioning and live invoice reconciliation are pending; no top-up receipt is claimed."
+    source: https://supercarl.ai/docs#credits
+    checked: "2026-09-09"
   cloro: {usd: 0.0008, basis: "Lite $30/mo / 37,500 credits = $0.0008/credit — the cheapest paid tier, so the upper bound. Higher tiers are cheaper (Hobby $100/250,000 = $0.0004, Business $1,000/2,800,000 = $0.00036). The free plan grants 500 credits/month, which is not a sustainable rate. Credits are charged only on a successful extraction", source: "https://cloro.dev/pricing", checked: "2026-09-05"}
   scrapecreators: {usd: 0.00188, basis: "Freelance pay-as-you-go $47 / 25,000 credits (Business tier is $497 / 500,000 = $0.000994)", source: "https://scrapecreators.com/", checked: "2026-07-28"}
   leadmagic: {usd: 0.025, basis: "Basic $49.99/mo / 2,000 credits per month (annual billing $490/yr / 24,000 = $0.0204)", source: "https://leadmagic.io/pricing", checked: "2026-07-28"}
