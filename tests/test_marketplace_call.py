@@ -2631,6 +2631,11 @@ ICYPEAS_SYNC_ROWS = json.dumps({"success": True, "data": [
 def icypeas_platform_on(monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_ICYPEAS", "SYNTHETIC-ICYPEAS-KEY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "icypeas")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 # ---- serpstat: the JSON-RPC envelope is the bill (2026-09-09) ---------------------------------
 # Serpstat meters one API credit ("line") per RETURNED row and answers a rejected request as
 # HTTP 200 with an `error` object. Verified live against the account's own limits meter: an error

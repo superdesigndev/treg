@@ -469,25 +469,20 @@ The row-count signal for that estimate (`resolve._LIMIT_PARAMS` / `_body_limit`)
 `numResults`, `perPage`, `maxResults`, lusha's per-company `contactsLimit`, apify's `maxItems` in the query or the actor input
 body and `resultsLimit`, where a `maxItems` of 0 means "everything" and keeps the page default), a nested `pagination.{size,…}`, and — for providers that
 bill one row per listed item — the length of `targets`/`keywords`/`domains`/`urls`/`lookups`/
-`emails`. Each of those was a live overcharge first (2026-08-28: companyenrich `pageSize: 2`
-settled 20 rows, and until 2026-09-09 an EMPTY companyenrich page still settled the whole
-requested page because no rule counted its `items` - now the table row above; moz's one
-`targets` entry settled 20 quota rows; 2026-09-02: lusha decision-makers,
 `emails`. A JSON-RPC envelope (`method` plus a `params` object) is read at the top level and
 then inside `params`, where the request actually is (`_jsonrpc_params`): serpstat's
 `params.size` was invisible until 2026-09-09 and every row-priced call reserved the page
 default. Each of those was a live overcharge first (2026-08-28: companyenrich `pageSize: 2`
-settled 20 rows, moz's one `targets` entry settled 20 quota rows; 2026-09-02: lusha decision-makers,
+settled 20 rows, and until 2026-09-09 an EMPTY companyenrich page still settled the whole
+requested page because no rule counted its `items` - now the table row above; moz's one
+`targets` entry settled 20 quota rows; 2026-09-02: lusha decision-makers,
 catalogued FREE, answered 44 contacts for one domain and settled $5.49 from `billing.creditsCharged`
-with nothing reserved). The cap key only reserves what the provider will honour: Lusha had already
-removed `/v3/contacts/decision-makers` (2026-08-12) and its legacy handler rejected `contactsLimit`
-with a 400, so the reservation followed a cap the bill ignored; `lusha.x.decision-makers` is a
-retired tombstone since 2026-09-09 and `lusha.x.buying-group` is the path where `contactsLimit`
-is the spend cap. Without any signal it is the
 with nothing reserved; 2026-09-09: apify job searches ignored `maxItems` and, with no settle rule
-counting the dataset, charged the page on every call). Without any signal it is the
-20-row page, and a settle-at-estimate provider then charges that page.
-with nothing reserved). Without any signal it is the
+counting the dataset, charged the page on every call). The cap key only reserves what the provider
+will honour: Lusha had already removed `/v3/contacts/decision-makers` (2026-08-12) and its legacy
+handler rejected `contactsLimit` with a 400, so the reservation followed a cap the bill ignored;
+`lusha.x.decision-makers` is a retired tombstone since 2026-09-09 and `lusha.x.buying-group` is the
+path where `contactsLimit` is the spend cap. Without any signal it is the
 catalog's `cost.page_default` when the entry carries one (the rows the provider answers to a call
 that names no limit - SE Ranking's keyword ideas answer and bill 100), else the 20-row page, and a
 settle-at-estimate provider then charges that page. Both stay under the 100-row platform max.
