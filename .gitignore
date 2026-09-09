@@ -79,3 +79,6 @@ body.json
 
 # Test screenshots — regenerated on demand, not versioned.
 tests/screenshots/
+
+# ArcTerm session boards and carry files (private, per machine)
+.arcterm/

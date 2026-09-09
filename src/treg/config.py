@@ -324,6 +324,11 @@ class Settings(BaseSettings):
     archive_prune_keep_versions: int = 2       # newest N bodies kept on servable keys
     archive_prune_min_age_days: int = 7        # servable bodies younger than this are never touched
 
+    # The tool hub (docs/HUB-DECISIONS.md): tools a maker publishes, made of other tools. Off by
+    # default so every merge along the way changes nothing users see; production flips it once
+    # the whole hub has landed on main.
+    hub_enabled: bool = False
+
     # Additive Claude directory MCP. Default OFF so deploying code cannot publish a new connector
     # surface before its production Inspector and custom-connector gates have passed.
     claude_connector_enabled: bool = False
