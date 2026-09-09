@@ -221,6 +221,10 @@ treg oauth connect gsc --client-secret client_secret.json \
 
 Full options for every command: [`USAGE.md`](USAGE.md).
 
+The CLI sends anonymous command usage to PostHog when using treg.to (no arguments or credentials).
+Disable with `TREG_TELEMETRY=0` or `DO_NOT_TRACK=1`.
+See [analytics details](USAGE.md#anonymous-usage-analytics).
+
 ## Teams
 
 Everything is scoped to an **org**: a token = a `(user, org)` membership, and every secret, tool,

@@ -26,6 +26,7 @@ classifiers = [
 # fast. Everything needed to RUN a registry server lives in the `[server]` extra below.
 dependencies = [
     "httpx>=0.27",
+    "posthog>=7.47.3",
     "questionary>=2.0",
 ]
 

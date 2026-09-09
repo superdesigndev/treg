@@ -460,3 +460,15 @@ credential that stops working and webhooks the owner (if a `webhook_url` was set
 - `secret_file` — a JSON token file; pull `secret_field`
 - `oauth` — a JSON OAuth token; pull `secret_field` (auto-refreshed if refreshable)
 - `cli_auth` — material lifted from a CLI's keychain (placed like a string)
+
+## Anonymous usage analytics
+
+When using treg.to, the CLI sends basic usage through PostHog: command name, success/exit code,
+duration, CLI version and OS, linked to a random local installation ID. It does not send command
+arguments, credentials, request/response content, email or team identifiers. Help and argument
+parsing errors are not tracked. Analytics adds at most 0.3 seconds of waiting at command exit;
+slow or offline delivery may be dropped.
+
+Disable it with `export TREG_TELEMETRY=0` (or `DO_NOT_TRACK=1`). Self-hosted registries default to
+no analytics; set `TREG_CLI_POSTHOG_KEY` and optionally `TREG_CLI_POSTHOG_HOST` to use your own
+PostHog project. The random ID is stored in `analytics-id` beside the CLI config file.

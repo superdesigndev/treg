@@ -189,6 +189,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/catalog/tomba.yaml` | architecture/catalog.md, architecture/money.md |
 | `src/treg/catalog/trykitt.yaml` | architecture/catalog.md |
 | `src/treg/cli.py` | architecture/instagram-oauth.md, interface/cli.md, interface/onboarding.md, interface/shell.md |
+| `src/treg/cli_analytics.py` | interface/cli.md |
 | `src/treg/client_identity.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/config.py` | architecture/auth-secrets.md, architecture/feedback.md, architecture/super-admin.md, guides/expanding-a-category.md, ops/deploy.md |
 | `src/treg/convert.py` | interface/cli.md |
@@ -388,7 +389,7 @@ Regenerate via `scripts/build-map.py`.
 | `guides/expanding-a-category.md` | `oauth_providers.py`, `authorization.py`, `oauth_flow.py`, `oauth_exchange.py`, `connect.py`, `connections.py`, `config.py` |
 | `interface/api.md` | `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `onboard.py`, `referrals.py`, `signup.py`, `__init__.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `web.py`, `access.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py` |
 | `interface/catalog-review-proposal.md` | `store.py`, `capabilities.yaml` |
-| `interface/cli.md` | `cli.py`, `convert.py`, `agents.py` |
+| `interface/cli.md` | `cli.py`, `cli_analytics.py`, `convert.py`, `agents.py` |
 | `interface/dashboard.md` | `sitetrack.js`, `index.html`, `README.md`, `vue-3.5.41.global.prod.js`, `tutorial.js`, `tutorial.html`, `tour.js`, `index.html`, `api.py`, `web.py`, `session.py` |
 | `interface/env-import.md` | `providers.py`, `skills.py` |
 | `interface/landing-sandbox.md` | `sandbox.py`, `sandbox_identity.py`, `pubfeed.py`, `sandbox.py`, `__init__.py`, `sandbox.py`, `api.py`, `onboard.py`, `web.py`, `index.html`, `install.sh` |

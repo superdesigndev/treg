@@ -6286,7 +6286,25 @@ def main(argv: list[str] | None = None) -> None:
     cfg = _load_config()
     if override:
         _ORG_OVERRIDE = override
-    args.fn(args, cfg)
+    started = time.monotonic()
+    exit_code = 0
+    try:
+        args.fn(args, cfg)
+    except SystemExit as exc:
+        exit_code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        raise
+    except KeyboardInterrupt:
+        exit_code = 130
+        raise
+    except BaseException:
+        exit_code = 1
+        raise
+    finally:
+        from .cli_analytics import track_command
+
+        track_command(command=args.fn.__name__.removeprefix("cmd_"), exit_code=exit_code,
+                      duration_ms=round((time.monotonic() - started) * 1000),
+                      base_url=cfg.get("base_url", PRODUCTION_BASE_URL), config_path=CONFIG_PATH)
 
 
 if __name__ == "__main__":

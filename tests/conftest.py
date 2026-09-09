@@ -10,6 +10,9 @@ from __future__ import annotations
 import os
 import tempfile
 
+# Tests and their CLI subprocesses must never emit production analytics.
+os.environ["TREG_TELEMETRY"] = "0"
+
 # Isolate the test DB from any .env / running dev server BEFORE importing treg (the engine is
 # built at import time). A real env var overrides the .env file in pydantic-settings.
 # TREG_TEST_DB_URL (not TREG_DATABASE_URL — a stray production URL in a shell must never become the
