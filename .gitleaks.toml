@@ -53,7 +53,7 @@ regexes = [
   '''INDEXNOW_KEY\s*=|#\s*must match INDEX''',
   # Public PostHog ingestion token from https://treg.to/meta, not a personal API key.
   # Match this exact assignment only; other PostHog keys still trigger the scanner.
-  '''^POSTHOG_KEY = "phc_sAgf5A7TPRRA6faCzuqGVUo8pyb3x5Nq7TJYfn6ZVif9"$''',
+  '''POSTHOG_KEY = "phc_sAgf5A7TPRRA6faCzuqGVUo8pyb3x5Nq7TJYfn6ZVif9"''',
 ]
 # (An allowlist entry for a real dev/e2e Fernet key lived here as a stopgap while
 # `feat/error-capture` carried it in `e2e-server.sh`. That branch now generates a fresh key per run
