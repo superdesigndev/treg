@@ -21,7 +21,12 @@ BODY = {"data": {"domain": "figma.com", "id": 7}, "rows": [{"e": "a@x"}, {"e": "
 
 @pytest.fixture
 def hub_on(monkeypatch):
-    monkeypatch.setattr(get_settings(), "hub_enabled", True)
+    """Through the ENVIRONMENT, like platform_on: that fixture clears the settings cache, and a
+    value patched onto the old settings object would vanish with it."""
+    monkeypatch.setenv("TREG_HUB_ENABLED", "1")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 def _manifest(steps, output, **over):
@@ -208,12 +213,13 @@ async def test_idempotency_key_covers_the_whole_run(
     tool_id = await _publish(matrix_clients, _manifest(
         steps=[{"name": "a", "call": EP, "input": {"aweme_id": "x"}}], output={"x": "$a.data"}))
     h = {**FAKE, "Idempotency-Key": "run-once"}
+    hits_before = len(fake_provider.hits)            # the publish's check run already hit once
     r1 = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "figma.com"}, headers=h)
     r2 = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "figma.com"}, headers=h)
     assert r1.status_code == 200 and r2.status_code == 200
     assert r2.headers.get("X-Treg-Idempotent-Replay") == "true"
     assert r2.json()["run_id"] == r1.json()["run_id"]
-    assert len(fake_provider.hits) == 1
+    assert len(fake_provider.hits) - hits_before == 1
 
 
 # ---------------------------------------------------------------------------------------------

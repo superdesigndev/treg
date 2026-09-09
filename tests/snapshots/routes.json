@@ -296,6 +296,14 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "PUT"
+    ],
+    "name": "update_hub_tool",
+    "path": "/hub/tools/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "GET",
       "HEAD"
     ],
@@ -310,6 +318,14 @@
     ],
     "name": "get_hub_tool",
     "path": "/hub/tools/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_hub_folder",
+    "path": "/hub/run"
   },
   {
     "kind": "APIRoute",

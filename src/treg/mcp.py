@@ -224,6 +224,24 @@ class FeedbackOut(TypedDict, total=False):
     detail: Any
 
 
+class HubPublishOut(TypedDict, total=False):
+    tool_id: str | None
+    version: int | None
+    status: str | None            # live | failed
+    call: str | None              # how a caller runs it, when live
+    check: Any                    # the check run's verdict: run_id, trace, error
+    error: str | None
+    field: str | None             # on manifest_invalid: the field and the rule to fix
+    rule: str | None
+    detail: Any
+
+
+class HubMineOut(TypedDict, total=False):
+    tools: list[dict[str, Any]] | None
+    error: str | None
+    detail: Any
+
+
 class CatalogGetOut(TypedDict, total=False):
     endpoint: dict[str, Any] | None        # the full catalog entry: params, cost, observed reliability
     provider: dict[str, Any] | None
@@ -709,6 +727,84 @@ async def _feedback_impl(
             "endpoint_id": endpoint_id,
         })
     return _body(response)
+
+
+HUB_CREATE_DESCRIPTION = (
+    "Publish a hub tool: a tool made of other tools, in your team's name. Send the four files as "
+    "fields: `manifest` (recipe.json: name, summary, inputs, uses, price_usd, and either steps or "
+    "\"script\": \"run.js\"), `script` (run.js, script recipes only), `check` (check.json: sample "
+    "inputs + the output fields the check must find), `readme` (markdown). treg validates them, runs "
+    "check.json ONCE for real on your balance, and the version goes live on pass. On a 422 the answer "
+    "names the exact field and rule to fix. Before you write the manifest: every tool in `uses` must "
+    "exist - a catalog id (catalog_search) or one of your team's own tools; a credential the team does "
+    "not hold yet is NEVER hard-coded into a script - register it first (treg secret add / tool add), "
+    "then name the tool. Callers run the result with call(tool_id, params)."
+)
+HUB_UPDATE_DESCRIPTION = (
+    "Publish a NEW VERSION of a hub tool your team owns: the same four files as hub_create. The "
+    "newest live version serves by default; `<tool_id>@N` pins an older one for 30 days."
+)
+HUB_MINE_DESCRIPTION = "Your team's hub tools: every version with its status, price, uses, and the check verdict."
+
+
+@mcp.tool(
+    description=HUB_CREATE_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                                idempotent_hint=False),
+    structured_output=True,
+)
+async def hub_create(
+    manifest: dict[str, Any], check: dict[str, Any], readme: str, ctx: Context,
+    script: str | None = None,
+) -> HubPublishOut:
+    return await _hub_publish_impl(ctx, "POST", "/hub/tools",
+                                   {"manifest": manifest, "script": script, "check": check, "readme": readme})
+
+
+@mcp.tool(
+    description=HUB_UPDATE_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                                idempotent_hint=False),
+    structured_output=True,
+)
+async def hub_update(
+    tool_id: str, manifest: dict[str, Any], check: dict[str, Any], readme: str, ctx: Context,
+    script: str | None = None,
+) -> HubPublishOut:
+    return await _hub_publish_impl(ctx, "PUT", f"/hub/tools/{tool_id}",
+                                   {"manifest": manifest, "script": script, "check": check, "readme": readme})
+
+
+async def _hub_publish_impl(ctx: Context, method: str, path: str, body: dict) -> HubPublishOut:
+    token = _bearer(ctx)
+    async with _api(token) as client:
+        r = await client.request(method, path, json=body, timeout=240.0)
+    payload = _body(r)
+    if r.status_code in (200, 201):
+        return {"tool_id": payload.get("tool_id"), "version": payload.get("version"),
+                "status": payload.get("status"), "call": payload.get("call"), "check": payload.get("check")}
+    detail = payload.get("detail", payload) if isinstance(payload, dict) else payload
+    out: HubPublishOut = {"error": f"http_{r.status_code}", "detail": detail}
+    if isinstance(detail, dict) and detail.get("error") == "manifest_invalid":
+        out.update({"error": "manifest_invalid", "field": detail.get("field"), "rule": detail.get("rule")})
+    return out
+
+
+@mcp.tool(
+    description=HUB_MINE_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False,
+                                idempotent_hint=True),
+    structured_output=True,
+)
+async def hub_mine(ctx: Context) -> HubMineOut:
+    token = _bearer(ctx)
+    async with _api(token) as client:
+        r = await client.get("/hub/tools/mine")
+    payload = _body(r)
+    if r.status_code == 200:
+        return {"tools": payload}
+    return {"error": f"http_{r.status_code}", "detail": payload.get("detail", payload) if isinstance(payload, dict) else payload}
+
 
 
 async def _catalog_request_impl(

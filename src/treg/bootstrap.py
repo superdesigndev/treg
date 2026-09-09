@@ -74,6 +74,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/hub/tools', ('POST',), 'publish_hub_tool'),
     ('/hub/tools/mine', ('GET',), 'my_hub_tools'),
     ('/hub/tools/{tool_id}', ('GET',), 'get_hub_tool'),
+    ('/hub/tools/{tool_id}', ('PUT',), 'update_hub_tool'),
+    ('/hub/run', ('POST',), 'run_hub_folder'),
     ('/auth/github', ('GET',), 'auth_github'),
     ('/auth/github/callback', ('GET',), 'auth_github_callback'),
     ('/auth/google', ('GET',), 'auth_google'),

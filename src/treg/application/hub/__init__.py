@@ -46,19 +46,39 @@ def split_id(rest: str) -> tuple[str, int | None]:
         return base, None
 
 
+OLD_VERSION_DAYS = 30   # a pinned old version stays callable this long after a newer live one
+
+
 async def tool_for(db: AsyncSession, rest: str, *, live_only: bool = True) -> HubTool | None:
-    """The version that serves `rest`: a pinned version when the id carries `@N`, else the newest.
-    `live_only` keeps unchecked and retired versions off the call road."""
+    """The version that serves `rest`: the newest `live` one, or `@N` pinned. A pinned version may
+    also be the one UNDER CHECK (the check run pins it: HUB-DECISIONS round 2 q10), and a pinned
+    old version stays callable for OLD_VERSION_DAYS after a newer live one exists (round 4 q8)."""
     if not enabled() or not is_hub_id_shape(rest):
         return None
     tool_id, pin = split_id(rest)
-    q = select(HubTool).where(HubTool.tool_id == tool_id)
-    if pin is not None:
-        q = q.where(HubTool.version == pin)
-    if live_only:
-        q = q.where(HubTool.status == "live")
-    q = q.order_by(HubTool.version.desc()).limit(1)
-    return (await db.execute(q)).scalars().first()
+    if pin is None:
+        q = (select(HubTool).where(HubTool.tool_id == tool_id, HubTool.status == "live")
+             .order_by(HubTool.version.desc()).limit(1))
+        return (await db.execute(q)).scalars().first()
+    row = (await db.execute(select(HubTool).where(HubTool.tool_id == tool_id, HubTool.version == pin))).scalars().first()
+    if row is None:
+        return None
+    if row.status == "checking":
+        return row
+    if live_only and row.status != "live":
+        return None
+    newer = (await db.execute(
+        select(HubTool.created_at).where(HubTool.tool_id == tool_id, HubTool.status == "live",
+                                         HubTool.version > pin)
+        .order_by(HubTool.version.asc()).limit(1))).scalar_one_or_none()
+    if newer is not None and (_utcnow() - newer).days >= OLD_VERSION_DAYS:
+        return None
+    return row
+
+
+def _utcnow():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 @dataclass(frozen=True)
@@ -103,13 +123,69 @@ async def publish(
     version = 1 if newest is None else newest + 1
     row = HubTool(
         org_id=org.id, tool_id=tool_id, name=v.name, version=version, kind=v.kind,
-        status="unchecked", summary=v.summary, writes=v.writes, price_micro=v.price_micro,
+        status="checking", summary=v.summary, writes=v.writes, price_micro=v.price_micro,
         manifest={**v.manifest, "version": version}, script=script if v.kind == "script" else None,
         check=check_v, readme=readme_v, created_by=maker_email,
     )
     db.add(row)
     await db.flush()
     return Published(tool_id=tool_id, version=version, status=row.status, kind=v.kind)
+
+
+async def run_check(db: AsyncSession, row: HubTool, *, maker_headers: dict[str, str], app: Any) -> dict[str, Any]:
+    """The check run (HUB-DECISIONS round 2 q10, round 3 q6): `check.json`'s sample inputs, run
+    ONCE for real as the maker over the real call road (`POST /call/<id>@<version>` in-process
+    with the maker's own identity headers), charged to the maker's balance at the normal step
+    prices, seller price not charged. Pass ⇒ `live`; fail ⇒ `failed`, with the reason on the row.
+    `app` is the running application (the router passes `request.app`), so this layer never
+    imports the HTTP entry point. Returns the verdict dict, also stored as `check_result`. Does not commit."""
+    import httpx
+
+    from ...application.hub import runner as hub_runner
+
+    verdict: dict[str, Any] = {"run_id": None, "checked_at": _utcnow().isoformat()}
+    headers = {k: v for k, v in maker_headers.items() if k.lower() in ("x-treg-token", "x-treg-org", "cookie")}
+    headers["X-Treg-Client"] = "hub-check"
+    headers[hub_runner.RUN_MAX_COST_HEADER] = "5.00"
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://treg.internal",
+                                 headers=headers, timeout=200.0) as client:
+        r = await client.post(f"/call/{row.tool_id}@{row.version}", json=row.check.get("inputs", {}))
+    body: Any
+    try:
+        body = r.json()
+    except ValueError:
+        body = {"text": r.text[:600]}
+    verdict["run_id"] = r.headers.get("X-Treg-Run-Id") or r.headers.get("X-Treg-Call-Id")
+    verdict["status_code"] = r.status_code
+    verdict["charged_micro"] = int(r.headers.get("X-Treg-Cost-Micro") or 0)
+    if r.status_code != 200:
+        detail = body.get("detail", body) if isinstance(body, dict) else body
+        verdict["status"] = "failed"
+        verdict["error"] = detail if isinstance(detail, dict) else {"message": str(detail)[:600]}
+        if r.status_code == 402:
+            verdict["error"] = {**verdict["error"], "hint": "the check runs on your own balance at the normal step prices; top up and publish again"}
+    else:
+        output = body.get("output") if isinstance(body, dict) else None
+        missing = [f for f in row.check.get("fields", []) if not isinstance(output, dict) or output.get(f) in (None, "", [], {})]
+        min_rows = int(row.check.get("min_rows", 0) or 0)
+        rows_short = None
+        if min_rows and isinstance(output, dict):
+            lists = [v for v in output.values() if isinstance(v, list)]
+            if not lists or len(lists[0]) < min_rows:
+                rows_short = len(lists[0]) if lists else 0
+        verdict["trace"] = body.get("trace", []) if isinstance(body, dict) else []
+        if missing or rows_short is not None:
+            verdict["status"] = "failed"
+            verdict["error"] = {"error": "check_failed",
+                                **({"missing": missing} if missing else {}),
+                                **({"rows": rows_short, "min_rows": min_rows} if rows_short is not None else {}),
+                                "message": "the run answered, but not what check.json requires"}
+        else:
+            verdict["status"] = "passed"
+    row.status = "live" if verdict["status"] == "passed" else "failed"
+    row.check_result = verdict
+    db.add(row)
+    return verdict
 
 
 def view(row: HubTool) -> dict[str, Any]:
@@ -121,4 +197,23 @@ def view(row: HubTool) -> dict[str, Any]:
         "uses": row.manifest.get("uses", []), "inputs": row.manifest.get("inputs", {}),
         "output": row.manifest.get("output", {}), "limits": row.manifest.get("limits", {}),
         "created_by": row.created_by, "created_at": row.created_at.isoformat(),
+        "check_result": row.check_result,
     }
+
+
+async def transient(db: AsyncSession, *, org: Org, maker_email: str,
+                    manifest: Any, script: str | None, check: Any, readme: Any) -> HubTool:
+    """The same validation as publish(), but the row is NOT added to the session: a dry run of a
+    folder from the maker's machine. Version 0 marks it in every trace."""
+    own_tools = {name for (name,) in (await db.execute(select(Tool.name).where(Tool.org_id == org.id))).all()}
+    hub_ids = {tid for (tid,) in (await db.execute(select(HubTool.tool_id).distinct())).all()}
+    v = validate(manifest, catalog_ids=set(catalog_store.load().by_id), own_tools=own_tools, hub_ids=hub_ids)
+    if v.kind == "script" and not (isinstance(script, str) and script.strip()):
+        raise ManifestError("script", "the manifest names run.js; send its contents as `script`")
+    output_fields = (v.output["fields"] if v.kind == "script" else list(v.output))
+    validate_check(check, v.inputs, output_fields)
+    validate_readme(readme)
+    return HubTool(org_id=org.id, tool_id=f"{org.slug}.{v.name}", name=v.name, version=0, kind=v.kind,
+                   status="dry-run", summary=v.summary, writes=v.writes, price_micro=v.price_micro,
+                   manifest={**v.manifest, "version": 0}, script=script if v.kind == "script" else None,
+                   check=check, readme=readme, created_by=maker_email)

@@ -9,7 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -39,12 +41,16 @@ class PublishIn(BaseModel):
     readme: str = Field(min_length=1, max_length=4000)
 
 
-@app.post("/hub/tools", status_code=201)
-async def publish_hub_tool(
-    body: PublishIn, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
-) -> dict:
+async def _publish(body: PublishIn, request: Request, caller: Caller, db: AsyncSession,
+                   *, must_exist: bool) -> dict:
     _require_hub()
     _require_can_register(caller)
+    if must_exist:
+        name = body.manifest.get("name") if isinstance(body.manifest, dict) else None
+        exists = (await db.execute(select(HubTool.id).where(
+            HubTool.org_id == caller.org_id, HubTool.name == name).limit(1))).scalar_one_or_none()
+        if exists is None:
+            raise HTTPException(status_code=404, detail=f"your team has no hub tool named {name!r}; POST /hub/tools creates one")
     try:
         published = await hub_app.publish(
             db, org=caller.org, maker_email=caller.email,
@@ -54,12 +60,43 @@ async def publish_hub_tool(
         raise HTTPException(status_code=422, detail={
             "error": "manifest_invalid", "field": exc.field, "rule": exc.rule,
         }) from None
+    # The row must be visible to the check run's own request before it starts: commit first.
     await db.commit()
-    return {
-        "tool_id": published.tool_id, "version": published.version, "status": published.status,
-        "kind": published.kind,
-        "note": "stored and validated; the check run that makes a version live arrives with the runner",
-    }
+    row = (await db.execute(select(HubTool).where(
+        HubTool.tool_id == published.tool_id, HubTool.version == published.version))).scalars().one()
+    verdict = await hub_app.run_check(db, row, maker_headers=dict(request.headers), app=request.app)
+    await db.commit()
+    out = {"tool_id": published.tool_id, "version": published.version, "status": row.status,
+           "kind": published.kind, "check": verdict}
+    if row.status == "live":
+        out["call"] = f"POST /call/{published.tool_id}"
+    return out
+
+
+@app.post("/hub/tools", status_code=201)
+async def publish_hub_tool(
+    body: PublishIn, request: Request, caller: Caller = Depends(require_member),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Create (or add a version to) a hub tool: validate the four files, store the version, run
+    check.json once for real on the maker's balance. Live on pass; `failed` with the reason on
+    fail — the version is kept so the maker can read what happened."""
+    return await _publish(body, request, caller, db, must_exist=False)
+
+
+@app.put("/hub/tools/{tool_id}")
+async def update_hub_tool(
+    tool_id: str, body: PublishIn, request: Request, caller: Caller = Depends(require_member),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """A new version of an existing tool of yours (the same body as POST). The newest live
+    version serves by default; `<id>@N` pins an older one for 30 days after a newer one lands."""
+    base, _ = hub_app.split_id(tool_id)
+    if isinstance(body.manifest, dict) and body.manifest.get("name") != base.split(".", 1)[-1]:
+        raise HTTPException(status_code=422, detail={
+            "error": "manifest_invalid", "field": "name",
+            "rule": f"must be {base.split('.', 1)[-1]!r} to update {base!r}"})
+    return await _publish(body, request, caller, db, must_exist=True)
 
 
 @app.get("/hub/tools/mine")
@@ -93,3 +130,67 @@ async def get_hub_tool(
         out["check"] = row.check
         out["readme"] = row.readme
     return out
+
+
+class RunIn(PublishIn):
+    """A dry run of a folder: the four files plus the inputs. Nothing is stored; every step is
+    real and charged to the maker (HUB-DECISIONS round 4 q10 / round 5 q2: `treg hub run .`)."""
+
+    inputs: dict[str, Any] = Field(default_factory=dict)
+
+
+@app.post("/hub/run")
+async def run_hub_folder(
+    body: RunIn, request: Request, caller: Caller = Depends(require_member),
+    db: AsyncSession = Depends(get_session),
+) -> Response:
+    _require_hub()
+    _require_can_register(caller)
+    from ..application.call.service import create_call_context, execute_call
+    from ..application.call.types import CallFailure, CallInput, CallerSnapshot
+    from ..application.hub import limits as hub_limits
+    from ..application.hub import runner as hub_runner
+    from .auth import _client_ip
+    from .call import _http_upstream_response, _translate_call_failure
+
+    try:
+        row = await hub_app.transient(db, org=caller.org, maker_email=caller.email,
+                                      manifest=body.manifest, script=body.script,
+                                      check=body.check, readme=body.readme)
+    except ManifestError as exc:
+        raise HTTPException(status_code=422, detail={
+            "error": "manifest_invalid", "field": exc.field, "rule": exc.rule}) from None
+    payload = json.dumps(body.inputs).encode()
+    call_input = CallInput(
+        method="POST", raw_rest=f"{row.tool_id}@0",
+        raw_headers=tuple((k, v) for k, v in request.headers.raw if k.lower() not in (b"content-length", b"content-type")),
+        query_items=(), raw_query="", body=_Bytes(payload),
+        caller=CallerSnapshot.capture(caller), client_ip=_client_ip(request), catalog_only=False)
+    context = create_call_context(call_input)
+    await db.commit()
+    try:
+        with hub_limits.slot(caller.org_id):
+            response, charged = await hub_runner.run_hub_tool(
+                context, row, payload, request.headers.get, request.app.state.http, execute_call,
+                audit_client="hub-run")
+    except hub_limits.TeamBusy as busy:
+        raise HTTPException(status_code=429, detail={
+            "error": "hub_busy", "active": busy.active, "max": hub_limits.MAX_RUNS_PER_TEAM,
+            "retry_after_s": hub_limits.RETRY_AFTER_S}) from None
+    except CallFailure as exc:
+        raise _translate_call_failure(exc) from exc
+    out = _http_upstream_response(response)
+    out.headers["X-Treg-Cost-Micro"] = str(charged)
+    out.headers["X-Treg-Call-Id"] = context.call_ref
+    return out
+
+
+class _Bytes:
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+
+    async def stream(self):
+        yield self._data
+
+    async def read(self) -> bytes:
+        return self._data

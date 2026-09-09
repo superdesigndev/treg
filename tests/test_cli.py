@@ -926,3 +926,33 @@ def test_show_prints_the_charge_and_call_id_for_a_metered_success(capsys):
     cli._show(replay)
     _, err = capsys.readouterr()
     assert "replay" in err and "nothing new charged" in err
+
+
+
+# ---------------------------------------------------------------------------------------------
+# The hub family (phase 4)
+
+def test_hub_init_writes_the_four_files(tmp_path, monkeypatch):
+    from treg import cli
+    import argparse
+    args = argparse.Namespace(name="leads-db", script=True, dir=str(tmp_path / "leads"))
+    cli.cmd_hub_init(args, {})
+    folder = tmp_path / "leads"
+    assert {p.name for p in folder.iterdir()} == {"recipe.json", "run.js", "check.json", "README.md"}
+    import json
+    m = json.loads((folder / "recipe.json").read_text())
+    assert m["name"] == "leads-db" and m["script"] == "run.js" and "required" not in json.dumps(m)
+    body = cli._hub_read_folder(str(folder))
+    assert set(body) == {"manifest", "check", "readme", "script"}
+    steps = argparse.Namespace(name="flow", script=False, dir=str(tmp_path / "flow"))
+    cli.cmd_hub_init(steps, {})
+    assert not (tmp_path / "flow" / "run.js").exists() and "steps" in json.loads((tmp_path / "flow" / "recipe.json").read_text())
+
+
+def test_hub_is_in_the_help_and_parses():
+    from treg import cli
+    assert any(name == "hub" for _, rows in cli.HELP_GROUPS for name, _ in rows)
+    parser = cli.build_parser() if hasattr(cli, "build_parser") else None
+    if parser is not None:
+        a = parser.parse_args(["hub", "run", ".", "--input", "domain=figma.com", "--input", "limit=3"])
+        assert a.hub_cmd == "run" and a.input == ["domain=figma.com", "limit=3"]

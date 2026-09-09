@@ -1174,6 +1174,9 @@ class HubTool(SQLModel, table=True):
     readme: str = Field(default="")
     created_by: str = Field(default="")              # the maker's email
     created_at: datetime = Field(default_factory=_now)
+    # The check run's verdict (docs/HUB-DECISIONS.md round 2 q10): {status, run_id, checked_at,
+    # error?, trace?}. Declared LAST to match the migration's ALTER TABLE append position.
+    check_result: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
 
 
 class HubRun(SQLModel, table=True):
