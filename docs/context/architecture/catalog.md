@@ -828,6 +828,18 @@ which is the whole reason the provenance keys exist.
 charges 1 credit per 10 emails (`per: 10, unit: record`), Akta 1.5 credits per 50 reviews. Without
 `per`, every one of those had to be either wrong or rounded into prose.
 
+**`unit` also says WHO is counted.** `target`, `domain`, `keyword` and `call` name an INPUT entity:
+the caller pays per thing they asked about, the request names how many, and the reserve is the
+bill (`resolve._ENTITY_UNITS`; the money fragment has the history). `row`, `result`, `record` and
+the rest name a RETURNED row: the reserve is the caller's `limit` and the settle counts the answer
+where the provider reports nothing. Choosing between the two is a billing fact, not a synonym:
+SE Ranking's `keywords.volume` takes a list of keywords and bills each one (`unit: keyword`), while
+its `keywords.ideas` takes ONE seed and bills the 10..100 rows it answers with (`unit: row`) - the
+route sat under `unit: keyword` until 2026-09-09 and charged one row for every call. A row-priced
+block may add **`page_default`**, the number of rows the provider answers when the caller names no
+limit, when that differs from treg's 20-row assumption (SE Ranking answers, and bills, 100). The
+validator accepts it only as a positive integer on a `per_result` / `quota_rows` price.
+
 **Three kinds of denomination convert, and they convert differently:**
 
 - **A real currency** (`currency: USD`, `CNY`) uses `fx.yaml`'s `rates_to_usd`, keyed by currency.

@@ -19,6 +19,7 @@ sources:
   - src/treg/catalog/companyenrich.yaml
   - src/treg/application/call/serpstat.py
   - src/treg/catalog/serpstat.yaml
+  - src/treg/catalog/seranking.yaml
   - src/treg/application/asynctasks.py
   - src/treg/alembic/versions/0017_async_task_record.py
   - src/treg/alembic/versions/0018_async_resource_ownership.py
@@ -447,6 +448,7 @@ Provider-specific calculation stays outside the faithful relay.
 | Apollo | Known empty organization results are free |
 | Tomba domain search | Non-empty pages cost ceil(`meta.pageSize` / 10) credits, even when partially filled; empty `data.emails` is free. Reservation uses requested `limit`, default 10. Missing/malformed page evidence falls back to the estimate. Upstream duplicate discounts are not detected |
 | CompanyEnrich search pages | `items` rows times the per-row price, never below the cost block's `minimum_units` floor (one row: 2 credits on an empty people page, 1 on a company page, 5 on a lookalike page). Covers people and company search, their scroll routes and `companies.similar`; the floor is catalog data, validated by `catalog_validate.check_cost`. A body without an `items` list (gzip, buffer truncation, an error envelope) falls back to the estimate. The `expand` and `semanticQuery` riders are not modeled at reserve or settle |
+| SE Ranking keyword ideas | `seranking.google.keywords.ideas` bills 10 credits per keyword RETURNED and reports nothing, so the returned `keywords` list is the bill (`settle._SERANKING_RETURNED_KEYWORD_ROUTES`, the influencersclub rule): an empty list, or a JSON envelope without one, settles at 0; a non-JSON body settles at the estimate. Reservation is the requested `limit` (the catalog's `page_default` of 100, the API's own, when omitted) at the per-row price, capped at the 100-row platform max. Verified live 2026-09-09 on treg's own meter: 5 keywords cost 50 credits, an empty answer 0, where the route had charged one keyword unit (1,790 micro-USD) for every call since 2026-08-20. The per-INPUT sibling `keywords.volume` is untouched |
 | Hunter domain search | One whole search credit per ten returned emails, rounded up; an empty result is free |
 | QuickEnrich | Frozen $0.004834/credit base list rate (Starter $29/6,000, rounded up to micro-USD, before configured margin; assumes full allowance use); prefer integer `meta.credits_used`, including zero. If absent, count documented billable results. Domain holds reserve one credit without title or 20 with title; company holds use per_page (default 10, max 100). Discovery and lookups are free. BYOK never meters |
 | Serpstat | Rows in the JSON-RPC envelope (`result.data[]`, `result.data.top[]` for `getKeywordTop`, or the entries of a result keyed by the input) times the catalog credit price (`application/call/serpstat.py`); a top-level `error` object is free even on HTTP 200; a served result with no rows bills the documented 1-credit floor; an unrecognised shape keeps the estimate. Verified live 2026-09-09: an error envelope cost 0 lines and a 12-row SERP cost 12 |
@@ -480,6 +482,10 @@ with a 400, so the reservation followed a cap the bill ignored; `lusha.x.decisio
 retired tombstone since 2026-09-09 and `lusha.x.buying-group` is the path where `contactsLimit`
 is the spend cap. Without any signal it is the
 20-row page, and a settle-at-estimate provider then charges that page.
+with nothing reserved). Without any signal it is the
+catalog's `cost.page_default` when the entry carries one (the rows the provider answers to a call
+that names no limit - SE Ranking's keyword ideas answer and bill 100), else the 20-row page, and a
+settle-at-estimate provider then charges that page. Both stay under the 100-row platform max.
 
 The page default has no meaning at all when the catalog prices per INPUT entity, and the estimator
 knows the difference since 2026-09-05: a `per_result`/`quota_rows` cost whose `unit` is `target`,

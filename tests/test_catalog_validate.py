@@ -658,3 +658,22 @@ def test_contactout_person_routes_cannot_recapture_pii():
         assert not (path.parent / "examples" / (ep["id"] + ".json")).exists()
     work = next(ep for ep in endpoints if ep["id"] == "contactout.people.enrich.work_email")
     assert work["cost"]["value"] == 0.17
+
+
+@pytest.mark.parametrize('page,cost_type,ok', [
+    (100, 'per_result', True), (10, 'quota_rows', True),
+    (0, 'per_result', False), (-5, 'per_result', False), (True, 'per_result', False),
+    ('100', 'per_result', False), (1.5, 'per_result', False),
+    (100, 'per_call', False), (100, 'per_success', False),
+])
+def test_page_default_is_a_positive_row_count_on_a_row_priced_entry(page, cost_type, ok):
+    """`cost.page_default` is what the reserve assumes when the caller names no limit (SE Ranking's
+    keyword ideas answer 100 rows by default, not treg's 20); it has no meaning on a flat price."""
+    cost = {
+        'type': cost_type, 'value': 10, 'currency': 'credit', 'per': 1, 'unit': 'row',
+        'source': 'docs', 'source_url': 'https://example.com/pricing',
+        'checked': '2026-09-09', 'confidence': 'documented', 'page_default': page,
+    }
+    errors = []
+    validator.check_cost(cost, 'test', errors, [])
+    assert (not errors) is ok, errors

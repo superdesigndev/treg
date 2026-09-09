@@ -64,6 +64,10 @@ def _platform_billable(status_code: int, cost_type: str) -> bool:
 
 
 _PLATFORM_BODY_MAX = 8 * 1024 * 1024  # buffer ceiling for a metered response (API JSON, not downloads)
+# SE Ranking routes priced per RETURNED keyword row (catalog `unit: row`), whose answer carries the
+# rows under `keywords`. The per-INPUT sibling (keywords.volume, `unit: keyword`, a top-level array
+# of the keywords the caller sent) is deliberately not here: its reserve is its bill.
+_SERANKING_RETURNED_KEYWORD_ROUTES = frozenset({"seranking.google.keywords.ideas"})
 def _brightdata_record_count(body: bytes) -> int | None:
     """How many RECORDS a Bright Data Web Scraper response delivered, or None for "settle at the
     estimate". Bright Data bills $1.50/1000 records *delivered* and reports no charge field, so the
@@ -286,6 +290,18 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         # envelope without `accounts` (an error shape) counts zero: pay-per-result means an answer
         # with no rows costs nothing.
         rows = doc.get("accounts")
+        return (sum(item is not None for item in rows) if isinstance(rows, list) else 0) * mk.unit_micro
+    if mk.endpoint_id in _SERANKING_RETURNED_KEYWORD_ROUTES and mk.cost_type == "per_result" \
+            and mk.unit_micro > 0:
+        # DERIVED by counting rows, the influencersclub rule: SE Ranking's keyword ideas bill 10
+        # credits per keyword RETURNED and report no charge, so the `keywords` list is the only
+        # bill there is. Before this the route was priced per INPUT keyword, and every call
+        # reserved and settled ONE unit whatever `limit` asked or the answer carried (verified live
+        # 2026-09-09 on treg's own meter: 5 keywords returned cost 50 credits against 10 charged,
+        # an empty answer cost 0 against 10 charged). An envelope without a `keywords` list (an
+        # error shape) counts zero: pay-per-row means an answer with no rows costs nothing. A body
+        # that is not a JSON object never reaches here and settles at the estimate.
+        rows = doc.get("keywords")
         return (sum(item is not None for item in rows) if isinstance(rows, list) else 0) * mk.unit_micro
     if provider == "dataforseo":
         cost = doc.get("cost")

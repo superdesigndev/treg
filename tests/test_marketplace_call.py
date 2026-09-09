@@ -2861,3 +2861,104 @@ def test_serpstat_row_count_does_not_apply_to_flat_routes():
     """backlinks.summary is 5 credits per CALL and answers one object under `data`."""
     mk = _mk("serpstat", endpoint_id="serpstat.web.backlinks.summary", cost_type="per_call", unit_micro=5 * SERPSTAT_CREDIT)
     assert call_settle._observed_cost_micro(mk, b'{"id": "1", "result": {"data": {"referring_domains": 3}}}') is None
+# ---------------------------------------------------------------------------------------------
+# 2026-09-09: SE Ranking keyword ideas bill per keyword RETURNED, not per seed keyword
+
+SERANKING_IDEAS = "seranking.google.keywords.ideas"
+SERANKING_ROW_MICRO = 1_790  # 10 credits × $0.000179 (fx.yaml) per returned keyword
+
+
+def _seranking_ideas_body(count: int) -> bytes:
+    return json.dumps({"total": 3372, "keywords": [
+        {"keyword": f"avocado idea {i}", "volume": 100 + i, "cpc": 0.03} for i in range(count)
+    ]}).encode()
+
+
+def test_seranking_ideas_catalog_prices_per_returned_row():
+    """The catalog fact the fix rests on: the route is `unit: row` with the API's 100-row default,
+    while the per-INPUT sibling keeps `unit: keyword` (its reserve is its bill)."""
+    cat = catalog_store.load()
+    ideas = cat.by_id[SERANKING_IDEAS]["cost"]
+    assert (ideas["unit"], ideas["page_default"]) == ("row", 100)
+    assert cat.by_id["seranking.google.keywords.volume"]["cost"]["unit"] == "keyword"
+    assert call_resolution._usd_to_micro(cat.cost_view(ideas, "seranking")["usd"]) == SERANKING_ROW_MICRO
+
+
+def test_platform_estimate_reserves_the_requested_rows_or_the_provider_page():
+    """Row-priced: `limit` rows; with no limit, the catalog's own `page_default` (the API's 100),
+    capped at the platform max; an absent or malformed page_default keeps the 20-row default."""
+    est = call_resolution._platform_estimate_micro
+    per_row = {"type": "per_result", "unit": "row", "usd": 0.00179, "page_default": 100}
+    assert est(per_row, {"keyword": "avocado", "limit": "5"}) == 5 * SERANKING_ROW_MICRO
+    assert est(per_row, {"keyword": "avocado"}) == 100 * SERANKING_ROW_MICRO
+    assert est(per_row, {"keyword": "avocado", "limit": "500"}) == 100 * SERANKING_ROW_MICRO
+    assert est({**per_row, "page_default": 250}, {}) == 100 * SERANKING_ROW_MICRO, "capped at the platform max"
+    for bad in (None, 0, -1, True, "100", 1.5):
+        assert est({**per_row, "page_default": bad}, {}) == 20 * SERANKING_ROW_MICRO
+    # the per-INPUT sibling still counts the keywords the caller SENT, whatever limit says
+    per_kw = {"type": "per_result", "unit": "keyword", "usd": 0.00179}
+    assert est(per_kw, {"source": "us", "limit": "5"}, b'{"keywords": ["a", "b"]}') == 2 * SERANKING_ROW_MICRO
+
+
+@pytest.mark.parametrize(("query", "count", "reserved_rows", "charged_rows"), [
+    ("&limit=5", 5, 5, 5),        # the live case: 5 keywords returned cost 50 credits, treg took 10
+    ("&limit=5", 0, 5, 0),        # the live case: an empty answer cost 0, treg took 10
+    ("&limit=10", 3, 10, 3),      # fewer rows than asked settle at the rows
+    ("&limit=5", 7, 5, 7),        # more rows than asked is an overrun the settle trues up
+    ("", 100, 100, 100),          # no limit: the API answers (and bills) its 100-row default
+])
+async def test_seranking_ideas_settles_on_returned_keywords(
+    clients: AsyncClient, monkeypatch, query, count, reserved_rows, charged_rows,
+):
+    """Reproduces the 2026-09-09 finding through the platform tier: every call used to reserve and
+    settle ONE keyword unit ($0.00179) because the route was priced per input keyword. Now the hold
+    is `limit` rows and the charge is the returned `keywords` list, in integer micro-USD."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SERANKING", "SYNTHETIC-SERANKING-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "seranking")
+    get_settings.cache_clear()
+    body = _seranking_ideas_body(count)
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, body))
+    before = await _balance(clients)
+    r = await clients.get(f"/call/{SERANKING_IDEAS}?source=us&keyword=avocado{query}")
+    assert r.status_code == 200, r.text
+    assert r.content == body, "the relay stays faithful: counting rows never rewrites the answer"
+    assert await _balance(clients) == before - charged_rows * SERANKING_ROW_MICRO
+    telemetry = await _telemetry(clients)
+    assert telemetry["cost_estimated_micro"] == reserved_rows * SERANKING_ROW_MICRO
+    assert telemetry["cost_observed_micro"] == charged_rows * SERANKING_ROW_MICRO
+    assert telemetry["cost_charged_micro"] == charged_rows * SERANKING_ROW_MICRO
+    get_settings.cache_clear()
+
+
+async def test_seranking_ideas_unparseable_body_settles_at_the_estimate(clients: AsyncClient, monkeypatch):
+    """A 2xx whose body is not JSON carries no row count: the hold settles at what was reserved."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SERANKING", "SYNTHETIC-SERANKING-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "seranking")
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b"<html>gateway</html>"))
+    before = await _balance(clients)
+    r = await clients.get(f"/call/{SERANKING_IDEAS}?source=us&keyword=avocado&limit=5")
+    assert r.status_code == 200
+    assert await _balance(clients) == before - 5 * SERANKING_ROW_MICRO
+    telemetry = await _telemetry(clients)
+    assert telemetry["cost_observed_micro"] is None
+    assert telemetry["cost_charged_micro"] == 5 * SERANKING_ROW_MICRO
+    get_settings.cache_clear()
+
+
+def test_seranking_ideas_observed_cost_counts_the_keywords_list():
+    mk = _mk("seranking", endpoint_id=SERANKING_IDEAS, cost_type="per_result", unit_micro=SERANKING_ROW_MICRO)
+    assert call_settle._observed_cost_micro(mk, _seranking_ideas_body(5)) == 5 * SERANKING_ROW_MICRO
+    assert call_settle._observed_cost_micro(mk, _seranking_ideas_body(0)) == 0
+    assert call_settle._observed_cost_micro(mk, b'{"keywords": [null, {"keyword": "x"}]}') == SERANKING_ROW_MICRO
+    # an envelope with no rows (an error shape on a 2xx) costs nothing: pay-per-row
+    assert call_settle._observed_cost_micro(mk, b'{"error": "bad source"}') == 0
+    assert call_settle._observed_cost_micro(mk, b'{"keywords": null}') == 0
+    # no JSON object, no count: the estimate stands
+    for body in (b"not json", b"[1, 2, 3]", b""):
+        assert call_settle._observed_cost_micro(mk, body) is None
+    # the rule is keyed on the route, not the provider: the per-INPUT sibling and the row-priced
+    # backlink lists keep settling at their reserve
+    for other in ("seranking.google.keywords.volume", "seranking.web.backlinks.list"):
+        sibling = _mk("seranking", endpoint_id=other, cost_type="per_result", unit_micro=SERANKING_ROW_MICRO)
+        assert call_settle._observed_cost_micro(sibling, b'{"keywords": []}') is None

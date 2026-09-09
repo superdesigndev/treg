@@ -509,6 +509,15 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
             fail(errors, where, "cost.minimum_units must be a non-negative integer count of cost units")
         if cost.get("type") != "per_result":
             fail(errors, where, "cost.minimum_units is only valid with type: per_result")
+    page = cost.get("page_default")
+    if page is not None:
+        # The provider's OWN page size when the caller names no limit - what the reserve assumes
+        # instead of the 20-row platform default. Only a row-priced entry has a page to default.
+        if not isinstance(page, int) or isinstance(page, bool) or page < 1:
+            fail(errors, where, f"cost.page_default '{page}' must be a positive integer (rows the "
+                                "provider returns when the caller names no limit)")
+        if cost.get("type") not in ("per_result", "quota_rows"):
+            fail(errors, where, "cost.page_default is only valid on a per_result or quota_rows price")
     reported = cost.get("reported_charge")
     if reported is not None:
         if (not isinstance(reported, dict) or set(reported) != {"path", "unit"}

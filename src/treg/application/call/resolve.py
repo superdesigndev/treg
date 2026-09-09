@@ -341,8 +341,10 @@ class MarketplaceCall:
 
 
 # A `per_result` price is per ROW, so an estimate needs a row count. The caller's own limit param is
-# the best available signal; without one, assume a page. Capped, because `limit=100000` must not be
-# able to reserve an org's whole balance for a single call — the settle corrects the estimate either way.
+# the best available signal; without one, assume a page - the catalog's `cost.page_default` when the
+# provider's own default differs (SE Ranking's keyword ideas answer 100 rows to a call that names no
+# `limit`, and bill all 100), else 20. Capped, because `limit=100000` must not be able to reserve an
+# org's whole balance for a single call - the settle corrects the estimate either way.
 _PLATFORM_PAGE_DEFAULT = 20
 _PLATFORM_PAGE_MAX = 100
 _LIMIT_PARAMS = ("limit", "count", "depth", "page_size", "per_page", "num", "max_results", "size",
@@ -479,7 +481,10 @@ def _platform_estimate_micro(cost: dict, query, body: bytes = b"") -> int:
                 break
         if asked is None:
             asked = _body_limit(body)  # POST providers put the row count in the body, not the query
-        n = max(1, min(asked or _PLATFORM_PAGE_DEFAULT, _PLATFORM_PAGE_MAX))
+        page = cost.get("page_default")
+        if not isinstance(page, int) or isinstance(page, bool) or page < 1:
+            page = _PLATFORM_PAGE_DEFAULT
+        n = max(1, min(asked or page, _PLATFORM_PAGE_MAX))
     # Round to 9 dp BEFORE the ceil: float artifacts (0.0015 × 3 → 4500.000000001) must not
     # over-reserve a phantom micro-dollar.
     raw_micro = round(usd * n * 1_000_000, 9)
