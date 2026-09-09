@@ -488,9 +488,36 @@ def test_body_limit_reads_camel_case_and_nested_pagination_keys():
     # one row per listed item: moz `targets` (a 1-target body settled 20 quota rows live, $0.27 for $0.013)
     assert call_resolution._body_limit(json.dumps({"targets": ["moz.com"], "distributions": True}).encode()) == 1
     assert call_resolution._body_limit(json.dumps({"domains": ["a.com", "b.com"]}).encode()) == 2
-    # lusha decision-makers: `contactsLimit` caps contacts PER COMPANY and is the whole bill (1 credit
-    # each) — without it the route answered 44 rows for microsoft.com, $5.49 in one call (2026-09-02)
+    # lusha buying-group: `contactsLimit` caps contacts PER COMPANY and is the whole bill (1 credit
+    # each) - without it the route answered 44 rows for one company, $5.49 in one call (2026-09-02,
+    # on the since-retired decision-makers path, whose legacy handler never honoured the cap)
     assert call_resolution._body_limit(json.dumps({"companies": [{"domain": "microsoft.com"}], "contactsLimit": 5}).encode()) == 5
+
+
+async def test_retired_lusha_decision_makers_answers_410_with_its_successor_and_reserves_nothing(
+    clients: AsyncClient, monkeypatch,
+):
+    """A cached `lusha.x.decision-makers` call used to reach a legacy handler that ignored the
+    `contactsLimit` cap the reservation followed (Lusha removed the route 2026-08-12). The id is now
+    a tombstone: the platform key never loads, no hold is placed and the answer names the successor."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_LUSHA", "PLATFORM-LUSHA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "lusha")
+    get_settings.cache_clear()
+    try:
+        monkeypatch.setattr(call_service, "relay", _fake_relay(
+            200, b'{"results": [], "billing": {"creditsCharged": 44, "resultsReturned": 44}}'))
+        before, ledger_before = await _balance(clients), await _entries(clients)
+        r = await clients.post("/call/lusha.x.decision-makers",
+                               json={"companies": [{"domain": "example.com"}], "contactsLimit": 1})
+        assert r.status_code == 410, r.text
+        detail = r.json()["detail"]
+        assert "lusha.x.decision-makers is retired" in detail
+        assert "Use lusha.x.buying-group instead." in detail
+        assert "contactsLimit" in detail
+        assert await _balance(clients) == before
+        assert await _entries(clients) == ledger_before, "no hold was placed, so nothing to settle or release"
+    finally:
+        get_settings.cache_clear()
 
 
 async def test_provider_5xx_releases_the_hold(clients: AsyncClient, platform_on, monkeypatch):

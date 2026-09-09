@@ -459,7 +459,11 @@ bill one row per listed item — the length of `targets`/`keywords`/`domains`/`u
 `emails`. Each of those was a live overcharge first (2026-08-28: companyenrich `pageSize: 2`
 settled 20 rows, moz's one `targets` entry settled 20 quota rows; 2026-09-02: lusha decision-makers,
 catalogued FREE, answered 44 contacts for one domain and settled $5.49 from `billing.creditsCharged`
-with nothing reserved). Without any signal it is the
+with nothing reserved). The cap key only reserves what the provider will honour: Lusha had already
+removed `/v3/contacts/decision-makers` (2026-08-12) and its legacy handler rejected `contactsLimit`
+with a 400, so the reservation followed a cap the bill ignored; `lusha.x.decision-makers` is a
+retired tombstone since 2026-09-09 and `lusha.x.buying-group` is the path where `contactsLimit`
+is the spend cap. Without any signal it is the
 20-row page, and a settle-at-estimate provider then charges that page.
 
 The page default has no meaning at all when the catalog prices per INPUT entity, and the estimator

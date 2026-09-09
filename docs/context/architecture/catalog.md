@@ -85,6 +85,7 @@ sources:
   - src/treg/catalog/akta.extended.yaml
   - src/treg/catalog/dataforseo.extended.yaml
   - src/treg/catalog/tikhub.extended.yaml
+  - src/treg/catalog/lusha.extended.yaml
   - src/treg/catalog/examples/minimax.video-gen.result.retrieve.json
   - src/treg/catalog/examples/minimax.video-gen.from_image.json
   - src/treg/catalog/examples/minimax.video-gen.task.status.json
@@ -1043,6 +1044,19 @@ The validator treats the marker as a contract: only `retired` and `broken` are v
 needs a non-empty note; `status_note` and `superseded_by` cannot float without `status`; and a
 successor must be a different, existing, live catalog id. A marked id is therefore an explanation,
 not an alias chain or a route treg will still spend against.
+
+The marker is not TikHub-specific, and the provider does not have to answer 404 for a row to be
+dead. `lusha.x.decision-makers` (2026-09-09) is the second shape: Lusha removed
+`POST /v3/contacts/decision-makers` on 2026-08-12 in favour of `/v3/contacts/buying-group`, the only
+operation that accepts `contactsLimit` and `personas` - but a legacy handler kept answering
+companies-only bodies on the old path and rejected the cap parameter with a 400. A route that still
+returns 200 while silently ignoring the caller's spend control is broken in the way that costs the
+most (every call ran at the 60-contacts-per-company default, 1 credit each), so it is retired with
+`superseded_by: lusha.x.buying-group` even though the old URL "works". The successor was written from
+the provider's OpenAPI bundle without a live probe and says so with `skipped` and no
+`example_response`; an invented fixture would be worse than none. `lusha.extended.yaml` is
+hand-maintained (no ingester reads Lusha's client-rendered reference), so the "regenerated wholesale"
+caveat above does not apply to it and the tombstone survives.
 
 ### `platform_blocked:` — works upstream, but not on treg's plan
 

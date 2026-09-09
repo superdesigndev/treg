@@ -347,7 +347,7 @@ _PLATFORM_PAGE_DEFAULT = 20
 _PLATFORM_PAGE_MAX = 100
 _LIMIT_PARAMS = ("limit", "count", "depth", "page_size", "per_page", "num", "max_results", "size",
                  "pageSize", "perPage", "numResults", "maxResults",
-                 "contactsLimit")  # camelCase: companyenrich, exa, lusha; contactsLimit: lusha decision-makers
+                 "contactsLimit")  # camelCase: companyenrich, exa, lusha; contactsLimit: lusha buying-group
 
 
 # Units that name an INPUT entity rather than a returned row: the caller pays per thing they asked
