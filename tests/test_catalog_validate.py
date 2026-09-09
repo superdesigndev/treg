@@ -677,3 +677,36 @@ def test_page_default_is_a_positive_row_count_on_a_row_priced_entry(page, cost_t
     errors = []
     validator.check_cost(cost, 'test', errors, [])
     assert (not errors) is ok, errors
+# ---- apify LinkedIn job search: enum values, not README labels ---------------------------------
+
+_APIFY_JOBS_ENUMS = {
+    "postedLimit": ["1h", "24h", "week", "month"],
+    "workplaceType": ["remote", "hybrid", "office"],
+    "employmentType": ["full-time", "part-time", "contract", "internship", "temporary"],
+    "experienceLevel": ["internship", "entry", "associate", "mid-senior", "director", "executive"],
+    "sortBy": ["date", "relevance"],
+}
+
+
+def test_apify_job_search_documents_its_enums_as_enum_lists_not_labels():
+    """The actor's input schema takes `month`, `office`, `full-time`; its README shows 'Past month',
+    'On-site', 'Full-time'. The catalog once copied the labels into prose notes, and an agent that
+    followed them was rejected by schema validation. Each of the five fields now carries the
+    schema's `enum`, its example is a member, and the test_request exercises one so a re-verify
+    catches the actor renaming a value."""
+    from treg.domain.catalog import store as catalog_store
+
+    ep = catalog_store.load().by_id["apify.linkedin.search.jobs"]
+    body = ep["input"]["body"]
+    for field, values in _APIFY_JOBS_ENUMS.items():
+        spec = body[field]
+        assert spec.get("enum") == values, field
+        assert "/" not in spec.get("note", ""), f"{field}: README labels belong in enum, not prose"
+        example = spec.get("example")
+        for value in (example if isinstance(example, list) else [example]):
+            assert value in values, f"{field} example {value!r} is not in its enum"
+    test_body = ep["test_request"]["body"]
+    exercised = [f for f in _APIFY_JOBS_ENUMS if f in test_body]
+    assert exercised, "test_request must send at least one enum field"
+    for field in exercised:
+        assert test_body[field] in _APIFY_JOBS_ENUMS[field], field

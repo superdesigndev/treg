@@ -150,6 +150,20 @@ def _quickenrich_cost_micro(mk: MarketplaceCall, doc: dict) -> int | None:
         if mk.endpoint_id == "quickenrich.people.enrich":
             return mk.unit_micro
     return None
+def _apify_item_count(body: bytes) -> int | None:
+    """How many dataset items an Apify run-sync-get-dataset-items response delivered, or None for
+    "settle at the estimate". A pay-per-result or pay-per-event actor bills per item produced and
+    the response IS the dataset: a bare JSON array, one element per item, no envelope (the catalog
+    entries say so and the captured examples are arrays). Nothing else is counted: gzip, a body the
+    8MB metered buffer truncated mid-array, or an object shape we did not expect all mean the
+    count is unknown, and the estimate is then the honest number - the Bright Data rule."""
+    if body[:2] == b"\x1f\x8b":
+        return None
+    try:
+        doc = json.loads(body)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    return len(doc) if isinstance(doc, list) else None
 
 
 def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int | None:
@@ -194,6 +208,9 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         charge for a 2xx whose payload is an embedded error (verified live 2026-07-30 — see
         docs/context/architecture/catalog.md, "the provider decides what counts as success").
 
+      - apify: DERIVED by counting, like Bright Data. A run-sync-get-dataset-items answer is the
+        dataset itself (a bare JSON array) and the actor bills per item, so its length is the
+        bill; any other shape settles at the estimate (`_apify_item_count`).
       - exa: REPORTED in dollars, `costDollars.total` on every 2xx body (same contract as
         dataforseo's `cost`) — the only place the per-result and per-content riders exist.
       - fiber-ai: REPORTED in credits, `chargeInfo.creditsCharged` on every envelope, honoured
@@ -233,6 +250,12 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         # DERIVED by counting records — Bright Data's bill is per record delivered and the body is
         # the only place that number exists (see _brightdata_record_count for the shapes).
         n = _brightdata_record_count(body)
+        return None if n is None else n * mk.unit_micro
+    if provider == "apify" and mk.cost_type == "per_result" and mk.unit_micro > 0:
+        # DERIVED by counting items, like Bright Data: the actor bills per dataset item and the
+        # run-sync response is that dataset. Before this every job search settled at the 20-row
+        # estimate whatever came back - a one-job answer billed $0.02 for a $0.001 item.
+        n = _apify_item_count(body)
         return None if n is None else n * mk.unit_micro
     try:
         doc = json.loads(body)

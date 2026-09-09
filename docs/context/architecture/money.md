@@ -20,6 +20,7 @@ sources:
   - src/treg/application/call/serpstat.py
   - src/treg/catalog/serpstat.yaml
   - src/treg/catalog/seranking.yaml
+  - src/treg/catalog/apify.yaml
   - src/treg/application/asynctasks.py
   - src/treg/alembic/versions/0017_async_task_record.py
   - src/treg/alembic/versions/0018_async_resource_ownership.py
@@ -456,6 +457,7 @@ Provider-specific calculation stays outside the faithful relay.
 | TikHub | Honor explicit no-charge prose; an embedded error that says it is charged still costs the estimate |
 | Bright Data | Count delivered JSON-array records or CSV/NDJSON lines; a JSON object containing a status/snapshot handoff has zero records |
 | Icypeas async submissions | A 2xx acknowledgement with no rows (`item._id`, or `file` + `status`) on a `per_result`/`per_success` route settles at 0 and closes the hold; the provider debits the credit later on the free poll route, which treg absorbs until terminal settlement exists (`application/call/icypeas.py`). Synchronous bodies carrying `data` rows and the `per_call` verify route keep the estimate. Reservation: `icypeas.bulk.search` holds one credit per row of the body's top-level `data` array, capped at the platform row maximum; other bodies are read as before |
+| Apify | `per_result` rows count a bare top-level JSON array (the run-sync response IS the dataset, one element per billed item); gzip, a truncated body or any other shape falls back to the estimate. Before 2026-09-09 every LinkedIn job search settled at the 20-row page - 3,019 calls at a flat $0.02 for $0.001 items |
 | Aviato | Fixed routes use the estimate; bulk enrichment counts successful records; catalog `settle: base` and `settle: modifiers` release documented-but-unbilled `reserve_only` riders |
 
 Bright Data snapshot downloads are billable per result, including repeat downloads. Gzip or a
@@ -464,7 +466,8 @@ buffer-truncated response falls back to the estimate because the record count is
 
 The row-count signal for that estimate (`resolve._LIMIT_PARAMS` / `_body_limit`) reads the caller's
 `limit`/`count`/`size`/`per_page`… in the query or body, the camelCase spellings (`pageSize`,
-`numResults`, `perPage`, `maxResults`, lusha's per-company `contactsLimit`), a nested `pagination.{size,…}`, and — for providers that
+`numResults`, `perPage`, `maxResults`, lusha's per-company `contactsLimit`, apify's `maxItems` in the query or the actor input
+body and `resultsLimit`, where a `maxItems` of 0 means "everything" and keeps the page default), a nested `pagination.{size,…}`, and — for providers that
 bill one row per listed item — the length of `targets`/`keywords`/`domains`/`urls`/`lookups`/
 `emails`. Each of those was a live overcharge first (2026-08-28: companyenrich `pageSize: 2`
 settled 20 rows, and until 2026-09-09 an EMPTY companyenrich page still settled the whole
@@ -481,6 +484,8 @@ removed `/v3/contacts/decision-makers` (2026-08-12) and its legacy handler rejec
 with a 400, so the reservation followed a cap the bill ignored; `lusha.x.decision-makers` is a
 retired tombstone since 2026-09-09 and `lusha.x.buying-group` is the path where `contactsLimit`
 is the spend cap. Without any signal it is the
+with nothing reserved; 2026-09-09: apify job searches ignored `maxItems` and, with no settle rule
+counting the dataset, charged the page on every call). Without any signal it is the
 20-row page, and a settle-at-estimate provider then charges that page.
 with nothing reserved). Without any signal it is the
 catalog's `cost.page_default` when the entry carries one (the rows the provider answers to a call

@@ -2962,3 +2962,78 @@ def test_seranking_ideas_observed_cost_counts_the_keywords_list():
     for other in ("seranking.google.keywords.volume", "seranking.web.backlinks.list"):
         sibling = _mk("seranking", endpoint_id=other, cost_type="per_result", unit_micro=SERANKING_ROW_MICRO)
         assert call_settle._observed_cost_micro(sibling, b'{"keywords": []}') is None
+# ---- apify: the run-sync response IS the dataset, and the actor bills per item -----------------
+
+def test_body_limit_reads_apify_max_items_and_results_limit():
+    """Apify actors take their per-query cap as `maxItems` in the input body (`resultsLimit` for the
+    Facebook actor). Neither was a limit signal, so every job search reserved the 20-row page and,
+    with nothing to settle on, charged it: 3,019 calls at a flat $0.02 between 2026-08-20 and
+    2026-09-09. `maxItems: 0` means "every page" for the actor and must keep the page default."""
+    assert call_resolution._body_limit(json.dumps({"jobTitles": ["attorney"], "maxItems": 5}).encode()) == 5
+    assert call_resolution._body_limit(json.dumps({"startUrls": [{"url": "https://x.example"}], "resultsLimit": 3}).encode()) == 3
+    assert call_resolution._body_limit(json.dumps({"jobTitles": ["attorney"], "maxItems": 0}).encode()) is None
+    assert call_resolution._body_limit(json.dumps({"jobTitles": ["attorney"], "maxItems": True}).encode()) is None
+    assert call_resolution._body_limit(json.dumps({"jobTitles": ["attorney"], "maxItems": "5"}).encode()) is None
+
+
+def test_apify_per_result_estimate_reserves_the_requested_items():
+    """A `maxItems: 5` body on a $0.001/item actor reserves 5 rows, and the query-string cap counts
+    the same way; without either signal the estimate stays the 20-row page."""
+    cost = {"type": "per_result", "usd": 0.001}
+    assert call_resolution._platform_estimate_micro(cost, {}, json.dumps({"jobTitles": ["x"], "maxItems": 5}).encode()) == 5_000
+    assert call_resolution._platform_estimate_micro(cost, {"maxItems": "5"}, json.dumps({"jobTitles": ["x"]}).encode()) == 5_000
+    assert call_resolution._platform_estimate_micro(cost, {"maxItems": "0"}, json.dumps({"jobTitles": ["x"]}).encode()) == 20_000
+    assert call_resolution._platform_estimate_micro(cost, {}, json.dumps({"jobTitles": ["x"]}).encode()) == 20_000
+
+
+@pytest.mark.parametrize(("body", "micro"), [
+    (json.dumps([{"id": "1", "title": "Attorney"}]).encode(), 1_000),
+    (json.dumps([{"id": str(i)} for i in range(30)]).encode(), 30_000),
+    (b"[]", 0),
+])
+def test_apify_per_result_settles_on_the_items_delivered(body, micro):
+    mk = _mk("apify", endpoint_id="apify.linkedin.search.jobs", cost_type="per_result", unit_micro=1_000)
+    assert call_settle._observed_cost_micro(mk, body) == micro
+
+
+@pytest.mark.parametrize("body", [
+    b"not json", b'[{"id": "1"}, {"id": "2"', b"\x1f\x8b\x08\x00garbage", b'{"error": {"type": "run-failed"}}', b"42",
+])
+def test_apify_unknown_shapes_settle_at_the_estimate(body):
+    """Gzip, a body the metered buffer truncated mid-array, or an envelope we did not expect: the
+    count is unknown, so the estimate stands rather than a guess."""
+    mk = _mk("apify", endpoint_id="apify.linkedin.search.jobs", cost_type="per_result", unit_micro=1_000)
+    assert call_settle._observed_cost_micro(mk, body) is None
+
+
+def test_apify_item_count_does_not_apply_outside_per_result():
+    assert call_settle._observed_cost_micro(_mk("apify", cost_type="per_call", unit_micro=1_000), b"[1, 2]") is None
+    assert call_settle._observed_cost_micro(_mk("apify", cost_type="per_result", unit_micro=0), b"[1, 2]") is None
+
+
+@pytest.mark.parametrize(("query", "body_extra", "items", "estimate", "charged"), [
+    ("", {}, 1, 20_000, 1_000),          # the old flat $0.02: no cap read, one job answered
+    ("", {"maxItems": 5}, 3, 5_000, 3_000),
+    ("?maxItems=5&maxTotalChargeUsd=0.05", {"maxItems": 5}, 30, 5_000, 30_000),  # overrun: settle bills what came back
+    ("", {"maxItems": 5}, 0, 5_000, 0),
+])
+async def test_apify_job_search_reserves_the_cap_and_settles_on_the_array(
+    clients: AsyncClient, platform_on, monkeypatch, query, body_extra, items, estimate, charged,
+):
+    """End to end through the real catalog row ($0.001 per job): the estimate follows `maxItems`
+    and the settle follows the dataset array, so a one-job answer no longer costs the 20-row page."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_APIFY", "PLATFORM-APIFY-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apify")
+    get_settings.cache_clear()
+    upstream = json.dumps([{"id": str(i), "title": "Attorney"} for i in range(items)]).encode()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, upstream))
+    before = await _balance(clients)
+    response = await clients.post(f"/call/apify.linkedin.search.jobs{query}",
+                                  json={"jobTitles": ["attorney"], "postedLimit": "month", **body_extra})
+    assert response.status_code == 200
+    assert response.content == upstream
+    assert await _balance(clients) == before - charged
+    telemetry = await _telemetry(clients)
+    assert telemetry["cost_estimated_micro"] == estimate
+    assert telemetry["cost_observed_micro"] == charged
+    assert telemetry["cost_charged_micro"] == charged

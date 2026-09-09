@@ -960,7 +960,12 @@ Do these steps in order; each has a hard success criterion.
 3. **Map.** Assign each endpoint a capability from `capabilities.yaml`. Missing job → add it under
    `proposed_capabilities:` in your provider file, don't edit the shared taxonomy in parallel work.
 4. **Describe.** Fill `input` from the spec/docs: param names, types, which are required, where
-   they ride (path/query/body). Copy real constraints ("one of A|B") into `note`.
+   they ride (path/query/body). A closed set of accepted values goes in `enum:` as the exact
+   strings the API's schema validates, never as prose in `note` and never as the display labels a
+   README or UI shows (apify's LinkedIn job actor takes `month` and `office`; its README says
+   "Past month" and "On-site", and an agent that followed the note was rejected before the run
+   started - 2026-09-09). The validator reads `enum` for cost tables and `platform_request`; other
+   constraints (ranges, formats, mutual exclusions) stay in `note`.
 5. **Cost.** Record the provider's price model per endpoint from their pricing page — with its
    provenance (`source`, `source_url`, `checked`, `confidence`) and its unit (`per`, `unit`), per
    "Cost" above. `quota_rows` is for row-quota APIs (Moz). Unknown exact value → `value: null` +
