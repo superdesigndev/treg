@@ -1195,7 +1195,7 @@ async def _enforce_capability_pin(ep: dict, caller: Caller, db: AsyncSession) ->
 
 async def _provider_tool_grant(
     service: str, methods: tuple[str, ...], caller: Caller, db: AsyncSession,
-    endpoint: dict | None = None, host: str = "",
+    endpoint: dict | None = None, host: str = "", upstream: str = "",
 ) -> tuple[Tool, Secret, str] | None:
     """Resolve a named catalog endpoint by provider and grant identity, not only by host.
 
@@ -1206,10 +1206,14 @@ async def _provider_tool_grant(
     `methods` (an endpoint declaring authorization methods) the grant method filters and ranks
     them; without, every connection of the provider is a candidate - connect provisions each
     account of a provider on the same host with the same provider tag, so host matching alone
-    can never tell a second account apart. Among several the bare service name wins (connect
-    guarantees it to the first account, and it is the name every skill and doc calls), then the
-    newest connection. `host` restricts candidates to tools on the upstream's host, so a
-    companion tool on another host (`google-analytics-admin`) never serves a data-host call.
+    can never tell a second account apart. With methods, the bare service name wins among several
+    (connect guarantees it to the first account), then the newest connection. Without methods,
+    several connections of one provider are a genuine tie: nothing in the request says which
+    account the caller means, and a silent default would send one account's request through
+    another's credential (a Search Console site owned by account 2 answers 403 from account 1's
+    key), so the call refuses with a 409 that names each account's `/call/<name>/<path>` form.
+    `host` restricts candidates to tools on the upstream's host, so a companion tool on another
+    host (`google-analytics-admin`) never serves a data-host call.
 
     A caller-denied candidate refuses only when the endpoint declares methods: a plain endpoint
     falls back to host matching, which already tells "not yours" (403) from "not registered"
@@ -1264,14 +1268,19 @@ async def _provider_tool_grant(
             )
         return None
     matches.sort(key=lambda item: item[:4])
+    if not methods and endpoint is not None:
+        tied = {m[4].id: m[4] for m in matches}
+        if len(tied) > 1:
+            raise _catalog_ambiguous(endpoint, upstream, list(tied.values()))
     _, _, _, _, tool, secret, method = matches[0]
     return tool, secret, method
 
 
 def _catalog_ambiguous(ep: dict, upstream: str, tools: list[Tool]) -> ResolutionFailed:
-    """Restate a passthrough tie in catalog terms: the id the caller typed, every colliding tool,
-    and the named form of each. Only tools with no `provider` connection reach here - a
-    provider-tagged one would have been chosen by identity first - so the fix is to name one."""
+    """Restate a tie in catalog terms: the id the caller typed, every colliding tool, and the
+    named form of each. Two kinds of tie land here - several connected accounts of the
+    endpoint's provider, or hand-registered same-host tools with no provider connection - and
+    the fix is the same for both: name the one you mean."""
     host = _host_of(upstream)
     names = [tool.name for tool in tools]
     # Every colliding tool tied on base_url prefix length, so the upstream path is the same
@@ -1285,7 +1294,7 @@ def _catalog_ambiguous(ep: dict, upstream: str, tools: list[Tool]) -> Resolution
         "named_forms": forms,
         "message": (
             f"{ep['id']} matches several of your tools on {host!r} ({', '.join(names)}) and "
-            f"none of them is a {ep['provider']} connection treg can tell apart; call the one "
+            f"nothing in the request says which {ep['provider']} account you mean; call the one "
             "you mean by name: " + " or ".join(forms)
         ),
     })
@@ -1449,7 +1458,7 @@ async def _resolve_marketplace_call(
         # (meta-ads beside instagram-page-tools), are not ambiguous to a caller who typed the
         # endpoint id. Host matching remains for hand-registered tools with no connection.
         grant = await _provider_tool_grant(
-            service, (), caller, db, endpoint=ep, host=_host_of(upstream))
+            service, (), caller, db, endpoint=ep, host=_host_of(upstream), upstream=upstream)
         if grant is not None:
             return MarketplaceCall(tool=grant[0], tier="tool", **common)
         try:

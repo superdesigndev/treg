@@ -164,10 +164,10 @@ Resolution refusals are actionable: a named miss that resembles one of the calle
 returns a structured `detail` with `hint` and `did_you_mean`, including after a real catalog endpoint
 falls through and finds no usable marketplace credential. A genuine URL-passthrough tie returns 409
 with the names of the colliding usable tools and the explicit `/call/<name>/<path>` escape hatch. A
-catalog id never ties on a connection-backed tool - resolution picks the tool by the endpoint's
-provider first, so a second connected account or two providers on one host still resolve - and a tie
-among hand-registered tools returns a structured 409 `detail` (`error`, `endpoint_id`, `provider`,
-`tools`, `named_forms`, `message`) naming the `/call/<tool>/<path>` form of each colliding tool.
+catalog id picks the tool by the endpoint's provider first, so two providers on one host (meta-ads
+beside instagram-page-tools) resolve; two connected accounts of ONE provider, or a tie among
+hand-registered tools, return a structured 409 `detail` (`error`, `endpoint_id`, `provider`, `tools`,
+`named_forms`, `message`) naming the `/call/<tool>/<path>` form of each account or tool.
 
 ## Auth
 `require_member()` reads the `X-Treg-Token` header, hashes it

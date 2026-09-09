@@ -194,12 +194,14 @@ first, nor `meta-ads` from `instagram-page-tools` (both on `graph.facebook.com`)
 `_resolve_marketplace_call` first asks `_provider_tool_grant` for an org tool, on the upstream's
 host, bound to a `Secret` whose `provider` is the endpoint's provider and that the caller may use.
 An endpoint declaring authorization methods adds the grant method to that identity (Instagram's
-two grants); a plain endpoint takes every connection of the provider. Among several, the bare
-service name wins - connect guarantees it to the first account and every skill and doc calls it -
-then the newest connection. Only when no connection-backed tool exists does `resolve_call` match by
-host, which is where a hand-registered tool with a plain secret still serves the call; a tie there
-(`AmbiguousTarget`) is restated by `_catalog_ambiguous` as a `409` naming the endpoint id, the
-colliding tools and the `/call/<tool>/<path>` form of each. A caller-denied connection tool refuses
+two grants) and, among several, prefers the bare service name, then the newest connection. A plain
+endpoint takes every connection of the provider, and several of them are a genuine tie: nothing in
+the request says which account the caller means, and a silent default would send one account's
+request through another's credential, so `_provider_tool_grant` refuses with `_catalog_ambiguous`
+- a `409` naming the endpoint id, each connected account and the `/call/<tool>/<path>` form of
+each. Only when no connection-backed tool exists does `resolve_call` match by host, which is where
+a hand-registered tool with a plain secret still serves the call; a tie there (`AmbiguousTarget`)
+is restated the same way. A caller-denied connection tool refuses
 (`403`) only for an annotated endpoint; a plain one falls through to host matching, which already
 tells "not yours" from "not registered". Own-account tools stay unmetered and unrouted on every
 branch of this step.

@@ -637,24 +637,33 @@ async def _newest_call(clients: AsyncClient) -> dict:
     return (await clients.get("/calls")).json()[0]
 
 
-async def test_a_second_account_keeps_catalog_calls_on_the_first(clients: AsyncClient, treg_google_app):
-    """Both accounts sit on the same host with a provider-tagged credential, so host matching
-    alone cannot tell them apart. A catalog id must still resolve - to the bare-named tool, the
-    one every skill and doc calls - rather than 409 the moment a second account is attached."""
-    first = await _connect_byo(clients, provider="google-search-console", capability="read", name="")
+async def test_a_second_account_makes_a_catalog_call_name_the_account(clients: AsyncClient, treg_google_app):
+    """Both accounts sit on the same host with a provider-tagged credential, so nothing in a
+    catalog call says which one the caller means. A silent default to the first account would
+    send a site owned by the second through the first's key (an upstream 403 nobody can read), so
+    the call refuses with the named form of EACH account instead."""
+    await _connect_byo(clients, provider="google-search-console", capability="read", name="")
     await _connect_byo(clients, provider="google-search-console", capability="read", name="")
 
     r = await clients.post(
         "/call/google-search-console.performance", params={"siteUrl": "sc-domain:example.com"},
         json={"startDate": "2026-07-01", "endDate": "2026-07-21", "rowLimit": 2},
     )
+    assert r.status_code == 409, r.text
+    detail = r.json()["detail"]
+    assert detail["error"] == "target_ambiguous"
+    assert detail["endpoint_id"] == "google-search-console.performance"
+    assert detail["tools"] == ["google-search-console", "google-search-console-2"]
+    path = "/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query"
+    assert detail["named_forms"] == [f"/call/google-search-console{path}", f"/call/google-search-console-2{path}"]
+    assert f"/call/google-search-console-2{path}" in detail["message"]
+
+    # Named, each account serves its own call on its own credential.
+    r = await clients.post(f"/call/google-search-console-2{path}",
+                           json={"startDate": "2026-07-01", "endDate": "2026-07-21", "rowLimit": 2})
     assert r.status_code == 200, r.text
-    assert r.json()["raw_path"] == "/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query"
     call = await _newest_call(clients)
-    assert call["tool_name"] == "google-search-console"
-    assert call["credential_tier"] == "tool"
-    tools = {t["name"]: t for t in (await clients.get("/tools")).json()}
-    assert tools["google-search-console"]["bindings"][0]["secret_id"] == first["secret_id"]
+    assert call["tool_name"] == "google-search-console-2"
 
 
 async def test_a_second_account_by_url_is_still_ambiguous(clients: AsyncClient, treg_google_app):
