@@ -71,6 +71,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/feedback', ('POST',), 'submit_feedback'),
     ('/feedback/{feedback_id}', ('GET',), 'get_feedback'),
     ('/admin/feedback', ('GET',), 'admin_feedback'),
+    ('/admin/tool-requests', ('GET',), 'admin_tool_requests'),
     ('/auth/github', ('GET',), 'auth_github'),
     ('/auth/github/callback', ('GET',), 'auth_github_callback'),
     ('/auth/google', ('GET',), 'auth_google'),

@@ -119,3 +119,127 @@ async def test_a_blank_search_logs_no_miss(clients: AsyncClient):
     assert r.status_code == 200
     await audit.drain()
     assert await _fetch_misses() == []
+
+
+# ---- admin read endpoint (GET /admin/tool-requests) ----
+
+from treg.config import get_settings
+
+
+async def test_admin_tool_requests_requires_superadmin(clients: AsyncClient):
+    """A regular member cannot access the admin endpoint."""
+    r = await clients.get("/admin/tool-requests")
+    assert r.status_code == 403
+
+
+async def test_admin_tool_requests_lists_recent_filings(clients: AsyncClient, monkeypatch):
+    """A superadmin can list filed tool requests."""
+    monkeypatch.setenv("TREG_ADMIN_TOKEN", "tool-req-admin-test")
+    get_settings.cache_clear()
+    try:
+        await clients.post("/tool-requests", json={"capability": "weather", "source": "cli"})
+        await clients.post("/tool-requests", json={"capability": "flights", "source": "web", "note": "urgent"})
+        headers = {"X-Treg-Token": "tool-req-admin-test"}
+
+        r = await clients.get("/admin/tool-requests", headers=headers)
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body["items"]) == 2
+        caps = [item["capability"] for item in body["items"]]
+        assert caps == ["flights", "weather"]  # descending by id
+        assert body["items"][0]["note"] == "urgent"
+        assert body["items"][0]["source"] == "web"
+        assert body["items"][1]["source"] == "cli"
+        for item in body["items"]:
+            assert set(item.keys()) == {"id", "created_at", "capability", "query", "note", "contact",
+                                        "source", "status", "org_id", "user_email"}
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_admin_tool_requests_filters_by_status(clients: AsyncClient, monkeypatch):
+    monkeypatch.setenv("TREG_ADMIN_TOKEN", "tool-req-admin-test")
+    get_settings.cache_clear()
+    try:
+        await clients.post("/tool-requests", json={"capability": "a"})
+        await clients.post("/tool-requests", json={"capability": "b"})
+        async with session_maker() as s:
+            rows = list((await s.execute(select(ToolRequest))).scalars())
+            rows[0].status = "done"
+            await s.commit()
+
+        headers = {"X-Treg-Token": "tool-req-admin-test"}
+        r = await clients.get("/admin/tool-requests", headers=headers, params={"status": "open"})
+        assert r.status_code == 200
+        assert len(r.json()["items"]) == 1
+        assert r.json()["items"][0]["capability"] == "b"
+
+        r = await clients.get("/admin/tool-requests", headers=headers, params={"status": "done"})
+        assert r.status_code == 200
+        assert len(r.json()["items"]) == 1
+        assert r.json()["items"][0]["capability"] == "a"
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_admin_tool_requests_filters_by_source(clients: AsyncClient, monkeypatch):
+    monkeypatch.setenv("TREG_ADMIN_TOKEN", "tool-req-admin-test")
+    get_settings.cache_clear()
+    try:
+        await clients.post("/tool-requests", json={"capability": "x", "source": "mcp"})
+        await clients.post("/tool-requests", json={"capability": "y", "source": "cli"})
+
+        headers = {"X-Treg-Token": "tool-req-admin-test"}
+        r = await clients.get("/admin/tool-requests", headers=headers, params={"source": "mcp"})
+        assert r.status_code == 200
+        assert len(r.json()["items"]) == 1
+        assert r.json()["items"][0]["capability"] == "x"
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_admin_tool_requests_pagination(clients: AsyncClient, monkeypatch):
+    monkeypatch.setenv("TREG_ADMIN_TOKEN", "tool-req-admin-test")
+    get_settings.cache_clear()
+    try:
+        for i in range(5):
+            await clients.post("/tool-requests", json={"capability": f"cap-{i}"})
+
+        headers = {"X-Treg-Token": "tool-req-admin-test"}
+        r = await clients.get("/admin/tool-requests", headers=headers, params={"limit": 2})
+        assert r.status_code == 200
+        body = r.json()
+        assert len(body["items"]) == 2
+        assert body["next_before"] == body["items"][-1]["id"]
+
+        r2 = await clients.get("/admin/tool-requests", headers=headers, params={"limit": 2, "before": body["next_before"]})
+        assert r2.status_code == 200
+        body2 = r2.json()
+        assert len(body2["items"]) == 2
+        assert body2["items"][0]["id"] < body["items"][-1]["id"]
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_admin_tool_requests_rejects_invalid_status(clients: AsyncClient, monkeypatch):
+    monkeypatch.setenv("TREG_ADMIN_TOKEN", "tool-req-admin-test")
+    get_settings.cache_clear()
+    try:
+        headers = {"X-Treg-Token": "tool-req-admin-test"}
+        r = await clients.get("/admin/tool-requests", headers=headers, params={"status": "invalid"})
+        assert r.status_code == 400
+        assert "status must be one of" in r.json()["detail"]
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_admin_tool_requests_rejects_invalid_source(clients: AsyncClient, monkeypatch):
+    monkeypatch.setenv("TREG_ADMIN_TOKEN", "tool-req-admin-test")
+    get_settings.cache_clear()
+    try:
+        headers = {"X-Treg-Token": "tool-req-admin-test"}
+        r = await clients.get("/admin/tool-requests", headers=headers, params={"source": "invalid"})
+        assert r.status_code == 400
+        assert "source must be one of" in r.json()["detail"]
+    finally:
+        get_settings.cache_clear()

@@ -226,8 +226,9 @@ uses this metadata, never the encrypted token's shape.
   `mcp` | `claude-connector` | `api`), `status` (`open` | `done` | `dismissed`, flipped by hand), and
   **nullable**
   `org_id`/`user_email` - identity is attribution when the caller happens to have one, never a
-  requirement, because the usual filer is an agent with zero results and no token. Reviewed by
-  querying the table; a Slack notifier may hang off the insert later, but the row is the record.
+  requirement, because the usual filer is an agent with zero results and no token. Reviewed via
+  `GET /admin/tool-requests` (superadmin only, with `status` and `source` filters); a Slack notifier
+  may hang off the insert later, but the row is the record.
 - **`SearchMiss`** - a catalog search that returned **nothing**: `query` (capped to 300 chars),
   `source` (`api` for the HTTP route that serves web + CLI + raw API; `mcp` for the team MCP; or
   `claude-connector` for V2), `created_at`. The demand
