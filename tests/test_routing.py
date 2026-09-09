@@ -332,6 +332,33 @@ async def test_a_people_search_hit_always_carries_verify_advice(clients: AsyncCl
     assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]), "the find, nothing chained"
 
 
+async def test_a_companyenrich_people_search_miss_bills_the_documented_page_floor(
+    clients: AsyncClient, platform_on, monkeypatch
+):
+    """CompanyEnrich bills a people-search page per person RETURNED with a 2-credit floor on an
+    empty page (verified live 2026-09-09). The child used to settle at its reserve, the whole
+    requested page: a 10-row miss inside the ladder charged $0.196 for an answer that cost $0.0196.
+    The routed parent now carries exactly the floor for that child."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_COMPANYENRICH", "PLATFORM-COMPANYENRICH-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "companyenrich")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"companyenrich": [(200, {"items": [], "page": 1, "totalPages": 0, "totalItems": 0})]}, seen))
+    before = await _balance(clients)
+    r = await clients.post("/call/treg.people.search", json={"company_domain": "company.example", "limit": 10},
+                           headers={"X-Treg-Route-Waterfall": "0"})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["outcome"] == "miss" and r.headers["X-Treg-Route-Outcome"] == "miss"
+    assert len(seen) == 1 and seen[0][0] == "companyenrich" and seen[0][3]["pageSize"] == 10, \
+        "one child, asked for the caller's 10-row page"
+    tried = [t for t in d["_treg"]["tried"] if t["outcome"] != "skipped"]
+    assert len(tried) == 1 and tried[0]["provider"] == "companyenrich" and tried[0]["outcome"] == "miss"
+    assert tried[0]["charged_micro"] == 19_600, "the 2-credit floor, not the 10-row reserve (196,000)"
+    assert d["_treg"]["charged_micro"] == 19_600 == before - await _balance(clients)
+
+
 async def test_error_on_the_first_child_falls_back_to_the_second(clients: AsyncClient, enrichment_on, monkeypatch):
     seen = []
     monkeypatch.setattr(call_service, "relay", _relay_by_provider(

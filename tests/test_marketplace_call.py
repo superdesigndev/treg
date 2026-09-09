@@ -2123,6 +2123,94 @@ def test_platform_request_constraints_do_not_require_a_price_table(body, valid):
 
 # ---- ContactOut ----
 
+@pytest.fixture
+def companyenrich_platform_on(monkeypatch):
+    """Enable only CompanyEnrich tier 4 for its page-settlement regressions."""
+    monkeypatch.setenv('TREG_PLATFORM_KEY_COMPANYENRICH', 'PLATFORM-COMPANYENRICH-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'companyenrich')
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def _companyenrich_page(count: int) -> bytes:
+    return json.dumps({'items': [{'id': i, 'name': f'Person {i}'} for i in range(count)],
+                       'page': 1, 'totalPages': 1, 'totalItems': count}).encode()
+
+
+@pytest.mark.parametrize(('endpoint', 'request_body', 'count', 'unit', 'reserved_rows', 'charged_units'), [
+    # people search: 2 credits ($0.0196) per person, 2-credit floor. Live 2026-09-09 an empty
+    # pageSize 10 page cost 2 credits upstream while treg settled the 10-row estimate (196,000).
+    ('companyenrich.people.search', {'pageSize': 10, 'domains': ['company.example']}, 0, 19_600, 10, 1),
+    ('companyenrich.people.search', {'pageSize': 10, 'domains': ['company.example']}, 3, 19_600, 10, 3),
+    ('companyenrich.people.search', {'pageSize': 10, 'domains': ['company.example']}, 10, 19_600, 10, 10),
+    ('companyenrich.people.search', {'positionQuery': ['Engineer']}, 0, 19_600, 20, 1),
+    ('companyenrich.people.search.scroll', {'pageSize': 5, 'domains': ['company.example']}, 0, 19_600, 5, 1),
+    ('companyenrich.people.search.scroll', {'pageSize': 5, 'domains': ['company.example']}, 2, 19_600, 5, 2),
+    # company search: 1 credit ($0.0098) per company, 1-credit floor; lookalikes 5 per company, 5 floor
+    ('companyenrich.companies.search', {'pageSize': 10, 'countries': ['US']}, 0, 9_800, 10, 1),
+    ('companyenrich.companies.search', {'pageSize': 10, 'countries': ['US']}, 2, 9_800, 10, 2),
+    ('companyenrich.companies.search.scroll', {'pageSize': 3, 'countries': ['US']}, 0, 9_800, 3, 1),
+    ('companyenrich.companies.similar', {'pageSize': 4, 'domains': ['company.example']}, 0, 49_000, 4, 1),
+    ('companyenrich.companies.similar.scroll', {'pageSize': 4, 'domains': ['company.example']}, 3, 49_000, 4, 3),
+])
+async def test_companyenrich_search_pages_settle_on_returned_items(
+    clients: AsyncClient, companyenrich_platform_on, monkeypatch,
+    endpoint, request_body, count, unit, reserved_rows, charged_units,
+):
+    """The reserve is the requested page; the bill is the returned rows, never below the
+    catalog's `minimum_units` floor. Before the rule every 2xx settled at the reserve."""
+    body = _companyenrich_page(count)
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(200, body))
+    before = await _balance(clients)
+    response = await clients.post(f'/call/{endpoint}', json=request_body)
+    assert response.status_code == 200, response.text
+    assert response.content == body, 'the relay stays faithful'
+    assert await _balance(clients) == before - charged_units * unit
+    telemetry = await _telemetry(clients)
+    assert telemetry['cost_estimated_micro'] == reserved_rows * unit, 'what the old settle charged'
+    assert telemetry['cost_observed_micro'] == charged_units * unit
+    assert telemetry['cost_charged_micro'] == charged_units * unit
+
+
+@pytest.mark.parametrize('body', [
+    b'not json', b'\x1f\x8b\x08\x00compressed', b'{"error": "unauthorized"}',
+    b'{"items": null}', b'{"items": {"0": {}}}', b'[]', b'',
+])
+async def test_companyenrich_unreadable_page_settles_at_the_estimate(
+    clients: AsyncClient, companyenrich_platform_on, monkeypatch, body,
+):
+    """No `items` list means the row count is unknown: the hold settles at the reserved page."""
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(200, body))
+    before = await _balance(clients)
+    response = await clients.post('/call/companyenrich.people.search',
+                                  json={'pageSize': 10, 'domains': ['company.example']})
+    assert response.status_code == 200
+    assert await _balance(clients) == before - 10 * 19_600
+    telemetry = await _telemetry(clients)
+    assert telemetry['cost_observed_micro'] is None
+    assert telemetry['cost_charged_micro'] == 10 * 19_600
+
+
+def test_companyenrich_page_floor_is_catalog_data_not_a_number_in_settle():
+    """The rule multiplies the catalog floor by the per-row price; endpoints without a declared
+    `minimum_units` (enrich, get-by-id, the async routes) keep their existing settlement."""
+    cat = catalog_store.load()
+    for eid in ('companyenrich.people.search', 'companyenrich.people.search.scroll',
+                'companyenrich.companies.search', 'companyenrich.companies.search.scroll',
+                'companyenrich.companies.similar', 'companyenrich.companies.similar.scroll'):
+        assert cat.by_id[eid]['cost']['minimum_units'] == 1, eid
+    mk = _mk('companyenrich', endpoint_id='companyenrich.people.search', cost_type='per_result', unit_micro=19_600)
+    assert call_settle._observed_cost_micro(mk, b'{"items": []}') == 19_600
+    assert call_settle._observed_cost_micro(mk, b'{"items": [{}, {}, {}]}') == 3 * 19_600
+    assert call_settle._observed_cost_micro(mk, b'{"page": 1}') is None
+    assert call_settle._observed_cost_micro(_mk('companyenrich', endpoint_id='companyenrich.people.search',
+                                                cost_type='per_result', unit_micro=0), b'{"items": []}') is None
+    assert 'minimum_units' not in cat.by_id['companyenrich.companies.enrich']['cost']
+    flat = _mk('companyenrich', endpoint_id='companyenrich.companies.enrich', cost_type='per_call', unit_micro=9_800)
+    assert call_settle._observed_cost_micro(flat, b'{"items": []}') is None
+
+
 def _contactout_cost(eid):
     return catalog_store.load().cost_view(
         catalog_store.load().by_id["contactout." + eid]["cost"], "contactout"

@@ -288,6 +288,11 @@ catalog YAML while the billing code reads the rules without provider-specific cr
 An optional `cost.settle: base` keeps documented riders in the reserve but settles the successful
 call at the catalog base when repeat live evidence proves that the provider neither bills nor
 delivers those riders.
+An optional `cost.minimum_units` on a `per_result` price is the vendor's floor on a page, in the
+cost block's own units: CompanyEnrich search pages carry `minimum_units: 1` because an empty page
+still bills one row's credits, and settle charges the returned `items` count, never below that
+floor (money.md, "Call settlement and provider evidence"). The validator requires a non-negative
+integer on a `per_result` price and nothing else.
 
 A verification stamp proves the request shape, response shape, and paid behavior that the evidence
 actually observed. A placeholder path value or a free miss does not prove a paid hit. Such rows keep

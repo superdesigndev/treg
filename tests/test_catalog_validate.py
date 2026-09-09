@@ -38,6 +38,28 @@ def test_cost_modifiers_accept_only_supported_declarative_credit_rules():
     assert any("cost.settle currently supports only 'base' or 'modifiers'" in error for error in bad_settle)
 
 
+def test_cost_minimum_units_is_an_integer_floor_on_a_per_result_price():
+    base = {
+        "type": "per_result", "value": 2, "currency": "credit", "per": 1,
+        "unit": "record", "source": "docs", "source_url": "https://example.com/pricing",
+        "checked": "2026-09-09", "confidence": "verified",
+    }
+    for floor in (0, 1, 5):
+        errors: list[str] = []
+        validator.check_cost(base | {"minimum_units": floor}, "catalog:test", errors, [])
+        assert errors == [], floor
+
+    for bad in (-1, True, 1.5, "1"):
+        broken: list[str] = []
+        validator.check_cost(base | {"minimum_units": bad}, "catalog:test", broken, [])
+        assert any("cost.minimum_units must be a non-negative integer" in error for error in broken), bad
+
+    wrong_type: list[str] = []
+    validator.check_cost(base | {"type": "per_call", "unit": "call", "minimum_units": 1},
+                         "catalog:test", wrong_type, [])
+    assert any("only valid with type: per_result" in error for error in wrong_type)
+
+
 def test_status_marker_references_must_exist_and_end_at_a_live_endpoint():
     statuses = {"provider.old": "retired", "provider.live": "", "provider.dead": "broken"}
 

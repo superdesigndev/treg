@@ -500,6 +500,15 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
     per = cost.get("per")
     if per is not None and (not isinstance(per, int) or isinstance(per, bool) or per < 1):
         fail(errors, where, f"cost.per '{per}' must be a positive integer (the quantity `value` covers)")
+    # `minimum_units`: the vendor's floor on a per-row page, in the cost block's own units (one
+    # `record` on a companyenrich search: an empty page still bills 2 people credits or 1 company
+    # credit). Settle reads it so the floor is a catalog fact, not a number in code.
+    minimum = cost.get("minimum_units")
+    if minimum is not None:
+        if isinstance(minimum, bool) or not isinstance(minimum, int) or minimum < 0:
+            fail(errors, where, "cost.minimum_units must be a non-negative integer count of cost units")
+        if cost.get("type") != "per_result":
+            fail(errors, where, "cost.minimum_units is only valid with type: per_result")
     reported = cost.get("reported_charge")
     if reported is not None:
         if (not isinstance(reported, dict) or set(reported) != {"path", "unit"}

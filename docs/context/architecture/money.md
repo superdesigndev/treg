@@ -16,6 +16,7 @@ sources:
   - src/treg/application/call/icypeas.py
   - src/treg/catalog/tomba.yaml
   - src/treg/catalog/icypeas.yaml
+  - src/treg/catalog/companyenrich.yaml
   - src/treg/application/asynctasks.py
   - src/treg/alembic/versions/0017_async_task_record.py
   - src/treg/alembic/versions/0018_async_resource_ownership.py
@@ -443,6 +444,7 @@ Provider-specific calculation stays outside the faithful relay.
 | Crustdata | Read `X-Credits-Used` from response headers using the same FX rate |
 | Apollo | Known empty organization results are free |
 | Tomba domain search | Non-empty pages cost ceil(`meta.pageSize` / 10) credits, even when partially filled; empty `data.emails` is free. Reservation uses requested `limit`, default 10. Missing/malformed page evidence falls back to the estimate. Upstream duplicate discounts are not detected |
+| CompanyEnrich search pages | `items` rows times the per-row price, never below the cost block's `minimum_units` floor (one row: 2 credits on an empty people page, 1 on a company page, 5 on a lookalike page). Covers people and company search, their scroll routes and `companies.similar`; the floor is catalog data, validated by `catalog_validate.check_cost`. A body without an `items` list (gzip, buffer truncation, an error envelope) falls back to the estimate. The `expand` and `semanticQuery` riders are not modeled at reserve or settle |
 | Hunter domain search | One whole search credit per ten returned emails, rounded up; an empty result is free |
 | QuickEnrich | Frozen $0.004834/credit base list rate (Starter $29/6,000, rounded up to micro-USD, before configured margin; assumes full allowance use); prefer integer `meta.credits_used`, including zero. If absent, count documented billable results. Domain holds reserve one credit without title or 20 with title; company holds use per_page (default 10, max 100). Discovery and lookups are free. BYOK never meters |
 | Hunter email finder | One whole credit when an email is present; a known miss is free |
@@ -460,7 +462,9 @@ The row-count signal for that estimate (`resolve._LIMIT_PARAMS` / `_body_limit`)
 `numResults`, `perPage`, `maxResults`, lusha's per-company `contactsLimit`), a nested `pagination.{size,…}`, and — for providers that
 bill one row per listed item — the length of `targets`/`keywords`/`domains`/`urls`/`lookups`/
 `emails`. Each of those was a live overcharge first (2026-08-28: companyenrich `pageSize: 2`
-settled 20 rows, moz's one `targets` entry settled 20 quota rows; 2026-09-02: lusha decision-makers,
+settled 20 rows, and until 2026-09-09 an EMPTY companyenrich page still settled the whole
+requested page because no rule counted its `items` - now the table row above; moz's one
+`targets` entry settled 20 quota rows; 2026-09-02: lusha decision-makers,
 catalogued FREE, answered 44 contacts for one domain and settled $5.49 from `billing.creditsCharged`
 with nothing reserved). The cap key only reserves what the provider will honour: Lusha had already
 removed `/v3/contacts/decision-makers` (2026-08-12) and its legacy handler rejected `contactsLimit`

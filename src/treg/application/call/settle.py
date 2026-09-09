@@ -176,6 +176,9 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         enrich, an empty `organizations` page on search) and charges nothing for it, so status-based
         billing alone would bill the caller for a response Apollo gave away. The body says whether
         the charged thing came back; when it didn't, the call settles at 0.
+      - companyenrich (search pages): DERIVED. `items` is the bill, per returned row and never
+        below the catalog's `minimum_units` floor (the vendor's documented charge for an empty
+        page). Settling at the estimate billed the whole requested page for an empty answer.
       - hunter (domain search): DERIVED too, and for the opposite reason — its price is not
         per row but one whole SEARCH credit per 10 emails returned, rounded up, with an empty
         domain free. `data.emails` is the only place that number exists.
@@ -333,6 +336,18 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         if (isinstance(info, dict) and info.get("method") == "charged-now" and rate
                 and isinstance(credits, (int, float)) and not isinstance(credits, bool) and credits >= 0):
             return int(credits * rate * 1_000_000 + 0.5)
+        return None
+    if provider == "companyenrich" and cost and "minimum_units" in cost:
+        # DERIVED: CompanyEnrich's search pages bill per row RETURNED (`items`), with a documented
+        # floor on an empty page (2 credits for a person search, 1 for a company search). No rule
+        # here meant every 2xx settled at the estimate, i.e. the whole requested page: live
+        # 2026-09-09 an empty pageSize 10 people search cost 2 credits upstream and treg charged
+        # 20. The floor is catalog data (`cost.minimum_units`, in the cost block's own units), so
+        # this branch carries no number of its own. Anything that is not a JSON object with an
+        # `items` list (gzip, a buffer-truncated page, an error envelope) keeps the estimate.
+        items = doc.get("items")
+        if isinstance(items, list) and mk.unit_micro > 0:
+            return max(len(items), int(cost["minimum_units"])) * mk.unit_micro
         return None
     if provider == "tomba" and mk.endpoint_id == "tomba.companies.emails.list":
         # Live billing evidence: a non-empty page costs ceil(pageSize / 10) credits,
