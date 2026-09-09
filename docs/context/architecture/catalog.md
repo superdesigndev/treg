@@ -15,6 +15,8 @@ sources:
   - src/treg/catalog/examples/quickenrich.x.employee-ranges.json
   - src/treg/catalog/examples/quickenrich.x.industries.json
   - src/treg/catalog/examples/quickenrich.x.revenue-ranges.json
+  - src/treg/catalog/supercarl.yaml
+  - tests/test_supercarl_billing.py
   - src/treg/catalog/trykitt.yaml
   - src/treg/catalog/examples/trykitt.people.email.find.json
   - src/treg/catalog/examples/trykitt.people.email.verify.json
@@ -110,6 +112,57 @@ related:
 ---
 
 # Endpoint catalog — platform-grouped operations per provider
+
+## Super Carl vendor proposal (2026-09-09)
+
+`supercarl.yaml` adds natural-language people search, its unenriched preview tier, company
+search, job search, post search, and post-author discovery. These reuse existing capabilities.
+Two free `account.usage` tools expose the current-key meter, live credit rate card, and rolling
+balance through the caller's own key; they are never eligible for the shared platform key.
+
+Curated endpoint names expose career and relationship criteria, average tenure, hiring signals,
+shared work history, standalone job postings, professional posts, and posts-to-people discovery.
+These names participate in `_haystacks` catalog search; provider documentation summaries remain
+verbatim. Preview filter notes name the actual tenure, hiring, and worked-with controls. Hiring
+signals find people at employers with matching postings; they do not identify a requisition owner
+or a completed hire. Shared-employer intersections are not proof of a personal relationship.
+Social proximity uses the caller-owned/delegated graph; shared platform keys inherit no personal
+network. Detailed relationship-path enrichment is outside this listing.
+
+Prices apply to each completed request/page, with explicit endpoint limits: v2 people, company,
+and job search return at most 25 rows; post search at most 50 posts, with up to 100 deduplicated
+people in the joined post response. The public legacy people-preview contract does not specify
+a numeric maximum. Catalog copy must not imply an unlimited export for one credit.
+
+The vendor offers a managed usage-invoice account at $0.099 per credit. The `fx.yaml` entry
+states that paid-account provisioning and invoice reconciliation remain pending; no cash payment
+or top-up receipt is claimed. A separate complimentary review account received 1,000 credits.
+
+The 2026-09-09 vendor self-run exercised all eight test requests and company detailed mode.
+Seven completed searches each returned real data and debited one credit; the two account reads
+were free. Two initial named-company queries requested clarification (`success: false`, HTTP 200)
+and cost zero. The account's remaining balance reconciled 1,000 → 993. Company/job activity was
+not included in `current_key_usage`, so that counter alone is insufficient; isolated
+`/api/v1/credits/status.remaining` deltas covered every debit.
+
+Search costs use `per_success`, `unit: call`, and `expect: {json_path: success, equals: true}`.
+Here success means the provider completed the search: a completed empty result is still billable.
+This uses `_observed_cost_micro`'s existing envelope rule to release free HTTP-200 clarifications;
+`per_call` would incorrectly charge them. `test_supercarl_billing.py` exercises the real settlement
+path for clarification, populated, and empty responses. Any future routing adapter must preserve
+these billing semantics: an empty completed search must not become a free miss. This proposal
+adds no adapter and makes no routed-ranking claim.
+
+Independent maintainer verification is still required. There are no endpoint `verified:` stamps
+or response fixtures; only cost provenance records the vendor's metered observations. The empty
+platform-key setting makes shared-key activation a separate maintainer operation.
+
+The shared account must have no personal networks or inbox connections: graph annotations
+belong to the API-key owner, and do not become the Treg end user's personal graph. The v2
+people-search test explicitly selects `network_filter_mode=ignore`. The initial scope excludes
+legacy automatic enrichment, cached person-ID lookups, contacts/reconciliation, messaging,
+project mutations, and account-specific job-to-network joins. Company search includes both
+preview and detailed modes; both were observed at one credit with a one-company result. The public custom JSON schema is not OpenAPI.
 
 The computed cost view uses a `cost.table` fallback as its scalar validated upper bound for
 eligibility and compact displays. Runtime charging evaluates the first matching row against request

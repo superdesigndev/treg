@@ -1229,6 +1229,32 @@ AKTA = OAuthProvider(
     probe_path="/v1/company/search/?query=canva.com",
 )
 
+SUPERCARL = OAuthProvider(
+    service="supercarl",
+    display_name="Super Carl",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Super Carl API key",
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://supercarl.ai/integrations/connections",
+    setup_action_label="Get your Super Carl API key",
+    setup_steps=(
+        "Sign in to Super Carl and open MCP & API.",
+        "Create an API key with the search scope, then copy it.",
+    ),
+    setup_note="API keys are available on every plan. Completed searches, including previews, "
+               "use one credit from the key owner's pool. The credit-status probe is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find people using career, hiring and relationship signals; search companies, jobs and posts.",
+    base_url="https://api.supercarl.ai",
+    docs_url="https://supercarl.ai/docs",
+    probe_path="/api/v1/credits/status",  # 401 {"error":"Invalid API key"}, observed 2026-09-09
+)
+
 HUNTER = OAuthProvider(
     service="hunter",
     display_name="Hunter",
@@ -2795,7 +2821,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        APOLLO, PDL, AKTA, HUNTER, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
+        APOLLO, PDL, AKTA, HUNTER, QUICKENRICH, SUPERCARL, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
