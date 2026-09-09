@@ -563,6 +563,13 @@ boundary by hand.
 Generated legacy task consumers for which no trustworthy producer→id chain is represented are
 explicitly `platform_blocked` instead: Akta request status, TikHub's captions-result route, and the
 DataForSEO on-page/SERP task consumers remain callable with BYOK but never receive treg's shared key.
+So do the DataForSEO `task_post` PRODUCERS (2026-09-09): a task_post only enqueues work whose answer
+comes back through `task_get` (which ingest drops) or one of those blocked readers, so offering it
+on the shared key charged callers for results treg could never serve. Their reason names the
+one-shot sibling treg does serve where one exists (`dataforseo.web.page.audit` for on-page,
+`brightdata.x.trustpilot-reviews` for Trustpilot reviews), and `tests/test_catalog_validate.py`
+holds the rule rather than the list: a task_post may be platform-eligible only while a consumer of
+its family is.
 `carry_verification` preserves that reviewed block across re-ingestion just like a verification
 stamp; silently regenerating it away would reopen the tenant boundary.
 
@@ -1068,7 +1075,11 @@ free 403 "Your current subscription does not include access to this endpoint". M
 them unmarked sold them as platform offers — a customer ran a whole evaluation lane into that wall
 of 403s before learning the gate existed. `platform_blocked: <reason>` keeps the row in discovery
 but makes `platform_eligible()` refuse it, and the reason rides on the served row so every surface
-can say "bring your own key" *before* the call instead of relaying the 403 after it.
+can say "bring your own key" *before* the call instead of relaying the 403 after it. The paste-ready
+run hint follows the same fact: `_run_hint` in `routers/catalog.py` (search's first row and the
+endpoint detail, which MCP `catalog_get` relays) and the `RUN IT` footer of `treg catalog get` say
+"needs your team's own <provider> key" with the reason for a blocked row, never "key injected
+server-side" - the promise that hint kept making for DataForSEO task_post rows until 2026-09-09.
 
 - **Platform is the system the data is ABOUT**, not the API family it lives under: DataForSEO's
   `/v3/merchant/amazon/products/live/advanced` is `amazon`, not `merchant`. Anything not tied to
@@ -1417,7 +1428,9 @@ Tokens matching over `SOFT_DF_SHARE` (25%) of the catalog ("data" 33%, "api" 50%
 SOFT: they still add score where they match, but a row is never punished for missing them — a
 statistical stopword list no hand list would keep up with. And `aliases.yaml` bridges vocabulary:
 substring containment only works in one direction, so "cryptocurrency" never finds the catalog's
-"crypto" without the map. A token matches under its own spelling or any curated alias, same field
+"crypto" without the map, and "website audit" found only DataForSEO's async on_page task_post
+until `website`/`site` were bridged to `on-page`, the word the one-shot instant_pages row actually
+uses (2026-09-09). A token matches under its own spelling or any curated alias, same field
 weight. NOUNS ONLY: aliasing a verb to a commoner verb poisons the key (`lookup: [search, find]`
 inflated lookup's match set 27 → 689 endpoints and destroyed its ranking power). The file is
 query-side only — it rewrites no provider text, survives every re-ingest, and the validator

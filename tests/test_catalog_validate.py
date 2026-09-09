@@ -279,6 +279,56 @@ def test_untracked_extended_async_consumers_are_explicitly_byok_only():
         assert not catalog.platform_eligible(endpoint)
 
 
+def test_dataforseo_task_posts_without_a_servable_consumer_are_platform_blocked():
+    """A task_post only ENQUEUES work; the answer comes back through task_get or an id-keyed reader
+    of the same family. Ingest drops task_get (scripts/catalog_ingest.py) and the id-keyed readers
+    are BYOK-only, so a shared-key task_post charged the caller for a result treg could never fetch
+    (213 platform calls across 21 orgs before 2026-09-09). The rule, not the list: a task_post may
+    be offered on treg's key only while at least one consumer of its family is."""
+    catalog = catalog_store.load()
+    dataforseo = [ep for ep in catalog.endpoints if ep["provider"] == "dataforseo"]
+    task_posts = [ep for ep in dataforseo if ep["path"].endswith("/task_post")]
+    assert len(task_posts) >= 20, "the whole legacy async surface, not a sample"
+
+    def consumes_a_task(ep: dict) -> bool:
+        inputs = ep.get("input") or {}
+        return (any(seg in ep["path"] for seg in ("/task_get", "/tasks_ready", "{id}"))
+                or "id" in (inputs.get("body") or {}))
+
+    for post in task_posts:
+        family = post["path"][: -len("/task_post")] + "/"
+        consumers = [ep for ep in dataforseo
+                     if ep is not post and ep["path"].startswith(family) and consumes_a_task(ep)]
+        if any(catalog.platform_eligible(ep) for ep in consumers):
+            continue
+        reason = post["platform_blocked"]
+        assert reason and not catalog.platform_eligible(post), post["id"]
+        # the reason must say what happens and what to do instead, not just "no"
+        assert "task_get" in reason and "own DataForSEO key" in reason, post["id"]
+        for alternative in ("dataforseo.web.page.audit", "brightdata.x.trustpilot-reviews"):
+            if alternative in reason:
+                assert catalog.platform_eligible(catalog.by_id[alternative]), alternative
+    # the two families with a one-shot sibling on treg's key point at it by id
+    assert "dataforseo.web.page.audit" in catalog.by_id["dataforseo.x.on-page-task-post"]["platform_blocked"]
+    assert "brightdata.x.trustpilot-reviews" in \
+        catalog.by_id["dataforseo.x.business-data-trustpilot-reviews-task-post"]["platform_blocked"]
+
+
+def test_on_page_consumer_notes_point_at_a_real_one_shot_route():
+    """The task consumers' notes named `dataforseo.x.on-page-instant-pages`, an id that never
+    existed; an agent following it got a 404 instead of the one-shot audit."""
+    catalog = catalog_store.load()
+    summary = catalog.by_id["dataforseo.x.on-page-summary-id"]
+    assert summary["input"]["pathParams"]["id"]["required"] is True, "the {id} in the path is declared"
+    for ep in catalog.endpoints:
+        if ep["provider"] != "dataforseo":
+            continue
+        for text in (str(ep.get("untestable") or ""), str(ep.get("platform_blocked") or "")):
+            for word in text.replace("(", " ").replace(")", " ").replace(",", " ").split():
+                if word.startswith("dataforseo.") or word.startswith("brightdata."):
+                    assert word in catalog.by_id, f"{ep['id']} names unknown id {word!r}"
+
+
 def _valid_table():
     return {
         "type": "per_success",

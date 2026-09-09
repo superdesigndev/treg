@@ -409,8 +409,10 @@ Bare **`treg connections`** now lists (the subparser is `required=False` with a 
   (`GET /catalog/endpoints/{id}`): summary, provider + limits/pricing_url, cost in USD *and* the original
   currency with its note, verified date, the capability with a **siblings** table (same job, other
   providers — price and verification side by side), a `PARAMS` table by location with required first
-  (`_print_params`), the paste-ready `RUN IT` command, and the example response pretty-printed, clipped at
-  40 lines with a pointer to the full JSON. `search`/`get` are matched as positional **verbs** inside
+  (`_print_params`), the paste-ready `RUN IT` command (its footer says the key is injected server-side
+  for a row treg can serve, and for a `platform_blocked` one that the team's own key is needed -
+  `treg connections connect --provider …` - with the reason), and the example response pretty-printed,
+  clipped at 40 lines with a pointer to the full JSON. `search`/`get` are matched as positional **verbs** inside
   `cmd_catalog`, not argparse subcommands, so `treg catalog <platform>` keeps working and a multi-word
   query needs no quoting. An id that misses prints the server's `did_you_mean` ids and the exact
   command for the first one; the old "find one with: treg catalog search …" is the fallback for a

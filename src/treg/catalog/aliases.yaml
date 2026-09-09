@@ -50,6 +50,11 @@ aliases:
   techstack: [technologies]
   visitors: [traffic]
   screenshot: [screen]
+  # site audits (2026-09-09: `website audit` / `site audit` found only DataForSEO's async on_page
+  # task_post, whose results treg cannot serve on the shared key; the one-shot
+  # dataforseo.web.page.audit says "on-page" and never "website" or "site")
+  website: [on-page]
+  site: [on-page]
   # creators & influencers (SearchMiss 2026-08-27: "find instagram influencers by niche…" → 0 results)
   influencer: [creators, influencers]
   influencers: [creators]
@@ -71,7 +76,6 @@ aliases:
   opening: [postings]
   vacancies: [postings, jobs]
   vacancy: [postings, jobs]
-  # platform shorthands agents use
-  ig: [instagram]
+  # platform shorthands agents use (`ig` is listed with the creator vocabulary above)
   yt: [youtube]
   fb: [facebook]

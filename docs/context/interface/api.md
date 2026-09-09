@@ -367,7 +367,8 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   Unknown endpoint ids return `{error, hint, did_you_mean[]}`, using provider-local segment
   matching. Retired/broken entries remain inspectable with `status_note` and `superseded_by`,
   disappear from discovery, and return 410 on call/access checks. `platform_blocked` entries
-  remain discoverable for BYOK but cannot use treg's key.
+  remain discoverable for BYOK but cannot use treg's key, and their run hint (`_run_hint`) says the
+  team's own key is needed and why, never "key injected server-side".
 
   Zero-result searches emit identity-free `SearchMiss` rows through the lossy audit queue.
   Sources distinguish HTTP, team MCP and the Claude connector. Tool requests may attach a token
