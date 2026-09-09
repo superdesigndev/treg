@@ -19,7 +19,7 @@ from treg.config import get_settings
 from treg.infra.db import session_maker
 from treg.domain.catalog import store as catalog_store
 from treg.domain.catalog.routing import paths as P
-from treg.domain.catalog.routing.contracts import canonical_identity
+from treg.domain.catalog.routing.contracts import Adapter, adapter_accepts, canonical_identity, missing_required_inputs, verify
 from treg.domain.catalog.routing.plan import Candidate, cost_at, rank
 from treg.infra.catalog_observations import CachedEndpointObservationReader
 from treg.models import CallRecord, Hold, LedgerEntry
@@ -89,6 +89,39 @@ def test_every_shipped_adapter_round_trips_its_fixture():
     assert b == {"firstName": "Patrick", "lastName": "Collison", "companyDomain": "stripe.com"} and q == {}
     assert ad.from_upstream({"email": "p@stripe.com", "status": "succeeded"}) == {"email": "p@stripe.com", "verified": True}
     assert ad.is_miss({"email": None}) and not ad.is_miss({"email": "x"})
+
+
+def test_the_verifier_rejects_an_adapter_that_cannot_fill_a_required_input():
+    """`findymail.search.domain` shipped accepting `{company_domain}` alone against a body whose
+    `roles` is `required: true`: every routed call to it was a vendor 4xx by construction, which
+    the router took for the caller's fault (422 route_caller_fault, earlier children's charges
+    kept). The fixture round-trip never saw it, because it compares only the keys the adapter maps.
+    Now every accepted variant must be able to fill every required input, or the adapter is not a
+    candidate at all."""
+    cat = catalog_store.load()
+    contract, ep = cat.contracts["people.search"], cat.by_id["findymail.search.domain"]
+    example = json.loads(catalog_store.example_path(ep["id"]).read_text())
+    shipped = cat.adapters["findymail.search.domain"]
+    malformed = Adapter(endpoint_id=ep["id"], accepts=(("company_domain",),), in_map={"company_domain": "body.domain"},
+                        out_map=shipped.out_map, miss=shipped.miss, _filter_keys=shipped._filter_keys)
+    assert missing_required_inputs(malformed, contract, ep, ("company_domain",)) == ["body.roles"]
+    assert verify(malformed, contract, ep, example) == (False, "in: {company_domain} cannot produce required ['body.roles']")
+    # the shipped adapter takes only briefs that carry a role, and sends it as the list the vendor wants
+    assert shipped.verified and shipped.accepts == (("company_domain", "title"),)
+    ident, _ = canonical_identity(contract, {"company_domain": "example.com", "title": "CEO"})
+    assert shipped.to_upstream(ident, ("company_domain", "title")) == ({}, {"domain": "example.com", "roles": ["CEO"]})
+    assert adapter_accepts(shipped, canonical_identity(contract, {"company_domain": "example.com"})[0]) is None
+    # the check sends what the ROUTER would send: a `{first_name, last_name, domain}` caller fills
+    # findymail's `body.name` through the derived `full_name` variant, not the literal one
+    find = cat.contracts["people.email.find"]
+    assert missing_required_inputs(cat.adapters["findymail.search.name"], find, cat.by_id["findymail.search.name"],
+                                   ("domain", "first_name", "last_name")) == []
+    # a bare-array body (brightdata's `[{url}]`) satisfies the `input: {type: array}` that labels it
+    assert missing_required_inputs(cat.adapters["brightdata.instagram.user.profile"], cat.contracts["instagram.user.profile"],
+                                   cat.by_id["brightdata.instagram.user.profile"], ("username",)) == []
+    # a const fills a required input as well as the identity does
+    assert missing_required_inputs(cat.adapters["moz.web.backlinks.summary"], cat.contracts["web.backlinks.summary"],
+                                   cat.by_id["moz.web.backlinks.summary"], ("target",)) == []
 
 
 def test_identity_variants_derive_and_never_cross():
@@ -357,6 +390,24 @@ async def test_a_companyenrich_people_search_miss_bills_the_documented_page_floo
     assert len(tried) == 1 and tried[0]["provider"] == "companyenrich" and tried[0]["outcome"] == "miss"
     assert tried[0]["charged_micro"] == 19_600, "the 2-credit floor, not the 10-row reserve (196,000)"
     assert d["_treg"]["charged_micro"] == 19_600 == before - await _balance(clients)
+async def test_a_domain_only_people_search_never_reaches_the_child_that_needs_a_role(clients: AsyncClient, enrichment_on, monkeypatch):
+    """Live: a `{company_domain}` search walked the ladder to `findymail.search.domain`, whose
+    body lacked the required `roles`; the vendor's 4xx ended the call as 422 route_caller_fault
+    and the earlier children's charges stood. The adapter is no longer a candidate for that
+    identity, so the ladder misses honestly and the caller pays only for the misses it made."""
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"findymail": [(422, {"message": "The roles field is required."})] * 3,
+         "*": [(200, {"persons": []})] * 12}, seen))
+    before = await _balance(clients)
+    r = await clients.post("/call/treg.people.search", json={"company_domain": "example.com", "limit": 5})
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["_treg"]["outcome"] == "miss" and "findymail" not in [p for p, *_ in seen] and seen, "never asked"
+    assert {t["endpoint_id"] for t in d["_treg"]["tried"]}.isdisjoint({"findymail.search.domain"})
+    dropped = next(x for x in d["_treg"]["dropped"] if x["endpoint_id"] == "findymail.search.domain")
+    assert dropped["why"] == "needs {company_domain, title}"
+    assert before - await _balance(clients) == int(r.headers["X-Treg-Cost-Micro"]), "the misses, nothing held back"
 
 
 async def test_error_on_the_first_child_falls_back_to_the_second(clients: AsyncClient, enrichment_on, monkeypatch):

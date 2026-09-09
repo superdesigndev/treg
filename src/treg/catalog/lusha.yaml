@@ -141,7 +141,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        pages: {type: object, required: true, note: "{page: <0-based>, size: <up to 40>} — keep size small", example: {"page": 0, "size": 1}}
+        pagination: {type: object, required: true, note: "{page: <0-based>, size: <10-40>} - the docs call it `pages`; the live API wants `pagination` with size >= 10. Keep size small", example: {"page": 0, "size": 10}}
         filters: {type: object, required: true, note: "nested contact and company filters: job titles, seniority, departments, locations, company size, revenue, industry, technologies, intent topics and signals. GET /v3/contacts/prospecting/filters/{filterType} enumerates the accepted values for each filter", example: {"contacts": {"include": {"jobTitles": ["Head of Marketing"]}}}}
       note: "returns a requestId plus contact ids and NON-PII previews — this step is free. Feed the ids to lusha.people.contacts.enrich to spend credits only on the ones worth revealing. CORRECTED at verify time: the pagination field is `pagination` (min size 10), not `pages`, and it DOES consume 1 credit (contactSearch, per 25 results) despite the docs prose calling it a 'free preview' — see cost block below."
     test_request:
@@ -238,7 +238,7 @@ endpoints:
     input:
       bodyType: json
       body:
-        pages: {type: object, required: true, note: "{page: <0-based>, size: <up to 40>}", example: {"page": 0, "size": 1}}
+        pagination: {type: object, required: true, note: "{page: <0-based>, size: <10-40>} - the docs call it `pages`; the live API wants `pagination` with size >= 10", example: {"page": 0, "size": 10}}
         filters: {type: object, required: true, note: "company filters — industry, size, revenue, location, technologies, signals. GET /v3/companies/prospecting/filters/{filterType} enumerates the accepted values", example: {"companies": {"include": {"industries": ["Software"]}}}}
       note: "same two-step shape as the contact side: free ids and previews here, credits spent by POST /v3/companies/enrich on the ids you keep. CORRECTED at verify time: pagination field is `pagination` (min size 10) not `pages`; filters.companies.include has no `industries` key (real fields per the OpenAPI schema: domains, names, ids, sizes, revenues, mainIndustriesIds, technologies, locations, sicCodes, naicsCodes, signals). It ALSO consumes 1 credit like the contact side (companySearch) despite being called free preview in the prose."
     test_request:

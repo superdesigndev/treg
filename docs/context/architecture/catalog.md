@@ -26,6 +26,7 @@ sources:
   - src/treg/catalog/tomba.yaml
   - src/treg/catalog/examples/tomba.people.email.verify.json
   - src/treg/catalog/examples/findymail.search.business-profile.json
+  - src/treg/catalog/lusha.yaml
   - src/treg/domain/catalog/routing/__init__.py
   - src/treg/domain/catalog/routing/contracts.py
   - src/treg/domain/catalog/routing/paths.py
@@ -1584,10 +1585,30 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   public quote and call-time plan use it through `routing/plan.py::cost_at`; invalid unit values
   remain unpriced. It does not replace the child's normal reserve/settle rules.
 - **Verified at load, or absent** — `routing/contracts.py::verify`: `in` must reproduce the
-  endpoint's own `test_request` and `out` must fill every required core field from its
-  `example_response` (an example that is itself a miss passes with the hit half unverified).
-  A failing adapter is not a candidate; the endpoint is still callable via `/call/` exactly as
-  before. `tests/test_routing.py` pins that every shipped adapter passes.
+  endpoint's own `test_request`; every accepted identity variant must be able to fill every
+  input the endpoint's YAML marks `required: true` (`missing_required_inputs`, 2026-09-09); and
+  `out` must fill every required core field from its `example_response` (an example that is
+  itself a miss passes with the hit half unverified). A failing adapter is not a candidate; the
+  endpoint is still callable via `/call/` exactly as before. `tests/test_routing.py` pins that
+  every shipped adapter passes.
+  The required-input check runs the adapter itself on a placeholder identity for each accepted
+  variant, choosing the variant the router would send (the first accepted one the derived
+  identity completes, as `plan.py` does - so `{first_name, last_name, domain}` reaches
+  findymail's `body.name` through the derived `full_name`), and reads the result the way the
+  endpoint documents its input: path params as query values, a bare-array body (brightdata's
+  `[{url}]`, dataforseo's task list) through its first element, with an `input: {type: array}`
+  that labels the array itself satisfied by a non-empty array. Why it exists: the fixture
+  round-trip compared only the keys an adapter maps, so `findymail.search.domain` shipped
+  accepting `{company_domain}` alone against a body whose `roles` is required. Every routed call
+  to it was a vendor 4xx by construction, which the router read as the caller's fault: a
+  `{company_domain}` `people.search` walked five children of misses, reached findymail, and ended
+  as 422 `route_caller_fault` with the earlier children's charges kept. The adapter now accepts
+  only `{company_domain, title}` and sends `roles: [title]`. The same check found two more
+  malformed-on-paper children and fixed them in the same commit: `moz.web.backlinks.summary`
+  never sent the `distributions: true` that makes url_metrics the summary and that its 2-row
+  price observed (now a `const`), and both `lusha.*.search` entries still documented the
+  pagination field as `pages` although the note, the `test_request` and the adapters had all
+  moved to `pagination` (the input block now says `pagination`).
 - **The generated row** — `routing/synthetic.py`: every capability with ≥ 2 verified children gets
   `treg.<capability>` (`provider: treg`, `kind: routed`, `POST /<capability>`, `input` = the
   contract, `cost` = the children's range, `routed_children`). Never hand-written; not in any
@@ -1707,7 +1728,8 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   the other five. Apollo cannot join: its phone reveal is webhook-only, never inline.
 - **people.\* sweep (2026-08-29)**: people.search 6 → 16 children (aviato dsl/simple, companyenrich
   scroll, crustdata, fiber-ai, leadsforge, leadmagic search + role-finder, findymail employees +
-  domain — the last retagged from email.find, it returns a list), people.enrich 9 → 14 (aviato bulk,
+  domain — the last retagged from email.find, it returns a list; since 2026-09-09 it takes only
+  `{company_domain, title}`, its `roles` being required), people.enrich 9 → 14 (aviato bulk,
   fiber-ai, tomba profile/combined, hunter combined-find), people.email.find 9 → 11 (fiber-ai turbo,
   leadmagic personal), identity.resolve 3 → 4 (findymail reverse-email); five examples captured live.
   Still out: apollo/coresignal people.search (no fixture; apollo's `person_titles[]` needs a
