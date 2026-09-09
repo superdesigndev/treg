@@ -52,6 +52,8 @@ responses consumed none. The catalog declares `per_success` with `expect.success
 existing settlement rule respects those free responses. Its platform-key setting is empty, and enabling the shared
 account is a maintainer operation. See [catalog](../architecture/catalog.md) for the approved
 usage-invoice rate and the distinction between caller-owned and shared-account metadata.
+Its provider summary emphasizes career, hiring, and relationship signals; curated endpoint names
+make the concrete jobs discoverable while preserving the provider's API-description summaries.
 
 ## The two kinds of provider
 - **API-key** (`auth_kind="key"`) — the user pastes a key; self-serve; **the fast path** (research → implement

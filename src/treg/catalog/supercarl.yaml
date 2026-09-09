@@ -17,7 +17,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /api/v2/search/people/query
-  name: Search people with natural-language criteria
+  name: Search people by hiring signals and social proximity
   summary: Run a natural-language people search. The service converts the text to typed filters and returns
     the applied request with matching people rows.
   input:
@@ -61,7 +61,9 @@ endpoints:
         type: string
         required: false
         note: UUID of an authorized teammate; entitlement-checked. Omit for shared-key calls.
-    note: Uses the v2 natural-language contract and returns people rows plus applied filters. Network
+    note: Describe career-history, employer-hiring, or relationship criteria in query; the service translates
+      them and returns applied filters with up to 25 people per call. Each additional page is a separate
+      billable search request. Network
       filters use the API key owner's graph; shared-key callers do not inherit their personal Carl network.
       Use ignore for a public-data query.
   test_request:
@@ -93,7 +95,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /api/v1/search/people/preview
-  name: Preview people search without enrichment
+  name: Find people by average tenure and shared work history
   summary: Run a preview people search (auto-translated description/query, no enrichment, not enrichable).
     LinkedIn lookup is not supported. include_evidence_text is optional when you need inline profile evidence
     on preview rows.
@@ -107,11 +109,18 @@ endpoints:
       filters:
         type: object
         required: false
-        note: AdvancedFilters from https://supercarl.ai/docs/filters
+        note: AdvancedFilters from https://supercarl.ai/docs/filters. Career signals include
+          average_role_tenure_months and current_role_tenure_months (min/max). hiring can require or boost
+          people at employers with matching job titles, locations and posting dates. personas.worked_with
+          selects shared-employer cohorts; worked_with_overlap_mode=date_verified requires dated overlap.
+          Multiple worked_with anchors intersect their cohorts. Shared employment alone does not prove
+          a personal relationship. Network proximity uses the API key owner's available graph.
       limit:
         type: integer
         required: false
         example: 1
+        note: Requested page size; use a bounded limit. The public legacy-preview contract does not state
+          a numeric maximum. The separate v2 people query is capped at 25.
       offset:
         type: integer
         required: false
@@ -183,7 +192,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /api/v1/companies/search/preview
-  name: Search companies with optional detailed results
+  name: Search companies by funding, technology and hiring signals
   summary: Search companies in preview or detailed mode. Natural language queries are translated into
     company filters; returns a company search_id for follow-on people search joins. Set result_mode=detailed
     to expand each row with richer company fields, and include_evidence_text=true to inline evidence text
@@ -203,6 +212,9 @@ endpoints:
         type: integer
         required: false
         example: 1
+        default: 10
+        min: 1
+        max: 25
       result_mode:
         type: string
         required: false
@@ -259,7 +271,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /api/v1/search/jobs/preview
-  name: Search job postings across companies
+  name: Search job postings with employer network context
   summary: Natural-language job search scored against the viewer social-graph overlay. Accepts the full
     AdvancedFilters doc (hiring.*, companies.include/exclude, industries, company_stage, locations), including
     hiring.workplace_types for derived remote/hybrid/onsite/unknown filtering and hiring.published_within_days/published_after/published_before
@@ -316,7 +328,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /api/v1/search/posts/preview
-  name: Search indexed posts and activity
+  name: Search professional posts by topic, author and engagement
   summary: Direct post/activity search. Supports a hard known-author cohort via filters.posts.author_user_ids
     (UUIDs) or author_user_id_ints (positive integers), literal mentions, expanded topic keywords, authored-account
     type, action types, engagement counts, date windows, and target constraints. Returned post rows use
@@ -404,7 +416,7 @@ endpoints:
   scope: any_account
   method: POST
   path: /api/v1/search/posts/with-people
-  name: Find people through matching posts and activity
+  name: Find people through posts, comments and reactions
   summary: Post/activity search plus a deduped people set derived from matching person actors/authors.
     Set with_companies:true to additionally request the same PostMatchedCompany[] cohort as preview. Use
     for post-first "who" questions, then execute people_search_binding when full profile search, relationship

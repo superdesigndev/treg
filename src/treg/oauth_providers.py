@@ -1249,7 +1249,7 @@ SUPERCARL = OAuthProvider(
     scopes={},
     client_id_setting="", client_secret_setting="",
     category="Enrichment",
-    summary="Search people, companies, jobs, and professional posts with natural-language filters.",
+    summary="Find people using career, hiring and relationship signals; search companies, jobs and posts.",
     base_url="https://api.supercarl.ai",
     docs_url="https://supercarl.ai/docs",
     probe_path="/api/v1/credits/status",  # 401 {"error":"Invalid API key"}, observed 2026-09-09
