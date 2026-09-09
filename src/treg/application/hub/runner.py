@@ -36,7 +36,13 @@ RUN_MAX_COST_HEADER = "X-Treg-Run-Max-Cost"
 DEFAULT_RUN_MAX_COST_MICRO = 1_000_000      # $1.00 for the whole run, seller price included later
 MAX_PARALLEL = 4                            # steps in flight at once inside one run
 _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-encoding",
-                              b"idempotency-key", b"x-treg-run-max-cost", b"host"})
+                              b"idempotency-key", b"x-treg-run-max-cost", b"host",
+                              # The RUNNER reads every step's bytes itself (a script gets `json`
+                              # and `text`), so a step must never be answered compressed: the
+                              # caller's accept-encoding is dropped and identity is asked below.
+                              # Found live 2026-09-09: a 20-row Supabase answer came back gzip
+                              # and the script saw an empty list; a 2-row one was fine.
+                              b"accept-encoding"})
 # Refusals that are the same for every step: no point starting anything else.
 _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
                               "platform_daily_cap_reached", "daily_cap_reached"})
@@ -355,11 +361,20 @@ def _short(v: Any) -> Any:
     return s[:300]
 
 
+_SCRIPT_HEADER_DENY = frozenset({"authorization", "cookie", "host", "content-length", "transfer-encoding",
+                                 "connection", "idempotency-key", "apikey"})
+
+
 def _child_input(parent: CallContext, call: str, method: str, inp: dict[str, Any], as_who,
-                 extra_query: dict[str, Any] | None = None) -> CallInput:
+                 extra_query: dict[str, Any] | None = None,
+                 extra_headers: dict[str, str] | None = None) -> CallInput:
     has_body = method in ("POST", "PUT", "PATCH")
     payload = json.dumps(inp, ensure_ascii=False).encode() if has_body else b""
-    headers = [(k, v) for k, v in parent.input.raw_headers if k.lower() not in _DROP_FROM_CHILD]
+    drop = set(_DROP_FROM_CHILD) | {k.lower().encode("latin-1") for k in (extra_headers or {})}
+    headers = [(k, v) for k, v in parent.input.raw_headers if k.lower() not in drop]
+    headers += [(k.lower().encode("latin-1"), v.encode("latin-1", "replace")) for k, v in (extra_headers or {}).items()
+                if k.lower() != "accept-encoding"]
+    headers.append((b"accept-encoding", b"identity"))
     if has_body:
         headers += [(b"content-type", b"application/json"), (b"content-length", str(len(payload)).encode())]
     q = (extra_query or {}) if has_body else inp
@@ -490,7 +505,14 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
             inp = {}
         as_who = maker if target in own_tools else parent.input.caller
         step = _Step(name=f"call{n + 1}", spec={"call": call}, ref=f"{run_id}:s{n}", wave=n)
-        child = CallContext(input=_child_input(parent, call, method, inp, as_who, extra_query=query if inp is not query else None),
+        # Headers a script sets on ctx.call ride to the upstream (a PostgREST `Accept-Profile`, a
+        # vendor's `Accept`), minus the ones that carry identity or framing: those are treg's.
+        raw_headers = opts.get("headers") if isinstance(opts.get("headers"), dict) else {}
+        extra_headers = {str(k): str(v) for k, v in raw_headers.items()
+                         if str(k).lower() not in _SCRIPT_HEADER_DENY and not str(k).lower().startswith("x-treg-")}
+        child = CallContext(input=_child_input(parent, call, method, inp, as_who,
+                                               extra_query=query if inp is not query else None,
+                                               extra_headers=extra_headers),
                             call_ref=step.ref, meta=parent.meta)
         t0 = time.monotonic()
         try:
