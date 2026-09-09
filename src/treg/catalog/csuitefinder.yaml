@@ -1,0 +1,280 @@
+provider: csuitefinder
+source:
+  docs: https://csuitefinder.com/
+  openapi: null # not published yet; the landing page documents every route with example values
+  curated: 2026-09-09
+# Billing, in one paragraph: CSuiteFinder sells TOKENS at a flat, published $0.0025 each
+# (bundles from $1,000 = 400,000 tokens). Exactly ONE route spends them — /email/find, at 1 token
+# per address resolved. Every other data route is included: it costs 0 tokens but still requires a
+# positive balance, so an exhausted key gets 402 rather than unlimited free enrichment. New
+# accounts self-register and receive 400 trial tokens ($1), which is 400 finds.
+#
+# Three things a verification run should know, all observed on 2026-09-09 against a fresh trial key
+# (balance delta on GET /billing/balance is the meter):
+#   - A MISS IS FREE. /email/find on a name that does not resolve moved the balance 398 -> 398.
+#     So per_success is real, not a docs claim.
+#   - REPEATS ARE NOT FREE — unlike some providers in this catalog, a second identical /email/find
+#     charges again (399 -> 398). A cached answer is the same answer, priced the same, so an
+#     observed delta of 0 here always means "no result", never "cache hit". That makes the meter
+#     unambiguous during verification.
+#   - The rate card is live and unauthenticated: GET /csuitefinder/pricing returns
+#     token_price_usd and the per-endpoint token cost as JSON. That is the authority for every
+#     cost block below, and it is machine-checkable at review time.
+#
+# Auth rides in a header: `Authorization: Bearer <key>` (X-API-Key also accepted). Never in the
+# path. GET and POST are both accepted on every data route; GET with a query string is catalogued
+# because it replays cleanly.
+limits: "no published per-route rate limit; spend is bounded by the token balance (402 when exhausted)"
+pricing_url: https://csuitefinder.com/csuitefinder/pricing  # live JSON rate card; human page at https://csuitefinder.com/
+endpoints:
+  - id: csuitefinder.people.email.find
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: GET
+    path: /email/find
+    name: "Find a work email from a name and company domain"
+    summary: "Resolve a full name and a company domain to that person's work email address"
+    input:
+      queryParams:
+        full_name: {type: string, required: true, note: "the person's full name; 'Last, First' and accented spellings are normalised", example: "Patrick Collison"}
+        domain: {type: string, required: true, note: "the company's domain; a scheme, www. and any path are stripped", example: "stripe.com"}
+        email: {type: string, required: false, note: "OPTIONAL: a colleague's known address at the same company. Given one, the provider derives the company's address format from it instead of buying a lookup — the cheapest way to resolve several people at one company", example: "john.collison@stripe.com"}
+        refresh: {type: boolean, required: false, note: "force a re-check instead of answering from the stored result"}
+      note: "returns the address plus a confidence score. The ONLY billable route: 1 token per address resolved, nothing when it resolves nothing"
+    test_request:
+      queryParams: {full_name: "Patrick Collison", domain: "stripe.com"}
+    cost:
+      type: per_success
+      value: 0.0025
+      currency: USD
+      per: 1
+      unit: call
+      source: rate_card_api
+      source_url: https://csuitefinder.com/csuitefinder/pricing
+      checked: '2026-09-09'
+      confidence: verified
+      note: "1 token at $0.0025. Metered 2026-09-09: a resolving call moved the balance 400 -> 399; a non-resolving call moved it 398 -> 398, so a miss is genuinely free. A repeat of a previously-resolved query charges again."
+    docs_url: https://csuitefinder.com/
+
+  - id: csuitefinder.people.email.verify
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: GET
+    path: /email/deliverable
+    name: "Check an email address is deliverable"
+    summary: "Check whether an address you already hold is real and deliverable"
+    input:
+      queryParams:
+        email: {type: string, required: true, note: "the address to check", example: "patrick@stripe.com"}
+        refresh: {type: boolean, required: false, note: "force a fresh check"}
+      note: "folds every provider's vocabulary onto four actionable verdicts — deliverable | undeliverable | risky | unknown — alongside the MX, SMTP, catch-all, disposable and role-account signals behind it"
+    test_request:
+      queryParams: {email: "patrick@stripe.com"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: rate_card_api
+      source_url: https://csuitefinder.com/csuitefinder/pricing
+      checked: '2026-09-09'
+      confidence: verified
+      note: "0 tokens — included with any balance. Metered 2026-09-09: balance unchanged at 398. A positive token balance is still required; an exhausted key gets 402."
+    docs_url: https://csuitefinder.com/
+
+  - id: csuitefinder.people.enrich
+    domain: contacts
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: GET
+    path: /email/enrich
+    name: "Enrich a person from their email address"
+    summary: "Fill in the person behind an address — name, job title, seniority, department, employer, location"
+    input:
+      queryParams:
+        email: {type: string, required: true, note: "the person's work email", example: "patrick@stripe.com"}
+        refresh: {type: boolean, required: false, note: "force a fresh lookup"}
+      note: "returns the full person record with a confidence grade. Where no provider can identify the address, the fields are derived from the address itself and the record is graded low confidence rather than omitted"
+    test_request:
+      queryParams: {email: "patrick@stripe.com"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: rate_card_api
+      source_url: https://csuitefinder.com/csuitefinder/pricing
+      checked: '2026-09-09'
+      confidence: verified
+      note: "0 tokens — included with any balance. Metered 2026-09-09: balance unchanged at 398."
+    docs_url: https://csuitefinder.com/
+
+  - id: csuitefinder.people.name.lookup
+    domain: contacts
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: GET
+    path: /name/who
+    name: "Find out whose email address this is"
+    summary: "The identity behind an address — name, title, employer — without the rest of the profile"
+    input:
+      queryParams:
+        email: {type: string, required: true, note: "the address to identify", example: "patrick@stripe.com"}
+        refresh: {type: boolean, required: false}
+      note: "the narrow form of /email/enrich, sharing its data and price. Returns only the identity fields, for callers who want a name rather than an employment record"
+    test_request:
+      queryParams: {email: "patrick@stripe.com"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: rate_card_api
+      source_url: https://csuitefinder.com/csuitefinder/pricing
+      checked: '2026-09-09'
+      confidence: verified
+      note: "0 tokens — included with any balance. Metered 2026-09-09: balance unchanged at 398."
+    docs_url: https://csuitefinder.com/
+
+  - id: csuitefinder.companies.email_pattern
+    domain: companies
+    capability: companies.email_pattern
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /email/pattern
+    name: "Get a company's work-email format"
+    summary: "The address format a company uses, with the alternatives it also uses and how common each is"
+    input:
+      queryParams:
+        email: {type: string, required: true, note: "any address at the company; only its domain is used", example: "someone@stripe.com"}
+        refresh: {type: boolean, required: false}
+      note: "returns the dominant pattern in a readable token form ({first}.{last}), the same pattern in [F].[L] notation, a worked example address, a confidence score, and every alternative format with its usage percentage. Pairs with /email/find, which applies the pattern for you"
+    test_request:
+      queryParams: {email: "someone@stripe.com"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: rate_card_api
+      source_url: https://csuitefinder.com/csuitefinder/pricing
+      checked: '2026-09-09'
+      confidence: verified
+      note: "0 tokens — included with any balance. Metered 2026-09-09: balance unchanged at 398."
+    docs_url: https://csuitefinder.com/
+
+  - id: csuitefinder.companies.enrich
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /company/info
+    name: "Enrich a company from an email address or domain"
+    summary: "The company behind an address — industry, headcount, founding year, location, description"
+    input:
+      queryParams:
+        email: {type: string, required: false, note: "any address at the company; either this or domain", example: "someone@stripe.com"}
+        domain: {type: string, required: false, note: "the company domain, if you have no address", example: "stripe.com"}
+        refresh: {type: boolean, required: false}
+      note: "one of email | domain. A consumer mailbox (gmail.com and the like) is recognised and answered as 'not a company domain' without a lookup, rather than returning the mail provider as the employer"
+    test_request:
+      queryParams: {email: "someone@stripe.com"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: rate_card_api
+      source_url: https://csuitefinder.com/csuitefinder/pricing
+      checked: '2026-09-09'
+      confidence: verified
+      note: "0 tokens — included with any balance. Metered 2026-09-09: balance unchanged at 398."
+    docs_url: https://csuitefinder.com/
+
+  - id: csuitefinder.companies.identify
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /company/find
+    name: "Identify which company an email address belongs to"
+    summary: "Just the company's identity behind an address — name, domain, website, LinkedIn"
+    input:
+      queryParams:
+        email: {type: string, required: false, note: "any address at the company; either this or domain", example: "someone@stripe.com"}
+        domain: {type: string, required: false, example: "stripe.com"}
+        refresh: {type: boolean, required: false}
+      note: "the narrow form of /company/info, sharing its data and price. Returns identity only, for callers resolving 'which company is this' rather than reading a profile"
+    test_request:
+      queryParams: {email: "someone@stripe.com"}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: rate_card_api
+      source_url: https://csuitefinder.com/csuitefinder/pricing
+      checked: '2026-09-09'
+      confidence: verified
+      note: "0 tokens — included with any balance. Metered 2026-09-09: balance unchanged at 398."
+    docs_url: https://csuitefinder.com/
+
+  - id: csuitefinder.account.usage
+    kind: account
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /billing/balance
+    name: "Check your token balance and the price list"
+    summary: "Your remaining tokens, what they are worth in USD, and the current per-endpoint prices (free)"
+    input:
+      note: "no parameters — the key rides in the Authorization header"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free, and spends no tokens; this is the registry's probe. A bad key gets 401 here."}
+    docs_url: https://csuitefinder.com/
+
+  - id: csuitefinder.account.usage.history
+    kind: account
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /billing/usage
+    name: "Break your spend down by endpoint"
+    summary: "Calls, results found and tokens spent per endpoint over a window (free)"
+    input:
+      queryParams:
+        days: {type: integer, required: false, note: "window in days, default 30", example: 7}
+      note: "the pre-flight route for budgeting: shows which endpoints consumed the balance before committing to more work"
+    test_request:
+      queryParams: {days: 7}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free, and spends no tokens. Metered 2026-09-09: balance unchanged at 398."}
+    docs_url: https://csuitefinder.com/
+
+  - id: csuitefinder.account.pricing
+    kind: account
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: any_account
+    method: GET
+    path: /pricing
+    name: "Read the live rate card"
+    summary: "Current token price in USD and the token cost of every endpoint (free, no key required)"
+    input:
+      note: "no parameters, and no credential — this route is public so a price can be checked before committing to a call"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free and unauthenticated. This is the machine-readable rate card every cost block in this file cites as source_url."}
+    docs_url: https://csuitefinder.com/
