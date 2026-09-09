@@ -1052,7 +1052,7 @@ wheels = [
 
 [[package]]
 name = "tools-registry"
-version = "0.17.0"
+version = "0.18.0"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
