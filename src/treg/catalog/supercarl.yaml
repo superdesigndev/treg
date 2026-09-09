@@ -1,4 +1,4 @@
-# Vendor proposal: valid-key self-verification is pending; no verified stamps or examples.
+# Vendor self-tests completed 2026-09-09; no maintainer verification stamps or response fixtures.
 # Public schema: https://supercarl.ai/docs/endpoints.json (custom JSON, not OpenAPI).
 # Scope: six search tools and two free own-account credit/rate-card reads.
 # Shared-key activation and routing adapters require independent maintainer verification.
@@ -69,19 +69,23 @@ endpoints:
       query: Software engineers at Microsoft
       limit: 1
       network_filter_mode: ignore
+  expect:
+    json_path: success
+    equals: true
   cost:
-    type: per_call
+    type: per_success
     value: 1
     currency: credit
     per: 1
     unit: call
-    source: docs
-    source_url: https://supercarl.ai/docs#credits
+    source: observed
+    source_url: https://api.supercarl.ai/api/v1/credits/status
     checked: '2026-09-09'
-    confidence: documented
-    note: One credit per completed single search, including preview. This is a per-search charge, not
-      per returned row. Live meter reconciliation is pending. The shared account credit headers are cumulative
-      balances, not a per-call charge.
+    confidence: verified
+    note: One credit per completed search (success=true), including empty results, not per returned row.
+      A success=false clarification or error is free; expect selects the provider completion envelope.
+      Self-test on 2026-09-09 returned real data and debited one credit from /api/v1/credits/status.remaining.
+      That field and the credit headers are cumulative balances, not per-request charge fields.
   docs_url: https://supercarl.ai/docs/endpoints
 - id: supercarl.people.search.preview
   capability: people.search
@@ -145,22 +149,33 @@ endpoints:
       lookup is unsupported on this route.
   test_request:
     body:
-      description: Software engineers at Microsoft
+      filters:
+        job_titles:
+          include:
+          - Software Engineer
+          mode: must
+          current_only: true
+        network_filter_mode: ignore
+        connection_degrees: []
       limit: 1
       offset: 0
+  expect:
+    json_path: success
+    equals: true
   cost:
-    type: per_call
+    type: per_success
     value: 1
     currency: credit
     per: 1
     unit: call
-    source: docs
-    source_url: https://supercarl.ai/docs#credits
+    source: observed
+    source_url: https://api.supercarl.ai/api/v1/credits/status
     checked: '2026-09-09'
-    confidence: documented
-    note: One credit per completed single search, including preview. This is a per-search charge, not
-      per returned row. Live meter reconciliation is pending. The shared account credit headers are cumulative
-      balances, not a per-call charge.
+    confidence: verified
+    note: One credit per completed search (success=true), including empty results, not per returned row.
+      A success=false clarification or error is free; expect selects the provider completion envelope.
+      Self-test on 2026-09-09 returned real data and debited one credit from /api/v1/credits/status.remaining.
+      That field and the credit headers are cumulative balances, not per-request charge fields.
   docs_url: https://supercarl.ai/docs/endpoints
 - id: supercarl.companies.search
   capability: companies.search
@@ -213,26 +228,30 @@ endpoints:
         required: false
         note: Alias for query.
     note: Supply query or company filters. Preview and detailed modes are documented as one search credit.
-      Detailed-mode meter verification remains pending. Returns a company search reference for subsequent
+      Both modes returned one company and each debited one credit in the 2026-09-09 self-test. Returns a company search reference for subsequent
       people-search joins.
   test_request:
     body:
       query: Microsoft
       preview_limit: 1
       result_mode: preview
+  expect:
+    json_path: success
+    equals: true
   cost:
-    type: per_call
+    type: per_success
     value: 1
     currency: credit
     per: 1
     unit: call
-    source: docs
-    source_url: https://supercarl.ai/docs#credits
+    source: observed
+    source_url: https://api.supercarl.ai/api/v1/credits/status
     checked: '2026-09-09'
-    confidence: documented
-    note: One credit per completed single search, including preview. This is a per-search charge, not
-      per returned row. Live meter reconciliation is pending. The shared account credit headers are cumulative
-      balances, not a per-call charge.
+    confidence: verified
+    note: One credit per completed search (success=true), including empty results, not per returned row.
+      A success=false clarification or error is free; expect selects the provider completion envelope.
+      Self-test on 2026-09-09 returned real data and debited one credit from /api/v1/credits/status.remaining.
+      That field and the credit headers are cumulative balances, not per-request charge fields.
   docs_url: https://supercarl.ai/docs/endpoints
 - id: supercarl.companies.jobs.search
   capability: companies.jobs.search
@@ -271,21 +290,25 @@ endpoints:
       A shared platform account should have no personal networks connected.
   test_request:
     body:
-      query: Software engineer jobs at Microsoft
+      query: Software engineer jobs
       preview_limit: 1
+  expect:
+    json_path: success
+    equals: true
   cost:
-    type: per_call
+    type: per_success
     value: 1
     currency: credit
     per: 1
     unit: call
-    source: docs
-    source_url: https://supercarl.ai/docs#credits
+    source: observed
+    source_url: https://api.supercarl.ai/api/v1/credits/status
     checked: '2026-09-09'
-    confidence: documented
-    note: One credit per completed single search, including preview. This is a per-search charge, not
-      per returned row. Live meter reconciliation is pending. The shared account credit headers are cumulative
-      balances, not a per-call charge.
+    confidence: verified
+    note: One credit per completed search (success=true), including empty results, not per returned row.
+      A success=false clarification or error is free; expect selects the provider completion envelope.
+      Self-test on 2026-09-09 returned real data and debited one credit from /api/v1/credits/status.remaining.
+      That field and the credit headers are cumulative balances, not per-request charge fields.
   docs_url: https://supercarl.ai/docs/endpoints
 - id: supercarl.linkedin.search.posts
   capability: linkedin.search.posts
@@ -357,19 +380,23 @@ endpoints:
       query: Microsoft
       preview_limit: 1
       sort_by: recent
+  expect:
+    json_path: success
+    equals: true
   cost:
-    type: per_call
+    type: per_success
     value: 1
     currency: credit
     per: 1
     unit: call
-    source: docs
-    source_url: https://supercarl.ai/docs#credits
+    source: observed
+    source_url: https://api.supercarl.ai/api/v1/credits/status
     checked: '2026-09-09'
-    confidence: documented
-    note: One credit per completed single search, including preview. This is a per-search charge, not
-      per returned row. Live meter reconciliation is pending. The shared account credit headers are cumulative
-      balances, not a per-call charge.
+    confidence: verified
+    note: One credit per completed search (success=true), including empty results, not per returned row.
+      A success=false clarification or error is free; expect selects the provider completion envelope.
+      Self-test on 2026-09-09 returned real data and debited one credit from /api/v1/credits/status.remaining.
+      That field and the credit headers are cumulative balances, not per-request charge fields.
   docs_url: https://supercarl.ai/docs/endpoints
 - id: supercarl.people.search.from_posts
   capability: people.search
@@ -443,19 +470,23 @@ endpoints:
       preview_limit: 1
       people_limit: 1
       sort_by: recent
+  expect:
+    json_path: success
+    equals: true
   cost:
-    type: per_call
+    type: per_success
     value: 1
     currency: credit
     per: 1
     unit: call
-    source: docs
-    source_url: https://supercarl.ai/docs#credits
+    source: observed
+    source_url: https://api.supercarl.ai/api/v1/credits/status
     checked: '2026-09-09'
-    confidence: documented
-    note: One credit per completed single search, including preview. This is a per-search charge, not
-      per returned row. Live meter reconciliation is pending. The shared account credit headers are cumulative
-      balances, not a per-call charge.
+    confidence: verified
+    note: One credit per completed search (success=true), including empty results, not per returned row.
+      A success=false clarification or error is free; expect selects the provider completion envelope.
+      Self-test on 2026-09-09 returned real data and debited one credit from /api/v1/credits/status.remaining.
+      That field and the credit headers are cumulative balances, not per-request charge fields.
   docs_url: https://supercarl.ai/docs/endpoints
 - id: supercarl.account.usage
   capability: account.usage
@@ -499,11 +530,13 @@ endpoints:
     currency: USD
     per: 1
     unit: call
-    source: docs
-    source_url: https://supercarl.ai/docs#credits
+    source: observed
+    source_url: https://api.supercarl.ai/api/v1/credits/status
     checked: '2026-09-09'
-    confidence: documented
-    note: Account status/rate-card read; no search debit.
+    confidence: verified
+    note: Self-test on 2026-09-09 returned HTTP 200 with remaining balance unchanged at 996 credits.
+      Account status/rate-card reads are free. Current-key usage omits some search types; use the account
+      remaining balance for isolated debit reconciliation.
   docs_url: https://supercarl.ai/docs/endpoints
 - id: supercarl.account.usage.status
   capability: account.usage
@@ -519,7 +552,7 @@ endpoints:
     \ over the credit ceiling."
   input:
     note: 'Free key-validation probe, reachable even at the credit ceiling. Invalid key observed 2026-09-09:
-      HTTP 401 with {"error":"Invalid API key"}. Valid-key verification pending.'
+      HTTP 401 with {"error":"Invalid API key"}. A genuine search-scoped key returned HTTP 200 with no credit debit in the same-day self-test.'
   test_request:
     queryParams: {}
   cost:
@@ -528,9 +561,11 @@ endpoints:
     currency: USD
     per: 1
     unit: call
-    source: docs
-    source_url: https://supercarl.ai/docs#credits
+    source: observed
+    source_url: https://api.supercarl.ai/api/v1/credits/status
     checked: '2026-09-09'
-    confidence: documented
-    note: Account status/rate-card read; no search debit.
+    confidence: verified
+    note: Self-test on 2026-09-09 returned HTTP 200 with remaining balance unchanged at 996 credits.
+      Account status/rate-card reads are free. Current-key usage omits some search types; use the account
+      remaining balance for isolated debit reconciliation.
   docs_url: https://supercarl.ai/docs/endpoints

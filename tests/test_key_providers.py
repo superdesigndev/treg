@@ -66,7 +66,8 @@ def test_supercarl_search_prices_do_not_expose_platform_account_metadata():
             assert not catalog.platform_eligible(endpoint)
         else:
             assert price["usd"] == 0.099
-            assert endpoint["cost"]["type"] == "per_call"
+            assert endpoint["cost"]["type"] == "per_success"
+            assert endpoint["expect"] == {"json_path": "success", "equals": True}
             assert endpoint["cost"]["unit"] == "call"
             assert catalog.platform_eligible(endpoint)
     provider = P.get("supercarl")

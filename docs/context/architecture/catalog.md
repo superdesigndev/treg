@@ -16,6 +16,7 @@ sources:
   - src/treg/catalog/examples/quickenrich.x.industries.json
   - src/treg/catalog/examples/quickenrich.x.revenue-ranges.json
   - src/treg/catalog/supercarl.yaml
+  - tests/test_supercarl_billing.py
   - src/treg/catalog/trykitt.yaml
   - src/treg/catalog/examples/trykitt.people.email.find.json
   - src/treg/catalog/examples/trykitt.people.email.verify.json
@@ -119,21 +120,35 @@ search, job search, post search, and post-author discovery. These reuse existing
 Two free `account.usage` tools expose the current-key meter, live credit rate card, and rolling
 balance through the caller's own key; they are never eligible for the shared platform key.
 
-Each completed single search, including previews and empty results, is documented as one credit
-(`per_call`, not hit-dependent `per_success`). The vendor has
-approved a managed usage-invoice account at $0.099 per credit. The `fx.yaml` entry states that
-account provisioning and live invoice reconciliation are pending; no top-up receipt is claimed.
-Credit-status headers describe a cumulative pool, not a per-call charge. Valid-key self-tests
-and independent maintainer verification are still required; this proposal includes no verified
-stamps, example responses, or routing adapters. The empty platform-key setting is wiring only.
+The vendor offers a managed usage-invoice account at $0.099 per credit. The `fx.yaml` entry
+states that paid-account provisioning and invoice reconciliation remain pending; no cash payment
+or top-up receipt is claimed. A separate complimentary review account received 1,000 credits.
+
+The 2026-09-09 vendor self-run exercised all eight test requests and company detailed mode.
+Seven completed searches each returned real data and debited one credit; the two account reads
+were free. Two initial named-company queries requested clarification (`success: false`, HTTP 200)
+and cost zero. The account's remaining balance reconciled 1,000 → 993. Company/job activity was
+not included in `current_key_usage`, so that counter alone is insufficient; isolated
+`/api/v1/credits/status.remaining` deltas covered every debit.
+
+Search costs use `per_success`, `unit: call`, and `expect: {json_path: success, equals: true}`.
+Here success means the provider completed the search: a completed empty result is still billable.
+This uses `_observed_cost_micro`'s existing envelope rule to release free HTTP-200 clarifications;
+`per_call` would incorrectly charge them. `test_supercarl_billing.py` exercises the real settlement
+path for clarification, populated, and empty responses. Any future routing adapter must preserve
+these billing semantics: an empty completed search must not become a free miss. This proposal
+adds no adapter and makes no routed-ranking claim.
+
+Independent maintainer verification is still required. There are no endpoint `verified:` stamps
+or response fixtures; only cost provenance records the vendor's metered observations. The empty
+platform-key setting makes shared-key activation a separate maintainer operation.
 
 The shared account must have no personal networks or inbox connections: graph annotations
 belong to the API-key owner, and do not become the Treg end user's personal graph. The v2
 people-search test explicitly selects `network_filter_mode=ignore`. The initial scope excludes
 legacy automatic enrichment, cached person-ID lookups, contacts/reconciliation, messaging,
 project mutations, and account-specific job-to-network joins. Company search includes both
-preview and detailed modes; its test request selects preview and does not establish detailed
-mode's metered cost. The public custom JSON schema is not OpenAPI.
+preview and detailed modes; both were observed at one credit with a one-company result. The public custom JSON schema is not OpenAPI.
 
 The computed cost view uses a `cost.table` fallback as its scalar validated upper bound for
 eligibility and compact displays. Runtime charging evaluates the first matching row against request

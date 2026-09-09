@@ -1237,7 +1237,7 @@ SUPERCARL = OAuthProvider(
     token_placeholder="your Super Carl API key",
     token_header="X-API-Key",
     token_format="{secret}",
-    setup_url="https://supercarl.ai/integrations/api-keys",
+    setup_url="https://supercarl.ai/integrations/connections",
     setup_action_label="Get your Super Carl API key",
     setup_steps=(
         "Sign in to Super Carl and open MCP & API.",
