@@ -33,10 +33,13 @@ adapters:
     out: {email: email, first_name: first_name, last_name: last_name, verified: "status == 'valid'"}
     miss: "email == null"
   leadsforge.people.email.find:
-    accepts: [[first_name, last_name, domain], [full_name, domain], [linkedin_url]]
+    # Full names still work through the contract's first/last derivation. A mononym must
+    # not fall back to a variant that maps neither name part and sends only the company.
+    accepts: [[first_name, last_name, domain], [linkedin_url]]
     in:  {first_name: body.firstName, last_name: body.lastName, domain: body.companyDomain,
           linkedin_url: body.linkedinURL}
-    out: {email: email, verified: "status == 'succeeded'"}
+    # Enrichment success does not report mailbox deliverability.
+    out: {email: email}
     miss: "email == null"
   findymail.search.name:
     accepts: [[full_name, domain], [first_name, last_name, domain]]
@@ -71,7 +74,7 @@ adapters:
     in:  {linkedin_url: body.linkedinUrl}
     const: {body.enrichmentType: {getWorkEmails: true, getPersonalEmails: false, getPhoneNumbers: false},
             body.validateEmails: true}
-    out: {email: "output.profile.emails[0].email", verified: "output.profile.success == true"}
+    out: {email: "output.profile.emails[0].email"}
     miss: "output.profile.emails == []"
 
   # ---- instagram.user.profile ---------------------------------------------------------------
@@ -224,7 +227,7 @@ adapters:
     out: {phone: "coalesce(data.e164_format, data.intl_format)", line_type: data.line_type, country_code: data.country_code}
     miss: "data.e164_format == null"
   leadsforge.people.phone.find:
-    accepts: [[first_name, last_name, domain], [full_name, domain], [linkedin_url]]
+    accepts: [[first_name, last_name, domain], [linkedin_url]]
     in:  {first_name: body.firstName, last_name: body.lastName, domain: body.companyDomain, linkedin_url: body.linkedinURL}
     out: {phone: phoneNumber}
     miss: "phoneNumber == null"
@@ -256,6 +259,12 @@ adapters:
     test_identity: {first_name: Jane, last_name: Doe, domain: lusha.com}
     out: {phone: "results[0].phones[0].number", line_type: "results[0].phones[0].type", country_code: "results[0].phones[0].countryIso2"}
     miss: "results[0].phones[0].number == null"
+
+  tomba.people.phone.verify:
+    accepts: [[phone]]
+    in: {phone: queryParams.phone, country_code: queryParams.country_code}
+    out: {valid: data.valid, phone: data.e164_format, country_code: data.country_code, line_type: data.line_type, carrier: data.carrier}
+    miss: "data.valid == null"
 
   # ---- people.email.verify ------------------------------------------------------------------
   trykitt.people.email.verify:
@@ -467,6 +476,20 @@ adapters:
     out: {results: results, count: "len(results)"}
     miss: "results == []"
 
+  # Similar-company adapters checked against existing saved upstream fixtures.
+  tomba.companies.similar:
+    accepts: [[domain]]
+    in: {domain: queryParams.domain}
+    out: {companies: data, count: "len(data)"}
+    miss: "data == []"
+  companyenrich.companies.similar:
+    accepts: [[domain]]
+    in: {domain: body.domains}
+    in_expr: {body.domains: "list(domain)"}
+    const: {body.page: 1, body.pageSize: 10}
+    out: {companies: items, count: totalItems}
+    miss: "items == []"
+
   # ---- people.search ------------------------------------------------------------------------
   exa.people.search:
     accepts: [[q]]
@@ -577,6 +600,16 @@ adapters:
           location: "join(company.locations.headquarters.city.name, company.locations.headquarters.country.name)",
           linkedin_url: company.socials.linkedin.url}
     miss: "company.about.name == null"
+  sumble.organizations:
+    test_identity: {domain: stripe.com}
+    accepts: [[domain], [name]]
+    in: {}
+    in_expr: {body.organizations: "list(obj('url', domain, 'name', name))"}
+    const: {body.select: {attributes: [id, name, url, employee_count, industry]}}
+    cost_units: "3"
+    out: {name: "organizations[0].attributes.name", domain: "organizations[0].attributes.url",
+          employees: "organizations[0].attributes.employee_count", industry: "organizations[0].attributes.industry"}
+    miss: "matched_count == 0"
   hunter.companies.enrich:
     accepts: [[domain]]
     in:  {domain: queryParams.domain}
@@ -1996,6 +2029,53 @@ adapters:
   # apollo.people.search: not routed — free, but rows come with OBFUSCATED last names (`Sl***a`) and no URL; a
   # search whose rows need a $0.026 reveal each is a search→reveal chain, not one answer (bench mode C did exactly
   # that and it rescued 2 of 8 hard queries). Fixture kept; callable by id.
+
+  # QuickEnrich: free discovery returns profiles and availability flags, not revealed contact data.
+  quickenrich.people.email.find:
+    accepts: [[linkedin_url], [first_name, last_name, domain]]
+    in: {linkedin_url: queryParams.linkedin_url, first_name: queryParams.first_name, last_name: queryParams.last_name, domain: queryParams.company_url}
+    out: {email: "null_if(data.email, '', 'n/a', 'null', 'none')", first_name: data.first_name, last_name: data.last_name}
+    miss: "null_if(data.email, '', 'n/a', 'null', 'none') == null"
+  quickenrich.people.phone.find:
+    accepts: [[linkedin_url], [first_name, last_name, domain]]
+    in: {linkedin_url: queryParams.linkedin_url, first_name: queryParams.first_name, last_name: queryParams.last_name, domain: queryParams.company_url}
+    out: {phone: "null_if(data.employee_phone, '', 'n/a', 'null', 'none')", line_type: "null_if(data.employee_phone_type, '', 'n/a', 'null', 'none')", country_code: "null_if(data.country_code, '', 'n/a', 'null', 'none')"}
+    miss: "null_if(data.employee_phone, '', 'n/a', 'null', 'none') == null"
+  quickenrich.people.enrich:
+    accepts: [[email]]
+    in: {email: queryParams.email}
+    out: {full_name: "join(null_if(data.first_name, '', 'n/a'), null_if(data.last_name, '', 'n/a'))", first_name: data.first_name, last_name: data.last_name,
+          title: data.title, company: data.company_name, company_domain: data.company_url, linkedin_url: data.employee_linkedin, location: data.city}
+    miss: "join(null_if(data.first_name, '', 'n/a'), null_if(data.last_name, '', 'n/a')) == null"
+  quickenrich.people.search.domain:
+    accepts: [[title, company_domain], [company_domain]]
+    in: {company_domain: queryParams.company_url, title: queryParams.title}
+    # Fixed 20-row pages: title costs up to 20 credits; no title costs one credit per page.
+    cost_units: "choose(title, 20, 1)"
+    out: {people: data, count: "len(data)"}
+    miss: "coalesce(data, []) == []"
+  quickenrich.people.search:
+    accepts: [[title, company_domain], [company_domain], [title]]
+    in: {company_domain: body.company_url.include, title: body.title.include}
+    in_expr:
+      body.company_url: "obj('include', list(company_domain), 'exclude', choose(company_domain, [], null))"
+      body.title: "obj('include', list(title), 'exclude', choose(title, [], null))"
+      body.country_code: "obj('include', list(upper(country)), 'exclude', choose(country, [], null))"
+      body.locality: "obj('include', list(location), 'exclude', choose(location, [], null))"
+      body.per_page: limit
+    out: {people: data, count: "len(data)", next_cursor: meta.next_cursor}
+    miss: "coalesce(data, []) == []"
+  quickenrich.companies.search:
+    accepts: [[domain], [name], [industry]]
+    in: {domain: body.company_url, name: body.company_name.include, industry: body.industry.include}
+    in_expr:
+      body.company_name: "obj('include', list(name), 'exclude', choose(name, [], null))"
+      body.industry: "obj('include', list(industry), 'exclude', choose(industry, [], null))"
+      body.country_code: "obj('include', list(upper(country)), 'exclude', choose(country, [], null))"
+      body.per_page: limit
+    out: {companies: data, count: "len(data)", next_cursor: meta.next_cursor}
+    miss: "coalesce(data, []) == []"
+
 
 
   # ContactOut people search/profile adapters are omitted: the PII rule excludes

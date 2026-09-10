@@ -208,6 +208,15 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     attribution decides who a reselling builder bills, and it belongs to the request, not to the
     endpoint match. The already-parsed object travels, never a bare dict — re-deriving the primary
     dimension here would be a second place that could disagree about who pays."""
+    charged = ledger.with_margin(mk.estimate_micro)
+    if mk.max_cost_micro is not None and charged > mk.max_cost_micro:
+        raise ReservationFailed("route_max_cost", status_code=402, detail={
+            "error": "route_max_cost", "endpoint_id": mk.endpoint_id, "provider": mk.provider,
+            "max_cost_micro": mk.max_cost_micro, "estimated_cost_micro": charged,
+            "message": (f"{mk.endpoint_id} would reserve ~${ledger.usd(charged):g} and "
+                        f"the remaining X-Treg-Route-Max-Cost is ${mk.max_cost_micro / 1_000_000:g}; "
+                        "nothing was charged for this attempt. Ask for fewer rows/targets or raise the ceiling."),
+        })
     # Read before `reserve_in_transaction`: the insufficient-balance path rolls back, and a lazy
     # attribute load while constructing the refusal would otherwise escape the application session.
     auto_on = bool(caller.org.autotopup_enabled and caller.org.autotopup_consented_at)

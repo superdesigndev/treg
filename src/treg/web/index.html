@@ -15,6 +15,7 @@
      cannot reach used to leave the whole signed-in dashboard blank (issue #137). Version lives in
      the filename — bump it here and in src/treg/web/vendor/ together. -->
 <script src="/vendor/vue-3.5.41.global.prod.js"></script>
+<script src="/agent-setup.js"></script>
 <script>
 // Fail loudly. `[v-cloak]{display:none}` hides the un-compiled template until Vue mounts, so
 // anything that stops Vue mounting turns the dashboard into a silent blank page with nothing in
@@ -1596,7 +1597,7 @@ a:hover{text-decoration-color:var(--muted)}
                         <span v-if="r.pillsMore" class="pchip more" :title="r.pillsMoreTitle">+{{r.pillsMore}}</span>
                       </div>
                       <span v-else class="lpath mono"><b>{{r.endpoints[0].provider_display||r.endpoints[0].provider}}</b>
-                        <span class="cat-m">{{r.endpoints[0].method}}</span>{{r.endpoints[0].path}}<!--
+                        <span class="chip" v-if="r.endpoints[0].platform_eligible===false">{{endpointAccessLabel(r.endpoints[0])}}</span><span class="cat-m">{{r.endpoints[0].method}}</span>{{r.endpoints[0].path}}<!--
                         --><span v-if="r.mgmt" class="chip lkind"
                               :title="r.endpoints[0].kind==='account' ? 'Manages the provider account itself — lists, campaigns, webhooks' : 'A helper route: token exchange, enum lookups, format cleanup'">{{r.endpoints[0].kind}}</span></span>
                     </td>
@@ -1619,6 +1620,7 @@ a:hover{text-decoration-color:var(--muted)}
                           <span class="lcar">▸</span>
                           <span class="plogo-tile"><img class="plogo" :src="'/logos/'+e.provider+'.svg'" alt="" aria-hidden="true" @error="$event.target.style.visibility='hidden'"></span>
                           <b>{{e.provider_display||e.provider}}</b>
+                          <span class="chip">{{endpointAccessLabel(e)}}</span>
                           <span class="lsub-price" :title="costTitle(e.cost)">{{costShort(e.cost)}}</span>
                           <span v-if="e.verified" class="vmark" :title="'Called for real on '+e.verified">✓</span>
                           <span v-else class="xmark" title="Documented, but treg has not called it with a live key yet">·</span>
@@ -1638,6 +1640,7 @@ a:hover{text-decoration-color:var(--muted)}
                             <!-- The short form even here: the chip is a label, and "per result ·
                                  price in provider dashboard" is a sentence. It rides in the facts
                                  list below, where a sentence belongs. -->
+                            <span class="chip">{{endpointAccessLabel(e)}}</span>
                             <span class="chip" :title="costTitle(e.cost)">{{costShort(e.cost)}}<span
                                   v-if="costNative(e.cost)" class="cost-nat">({{costNative(e.cost)}})</span></span>
                             <span v-if="e.verified" class="chip ver" :title="'Called for real on '+e.verified+' and the response captured'">verified {{e.verified}}</span>
@@ -3561,57 +3564,21 @@ POST {{proxy}}/call/{{hub.tool.tool_id}}    X-Treg-Token · JSON body of inputs<
             <div style="color:var(--accent);font-size:15px;letter-spacing:.5px;margin-bottom:12px">▚ treg</div>
             <h2 style="margin:0 0 8px;font-size:20px">Which agent are you using?</h2>
             <p class="sub" style="margin:0 0 18px">Choose your agent for the best setup instructions.</p>
-            <div class="agent-grid">
-              <button v-for="a in welcomeAgents" :key="a.id" type="button" class="agent-card" :class="{on:welcome.agent===a.id}" @click="welcome.agent=a.id; welcome.moreOpen=false">
-                <img :src="agentIcon(a.icon)" alt="" onerror="this.style.visibility='hidden'"/><span>{{a.name}}</span>
-              </button>
-              <button type="button" class="agent-card" :class="{on:welcome.moreOpen || welcomeIsMore}" @click="welcome.moreOpen=!welcome.moreOpen">
-                <span style="font-size:15px;width:20px;text-align:center;flex:none">☰</span><span>{{welcomeIsMore && !welcome.moreOpen ? welcomeAgent.name : 'More'}}</span><span style="margin-left:auto;color:var(--muted)">▾</span>
-              </button>
-            </div>
-            <div v-if="welcome.moreOpen" class="agent-grid" style="margin-top:10px">
-              <button v-for="a in welcomeMoreAgents" :key="a.id" type="button" class="agent-card" :class="{on:welcome.agent===a.id}" @click="welcome.agent=a.id; welcome.moreOpen=false">
-                <img v-if="a.icon" :src="agentIcon(a.icon)" alt="" onerror="this.style.visibility='hidden'"/><span v-else style="font-size:15px;width:20px;text-align:center;flex:none">✳</span><span>{{a.name}}</span>
-              </button>
-            </div>
+            <treg-agent-picker v-model="welcome.agent" :icon="agentIcon"></treg-agent-picker>
             <div class="wc-foot">
               <a href="#" class="sub" @click.prevent="welcomeFinish">Skip</a>
               <button class="btn primary" @click="track('onboarding_agent_picked',{agent:welcome.agent}); welcome.step=2">Next →</button>
             </div>
           </template>
           <template v-else-if="welcome.step===2">
-            <p class="sub" style="display:flex;align-items:center;gap:8px;margin:0 0 16px"><img v-if="welcomeAgent.icon" :src="agentIcon(welcomeAgent.icon)" alt="" style="width:18px;height:18px" onerror="this.style.visibility='hidden'"/>Setting up treg for <b style="color:var(--ink)">{{welcomeAgent.name}}</b></p>
-            <template v-if="welcomeAgent.plugin">
-              <h2 style="margin:0 0 10px;font-size:19px">1. Install the treg plugin</h2>
-              <a class="btn" :href="welcomeAgent.plugin" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;margin-bottom:18px" @click="track('onboarding_plugin_install_clicked',{agent:welcome.agent})"><img :src="agentIcon(welcomeAgent.icon)" alt="" style="width:16px;height:16px"/>Install plugin in {{welcomeAgent.name}} ↗</a>
-              <h2 style="margin:0 0 14px;font-size:19px">2. In your Bot's chat, send:</h2>
-            </template>
-            <h2 v-else style="margin:0 0 14px;font-size:19px">In your agent's chat, send:</h2>
-            <div class="lc-codewrap"><button class="lc-cp" @click="copyStart(welcomeSetupFull,'wc')">{{startCopied==='wc'?'✓ copied':'copy'}}</button><pre style="white-space:pre-wrap;word-break:break-all">{{welcomeSetupMasked}}</pre></div>
-            <a v-if="myToken" href="#" class="sub" style="font-size:12px;display:inline-block;margin-top:6px" @click.prevent="startTokenShow=!startTokenShow">{{startTokenShow?'Hide':'Show'}} key</a>
-            <p class="sub" style="font-size:12px;margin:12px 0 0">{{welcomeAgent.plugin ? 'Your Bot reads that file and signs in with your team & token — then it can call every tool in the catalog.' : 'Your agent reads that file and signs in with your team & token — it installs the CLI and starts calling tools.'}}</p>
+            <treg-setup-instructions :agent="welcomeAgent" :icon="agentIcon" :command="welcomeSetupCmd" :team="activeSlugNow || '<team-slug>'" :token="myToken" :show-token="startTokenShow" :copied="startCopied==='wc'" @copy="copyStart($event,'wc')" @toggle-token="startTokenShow=!startTokenShow" @plugin="track('onboarding_plugin_install_clicked',{agent:welcome.agent})"></treg-setup-instructions>
             <div class="wc-foot">
               <a href="#" class="sub" @click.prevent="welcome.step=1">← Back</a>
               <button class="btn primary" @click="welcome.step=3">Next →</button>
             </div>
           </template>
           <template v-else>
-            <h2 style="margin:0 0 6px;font-size:19px">Try it out</h2>
-            <div class="wc-wait" style="margin:0 0 16px"><span class="wc-waitdot"></span>Waiting for your agent — copy an example below and send it to get your first result.</div>
-            <div class="try-grid">
-              <button v-for="ex in tryExamples" :key="ex.k" type="button" class="try-card" @click="track('tryit_prompt_copied',{key:ex.k,cat:ex.cat,from:'onboarding'}); copyStart(ex.prompt,'wtry-'+ex.k)">
-                <span class="try-cat"><span style="display:inline-flex;align-items:center;gap:7px"><img class="try-ico" :src="'/logos/platforms/'+ex.logo+'.svg'" alt=""/><img v-if="ex.avatar" class="try-ico avatar" :src="ex.avatar" alt=""/>{{ex.cat}}</span><span class="try-copy" :class="{done:startCopied==='wtry-'+ex.k}">{{startCopied==='wtry-'+ex.k ? '✓ copied' : '⧉ copy'}}</span></span>
-                <span class="try-txt">{{ex.prompt}}</span>
-              </button>
-            </div>
-            <div class="oauth-div"><span>also connect OAuth to unlock new agent capabilities</span></div>
-            <div v-for="g in tryOauth" :key="g.label" style="margin-top:12px">
-              <div class="oauth-grp">{{g.label}}</div>
-              <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-                <button v-for="p in g.items" :key="p.s" type="button" class="prov-chip" @click="track('tryit_oauth_clicked',{service:p.s,group:g.label,from:'onboarding'}); welcome.on=false; openProvider(p.s)"><img :src="'/logos/'+p.s+'.svg'" alt=""/>{{p.n}}</button>
-                <span v-if="g.soon.length" class="soon-note" :data-tip="g.soon.map(p=>p.n).join(', ')">{{g.soon.length}} coming soon</span>
-              </div>
-            </div>
+            <treg-try-it-out :copied="startCopied.startsWith('wtry-')?startCopied.slice(5):''" @example="track('tryit_prompt_copied',{key:$event.k,cat:$event.cat,from:'onboarding'}); copyStart($event.prompt,'wtry-'+$event.k)" @provider="welcomeTryProvider"></treg-try-it-out>
             <div class="wc-foot">
               <a href="#" class="sub" @click.prevent="welcomeFinish">Skip</a>
               <button class="btn primary" @click="track('tryit_browse_catalog',{from:'onboarding'}); welcome.on=false; go('connections')">Browse all catalog →</button>
@@ -3992,6 +3959,7 @@ const { createApp } = Vue;
 const LS='treg-dash';
 
 createApp({
+  components:{TregTryItOut:TregAgentSetup.TryItOut,TregAgentPicker:TregAgentSetup.AgentPicker,TregSetupInstructions:TregAgentSetup.SetupInstructions},
   data(){
     // --- the tool hub (docs/HUB-DECISIONS.md): the maker's view and the run page ---
     // hubOn: the server answers the hub routes only with TREG_HUB_ENABLED; probed once on boot.
@@ -4410,21 +4378,8 @@ createApp({
     // instructions, so this prompt only has to name the repo, the page, and the contact email.
     vendorPromptText(){ return `Help me create a PR to treg (https://github.com/superdesigndev/treg) that adds our API to its tool catalog. Follow the instructions at ${this.proxy}/vendor-listing — and include our contact email in the PR description so the maintainers can reach us to arrange live verification.`; },
     // first-run welcome: the agent picker (step 1) and the per-agent setup line (step 2)
-    welcomeAgents(){ return [
-      {id:'openclaw', name:'OpenClaw', icon:'openclaw-color'},
-      {id:'grokbot', name:'Grok Bot', icon:'/logos/agents/grokbot.png', plugin:'https://x.ai/bot/plugin/55647425'},  // bundled mark (no lobehub icon for the Bot product); `plugin` = the install step shown before the setup line
-      {id:'hermes', name:'Hermes Agent', icon:'hermesagent'},
-      {id:'claudeai', name:'Claude.ai', icon:'claude-color'},
-      {id:'claude-code', name:'Claude Code', icon:'claudecode-color'},
-      {id:'codex', name:'Codex', icon:'codex-color'},
-    ]; },
-    welcomeMoreAgents(){ return [
-      {id:'opencode', name:'opencode', icon:'opencode'},
-      {id:'pi', name:'pi', icon:'pi'},
-      {id:'cursor', name:'Cursor', icon:'cursor'},
-      {id:'gemini-cli', name:'Gemini CLI', icon:'gemini-color'},
-      {id:'other', name:'Other', icon:null},
-    ]; },
+    welcomeAgents(){ return TregAgentSetup.agents; },
+    welcomeMoreAgents(){ return TregAgentSetup.moreAgents; },
     welcomeAgent(){ return this.welcomeAgents.concat(this.welcomeMoreAgents).find(a=>a.id===this.welcome.agent) || this.welcomeAgents[0]; },
     welcomeIsMore(){ return this.welcomeMoreAgents.some(a=>a.id===this.welcome.agent); },
     welcomeSetupCmd(){ return this.buildAgentPrompt('agent', true); },
@@ -4469,18 +4424,8 @@ createApp({
       const what=this.epTry.summary ? this.epTry.summary.replace(/\.$/,'') : this.epTry.id;
       const auth=this.epTryAuthMethod ? ` Use authorization_method=${this.epTryAuthMethod}.` : '';
       return `Use treg to call ${this.epTry.id} — ${what}.${auth}`; },
-    tryExamples(){ return [
-      {k:'trend',cat:'Trending videos pattern', logo:'tiktok',  prompt:'Use treg to pull today\'s trending TikTok videos (video links included)'},
-      {k:'enr',  cat:'Get contact emails',      logo:'people', avatar:'https://pbs.twimg.com/profile_images/1131851609774985216/OcsssQ9J_400x400.png', prompt:'Use treg to find the work email of Peter Steinberger'},
-      {k:'serp', cat:'Keyword volume',          logo:'google',  prompt:'Use treg to pull real monthly search volume and top related keywords worth targeting for my business'},
-      {k:'soc',  cat:'Scrape linkedin',         logo:'linkedin',prompt:'Use treg to look up linkedin.com/in/jasonzhoudesign'},
-    ]; },
-    tryOauth(){ return [
-      {label:'Post on social',      items:[{s:'x',n:'X (Twitter)'},{s:'youtube',n:'YouTube'},{s:'tiktok',n:'TikTok'},{s:'linkedin',n:'LinkedIn'},{s:'facebook',n:'Facebook Pages'},{s:'instagram',n:'Instagram'}],
-                                    soon:[]},
-      {label:'Manage ad campaigns', items:[{s:'google-ads',n:'Google Ads'},{s:'meta-ads',n:'Meta Ads'}], soon:[]},
-      {label:'SEO on your own site',items:[{s:'google-analytics',n:'Google Analytics'},{s:'google-search-console',n:'Search Console'},{s:'google-business-profile',n:'Business Profile'}], soon:[]},
-    ]; },
+    tryExamples(){ return TregAgentSetup.examples; },
+    tryOauth(){ return TregAgentSetup.oauthGroups; },
     // What to actually DO with a freshly minted agent token, in the three shapes people need.
     agentSnippet(){ const a=this.newAgent||this.snipAgent; if(!a) return '';
       const base=this.proxy||location.origin, org=a.org||this.activeSlugNow;
@@ -4983,7 +4928,7 @@ createApp({
       // Named differently from the server's topup_started (same click, two vantage points —
       // a shared name would double-count in trends); this one exists to link session replays.
       this.track('topup_checkout_opened',{amount_usd:amount});
-      try{ const out=await this.api('/billing/topup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount_usd:amount})});
+      try{ const out=await this.api('/billing/topup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount_usd:amount,checkout_source:window.TregTracking?.checkoutSource()||'app'})});
         // Stripe's own hosted page does the payment; the balance moves when its webhook lands, never
         // on the return redirect (which a payer could simply type). Same tab, so the return lands here.
         window.location.href=out.url; }
@@ -5014,7 +4959,7 @@ createApp({
           this.billing=await this.api('/billing/autotopup',{method:'POST',headers:{'content-type':'application/json'},
             body:JSON.stringify({enabled:true, consent:true, amount_usd:this.autoAmount, threshold_usd:this.autoThreshold, monthly_cap_usd:this.autoCapUsd, setup_url:false})});
         }
-        const out=await this.api('/billing/topup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount_usd:usd})});
+        const out=await this.api('/billing/topup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount_usd:usd,checkout_source:window.TregTracking?.checkoutSource()||'app'})});
         window.location.href=out.url; }
       catch(e){ this.topupErr='Could not start the payment: '+(e.detail||e.status); this.billingBusy=false; } },
     // The toggle itself never arms auto top-up - it can only DISARM (off is safe) or open the
@@ -5312,7 +5257,7 @@ createApp({
         this.skillResults=r.results; await this.loadAll();
         if(r.results.length && r.results.every(x=>x.ok)){ setTimeout(()=>{ this.newSkill=false; }, 1000); } }
       catch(e){ this.skillErr='Import failed: '+(e.detail||e.message||(e.status?('HTTP '+e.status):'request failed - try registering fewer skills at once')); } finally{ this.skillBusy=false; } },
-    logout(){ try{ if(window.Intercom) window.Intercom('shutdown'); }catch(e){}  // drop the Intercom cookie so the next user on this machine can't read these conversations
+    logout(){ window.TregTracking?.identify('',''); try{ if(window.Intercom) window.Intercom('shutdown'); }catch(e){}  // drop the Intercom cookie so the next user on this machine can't read these conversations
       if(this.sessionMode){ fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('treg-active');location.reload();}); } else { this.cfg={active:null,orgs:{}}; this.save(); location.reload(); } },
     dot(s){ return s==='unknown'||s==='-'?'○':'●'; },
     short(e){ return (e||'').split('@')[0]; },
@@ -5404,7 +5349,7 @@ createApp({
         session_recording:{maskAllInputs:true, maskTextSelector:'pre, .lc-codewrap, .agent-copy'}});
       this.analyticsIdentify();
     },
-    analyticsIdentify(){ if(!window.posthog || !window.posthog.identify || !this.me) return;
+    analyticsIdentify(){ if(!this.me)return; if(window.TregTracking){window.TregTracking.identify(this.me,this.activeSlugNow);return;} if(!window.posthog || !window.posthog.identify || !this.me) return;
       try{ window.posthog.identify(this.me, {email:this.me}); if(this.activeSlugNow) window.posthog.group('team', this.activeSlugNow); }catch(e){} },
     track(name, props){ try{ if(window.posthog && window.posthog.capture) window.posthog.capture(name, props||{}); }catch(e){} },
     // Support chat (Intercom) — only when this deployment opted in (meta.intercom_app_id present);
@@ -5455,6 +5400,7 @@ createApp({
       if(this.sessionMode){ this.activeSlug=o.slug; localStorage.setItem('treg-active',o.slug); this.loadAll(); this.intercomUpdate(); return; }
       if(!this.connected(o.slug)){ this.addOrg=true; return; }
       this.cfg.active=o.slug; this.save(); this.loadAll(); this.intercomUpdate(); },
+    welcomeTryProvider(service,group){this.track('tryit_oauth_clicked',{service,group,from:'onboarding'});this.welcome.on=false;this.openProvider(service);},
     copyStart(text, tag){ navigator.clipboard.writeText(text).then(()=>{ this.startCopied=tag; setTimeout(()=>{ if(this.startCopied===tag) this.startCopied=''; },1400); }).catch(()=>{}); },
     // ---- connections (registry OAuth) ----
     async loadConnections(){
@@ -5668,7 +5614,7 @@ createApp({
     // token, the team, permission to run things, and "do it now". `kind` is ignored (call sites keep
     // their argument) so there is a single text to keep true.
     buildAgentPrompt(kind, inclToken){  // ONE line — llms.txt carries the whole setup flow (auth included)
-      return `set up treg — ${this.proxy}/llms.txt`;
+      return TregAgentSetup.command(this.proxy);
     },
     async copyAgentPrompt(){ if(!(await this.toClipboard(this.agentPromptText))) return; this.agentGuideCopied=true; setTimeout(()=>this.agentGuideCopied=false,1500); },
     async copyVendorPrompt(){ if(!(await this.toClipboard(this.vendorPromptText))) return; this.vendorCopied=true; setTimeout(()=>this.vendorCopied=false,1500); },
@@ -5816,7 +5762,7 @@ createApp({
       const sym={CNY:'¥'}[c.currency];
       const num=n>=0.01 ? n.toFixed(2) : n.toFixed(6).replace(/0+$/,'').replace(/\.$/,'');
       return sym ? sym+num : num+' '+c.currency; },
-    costNative(c){ return this.nativeAmount(c); },
+    costNative(c){ return c && c.display_unit ? '' : this.nativeAmount(c); },
     // The card's starting price. `price_from` arrives as null OR as an empty object, and an empty
     // one must read as "no price on the row" — otherwise it short-circuits the OAuth-free branch
     // below and an OAuth-only platform silently loses its "free with your account".
@@ -5843,6 +5789,14 @@ createApp({
       return ['The cheapest published rate across this platform’s endpoints',
               p.native ? 'billed as '+p.native+' / '+this.priceUnit(pf.type)+', converted at the catalog’s FX rate' : '',
               pf.note].filter(Boolean).join(' — '); },
+    endpointAccessLabel(e){
+      if(e.kind==='routed') return 'Routed platform call';
+      const p=this.providers.find(p=>p.service===e.provider)
+        || (this.platData&&this.platData.providers||{})[e.provider] || {};
+      if(p.auth_kind==='oauth') return p.metered ? 'OAuth · metered' : 'OAuth connection';
+      if(p.auth_kind==='key') return e.platform_eligible ? 'Platform + BYOK' : 'BYOK only';
+      return e.platform_eligible ? 'Platform access' : 'Own connection required';
+    },
     catConnected(service){ return !!this.connCount[service]; },
     endpointAuthMethods(e){ return [...new Set([e&&e.authorization_method,
       ...((e&&e.authorization_methods)||[]), ...Object.keys((e&&e.authorization_paths)||{})].filter(Boolean))]; },
@@ -5906,7 +5860,7 @@ createApp({
         const free=this.capFree(e), n=free?0:this.costUsd(e.cost);
         if(n==null) continue;
         if(best===null || n<best.n)
-          best={n, label:(free||n===0)?'free':this.costLabel(e.cost), native:(free||n===0)?'':this.nativeAmount(e.cost)};
+          best={n, label:(free||n===0)?'free':this.costLabel(e.cost), native:(free||n===0||e.cost.display_unit)?'':this.nativeAmount(e.cost)};
       }
       return best; },
     // "See Zhihu, Toutiao, and 6 more" — two names so the row says what KIND of thing is hiding,
@@ -5935,16 +5889,16 @@ createApp({
       const by=new Map();
       for(const e of eps){
         const cur=by.get(e.provider), n=this.costUsd(e.cost);
-        if(!cur) by.set(e.provider, {name:e.provider_display||e.provider, cost:e.cost, n, verified:!!e.verified});
+        if(!cur) by.set(e.provider, {name:e.provider_display||e.provider, cost:e.cost, n, endpoint:e, verified:!!e.verified});
         else { cur.verified = cur.verified || !!e.verified;
-               if(n!=null && (cur.n==null || n<cur.n)){ cur.cost=e.cost; cur.n=n; } }
+               if(n!=null && (cur.n==null || n<cur.n)){ cur.cost=e.cost; cur.n=n; cur.endpoint=e; } }
       }
       // Cheapest first, then verified: only three of these are ever shown, so the three that
       // survive have to be the ones worth seeing. Unpriced providers sort to the tail — they are
       // exactly the ones whose pill would say nothing but a name.
       return [...by.values()]
         .sort((a,b)=>(a.n==null)-(b.n==null) || (a.n-b.n) || (b.verified-a.verified))
-        .map(p=>({name:p.name, verified:p.verified, price:this.pillPrice(p.cost)})); },
+        .map(p=>({name:p.name, verified:p.verified, price:p.endpoint.platform_eligible ? this.pillPrice(p.cost) : this.endpointAccessLabel(p.endpoint)})); },
     // A pill prices an endpoint only when there IS a price: a published number, or "free". A
     // credit-metered or dashboard-only rate has no number to show, and saying so at length is what
     // broke the row — the pill just drops it, and the sub-row below carries the full story.
@@ -6014,6 +5968,7 @@ createApp({
     // "free", "—". The provider's own figure follows as a muted suffix (see `costNative`).
     costLabel(c){
       if(!c || !c.type) return '—';
+      if(c.display_unit && typeof c.display_usd==='number') return '$'+this.usdNum(c.display_usd)+(c.display_suffix||'')+'/'+c.display_unit;
       if(c.type==='free') return 'free';
       // Known billing unit, unpublished number: say which, and where the number lives. A bare
       // "per success" reads as free, and "—" hides that we do know how it's metered.
@@ -6031,6 +5986,7 @@ createApp({
       if(typeof c.usd_min==='number' && c.usd_min<c.usd) return '$'+this.usdNum(c.usd_min)+'-$'+this.usdNum(c.usd)+'/'+unit;
       return '$'+this.usdNum(c.usd)+'/'+unit; },
     costTitle(c){ if(!c) return 'The catalog has no price for this endpoint';
+      if(c.display_unit) return this.costLabel(c)+(c.note ? ' — '+c.note : '');
       const nat=this.nativeAmount(c);
       return [c.note,
               nat ? 'billed as '+nat+'/'+this.priceUnit(c.type)+', converted at the catalog’s FX rate' : '',

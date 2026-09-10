@@ -147,6 +147,22 @@ def test_worker_cli_parses_the_sweep_command(monkeypatch):
         worker.main(["capacity"])
 
 
+@pytest.mark.parametrize('remaining,health', [(300, 'ok'), (0, 'exhausted'), (None, 'stale')])
+def test_quickenrich_capacity_uses_reported_allowance(remaining, health):
+    from treg.domain.capacity.sweep import snapshot_from
+    from treg.domain.capacity.policy import default_policy, latest_state
+    from treg.timeutil import utcnow_naive
+    now = utcnow_naive()
+    policy = default_policy('quickenrich', has_key=True)
+    assert policy.capacity_type == 'monthly_quota'
+    assert policy.funding_mode == 'quota_reset'
+    assert not policy.auto_funding_enabled
+    snap = snapshot_from('quickenrich', {'value': remaining, 'unit': 'credits'}, observed_at=now)
+    state = latest_state(policy, snap, now)
+    assert state.health == health
+    assert state.is_exhausted(now) == (remaining == 0)
+
+
 @pytest.mark.parametrize("balance,exhausted", [(0, True), (9.992, False)])
 def test_trykitt_paid_balance_uses_common_exhaustion_rule(balance, exhausted):
     state = latest_state(default_policy("trykitt", has_key=True), CapacitySnapshot(

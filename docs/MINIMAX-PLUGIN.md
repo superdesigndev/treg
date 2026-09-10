@@ -28,8 +28,8 @@ exposed at runtime as `treg:treg`.
 **Never edit `plugins/minimax/skills/treg/SKILL.md`.** Change `src/treg/web/skill.md` and regenerate:
 
 ```bash
-python3 scripts/build_plugin.py            # regenerate ALL plugins
-python3 scripts/build_plugin.py --check    # fail if any is stale (also a test)
+uv run python scripts/build_plugin.py            # regenerate ALL plugins
+uv run python scripts/build_plugin.py --check    # fail if any is stale (also a test)
 python3 scripts/minimax_plugin.py --check  # MiniMax package rules (also a test)
 ```
 

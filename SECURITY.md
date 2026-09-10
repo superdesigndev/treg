@@ -39,6 +39,32 @@ environment) and enforcement happens server-side and in the operating system.
   a speed bump, not a fix: a new domain costs the other side minutes, so treat the variable as
   something to edit during an incident, and suspend the accounts already created separately.
 
+## Archive object storage credentials
+
+R2 credentials are server environment settings (`TREG_ARCHIVE_OBJECT_STORE_ACCESS_KEY_ID` and
+`TREG_ARCHIVE_OBJECT_STORE_SECRET_ACCESS_KEY`), never catalog credentials or caller input. Use a token scoped
+to the private archive bucket with object read/write access; bucket administration is unnecessary.
+The configured endpoint must be an HTTPS Cloudflare R2 account endpoint. Object names are always
+SHA-256 hashes computed by treg; clients cannot supply an object path, bucket, host or URL.
+The obstore compiled wheel exists only in the server extra and is imported lazily by the
+server factory, initialized by bootstrap. Its shared Rust HTTP client uses configured connect and
+request timeouts and zero SDK retries; archive_bodies owns retry policy. SDK exceptions, signed
+requests, credentials and response bodies are not included in archive telemetry.
+
+obstore S3Store uses `checksum_algorithm=SHA256` and single-part PUT. R2 validates the transmitted
+SHA-256 checksum before PUT succeeds; only then can a DB pointer be committed. PUT performs no
+follow-up HEAD. HEAD makes one request for object size. No custom digest metadata is written or
+required. GET enforces the size limit and checks downloaded bytes against the object's SHA-256
+hash. The bucket is not public and no object URL is exposed: call-history authorization checks
+the team's CallRecord before resolving its archive reference. A hash is an identity, not an
+access credential. Upstream answers are retained under the existing archive policy; these guards
+do not sanitize an upstream provider that echoes a credential in its response.
+
+Object I/O never holds the calling task's database connection. Startup refuses incomplete R2
+configuration when archive mode is enabled and any storage switch selects R2. The manual smoke
+script accepts only `treg-archive-dev`, refuses CI, and skips absent credentials. It creates no
+cloud resources apart from one small test object. Production configuration belongs in the private ops project.
+
 ## Known limitations (by design, documented on purpose)
 
 Honesty is part of the model. Two items are deliberately deferred:

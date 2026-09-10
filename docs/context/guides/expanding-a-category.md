@@ -36,6 +36,11 @@ with an HTTP-200 `error` rejection, two single-host catalog jobs and an existing
 adapter. The bulk host uses a different auth parameter and is explicitly excluded in the surface
 map. See [catalog](../architecture/catalog.md) for the live credit evidence and pricing limits.
 
+QuickEnrich (2026-09-08) follows the key-provider path with Bearer auth and a free authenticated
+Contact Finder probe. All six data tools and five lookup utilities were live checked; monthly
+subscription capacity uses API balance data and is separate from platform list pricing.
+Tests extend the existing auth, capacity and marketplace files. See [catalog](../architecture/catalog.md).
+
 ## The two kinds of provider
 - **API-key** (`auth_kind="key"`) — the user pastes a key; self-serve; **the fast path** (research → implement
   → live-test in one session). This is the workhorse and where almost all growth happens.

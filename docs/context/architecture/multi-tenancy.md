@@ -41,6 +41,11 @@ pair, so every list/create/mutation and the proxy are scoped to the caller's org
 `docs/MULTI-TENANCY-PLAN.md` (standalone plan).
 
 ## The model (`models.py`)
+
+[Enrich Arena](../interface/enrich-arena.md) runs and evaluations require both the creating user
+and the active team to match. Regular team membership alone does not expose another member's results.
+Team deletion removes evaluations before their runs through `ORG_SCOPED_MODELS`.
+
 - **`Org`** — `id, name, slug (unique), suspended, demo, public_demo, created_at`. The tenant that owns
   secrets/tools/bundles. **`public_demo`** marks a team whose member token is PUBLISHED (e.g. on the
   landing page): non-admin members are locked to `/call` + reads and may never act as a user — enforced in
@@ -213,7 +218,7 @@ bearer path refuses it once expired rather than reviving an expired cookie.
   org exists. **`create_org` uses `require_identity`, NOT `require_member`** — else a zero-org user could
   never make their first team. See [api](../interface/api.md).
 - **Code-free invites:** `my_invites` (`GET /invites/mine`, `require_identity`) lists pending invites for
-  the caller's proven email; `accept_my_invite` (`POST /invites/{id}/accept`, `require_identity`) joins
+  the caller's proven email, newest creation time first with descending ID breaking timestamp ties; `accept_my_invite` (`POST /invites/{id}/accept`, `require_identity`) joins
   with no code (403 if `invite.email != user.email`, 409 if already a member). The code path stays.
 - **Org management endpoints:** `register_user` (`POST /users`, legacy open-registration, used by the
   test fixture) still creates the user + an org + owner membership via `_make_org_membership` (mints the
@@ -308,3 +313,11 @@ Two consequences worth stating plainly:
 - **Shared-provider async objects are org-scoped.** Platform-key poll and result-fetch utility calls
   must resolve their id through an org-owned `AsyncTaskRecord` or `AsyncResourceRecord` before the
   upstream is contacted. BYOK calls keep access to ids in the team's own provider account.
+
+## Signup analytics boundary
+
+`find_or_create_user` optionally collects the IDs it actually inserted after a successful flush;
+a concurrent insert loser returns the existing user without marking it new. Email OTP and
+GitHub/Google auth pass that collection to `track_signup` **after their commit**, emitting
+`signup_completed` only for new accounts. The optional entry-surface cookie is analytics metadata,
+allowlisted by `analytics.funnel_surface`; it never affects authentication or team access.

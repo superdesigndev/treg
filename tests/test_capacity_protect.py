@@ -270,3 +270,16 @@ async def test_a_failed_strike_never_fails_the_call(clients: AsyncClient, platfo
 def test_provider_capacity_is_a_treg_blamed_typed_failure():
     exc = CallFailure("provider_capacity", status_code=503, detail={"error": "x"})
     assert exc.blame == "treg" and exc.status_code == 503
+
+
+async def test_pdl_identify_quota_breaker_preserves_enrichment(clients, monkeypatch):
+    from types import SimpleNamespace
+    monkeypatch.setattr(capacity_marks, 'STRIKE_MIN_GAP', timedelta(0))
+    mk = SimpleNamespace(tier='platform', provider='pdl', endpoint_id='pdl.x.person-identify')
+    body = b'{"error":{"message":"You have hit your account maximum for person_identify (all matches used)"}}'
+    for _ in range(2):
+        assert await call_settle._note_capacity_signal(mk, 402, {}, body) == 'quota'
+    await capacity_view.load()
+    assert capacity_view.is_exhausted('pdl', 'pdl.x.person-identify')
+    assert not capacity_view.is_exhausted('pdl', 'pdl.people.enrich')
+    assert not capacity_view.is_exhausted('pdl', 'pdl.companies.enrich')

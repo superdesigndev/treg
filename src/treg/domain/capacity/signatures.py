@@ -37,6 +37,8 @@ _TABLE: list[tuple[str, int, str, str]] = [
     ("akta", 402, r"insufficient credits", "balance"),
     ("lusha", 400, r"reached your credit limit", "balance"),
     ("predictleads", 402, r"exceeded the monthly request limit", "quota"),
+    # PDL meters operations separately: person_identify can run out while enrich still works.
+    ("pdl", 402, r"hit your account maximum for", "quota"),
     ("lusha", 429, r"daily", "quota"),
     ("hunter", 429, r"per billing period", "quota"),
     ("apollo", 429, r"per (day|month)|daily|monthly", "quota"),
@@ -70,7 +72,7 @@ _TABLE: list[tuple[str, int, str, str]] = [
 # `test_every_recorded_phrase_arms_the_tripwire` keeps this list and the table in step.
 CAPACITY_PHRASES = (
     r"not enough credits", r"insufficient[ _]credits", r"nocreditsremaining", r"payment required",
-    r"reached your credit limit", r"exceeded the monthly request limit",
+    r"reached your credit limit", r"exceeded the monthly request limit", r"hit your account maximum for",
     r"insufficient (?:credits?|balance|funds)", r"out of credits?", r"credits? (?:exhausted|remaining|left)",
     r"(?:account |api |credit )?(?:balance|quota)(?: (?:has been|is|was))? (?:exceeded|reached|exhausted|limit)",
     r"upgrade your plan", r"insufficient-quota", r"not have enough quota",

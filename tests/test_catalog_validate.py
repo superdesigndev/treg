@@ -586,3 +586,20 @@ def test_contactout_person_routes_cannot_recapture_pii():
         assert not (path.parent / "examples" / (ep["id"] + ".json")).exists()
     work = next(ep for ep in endpoints if ep["id"] == "contactout.people.enrich.work_email")
     assert work["cost"]["value"] == 0.17
+
+
+@pytest.mark.parametrize('display,valid', [
+    ({'unit':'records','grouped':True,'round_up':True}, True),
+    ({'unit':'item','variable':True}, True),
+    ({'unit':'records','round_up':True}, False),
+    ({'unit':'item','variable':'yes'}, False),
+    ({'unit':''}, False),
+    ({'unit':'item','provider':'sumble'}, False),
+])
+def test_generic_price_display_metadata(display, valid):
+    cost = {'type':'per_result','value':1,'currency':'USD','per':25,'unit':'record',
+            'source':'docs','source_url':'https://example.com','checked':'2026-09-09',
+            'confidence':'documented','display':display}
+    errors = []
+    validator.check_cost(cost, 'test', errors, [])
+    assert (not errors) == valid

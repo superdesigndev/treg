@@ -308,6 +308,23 @@
     "methods": [
       "POST"
     ],
+    "name": "submit_review",
+    "path": "/reviews"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_reviews",
+    "path": "/admin/reviews"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
     "name": "publish_hub_tool",
     "path": "/hub/tools"
   },
@@ -768,6 +785,15 @@
     ],
     "name": "claude_connector_page",
     "path": "/connectors/claude"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "agent_setup_js",
+    "path": "/agent-setup.js"
   },
   {
     "kind": "APIRoute",
@@ -1983,6 +2009,15 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_kv",
+    "path": "/admin/kv"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "admin_set_superadmin",
@@ -2145,6 +2180,166 @@
     ],
     "name": "call_catalog_endpoint",
     "path": "/catalog/call/{rest:path}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "enrich_arena_page",
+    "path": "/enrich-arena"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "enrich_arena_page",
+    "path": "/enrich-arena/leaderboard"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "enrich_arena_page",
+    "path": "/enrich-arena/people-search-bench"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "enrich_arena_asset",
+    "path": "/enrich-arena/{asset}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "arena_tasks",
+    "path": "/arena/tasks"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "arena_insights_data",
+    "path": "/arena/insights"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_plan",
+    "path": "/arena/plans"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_start",
+    "path": "/arena/runs/{run_id}/start"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "arena_history",
+    "path": "/arena/runs"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "arena_run",
+    "path": "/arena/runs/{run_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_cancel",
+    "path": "/arena/runs/{run_id}/cancel"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_evaluate",
+    "path": "/arena/runs/{run_id}/evaluations"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_reveal",
+    "path": "/arena/runs/{run_id}/reveal"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_rate",
+    "path": "/arena/runs/{run_id}/attempts/{attempt_id}/rating"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_report",
+    "path": "/arena/runs/{run_id}/attempts/{attempt_id}/report"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_manual_plan",
+    "path": "/arena/runs/{run_id}/attempts/{attempt_id}/plan"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_manual_start",
+    "path": "/arena/runs/{run_id}/attempts/{attempt_id}/start"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_verification_plan",
+    "path": "/arena/runs/{run_id}/attempts/{attempt_id}/verification/plan"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "arena_verification_start",
+    "path": "/arena/runs/{run_id}/attempts/{attempt_id}/verification/start"
   },
   {
     "kind": "APIRoute",

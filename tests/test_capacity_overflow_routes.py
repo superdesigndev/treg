@@ -251,8 +251,11 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 _UNRECORDED_SIGNATURE = {
     "apify", "aviato", "branddev", "brightdata", "coingecko", "coresignal", "crustdata", "dataforseo",
     "diffbot", "exa", "fiber-ai", "finnhub", "icypeas", "justoneapi", "marketstack",
+    "sumble",  # exhaustion not forced; no overflow route claimed
+    "quickenrich",  # subscription exhaustion not observed; do not spend the trial to force it
     "millionverifier",  # funded-account exhaustion not observed; trial still has credits
-    "minimax", "oceanio", "openrouter", "pdl", "replicate", "scrapecreators", "seranking",
+    "minimax", "oceanio", "openrouter", "replicate", "scrapecreators", "seranking",
+
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "tomba", "twelvedata",
 }
 
@@ -522,3 +525,14 @@ def test_trykitt_throttle_is_not_exhaustion():
     assert S.classify('trykitt',402,body='insufficient funds').kind=='balance'
 
     assert S.classify("trykitt", 418, headers={"retry-after": "5"}, body="temporarily throttled").retry_after_s == 5
+
+
+
+def test_pdl_operation_allowance_does_not_lock_other_pdl_products():
+    from treg.domain.capacity.marks import lock_key
+    body = b'{"status":402,"error":{"message":"You have hit your account maximum for person_identify (all matches used)"}}'
+    signal = S.classify('pdl', 402, None, body)
+    assert signal.kind == 'quota'
+    assert lock_key('pdl', 'pdl.x.person-identify', signal.kind) == 'pdl.x.person-identify'
+    assert S.classify('pdl', 402, None, b'{"error":"Insufficient credits"}').kind == 'balance'
+    assert S.classify('pdl', 400, None, b'{"error":"email is required"}') is None

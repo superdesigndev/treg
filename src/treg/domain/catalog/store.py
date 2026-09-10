@@ -149,6 +149,16 @@ class Catalog:
         usd = (round(value * rate / per, 9)
                if isinstance(value, (int, float)) and rate is not None and per > 0 else None)
         out = {**cost, "usd": usd}
+        # Optional presentation metadata describes the charge unit without changing billing.
+        display = cost.get("display") or {}
+        if usd is not None and display:
+            grouped = display.get("grouped", False)
+            out["display_usd"] = round(usd * per, 9) if grouped else usd
+            unit = display["unit"]
+            out["display_unit"] = f"{per:g} {unit}" if grouped else unit
+            if display.get("round_up"):
+                out["display_unit"] = "started " + out["display_unit"]
+            out["display_suffix"] = "+" if display.get("variable") else ""
         # A table prices out as a RANGE: `usd` stays the validated ceiling (what reserve and
         # eligibility read), `usd_min` is the cheapest row so a display never shows only the
         # worst case as "the price" (an H3 video is $0.25 typical against a $1.96 ceiling).
@@ -1247,3 +1257,13 @@ def tool_examples(service: str) -> list[dict]:
             note = f"{note} [capability: {ep['capability']}]"
         out.append({"method": ep["method"], "path": ep["path"], "note": note})
     return out
+
+
+def headline_counts(cat: Catalog) -> tuple[str, int]:
+    """The two numbers every agent-facing surface quotes, taken from the loaded catalog instead of
+    typed by hand: direct (non-routed) endpoints rounded DOWN to the hundred with a trailing "+",
+    and the providers behind them. Six hand-written copies once disagreed with each other and the
+    smallest undersold the catalog by six hundred endpoints; generated, the number cannot drift."""
+    direct = [e for e in cat.by_id.values() if e.get("kind") != "routed"]
+    providers = {e.get("provider") for e in direct if e.get("provider")}
+    return f"{len(direct) // 100 * 100:,}+", len(providers)

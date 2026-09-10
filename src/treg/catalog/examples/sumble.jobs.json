@@ -1,0 +1,27 @@
+{
+  "id": "example-request-id",
+  "credits_used": 6,
+  "credits_remaining": 9000,
+  "jobs": [
+    {
+      "job_id": 108173220,
+      "sumble_url": "https://sumble.com/l/job/TRx0cMq7DcfK",
+      "attributes": {
+        "title": "Processing cost Analyst",
+        "location": "India",
+        "posted_date": "2026-09-07T20:13:24.854357Z"
+      }
+    },
+    {
+      "job_id": 108173222,
+      "sumble_url": "https://sumble.com/l/job/tLO2yHaeRFNd",
+      "attributes": {
+        "title": "sales manager, smb",
+        "location": "Dublin, Leinster, Ireland",
+        "posted_date": "2026-09-07T20:13:24.854357Z"
+      }
+    }
+  ],
+  "total": 15509,
+  "source_data_url": "https://sumble.com/l/org/niZxDzclVbH4I/jobs"
+}

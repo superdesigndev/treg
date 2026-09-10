@@ -204,6 +204,9 @@ endpoints:
     path: /enrichment/emails
     name: "Start a bulk work-email job"
     summary: "Request email finding."
+    resource_ownership:
+      produces:
+        - {kind: enrichment_job, path: jobID}
     input:
       headers:
         Idempotency-Key: {type: string, required: false, note: "a retried request with the same key returns the original job instead of charging again", example: "treg-emails-2026-08-20-1"}
@@ -240,6 +243,9 @@ endpoints:
     path: /enrichment/phones
     name: "Start a bulk phone-number job"
     summary: "Request phone number finding."
+    resource_ownership:
+      produces:
+        - {kind: enrichment_job, path: jobID}
     input:
       headers:
         Idempotency-Key: {type: string, required: false, note: "retry-safe; the original job is returned without re-charging", example: "treg-phones-2026-08-20-1"}
@@ -276,6 +282,9 @@ endpoints:
     path: /enrichment/linkedin
     name: "Start a bulk job — name + company to LinkedIn URL"
     summary: "Request linkedin profile finding."
+    resource_ownership:
+      produces:
+        - {kind: enrichment_job, path: jobID}
     input:
       headers:
         Idempotency-Key: {type: string, required: false, note: "retry-safe", example: "treg-li-2026-08-20-1"}
@@ -308,11 +317,13 @@ endpoints:
     domain: contacts
     capability: people.enrich.job.status
     platform: people
-    scope: own_account
+    scope: any_account
     method: GET
     path: /enrichment/jobs/{jobID}
     name: "Check a bulk enrichment job"
     summary: "Fetch enrichment job status"
+    resource_ownership:
+      requires: {kind: enrichment_job, param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, note: "the jobID returned by any /enrichment/{emails,phones,linkedin} start", example: "4cf14582-3878-4438-9797-e0b7919256bb"}
@@ -337,11 +348,13 @@ endpoints:
     domain: contacts
     capability: people.enrich.job.results
     platform: people
-    scope: own_account
+    scope: any_account
     method: GET
     path: /enrichment/jobs/{jobID}/results
     name: "Fetch bulk enrichment results"
     summary: "Fetch enrichment job results"
+    resource_ownership:
+      requires: {kind: enrichment_job, param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, example: "4cf14582-3878-4438-9797-e0b7919256bb"}
@@ -483,6 +496,9 @@ endpoints:
     path: /company-followers/search
     name: "List a LinkedIn company page's followers (async job)"
     summary: "Starts an async company followers search for a LinkedIn company page"
+    resource_ownership:
+      produces:
+        - {kind: followers_job, path: jobID}
     input:
       headers:
         Idempotency-Key: {type: string, required: false, note: "if a job with this key already exists for the account, the existing job is returned as-is", example: "treg-followers-2026-08-20-1"}
@@ -518,11 +534,13 @@ endpoints:
     domain: contacts
     capability: linkedin.company.followers.job.status
     platform: linkedin
-    scope: own_account
+    scope: any_account
     method: GET
     path: /company-followers/jobs/{jobID}
     name: "Check a company-followers job"
     summary: "Fetch company followers job status."
+    resource_ownership:
+      requires: {kind: followers_job, param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, example: "33204458-df12-4d45-8e32-3a92dc6359be"}
@@ -546,11 +564,13 @@ endpoints:
     domain: contacts
     capability: linkedin.company.followers.job.results
     platform: linkedin
-    scope: own_account
+    scope: any_account
     method: GET
     path: /company-followers/jobs/{jobID}/results
     name: "Fetch company-followers results"
     summary: "Fetch company followers job results with pagination."
+    resource_ownership:
+      requires: {kind: followers_job, param: jobID}
     input:
       pathParams:
         jobID: {type: string, required: true, example: "33204458-df12-4d45-8e32-3a92dc6359be"}

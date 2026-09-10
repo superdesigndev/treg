@@ -1,8 +1,18 @@
 ---
-title: Archive - every platform answer, kept and versioned (cache = the newest layer)
+title: Archive - versioned history and cache admission
 status: building
 sources:
   - src/treg/archive.py
+  - src/treg/domain/catalog/results.py
+  - src/treg/alembic/versions/0031_archive_result_admission.py
+  - tests/test_cache_result_admission.py
+  - src/treg/archive_bodies.py
+  - src/treg/config.py
+  - src/treg/infra/object_store.py
+  - src/treg/alembic/versions/0032_archive_body_storage.py
+  - tests/test_archive_r2.py
+  - tests/fake_object_store.py
+  - scripts/smoke_archive_r2.py
   - src/treg/alembic/versions/0002_archive_tables.py
   - src/treg/alembic/versions/0003_callrecord_cached.py
   - src/treg/alembic/versions/0004_archivekey_request_shape.py
@@ -35,8 +45,8 @@ the deliberate exception: only the winning caller/worker finalizer stores it und
 call id, independent of replay policy; generated media bytes are never downloaded.
 
 Two concepts, one word each — the vocabulary is deliberate and mirrors the charter's discipline:
-**cache** is the newest stored answer for a key, served instead of a vendor call while it is
-fresh; **archive** is every version of every answer, kept with its timestamp. The cache is the
+**cache** is the last confirmed useful answer for a key, served instead of a vendor call while
+it is fresh and no later decisive observation invalidates it; **archive** is every version of every answer, kept with its timestamp. The cache is the
 archive's top layer. History is kept on purpose: it is the future data product (per-key
 time-series — backlink profiles over time, price history), not waste.
 
@@ -46,6 +56,111 @@ What does NOT exist: any billing difference for a cached hit (deferred founder d
 phase-3 aggregator surfaces (history endpoints) — do not document either as existing. What DOES
 exist since 2026-09-03 is the per-call read below: a team can see the answer ITS OWN call got.
 
+## Body storage and R2 double writing
+
+`archive_bodies` owns body preparation, object reads, the independent upload queue and completed
+storage observations. `archive.py` retains request keys, snapshots, transactions, TTL learning
+and pruning. `infra.object_store.ObjectStore` exposes only put/get/head; `open_r2` imports
+obstore lazily and bootstrap owns its lifecycle. Tests inject `MemoryObjectStore` through
+`bootstrap.configure_archive_object_store` or `create_app(archive_object_store=...)`.
+
+Every object name is the raw body's SHA-256, with no prefix. The caller supplies its already-computed content hash to PUT, which validates the hash-shaped name and
+uses `checksum_algorithm=SHA256` so R2 verifies the upload checksum. A successful single PUT
+returns its hash and byte size, with no follow-up HEAD. HEAD makes one request for size. No custom
+sha256 attribute is stored or checked; GET enforces size limits and verifies the downloaded hash.
+Same-body concurrent uploads are harmless. R2 stores raw bytes, independent of the media type of any particular call.
+DB compression remains unchanged. GET verifies the full hash before returning data.
+
+Migration `0032` adds nullable `ArchiveSnapshot.body_storage`: `db`, `both`, or `r2`; NULL is
+interpreted as the legacy DB path and does not promise that bytes were retained. The existing
+`content_hash` names the R2 object. R2-only snapshots have no `body_of`; DB and double-write
+snapshots keep existing carrier dedup. No historical rows, body columns or objects are migrated
+or deleted by this change.
+
+All switches are settings, with environment prefix `TREG_`:
+
+| Setting | Values | Default |
+|---|---|---|
+| `ARCHIVE_BODY_WRITE` | `db`, `both`, `r2` | `db` |
+| `ARCHIVE_BODY_READ_LOOKUP` | `db`, `r2-first` | `db` |
+| `ARCHIVE_BODY_READ_RESULT` | `db`, `r2-first` | `db` |
+| `ARCHIVE_BODY_READ_TERMINAL` | `db`, `r2-first` | `db` |
+
+`both` first uploads, then enters the existing per-key lock / DB semaphore and transaction to
+store the DB body and publish the R2 location. No PUT occurs under a row lock or with a checked-out
+DB connection. On upload failure, `both` retains the DB copy with location `db`; `r2` publishes
+a hash-only snapshot with no body location. A successful upload followed by a failed DB transaction can leave an unreferenced
+content-addressed object; no pointer names a failed upload. Existing policy and size gates apply
+before uploading. Hash-only history stays in DB when bytes are ineligible.
+
+R2 has independent `ARCHIVE_R2_UPLOAD_CONCURRENCY` (8), `ARCHIVE_R2_MAX_PENDING` (256), and
+`ARCHIVE_R2_MAX_PENDING_BYTES` (128 MiB) budgets. Only PUT holds an
+upload slot. The DB stage keeps its original two slots and 30-second deadline. Upload admission
+failure falls back to the separately bounded DB queue: `both` retains DB bytes, while `r2`
+retains only hash/history/statistics if DB admission succeeds.
+`ARCHIVE_R2_TIMEOUT_S` (10 seconds) bounds PUT only; upload-slot waiting is measured separately as `queue_wait_ms`.
+`ARCHIVE_R2_READ_TIMEOUT_S` (2 seconds, configurable) separately bounds each lookup/result/terminal
+GET including materializing bytes. The shared SDK transport uses the larger timeout so it cannot
+prematurely cut off either operation; application deadlines enforce the separate budgets.
+Terminal evidence bypasses best-effort queue admission and synchronously retries uploads up to
+`ARCHIVE_R2_TERMINAL_ATTEMPTS` (3), with bounded backoff, before the DB write. Terminal evidence has an 8-second total upload budget (including queue
+wait and retries), at most 20 seconds for DB, and a 28-second total deadline. Upload exhaustion
+falls back to DB even for terminal evidence in R2-only mode. A cancelled waiter drains that
+bounded evidence operation before propagating cancellation; failures and deadlines log explicitly. Its settlement has
+already committed and cannot be undone by storage failure. Terminal failures also log a bounded
+error because a worker completion has no pending caller event to annotate.
+
+Readers use `archive_bodies.pointer` to collect R2 metadata inside
+a session (`defer(ArchiveSnapshot.body)` for R2-first), then close it before `archive_bodies.read`. When DB bytes are needed, including after an R2 failure, a new short DB
+session for fallback bytes. Terminal batches use at most eight simultaneous reads. This applies to lookup, call-result reads,
+and terminal-result reads, including the Activity routes' outer auth/query sessions. `r2-first`
+only tries R2 for a published `both`/`r2` location; missing objects, timeouts, errors and checksum
+mismatches fall back to DB. Lookup selects `result_snapshot_id` under the existing result-state
+and observed-version guards, then classifies the resolved body after closing the session. Unknown
+results retain the decisive snapshot; empty results invalidate serving without deleting history.
+Pruning protects the decisive snapshot and DB carriers of surviving versions. Eligible `both`
+rows lose DB bytes and become `r2`; their objects remain untouched. `db` does not contact R2, including for R2-only rows. The admin body
+viewer remains a DB-only diagnostic in this first delivery. Read switches should be enabled
+before any future R2-only write rollout. No serving allowlist, cohort or production setting is
+changed here.
+
+Read diagnostics are in place before enabling any `r2-first` switch. Lookup adds
+`cache_body_source` (`db`, `r2`, or `none` when no bytes are available),
+`cache_body_fallback_reason` (`none` without fallback), and `cache_r2_read_ms` to the existing
+`cache_diagnostics` / `tool_called`. No extra call event or per-call DB write is added.
+All paths log bounded reasons without exception text, keys, bodies or credentials:
+`not_found` and `timeout` are WARNING; `permission_denied` (including signature failures) and
+`hash_mismatch` are ERROR. Oversized objects are also ERROR (`too_large`); other transport errors
+and an unavailable client are WARNING (`store_error`, `store_unavailable`). Result and terminal
+reads use these logs because they have no `tool_called`. Existing per-path process counters remain;
+additional bounded per-path/reason counters distinguish the failure classes.
+
+DB fallback requires a snapshot that still has DB bytes or a DB carrier, normally written during
+`db` or `both`. New `r2`-only writes have no DB copy: an R2 read failure becomes a cache miss and
+calls upstream for lookup; history returns `stored=false` with no response body, and terminal
+views have no archived terminal body. An old `both` snapshot can still fall back after the global
+write switch changes. A failed read does not mean the object was never archived or has been deleted.
+Read timeout and fallback observability must precede `r2-first`, so the entire double-write window
+has visible fallback rates. Observing those rates is a prerequisite for closing the double-write
+window and switching new writes to `r2`.
+
+`tool_called` is emitted at call completion and includes `archive_body_write`; archive queue
+latency cannot delay it. The separate `archive_body_stored` completion event carries `call_ref`,
+`storage`, `upload_status`, `upload_ms`, `queue_wait_ms`, `dropped` and `drop_reason`. Join by
+`call_ref`. A failed R2 upload followed by a committed DB copy is not dropped. R2-only upload
+failure still records a hash-only snapshot and statistics. These remain best-effort background
+writes: a killed process can lose completion events, but cannot withhold the calling event.
+Stats count snapshots with recoverable bodies in DB or R2, including deduplicated versions;
+`kept_bytes` is logical retained response bytes, not PostgreSQL physical table size.
+
+When archive mode is enabled, any R2 switch requires `ARCHIVE_OBJECT_STORE_ENDPOINT`, `ARCHIVE_OBJECT_STORE_BUCKET`,
+`ARCHIVE_OBJECT_STORE_ACCESS_KEY_ID` and `ARCHIVE_OBJECT_STORE_SECRET_ACCESS_KEY`; bootstrap refuses incomplete config
+before opening DB connections. See SECURITY.md. `scripts/smoke_archive_r2.py`
+performs a real PUT/HEAD/GET only on `treg-archive-dev`, outside CI; it leaves
+one tiny test object. It reads environment variables only and prints SKIP with missing variable
+names when configuration/credentials are absent. `.env.example` contains blank placeholders. No real smoke runs as part of unit tests. Production values are managed
+separately in treg-internal.
+
 ## The call→archive link (2026-09-03)
 
 `record()` returns `(key_hash, content_hash)` — computed synchronously and handed to `_store`
@@ -53,7 +168,7 @@ so the hash is taken once — and `lookup()` adds `key_hash`, `content_hash` and
 dict. The call service (`application/call/service.py`) keeps them in `archive_key_hash` /
 `archive_content_hash` and the `_audit` closure writes them onto the `CallRecord` (migration
 0011: two nullable columns, no index — the read starts from the org-scoped row by id and both
-targets are already indexed). `archive.resolve_result(session, key_hash, content_hash)` walks
+targets are already indexed). `archive.resolve_result(key_hash, content_hash)` walks
 row → key → newest snapshot with that content hash → `body_of` carrier, and returns the request
 shape (`req_*`, pre-injection) plus the answer; a hash-only version reports `stored: false`.
 `GET /calls/{id}/result` (api.py) exposes it to members of the row's org, with a `note` on every
@@ -66,26 +181,71 @@ and body the audit row never kept); `scripts/backfill_call_archive_links.py` lin
 effort — same endpoint, same byte size, fetch within ±10 s, unambiguous in both directions —
 dry run by default, `--apply` to write, `--render` for the prod allowlist dance.
 
+## Result admission
+
+`domain.catalog.results.classify` inspects the already-buffered provider bytes without rewriting
+any response. `has_result_rules` enables result-aware behavior only for endpoints with a
+verified adapter and a nonempty hit/miss expression. Those endpoints reuse `Adapter.is_miss`.
+Three endpoints additionally validate result fields: `hunter.companies.emails`,
+`leadmagic.x.employee-finder`, and `seranking.google.keywords.volume`. Results are `found`,
+`empty`, `error`, or `unknown`, with bounded reason codes. Hunter needs actual email values;
+LeadMagic needs person identity fields, not an email address; SE Ranking needs boolean
+`is_data_found` and a valid nonnegative volume for found rows. Zero volume is useful data. A
+mixed SE Ranking batch is useful if at least one row has data and every row has a valid shape.
+Explicit empty arrays/no-data flags are empty. HTTP errors and explicit provider error envelopes
+are errors; invalid JSON, predicate failures and unsupported shapes are unknown. Generic adapter
+rules retain their existing semantics, including their limitations on missing fields; verification
+against a fixture does not imply full response-schema validation.
+
+Endpoints without enabled hit/miss rules retain their original latest-snapshot serving, TTL
+learning, and refresh behavior. Their unknown business-result metric does not reject caching.
+The mode, serving allowlist, cohort and retention gates remain authoritative for every endpoint.
+This policy does not enable cache serving for additional endpoints.
+
+`ArchiveKey.result_state` and `result_snapshot_id` track the last decisive found/empty observation,
+separately from the latest historical snapshot. `result_observed_version` identifies the newest
+version assessed by this code. Migration `0031` adds nullable columns without rewriting history
+or resetting TTL/counters. Legacy keys are classified lazily from their newest body; a version
+appended by an older binary during rollout similarly invalidates the saved decision. Lookup
+rechecks the candidate's body against current rules and never searches behind an explicit empty.
+The pointer is owned by the archive writer and key ownership is checked on reads; snapshots are
+never deleted, so no cyclic foreign key is introduced.
+
+For endpoints with enabled hit/miss rules, only found-to-found observations can count stable.
+Strict mode compares exact raw-byte hashes.
+Found-to-empty counts one change and invalidates serving; repeated empty results neither grow
+nor shrink TTL. Empty-to-found counts a change and restores eligibility. Errors and unknowns add
+history under the existing capture policy but do not replace decisive evidence or update learning.
+A retained positive result still expires at its own timestamp, not the timestamp of a later error.
+Cache hits remain reads, never fresh learning evidence. Existing stable/change rollups receive
+only these eligible deltas; historical counters remain mixed-policy lifetime totals.
+
+Byte retention and exact-byte dedup remain independent of usefulness. Empty 2xx answers still
+link to the caller's history. Non-2xx capture scope is unchanged. Async terminal evidence remains
+mandatory history and is never learning evidence. Recording and invalidation still use the
+existing bounded, best-effort background writer, so they take effect after that transaction
+commits; this is not a synchronous invalidation guarantee.
+
 ## The learner (PR 5)
 
-Runs inside the recorder on every refetch of a known key. AIMD on `ttl_s`: stable ⇒ ×1.5, capped
+Runs inside the recorder on decisive refetches of a known key, subject to result admission above. AIMD on `ttl_s`: stable ⇒ ×1.5, capped
 by min(30 d, the judged `cache.max_age_s`); changed ⇒ ×0.5, floored at 60 s. A key whose first
 `_NEVER_AFTER` (4) refetches ALL changed marks itself `ttl_s = TTL_NEVER (-1)` — never served
 until a stable refetch resets it. The lookup prefers the learned timer (`ttl_s > 0`) over the
 fixed phase-1 guesses.
 
-**Noise vs change.** When a refetch differs, the diff's leaf paths (lists collapse to `[]`,
-bounded depth 6 / 400 paths) are compared to the previous diff-set (`volatile_paths`, kept per
-key). The SAME set repeating counts as noise ⇒ stable, under two guards: it must be a minor
-share (< 40%) of a body with ≥ 5 leaves — a tiny body whose one value moves every fetch is a
-price and stays "changed". First occurrence always counts as changed. Stored bytes are never
-touched; stripping exists only in comparison.
+**Strict comparison.** Result admission still selects the decisive baseline and controls which
+transitions train TTL. Among found-to-found observations, identical raw hashes count stable and
+differing hashes count changed. The legacy field-noise heuristic is removed; hash comparison
+never fetches an old R2 body.
 
 ## The refresh worker (PR 5)
 
 `archive.refresh_worker` runs in-process from lifespan (adsconv's discipline), gated by
 `worker_enabled()` = serve mode AND `archive_refresh_daily_cap > 0`; interval
-`archive_refresh_interval_s` (300 s). A key EARNS refreshing: window ≥ 80% consumed AND
+`archive_refresh_interval_s` (300 s). For endpoints with enabled hit/miss rules, only keys with a confirmed `found` decision can earn
+refreshing; unclassified/empty/unknown keys wait for caller observations. Other endpoints keep
+the original refresh eligibility. A key EARNS refreshing: window ≥ 80% consumed AND
 `last_requested_at > fetched_at` (a caller asked since the last fetch — a refresh itself never
 counts as demand). Brakes: per-provider daily call cap (counted from `origin="refresh"`
 snapshots — no bookkeeping table to drift) and 10 per pass. The call replays the stored
@@ -149,7 +309,8 @@ later for the timers; it complements `/admin/reconcile/repeats`, which prices wh
 
 Hooked in `call_tool` immediately after `_buffer_response` — the one line where "metered platform
 call, body already in memory" is a fact, which IS eligibility gate 3. Metered 2xx only; the
-`X-Treg-Cache`-style serve headers do not exist yet. `archive.record()` is fire-and-forget with
+serve path already emits `X-Treg-Cache: hit`. The call context also carries `cached` from
+`served_hit`, so review invitations can exclude archive hits independently of response headers. `archive.record()` is fire-and-forget with
 audit's discipline: bounded pending set (512), failures swallowed but logged at **ERROR** (a lost
 recording has to clear `FaultCaptureHandler`'s threshold to be reportable at all; degradations that
 cost nothing, like a lookup falling back to a live call, stay at WARNING), `drain()` on
@@ -184,12 +345,9 @@ enable. Rollback in production is a dashboard env edit, no deploy.
 
 ## Conservative comparison and controlled serving (2026-09-08)
 
-`TREG_ARCHIVE_COMPARISON_MODE` defaults to `strict`: only identical raw-byte SHA-256 hashes
-count as stable. Every differing response counts as changed, including whitespace, JSON field
-order and timestamps. `legacy_noise` explicitly restores `_noise_only`; unknown values select
-strict. The legacy heuristic can misclassify recurring business-field changes as noise and is
-not recommended for serving. Strict mode does not load or decompress the previous carrier to
-compare differing hashes. Stored bodies and exact-byte dedup are unchanged.
+The comparison setting and helper are removed. Old `TREG_ARCHIVE_COMPARISON_MODE` environment
+values are ignored, including `legacy_noise`; events and admin props report `strict`. Only exact
+found-to-found hashes count stable.
 
 TTL learning and lookup retain the original behavior: stable observations grow the timer by
 1.5, changed observations halve it, and TTL_NEVER remains respected. The fixed capability timer
@@ -220,7 +378,14 @@ The existing `tool_called` PostHog event carries `cache_outcome`, `cache_mode`,
 `cache_lookup_ms`. Snapshot lookups additionally expose `cache_age_s` and `cache_window_s`.
 Outcomes distinguish hit, key_missing, stale, snapshot_unavailable, body_missing, ttl_disabled,
 policy_excluded, caller_bypass, endpoint_disabled, rollout_disabled, missing_cohort, control,
-lookup_error and not_attempted (or mode_disabled for direct disabled lookups).
+lookup_error, result_empty, result_error, result_unknown and not_attempted (or mode_disabled for
+direct disabled lookups). Buffered call telemetry also includes `result_state`, `result_reason`,
+`cache_result_policy` (`hit_miss` or `legacy`), and `cache_admission` (`eligible`, `empty`,
+`error`, `unknown`, or `not_applicable` for legacy). Admission describes the result gate, not
+persistence success or permission to serve. Business `hit` is true/false/null using the same
+classifier; endpoints without enabled rules remain null.
+`cached` and `cache_outcome=hit` describe cache reuse, a different fact. A rejected stored body
+appears in `cache_outcome`; the final live answer appears in `result_state`.
 No request key, body, ignored field paths or headers are added to analytics. The existing
 bounded, lossy analytics sink is reused; no new per-hit DB row or extra network request is added.
 `cache_lookup_ms` includes gate/DB/decompression time, not just SQL; `duration_ms` on the parent
@@ -258,8 +423,7 @@ and credentials could not anyway: injection happens after the key is taken.
 `ArchiveKey` — one logical question: `key_hash` (unique), `endpoint_id`, `provider`, effective
 `policy`, AIMD timer state (`ttl_s`, grow ×1.5 capped on stable refetch / shrink ×0.5 floored on
 change — the learner lands in PR 5), change statistics (`change_seen`/`stable_seen`/
-`last_changed_at`), legacy `volatile_paths` (consulted only in explicit `legacy_noise` comparison mode,
-never removed from stored bytes), and demand (`heat`, `last_requested_at`). Platform-scoped, no `org_id`:
+`last_changed_at`), legacy `volatile_paths` (retained for schema compatibility, no longer read or updated), and demand (`heat`, `last_requested_at`). Platform-scoped, no `org_id`:
 one team's fetch may warm another team's hit, and own-key traffic never enters.
 
 `ArchiveSnapshot` — one version: unique `(key_id, version)`, verbatim `body` bytes, `content_hash`
@@ -272,8 +436,7 @@ fetched: `caller` | `refresh` | `sample`.
 
 Money. A cached hit will only TAG existing records "cached" — billing of a cached hit is an
 explicitly deferred founder decision, and no archive code imports ledger/billing. Relay
-faithfulness also extends through time: served bytes are exactly what the vendor sent; noisy-field
-stripping exists only on comparison copies inside change detection.
+faithfulness also extends through time: served bytes are exactly what the vendor sent.
 
 ## Tests
 
@@ -313,7 +476,7 @@ rollup rides the recording's own commit, so the two cannot drift.
 Stored bodies compress with zlib level 6 when it shrinks them (`enc` column: NULL = raw, "zlib");
 bodies under 256 bytes stay raw. Measured on 40 real prod bodies: 5.2x, 68 MB/s in, ~1 GB/s out —
 the recorder writes under 1 MB/s, so the cost is invisible and ~6.5 GB/day becomes ~1.25 GB/day.
-Every reader unpacks (serve lookup, the dedup-carrier follow, the noise/change compare, the
+Every DB body reader unpacks (serve lookup, the dedup-carrier follow, the
 call-result reader, the panel's body viewer), so the caller always receives the exact original
 bytes; `size_bytes` and `content_hash` describe RAW bytes always, keeping dedup and statistics
 semantics unmoved. Rows from before migration 0014 stay raw and readable forever. The founder's
@@ -325,14 +488,16 @@ rebuilding JSON from stored values risks the byte-verbatim promise the hashes de
 Profit-shaped shelf clearing: a served hit is revenue with no vendor cost, so a body's right to
 disk is its earning potential. `prune_once` strips BYTES only — every version row keeps its hash,
 size and timestamp, the newest version of every key stays whole (serving and change-detection
-need it), and the strip set is decided before carrier protection so a surviving dedup reference
+need it), the decisive snapshot and its carrier remain protected even after later errors, and the strip set is decided before carrier protection so a surviving dedup reference
 never loses its carrier. Rank of removal: never-servable keys (TTL_NEVER) keep exactly one body,
 age no defense; then old (`archive_prune_min_age_days`, 7) versions beyond the newest
 `archive_prune_keep_versions` (2) on keys undemanded for 14 days. Archive-policy endpoints are
 exempt — their history is the future data product. Runs from the lifespan beside the refresh
 worker whenever the archive records, `archive_prune_batch` (500) bodies per pass per
 `archive_prune_interval_s` (3600); batch 0 disables. Rollup counters (bodies_kept, kept_bytes)
-move atomically with each strip.
+decrease atomically only when stripping the last retained copy. Stripped `both` rows become
+`r2`, so their logical retained counts do not change. DB carriers of surviving versions stay
+protected. No R2 delete or prune operation exists.
 
 ## Recorder throttle (2026-09-03, memory-bounded 2026-09-07)
 
@@ -349,9 +514,11 @@ burst test proves all 12 concurrent recordings land while peak DB concurrency st
 **Memory bound (2026-09-07 OOM fix).** Each pending task holds its `body` bytes in a closure — up to
 `_MAX_PENDING` (512) tasks × `archive_max_body_bytes` (2 MB) = 1 GB worst case. After #363 reduced
 concurrent writes from 4 to 2, backlog built faster under heavy traffic and the 2026-09-07T00:43:06Z
-OOM killed production at 4 GB. `_MAX_PENDING_BYTES` (256 MB) now caps total body bytes held by
+OOM killed production at 4 GB. `_MAX_PENDING_BYTES` (256 MiB) caps body bytes in DB
 pending work: `record()` sheds when EITHER the task count OR the bytes threshold is exceeded. The
-done callback releases bytes when a task completes, keeping the budget accurate.
+done callback releases bytes when a task completes, keeping the budget accurate. The independent
+R2 queue adds 128 MiB by default, for a combined 384 MiB body budget before SDK, compression
+and terminal-evidence overhead.
 
 The semaphore is process-local, while production runs multiple processes. An exact in-process key
 lock is acquired before the semaphore, so duplicate recordings queue without consuming both
@@ -371,3 +538,29 @@ database just to report whether one exists — and the panel fired it once per e
 versions come from ONE columns-only query (`body IS NOT NULL` reads the header, never the
 bytes), and the panel fills a TTL cell only for the endpoint the operator clicks, from the
 inspector's own load. A dash in the TTL column means "click to learn".
+
+Startup uses the normalized archive mode (unknown values disable it). R2-only writes require
+all three reads to be `r2-first`; default, EU and FedRAMP R2 endpoints are accepted. The dev smoke
+script has no bucket argument and accepts only `treg-archive-dev`.
+
+ObjectStore owns the sole download hash validation; the memory fake follows the same contract.
+`put` accepts the internally computed content hash to avoid rehashing immutable bytes. Read and
+write errors use the same typed classification; SDK text is never parsed or logged.
+
+Pruning still strips eligible DB bytes during double writing. A stripped `both` row becomes
+`r2`; its content hash and object remain intact, and logical retained-body statistics do not
+decrease. Existing deduplicated DB carriers and result baselines retain their protections.
+The admin DB body viewer identifies object-stored bodies without fetching them. Retired
+`volatile_paths` remains in the schema but is no longer displayed.
+
+Known result-admission upgrade limit: when a historical R2-only row has no current
+`result_state`/observed-version metadata, the write path does not GET its old body to classify
+it. The baseline becomes unknown; the next decisive result establishes a new baseline without
+a stability comparison. Subsequent observations learn normally. This conservative loss of one
+learning interval avoids object I/O inside a write session or an extra speculative GET per write.
+
+`WritePlan` is the single body-retention decision passed into the DB writer. DB retention is
+inferred from its storage location; failed R2-only uploads become hash-only plans. Each started
+recording emits its completion report from one `finally` block, while queue callbacks release
+budgets and report cancellation of tasks that never started. `tool_called` remains independent.
+The object-store lifespan chooses a real or injected context once and always resets the seam.

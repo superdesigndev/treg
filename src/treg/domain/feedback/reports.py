@@ -3,7 +3,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from ..models import Feedback
+from ...models import Feedback
 
 
 def add(db: AsyncSession, **values) -> Feedback:

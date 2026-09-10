@@ -9,6 +9,8 @@ from sqlmodel import select
 from ... import crypto
 from ...models import (
     AdConversion,
+    ArenaEvaluation,
+    ArenaRun,
     AsyncResourceRecord,
     AsyncTaskRecord,
     Bundle,
@@ -17,6 +19,7 @@ from ...models import (
     CreditBlock,
     DenyRule,
     Feedback,
+    CallReview,
     Hold,
     HubRun,
     HubTool,
@@ -131,6 +134,7 @@ async def list_user_orgs(
 # Order matters: LedgerEntry references a CreditBlock, so it goes first; `IdempotentCall.membership_id`
 # points at Membership, so Membership stays last and IdempotentCall sits above it.
 ORG_SCOPED_MODELS = (
+    ArenaEvaluation, ArenaRun,
     Tool, Secret, Bundle, PendingOAuth, CallRecord, RunRecord, Invite, DenyRule, Project,
     CapabilityPin,
     TagBudget,
@@ -141,6 +145,7 @@ ORG_SCOPED_MODELS = (
     ToolRequest,  # attribution rows go with the team; anonymous filings carry no org_id and stay
     Feedback,
     HubTool,      # a maker's published tools go with the team that owned them
+    CallReview,
     AdConversion,  # pending Google Ads conversions belong to the team they'd be attributed to
     Membership,   # last: it is what makes the caller a member of the org being deleted
 )

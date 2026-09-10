@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_settings
 from ..infra.db import get_session
+from ..domain.capacity.routes_view import view as overflow_routes_view
 from ..domain.catalog import store as catalog_store
 from ..domain.catalog import stats as endpoint_stats
 
@@ -133,7 +134,10 @@ async def catalog_platform(slug: str, include_hidden: int = 0) -> dict:
         # every row — an expanded endpoint needs them and shouldn't cost a second request.
         "providers": {
             service: {"service": service, "display_name": _provider_display(service),
-                      **cat.provider_meta.get(service, {})}
+                      **cat.provider_meta.get(service, {}),
+                      "auth_kind": getattr(oauth_providers.get(service), "auth_kind", None),
+                      "metered": bool(getattr(oauth_providers.get(service), "platform_billed", False)
+                                      and service in get_settings().oauth_billed_set)}
             for service in sorted({ep["provider"] for ep in eps})
         },
     }
@@ -157,6 +161,30 @@ def _plan_row(c) -> dict:
 
 def _endpoint_observation_reader(request: Request) -> endpoint_stats.EndpointObservationReader:
     return request.app.state.endpoint_observation_reader
+
+
+async def _overflow_disclosure(ep: dict, cat) -> dict:
+    """What a platform-eligible endpoint bills when treg's own account is out and the deployment's
+    overflow relay serves it instead: the enabled route's aggregator price, on the row, so a "free"
+    endpoint is never silently a paid one. Same admission facts as the call path (`application.call.
+    overflow`: mode on, a key for the aggregator, an enabled route, Orthogonal first) minus the
+    per-process health marks, which change by the minute and are not a price. Empty when the
+    deployment cannot relay this endpoint at all; the route view is a 60 s in-process copy."""
+    settings = get_settings()
+    if settings.overflow_mode != "on" or not cat.platform_eligible(ep):
+        return {}
+    try:
+        await overflow_routes_view.load()
+    except Exception:  # noqa: BLE001 - a disclosure must never take the catalog down
+        logging.getLogger("treg.catalog").warning("overflow routes unavailable", exc_info=True)
+        return {}
+    for route in overflow_routes_view.for_endpoint(ep["id"]):
+        if not settings.overflow_key_for(route.aggregator) or route.agg_price_micro is None:
+            continue
+        return {"overflow_price_usd": route.agg_price_micro / 1_000_000,
+                "overflow_price_unit": route.agg_unit or "call",
+                "overflow_via": route.aggregator}
+    return {}
 
 
 async def _observed_or_empty(
@@ -310,7 +338,8 @@ async def catalog_endpoint(
     # Attached to the SAME response because the choice is made here; a second round-trip to compare
     # reliability is a round-trip an agent will skip.
     stats = await _observed_or_empty(observations, [endpoint_id] + [s["id"] for s in siblings])
-    view = view | {"observed": stats.get(endpoint_id)}
+    overflow = await _overflow_disclosure(ep, cat)
+    view = view | {"observed": stats.get(endpoint_id)} | overflow
     siblings = [s | {"observed": stats.get(s["id"])} for s in siblings]
 
     routing = None
@@ -326,7 +355,7 @@ async def catalog_endpoint(
             st = stats.get(k["id"]) or {}
             ad = cat.adapters.get(k["id"])
             cands.append(Candidate(k, ad, ad.accepts[0] if ad and ad.accepts else (), "platform",
-                                   cost_at(cat.cost_view(k.get("cost"), k["provider"]), {}), st.get("hit_rate"),
+                                   cost_at(cat.cost_view(k.get("cost"), k["provider"]), {}, ad), st.get("hit_rate"),
                                    st.get("ok_rate"), st.get("p50_ms"), st.get("last_ok_days")))
         routing = {
             "contract": {"identity": [list(v) for v in contract.identity], "output": contract.output,
@@ -352,6 +381,11 @@ async def catalog_endpoint(
         "call_template": catalog_store.call_template(ep),
         "example_response": example,
         "hints": [f"{catalog_store.call_template(ep)}   # run it — key injected server-side"]
+                 + ([f"when treg's own {ep['provider']} account is out this may be served through the "
+                     f"overflow relay ({overflow['overflow_via']}) and bill "
+                     f"${overflow['overflow_price_usd']:g} per {overflow['overflow_price_unit']} instead "
+                     f"of the direct price; the answer says so (X-Treg-Served-Via / served_via)"]
+                    if overflow else [])
                  + ([f"treg catalog get {siblings[0]['id']}   # the same job from {siblings[0]['provider']}"]
                     if siblings else []),
     }

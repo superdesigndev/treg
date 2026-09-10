@@ -1,0 +1,11 @@
+{
+  "success": true,
+  "message": "No records found",
+  "code": 200,
+  "data": [],
+  "meta": {
+    "credits_used": 0,
+    "reason": "PHONE_NOT_FOUND",
+    "remaining_credits": 297
+  }
+}

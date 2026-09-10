@@ -46,9 +46,9 @@ _EXPECTED_ROUTES = {
     "control": [route for route in _ALL_ROUTES if route not in _DATAPLANE_ONLY],
 }
 _EXPECTED_BACKGROUND_TASKS = {
-    "all": ["treg.adsconv.worker"],
+    "all": ["treg.adsconv.worker", "treg.application.arena_insights.worker"],
     "dataplane": [],
-    "control": ["treg.adsconv.worker"],
+    "control": ["treg.adsconv.worker", "treg.application.arena_insights.worker"],
 }
 _READ_ONLY_STARTUP_CHECKS = {
     "all": (

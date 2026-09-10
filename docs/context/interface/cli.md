@@ -3,6 +3,7 @@ title: The CLI (treg) + skill scaffolding
 status: shipped
 sources:
   - src/treg/cli.py
+  - src/treg/cli_analytics.py
   - src/treg/convert.py
   - src/treg/agents.py
 related:
@@ -23,6 +24,16 @@ and `_feedback_request` prints JSON or exits nonzero with an actionable error wi
 rejected input. `cmd_feedback_get` implements `treg feedback get <feedback_id>`. Submission transport
 failures report an unconfirmed outcome, not a definite failure. Bare `treg feedback` shows help;
 `main` still accepts the original category-first submission shorthand. See [feedback](../architecture/feedback.md).
+
+## Call review
+
+`cmd_review` implements `treg review <call_id> <usefulness> [--reason TEXT]`, sharing the light
+contract's enum and description with MCP. It validates the reference and trimmed reason locally,
+posts to `/reviews`, prints a receipt, and emits structured errors without echoing rejected input.
+A transport failure explicitly leaves the outcome unconfirmed. `_show_hint_line`, beside the
+charge line, prints the server's invitation (`X-Treg-Hint: review|feedback`; the older
+`X-Treg-Review: requested` still means review) as one stderr line per kind. Call responses
+retain the existing `_show` formatting on stdout, including pretty-printed JSON.
 
 ## Instagram grants
 
@@ -499,3 +510,26 @@ Switching teams is unaffected: an explicit `X-Treg-Org` header always beats the 
 `treg catalog get <routed id>` prints the ROUTING PLAN (order, accepted identity, price, HIT, expected
 cost per hit) above the sibling table; the sibling table itself gained a HIT column (`stats.observed`
 `hit_rate`). `treg catalog <platform>` rows lead with the endpoint id and show the unified USD price.
+
+## Anonymous CLI analytics
+
+`main` calls `cli_analytics.track_command` after dispatch, including failures and interrupts.
+The PostHog Python SDK sends `cli_command_completed` with the handler's fixed command name,
+exit code, success, duration in milliseconds, package version and OS. Help/version flags and
+argument parsing failures exit before dispatch and emit nothing. No arguments, request/response
+bodies, paths, tokens, emails or team identifiers are collected. A random UUID in `analytics-id`
+beside `TREG_CONFIG` identifies an installation; it is independent of login/logout.
+
+The public treg.to ingestion token is the default only for the hosted registry and its legacy
+alias. Self-hosted URLs send nothing unless `TREG_CLI_POSTHOG_KEY` is set; the host override is
+`TREG_CLI_POSTHOG_HOST` (default EU ingestion). `TREG_TELEMETRY=0` or `DO_NOT_TRACK=1` disables
+all analytics and ID creation. SDK import and synchronous capture run in a daemon thread with
+no retries, a 0.2-second request timeout and a 1-second caller wait budget. Slow delivery may
+be dropped at exit; telemetry failures are silent and preserve command output and exit status.
+
+## Catalog price display
+
+`_cost_label` and `_cost_usd` consume the same computed display USD/unit/suffix fields as the web
+pages. Grouped prices show the full block amount, and variable prices show a plus sign. The source
+is provider-neutral `cost.display` catalog metadata. Missing metadata retains the existing format.
+CLI call billing still uses the shared server call path.

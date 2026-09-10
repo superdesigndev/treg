@@ -1,0 +1,258 @@
+{
+  "id": "example-request-id",
+  "credits_used": 1,
+  "credits_remaining": 9000,
+  "technologies": [
+    {
+      "slug": "kubernetes",
+      "name": "Kubernetes",
+      "count": 196381
+    },
+    {
+      "slug": "docker-and-kubernetes",
+      "name": "DOCKER AND KUBERNETES",
+      "count": 1378
+    },
+    {
+      "slug": "kubernetes-deployments",
+      "name": "Kubernetes Deployments",
+      "count": 752
+    },
+    {
+      "slug": "kubernetes-administrator",
+      "name": "Kubernetes Administrator",
+      "count": 659
+    },
+    {
+      "slug": "containerization-docker-kubernetes",
+      "name": "Containerization (Docker, Kubernetes)",
+      "count": 468
+    },
+    {
+      "slug": "kubernetes-architecture",
+      "name": "Kubernetes Architecture",
+      "count": 234
+    },
+    {
+      "slug": "tanzu-kubernetes-grid",
+      "name": "Tanzu Kubernetes Grid",
+      "count": 228
+    },
+    {
+      "slug": "tanzu-kubernetes",
+      "name": "Tanzu Kubernetes",
+      "count": 193
+    },
+    {
+      "slug": "kubernetes-cluster-management",
+      "name": "Kubernetes Cluster Management",
+      "count": 190
+    },
+    {
+      "slug": "kubernetes-management",
+      "name": "Kubernetes Management",
+      "count": 186
+    },
+    {
+      "slug": "service-azure-kubernetes-aks",
+      "name": "Service Azure Kubernetes (AKS)",
+      "count": 171
+    },
+    {
+      "slug": "oracle-kubernetes-engine",
+      "name": "Oracle Kubernetes Engine",
+      "count": 170
+    },
+    {
+      "slug": "kubernetes-eks-aks",
+      "name": "Kubernetes EKS/AKS",
+      "count": 116
+    },
+    {
+      "slug": "kubernetes-basics",
+      "name": "Kubernetes Basics",
+      "count": 105
+    },
+    {
+      "slug": "vmware-tanzu-kubernetes-grid",
+      "name": "VMware Tanzu Kubernetes Grid",
+      "count": 85
+    },
+    {
+      "slug": "kubernetes-container-orchestration",
+      "name": "Kubernetes Container Orchestration",
+      "count": 78
+    },
+    {
+      "slug": "kubernetes-admin",
+      "name": "Kubernetes Admin",
+      "count": 77
+    },
+    {
+      "slug": "kubernetes-controllers",
+      "name": "Kubernetes controllers",
+      "count": 74
+    },
+    {
+      "slug": "kubernetes-k3s",
+      "name": "Kubernetes/k3s",
+      "count": 68
+    },
+    {
+      "slug": "container-orchestration-kubernetes",
+      "name": "Container Orchestration / Kubernetes",
+      "count": 66
+    },
+    {
+      "slug": "container-kubernetes-security",
+      "name": "container/Kubernetes security",
+      "count": 63
+    },
+    {
+      "slug": "kubernetes-engine-gke",
+      "name": "Kubernetes Engine (GKE)",
+      "count": 60
+    },
+    {
+      "slug": "container-and-kubernetes-security",
+      "name": "Container and Kubernetes Security",
+      "count": 58
+    },
+    {
+      "slug": "ovn-kubernetes",
+      "name": "OVN Kubernetes",
+      "count": 57
+    },
+    {
+      "slug": "nutanix-kubernetes-platform",
+      "name": "Nutanix Kubernetes Platform",
+      "count": 54
+    },
+    {
+      "slug": "mirantis-kubernetes-engine",
+      "name": "Mirantis Kubernetes Engine",
+      "count": 48
+    },
+    {
+      "slug": "kubernetes-containerization",
+      "name": "Kubernetes/Containerization",
+      "count": 48
+    },
+    {
+      "slug": "kubernetes-operator-development",
+      "name": "Kubernetes Operator development",
+      "count": 47
+    },
+    {
+      "slug": "oracle-container-engine-for-kubernetes",
+      "name": "Oracle Container Engine for Kubernetes",
+      "count": 41
+    },
+    {
+      "slug": "kubernetes-gateway-api",
+      "name": "Kubernetes Gateway API",
+      "count": 40
+    },
+    {
+      "slug": "kubernetes-network-policies",
+      "name": "Kubernetes network policies",
+      "count": 37
+    },
+    {
+      "slug": "kubernetes-and-container-security",
+      "name": "Kubernetes and container security",
+      "count": 34
+    },
+    {
+      "slug": "oci-container-engine-for-kubernetes",
+      "name": "OCI (Container Engine for Kubernetes)",
+      "count": 34
+    },
+    {
+      "slug": "kubernetes-operations",
+      "name": "Kubernetes Operations",
+      "count": 34
+    },
+    {
+      "slug": "red-hat-advanced-cluster-security-for-kubernetes",
+      "name": "Red Hat Advanced Cluster Security for Kubernetes",
+      "count": 31
+    },
+    {
+      "slug": "basic-kubernetes",
+      "name": "Basic Kubernetes",
+      "count": 30
+    },
+    {
+      "slug": "spring-cloud-kubernetes",
+      "name": "Spring Cloud Kubernetes",
+      "count": 28
+    },
+    {
+      "slug": "vmware-tanzu-kubernetes",
+      "name": "VMware Tanzu Kubernetes",
+      "count": 28
+    },
+    {
+      "slug": "kubernetes-pods",
+      "name": "Kubernetes Pods",
+      "count": 28
+    },
+    {
+      "slug": "kubernetes-oke",
+      "name": "Kubernetes (OKE)",
+      "count": 28
+    },
+    {
+      "slug": "container-orchestration-with-kubernetes",
+      "name": "Container Orchestration with Kubernetes",
+      "count": 28
+    },
+    {
+      "slug": "red-hat-openshift-kubernetes",
+      "name": "Red Hat OpenShift/Kubernetes",
+      "count": 27
+    },
+    {
+      "slug": "vsphere-kubernetes-service",
+      "name": "vSphere Kubernetes Service",
+      "count": 26
+    },
+    {
+      "slug": "managed-kubernetes-service",
+      "name": "Managed Kubernetes Service",
+      "count": 25
+    },
+    {
+      "slug": "kubernetes-cluster-administration",
+      "name": "Kubernetes Cluster Administration",
+      "count": 25
+    },
+    {
+      "slug": "containerization-and-kubernetes",
+      "name": "Containerization and Kubernetes",
+      "count": 23
+    },
+    {
+      "slug": "aws-eks-kubernetes",
+      "name": "AWS EKS/Kubernetes",
+      "count": 23
+    },
+    {
+      "slug": "tanzu-kubernetes-grid-tkg",
+      "name": "Tanzu Kubernetes Grid (TKG)",
+      "count": 23
+    },
+    {
+      "slug": "kubernetes-platform-engineering",
+      "name": "Kubernetes Platform Engineering",
+      "count": 22
+    },
+    {
+      "slug": "oracle-kubernetes",
+      "name": "Oracle Kubernetes",
+      "count": 22
+    }
+  ],
+  "total_count": 613
+}

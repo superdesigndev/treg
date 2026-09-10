@@ -4,8 +4,6 @@ status: shipped
 sources:
   - src/treg/application/auth.py
   - src/treg/mcp.py
-  - src/treg/mcp_feedback.py
-  - tests/test_mcp_feedback.py
   - src/treg/domain/identity/health.py
   - src/treg/domain/identity/mcp_oauth.py
   - src/treg/domain/identity/session.py
@@ -31,34 +29,9 @@ related:
 Both transports expose `feedback(category, message, call_ids?, endpoint_id?)`, using a four-value
 category enum and the shared HTTP intake. This is an additive, non-destructive write on treg,
 not an upstream call. It requires the existing transport identity and spends no balance.
-See [feedback](feedback.md). V2 retains its catalog-only calling boundary.
-
-## Optional feedback hint rollout
-
-Both MCP call surfaces expose the API's `X-Treg-Call-Id` as optional `call_id`. Successful 2xx
-calls may also include a task-oriented `hint`; existing hints and idempotent replays take priority.
-The hint encourages proactive reporting of small annoyances and names concrete friction (guessing, workarounds, unexpected results or charges), welcomes
-reports even when the task succeeds, and names the feedback tool's `call_ids` argument explicitly.
-The provider `body` is unchanged. CLI and direct HTTP responses do not gain a feedback hint.
-
-`mcp_feedback` reads PostHog `/flags?v=2` with the existing `TREG_POSTHOG_KEY` and host. Configure
-boolean flag `mcp-feedback-hint`, enabled for fixed distinct ID `treg-mcp-feedback-hint` (100%
-rollout for that identity), with its enabled payload `{"sample_rate": 0.01}`. This is global
-configuration, not user targeting: **the payload controls per-call sampling**, not the PostHog
-rollout percentage. No new SDK or personal API key is required by the running service.
-
-One background poller is shared by both MCP lifespans, refreshes every 60 seconds with a 3-second
-request timeout, and is cancelled and awaited when the last transport stops. Calls only read the
-cache. Missing/disabled flags, invalid rates, fetch failures, and configuration older than 90 seconds
-disable hints. The payload accepts rates from 0 to 1; use 0 or disable the flag to stop the rollout.
-Changes apply after refresh without a deployment. A new deployment is required to install the code.
-
-Sampling hashes the call ID; when no reference exists it uses a fresh random identifier without
-inventing a public call reference. `mcp_feedback_hint_attached` is a best-effort analytics event
-containing surface, available call ID and the flag marker, never upstream content or credentials.
-It records a hint attached to a result, not proof that a client displayed it or an agent read it.
-Call references can associate reports with exposures; reports without references remain unattributed.
-This initial rollout does not maintain a session-level reminder cap.
+Both also expose `review(call_id, usefulness, reason?)` as a non-destructive, non-idempotent local
+write relayed to `/reviews`, using the shared usefulness enum and description.
+See [feedback](feedback.md) for invitation sampling and hint priority. V2 retains its catalog-only calling boundary.
 
 ## Provider authorization remediation
 
@@ -235,6 +208,16 @@ each of which was added because a real endpoint needed it:
 Optional, and it is the caller's. Pass the same key when repeating a call whose answer never arrived:
 treg replays the stored response, does not reach the provider, and charges nothing, with
 `replayed: true` on the result.
+
+## `call` says when the overflow relay served it
+
+`/call/` discloses a relayed answer in `X-Treg-Served-Via`; an MCP client never sees headers, so
+`_call_impl` lifts it into `served_via` on the result with a one-line `hint` naming the relay and
+the exhausted provider (`cost_usd` is then the relay's real price, not the catalog's direct one).
+Both surfaces share the impl, so `/mcp/` and `/mcp/v2/` say it identically. `catalog_get` carries
+`overflow_price_usd` / `overflow_price_unit` / `overflow_via` for the same reason - the price to
+tell the human BEFORE the call includes the one the relay may bill (`architecture/money.md`
+§ Overflow money).
 
 It exists because the feature was built for agents and MCP is the agent path. Without it the whole
 thing was unreachable from the surface it was for.

@@ -97,6 +97,7 @@ app = APIRouter()
 
 class TopupIn(BaseModel):
     amount_usd: float | None = None
+    checkout_source: str = ""
 
 
 class AutoTopupIn(BaseModel):
@@ -155,7 +156,8 @@ async def billing_topup(
     org = _billing_org(caller)
     try:
         return await billing.start_topup(
-            org.id, body.amount_usd, return_base=_return_base(request), email=caller.email)
+            org.id, body.amount_usd, return_base=_return_base(request), email=caller.email,
+            entry_surface=request.cookies.get("treg_entry_surface", ""), checkout_source=body.checkout_source)
     except billing.BillingJourneyError as e:
         raise _translate_billing_error(e) from e
 

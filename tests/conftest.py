@@ -8,7 +8,11 @@ The `clients` fixture also registers a user and authes the client by default.
 from __future__ import annotations
 
 import os
+import socket
 import tempfile
+
+# Tests and their CLI subprocesses must never emit production analytics.
+os.environ["TREG_TELEMETRY"] = "0"
 
 # Isolate the test DB from any .env / running dev server BEFORE importing treg (the engine is
 # built at import time). A real env var overrides the .env file in pydantic-settings.
@@ -43,11 +47,13 @@ for _k in (
     "X_CLIENT_ID", "X_CLIENT_SECRET", "SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET",
     "TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET",
     "META_CLIENT_ID", "META_CLIENT_SECRET",
+    "POSTHOG_KEY", "ADS_CONV_REFRESH_TOKEN",
     "INSTAGRAM_CLIENT_ID", "INSTAGRAM_CLIENT_SECRET",
     # …and the tier-4 platform keys + their allow-list. A developer's .env carries real, FUNDED keys:
     # without this a suite run on their laptop could resolve tier 4 and spend actual money on the
     # in-process upstream's echo. Tests that exercise tier 4 set both halves via monkeypatch.
     "PLATFORM_KEY_TRYKITT", "PLATFORM_PROVIDERS", "PLATFORM_KEY_TIKHUB", "PLATFORM_KEY_DATAFORSEO", "PLATFORM_KEY_SCRAPECREATORS",
+    "PLATFORM_KEY_QUICKENRICH", "PLATFORM_KEY_SUMBLE",
 ):
     os.environ[f"TREG_{_k}"] = ""  # the test upstream is an in-process ASGI transport, not real DNS
 
@@ -66,6 +72,31 @@ from treg.infra.db import reset_db  # noqa: E402
 # The OTP-start + sandbox throttles (and the OTP codes) now live in the DB's `ephemeral` table, not in
 # process-global dicts — so `reset_db()` (called by every client fixture) already clears them between
 # tests. No separate rate-limit reset fixture is needed.
+
+
+@pytest.fixture
+def fake_getaddrinfo(monkeypatch):
+    """Override named hosts only, leaving DB and other infrastructure DNS untouched.
+
+    An empty address list models an unresolvable host without querying external DNS.
+    """
+    original = socket.getaddrinfo
+
+    def install(addresses: dict[str, list[str]]) -> None:
+        def resolve(host, port, *args, **kwargs):
+            if host not in addresses:
+                return original(host, port, *args, **kwargs)
+            if not addresses[host]:
+                raise socket.gaierror(socket.EAI_NONAME, "unresolvable")
+            return [
+                (socket.AF_INET6 if ":" in address else socket.AF_INET,
+                 socket.SOCK_STREAM, 0, "",
+                 (address, port or 0, 0, 0) if ":" in address else (address, port or 0))
+                for address in addresses[host]
+            ]
+        monkeypatch.setattr(socket, "getaddrinfo", resolve)
+
+    return install
 
 
 def make_upstream(hook_hits: list | None = None) -> FastAPI:
@@ -336,6 +367,10 @@ def _reset_call_path_caches():
             limiter.reset()
         except ImportError:
             pass
+        # The shared store's in-process fallback (the review-invitation budget): org ids restart
+        # with every reset_db(), so a counter left over would ration the NEXT test's team.
+        from treg.infra import kv
+        kv._store = None
     _clear()
     yield
     _clear()

@@ -182,6 +182,20 @@ def test_implemented_collectors_are_registered_and_do_not_overlap_absent_list():
     assert not overlap, f"Providers in both maps: {overlap}"
 
 
+@pytest.mark.parametrize('remaining,expected', [(300, 300), (0, 0), (None, None), (-1, None), ('unlimited', None), (True, None)])
+async def test_quickenrich_subscription_allowance_from_free_discovery(remaining, expected):
+    def reply(request):
+        import json
+        assert request.method == 'POST' and request.url.path == '/api/employees/contact-finder'
+        assert request.headers['authorization'] == 'Bearer private-test-key'
+        assert json.loads(request.content)['per_page'] == 1
+        return httpx.Response(200, json={'success': True, 'data': [], 'meta': {'credits_used': 0, 'remaining_credits': remaining}})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as client:
+        row = await collectors._quickenrich(client, 'private-test-key')
+    assert row['value'] == expected
+    assert 'private-test-key' not in str(row)
+
+
 @pytest.mark.parametrize('balance',[0,9.992])
 async def test_trykitt_balance_is_usd(monkeypatch,kitt_on,balance):
     def reply(request):

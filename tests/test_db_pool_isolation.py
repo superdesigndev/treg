@@ -34,7 +34,13 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "api.py": {API}, "mcp.py": {API}, "routers/resources.py": {API},
     "application/auth.py": {API}, "application/billing.py": {API}, "application/connect.py": {API},
     "application/asynctasks.py": {API},
+    # Interactive paid runs: short transactions between legs, never across upstream waits.
+    "application/arena.py": {API},
+    "application/arena_insights.py": {API, BACKGROUND},  # snapshot read vs incremental worker
+    "application/arena_verification_insights.py": {API},  # explicit aggregate publication, no worker
+
     "application/feedback.py": {API},  # synchronous intake; admin reads use get_admin_session
+
     "application/referrals.py": {API}, "application/signup.py": {API},
     "application/onboard/__init__.py": {API},
     "application/call/authorize.py": {API}, "application/call/idempotency.py": {API},
@@ -55,6 +61,8 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "bootstrap.py": {BACKGROUND},
     # `lookup` is on the API pool inside a caller's /call/; every write here is background.
     "archive.py": {API, BACKGROUND},
+    # On-request fallback reads only, opened after R2 I/O has finished. No body writes.
+    "archive_bodies.py": {API},
 }
 
 

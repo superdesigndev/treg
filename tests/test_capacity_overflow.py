@@ -843,3 +843,178 @@ async def test_contactout_renewal_budget_includes_direct_cost_and_uses_ephemeral
     result=await main(SimpleNamespace(budget_usd=budget,apply=False))
     assert len(seen)==expected_calls
     assert result==(0 if expected_calls else 1)
+
+
+# ---- an aggregator's OWN per-request 4xx is request-scoped, never a strike --------------------
+# 2026-09-08: one Orthogonal 400 (its request validation, no vendor data) parsed as `malformed`,
+# which is AGGREGATOR_SIDE - overflow:orthogonal was struck for 15 minutes for every org, and every
+# Apollo call for that quarter hour became provider_capacity_unavailable with no route left.
+
+APOLLO_SEARCH_EP = "apollo.people.search"       # POST /mixed_people/api_search, catalog cost FREE
+APOLLO_SEARCH_PATH = "/mixed_people/api_search"
+ORTHOGONAL_OWN_400 = {"success": False, "error": "query.page must be a string"}
+ORTHOGONAL_OWN_422 = {"success": False, "error": "Unprocessable: body.per_page exceeds 100",
+                      "_orthogonal": {"message": "body.per_page exceeds 100"}}
+
+
+def test_orthogonal_parse_reserves_malformed_for_what_is_not_an_envelope():
+    from treg.infra.upstream.aggregators import AGGREGATOR_SIDE, orthogonal
+    own_400 = orthogonal.parse(400, json.dumps(ORTHOGONAL_OWN_400).encode())
+    own_422 = orthogonal.parse(422, json.dumps(ORTHOGONAL_OWN_422).encode())
+    own_404 = orthogonal.parse(404, b'{"success":false,"error":"Unknown api slug"}')
+    for res in (own_400, own_422, own_404):
+        assert res.failure == "contract" and res.failure not in AGGREGATOR_SIDE
+        assert res.cost_micro == 0 and res.upstream_status is None and res.upstream_body == b""
+    assert own_422.detail == "body.per_page exceeds 100", "the aggregator's own message, for the caller"
+    # what still blames the aggregator as a whole
+    assert orthogonal.parse(402, b'{"success":false,"error":"insufficient balance"}').failure == "aggregator_balance"
+    assert orthogonal.parse(401, b'{"error":"invalid key"}').failure == "aggregator_auth"
+    assert orthogonal.parse(500, b'{"success":false,"error":"internal"}').failure == "malformed"
+    assert orthogonal.parse(502, b"<html>bad gateway</html>").failure == "malformed"
+    assert orthogonal.parse(200, b"<html>").failure == "malformed"
+    # a 4xx that DOES carry the vendor's body is the vendor's answer, relayed as before
+    relayed = orthogonal.parse(422, json.dumps({"success": False, "error": "API request failed with status 422",
+                                                "data": {"error": "Please provide at least one of: first_name"}}).encode())
+    assert relayed.failure is None and relayed.upstream_status == 422
+
+
+async def _orthogonal_lock():
+    async with session_maker() as db:
+        raw = await ratestore.kv_get(db, LOCK_NS, "overflow:orthogonal")
+    return Lock.from_json(raw) if raw else None
+
+
+async def test_orthogonals_own_400_is_request_scoped_and_never_strikes_the_aggregator(
+    clients: AsyncClient, overflow_on, monkeypatch,
+):
+    """The old wrong outcome: the vendor 402 became a typed 503, overflow:orthogonal went unhealthy
+    for 15 minutes for every org. Now: the vendor's own answer stands, nothing charged, no mark, and
+    the very next call reaches Orthogonal again."""
+    await _route(price_micro=3_000)
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, b'{"detail":"nope"}'))
+    seen = []
+    monkeypatch.setattr(O, "_send", _orthogonal([(400, ORTHOGONAL_OWN_400),
+                                                 (200, {"success": True, "data": VENDOR_BODY, "priceCents": 0.3})], seen))
+    before = await _balance(clients)
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 402 and r.text == '{"detail":"nope"}', "the vendor's answer, not the relay's envelope"
+    assert "X-Treg-Served-Via" not in r.headers
+    assert await _balance(clients) == before and await _holds() == []
+    lock = await _orthogonal_lock()
+    assert lock is None or not lock.is_active(), "a request-scoped refusal is not an aggregator outage"
+    r2 = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r2.status_code == 200 and r2.headers["X-Treg-Served-Via"] == "overflow:orthogonal", r2.text
+    assert len(seen) == 2 and before - await _balance(clients) == 3_000
+    await audit.drain()
+    from treg.models import CallRecord
+    async with session_maker() as db:
+        children = (await db.execute(select(CallRecord).where(CallRecord.credential_tier == "platform-overflow"))).scalars().all()
+    refused = [c for c in children if (c.error_response or "").endswith("contract")]
+    assert len(children) == 2 and len(refused) == 1, "both child attempts are on the record"
+    assert refused[0].cost_charged_micro == 0 and refused[0].cost_observed_micro == 0
+
+
+async def test_orthogonals_own_422_on_the_skip_direct_ladder_is_a_typed_503_naming_the_refusal(
+    clients: AsyncClient, overflow_on, monkeypatch,
+):
+    """No vendor answer exists on this ladder, so the caller gets treg's typed 503 that says the
+    relay refused THIS request - never Orthogonal's envelope as if Apollo had answered - and the
+    aggregator stays healthy for the next caller."""
+    await _route(endpoint_id=APOLLO_SEARCH_EP, provider="apollo", method="POST", path=APOLLO_SEARCH_PATH,
+                 price_micro=2_000, ratio=None)
+    now = utcnow_naive()
+    async with session_maker() as db:
+        await ratestore.kv_put(db, STATE_NS, "apollo", LatestState(
+            "apollo", 0.0, "USD", now, "exact", exhausted_until=now + timedelta(hours=1), health="exhausted").to_json(), ttl_s=3600)
+        await db.commit()
+    capacity_view.invalidate()
+
+    async def never(*a, **k):
+        raise AssertionError("the direct relay must not run")
+    monkeypatch.setattr(call_service, "relay", never)
+    seen = []
+    monkeypatch.setattr(O, "_send", _orthogonal([(422, ORTHOGONAL_OWN_422)], seen))
+    before = await _balance(clients)
+    r = await clients.post(f"/call/{APOLLO_SEARCH_EP}", json={"person_titles": ["cto"], "per_page": 500})
+    assert r.status_code == 503 and r.headers["X-Treg-Error"] == "1", r.text
+    detail = r.json()["detail"]
+    assert detail["error"] == "provider_capacity_unavailable" and detail["provider"] == "apollo"
+    assert "contract" in detail["message"] and "body.per_page exceeds 100" in detail["message"]
+    assert "nothing was charged" in detail["message"]
+    assert "success" not in r.json() and r.headers.get("X-Treg-Cost-Micro") in (None, "0")
+    assert await _balance(clients) == before and await _holds() == []
+    lock = await _orthogonal_lock()
+    assert lock is None or not lock.is_active(), "one refused request must not take the relay offline"
+    assert len(seen) == 1
+
+
+async def test_orthogonal_5xx_still_marks_the_aggregator_unhealthy(clients: AsyncClient, overflow_on, monkeypatch):
+    await _route(price_micro=3_000)
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, b'{"detail":"nope"}'))
+    monkeypatch.setattr(O, "_send", _orthogonal([(503, {"success": False, "error": "upstream gateway timeout"})], []))
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 503 and r.json()["detail"]["error"] == "provider_capacity_unavailable"
+    lock = await _orthogonal_lock()
+    assert lock is not None and lock.is_active()
+    assert await _holds() == []
+
+
+# ---- the catalog discloses what a relayed call bills -------------------------------------------
+
+async def test_catalog_get_discloses_the_overflow_price_of_a_free_endpoint(clients: AsyncClient, overflow_on):
+    """apollo.people.search is catalog-free and billed $0.002 through Orthogonal 8,810 times on
+    2026-09-08; nothing on the read surface said a free endpoint could bill. The route's price now
+    rides on the endpoint row whenever the deployment can relay it."""
+    await _route(endpoint_id=APOLLO_SEARCH_EP, provider="apollo", method="POST", path=APOLLO_SEARCH_PATH,
+                 price_micro=2_000, ratio=None)
+    r = await clients.get(f"/catalog/endpoints/{APOLLO_SEARCH_EP}")
+    assert r.status_code == 200, r.text
+    ep = r.json()["endpoint"]
+    assert ep["cost"]["usd"] == 0 and ep["platform_eligible"] is True
+    assert ep["overflow_price_usd"] == 0.002 and ep["overflow_via"] == "orthogonal"
+    assert ep["overflow_price_unit"] == "call"
+    assert any("overflow relay (orthogonal)" in h and "$0.002 per call" in h for h in r.json()["hints"])
+
+
+async def test_catalog_get_says_nothing_about_overflow_when_the_deployment_cannot_relay(
+    clients: AsyncClient, overflow_on, monkeypatch,
+):
+    await _route(endpoint_id=APOLLO_SEARCH_EP, provider="apollo", method="POST", path=APOLLO_SEARCH_PATH,
+                 price_micro=2_000, ratio=None)
+    # a disabled route is no route
+    await _route(endpoint_id=EP, price_micro=3_000, enabled=False)
+    r = await clients.get(f"/catalog/endpoints/{EP}")
+    assert "overflow_price_usd" not in r.json()["endpoint"]
+    # mode off: the price is not a price this deployment can bill
+    monkeypatch.setenv("TREG_OVERFLOW_MODE", "off")
+    get_settings.cache_clear()
+    r = await clients.get(f"/catalog/endpoints/{APOLLO_SEARCH_EP}")
+    assert "overflow_price_usd" not in r.json()["endpoint"]
+    assert not any("overflow relay" in h for h in r.json()["hints"])
+
+
+@pytest.mark.parametrize('skip_direct', [False, True])
+@pytest.mark.parametrize('cap,status', [('0.0015', 402), ('0.003', 200)])
+async def test_caller_ceiling_checks_actual_overflow_reserve(
+    clients, overflow_on, monkeypatch, skip_direct, cap, status,
+):
+    await _route(price_micro=3000)
+    if skip_direct:
+        await _exhausted()
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(402, b'{"detail":"Insufficient balance"}'))
+    seen = []
+    envelope = {'success': True, 'data': VENDOR_BODY, 'priceCents': 0.3,
+                'billing': {'chargedPriceCents': 0.3}}
+    monkeypatch.setattr(O, '_send', _orthogonal([(200, envelope)], seen))
+    before = await _balance(clients)
+    response = await clients.get(f'/call/{EP}?aweme_id=7',
+                                headers={'X-Treg-Route-Max-Cost': cap})
+    assert response.status_code == status, response.text
+    assert before - await _balance(clients) == (3000 if status == 200 else 0)
+    assert len(seen) == (1 if status == 200 else 0)
+    assert await _holds() == []
+    if status == 402:
+        assert response.json()['detail']['error'] == 'route_max_cost'
+        async with session_maker() as db:
+            rows = (await db.execute(select(OverflowSpend))).scalars().all()
+            assert all(row.cost_micro == 0 for row in rows)

@@ -49,6 +49,7 @@ class Adapter:
     in_expr: dict[str, str] = field(default_factory=dict) # provider param ← expression over the request (filters)
     body_array: bool = False                   # the provider wants `[body]` (DataForSEO's task list)
     test_identity: dict[str, Any] = field(default_factory=dict)  # what the endpoint's test_request stands for, when `in` cannot read it back
+    cost_units: str = ""                      # optional upper-bound chargeable units for a routed request
     verified: bool = False
     verify_note: str = ""
     _filter_keys: tuple[str, ...] = ()        # contract filter names, set at load (always sent)
@@ -129,6 +130,7 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
             endpoint_id=eid, accepts=_variants(a.get("accepts")), in_map=dict(a.get("in") or {}),
             in_expr=dict(a.get("in_expr") or {}), body_array=bool(a.get("body_array")),
             test_identity=dict(a.get("test_identity") or {}),
+            cost_units=str(a.get("cost_units") or ""),
             const=dict(a.get("const") or {}), out_map=dict(a.get("out") or {}), miss=str(a.get("miss") or ""))
     return out
 

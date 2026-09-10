@@ -203,7 +203,18 @@ def as_list(v: Any) -> Any:
     return v if isinstance(v, list) else [v]
 
 
-TRANSFORMS = {"values": values, "get": get_path, "split_first": split_first, "split_last": split_last, "join": join, "has_type": has_type, "len": length,
+def null_if(value: Any, *sentinels: Any) -> Any:
+    """Convert declared empty markers to null; retain the original nonempty value."""
+    key = value.strip().lower() if isinstance(value, str) else value
+    return None if key in sentinels else value
+
+
+def choose(condition: Any, when_true: Any, when_false: Any) -> Any:
+    """Select a value for a request-dependent adapter rule."""
+    return when_true if condition else when_false
+
+
+TRANSFORMS = {"values": values, "get": get_path, "null_if": null_if, "choose": choose, "split_first": split_first, "split_last": split_last, "join": join, "has_type": has_type, "len": length,
               "dfs_location": dfs_location, "seranking_source": seranking_source, "lower": lower, "upper": upper,
               "list": as_list, "at_least": at_least, "linkedin_handle": linkedin_handle, "linkedin_url": linkedin_url,
               "email_domain": email_domain, "host": host, "fmt": fmt, "obj": obj, "tca_filter": tca_filter, "csv": csv, "country_name": country_name}

@@ -71,8 +71,8 @@ published too. `tests/test_plugin.py` asserts none appears.
 **Never edit `skills/treg/SKILL.md`.** Change `src/treg/web/skill.md` and regenerate:
 
 ```bash
-python3 scripts/build_plugin.py            # regenerate BOTH plugins
-python3 scripts/build_plugin.py --check    # fail if either is stale (also a test)
+uv run python scripts/build_plugin.py            # regenerate BOTH plugins
+uv run python scripts/build_plugin.py --check    # fail if either is stale (also a test)
 ```
 
 ## Listing runbook

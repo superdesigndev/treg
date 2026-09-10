@@ -1,0 +1,391 @@
+{
+  "id": "example-request-id",
+  "credits_used": 20,
+  "credits_remaining": 9000,
+  "organization_id": 1726684,
+  "organization_slug": "sumble",
+  "business_functions": [
+    {
+      "business_function": "Engineering & R&D",
+      "categories": [
+        {
+          "category_slug": "javascript",
+          "category_name": "JS Frameworks",
+          "category_name_full": "Javascript Frameworks",
+          "technologies": [
+            {
+              "name": "React",
+              "slug": "react",
+              "job_post_used_count": 3,
+              "domain": "https://react.dev/"
+            },
+            {
+              "name": "TypeScript",
+              "slug": "typescript",
+              "job_post_used_count": 3,
+              "domain": "https://www.typescriptlang.org/"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "React",
+              "job_post_used_count": 3
+            },
+            {
+              "name": "TypeScript",
+              "job_post_used_count": 3
+            }
+          ]
+        },
+        {
+          "category_slug": "programming-languages-and-frameworks",
+          "category_name": "Languages",
+          "category_name_full": "Programming Languages and Frameworks",
+          "technologies": [
+            {
+              "name": "Python",
+              "slug": "python",
+              "job_post_used_count": 5,
+              "domain": "https://www.python.org/"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "Python",
+              "job_post_used_count": 5
+            },
+            {
+              "name": "Microsoft C#",
+              "job_post_used_count": 1
+            }
+          ]
+        },
+        {
+          "category_slug": "cloud-and-container-orchestration-platforms",
+          "category_name": "Containers",
+          "category_name_full": "Cloud and Container Orchestration Platforms",
+          "technologies": [
+            {
+              "name": "GCP Cloud Run",
+              "slug": "gcp-cloud-run",
+              "job_post_used_count": 3,
+              "domain": "https://cloud.google.com/run"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "GCP Cloud Run",
+              "job_post_used_count": 3
+            }
+          ]
+        },
+        {
+          "category_slug": "cloud-vendor",
+          "category_name": "Cloud",
+          "category_name_full": "Cloud Vendor",
+          "technologies": [
+            {
+              "name": "GCP",
+              "slug": "gcp",
+              "job_post_used_count": 3,
+              "domain": "https://cloud.google.com/"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "GCP",
+              "job_post_used_count": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "business_function": "Data & Analytics",
+      "categories": [
+        {
+          "category_slug": "database-technologies",
+          "category_name": "Database",
+          "category_name_full": "Database Technologies",
+          "technologies": [
+            {
+              "name": "PostgreSQL",
+              "slug": "postgresql",
+              "job_post_used_count": 2,
+              "domain": "https://www.postgresql.org/"
+            },
+            {
+              "name": "AlloyDB",
+              "slug": "alloydb",
+              "job_post_used_count": 2,
+              "domain": "https://cloud.google.com/alloydb"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "PostgreSQL",
+              "job_post_used_count": 2
+            },
+            {
+              "name": "AlloyDB",
+              "job_post_used_count": 2
+            }
+          ]
+        },
+        {
+          "category_slug": "cloud-data-warehouse",
+          "category_name": "Warehouse",
+          "category_name_full": "Cloud Data Warehouse",
+          "technologies": [
+            {
+              "name": "Databricks",
+              "slug": "databricks",
+              "job_post_used_count": 3,
+              "domain": "https://databricks.com/"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "Databricks",
+              "job_post_used_count": 3
+            }
+          ]
+        },
+        {
+          "category_slug": "olap",
+          "category_name": "OLAP",
+          "category_name_full": "OLAP",
+          "technologies": [
+            {
+              "name": "Databricks",
+              "slug": "databricks",
+              "job_post_used_count": 3,
+              "domain": "https://databricks.com/"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "Databricks",
+              "job_post_used_count": 3
+            }
+          ]
+        },
+        {
+          "category_slug": "data-pipeline-orchestration",
+          "category_name": "Orchestration",
+          "category_name_full": "Data Pipeline Orchestration",
+          "technologies": [
+            {
+              "name": "Prefect",
+              "slug": "prefect",
+              "job_post_used_count": 2,
+              "domain": "https://www.prefect.io/"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "Prefect",
+              "job_post_used_count": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "business_function": "AI & ML",
+      "categories": [
+        {
+          "category_slug": "machine-learning-platforms-and-tools",
+          "category_name": "ML Platforms",
+          "category_name_full": "Machine Learning Platforms and Tools",
+          "technologies": [
+            {
+              "name": "vLLM",
+              "slug": "vllm",
+              "job_post_used_count": 3,
+              "domain": "https://github.com/vllm-project/vllm"
+            },
+            {
+              "name": "Databricks",
+              "slug": "databricks",
+              "job_post_used_count": 3,
+              "domain": "https://databricks.com/"
+            },
+            {
+              "name": "HuggingFace",
+              "slug": "huggingface",
+              "job_post_used_count": 3,
+              "domain": "https://huggingface.co/"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "HuggingFace",
+              "job_post_used_count": 3
+            },
+            {
+              "name": "Databricks",
+              "job_post_used_count": 3
+            },
+            {
+              "name": "vLLM",
+              "job_post_used_count": 3
+            }
+          ]
+        },
+        {
+          "category_slug": "machine-learning-frameworks",
+          "category_name": "ML Frameworks",
+          "category_name_full": "Machine Learning Frameworks",
+          "technologies": [
+            {
+              "name": "PyTorch",
+              "slug": "pytorch",
+              "job_post_used_count": 3,
+              "domain": "https://pytorch.org/"
+            },
+            {
+              "name": "HuggingFace",
+              "slug": "huggingface",
+              "job_post_used_count": 3,
+              "domain": "https://huggingface.co/"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "PyTorch",
+              "job_post_used_count": 3
+            },
+            {
+              "name": "HuggingFace",
+              "job_post_used_count": 3
+            }
+          ]
+        },
+        {
+          "category_slug": "ml-training",
+          "category_name": "ML Training",
+          "category_name_full": "ML Training",
+          "technologies": [
+            {
+              "name": "HuggingFace",
+              "slug": "huggingface",
+              "job_post_used_count": 3,
+              "domain": "https://huggingface.co/"
+            },
+            {
+              "name": "PyTorch",
+              "slug": "pytorch",
+              "job_post_used_count": 3,
+              "domain": "https://pytorch.org/"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "HuggingFace",
+              "job_post_used_count": 3
+            },
+            {
+              "name": "PyTorch",
+              "job_post_used_count": 3
+            }
+          ]
+        },
+        {
+          "category_slug": "deep-learning-frameworks",
+          "category_name": "Deep Learning",
+          "category_name_full": "Deep Learning Frameworks",
+          "technologies": [
+            {
+              "name": "PyTorch",
+              "slug": "pytorch",
+              "job_post_used_count": 3,
+              "domain": "https://pytorch.org/"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "PyTorch",
+              "job_post_used_count": 3
+            }
+          ]
+        },
+        {
+          "category_slug": "inference-serving",
+          "category_name": "Inference Serving",
+          "category_name_full": "Inference & Serving",
+          "technologies": [
+            {
+              "name": "vLLM",
+              "slug": "vllm",
+              "job_post_used_count": 3,
+              "domain": "https://github.com/vllm-project/vllm"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "vLLM",
+              "job_post_used_count": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "business_function": "Product & Design",
+      "categories": [
+        {
+          "category_slug": "design",
+          "category_name": "Design",
+          "category_name_full": "Design",
+          "technologies": [
+            {
+              "name": "Figma",
+              "slug": "figma",
+              "job_post_used_count": 3,
+              "domain": "https://www.figma.com"
+            }
+          ],
+          "evidence": [
+            {
+              "name": "Figma",
+              "job_post_used_count": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "business_function": "IT Security",
+      "categories": []
+    },
+    {
+      "business_function": "Information Technology",
+      "categories": []
+    },
+    {
+      "business_function": "Sales",
+      "categories": []
+    },
+    {
+      "business_function": "Marketing",
+      "categories": []
+    },
+    {
+      "business_function": "Finance",
+      "categories": []
+    },
+    {
+      "business_function": "HR",
+      "categories": []
+    },
+    {
+      "business_function": "Support",
+      "categories": []
+    },
+    {
+      "business_function": "Legal",
+      "categories": []
+    }
+  ]
+}

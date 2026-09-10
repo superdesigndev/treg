@@ -101,6 +101,10 @@ services:
         sync: false
       - key: TREG_PLATFORM_KEY_HUNTER
         sync: false
+      - key: TREG_PLATFORM_KEY_SUMBLE
+        sync: false
+      - key: TREG_PLATFORM_KEY_QUICKENRICH
+        sync: false
       - key: TREG_PLATFORM_KEY_TRYKITT
         sync: false
       - key: TREG_PLATFORM_KEY_CONTACTOUT
@@ -251,6 +255,16 @@ services:
           type: web
           name: treg
           envVarName: TREG_PLATFORM_KEY_HUNTER
+      - key: TREG_PLATFORM_KEY_SUMBLE
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_SUMBLE
+      - key: TREG_PLATFORM_KEY_QUICKENRICH
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_QUICKENRICH
       - key: TREG_PLATFORM_KEY_TRYKITT
         fromService:
           type: web

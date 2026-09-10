@@ -6,7 +6,10 @@ treg-owned aggregator account: reserve a child hold (own id `{call_ref}:overflow
 run, no DB open → settle the child at the aggregator's real price (0% markup) and fold the daily
 spend delta into that settle → return the vendor's body from the aggregator's envelope, disclosed via
 `X-Treg-Served-Via`. One hop: an aggregator that fails is data (child released, aggregator marked
-unhealthy 15 min, typed 503 with alternatives), never a second aggregator.
+unhealthy 15 min, typed 503 with alternatives), never a second aggregator. An aggregator's own
+per-request refusal (`contract`) is request-scoped: child released, nothing charged, no mark; the
+vendor's own answer stands, or - when the ladder skipped the direct attempt - the typed 503 names
+the refusal.
 
 Shadow mode (`overflow_mode=shadow`): everything except the child hold and the answer — the
 aggregator is called, status/shape/cost logged and the spend recorded (treg pays the probe, bounded
@@ -310,8 +313,11 @@ async def _maybe_overflow_attempt(
         return OverflowOutcome(False, None, aggregator=aggregator, note=why_agg,
                                failure=_capacity_503(mk, aggregator, why_agg) if mode == "on" else None)
     if res.failure == "contract" or res.failure == "pending":
-        # The aggregator's stricter schema refused (no vendor call, no charge): this route is wrong for
-        # this call; the vendor's own answer stands. Worth a log line — verify should have caught it.
+        # The aggregator's own per-request refusal (no vendor call, no charge, no strike): this route
+        # is wrong for this call. The vendor's own answer stands when there is one; on the skip-direct
+        # ladder there is none, so the caller gets treg's typed 503 naming the relay's refusal - never
+        # the aggregator's envelope dressed up as the vendor's answer. Worth a log line either way:
+        # verify should have caught it.
         if mode == "on":
             spend_adjustment = _overflow_spend_adjustment(budget)
             await _platform_settle(
@@ -326,7 +332,11 @@ async def _maybe_overflow_attempt(
             await _record_shadow_budget(budget)
         log.warning("overflow via %s refused %s: %s", aggregator, mk.endpoint_id, res.detail)
         _audit_child(mk, child, call_ref, aggregator, res, charged=0, client=audit_client, note=res.failure)
-        return OverflowOutcome(False, None, aggregator=aggregator, note=res.failure)
+        failure = None
+        if mode == "on" and force_trigger is not None:
+            failure = _capacity_503(mk, aggregator, f"{res.failure}: it refused the request itself, "
+                                                    f"{res.detail or 'no detail'}")
+        return OverflowOutcome(False, None, aggregator=aggregator, note=res.failure, failure=failure)
     # The vendor answered through the aggregator.
     if mode == "shadow":
         try:

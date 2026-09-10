@@ -22,7 +22,7 @@ from treg import oauth_providers as P
 def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,
     not shown as 'not configured' the way an unset OAuth provider is."""
-    for svc in ("apollo", "pdl", "akta", "hunter", "contactout", "millionverifier", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush",
+    for svc in ("apollo", "pdl", "akta", "hunter", "sumble", "quickenrich", "contactout", "millionverifier", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush",
                 "justoneapi", "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
                 "cloro",
                 "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
@@ -274,6 +274,43 @@ def test_millionverifier_platform_key_configuration(monkeypatch):
     assert P.platform_bindings(P.get("millionverifier")) == [
         {"platform_setting": "platform_key_millionverifier", "injector": "env",
          "location": "query", "name": "api", "format": "{secret}"}]
+
+
+async def test_quickenrich_connect_uses_free_authenticated_discovery(clients, monkeypatch):
+    import httpx
+    import json
+    from treg.api import app
+
+    def probe(request):
+        assert request.method == 'POST'
+        assert request.url.host == 'app.quickenrich.io'
+        assert request.url.path == '/api/employees/contact-finder'
+        assert json.loads(request.content)['per_page'] == 1
+        if request.headers['authorization'] == 'Bearer bad-key':
+            return httpx.Response(401, json={'success': False, 'message': 'Invalid or inactive API key'})
+        return httpx.Response(200, json={'success': True, 'data': [], 'meta': {'credits_used': 0, 'remaining_credits': 0}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, 'http', upstream)
+        bad = await clients.post('/connections/token', json={'provider': 'quickenrich', 'token': 'bad-key'})
+        assert bad.status_code == 422
+        good = await clients.post('/connections/token', json={'provider': 'quickenrich', 'token': 'good-key'})
+        assert good.status_code == 200, good.text
+        tool = next(t for t in (await clients.get('/tools')).json() if t['name'] == 'quickenrich')
+        binding = tool['bindings'][0]
+        assert binding['location'] == 'header' and binding['name'] == 'Authorization'
+        assert binding['format'] == 'Bearer {secret}'
+
+
+def test_quickenrich_platform_key_configuration(monkeypatch):
+    from treg.config import Settings
+    monkeypatch.setenv('TREG_PLATFORM_KEY_QUICKENRICH', 'platform-test-key')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'quickenrich')
+    settings = Settings(_env_file=None)
+    assert settings.platform_key_for('quickenrich') == 'platform-test-key'
+    assert P.platform_bindings(P.get('quickenrich')) == [
+        {'platform_setting': 'platform_key_quickenrich', 'injector': 'env',
+         'location': 'header', 'name': 'Authorization', 'format': 'Bearer {secret}'}]
 
 
 # ---- ContactOut ----

@@ -333,8 +333,6 @@
       '<div class="versions">' + k.versions.map(v =>
         '<span class="v ' + (v.origin === "refresh" ? "refresh" : v.stored === "body" ? "full" : "ref") + '" role="button" tabindex="0" data-key="' + k.key_hash + '" data-ver="' + v.version + '" data-tip="v' + v.version + " · " + v.origin + " · " + fmtBytes(v.size_bytes) + " · " + VTIP[v.stored] + ' Click to view the stored answer.">' + v.version + '</span>').join("") + '</div></div>' +
       '<div class="kv"><span data-tip="stable = re-asked and the answer had not changed (timer grows ×1.5). changed = it had (timer halves).">Stable / changed</span><span class="mono">' + k.stable + ' / ' + k.changed + '</span></div>' +
-      '<div><div class="sec" data-tip="Fields the learner found changing on every fetch in the same shape — request ids, server timestamps. Ignored when deciding whether data really changed. Stored bytes are never altered." style="margin-bottom:6px">Learned noise</div>' +
-      '<div class="volatile">' + ((k.volatile_paths && k.volatile_paths.length) ? k.volatile_paths.map(v => '<span class="vp">' + v + '</span>').join("") : '<span class="vp" style="border-style:solid; opacity:.6">none learned yet</span>') + '</div></div>' +
       '<div class="kv"><span data-tip="The last time a real caller asked this question. A key is refreshed early only if this is newer than its last fetch.">Last demanded</span><span class="mono">' + (k.last_requested_at ? ago(k.last_requested_at) : "never") + '</span></div>';
     body.querySelectorAll(".v[data-key]").forEach(ch => {
       const open = () => openBody(ch.dataset.key, ch.dataset.ver);

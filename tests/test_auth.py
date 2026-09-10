@@ -308,3 +308,40 @@ async def test_google_bad_state_rejected(goog):
 
 async def test_meta_exposes_google_flag(goog):
     assert (await goog.get("/meta")).json()["google"] is True
+
+
+async def test_oauth_callback_carries_arena_acquisition_and_counts_signup_once(gc, monkeypatch):
+    from treg import analytics
+    events = []
+    monkeypatch.setattr(analytics, "capture", lambda *a, **k: events.append(a))
+    gc.cookies.set("treg_entry_surface", "arena")
+    for _ in range(2):
+        await gc.get("/auth/github", params={"return_to": "/enrich-arena"})
+        state = gc.cookies.get("treg_oauth_state")
+        r = await gc.get("/auth/github/callback", params={"code": "test", "state": state})
+        assert r.status_code == 302 and r.headers["location"] == "/enrich-arena"
+    signups = [a for a in events if a[1] == "signup_completed"]
+    assert len(signups) == 1
+    assert signups[0][2] == {"signup_method": "github", "entry_surface": "arena"}
+
+
+async def test_oauth_arena_return_cookie_encrypts_and_restores_query(gc):
+    from urllib.parse import urlencode
+
+    target = "/enrich-arena?" + urlencode({
+        "run": "saved-run", "team": "sales; Secure\r\nSet-Cookie: injected=1",
+    })
+    started = await gc.get("/auth/github", params={"return_to": target})
+    cookie = gc.cookies.get("treg_arena_return")
+    assert cookie != target
+    assert crypto.decrypt(cookie) == target
+    assert set(gc.cookies.keys()) == {"treg_oauth_state", "treg_arena_return"}
+    return_header = next(h for h in started.headers.get_list("set-cookie")
+                         if h.startswith("treg_arena_return="))
+    assert "HttpOnly" in return_header and "SameSite=lax" in return_header
+
+    state = gc.cookies.get("treg_oauth_state")
+    response = await gc.get("/auth/github/callback", params={"code": "test", "state": state})
+    assert response.status_code == 302
+    assert response.headers["location"] == target
+    assert gc.cookies.get("treg_arena_return") is None

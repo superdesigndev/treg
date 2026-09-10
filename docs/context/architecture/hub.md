@@ -24,11 +24,11 @@ sources:
   - src/treg/web/index.html
   - src/treg/web/skill.md
   - src/treg/web/llms.txt
-  - src/treg/alembic/versions/0026_hub_tools.py
-  - src/treg/alembic/versions/0027_hub_runs.py
-  - src/treg/alembic/versions/0028_hubtool_check_result.py
-  - src/treg/alembic/versions/0029_hubrun_output.py
-  - src/treg/alembic/versions/0030_hubtool_data.py
+  - src/treg/alembic/versions/0033_hub_tools.py
+  - src/treg/alembic/versions/0034_hub_runs.py
+  - src/treg/alembic/versions/0035_hubtool_check_result.py
+  - src/treg/alembic/versions/0036_hubrun_output.py
+  - src/treg/alembic/versions/0037_hubtool_data.py
   - docs/hub-recipes/data-sheets/run.js
   - docs/hub-recipes/data-csv/run.js
   - tests/test_hub.py
@@ -127,7 +127,7 @@ one-process production deploy): the fifth is 429 `hub_busy` with `retry_after_s`
 The reply: `{run_id, recipe: "<id>@<v>", output, usage: {cost_micro, steps_micro, price_micro,
 steps, ms}, trace, log}` with `X-Treg-Run-Id` (= the parent call id), `X-Treg-Steps`,
 `X-Treg-Cost-Micro` (the total). `Idempotency-Key` covers the whole run through the parent's
-store. `HubRun` (migrations 0027, 0029) keeps one row per run: status, steps, cost, price,
+store. `HubRun` (migrations 0034, 0036) keeps one row per run: status, steps, cost, price,
 duration, masked inputs, trace, log, error, and the output of a successful run; deleted with the
 calling team.
 
@@ -167,7 +167,7 @@ carrying the maker's identity headers, so the steps are charged to the maker's b
 normal prices and never the seller's price. Pass (every `check.fields` present and non-empty,
 `min_rows` met; `health.verdict_from` is the one rule) ⇒ `live`, and the 201 carries the call
 line and the share page; fail ⇒ the version is kept as `failed` with the reason in
-`check_result` (migration 0028). `PUT /hub/tools/{id}` publishes a new version (the name must
+`check_result` (migration 0035). `PUT /hub/tools/{id}` publishes a new version (the name must
 match the id). `POST /hub/run` is the dry run behind `treg hub run .`: the files plus `inputs`,
 run for real as the maker, nothing stored, version 0 on every trace. `PATCH /hub/tools/{id}`
 `{price_usd}` changes the newest live version's price for later runs, no version bump. `DELETE

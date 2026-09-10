@@ -16,3 +16,11 @@ FEEDBACK_DESCRIPTION = (
     "and raw requests, responses or logs. Report each issue once. Feedback goes to the treg "
     "team to improve the product; it does not complete the user's task. Keep going afterward."
 )
+
+ReviewUsefulness = Literal["useful", "partly", "not_useful", "not_sure"]
+REVIEW_USEFULNESS = get_args(ReviewUsefulness)
+REVIEW_DESCRIPTION = (
+    "Rate a catalog call after you have used its result; not_sure is fine when you cannot tell. "
+    "Use feedback for anything confusing or wrong, omit private information, credentials and "
+    "raw requests, responses or logs, and keep going with the task afterward."
+)

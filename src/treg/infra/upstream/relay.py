@@ -10,6 +10,12 @@ Faithfulness contract — it alters ONLY these, everything else is relayed verba
      from the Cookie header too (the dashboard's `credentials:'include'` Try-it would otherwise leak
      our session token to the upstream); any other caller cookies are preserved.
   3. the credential(s) the tool's bindings inject — overwrite only their target header/param.
+  4. on treg's SHARED key only (tier 4), the caller's `Idempotency-Key` is re-scoped per org by
+     `scope_shared_idempotency_key` before the request is built. Every org shares one provider
+     account there, so a provider that honors the header would hand org B the job org A created
+     under the same label — and the ownership record would then make B its owner (reproduced live
+     against LeadsForge, 2026-09-09). The caller loses nothing: treg's own idempotency table already
+     replays their answer for the same label. A team's own key relays the header verbatim.
 
 It never buffers the body (rule 5: stream, don't duplicate) and uses the shared long-lived
 httpx client (rule 1: keepalive). Secrets are passed already-loaded (api does the DB work).
@@ -18,6 +24,7 @@ httpx client (rule 1: keepalive). Secrets are passed already-loaded (api does th
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from collections.abc import Awaitable, Callable
 
 import httpx
@@ -54,6 +61,25 @@ _DROP_REQUEST = _HOP_BY_HOP | _CONTROL
 def _is_dropped_request_header(name: str, extra: frozenset[str]) -> bool:
     """Whether a caller header is ours/hop-by-hop and must not reach the upstream."""
     return name in _DROP_REQUEST or name in extra or name.startswith(_TREG_PREFIX)
+
+
+_IDEMPOTENCY_HEADER = b"idempotency-key"
+
+
+def scope_shared_idempotency_key(
+    raw_headers: tuple[tuple[bytes, bytes], ...], org_id: int,
+) -> tuple[tuple[bytes, bytes], ...]:
+    """Rewrite 4 of the faithfulness contract: partition the caller's idempotency label by org.
+
+    Only for calls on treg's shared provider key. The value is an opaque, fixed-length digest of
+    (org, label): two orgs can never collide on the provider's account, and the same org retrying the
+    same label still hits the provider's own dedupe should treg's replay window miss it.
+    """
+    return tuple(
+        (k, hashlib.sha256(f"{org_id}\x1f".encode() + v).hexdigest().encode())
+        if k.lower() == _IDEMPOTENCY_HEADER else (k, v)
+        for k, v in raw_headers
+    )
 _DROP_RESPONSE = _HOP_BY_HOP
 _TREG_COOKIES = frozenset({"treg_session", "treg_oauth_state"})  # our cookies, scrubbed from Cookie
 

@@ -40,6 +40,8 @@ def _configure_test_environment() -> None:
         "TIKTOK_CLIENT_SECRET",
         "META_CLIENT_ID",
         "META_CLIENT_SECRET",
+        "POSTHOG_KEY",
+        "ADS_CONV_REFRESH_TOKEN",
         "PLATFORM_PROVIDERS",
         "PLATFORM_KEY_TIKHUB",
         "PLATFORM_KEY_DATAFORSEO",

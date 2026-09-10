@@ -42,7 +42,7 @@ from urllib.parse import parse_qsl, quote, urlsplit
 import httpx
 
 from . import agents as _agents
-from .feedback_contract import FEEDBACK_CATEGORIES, FEEDBACK_DESCRIPTION
+from .feedback_contract import FEEDBACK_CATEGORIES, FEEDBACK_DESCRIPTION, REVIEW_USEFULNESS, REVIEW_DESCRIPTION
 # One source of truth for the proxy's default port (help text below). Importing the module is cheap —
 # it pulls only stdlib plus httpx, which the CLI already has; `cryptography` stays lazy inside it.
 from .localproxy import DEFAULT_PORT as _PROXY_DEFAULT_PORT
@@ -289,6 +289,7 @@ def _show(resp: httpx.Response) -> None:
         print(resp.text)
     if resp.status_code < 400:
         _show_charge_line(resp)
+        _show_hint_line(resp)
     if resp.status_code >= 400:
         _show_failure_diagnostics(resp)
         # 402 = the team balance can't cover a call on treg's key. The JSON above already carries the
@@ -323,6 +324,28 @@ def _show_charge_line(resp: httpx.Response) -> None:
     if call_id := headers.get("X-Treg-Call-Id"):
         line += f" · call id {call_id}"
     print(line, file=sys.stderr)
+
+
+def _show_hint_line(resp: httpx.Response) -> None:
+    """The server's optional invitation (`X-Treg-Hint: review|feedback`), one stderr line beside the
+    charge line. `X-Treg-Review: requested` is the older review-only header a pre-0.19 registry
+    still sends. stdout stays the exact body."""
+    headers = getattr(resp, "headers", {}) or {}
+    call_id = headers.get("X-Treg-Call-Id")
+    kind = headers.get("X-Treg-Hint")
+    if kind is None and headers.get("X-Treg-Review") == "requested":
+        kind = "review"
+    if not call_id:
+        return
+    if kind == "review":
+        print(f'treg: after using this result, run treg review {call_id} '
+              '<useful|partly|not_useful|not_sure> [--reason "..."]; '
+              'omit private data, then keep going with the task.', file=sys.stderr)
+    elif kind == "feedback":
+        print('treg: anything confusing or wrong about this call, even if it worked? '
+              'treg feedback submit <quality|pricing|friction|other> "what you saw" '
+              f'--call-id {call_id}; omit private data, then keep going with the task.',
+              file=sys.stderr)
 
 
 def _show_failure_diagnostics(resp: httpx.Response) -> None:
@@ -2431,6 +2454,7 @@ def _show_call_response(response: httpx.Response) -> None:
             _show_failure_diagnostics(response)
             raise SystemExit(1)
         _show_charge_line(response)
+        _show_hint_line(response)
         return
     _show(response)
 
@@ -4660,6 +4684,9 @@ def _cost_label(cost) -> str:
     """A price you can scan in a column: "$0.001/success", "free", "quota rows"."""
     if not isinstance(cost, dict):
         return "-"
+    if cost.get("display_unit") and cost.get("display_usd") is not None:
+        return (f"${cost['display_usd']:.3g}" + cost.get("display_suffix", "")
+                + "/" + cost["display_unit"])
     kind = (cost.get("type") or "").replace("_", " ")
     value, currency = cost.get("value"), cost.get("currency") or ""
     if value in (None, "") and isinstance(cost.get("table"), list):
@@ -4881,6 +4908,9 @@ def _cost_usd(cost: dict | None) -> str:
     column, so USD stands alone here; `treg catalog get` carries the native amount alongside it."""
     if not isinstance(cost, dict):
         return "-"
+    if cost.get("display_unit") and cost.get("display_usd") is not None:
+        return (f"${cost['display_usd']:.3g}" + cost.get("display_suffix", "")
+                + "/" + cost["display_unit"])
     usd = cost.get("usd")
     if usd is None:
         # no rate for this unit (a provider that publishes no per-credit price): the native
@@ -4994,6 +5024,39 @@ def _feedback_request(cfg, method: str, path: str, **kwargs) -> None:
     except ValueError:
         _feedback_error("invalid_response", uncertain if submitting else "Invalid response. Retry the lookup later.")
     print(json.dumps(body, indent=2))
+
+
+def cmd_review(args, cfg) -> None:
+    call_id = args.call_id.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", call_id):
+        _feedback_error("invalid_call_id", "Use the call ID from the catalog call response.")
+    reason = args.reason.strip() if args.reason is not None else None
+    if reason is not None and not 1 <= len(reason) <= 200:
+        _feedback_error("invalid_reason", "Reason must contain 1-200 characters after trimming. Omit private data.")
+    body = {"call_id": call_id, "usefulness": args.usefulness}
+    if reason is not None:
+        body["reason"] = reason
+    uncertain = "Could not confirm whether the review was saved. Retry with the same call ID to confirm."
+    try:
+        with _client(cfg) as client:
+            response = client.post("/reviews", json=body)
+    except httpx.RequestError:
+        _feedback_error("submission_unconfirmed", uncertain)
+    if response.status_code >= 400:
+        errors = {
+            400: ("not_catalog_call", "Reviews require a catalog call, not a team's own tool."),
+            401: ("authentication_required", "Sign in with `treg login`, or check the configured token."),
+            403: ("access_denied", "Check the active team and your token's permissions."),
+            404: ("not_found", "Call record not found in the active team; it may not be written yet. Retry shortly."),
+            422: ("invalid_review", "Check the fields with `treg review --help`. Omit private data."),
+        }
+        code, message = errors.get(response.status_code, ("submission_unconfirmed", uncertain))
+        _feedback_error(code, message, http_status=response.status_code)
+    try:
+        receipt = response.json()
+    except ValueError:
+        _feedback_error("invalid_response", uncertain)
+    print(json.dumps(receipt, indent=2))
 
 
 def cmd_feedback(args, cfg) -> None:
@@ -5697,6 +5760,7 @@ HELP_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("balance", "Prepaid balance: credit left, calls in flight, recent spend."),
         ("topup", "Add funds, or set up automatic top-ups."),
         ("feedback", "Share a problem or suggestion about treg."),
+        ("review", "Rate a catalog call after using its result."),
     ]),
     ("YOUR OWN TOOLS — what your team already has", [
         ("tool", "Manage tools (endpoint or CLI)."),
@@ -6358,6 +6422,12 @@ def build_parser() -> argparse.ArgumentParser:
                "treg hub retire acme.leads-db")
     h_ret.add_argument("tool_id")
     h_ret.set_defaults(fn=cmd_hub_retire)
+    review = mk(sub, "review", REVIEW_DESCRIPTION,
+                'treg review CALL_ID useful --reason "Helped answer the question."')
+    review.add_argument("call_id", help="the call ID from a catalog call response")
+    review.add_argument("usefulness", choices=REVIEW_USEFULNESS, help="how the result helped your task")
+    review.add_argument("--reason", help="optional sanitized reason, 1-200 characters")
+    review.set_defaults(fn=cmd_review)
 
     fb = mk(sub, "feedback", "Submit or retrieve private team feedback.",
             'treg feedback submit friction "The pagination example is unclear."',
@@ -6577,7 +6647,25 @@ def main(argv: list[str] | None = None) -> None:
     cfg = _load_config()
     if override:
         _ORG_OVERRIDE = override
-    args.fn(args, cfg)
+    started = time.monotonic()
+    exit_code = 0
+    try:
+        args.fn(args, cfg)
+    except SystemExit as exc:
+        exit_code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
+        raise
+    except KeyboardInterrupt:
+        exit_code = 130
+        raise
+    except BaseException:
+        exit_code = 1
+        raise
+    finally:
+        from .cli_analytics import track_command
+
+        track_command(command=args.fn.__name__.removeprefix("cmd_"), exit_code=exit_code,
+                      duration_ms=round((time.monotonic() - started) * 1000),
+                      base_url=cfg.get("base_url", PRODUCTION_BASE_URL), config_path=CONFIG_PATH)
 
 
 if __name__ == "__main__":

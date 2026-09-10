@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Sequence
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, nullcontext
 from copy import copy
 from typing import Literal
 
@@ -20,6 +20,7 @@ from starlette.routing import BaseRoute, Mount
 
 from . import adsconv, analytics, archive, audit
 from .application.call import route as routed_call
+from .application import arena, arena_insights
 from . import bootstrap_handlers
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
@@ -27,6 +28,7 @@ from .bootstrap_http import (
     _SecurityHeadersMiddleware,
 )
 from .config import get_settings
+from .infra import kv
 from .infra.db import background_session_maker, verify_db
 from .infra.catalog_observations import (
     CachedEndpointObservationReader,
@@ -41,6 +43,25 @@ RouteKey = tuple[str, tuple[str, ...], str]
 # Every HTTP route has one workload owner. A new decorator in api.py fails app creation until its
 # key is placed here, so the dataplane cannot silently acquire a management or runner endpoint.
 _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
+    ('/enrich-arena', ('GET',), 'enrich_arena_page'),
+    ('/enrich-arena/people-search-bench', ('GET',), 'enrich_arena_page'),
+    ('/enrich-arena/leaderboard', ('GET',), 'enrich_arena_page'),
+    ('/enrich-arena/{asset}', ('GET',), 'enrich_arena_asset'),
+    ('/arena/tasks', ('GET',), 'arena_tasks'),
+    ('/arena/insights', ('GET',), 'arena_insights_data'),
+    ('/arena/plans', ('POST',), 'arena_plan'),
+    ('/arena/runs/{run_id}/start', ('POST',), 'arena_start'),
+    ('/arena/runs', ('GET',), 'arena_history'),
+    ('/arena/runs/{run_id}', ('GET',), 'arena_run'),
+    ('/arena/runs/{run_id}/cancel', ('POST',), 'arena_cancel'),
+    ('/arena/runs/{run_id}/evaluations', ('POST',), 'arena_evaluate'),
+    ('/arena/runs/{run_id}/reveal', ('POST',), 'arena_reveal'),
+    ('/arena/runs/{run_id}/attempts/{attempt_id}/report', ('POST',), 'arena_report'),
+    ('/arena/runs/{run_id}/attempts/{attempt_id}/rating', ('POST',), 'arena_rate'),
+    ('/arena/runs/{run_id}/attempts/{attempt_id}/verification/plan', ('POST',), 'arena_verification_plan'),
+    ('/arena/runs/{run_id}/attempts/{attempt_id}/verification/start', ('POST',), 'arena_verification_start'),
+    ('/arena/runs/{run_id}/attempts/{attempt_id}/plan', ('POST',), 'arena_manual_plan'),
+    ('/arena/runs/{run_id}/attempts/{attempt_id}/start', ('POST',), 'arena_manual_start'),
     ('/meta', ('GET',), 'meta'),
     ('/providers.json', ('GET',), 'providers_catalog'),
     ('/catalog/platforms', ('GET',), 'catalog_platforms'),
@@ -69,6 +90,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/docs', ('GET',), 'docs_page'),
     ('/tool-requests', ('POST',), 'create_tool_request'),
     ('/feedback', ('POST',), 'submit_feedback'),
+    ('/reviews', ('POST',), 'submit_review'),
+    ('/admin/reviews', ('GET',), 'admin_reviews'),
     ('/feedback/{feedback_id}', ('GET',), 'get_feedback'),
     ('/admin/feedback', ('GET',), 'admin_feedback'),
     ('/hub/tools', ('POST',), 'publish_hub_tool'),
@@ -127,6 +150,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/privacy', ('GET',), 'privacy_page'),
     ('/connectors/claude', ('GET',), 'claude_connector_page'),
     ('/adtrack.js', ('GET',), 'adtrack_js'),
+    ('/agent-setup.js', ('GET',), 'agent_setup_js'),
     ('/gtag.js', ('GET',), 'gtag_js'),
     ('/resources', ('GET',), 'resources_page'),
     ('/grokbot', ('GET',), 'grokbot_page'),
@@ -262,6 +286,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/calls', ('GET',), 'admin_calls'),
     ('/admin/errors', ('GET',), 'admin_errors'),
     ('/admin/health', ('GET',), 'admin_health'),
+    ('/admin/kv', ('GET',), 'admin_kv'),
     ('/admin/users/{user_id}/superadmin', ('POST',), 'admin_set_superadmin'),
     ('/admin/users/{user_id}/suspend', ('POST',), 'admin_suspend_user'),
     ('/admin/users/{user_id}', ('DELETE',), 'admin_delete_user'),
@@ -292,9 +317,9 @@ _DATAPLANE_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
 })
 
 ROLE_BACKGROUND_TASKS: dict[AppRole, tuple[str, ...]] = {
-    "all": ("treg.adsconv.worker",),
+    "all": ("treg.adsconv.worker", "treg.application.arena_insights.worker"),
     "dataplane": (),
-    "control": ("treg.adsconv.worker",),
+    "control": ("treg.adsconv.worker", "treg.application.arena_insights.worker"),
 }
 ROLE_STARTUP_CHECKS: dict[AppRole, tuple[str, ...]] = {
     "all": (
@@ -472,80 +497,110 @@ async def pool_gauge(*, sample_s: float = _POOL_GAUGE_SAMPLE_S,
         await asyncio.sleep(sample_s)
 
 
+def configure_archive_object_store(store) -> None:
+    """Composition seam shared by startup and in-memory tests."""
+    from . import archive_bodies
+    archive_bodies.configure(store)
+
+
+@asynccontextmanager
+async def _archive_object_store(app):
+    from . import archive_bodies
+    from .infra.object_store import open_r2
+
+    enabled = archive_bodies.validate_configuration()
+    injected = getattr(app.state, "archive_object_store", None)
+    opener = open_r2(get_settings()) if enabled and injected is None else nullcontext(injected)
+    async with opener as store:
+        configure_archive_object_store(store)
+        try:
+            yield
+        finally:
+            configure_archive_object_store(None)
+
+
 def _lifespan(role: AppRole):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        await verify_db()
+        async with _archive_object_store(app):
+            await verify_db()
+            if kv.configured() and not await kv.store().ping():
+                # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it
+                # answers no team receives a review invitation. /admin/kv shows the live state.
+                logging.getLogger("treg").warning("kv configured but unreachable at startup")
 
-        limits = httpx.Limits(max_keepalive_connections=100, max_connections=200)
-        app.state.http = httpx.AsyncClient(
-            limits=limits,
-            timeout=httpx.Timeout(float(get_settings().call_timeout_s)),
-        )
-        ads_task = (
-            asyncio.create_task(adsconv.worker(background_session_maker, app.state.http))
-            if ROLE_BACKGROUND_TASKS[role] and adsconv.enabled()
-            else None
-        )
-        gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
-        # The archive's refresh worker (docs/context/architecture/archive.md): serve mode only,
-        # and a zero daily cap disables it without touching serving. Same discipline as the ads
-        # task — in-process, cancelled on shutdown, a bad pass never kills the loop.
-        archive_task = (
-            asyncio.create_task(archive.refresh_worker(app.state.http))
-            if ROLE_BACKGROUND_TASKS[role] and archive.worker_enabled()
-            else None
-        )
-        # The pruner (profit-shaped shelf clearing — see archive.prune_once): runs wherever the
-        # archive records, bounded per pass; archive_prune_batch=0 disables it.
-        prune_task = (
-            asyncio.create_task(archive.prune_worker())
-            if ROLE_BACKGROUND_TASKS[role] and archive.prune_enabled()
-            else None
-        )
-        endpoint_observations = app.state.endpoint_observation_reader
-        routed_call.configure_endpoint_observation_reader(endpoint_observations)
-        mcp_reader_bound = role != "control" and _mcp is not None
-        if mcp_reader_bound:
-            _mcp.configure_endpoint_observation_reader(endpoint_observations)
-        fault_handler = analytics.install_fault_handler()
-        try:
-            if role == "control" or _mcp is None:
-                yield
-            elif get_settings().claude_connector_enabled:
-                async with _mcp.all_mcp_lifespans():
-                    yield
-            else:
-                async with _mcp.mcp_lifespan():
-                    yield
-        finally:
+            limits = httpx.Limits(max_keepalive_connections=100, max_connections=200)
+            app.state.http = httpx.AsyncClient(
+                limits=limits,
+                timeout=httpx.Timeout(float(get_settings().call_timeout_s)),
+            )
+            ads_task = (
+                asyncio.create_task(adsconv.worker(background_session_maker, app.state.http))
+                if ROLE_BACKGROUND_TASKS[role] and adsconv.enabled()
+                else None
+            )
+            gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
+            # The archive's refresh worker (docs/context/architecture/archive.md): serve mode only,
+            # and a zero daily cap disables it without touching serving. Same discipline as the ads
+            # task — in-process, cancelled on shutdown, a bad pass never kills the loop.
+            archive_task = (
+                asyncio.create_task(archive.refresh_worker(app.state.http))
+                if ROLE_BACKGROUND_TASKS[role] and archive.worker_enabled()
+                else None
+            )
+            # The pruner (profit-shaped shelf clearing — see archive.prune_once): runs wherever the
+            # archive records, bounded per pass; archive_prune_batch=0 disables it.
+            prune_task = (
+                asyncio.create_task(archive.prune_worker())
+                if ROLE_BACKGROUND_TASKS[role] and archive.prune_enabled()
+                else None
+            )
+            insights_task = asyncio.create_task(arena_insights.worker()) if role != "dataplane" else None
+            endpoint_observations = app.state.endpoint_observation_reader
+            routed_call.configure_endpoint_observation_reader(endpoint_observations)
+            mcp_reader_bound = role != "control" and _mcp is not None
+            if mcp_reader_bound:
+                _mcp.configure_endpoint_observation_reader(endpoint_observations)
+            fault_handler = analytics.install_fault_handler()
             try:
-                if gauge_task is not None:
-                    gauge_task.cancel()
-                if ads_task is not None:
-                    ads_task.cancel()
-                if archive_task is not None:
-                    archive_task.cancel()
-                if prune_task is not None:
-                    prune_task.cancel()
-                if mcp_reader_bound:
-                    _mcp.clear_endpoint_observation_reader(endpoint_observations)
-                routed_call.clear_endpoint_observation_reader(endpoint_observations)
-                await endpoint_observations.aclose()
-                # analytics LAST: it is the sink the other two report their losses into, and a
-                # drop during their drain is the one most worth hearing about. Draining it first
-                # left those events queued behind a cancelled flusher.
-                await audit.drain()
-                await archive.drain()
-                await analytics.drain()
-                await app.state.http.aclose()
+                if role == "control" or _mcp is None:
+                    yield
+                elif get_settings().claude_connector_enabled:
+                    async with _mcp.all_mcp_lifespans():
+                        yield
+                else:
+                    async with _mcp.mcp_lifespan():
+                        yield
             finally:
-                analytics.remove_fault_handler(fault_handler)
+                try:
+                    workers = [task for task in (
+                        gauge_task, ads_task, archive_task, prune_task, insights_task,
+                    ) if task is not None]
+                    for task in workers:
+                        task.cancel()
+                    # Wait for session rollback/close before the event loop or shared client closes.
+                    # A second cancellation during asyncio.run() teardown can interrupt that cleanup.
+                    await asyncio.gather(*workers, return_exceptions=True)
+                    if mcp_reader_bound:
+                        _mcp.clear_endpoint_observation_reader(endpoint_observations)
+                    routed_call.clear_endpoint_observation_reader(endpoint_observations)
+                    await arena.shutdown()
+                    await endpoint_observations.aclose()
+                    # analytics LAST: it is the sink the other two report their losses into, and a
+                    # drop during their drain is the one most worth hearing about. Draining it first
+                    # left those events queued behind a cancelled flusher.
+                    await audit.drain()
+                    await archive.drain()
+                    await analytics.drain()
+                    await app.state.http.aclose()
+                    await kv.close()
+                finally:
+                    analytics.remove_fault_handler(fault_handler)
 
     return lifespan
 
 
-def create_app(role: AppRole = "all") -> FastAPI:
+def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
     """Assemble one role from api.py's route definitions through an explicit factory."""
     if role not in ("all", "dataplane", "control"):
         raise ValueError(f"unknown app role: {role!r}")
@@ -598,4 +653,5 @@ def create_app(role: AppRole = "all") -> FastAPI:
         "background_tasks": list(ROLE_BACKGROUND_TASKS[role]),
         "startup_checks": startup_checks,
     }
+    app.state.archive_object_store = archive_object_store
     return app

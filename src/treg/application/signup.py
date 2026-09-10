@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from .. import adsconv, health, sandbox as demo_sandbox
+from .. import adsconv, analytics, health, sandbox as demo_sandbox
 from ..domain import money as ledger
 from ..domain import referrals
 from ..domain.governance.teams import _make_org_membership, _slugify
@@ -51,7 +51,7 @@ def blocked_email(email: str, door: str) -> bool:
     return True
 
 
-async def find_or_create_user(db: AsyncSession, email: str, *, door: str = "login") -> User:
+async def find_or_create_user(db: AsyncSession, email: str, *, door: str = "login", created: set[int] | None = None) -> User:
     """Find a user by email, else register them — the user ONLY, **no auto personal org**. The shared
     core of every identity door (GitHub / Google / email OTP). A brand-new user therefore lands with
     zero teams and is asked to NAME + CREATE their first team (the dashboard's mandatory welcome, or
@@ -78,7 +78,17 @@ async def find_or_create_user(db: AsyncSession, email: str, *, door: str = "logi
         except IntegrityError:
             await db.rollback()  # another worker just created this same new user — reuse theirs
             return (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+        if created is not None:
+            created.add(user.id)
     return user
+
+
+def track_signup(user: User, created: set[int], method: str, entry_surface: str) -> None:
+    """Call only after commit. Existing users (including a concurrent signup's loser) emit nothing."""
+    if user.id in created:
+        analytics.capture(user.email, "signup_completed", {
+            "signup_method": method, "entry_surface": analytics.funnel_surface(entry_surface),
+        })
 
 
 async def _grant_signup_promo(db: AsyncSession, org: Org) -> None:

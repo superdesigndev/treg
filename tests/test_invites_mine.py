@@ -201,7 +201,8 @@ async def test_email_link_dies_with_the_invite(client, sent_invites):
         assert r.status_code == 303 and "invite_expired=1" in r.headers["location"]
 
 
-async def test_invites_mine_newest_first_with_created_at(client, sent_invites):
+@pytest.mark.parametrize("same_timestamp", [False, True])
+async def test_invites_mine_newest_first_with_created_at(client, sent_invites, same_timestamp):
     """Two teams invite the same email → /invites/mine lists the newest invite first (the one whose
     link was most likely just clicked) and carries created_at for the dashboard's sort."""
     _, org1 = await _make_org_with_invite(client, "tom@sd.io", "bob@x.io", "member")
@@ -209,6 +210,18 @@ async def test_invites_mine_newest_first_with_created_at(client, sent_invites):
     org2 = (await client.post("/orgs", json={"name": "Second Team"}, headers=_h(tok2))).json()
     await client.post(f"/orgs/{org2['org_id']}/invites",
                       json={"email": "bob@x.io", "role": "viewer"}, headers=_h(tok2, org2["org"]))
+    # Control the ordering evidence rather than relying on wall-clock progression. Equal
+    # timestamps also occur on coarse clocks and need a stable newest-inserted tiebreaker.
+    from datetime import datetime, timedelta
+    from sqlmodel import select
+    from treg.infra.db import session_maker
+    from treg.models import Invite
+
+    async with session_maker() as db:
+        invites = (await db.execute(select(Invite).order_by(Invite.id))).scalars().all()
+        for index, invite in enumerate(invites):
+            invite.created_at = datetime(2026, 1, 1) + timedelta(seconds=0 if same_timestamp else index)
+        await db.commit()
     bob = await _otp(client, "bob@x.io")
     mine = (await client.get("/invites/mine", headers=_h(bob))).json()
     assert [m["org"] for m in mine] == [org2["org"], org1["org"]]  # newest first

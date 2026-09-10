@@ -442,6 +442,7 @@ Provider-specific calculation stays outside the faithful relay.
 | Apollo | Known empty organization results are free |
 | Tomba domain search | Non-empty pages cost ceil(`meta.pageSize` / 10) credits, even when partially filled; empty `data.emails` is free. Reservation uses requested `limit`, default 10. Missing/malformed page evidence falls back to the estimate. Upstream duplicate discounts are not detected |
 | Hunter domain search | One whole search credit per ten returned emails, rounded up; an empty result is free |
+| QuickEnrich | Frozen $0.004834/credit base list rate (Starter $29/6,000, rounded up to micro-USD, before configured margin; assumes full allowance use); prefer integer `meta.credits_used`, including zero. If absent, count documented billable results. Domain holds reserve one credit without title or 20 with title; company holds use per_page (default 10, max 100). Discovery and lookups are free. BYOK never meters |
 | Hunter email finder | One whole credit when an email is present; a known miss is free |
 | TikHub | Honor explicit no-charge prose; an embedded error that says it is charged still costs the estimate |
 | Bright Data | Count delivered JSON-array records or CSV/NDJSON lines; a JSON object containing a status/snapshot handoff has zero records |
@@ -757,6 +758,16 @@ after a tier-4 balance/quota signature, and `_note_capacity_recovery` removes it
 resolution - and both are listed in the dataplane write allowlist on their own
 (`capacity_exhausted_mark`), not under the money entries. See `ops/capacity.md`.
 
+## Caller cost ceilings
+
+`MarketplaceCall.max_cost_micro` carries the caller's remaining ceiling. `_platform_reserve`
+checks the actual reservation estimate with margin before opening its transaction or creating a
+hold. Direct calls only set it when the caller supplies `X-Treg-Route-Max-Cost`; routed children
+always inherit their route's remaining ceiling, including its default. A refusal is a 402
+`route_max_cost` and moves no money for that attempt. Overflow inherits the same field via its
+child snapshot and checks its own estimate; a preceding direct charge reduces the remainder.
+This is a pre-reservation guard, not a rewrite of provider-reported settlement evidence.
+
 ## Overflow money
 
 The overflow child (`application.call.overflow`) is an ordinary metered cycle on its own hold
@@ -764,7 +775,31 @@ The overflow child (`application.call.overflow`) is an ordinary metered cycle on
 `observed_override` = the aggregator's in-band charge - the caller pays exactly that, 0% markup -
 and `cost_source: "aggregator"` + `served_via` in the ledger `meta`, so `reconcile` needs no join.
 `OverflowSpend` (per aggregator per UTC day) is updated inside that same settle transaction; it is
-accounting for the $20/day budget, not a balance. Shadow mode places no hold and charges nothing.
+accounting for the per-aggregator daily budget, not a balance. That budget is
+`TREG_OVERFLOW_DAILY_BUDGET_USD`: the code and the public Blueprint default to $20, and production
+runs at $500 set by the private Blueprint in treg-internal (the value is owned there; this repo's
+`render.yaml` is not what production reads). Shadow mode places no hold and charges nothing.
+
+**The relay price is disclosed wherever a price is read.** `/call/` says `X-Treg-Served-Via:
+overflow:<aggregator>` with `X-Treg-Cost-Micro` the child's charge; the MCP `call` result (both
+`/mcp/` and `/mcp/v2/`, one `_call_impl`) lifts that header into `served_via` and a one-line `hint`
+naming the relay and the exhausted provider, because an MCP client never sees headers.
+`GET /catalog/endpoints/{id}` and `catalog_get` carry `overflow_price_usd`, `overflow_price_unit`
+and `overflow_via` on a platform-eligible endpoint the deployment can relay (mode on, a key for the
+aggregator, an enabled route), so a catalog-free endpoint is never silently a paid one: on 2026-09-08
+`apollo.people.search` (cost `free`) billed $0.002 through Orthogonal 8,810 times while treg's
+Apollo account was out, and no read surface said it could. What still is NOT disclosed up front is
+*when* a free endpoint is diverted: the route enables whenever the aggregator's price is at most
+`FREE_ROUTE_MAX_USD` (`domain.capacity.routes`), and a caller learns it was relayed only from the
+answer. That is a design gap, recorded here, not a settled rule.
+
+**An aggregator's own per-request refusal never bills.** Orthogonal's bare 400/422/404 with no vendor
+data (its request validation) parses as `contract`: the child hold is released with reason
+`overflow_contract`, `cost_observed_micro` is 0, no `OverflowSpend` delta beyond the estimate
+reversal, and the aggregator is not marked. Only a non-JSON body, a 5xx or a transport error is
+`malformed` (`AGGREGATOR_SIDE`, a 15-minute mark). One such 400 read as `malformed` on 2026-09-08
+struck `overflow:orthogonal` for every org and turned every Apollo call for a quarter hour into
+`provider_capacity_unavailable`.
 
 ## MillionVerifier credit returns
 
@@ -825,3 +860,12 @@ same amount to the payee as an `earned` block: a `settle` entry on the payer who
 `payee_org_id`, and a `grant` entry on the payee whose meta names `payer_org_id` and the run. The
 invariant holds on both teams at every instant. It does not commit; the hub runner owns the
 transaction. It is the only cross-team money movement in treg.
+## Top-up product attribution
+
+Manual checkout accepts optional product attribution independent of billing policy. `start_topup`
+and `create_topup_checkout` normalize `entry_surface` and `checkout_source` to fixed surface names.
+Both Stripe Session and PaymentIntent metadata carry them. `_credit` passes only those normalized
+values into the top-up ledger metadata and `topup_completed`, under the existing fresh-credit
+guard; webhook order and sequential redelivery do not change attribution or duplicate events.
+Missing/legacy attribution is `unknown`. No query inputs, URLs, API keys or provider results are
+copied into this metadata. Amounts, reservations, settlement and payment authorization are unchanged.

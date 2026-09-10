@@ -29,6 +29,12 @@ the settings slot and a `sync: false` web-service key entry in `render.yaml`. Th
 sweep cron reads the same key through `fromService`. Operators supply the secret and enable
 the provider on deployment. Teams can connect their own keys without platform configuration.
 
+QuickEnrich uses `TREG_PLATFORM_KEY_QUICKENRICH` plus `quickenrich` in
+`TREG_PLATFORM_PROVIDERS`. The Render blueprint forwards the key to the capacity worker.
+Capacity uses the API-reported remaining credits; no separate plan setting is required.
+No auto-purchase or auto-top-up is configured. Supplying the key does not alter the serving
+allow-list. Local verification used the supplied root `.env`; no production secrets were changed.
+
 ## Entry point (`__main__.py`)
 `python -m treg upgrade` runs the explicit release phase. `maintenance._upgrade_schema()` runs
 `alembic upgrade head` for an empty or stamped database. A non-empty unstamped database is now refused
@@ -424,9 +430,12 @@ grep. **A quiet audit table is now a bug you can alert on**, not one you find ou
 task closure — up to `_MAX_PENDING` (512) tasks × `archive_max_body_bytes` (2 MB) = 1 GB worst case.
 After #363 reduced `_MAX_CONCURRENT_WRITES` from 4 to 2, backlog built faster than it drained under
 heavy `/call` + MCP traffic, and the 2026-09-07T00:43:06Z OOM killed the web service at 4 GB.
-`_MAX_PENDING_BYTES` (256 MB) now caps total body bytes in pending work: `record()` sheds when
+`_MAX_PENDING_BYTES` (256 MiB) caps body bytes in the DB queue: `record()` sheds when
 EITHER the task count OR the bytes threshold is exceeded. The done callback releases bytes when a
-task completes; a regression test pins the bound.
+task completes; a regression test pins the bound. R2 uploads have a separate
+`archive_r2_max_pending_bytes` budget (128 MiB by default), so the two queues together can
+retain **384 MiB** of body bytes. This is not an RSS ceiling: SDK buffers, compression and
+mandatory terminal evidence (outside the best-effort queues) need additional headroom.
 
 The proxy is thin and IO-bound (a relay, low CPU/memory), so cheap machines scale it.
 
@@ -554,7 +563,8 @@ run alone does not enable routes.
 
 Aggregator keys
 (`TREG_OVERFLOW_KEY_ORTHOGONAL` / `_MONID`) are dashboard-managed on the web service and flow the same
-way. `TREG_OVERFLOW_MODE` (`off` default | `shadow` | `on`) and `TREG_OVERFLOW_DAILY_BUDGET_USD` (20)
+way. `TREG_OVERFLOW_MODE` (`off` default | `shadow` | `on`) and `TREG_OVERFLOW_DAILY_BUDGET_USD` (code
+default 20; production sets its own value in the private Blueprint)
 govern the overflow child cycle (`ops/capacity.md`); the keys serve nothing while the mode is `off`.
 
 `treg-worker asynctasks settle` is the second cron command. `treg-asynctasks-settle` runs every two
@@ -618,3 +628,9 @@ on an existing deployment or copy a local `.env` key to production.
 The ContactOut server platform-key slot (`TREG_PLATFORM_KEY_CONTACTOUT`) is forwarded to the
 worker by `render.yaml`. The provider allow-list still controls serving; see
 [ContactOut](../architecture/contactout.md) for informational capacity checks.
+
+Arena adds one `arena_insights.worker` consumer to the background pool (default total nine).
+Its public snapshot endpoint makes a single primary-key read on the API pool; aggregation remains
+on the background worker. The default per-process budget is now 27 slots; with two workers and
+two instances a rolling deployment can reach 108. Existing deployment overrides remain necessary
+for the 103-connection plan; this merge does not alter production overrides.

@@ -237,7 +237,7 @@ async def start_email_login(email: str, client_ip: str) -> dict:
     return result
 
 
-async def verify_email_login(email: str, code: str) -> VerifiedEmail:
+async def verify_email_login(email: str, code: str, *, entry_surface: str = "") -> VerifiedEmail:
     """Consume an email OTP and return both CLI and browser credentials for the proven identity."""
     email = _norm_email(email)
     async with database.session_maker() as db:
@@ -254,8 +254,9 @@ async def verify_email_login(email: str, code: str) -> VerifiedEmail:
             await db.commit()
             raise EmailAuthError("invalid_code")
         await ratestore.kv_pop(db, OTP_NS, email)
+        created: set[int] = set()
         try:
-            user = await signup.find_or_create_user(db, email, door="otp_verify")
+            user = await signup.find_or_create_user(db, email, door="otp_verify", created=created)
         except signup.MachineIdentityError as exc:
             raise EmailAuthError("machine_identity") from exc
         except signup.BlockedEmailError as exc:  # a code minted before the domain was listed
@@ -263,6 +264,7 @@ async def verify_email_login(email: str, code: str) -> VerifiedEmail:
         if user.suspended:
             raise EmailAuthError("suspended")
         await db.commit()
+        signup.track_signup(user, created, "email", entry_surface)
         token = sess.make_identity(user.id, user.token_version)
         session_cookie = sess.make_session(user.id, token_version=user.token_version)
         return VerifiedEmail(token=token, email=user.email, session_cookie=session_cookie)
@@ -431,10 +433,11 @@ def start_google_login(cli: str, callback_base: Callable[[], str]) -> SocialLogi
     return SocialLoginStart(state=state, url=url)
 
 
-async def _provision_social_user(email: str, state: str, door: str) -> SocialLoginProof:
+async def _provision_social_user(email: str, state: str, door: str, entry_surface: str = "") -> SocialLoginProof:
+    created: set[int] = set()
     async with database.session_maker() as db:
         try:
-            user = await signup.find_or_create_user(db, email, door=door)  # first login = registration (user only; no auto org)
+            user = await signup.find_or_create_user(db, email, door=door, created=created)  # first login = registration (user only; no auto org)
         except signup.MachineIdentityError as exc:
             raise SocialLoginError("machine_identity") from exc
         except signup.BlockedEmailError as exc:  # a Google/GitHub account on a listed domain
@@ -442,13 +445,14 @@ async def _provision_social_user(email: str, state: str, door: str) -> SocialLog
         if user.suspended:  # a banned account may prove its email but must not receive a live session
             raise SocialLoginError("suspended")
         await db.commit()
+        signup.track_signup(user, created, door, entry_surface)
         # Browser session OR `treg login` handshake — both go through the /login team picker now.
         return SocialLoginProof(user=user, cli_state=_cli_states.pop(state, None))
 
 
 async def complete_github_login(
     client_factory: Callable[[], Any], code: str, state: str, cookie_state: str,
-    callback_base: Callable[[], str],
+    callback_base: Callable[[], str], *, entry_surface: str = "",
 ) -> SocialLoginProof:
     if not code or not state or state != cookie_state:
         raise SocialLoginError("bad_state")
@@ -478,12 +482,12 @@ async def complete_github_login(
     except Exception as exc:  # noqa: BLE001
         print(f"[auth] github callback error: {exc}")  # keep internals server-side, not in the response
         raise SocialLoginError("callback_failed") from exc
-    return await _provision_social_user(email, state, "github")
+    return await _provision_social_user(email, state, "github", entry_surface)
 
 
 async def complete_google_login(
     client_factory: Callable[[], Any], code: str, state: str, cookie_state: str,
-    callback_base: Callable[[], str],
+    callback_base: Callable[[], str], *, entry_surface: str = "",
 ) -> SocialLoginProof:
     if not code or not state or state != cookie_state:
         raise SocialLoginError("bad_state")
@@ -515,7 +519,7 @@ async def complete_google_login(
     except Exception as exc:  # noqa: BLE001
         print(f"[auth] google callback error: {exc}")  # keep internals server-side, not in the response
         raise SocialLoginError("callback_failed") from exc
-    return await _provision_social_user(email, state, "google")
+    return await _provision_social_user(email, state, "google", entry_surface)
 
 
 async def current_identity(x_treg_token: str, session_cookie: str) -> CurrentIdentity:

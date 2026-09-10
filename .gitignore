@@ -2,6 +2,12 @@
 __pycache__/
 *.pyc
 *.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite*-wal
+*.sqlite*-shm
 *.bak
 .env
 .env.*
@@ -82,3 +88,5 @@ tests/screenshots/
 
 # ArcTerm session boards and carry files (private, per machine)
 .arcterm/
+# Arena production statistics belong in the database, never a bundled snapshot.
+/src/treg/web/enrich-arena/insights.json

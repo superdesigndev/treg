@@ -69,7 +69,7 @@ def test_call_dto_and_port_shapes_are_frozen() -> None:
     ]
     assert [field.name for field in fields(CallContext)] == [
         "input", "call_ref", "meta", "idempotency", "target", "marketplace",
-        "credentials", "finalization", "audited", "cost_micro",
+        "credentials", "finalization", "audited", "cached", "cost_micro",
     ]
     assert CallInputContract.__dataclass_params__.frozen is True
     assert CallInput.__dataclass_params__.frozen is True

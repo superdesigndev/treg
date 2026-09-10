@@ -380,6 +380,7 @@ async def _pm_and_fingerprint(pi_id: str) -> tuple[str | None, str | None]:
 # ---- manual top-up (Stripe-hosted Checkout) ----------------------------------------------------
 async def create_topup_checkout(
     db: AsyncSession, org: Org, amount_usd, *, return_base: str = "", email: str = "",
+    entry_surface: str = "", checkout_source: str = "",
 ) -> dict:
     """Start a hosted Checkout for a one-off top-up and return `{url, session_id, amount_micro}`.
 
@@ -409,6 +410,8 @@ async def create_topup_checkout(
     Currency is pinned to USD explicitly — the Stripe account's own default is AUD, and inheriting it
     would charge a number the ledger would then credit as dollars.
     """
+    attribution = {"entry_surface": analytics.funnel_surface(entry_surface),
+                   "checkout_source": analytics.funnel_surface(checkout_source)}
     amount = validate_topup_usd(amount_usd)
     amount_micro = usd_to_micro(amount)
     customer = await get_or_create_customer(db, org, email=email)
@@ -435,7 +438,7 @@ async def create_topup_checkout(
             # the webhook may arrive as `payment_intent.succeeded`, which carries the PI's metadata and
             # not the session's — the credit path must work from either event.
             "setup_future_usage": "off_session",
-            "metadata": {"treg_org_id": str(org.id), "treg_kind": "topup", "treg_auto": "0"},
+            "metadata": {"treg_org_id": str(org.id), "treg_kind": "topup", "treg_auto": "0", **attribution},
             **({"receipt_email": email} if email else {}),
         },
         # The expensable document (see docstring). `invoice_data` carries the same org identity as the
@@ -457,7 +460,7 @@ async def create_topup_checkout(
         allow_promotion_codes=True,
         # Idempotent per (org, amount, minute): a double-clicked "Add funds" reuses the same session
         # instead of opening a second one the payer might also complete.
-        metadata={"treg_org_id": str(org.id), "treg_kind": "topup"},
+        metadata={"treg_org_id": str(org.id), "treg_kind": "topup", **attribution},
         integration_identifier=INTEGRATION_ID,
         success_url=f"{base}/app?topup=success#billing",
         cancel_url=f"{base}/app?topup=cancelled#billing",
@@ -911,7 +914,7 @@ async def handle_webhook_event(db: AsyncSession, event: dict) -> dict:
 
 
 async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, *, auto: bool,
-                  fingerprint: str | None = None) -> dict:
+                  fingerprint: str | None = None, attribution: dict | None = None) -> dict:
     """Credit a paid PaymentIntent to the org's balance, once. Emails a receipt only when this
     delivery is the one that actually moved money — a redelivery must not re-notify.
 
@@ -921,11 +924,13 @@ async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, 
     # "Has this PaymentIntent already been credited?" is asked BEFORE the credit rather than inferred
     # from a balance change afterwards — a concurrent reserve moves the balance too, and mistaking that
     # for a fresh credit would email a receipt on every webhook redelivery.
+    attribution = {key: analytics.funnel_surface((attribution or {}).get(key, ""))
+                   for key in ("entry_surface", "checkout_source")}
     already = (await db.execute(
         select(CreditBlock.id).where(CreditBlock.stripe_payment_intent == pi_id)
     )).first() is not None
     block = await ledger.topup(db, org_id, amount_micro, pi_id,
-                              meta={"auto": auto, "source": "stripe"})
+                              meta={"auto": auto, "source": "stripe", **attribution})
     block_id = block.id  # captured now: a later rollback (the ad-conversion except below) expires
                         # every object this session is tracking, `block` included, and reading an
                         # expired attribute outside an awaited call raises MissingGreenlet.
@@ -970,7 +975,7 @@ async def _credit(db: AsyncSession, org_id: int, amount_micro: int, pi_id: str, 
         # the `team` group is what makes org-level revenue exact. capture() never raises — an
         # exception here would 500 the webhook and make Stripe retry an already-credited payment.
         analytics.capture(to or f"org:{org_id}", "topup_completed",
-                          {"amount_micro": amount_micro,
+                          {**attribution, "amount_micro": amount_micro,
                            "amount_usd": amount_micro / 1_000_000,  # display-only, never computed against
                            "auto": auto, "balance_after_micro": after,
                            "bonus_micro": bonus_micro, "bonus_pct": bonus_pct,
@@ -1053,7 +1058,8 @@ async def _on_checkout_completed(db: AsyncSession, session: dict) -> dict:
     # the abuse gate that stops one card claiming a bounty under a second email. Same single retrieve
     # that already ran here for the saved-card id, just moved above the credit.
     pm_id, fingerprint = await _pm_and_fingerprint(pi_id)
-    result = await _credit(db, org_id, amount_micro, pi_id, auto=False, fingerprint=fingerprint)
+    result = await _credit(db, org_id, amount_micro, pi_id, auto=False, fingerprint=fingerprint,
+                           attribution=session.get("metadata") or {})
     # The Checkout saved the card (setup_future_usage); remember it so auto-top-up can be armed
     # without asking for a second card entry.
     await _set_default_pm(db, org_id, pm_id)
@@ -1073,7 +1079,7 @@ async def _on_payment_succeeded(db: AsyncSession, pi: dict) -> dict:
     amount_micro = cents_to_micro(pi.get("amount_received") or pi.get("amount") or 0)
     if amount_micro <= 0:
         return {"handled": False, "reason": "zero amount"}
-    result = await _credit(db, org_id, amount_micro, pi["id"], auto=meta.get("treg_auto") == "1")
+    result = await _credit(db, org_id, amount_micro, pi["id"], auto=meta.get("treg_auto") == "1", attribution=meta)
     pm = pi.get("payment_method")
     await _set_default_pm(db, org_id, pm if isinstance(pm, str) else (pm or {}).get("id"))
     return result
@@ -1259,13 +1265,15 @@ async def get_billing_state(org_id: int) -> dict:
 
 async def start_topup(
     org_id: int, amount_usd: float | None, *, return_base: str, email: str,
+    entry_surface: str = "", checkout_source: str = "",
 ) -> dict:
     async with _db.session_maker() as db:
         org = await _journey_org(db, org_id)
         amount = amount_usd if amount_usd is not None else await next_default_usd(db, org.id)
         try:
             out = await create_topup_checkout(
-                db, org, amount, return_base=return_base, email=email)
+                db, org, amount, return_base=return_base, email=email,
+                entry_surface=entry_surface, checkout_source=checkout_source)
         except BillingNotConfigured as e:
             raise BillingJourneyError("not_configured", str(e)) from e
         except TopupRejected as e:
@@ -1273,7 +1281,9 @@ async def start_topup(
         # The one place the actual payer's identity exists — the webhook that later credits the
         # balance is org-scoped, so the started/completed funnel joins on the team group.
         analytics.capture(email, "topup_started",
-                          {"amount_usd": amount, "org": org.slug},
+                          {"amount_usd": amount, "org": org.slug,
+                           "entry_surface": analytics.funnel_surface(entry_surface),
+                           "checkout_source": analytics.funnel_surface(checkout_source)},
                           groups={"team": org.slug})
         return out
 

@@ -1,0 +1,88 @@
+{
+  "id": "example-request-id",
+  "credits_used": 1,
+  "credits_remaining": 9000,
+  "matched_count": 1,
+  "results": [
+    {
+      "input": "crm",
+      "category": {
+        "slug": "crm",
+        "name": "Customer Relationship Manager (CRM)",
+        "name_short": "CRM",
+        "technologies": [
+          {
+            "id": 11,
+            "slug": "salesforce",
+            "name": "Salesforce"
+          },
+          {
+            "id": 394,
+            "slug": "microsoft-dynamics",
+            "name": "Microsoft Dynamics"
+          },
+          {
+            "id": 122,
+            "slug": "hubspot",
+            "name": "HubSpot"
+          },
+          {
+            "id": 10734,
+            "slug": "oracle-siebel",
+            "name": "Oracle Siebel"
+          },
+          {
+            "id": 1714,
+            "slug": "sap-crm",
+            "name": "SAP CRM"
+          },
+          {
+            "id": 2892,
+            "slug": "zoho-crm",
+            "name": "Zoho CRM"
+          },
+          {
+            "id": 2432,
+            "slug": "hubspot-crm",
+            "name": "HubSpot CRM"
+          },
+          {
+            "id": 2869,
+            "slug": "pipedrive",
+            "name": "Pipedrive"
+          },
+          {
+            "id": 5491,
+            "slug": "sugarcrm",
+            "name": "SugarCRM"
+          },
+          {
+            "id": 18332,
+            "slug": "freshsales",
+            "name": "Freshsales"
+          },
+          {
+            "id": 15518,
+            "slug": "insightly",
+            "name": "Insightly"
+          },
+          {
+            "id": 315344,
+            "slug": "attio",
+            "name": "Attio"
+          },
+          {
+            "id": 4033517,
+            "slug": "monday-crm",
+            "name": "Monday CRM"
+          },
+          {
+            "id": 79365,
+            "slug": "copper-crm",
+            "name": "Copper CRM"
+          }
+        ]
+      }
+    }
+  ]
+}

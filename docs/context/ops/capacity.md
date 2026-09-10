@@ -43,6 +43,8 @@ related:
 
 # Provider capacity
 
+`collectors._sumble` reads `credits_remaining` from a free technology-search miss. Its monthly allowance and optional vendor top-ups remain separate from per-call pricing; no renewal date or auto-funding status is assumed. See [Sumble](../architecture/sumble.md).
+
 **Problem.** Tier 4 serves ~2,850 catalog endpoints on treg's own vendor keys. When one of *our*
 accounts runs dry, every caller on that endpoint inherits a 402 that isn't theirs to fix — 4,604
 such errors in the 30 days to 2026-08-26, almost all on the enrichment (money) workload. The plan
@@ -59,6 +61,24 @@ has not been exhausted. Its balance collector reads `credits` from the free `/ap
 endpoint using query auth `api`. Both the balance script and sweep use this collector; it does
 not add `bulk_credits` to the balance. No overflow route is claimed. Verify the funded
 account's empty-credit response before adding a signature or enabling overflow.
+
+## QuickEnrich subscriptions
+
+`collectors._quickenrich` reads `meta.remaining_credits` from a free Contact Finder miss;
+there is no account/balance endpoint to list. Default policy is `monthly_quota` / `quota_reset`,
+with auto-funding disabled. The API does not report the renewal timestamp, so no calendar reset
+is guessed. Subsequent sweeps discover replenished credits. Do not model this as prepaid packs
+or auto-top-up. Hunter also uses renewal quotas: monthly plans reset monthly, yearly plans
+annually ([Hunter reset rules](https://help.hunter.io/en/articles/1911597-when-do-credits-reset)).
+
+Free, Starter and Growth use the API-reported remaining allowance. No manual plan setting
+can override that value. A reported zero means exhausted; missing, negative or non-numeric
+balance data means unknown, not unlimited. The unlimited-plan API response has not been
+verified. Inspect its actual status and balance fields before adding common unlimited-plan
+support. Per-call billing remains separate: use `meta.credits_used` at the treg list rate.
+
+Exhaustion behavior is acknowledged as unrecorded in the existing shared signature guard;
+we did not exhaust the trial to manufacture evidence. No overflow route is claimed.
 
 ## Pieces (`src/treg/domain/capacity/`)
 
@@ -188,7 +208,10 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
   endpoint, input}`), `parse()` unwraps the vendor status + body + the real in-band charge, and
   names who to blame when the aggregator itself refused (`AGGREGATOR_SIDE` = `aggregator_auth`,
   `aggregator_balance`, `malformed` - the call path marks the aggregator unhealthy for everyone, the
-  verifier leaves the route alone; `VENDOR_DRY`, folded in by `with_vendor_verdict` from the
+  verifier leaves the route alone; `contract` - the aggregator's own per-request refusal, including
+  Orthogonal's bare 400/422/404 with no vendor data - is request-scoped: child released, nothing
+  charged, no mark, `malformed` being reserved for non-JSON, 5xx and transport errors;
+  `VENDOR_DRY`, folded in by `with_vendor_verdict` from the
   signature table - the one place a relayed body is read - is the aggregator's account for THIS
   vendor (a relayed 402, Apollo's 422, a period 429): the call path marks
   `overflow:<aggregator>:<provider>` only, so one vendor's cap never takes the others offline.
@@ -238,6 +261,11 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
 
 ## Protect, part one (step D) — refuse before reserve
 
+PDL's HTTP 402 `hit your account maximum for …` response is an operation quota signature,
+so the existing strike ladder locks only the affected endpoint (for example `pdl.x.person-identify`).
+Person/company enrichment can remain usable on the same key. Other PDL 402 responses retain the
+balance classification. An Arena team top-up cannot replenish this vendor-side allowance.
+
 The call path reads the view and runs the breaker (`marks.py`); the mechanics and the typed
 `provider_capacity` 503 are documented in `architecture/proxy-model.md` § Platform capacity and
 `interface/api.md`. In one line: locked provider or endpoint → 503 before any hold, with
@@ -261,7 +289,8 @@ the policy table. `rate_pressure` alerting is step C.
 ## Overflow, the child cycle (step E) — off by default
 
 `application/call/overflow.py` is documented in `architecture/proxy-model.md` § Overflow. Operating
-it: `TREG_OVERFLOW_MODE` = `off` (default) | `shadow` | `on`; `TREG_OVERFLOW_DAILY_BUDGET_USD` (20)
+it: `TREG_OVERFLOW_MODE` = `off` (default) | `shadow` | `on`; `TREG_OVERFLOW_DAILY_BUDGET_USD` (code
+default 20; production's value is set in treg-internal's Blueprint, $500 at the time of writing)
 per aggregator per UTC day is a hard admission cap backed by `OverflowSpend`. Before either an
 `on` call or a `shadow` probe goes to the network, a conditional atomic upsert reserves the route's
 estimated micro-USD only if the resulting daily total fits under the cap. Completion reconciles the
@@ -283,6 +312,12 @@ or settlement-path failure is logged, any reserved child hold is released, and t
 back to the direct vendor response. A skip-direct call has no direct response, so the same fallback
 returns the original typed `provider_capacity` 503. Cancellation and typed call failures still
 propagate to the call service for their dedicated cleanup and response handling.
+
+Overflow reservations also enforce `MarketplaceCall.max_cost_micro` at the aggregator's own
+estimate, before any aggregator request. The value is inherited from a direct caller's explicit
+ceiling or a routed child's remaining ceiling. A refused reservation releases the temporary
+`OverflowSpend` budget claim and leaves no child hold. See `architecture/money.md` for the shared
+reservation guard.
 
 ## Enabling overflow (step F) — the opt-out and the rollout
 

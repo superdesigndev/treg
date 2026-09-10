@@ -840,6 +840,47 @@
         "title": "ResourceRefIn",
         "type": "object"
       },
+      "ReviewIn": {
+        "additionalProperties": false,
+        "properties": {
+          "call_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9_-]+$",
+            "title": "Call Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "usefulness": {
+            "enum": [
+              "useful",
+              "partly",
+              "not_useful",
+              "not_sure"
+            ],
+            "title": "Usefulness",
+            "type": "string"
+          }
+        },
+        "required": [
+          "call_id",
+          "usefulness"
+        ],
+        "title": "ReviewIn",
+        "type": "object"
+      },
       "RoleIn": {
         "properties": {
           "role": {
@@ -1458,6 +1499,11 @@
               }
             ],
             "title": "Amount Usd"
+          },
+          "checkout_source": {
+            "default": "",
+            "title": "Checkout Source",
+            "type": "string"
           }
         },
         "title": "TopupIn",
@@ -3479,6 +3525,16 @@
               "title": "Cli",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "return_to",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return To",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3574,6 +3630,16 @@
             "schema": {
               "default": "",
               "title": "Cli",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "return_to",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Return To",
               "type": "string"
             }
           }
@@ -10901,6 +10967,78 @@
           }
         },
         "summary": "Mint Referral Code"
+      }
+    },
+    "/reviews": {
+      "post": {
+        "operationId": "submit_review_reviews_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Submit Review Reviews Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Submit Review"
       }
     },
     "/run": {

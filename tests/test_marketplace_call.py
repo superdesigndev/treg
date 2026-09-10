@@ -1911,6 +1911,95 @@ def test_tomba_unknown_page_size_does_not_guess_from_email_count(page_size):
     assert call_settle._observed_cost_micro(mk, body) is None
 
 
+@pytest.mark.parametrize('credits,expected', [(0, 0), (1, 4834), (6, 29004), (-1, None), (True, None), ('1', None), (float('inf'), None)])
+def test_quickenrich_settles_reported_credits_at_frozen_rate(credits, expected):
+    mk = _mk('quickenrich', endpoint_id='quickenrich.people.email.find', cost_type='per_success', unit_micro=4834)
+    assert call_settle._observed_cost_micro(mk, json.dumps({'meta': {'credits_used': credits}}).encode()) == expected
+
+
+@pytest.mark.parametrize('endpoint,data,title,credits', [
+    ('people.email.find', {'email': 'a@example.com'}, '', 1),
+    ('people.email.find', {'email': None, 'employee_phone': 'N/A'}, '', 0),
+    ('people.phone.find', {'employee_phone': '+15550101000'}, '', 1),
+    ('people.phone.find', {'employee_phone': 'N/A'}, '', 0),
+    ('people.enrich', {'first_name': 'Example'}, '', 1),
+    ('people.enrich', [], '', 0),
+    ('people.search.domain', [{'email': 'a@example.com'}, {'employee_phone': '+15550101000'}, {'email': 'N/A'}], '', 1),
+    ('people.search.domain', [{'email': 'a@example.com', 'employee_phone': '+15550101000'}, {'email': 'N/A'}], 'CEO', 1),
+    ('people.search.domain', [], 'CEO', 0),
+    ('companies.search', [{}, {}], '', 2),
+    ('companies.search', [], '', 0),
+])
+def test_quickenrich_fallback_counts_billable_results(endpoint, data, title, credits):
+    mk = _mk('quickenrich', endpoint_id='quickenrich.' + endpoint, cost_type='per_success', unit_micro=4834,
+             request_data={'queryParams': {'title': title}})
+    assert call_settle._observed_cost_micro(mk, json.dumps({'success': True, 'data': data}).encode()) == credits * 4834
+
+
+@pytest.mark.parametrize('endpoint,query,body,expected', [
+    ('people.search.domain', {}, {}, 4834),
+    ('people.search.domain', {'title': 'CEO'}, {}, 96680),
+    ('companies.search', {}, {}, 48340),
+    ('companies.search', {}, {'per_page': 1}, 4834),
+    ('companies.search', {}, {'per_page': 100}, 483400),
+])
+def test_quickenrich_reserves_real_page_size(endpoint, query, body, expected):
+    cat = catalog_store.load()
+    ep = cat.by_id['quickenrich.' + endpoint]
+    cost = cat.cost_view(ep['cost'], 'quickenrich')
+    estimate, unit = call_resolution._marketplace_pricing('quickenrich', ep['id'], cost, query, json.dumps(body).encode())
+    assert (estimate, unit) == (expected, 4834)
+
+
+async def test_quickenrich_platform_meter_and_free_discovery(clients, platform_on, monkeypatch):
+    monkeypatch.setenv('TREG_PLATFORM_KEY_QUICKENRICH', 'PLATFORM-QUICKENRICH-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'quickenrich')
+    get_settings.cache_clear()
+    before = await _balance(clients)
+    for status, credits, expected in [(200, 1, 4834), (200, 0, 0), (401, 1, 0), (429, 1, 0), (500, 1, 0)]:
+        raw = json.dumps({'success': status == 200, 'data': {}, 'meta': {'credits_used': credits}}).encode()
+        monkeypatch.setattr(call_service, 'relay', _fake_relay(status, raw))
+        response = await clients.get('/call/quickenrich.people.email.find?linkedin_url=https://linkedin.com/in/example')
+        assert response.status_code == status and response.content == raw
+        before -= expected
+        assert await _balance(clients) == before
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(200, b'{"success":true,"data":[],"meta":{"credits_used":0}}'))
+    response = await clients.post('/call/quickenrich.people.search', json={'has_email': True, 'per_page': 1})
+    assert response.status_code == 200
+    assert await _balance(clients) == before
+
+
+@pytest.mark.parametrize('endpoint,data,credits,expected', [
+    ('people.email.find', {'email': 'person@example.com'}, 1, 4834),
+    ('people.phone.find', {'employee_phone': '+15550101000'}, 1, 4834),
+    ('people.enrich', {'email': 'person@example.com'}, 1, 4834),
+    ('people.email.find', [], 0, 0),
+    ('people.phone.find', [], 0, 0),
+    ('people.search.domain', [{'email': 'person@example.com'}] * 20, 1, 4834),
+    ('people.search.domain', [{'email': 'person@example.com'}] * 6 + [{'email': 'N/A'}] * 2, 6, 29004),
+    ('companies.search', [{'company_name': 'Example'}], 1, 4834),
+    ('companies.search', [], 0, 0),
+])
+def test_quickenrich_reported_usage_across_endpoints(endpoint, data, credits, expected):
+    """Billing-relevant shapes from live checks; reported usage wins over result count."""
+    body = json.dumps({'success': True, 'data': data, 'meta': {'credits_used': credits}}).encode()
+    mk = _mk('quickenrich', endpoint_id='quickenrich.' + endpoint, unit_micro=4834)
+    assert call_settle._observed_cost_micro(mk, body) == expected
+
+
+async def test_quickenrich_own_key_wins_without_metering(clients, platform_on, monkeypatch):
+    monkeypatch.setenv('TREG_PLATFORM_KEY_QUICKENRICH', 'PLATFORM-QUICKENRICH-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'quickenrich')
+    get_settings.cache_clear()
+    await clients.post('/secrets', json={'name': 'quickenrich', 'value': 'OWN-QUICKENRICH'})
+    before = await _balance(clients)
+    response = await clients.get('/call/quickenrich.people.email.find?linkedin_url=https://linkedin.com/in/example')
+    assert response.status_code == 200
+    assert response.json()['auth'] == 'Bearer OWN-QUICKENRICH'
+    assert await _balance(clients) == before
+    assert (await _telemetry(clients))['credential_tier'] == 'credential'
+
+
 @pytest.mark.parametrize('amount,expected', [(0.005,5000),(.0015,1500),(.0025,2500),(0,0),('0.0015',1500), (None,None), (True,None),(-1,None),('NaN',None),('Infinity',None),({},None)])
 def test_trykitt_usd_charge(amount, expected):
     mk = _mk('trykitt', endpoint_id='trykitt.people.email.find', cost_type='per_success')
@@ -2393,3 +2482,14 @@ async def test_contactout_reveal_small_page_and_own_key_relay(clients, contactou
     reserves = [e for e in after["entries"]["items"] if e["kind"] == "reserve"]
     assert len(reserves) == (0 if own else 1)
     assert contactout.estimate(_contactout_cost("people.search.reveal"), {"reveal_info": True, "page_size": 1}) == 670000
+
+def test_email_path_keeps_at_sign_but_cannot_inject_path_or_query():
+    # Synthetic path-parameter endpoint: the current Tomba verifier uses a query.
+    ep = {**catalog_store.load().by_id['tomba.people.email.verify'], 'path':'/v1/email-verifier/{email}'}
+    url, consumed = call_resolution._marketplace_upstream(
+        ep, oauth_providers.TOMBA, {'email': 'person@example.com'})
+    assert url == 'https://api.tomba.io/v1/email-verifier/person@example.com'
+    assert consumed == {'email'}
+    url, _ = call_resolution._marketplace_upstream(
+        ep, oauth_providers.TOMBA, {'email': 'person@example.com/extra?x=1#fragment'})
+    assert url.endswith('person@example.com%2Fextra%3Fx%3D1%23fragment')

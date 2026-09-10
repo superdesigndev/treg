@@ -33,7 +33,7 @@ sources:
   - src/treg/domain/connections/oauth_flow.py
   - src/treg/domain/connections/refresh.py
   - src/treg/domain/money/__init__.py
-  - src/treg/domain/feedback.py
+  - src/treg/domain/feedback/__init__.py
   - src/treg/domain/asynctasks/__init__.py
   - src/treg/domain/capacity/__init__.py
   - src/treg/infra/upstream/__init__.py
@@ -55,6 +55,11 @@ Import Linter reads the contracts under `tool.importlinter` in `pyproject.toml`.
 job installs the lock with `uv sync --locked` (failing on a stale lock), then runs
 `uv run --locked lint-imports` before the test suite. Keeping the check in that job reuses the
 development environment and avoids a second install for a fast static architecture check.
+The R2 SDK (`obstore`) is installed only through `[server]` and forbidden from
+lightweight CLI imports. `infra.object_store.open_r2` loads it lazily; bootstrap assembles the
+concrete client or an injected in-memory implementation. Call write allowlists include the
+archive body PUT chain because it persists the paid response outside any DB transaction.
+
 The separate `test-postgres` job runs its database-sensitive subset serially against Postgres 16;
 it uses unbuffered Python output and a 15-minute job budget so a slow test remains diagnosable. The
 subset includes agent attribution, credential health, local-run reporting and ads-conversion coverage
@@ -136,7 +141,9 @@ It reads config and writes only its own tables and ratestore keys, from worker-p
 (`treg-worker`, a separate console script so the light `treg` CLI never gains a DB import). The call
 application imports the capacity domain inward (`resolve` → `view`, `settle` → `signatures`/`marks`);
 the domain never imports back; `application.call.overflow` composes the capacity domain, the
-aggregator envelopes and the money primitives, and the aggregator adapters stay pure envelope code; `application.call.route` composes the pure
+aggregator envelopes and the money primitives, and the aggregator adapters stay pure envelope code;
+`routers.catalog` reads the capacity domain's `routes_view` for the overflow price disclosure (a read
+of the worker-owned table through the same in-process copy the call path uses, never a write); `application.call.route` composes the pure
 `domain.catalog.routing` package (contracts, adapters, ranking) with the call use case itself. The
 aggregator envelopes live under `treg.infra.upstream.aggregators` and inherit the upstream contract
 (no HTTP adapters, no routers); the capacity domain's `verify` module may import them because they are

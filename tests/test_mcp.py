@@ -119,7 +119,7 @@ async def test_the_server_lists_the_shared_tools(clients):
         r = await _rpc(c, "tools/list", token=token)
         names = {t["name"] for t in r.json()["result"]["tools"]}
     assert names == {"catalog_search", "catalog_get", "call", "balance", "my_tools", "catalog_request", "feedback",
-                     "hub_create", "hub_update", "hub_mine"}
+                     "review", "hub_create", "hub_update", "hub_mine"}
 
 
 async def test_catalog_search_returns_priced_results(clients):
@@ -351,7 +351,7 @@ async def test_every_tool_declares_what_it_can_do(clients):
 
     ann = {t.name: t.annotations for t in await server.list_tools()}
     assert set(ann) == {"catalog_search", "catalog_get", "call", "balance", "my_tools",
-                        "catalog_request", "feedback", "hub_create", "hub_update", "hub_mine"}
+                        "catalog_request", "feedback", "review", "hub_create", "hub_update", "hub_mine"}
     assert all(a.title is None for a in ann.values())
     for name in ("catalog_search", "catalog_get", "balance", "my_tools"):
         a = ann[name]
@@ -1462,3 +1462,81 @@ async def test_hub_create_over_mcp_publishes_and_names_refusals(clients, monkeyp
         off = await _call_tool(c, "call", {"endpoint_id": out["tool_id"], "params": {"domain": "figma.com"}}, token=token)
         assert off.get("error", "").startswith("unknown endpoint")
         monkeypatch.setenv("TREG_HUB_ENABLED", "1"); get_settings.cache_clear()
+# ---- the overflow relay is disclosed on THIS surface, not only in a header ------------------
+# 2026-09-08: apollo.people.search (catalog cost free) was served through Orthogonal 8,810 times
+# at $0.002 while treg's Apollo account was out. `/call/` said so in X-Treg-Served-Via; an MCP
+# client never sees headers, so the agent reported a free call that billed. Six reports.
+
+from test_capacity_overflow import VENDOR_BODY, _orthogonal, _route, overflow_on, platform_on  # noqa: E402,F401
+
+
+async def _overflow_rescued(monkeypatch, price_cents: float = 0.3):
+    """Vendor 402 on treg's own key, Orthogonal answers: the shape of every rescued call."""
+    from treg.application.call import overflow as O
+    from treg.application.call import service as call_service
+    from test_marketplace_call import _fake_relay
+
+    await _route(price_micro=3_000)
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, b'{"detail":"Insufficient balance"}'))
+    seen: list = []
+    monkeypatch.setattr(O, "_send", _orthogonal([(200, {"success": True, "data": VENDOR_BODY,
+                                                         "priceCents": price_cents})], seen))
+    return seen
+
+
+async def test_a_call_served_by_the_overflow_relay_says_so_and_prices_it(clients, overflow_on, monkeypatch):
+    token = clients.headers["X-Treg-Token"]
+    seen = await _overflow_rescued(monkeypatch)
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "call", {"endpoint_id": "tikhub.tiktok.video.comments",
+                                           "params": {"aweme_id": "7"}}, token=token)
+    assert out.get("status") == 200, out
+    assert out["served_via"] == "overflow:orthogonal" and out["cost_usd"] == 0.003
+    assert out["body"] == VENDOR_BODY, "the vendor's body, verbatim, through the relay"
+    hint = out.get("hint") or ""
+    assert "overflow relay (orthogonal)" in hint and "treg's tikhub account is out" in hint, hint
+    assert "real price" in hint and len(seen) == 1
+
+
+async def test_a_direct_call_carries_no_served_via(clients, platform_on):
+    token = clients.headers["X-Treg-Token"]
+    async with mcp_session(clients) as c:
+        out = await _call_tool(c, "call", {"endpoint_id": "tikhub.tiktok.video.comments",
+                                           "params": {"aweme_id": "7"}}, token=token)
+    assert out.get("status") == 200, out
+    assert "served_via" not in out and "overflow" not in (out.get("hint") or "")
+
+
+async def test_the_directory_surface_discloses_the_relay_the_same_way(clients, overflow_on, monkeypatch):
+    """`/mcp/v2/` builds the same result through `_call_impl`; reviewed against both on purpose."""
+    from test_mcp_directory import _call_tool as _directory_call, directory_session
+
+    token = clients.headers["X-Treg-Token"]
+    await _overflow_rescued(monkeypatch)
+    async with directory_session() as client:
+        out = await _directory_call(client, "catalog_call_read",
+                                    {"endpoint_id": "tikhub.tiktok.video.comments",
+                                     "params": {"aweme_id": "7"}}, token)
+    assert out.get("status") == 200, out
+    assert out["served_via"] == "overflow:orthogonal" and out["cost_usd"] == 0.003
+    assert "overflow relay (orthogonal)" in (out.get("hint") or "")
+
+
+async def test_catalog_get_shows_what_a_FREE_endpoint_bills_through_the_relay(clients, overflow_on):
+    """The price an agent quotes before calling must include the one it may actually pay."""
+    from test_capacity_overflow import APOLLO_SEARCH_EP, APOLLO_SEARCH_PATH
+    from test_mcp_directory import _call_tool as _directory_call, directory_session
+
+    token = clients.headers["X-Treg-Token"]
+    await _route(endpoint_id=APOLLO_SEARCH_EP, provider="apollo", method="POST", path=APOLLO_SEARCH_PATH,
+                 price_micro=2_000, ratio=None)
+    async with mcp_session(clients) as c:
+        team = await _call_tool(c, "catalog_get", {"endpoint_id": APOLLO_SEARCH_EP}, token=token)
+    async with directory_session() as client:
+        directory = await _directory_call(client, "catalog_get", {"endpoint_id": APOLLO_SEARCH_EP}, token)
+    for out in (team, directory):
+        assert out["endpoint"]["cost"]["usd"] == 0, out["endpoint"]["cost"]
+        assert out["overflow_price_usd"] == 0.002 and out["overflow_via"] == "orthogonal"
+        assert out["overflow_price_unit"] == "call"
+        assert out["endpoint"]["overflow_price_usd"] == 0.002
+        assert any("overflow relay (orthogonal)" in h for h in out["hints"])

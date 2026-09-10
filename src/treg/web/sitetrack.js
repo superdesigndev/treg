@@ -14,6 +14,39 @@
 //      `$initial_referring_domain` are stamped on the anonymous session and survive into the
 //      identified person after sign-in. index.html defers to this init (window.__phInit).
 (function () {
+  var surfaces = {'/enrich-arena':'arena', '/enrich-arena/leaderboard':'leaderboard',
+    '/enrich-arena/people-search-bench':'benchmark', '/app':'app'};
+  var pathname = window.location.pathname.replace(/\/$/, '');
+  var surface = surfaces[pathname] || (pathname.startsWith('/app/') ? 'app' : 'site');
+  var entry = surface;
+  var checkoutSource = new URLSearchParams(window.location.search).get('from') === 'enrich-arena' ? 'arena' : 'app';
+  try {
+    var match = document.cookie.match(/(?:^|;\s*)treg_entry_surface=([^;]*)/);
+    if (match && ['arena','leaderboard','benchmark','app','site'].includes(match[1])) entry = match[1];
+    else document.cookie = 'treg_entry_surface=' + surface + ';path=/;max-age=7776000;samesite=lax' +
+      (window.location.protocol === 'https:' ? ';secure' : '');
+  } catch (e) {}
+  window.TregTracking = {
+    capture: function (event, props) {
+      try { if (window.posthog) window.posthog.capture(event, Object.assign({surface:surface,entry_surface:entry},props)); } catch (e) {}
+    },
+    identify: function (email, team) {
+      try {
+        var ph = window.posthog; if (!ph) return;
+        var previous = '';
+        try { previous = localStorage.getItem('treg.analytics.user'); } catch (e) {}
+        if (previous && previous !== email) ph.reset();
+        if (!email) { try { localStorage.removeItem('treg.analytics.user'); } catch (e) {} return; }
+        ph.identify(email, {email:email}, {entry_surface:entry});
+        ph.resetGroups();
+        if (team) ph.group('team', team);
+        try { localStorage.setItem('treg.analytics.user', email); } catch (e) {}
+      } catch (e) {}
+    },
+    checkoutSource: function () {
+      return checkoutSource;
+    }
+  };
   try {
     var q = new URLSearchParams(window.location.search);
     var has = function (k) { return !!(q.get(k) || '').trim(); };
@@ -43,7 +76,9 @@
     // the first-touch URL/referrer locally and applies it ($set_once) when the person is identified
     // after sign-in. The masking config matches index.html's — the SPA shows API tokens in <pre>
     // blocks and a replay must never leak one.
+    var privatePage = document.currentScript && document.currentScript.dataset.privatePage === 'true';
     window.posthog.init(key, {api_host: host, person_profiles: 'identified_only', capture_pageview: true,
+      ...(privatePage ? {autocapture: false, disable_session_recording: true} : {}),
       session_recording: {maskAllInputs: true, maskTextSelector: 'pre, .lc-codewrap, .agent-copy'}});
   } catch (e) { /* analytics must never break the page */ }
 })();

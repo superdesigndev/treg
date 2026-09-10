@@ -1,7 +1,7 @@
 """hubrun — one run of a hub tool: the trace a caller and a maker read (docs/HUB-DECISIONS.md)
 
-Revision ID: 0027
-Revises: 0026
+Revision ID: 0034
+Revises: 0033
 Create Date: 2026-09-09
 
 A new table, nothing else touched. Money stays in the ledger; this holds the trace.
@@ -11,8 +11,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0027"
-down_revision: str | Sequence[str] | None = "0026"
+revision: str = "0034"
+down_revision: str | Sequence[str] | None = "0033"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
