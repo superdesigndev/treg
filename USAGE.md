@@ -450,3 +450,27 @@ credential that stops working and webhooks the owner (if a `webhook_url` was set
 - `secret_file` — a JSON token file; pull `secret_field`
 - `oauth` — a JSON OAuth token; pull `secret_field` (auto-refreshed if refreshable)
 - `cli_auth` — material lifted from a CLI's keychain (placed like a string)
+
+## `treg hub` — publish a tool made of tools (behind `TREG_HUB_ENABLED`)
+
+A hub tool is one your team publishes for other people's agents: a JSON steps recipe, or a
+script in a sandbox. Every step runs through your own tools and keys; a caller pays the metered
+steps plus the price you set, and the price lands on your balance as credit. Callable the moment
+it is published, by id `<team-slug>.<name>`; shared by the page `/hub/<id>`, never listed in search.
+
+```
+treg hub init <name> [--script] [--dir D]   write the files: recipe.json, run.js (scripts), check.json, README.md
+treg hub run <dir> --input k=v …            run the folder for real on your token; nothing stored; read the trace
+treg hub publish <dir>                      validate, run check.json once on your balance, live on pass (a new version)
+treg hub ls                                 your team's hub tools, every version, with health and 30-day numbers
+treg hub earnings <id> [--days N] [--csv]   what one tool earned, per day (sales only; never who called)
+treg hub price <id> <usd>                   change the price for later runs; no version bump; 0 = free
+treg hub retire <id>                        every version off the call road; history and earnings stay readable
+```
+
+The folder may carry a fifth file, `data.csv` (≤ 50 MB): the script reads it as `ctx.data`. A
+script gets `ctx.inputs`, `ctx.call(target, {method, query, body, headers})`, `ctx.csv(text)`,
+`ctx.data`, `ctx.log(text)`; `target` is a catalog id, one of your own tools as `<tool>/<path>`,
+or a full URL under such a tool's base URL. Never paste a credential into a script: register it
+first (`treg secret add`, `treg tool add`), list the tool in `uses`, name it in `ctx.call`.
+Callers run it with `treg call <id> --data '{…}'`; read its contract with `treg catalog get <id>`.

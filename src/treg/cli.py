@@ -5078,7 +5078,14 @@ def _hub_refusal(payload: dict, status: int) -> None:
         _kv("rule", d["rule"])
         rule = str(d.get("rule", ""))
         if "register it first" in rule or "not one of your team's tools" in rule:
-            _arrow("treg secret add <NAME> --value <key>     then  treg tool add <name> --base-url <url> --secret <NAME>")
+            # The rule names the missing tool ('supabase' is not one of ...): put that name in
+            # the commands, one command per line, in the order to run them.
+            m = re.search(r"'([^']+)' is not one of", rule)
+            name = m.group(1) if m else "<name>"
+            key = re.sub(r"[^A-Z0-9]+", "_", name.upper()).strip("_") + "_KEY"
+            _arrow(f"treg secret add {key} --value <the key>")
+            _arrow(f"treg tool add {name} --base-url <its base url> --bind \"secret=<the secret's id>,name=Authorization,format=Bearer {{secret}}\"")
+            _arrow(f"(no key? a public API or sheet:  treg tool add {name} --base-url <its base url>)")
         elif "not a catalog id" in rule:
             _arrow("treg catalog search \"<what you want to do>\"  finds the id")
     elif isinstance(d, dict) and d.get("error") == "hub_busy":

@@ -55,7 +55,7 @@ agents then built against a constitution that was wrong.
 |---|---|---|
 | `routers/` | HTTP and MCP translation in, response shape out | business rules, query orchestration, money |
 | `application/` | use-case sequencing, transaction boundaries, compensation, cross-domain composition | empty wrappers around one-domain CRUD |
-| `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money`, `asynctasks`, `feedback` | routers, application, concrete SDKs |
+| `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money`, `asynctasks`, `feedback`, `hub` (a maker's tool made of tools: the manifest, the reference language, the graph) | routers, application, concrete SDKs |
 | `infra/` | DB engine and sessions, crypto, upstream relay and SSRF, ratestore, email, Stripe | decisions |
 
 - Domains do not import each other, with three sanctioned edges: `governance -> identity`,
@@ -83,6 +83,12 @@ agents then built against a constitution that was wrong.
   allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
+- **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary
+  calls: every step goes through `execute_call` under its own hold, a catalog step as the caller and
+  an own-tool step as the maker; the seller's price is one more hold, settled to the maker as an
+  `earned` block in one transaction (`money.settle_to_in_transaction`, the only cross-team money
+  movement). A script runs in a separate process with no network; `ctx.call` is its only road out
+  and `uses` in the manifest names every host it may reach. See `docs/context/architecture/hub.md`.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
   only in `infra/stripe.py`, orchestration in `application/billing.py`, and `reconcile.py` is
   read-only. See `docs/context/architecture/money.md`.
