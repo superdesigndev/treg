@@ -179,6 +179,7 @@ class Settings(BaseSettings):
     platform_key_millionverifier: str = ""  # raw key; injected as ?api=…
     platform_key_hunter: str = ""
     platform_key_sumble: str = ""  # Bearer; Pro monthly credits, optional vendor auto-top-up
+    platform_key_harvestapi: str = ""  # X-API-Key; prepaid USD wallet
     platform_key_quickenrich: str = ""  # Bearer; monthly subscription credits, not auto-top-up
     platform_key_leadmagic: str = ""
     platform_key_lusha: str = ""

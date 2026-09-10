@@ -1,0 +1,1636 @@
+# API-key-only read surface. Account probe is internal; no interactions or custom sessions.
+# 23 upstream endpoints; profile has three enforced variants. Examples contain synthetic identities.
+provider: harvestapi
+source:
+  docs: https://docs.harvestapi.io
+  openapi: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  curated: '2026-09-10'
+limits: 'Starter: 5 concurrent requests, queue of 10 per Harvest account; no RPM cap. Excess queue requests fail.
+  BYOK uses the customer’s account allowance.'
+pricing_url: https://harvestapi.io/
+proposed_capabilities:
+  linkedin.search.companies: Search LinkedIn companies
+  linkedin.search.services: Search LinkedIn service providers
+  linkedin.search.groups: Search LinkedIn groups
+  linkedin.group.detail: Get a LinkedIn group
+  linkedin.search.locations: Find LinkedIn location IDs
+  linkedin.comment.replies: Get replies to a LinkedIn comment
+  linkedin.comment.reactions: Get reactions to a LinkedIn comment
+endpoints:
+- id: harvestapi.linkedin.user.profile
+  capability: linkedin.user.profile
+  platform: linkedin
+  scope: any_account
+  domain: contacts
+  method: GET
+  path: /linkedin/profile
+  name: Get a full LinkedIn profile
+  summary: Get a full LinkedIn profile with detailed experience, education and skills.
+  input:
+    queryParams:
+      url:
+        type: string
+        required: false
+        note: URL of the LinkedIn profile (optional)
+      publicIdentifier:
+        type: string
+        required: false
+        note: Public identifier of the LinkedIn profile (optional)
+        example: williamhgates
+      profileId:
+        type: string
+        required: false
+        note: ID of the LinkedIn profile (optional)
+    note: 'Supply at least one profile identifier: url, publicIdentifier or profileId. Do not add main or findEmail. Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged. Basic, full and email are separate tools. Do not combine main and findEmail. Email availability
+      and quality are provider-reported; no email is guaranteed.'
+  strict_query: true
+  test_request:
+    queryParams:
+      publicIdentifier: williamhgates
+  cost:
+    type: per_call
+    value: 0.0064
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.user.profile.json
+- id: harvestapi.linkedin.user.profile.main
+  capability: linkedin.user.profile
+  platform: linkedin
+  scope: any_account
+  domain: contacts
+  method: GET
+  path: /linkedin/profile
+  name: Get a basic LinkedIn profile
+  summary: Get a basic LinkedIn profile with limited experience, education and skills.
+  input:
+    queryParams:
+      url:
+        type: string
+        required: false
+        note: URL of the LinkedIn profile (optional)
+      publicIdentifier:
+        type: string
+        required: false
+        note: Public identifier of the LinkedIn profile (optional)
+        example: williamhgates
+      profileId:
+        type: string
+        required: false
+        note: ID of the LinkedIn profile (optional)
+      main:
+        type: string
+        required: true
+        note: Set this parameter to 'true' to return only main version of the profile that you can see on LinkedIn
+          without expanding profile sections - up to 5 experiences, 2 educations, 2 skills, etc. This version charges
+          less credits
+        example: 'true'
+        enum:
+        - 'true'
+    note: 'Supply at least one profile identifier: url, publicIdentifier or profileId. Set main=true. Do not add findEmail. Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged. Basic, full and email are separate tools. Do not combine main and findEmail. Email availability
+      and quality are provider-reported; no email is guaranteed.'
+  strict_query: true
+  test_request:
+    queryParams:
+      publicIdentifier: williamhgates
+      main: 'true'
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.user.profile.main.json
+- id: harvestapi.linkedin.user.profile.email
+  capability: people.email.find
+  platform: people
+  scope: any_account
+  domain: contacts
+  method: GET
+  path: /linkedin/profile
+  name: Find an email from a LinkedIn profile
+  summary: Get a LinkedIn profile and find available email addresses. An email is not guaranteed.
+  input:
+    queryParams:
+      url:
+        type: string
+        required: false
+        note: URL of the LinkedIn profile (optional)
+      publicIdentifier:
+        type: string
+        required: false
+        note: Public identifier of the LinkedIn profile (optional)
+        example: williamhgates
+      profileId:
+        type: string
+        required: false
+        note: ID of the LinkedIn profile (optional)
+      findEmail:
+        type: string
+        required: true
+        note: Include this parameter to find the email of the profile. It will perform SMTP verifications to ensure
+          deliverability. It will also output emails for catch-all domains and mark them as `risky` (deliverability
+          is unknown). This version charges more credits.
+        example: 'true'
+        enum:
+        - 'true'
+    note: 'Supply at least one profile identifier: url, publicIdentifier or profileId. Set findEmail=true. Do not add main. Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged. Basic, full and email are separate tools. Do not combine main and findEmail. Email availability
+      and quality are provider-reported; no email is guaranteed.'
+  strict_query: true
+  test_request:
+    queryParams:
+      publicIdentifier: williamhgates
+      findEmail: 'true'
+  cost:
+    type: per_call
+    value: 0.02
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.user.profile.email.json
+- id: harvestapi.linkedin.company.profile
+  capability: linkedin.company.profile
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/company
+  name: Get a LinkedIn company
+  summary: Get the LinkedIn company. Required at least one of the query parameters
+  input:
+    queryParams:
+      url:
+        type: string
+        required: false
+        note: URL of the LinkedIn company (optional)
+      universalName:
+        type: string
+        required: false
+        note: Universal name of the LinkedIn company profile, can be found in URL (optional)
+        example: google
+      search:
+        type: string
+        required: false
+        note: Company name. It will use LinkedIn search and return the most relevant result.
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      universalName: google
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.company.profile.json
+- id: harvestapi.linkedin.company.search
+  capability: linkedin.search.companies
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/company-search
+  name: Search LinkedIn companies
+  summary: Retrieve a list of LinkedIn companies matching the specified search criteria.
+  input:
+    queryParams:
+      search:
+        type: string
+        required: false
+        note: Keywords to search for in company names.
+        example: Google
+      location:
+        type: string
+        required: false
+        note: Filter companies by location.
+      geoId:
+        type: string
+        required: false
+        note: Filter by location as LinkedIn Geo ID. Overrides the location query param. Use the /linkedin/geo-id-search
+          endpoint to find the Geo ID
+      companySize:
+        type: string
+        required: false
+        note: 'Filter by company size. One value or multiple comma-separated. Supported values: ''1-10'', ''11-50'',
+          ''51-200'', ''201-500'', ''501-1000'', ''1001-5000'', ''5001-10000'', ''10001+'''
+      industryId:
+        type: string
+        required: false
+        note: 'Filter by industry ID. One value or multiple comma-separated industry IDs. Full list of IDs:  https://github.com/HarvestAPI/linkedin-industry-codes-v2/blob/main/linkedin_industry_code_v2_all_eng.csv'
+      page:
+        type: integer
+        required: false
+        note: Page number for pagination.
+        example: 1
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      search: Google
+      page: 1
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.company.search.json
+- id: harvestapi.linkedin.profile.search
+  capability: linkedin.search.people
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/profile-search
+  name: Search LinkedIn profiles
+  summary: Search LinkedIn profiles by name, company, location, and more
+  input:
+    queryParams:
+      search:
+        type: string
+        required: false
+        note: Search profiles by name
+        example: Bill Gates
+      currentCompany:
+        type: string
+        required: false
+        note: Filter by company ID or Company URL. One value or multiple comma-separated
+      pastCompany:
+        type: string
+        required: false
+        note: Filter by past company ID or Company URL. One value or multiple comma-separated
+      school:
+        type: string
+        required: false
+        note: Filter by school ID or School URL. One value or multiple comma-separated
+      firstName:
+        type: string
+        required: false
+        note: Filter by first name
+      lastName:
+        type: string
+        required: false
+        note: Filter by last name
+      title:
+        type: string
+        required: false
+        note: Filter by title
+      location:
+        type: string
+        required: false
+        note: Filter by location text
+      geoId:
+        type: string
+        required: false
+        note: Filter by location as LinkedIn Geo ID. Overrides the location query param. Use the /linkedin/geo-id-search
+          endpoint to find the Geo ID
+      industryId:
+        type: string
+        required: false
+        note: Filter by industry ID. One value or multiple comma-separated
+      keywordsCompany:
+        type: string
+        required: false
+        note: Filter by keywords in company name
+      keywordsSchool:
+        type: string
+        required: false
+        note: Filter by keywords in school name
+      followerOf:
+        type: string
+        required: false
+        note: Filter profiles that are followers of a LinkedIn profile. Provide the profile URL or ID. One value
+          or multiple comma-separated
+      page:
+        type: string
+        required: false
+        note: Page number, use for pagination
+        example: 1
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged. Name searches can work; other searches may return anonymized LinkedIn Member entries without links.
+      Prefer lead search for broader discovery.'
+  strict_query: true
+  test_request:
+    queryParams:
+      search: Bill Gates
+      page: 1
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.profile.search.json
+- id: harvestapi.linkedin.service.search
+  capability: linkedin.search.services
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/service-search
+  name: Search LinkedIn service providers
+  summary: Search LinkedIn profile services by name keywords and location.
+  input:
+    queryParams:
+      search:
+        type: string
+        required: true
+        note: Search profiles by name
+        example: Web design
+      location:
+        type: string
+        required: false
+        note: Filter by location text
+      geoId:
+        type: string
+        required: false
+        note: Filter by location as LinkedIn Geo ID. Overrides the location query param. Use the /linkedin/geo-id-search
+          endpoint to find the Geo ID
+      page:
+        type: string
+        required: false
+        note: Page number, use for pagination
+        example: 1
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      search: Web design
+      page: 1
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.service.search.json
+- id: harvestapi.linkedin.leads.search
+  capability: linkedin.search.people
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/lead-search
+  name: Search LinkedIn leads
+  summary: Search LinkedIn profile leads by filters with advanced inclusion and exclusion criteria
+  input:
+    queryParams:
+      search:
+        type: string
+        required: false
+        note: Search query. Fuzzy search, supports LinkedIn's search operators
+      currentCompanies:
+        type: string
+        required: false
+        note: Filter by current company IDs or URLs. Comma-separated (max 50)
+        example: https://www.linkedin.com/company/google
+      pastCompanies:
+        type: string
+        required: false
+        note: Filter by past company IDs or URLs. Comma-separated (max 50)
+      locations:
+        type: string
+        required: false
+        note: Filter by location text. Comma-separated (max 70)
+      geoIds:
+        type: string
+        required: false
+        note: Filter by LinkedIn Geo ID. Comma-separated. Overrides location param. Use /linkedin/geo-id-search
+          to find IDs
+      schools:
+        type: string
+        required: false
+        note: Filter by school IDs or URLs. Comma-separated (max 50)
+      currentJobTitles:
+        type: string
+        required: false
+        note: Filter by current job titles. Comma-separated (max 70)
+      pastJobTitles:
+        type: string
+        required: false
+        note: Filter by past job titles. Comma-separated (max 70)
+      firstNames:
+        type: string
+        required: false
+        note: Filter by first names. Comma-separated (max 70)
+      lastNames:
+        type: string
+        required: false
+        note: Filter by last names. Comma-separated (max 70)
+      industryIds:
+        type: string
+        required: false
+        note: 'Filter by industry IDs. Comma-separated (max 70). Full list: https://github.com/HarvestAPI/linkedin-industry-codes-v2/blob/main/linkedin_industry_code_v2_all_eng_with_header.csv'
+      yearsAtCurrentCompanyIds:
+        type: string
+        required: false
+        note: Filter by years at current company IDs. Comma-separated. https://github.com/HarvestAPI/harvestapi-sdk/blob/main/packages/scraper/README.md#yearsatcurrentcompanyids
+      yearsOfExperienceIds:
+        type: string
+        required: false
+        note: Filter by years of experience IDs. Comma-separated. https://github.com/HarvestAPI/harvestapi-sdk/blob/main/packages/scraper/README.md#yearsofexperienceids
+      seniorityLevelIds:
+        type: string
+        required: false
+        note: Filter by seniority level IDs. Comma-separated. https://github.com/HarvestAPI/harvestapi-sdk/blob/main/packages/scraper/README.md#senioritylevelids
+      functionIds:
+        type: string
+        required: false
+        note: Filter by job function IDs. Comma-separated. https://github.com/HarvestAPI/harvestapi-sdk/blob/main/packages/scraper/README.md#functionids
+      recentlyChangedJobs:
+        type: boolean
+        required: false
+        note: Filter leads who recently changed jobs in the last 90 days.
+      postedOnLinkedin:
+        type: boolean
+        required: false
+        note: Filter leads who posted on LinkedIn in the last 30 days
+      profileLanguages:
+        type: string
+        required: false
+        note: Filter by profile languages. Comma-separated. https://github.com/HarvestAPI/harvestapi-sdk/blob/main/packages/scraper/README.md#profilelanguages
+      companyHeadcount:
+        type: string
+        required: false
+        note: Filter by company headcount. Comma-separated. https://github.com/HarvestAPI/harvestapi-sdk/blob/main/packages/scraper/README.md#companyheadcount
+      companyHeadquarterLocations:
+        type: string
+        required: false
+        note: Filter by company headquarter location text. Comma-separated (max 70)
+      excludeLocations:
+        type: string
+        required: false
+        note: Locations to exclude from search. Comma-separated (max 70)
+      excludeGeoIds:
+        type: string
+        required: false
+        note: Geo IDs to exclude from search. Comma-separated (max 70)
+      excludeCurrentCompanies:
+        type: string
+        required: false
+        note: Current companies to exclude. Comma-separated (max 50)
+      excludePastCompanies:
+        type: string
+        required: false
+        note: Past companies to exclude. Comma-separated (max 50)
+      excludeSchools:
+        type: string
+        required: false
+        note: Schools to exclude. Comma-separated (max 50)
+      excludeCurrentJobTitles:
+        type: string
+        required: false
+        note: Current job titles to exclude. Comma-separated (max 70)
+      excludePastJobTitles:
+        type: string
+        required: false
+        note: Past job titles to exclude. Comma-separated (max 70)
+      excludeIndustryIds:
+        type: string
+        required: false
+        note: Industry IDs to exclude. Comma-separated (max 70)
+      excludeSeniorityLevelIds:
+        type: string
+        required: false
+        note: Seniority level IDs to exclude. Comma-separated (max 20)
+      excludeFunctionIds:
+        type: string
+        required: false
+        note: Function IDs to exclude. Comma-separated (max 30)
+      excludeCompanyHeadquarterLocations:
+        type: string
+        required: false
+        note: Company headquarter locations to exclude from search. Comma-separated (max 70)
+      page:
+        type: integer
+        required: false
+        note: Page number for pagination (clamped at 100)
+        example: 1
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged. Returns 25 rows per page in live tests; page is capped at 100. Private account/session and Sales
+      Navigator URL overrides are outside this tool.'
+  strict_query: true
+  test_request:
+    queryParams:
+      currentCompanies: https://www.linkedin.com/company/google
+      page: 1
+  cost:
+    type: per_call
+    value: 0.1
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.leads.search.json
+- id: harvestapi.linkedin.search.jobs
+  capability: linkedin.search.jobs
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/job-search
+  name: Search LinkedIn jobs
+  summary: Search LinkedIn jobs by title, company, location, and more.
+  input:
+    queryParams:
+      search:
+        type: string
+        required: false
+        note: Search jobs by title
+        example: Software Engineer
+      companyId:
+        type: string
+        required: false
+        note: Filter by company ID. One value or multiple comma-separated.
+      location:
+        type: string
+        required: false
+        note: Filter by location text
+      geoId:
+        type: string
+        required: false
+        note: Filter by location as LinkedIn Geo ID. Overrides the location query param. Use the /linkedin/geo-id-search
+          endpoint to find the Geo ID
+      sortBy:
+        type: string
+        required: false
+        note: 'Sort by field. Supported values: ''relevance'', ''date'''
+      workplaceType:
+        type: string
+        required: false
+        note: 'Filter by workplace type. One or multiple values comma-separated. Supported values: ''office'', ''hybrid'',
+          ''remote'''
+      employmentType:
+        type: string
+        required: false
+        note: 'Filter by employment type. One or multiple values comma-separated. Supported values: ''full-time'',
+          ''part-time'', ''contract'', ''temporary'', ''internship'''
+      salary:
+        type: string
+        required: false
+        note: 'Filter by salary range. Supported values: ''40k+'', ''60k+'', ''80k+'', ''100k+'', ''120k+'', ''140k+'',
+          ''160k+'', ''180k+'', ''200k+'''
+      postedLimit:
+        type: string
+        required: false
+        note: 'Filter posts by maximum posted date. Supported values: ''24h'', ''week'', ''month'''
+      experienceLevel:
+        type: string
+        required: false
+        note: 'Filter by experience level. One or multiple values comma-separated. Supported values: ''internship'',
+          ''entry'', ''associate'', ''mid-senior'', ''director'', ''executive'''
+      industryId:
+        type: string
+        required: false
+        note: 'Filter by industry ID. One value or multiple comma-separated industry IDs. Full list of IDs: https://github.com/HarvestAPI/linkedin-industry-codes-v2/blob/main/linkedin_industry_code_v2_all_eng.csv'
+      functionId:
+        type: string
+        required: false
+        note: 'Filter by job function ID. One value or multiple comma-separated function IDs. Full list of IDs:
+          https://github.com/HarvestAPI/apify-linkedin-profile-search/blob/main/.actor/input_schema.json#L142'
+      under10Applicants:
+        type: string
+        required: false
+        note: Include this parameter to filter jobs with under 10 applicants
+      easyApply:
+        type: string
+        required: false
+        note: Set this parameter to 'true' filter jobs with Easy Apply option or 'false' to exclude. Values can
+          be 'true' or 'false'
+      page:
+        type: integer
+        required: false
+        note: Page number for pagination
+        example: 1
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      search: Software Engineer
+      page: 1
+  cost:
+    type: per_call
+    value: 0.001
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.search.jobs.json
+- id: harvestapi.linkedin.job.get
+  capability: linkedin.job.detail
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/job
+  name: Get a LinkedIn job
+  summary: Get the LinkedIn job details by job ID or URL.
+  input:
+    queryParams:
+      jobId:
+        type: string
+        required: false
+        note: ID of the LinkedIn job (optional)
+        example: '4465308031'
+      url:
+        type: string
+        required: false
+        note: URL of the LinkedIn job (optional)
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      jobId: '4465308031'
+  cost:
+    type: per_call
+    value: 0.001
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.job.get.json
+- id: harvestapi.linkedin.group.search
+  capability: linkedin.search.groups
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/group-search
+  name: Search LinkedIn groups
+  summary: Retrieve a list of LinkedIn Groups matching the specified search criteria.
+  input:
+    queryParams:
+      search:
+        type: string
+        required: false
+        note: Keywords to search for.
+        example: Marketing
+      page:
+        type: integer
+        required: false
+        note: Page number for pagination.
+        example: 1
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      search: Marketing
+      page: 1
+  cost:
+    type: per_call
+    value: 0.002
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.group.search.json
+- id: harvestapi.linkedin.group.get
+  capability: linkedin.group.detail
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/group
+  name: Get a LinkedIn group
+  summary: Get the LinkedIn group. Required at least one of the query parameters
+  input:
+    queryParams:
+      url:
+        type: string
+        required: false
+        note: URL of the LinkedIn group (optional)
+      groupId:
+        type: string
+        required: false
+        note: ID of the LinkedIn group (optional)
+        example: '66325'
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      groupId: '66325'
+  cost:
+    type: per_call
+    value: 0.002
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.group.get.json
+- id: harvestapi.linkedin.geo.search
+  capability: linkedin.search.locations
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/geo-id-search
+  name: Find LinkedIn location IDs
+  summary: Search LinkedIn Geo ID by location text
+  input:
+    queryParams:
+      search:
+        type: string
+        required: true
+        note: Location text to search for Geo ID (required)
+        example: New York
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      search: New York
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Two live location searches returned useful results at zero cost; observed on this account, not a guarantee
+      for every Harvest plan.
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.geo.search.json
+- id: harvestapi.linkedin.ads.search
+  capability: linkedin.search.ads
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/ad-search
+  name: Search LinkedIn ads
+  summary: Retrieve a list of LinkedIn Ads matching the specified search criteria.
+  input:
+    queryParams:
+      keyword:
+        type: string
+        required: false
+        note: Search by keyword
+      accountOwner:
+        type: string
+        required: false
+        note: Search by company or advertiser name
+        example: Microsoft
+      countries:
+        type: string
+        required: false
+        note: One or comma separated list of country codes to filter ads by country. Eg. 'US,GB,FR'. Supports "ALL"
+          value to search in all countries.
+      dateOption:
+        type: string
+        required: false
+        note: 'One of the following options to filter ads by date: ''last-30-days'', ''current-month'', ''current-year'',
+          ''last-year'', ''custom-date-range'''
+      startdate:
+        type: string
+        required: false
+        note: Start date for 'custom-date-range' filter in 'YYYY-MM-DD' format
+      enddate:
+        type: string
+        required: false
+        note: End date for 'custom-date-range' filter in 'YYYY-MM-DD' format
+      paginationToken:
+        type: string
+        required: false
+        note: Pagination token from the previous response for fetching the next page
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      accountOwner: Microsoft
+  cost:
+    type: per_call
+    value: 0.0016
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.ads.search.json
+- id: harvestapi.linkedin.ads.get
+  capability: linkedin.ad.detail
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/ad
+  name: Get a LinkedIn ad
+  summary: Retrieve detailed information about a specific LinkedIn Ad using its unique ID.
+  input:
+    queryParams:
+      adId:
+        type: string
+        required: false
+        note: The unique identifier of the LinkedIn Ad.
+        example: '1597524366'
+      url:
+        type: string
+        required: false
+        note: The URL of the LinkedIn Ad.
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      adId: '1597524366'
+  cost:
+    type: per_call
+    value: 0.0016
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.ads.get.json
+- id: harvestapi.linkedin.company.posts
+  capability: linkedin.company.posts
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/company-posts
+  name: Get a company’s LinkedIn posts
+  summary: Get LinkedIn company posts by company URL, ID, or universal name.
+  input:
+    queryParams:
+      company:
+        type: string
+        required: false
+        note: Filter posts by this company URL
+      companyId:
+        type: string
+        required: false
+        note: Filter posts by company ID. It's faster to search by ID
+      companyUniversalName:
+        type: string
+        required: false
+        note: Filter posts by company universal name (last part in the URL)
+        example: google
+      postedLimit:
+        type: string
+        required: false
+        note: "Filter posts by maximum posted date. Supported values: '24h', 'week', 'month'. \nSince LinkedIn doesn't\
+          \ offer a way to filter by date, the filtering will be done on our side, due to that the pagination might\
+          \ have incorrect values, because pagination is returned by LinkedIn without applying the postedLimit filter"
+      scrapePostedLimit:
+        type: string
+        required: false
+        note: 'Post-Filter posts by maximum posted date. Supported values: ''1h'', ''24h'', ''week'',''month'',
+          ''3months'', ''6months'', ''year''. This parameter will be applied after receiving results from LinkedIn,
+          the filtering will be done on our side'
+      page:
+        type: integer
+        required: false
+        note: Page number for pagination
+        example: 1
+      paginationToken:
+        type: string
+        required: false
+        note: Required if it was returned by the previous page. Otherwise the page will always be 1 (on LinkedIn
+          side). Doesn't apply for all queries, usually profile posts return this token
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      companyUniversalName: google
+      page: 1
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.company.posts.json
+- id: harvestapi.linkedin.user.posts
+  capability: linkedin.user.posts
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/profile-posts
+  name: Get a member’s LinkedIn posts
+  summary: Get LinkedIn profile posts by profile URL, ID, or public identifier.
+  input:
+    queryParams:
+      profile:
+        type: string
+        required: false
+        note: Filter posts by author's profile URL
+      profileId:
+        type: string
+        required: false
+        note: Filter posts by author's profile ID. It's faster to search by ID
+      profilePublicIdentifier:
+        type: string
+        required: false
+        note: Filter posts by author's profile public identifier (last part in the URL).
+        example: williamhgates
+      postedLimit:
+        type: string
+        required: false
+        note: "Filter posts by maximum posted date. Supported values: '24h', 'week', 'month'. \nSince LinkedIn doesn't\
+          \ offer a way to filter by date, the filtering will be done on our side, due to that the pagination might\
+          \ have incorrect values, because pagination is returned by LinkedIn without applying the postedLimit filter"
+      scrapePostedLimit:
+        type: string
+        required: false
+        note: 'Post-Filter posts by maximum posted date. Supported values: ''1h'', ''24h'', ''week'',''month'',
+          ''3months'', ''6months'', ''year''. This parameter will be applied after receiving results from LinkedIn,
+          the filtering will be done on our side'
+      page:
+        type: integer
+        required: false
+        note: Page number for pagination
+        example: 1
+      paginationToken:
+        type: string
+        required: false
+        note: Required if it was returned by the previous page. Otherwise the page will always be 1 (on LinkedIn
+          side). Doesn't apply for all queries, usually profile posts return this token
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged. totalElements/totalPages may be zero even with results; follow paginationToken rather than assuming
+      no data.'
+  strict_query: true
+  test_request:
+    queryParams:
+      profilePublicIdentifier: williamhgates
+      page: 1
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.user.posts.json
+- id: harvestapi.linkedin.user.comments
+  capability: linkedin.user.comments
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/profile-comments
+  name: Get a member’s LinkedIn comments
+  summary: Get comments of LinkedIn profile by post URL.
+  input:
+    queryParams:
+      profile:
+        type: string
+        required: false
+        note: URL of the LinkedIn profile
+        example: https://www.linkedin.com/in/williamhgates
+      profileId:
+        type: string
+        required: false
+        note: Profile ID of the LinkedIn profile. It's faster to search by ID
+      postedLimit:
+        type: string
+        required: false
+        note: 'Filter posts by maximum posted date. Supported values: ''24h'', ''week'', ''month'''
+      page:
+        type: integer
+        required: false
+        note: Page number for pagination. Default is 1
+        example: 1
+      paginationToken:
+        type: string
+        required: false
+        note: Required for pages > 1. Use this token from the previous page response.
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged. totalElements/totalPages may be zero even with results; follow paginationToken rather than assuming
+      no data.'
+  strict_query: true
+  test_request:
+    queryParams:
+      profile: https://www.linkedin.com/in/williamhgates
+      page: 1
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.user.comments.json
+- id: harvestapi.linkedin.user.reactions
+  capability: linkedin.user.reactions
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/profile-reactions
+  name: Get a member’s LinkedIn reactions
+  summary: Get reactions of LinkedIn profile by profile URL.
+  input:
+    queryParams:
+      profile:
+        type: string
+        required: false
+        note: URL of the LinkedIn profile
+        example: https://www.linkedin.com/in/williamhgates
+      profileId:
+        type: string
+        required: false
+        note: Profile ID of the LinkedIn profile. It's faster to search by ID
+      page:
+        type: integer
+        required: false
+        note: Page number for pagination. Default is 1
+        example: 1
+      paginationToken:
+        type: string
+        required: false
+        note: Required for pages > 1. Use this token from the previous page response.
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged. totalElements/totalPages may be zero even with results; follow paginationToken rather than assuming
+      no data.'
+  strict_query: true
+  test_request:
+    queryParams:
+      profile: https://www.linkedin.com/in/williamhgates
+      page: 1
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.user.reactions.json
+- id: harvestapi.linkedin.post.search
+  capability: linkedin.search.posts
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/post-search
+  name: Search LinkedIn posts
+  summary: Search LinkedIn posts by keywords, author, date range, and more.
+  input:
+    queryParams:
+      search:
+        type: string
+        required: false
+        note: Keywords to search for in posts
+        example: Microsoft
+      profile:
+        type: string
+        required: false
+        note: 'Filter posts by author''s profile URL (comma-separated). Note: LinkedIn returns fewer results per
+          profile when using post search. To extract all posts by a profile, use the /linkedin/profile-posts endpoint'
+      profileId:
+        type: string
+        required: false
+        note: 'Filter posts by author''s profile ID or IDs (comma-separated). It''s faster to search by ID. Note:
+          LinkedIn returns fewer results per profile when using post search. To extract all posts by a profile,
+          use the /linkedin/profile-posts endpoint'
+      company:
+        type: string
+        required: false
+        note: 'Filter posts by this company URL or URLs (comma-separated). Note: LinkedIn returns fewer results
+          per company when using post search. To extract all posts by a company, use the /linkedin/company-posts
+          endpoint'
+      companyId:
+        type: string
+        required: false
+        note: 'Filter posts by company ID or IDs (comma-separated). It''s faster to search by ID. Note: LinkedIn
+          returns fewer results per company when using post search. To extract all posts by a company, use the /linkedin/company-posts
+          endpoint'
+      authorsCompany:
+        type: string
+        required: false
+        note: List of LinkedIn companies where authors of posts work (comma-separated). It supports company URLs
+          and IDs.
+      authorsIndustryId:
+        type: string
+        required: false
+        note: 'List of LinkedIn industry IDs of authors'' companies (comma-separated). It supports industry IDs.
+          Full list of industry IDs: https://github.com/HarvestAPI/linkedin-industry-codes-v2/blob/main/linkedin_industry_code_v2_all_eng.csv'
+      mentioningMember:
+        type: string
+        required: false
+        note: Filter posts mentioning this LinkedIn profile URL or ID (comma-separated). It supports profile URLs
+          and IDs.
+      mentioningCompany:
+        type: string
+        required: false
+        note: Filter posts mentioning this LinkedIn company URL or ID (comma-separated). It supports company URLs
+          and IDs.
+      contentType:
+        type: string
+        required: false
+        note: 'Filter by content type. Supported values: ''videos'', ''images'', ''live_videos'', ''documents'',
+          ''collaborative_articles'', ''jobs'''
+      authorKeywords:
+        type: string
+        required: false
+        note: Filter by keywords in authors' profiles
+      group:
+        type: string
+        required: false
+        note: Group LinkedIn URL or Group ID
+      postedLimit:
+        type: string
+        required: false
+        note: 'Filter posts by maximum posted date. Supported values: ''24h'', ''week'', ''month''. This parameter
+          will be sent to LinkedIn, the filtering will be done on their side'
+      scrapePostedLimit:
+        type: string
+        required: false
+        note: 'Post-Filter posts by maximum posted date. Supported values: ''1h'', ''24h'', ''week'',''month'',
+          ''3months'', ''6months'', ''year''. This parameter will be applied after receiving results from LinkedIn,
+          the filtering will be done on our side'
+      sortBy:
+        type: string
+        required: false
+        note: 'Sort by field. Supported values: ''relevance'', ''date'''
+      page:
+        type: integer
+        required: false
+        note: Page number for pagination
+        example: 1
+      paginationToken:
+        type: string
+        required: false
+        note: Required if it was returned by the previous page. Otherwise the page will always be 1 (on LinkedIn
+          side). Doesn't apply for all queries, usually profile posts return this token
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      search: Microsoft
+      page: 1
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.post.search.json
+- id: harvestapi.linkedin.post.get
+  capability: linkedin.post.detail
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/post
+  name: Get a LinkedIn post
+  summary: Get LinkedIn post details by post URL.
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        note: URL of the LinkedIn post (required)
+        example: https://www.linkedin.com/posts/williamhgates_ive-been-thinking-a-lot-about-the-idea-of-activity-7503320303024926720-1t50
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      url: https://www.linkedin.com/posts/williamhgates_ive-been-thinking-a-lot-about-the-idea-of-activity-7503320303024926720-1t50
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.post.get.json
+- id: harvestapi.linkedin.post.comments
+  capability: linkedin.post.comments
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/post-comments
+  name: Get comments on a LinkedIn post
+  summary: Get comments of LinkedIn post by post URL.
+  input:
+    queryParams:
+      post:
+        type: string
+        required: true
+        note: URL of the LinkedIn post (required)
+        example: https://www.linkedin.com/posts/williamhgates_ive-been-thinking-a-lot-about-the-idea-of-activity-7503320303024926720-1t50
+      sortBy:
+        type: string
+        required: false
+        note: 'Sort comments by field. Supported values: ''relevance'', ''date'''
+      page:
+        type: integer
+        required: false
+        note: Page number for pagination. Default is 1
+        example: 1
+      paginationToken:
+        type: string
+        required: false
+        note: Required only if sortBy is 'relevance' and page > 1. Use this token from the previous page response.
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      post: https://www.linkedin.com/posts/williamhgates_ive-been-thinking-a-lot-about-the-idea-of-activity-7503320303024926720-1t50
+      page: 1
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.post.comments.json
+- id: harvestapi.linkedin.post.reactions
+  capability: linkedin.post.reactions
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/post-reactions
+  name: Get reactions to a LinkedIn post
+  summary: Get reactions of LinkedIn post by post URL.
+  input:
+    queryParams:
+      post:
+        type: string
+        required: true
+        note: URL of the LinkedIn post (required)
+        example: https://www.linkedin.com/posts/williamhgates_ive-been-thinking-a-lot-about-the-idea-of-activity-7503320303024926720-1t50
+      page:
+        type: integer
+        required: false
+        note: Page number for pagination. Default is 1
+        example: 1
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      post: https://www.linkedin.com/posts/williamhgates_ive-been-thinking-a-lot-about-the-idea-of-activity-7503320303024926720-1t50
+      page: 1
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.post.reactions.json
+- id: harvestapi.linkedin.post.comment_replies
+  capability: linkedin.comment.replies
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/post-comment-replies
+  name: Get replies to a LinkedIn comment
+  summary: Get replies of LinkedIn post comment by comment URL.
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        note: URL of the LinkedIn comment (required)
+        example: https://www.linkedin.com/feed/update/urn:li:activity:7503320303024926720?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A7503320303024926720%2C7503367222199975936%29&dashCommentUrn=urn%3Ali%3Afsd_comment%3A%287503367222199975936%2Curn%3Ali%3Aactivity%3A7503320303024926720%29
+      paginationToken:
+        type: string
+        required: false
+        note: Use this token from the previous page response.
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      url: https://www.linkedin.com/feed/update/urn:li:activity:7503320303024926720?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A7503320303024926720%2C7503367222199975936%29&dashCommentUrn=urn%3Ali%3Afsd_comment%3A%287503367222199975936%2Curn%3Ali%3Aactivity%3A7503320303024926720%29
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.post.comment_replies.json
+- id: harvestapi.linkedin.comment.reactions
+  capability: linkedin.comment.reactions
+  platform: linkedin
+  scope: any_account
+  domain: social
+  method: GET
+  path: /linkedin/comment-reactions
+  name: Get reactions to a LinkedIn comment
+  summary: Get reactions of LinkedIn post comment by comment URL.
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        note: URL of the LinkedIn comment (required)
+        example: https://www.linkedin.com/feed/update/urn:li:activity:7503320303024926720?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A7503320303024926720%2C7503522619787407360%29&dashCommentUrn=urn%3Ali%3Afsd_comment%3A%287503522619787407360%2Curn%3Ali%3Aactivity%3A7503320303024926720%29
+      page:
+        type: integer
+        required: false
+        note: Page number for pagination. Default is 1
+    note: 'Use only the declared query parameters, once each, without a request body. Results are provider-native:
+      inspect element/elements and body status/error; HTTP 200 alone does not prove a hit. Empty results can still
+      be charged.'
+  strict_query: true
+  test_request:
+    queryParams:
+      url: https://www.linkedin.com/feed/update/urn:li:activity:7503320303024926720?commentUrn=urn%3Ali%3Acomment%3A%28activity%3A7503320303024926720%2C7503522619787407360%29&dashCommentUrn=urn%3Ali%3Afsd_comment%3A%287503522619787407360%2Curn%3Ali%3Aactivity%3A7503320303024926720%29
+  cost:
+    type: per_call
+    value: 0.004
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://docs.harvestapi.io
+    checked: '2026-09-10'
+    confidence: verified
+    note: Observed on treg’s prepaid Harvest account. Final platform cost follows the response cost, including billed
+      misses and explicit zero. BYOK never charges the treg balance.
+    reported_charge:
+      path: cost
+      unit: usd
+  docs_url: https://docs.harvestapi.io/linkedin-api-reference/openapi.json
+  verified: '2026-09-10'
+  example_response: examples/harvestapi.linkedin.comment.reactions.json

@@ -859,3 +859,8 @@ values into the top-up ledger metadata and `topup_completed`, under the existing
 guard; webhook order and sequential redelivery do not change attribution or duplicate events.
 Missing/legacy attribution is `unknown`. No query inputs, URLs, API keys or provider results are
 copied into this metadata. Amounts, reservations, settlement and payment authorization are unchanged.
+
+
+## HarvestAPI integration
+
+HarvestAPI reuses `cost.reported_charge` with path `cost` in USD. Billed misses retain their reported charge; wallet reads may lag and are never per-call evidence. Profile variants reserve their own scalar price. See [HarvestAPI](harvestapi.md).

@@ -252,6 +252,7 @@ _UNRECORDED_SIGNATURE = {
     "apify", "aviato", "branddev", "brightdata", "coingecko", "coresignal", "crustdata", "dataforseo",
     "diffbot", "exa", "fiber-ai", "finnhub", "icypeas", "justoneapi", "marketstack",
     "sumble",  # exhaustion not forced; no overflow route claimed
+    "harvestapi",  # wallet exhaustion unobserved; no overflow route
     "quickenrich",  # subscription exhaustion not observed; do not spend the trial to force it
     "millionverifier",  # funded-account exhaustion not observed; trial still has credits
     "minimax", "oceanio", "openrouter", "replicate", "scrapecreators", "seranking",

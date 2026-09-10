@@ -103,6 +103,8 @@ services:
         sync: false
       - key: TREG_PLATFORM_KEY_SUMBLE
         sync: false
+      - key: TREG_PLATFORM_KEY_HARVESTAPI
+        sync: false
       - key: TREG_PLATFORM_KEY_QUICKENRICH
         sync: false
       - key: TREG_PLATFORM_KEY_TRYKITT
@@ -260,6 +262,11 @@ services:
           type: web
           name: treg
           envVarName: TREG_PLATFORM_KEY_SUMBLE
+      - key: TREG_PLATFORM_KEY_HARVESTAPI
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_HARVESTAPI
       - key: TREG_PLATFORM_KEY_QUICKENRICH
         fromService:
           type: web

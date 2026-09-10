@@ -394,3 +394,8 @@ platform-provider allow-list is also required. Own keys always take precedence.
 `oauth_providers.CONTACTOUT` verifies against `/v1/stats` and requires `status_code: 200` as well
 as HTTP success. Its binding injects the raw `token` header. Both garbage rejection and valid
 connection creation were tested live; see [ContactOut](contactout.md).
+
+
+## HarvestAPI integration
+
+`HARVESTAPI` uses a pasted `X-API-Key` and internal `/users/my-api-user` probe. The wallet endpoint is not a catalog tool. See [HarvestAPI](harvestapi.md) for own-key priority and platform configuration.

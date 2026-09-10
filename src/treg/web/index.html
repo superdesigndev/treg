@@ -958,6 +958,8 @@ a:hover{text-decoration-color:var(--muted)}
 .lsub.on{border-color:var(--line2);background:var(--hover)}
 .lsub.on .lcar{transform:rotate(90deg)}
 .lsub b{font-weight:500;white-space:nowrap}
+.lsub-label{min-width:0;text-align:left}
+.lsub-name{display:block;font-size:12px;white-space:normal;overflow-wrap:anywhere}
 .lsub-price{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;
   font-variant-numeric:tabular-nums}
 .lsub-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
@@ -1617,7 +1619,7 @@ a:hover{text-decoration-color:var(--muted)}
                                 :aria-expanded="!!epOpen[e.id]" @click.stop="toggleEp(e)">
                           <span class="lcar">▸</span>
                           <span class="plogo-tile"><img class="plogo" :src="'/logos/'+e.provider+'.svg'" alt="" aria-hidden="true" @error="$event.target.style.visibility='hidden'"></span>
-                          <b>{{e.provider_display||e.provider}}</b>
+                          <span class="lsub-label"><b>{{e.provider_display||e.provider}}</b><span v-if="e.name" class="lsub-name">{{e.name}}</span></span>
                           <span class="chip">{{endpointAccessLabel(e)}}</span>
                           <span class="lsub-price" :title="costTitle(e.cost)">{{costShort(e.cost)}}</span>
                           <span v-if="e.verified" class="vmark" :title="'Called for real on '+e.verified">✓</span>
@@ -4068,7 +4070,7 @@ createApp({
           verified: eps.some(e=>!!e.verified),
           ready: eps.some(e=>this.catEndpointConnected(e)),
           hay: (r.description+' '+r.domain+' '+(r.capability||'')+' '+eps.map(e=>
-                 e.provider+' '+(e.provider_display||'')+' '+e.path+' '+e.summary).join(' ')).toLowerCase()});
+                 e.provider+' '+(e.provider_display||'')+' '+(e.name||'')+' '+e.path+' '+e.summary).join(' ')).toLowerCase()});
       }
       return out; },
     // The text box and the verified checkbox narrow the row list; the domain chips then narrow it

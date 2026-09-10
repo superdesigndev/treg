@@ -195,6 +195,27 @@ def _finite_number(value: object) -> bool:
             and math.isfinite(float(value)))
 
 
+def check_strict_query(ep: dict, where: str, errors: list[str]) -> None:
+    if "strict_query" not in ep:
+        return
+    if type(ep["strict_query"]) is not bool:
+        fail(errors, where, "strict_query must be a boolean")
+    if ep["strict_query"] is not True:
+        return
+    fields = (ep.get("input") or {}).get("queryParams")
+    if ep.get("method") != "GET" or not isinstance(fields, dict) or not fields:
+        fail(errors, where, "strict_query requires a GET with declared queryParams")
+        return
+    if "{" in str(ep.get("path", "")) or (ep.get("input") or {}).get("body"):
+        fail(errors, where, "strict_query cannot use path placeholders or body inputs")
+    for name, spec in fields.items():
+        if not isinstance(spec, dict):
+            fail(errors, where, f"strict query field {name} must be a mapping")
+        elif "enum" in spec and (not isinstance(spec["enum"], list) or not spec["enum"]
+                                 or any(not isinstance(v, str) for v in spec["enum"])):
+            fail(errors, where, f"strict query field {name} enum must contain strings")
+
+
 def check_platform_request(rule: object, input_schema: object, where: str,
                            errors: list[str]) -> None:
     """Platform-only fixed body values; BYOK input remains an upstream contract."""
@@ -866,6 +887,7 @@ def main(argv: list[str]) -> int:
                 fail(errors, where, f"bad method '{ep.get('method')}'")
             check_status_marker(ep, where, endpoint_status, errors)
             inp = ep.get("input") or {}
+            check_strict_query(ep, where, errors)
             if "platform_request" in ep:
                 check_platform_request(ep["platform_request"], inp, where, errors)
             default_array_encoding = inp.get("queryArrayEncoding")

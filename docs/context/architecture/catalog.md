@@ -1847,3 +1847,8 @@ through `queryParams.phone`. The adapter reads `data.valid`, `data.e164_format`,
 line type and carrier. A boolean false is a returned invalid verdict; a missing verdict is a
 miss. This validates numbering-plan/format details, not line activity or subscriber ownership.
 The single verified adapter is usable by Arena; the two-provider public routing gate stays intact.
+
+
+## HarvestAPI integration
+
+`harvestapi.yaml` adds API-key-only LinkedIn reads with opt-in `strict_query` contracts and three profile variants. See [HarvestAPI](harvestapi.md) for the verified surface, billed misses, pagination traps and adapters.

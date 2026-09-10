@@ -476,3 +476,8 @@ can observe a changed status. Successful and failed polls retain diagnostic audi
 `kind=async_poll` and zero charged cost; `/calls` excludes them before pagination. The original
 submission shows the shared finalizer's settlement state and result in Activity. Terminal evidence
 is archived under that submission's call id, not the poll's id.
+
+
+## HarvestAPI integration
+
+Catalog entries can opt into `strict_query`: `_enforce_catalog_query` rejects bodies, undeclared/duplicate query parameters, missing required inputs and unsupported enum values before credential selection. It applies to catalog calls on every tier, leaves unmarked entries unchanged and does not rewrite requests or constrain arbitrary raw own-tool relays. See [HarvestAPI](harvestapi.md).

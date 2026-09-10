@@ -375,3 +375,8 @@ not a provider-wide balance lock. See the ContactOut fragment for enabled covera
 `scripts/contactout_overflow_verify.py --budget-usd 10 --apply` renewal command; nonexistent static
 catalog examples cannot renew successful contact checks. Production policy/mode changes and the
 weekly renewal schedule remain rollout actions, not changes applied by this PR.
+
+
+## HarvestAPI integration
+
+`collectors._harvestapi` reads remaining USD from `usage.balance`, not `user.totalBalance`, through the internal account probe. Its prepaid cash policy defaults to auto recharge for the owner's planned production setup. The owner must enable auto top-up in Harvest; the repository does not enable or verify vendor payments. Existing stored policies are preserved, and zero-balance checks still apply. Starter concurrency guidance is documented without inventing an RPM limit or exhaustion signature. See [HarvestAPI](../architecture/harvestapi.md).

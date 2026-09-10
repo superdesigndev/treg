@@ -10,6 +10,8 @@ Pure collection: nothing here touches the database or the request path. The work
 
 from __future__ import annotations
 
+import math
+
 import httpx
 
 from ...config import get_settings, platform_setting_name
@@ -87,6 +89,19 @@ async def _sumble(c, key):
         remaining = None
     return {"value": remaining, "unit": "credits",
             "note": "Monthly allowance plus purchased credits; renewal date and auto-top-up state not reported."}
+
+
+async def _harvestapi(c, key):
+    d = await _get(c, "https://api.harvestapi.io/users/my-api-user",
+                   headers={"X-API-Key": key})
+    usage = d.get("usage") if isinstance(d, dict) else None
+    remaining = usage.get("balance") if isinstance(usage, dict) else None
+    if type(remaining) not in (int, float) or not math.isfinite(remaining) or remaining < 0:
+        remaining = None
+    return {"value": remaining, "unit": "USD",
+            "note": "Prepaid wallet; usage.balance is remaining, user.totalBalance is not. "
+                    "Starter: 5 concurrent requests and queue of 10; no RPM cap. "
+                    "Auto top-up is managed in HarvestAPI."}
 
 
 async def _quickenrich(c, key):
@@ -448,6 +463,7 @@ BALANCE_ROUTES = {
     "moz": _moz,
     "seranking": _seranking,
     "hunter": _hunter,
+    "harvestapi": _harvestapi,
     "quickenrich": _quickenrich,
     "sumble": _sumble,
     "trykitt": _trykitt,

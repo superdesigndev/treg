@@ -603,3 +603,16 @@ def test_generic_price_display_metadata(display, valid):
     errors = []
     validator.check_cost(cost, 'test', errors, [])
     assert (not errors) == valid
+
+
+@pytest.mark.parametrize('patch,valid', [
+    ({}, True), ({'strict_query': 'yes'}, False), ({'method': 'POST'}, False),
+    ({'path': '/{id}'}, False),
+    ({'input': {'queryParams': {'mode': {'enum': [True]}}}}, False),
+])
+def test_strict_query_contract_validation(patch, valid):
+    ep = {'strict_query': True, 'method': 'GET', 'path': '/lookup',
+          'input': {'queryParams': {'mode': {'type': 'string', 'enum': ['true']}}}}
+    errors = []
+    validator.check_strict_query(ep | patch, 'example', errors)
+    assert bool(errors) is not valid
