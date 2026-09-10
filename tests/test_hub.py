@@ -557,3 +557,66 @@ async def test_the_agent_files_mention_the_hub_only_when_it_is_on(clients: Async
         if on == "1":
             assert "never paste a credential" in llms.lower() or "never paste a credential" in skill.lower()
     get_settings.cache_clear()
+
+
+
+# ---------------------------------------------------------------------------------------------
+# Phase 7.2: the public share page
+
+async def _live_tool_with_readme(clients, monkeypatch, price=0.01):
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": {"domain": "figma.com"}}'))
+    await _own_supabase(clients)
+    m = _steps_manifest(steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}}],
+                        output={"leads": "$people.data"}, price_usd=price)
+    r = await clients.post("/hub/tools", json={"manifest": m, "check": CHECK,
+                                               "readme": "# Leads\n\nWhat it **returns**, with `code`.\n\n- one\n- two\n\n<script>alert(1)</script>"})
+    assert r.status_code == 201 and r.json()["status"] == "live", r.text
+    return r.json()
+
+
+async def test_the_public_page_shows_the_contract_and_hides_the_makers_side(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    pub = await _live_tool_with_readme(clients, monkeypatch)
+    tool_id = pub["tool_id"]
+    assert pub["page"].endswith(f"/hub/{tool_id}")
+    r = await clients.get(f"/hub/{tool_id}")            # no token: readable without sign-in
+    assert r.status_code == 200, r.text
+    html = r.text
+    assert "leads-db" in html and "seller $0.01 + steps" in html and "$10.00 per 1,000 runs" in html
+    assert f"treg call {tool_id} --data" in html and f"/call/{tool_id}" in html
+    assert "<b>returns</b>" in html and "<code>code</code>" in html and "<li>one</li>" in html   # the readme, rendered
+    assert "<script>alert(1)</script>" not in html and "&lt;script&gt;" in html                  # and escaped
+    assert '<meta name="robots" content="noindex"/>' in html
+    assert "supabase" not in html and "tikhub" not in html and "SUPABASE" not in html          # the maker's tools and keys
+    assert "made of 2 tool(s)" in html
+    assert "run at publish" in html and "passed" in html                                          # the check trace
+
+
+async def test_the_public_page_has_a_markdown_twin(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    tool_id = (await _live_tool_with_readme(clients, monkeypatch))["tool_id"]
+    r = await clients.get(f"/hub/{tool_id}.md")
+    assert r.status_code == 200 and r.headers["content-type"].startswith("text/markdown")
+    assert r.headers.get("x-robots-tag") == "noindex"
+    assert r.text.startswith("# leads-db") and "## Call it" in r.text and "| domain |" in r.text
+    assert "supabase" not in r.text
+
+
+async def test_the_public_page_is_404_when_off_failed_or_unknown(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    tool_id = (await _live_tool_with_readme(clients, monkeypatch))["tool_id"]
+    assert (await clients.get("/hub/nobody.nothing")).status_code == 404
+    # a failed version alone is not a page
+    monkeypatch.setattr(call_service, "relay", _fake_relay(500, b'{}'))
+    m = _steps_manifest(name="broken", steps=[{"name": "people", "call": EP, "input": {"aweme_id": "x"}}], output={"leads": "$people.data"})
+    broken = (await clients.post("/hub/tools", json={"manifest": m, "check": CHECK, "readme": "x"})).json()["tool_id"]
+    assert (await clients.get(f"/hub/{broken}")).status_code == 404
+    monkeypatch.setenv("TREG_HUB_ENABLED", "0"); get_settings.cache_clear()
+    assert (await clients.get(f"/hub/{tool_id}")).status_code == 404
+
+
+async def test_the_public_page_serves_a_pinned_older_version(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    pub = await _live_tool_with_readme(clients, monkeypatch)
+    tool_id = pub["tool_id"]
+    m = _steps_manifest(summary="second", steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}}], output={"leads": "$people.data"})
+    await clients.put(f"/hub/tools/{tool_id}", json={"manifest": m, "check": CHECK, "readme": "v2"})
+    assert "second" in (await clients.get(f"/hub/{tool_id}")).text
+    assert "v1" in (await clients.get(f"/hub/{tool_id}@1")).text and "second" not in (await clients.get(f"/hub/{tool_id}@1")).text
+    assert f"{tool_id}@1</code> until" in (await clients.get(f"/hub/{tool_id}")).text

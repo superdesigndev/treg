@@ -230,6 +230,24 @@
       "GET",
       "HEAD"
     ],
+    "name": "hub_page",
+    "path": "/hub/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "hub_page",
+    "path": "/hub/{tool_id}.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "tools_provider",
     "path": "/tools/{service}"
   },

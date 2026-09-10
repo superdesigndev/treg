@@ -17,6 +17,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTe
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from ..timeutil import utcnow_naive as _utcnow_naive
 from .. import adsconv, agent_pages, oauth_providers
 from ..domain import referrals
 from ..domain.catalog import store as catalog_store
@@ -1969,6 +1970,242 @@ details.tl li small{color:var(--muted)}
 details.tl li.more{font-style:italic;margin-top:14px}
 details.tl li.more a{color:var(--link);text-decoration:none}
 </style>"""
+
+
+# ---------------------------------------------------------------------------------------------
+# The hub's public share page (docs/HUB-DECISIONS.md round 4 q4, round 5 q7)
+
+# Scoped to the hub page: the public stylesheet styles cards and pre blocks by their own class
+# names, so a hub page defines its few shapes here on the SAME variables (light-only, like every
+# public page). Every wide thing scrolls inside its own box; the body never scrolls sideways.
+_HUB_PAGE_CSS = """
+.hubpage h1{font-size:clamp(28px,4vw,44px);margin:6px 0 10px}
+.hubpage h2{font-family:var(--sans);font-weight:600;font-size:17px;margin:30px 0 10px}
+.hubpage h2 .muted{font-weight:400}
+.hubpage p{line-height:1.55}
+.hubpage code{font-family:var(--mono);font-size:.92em;background:var(--panel2);padding:1px 5px;border-radius:5px}
+.hubpage pre{margin:10px 0;background:var(--panel);border:1px solid var(--line);border-radius:var(--rb);padding:12px 14px;
+  font-family:var(--mono);font-size:12.5px;line-height:1.55;color:var(--ink);overflow-x:auto;white-space:pre}
+.hubpage pre code{background:none;padding:0;font-size:inherit}
+.hubpage .pricecard{display:inline-block;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 18px;margin:10px 0 6px;box-shadow:var(--shadow-sm);min-width:280px}
+.hubpage .pricecard .big{font-size:17px;font-weight:600}
+.hubpage .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;letter-spacing:.04em;
+  border:1px solid var(--teal);color:var(--teal);vertical-align:middle}
+.hubpage .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--rb);background:var(--surface)}
+.hubpage table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.hubpage th{font-family:var(--sans);font-weight:500;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.hubpage td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.hubpage tr:last-child td{border-bottom:0}
+.hubpage .readme h2,.hubpage .readme h3,.hubpage .readme h4{font-size:15px;margin:16px 0 6px}
+.hubpage .readme ul{padding-left:20px}
+.hubpage ul.facts{padding-left:18px;line-height:1.7}
+.hubpage .hidden{border:1px dashed var(--line2);padding:10px 14px;border-radius:var(--rb);max-width:62ch;font-size:12.5px;color:var(--muted);margin-top:22px}
+"""
+
+
+_MD_CODE = re.compile(r"`([^`]+)`")
+_MD_BOLD = re.compile(r"\*\*([^*]+)\*\*")
+
+
+def _md_lite(text: str) -> str:
+    """A maker's README as HTML: paragraphs, `#` headings, `-` lists, `code`, **bold**. Everything
+    is escaped first; no raw HTML, no images, no scripts survive. Deliberately small: the readme is
+    at most 4,000 characters of plain markdown, not a document engine."""
+    out: list[str] = []
+    para: list[str] = []
+    in_list = False
+
+    def inline(s: str) -> str:
+        s = _esc_html(s)
+        s = _MD_CODE.sub(r"<code>\1</code>", s)
+        return _MD_BOLD.sub(r"<b>\1</b>", s)
+
+    def flush() -> None:
+        nonlocal para
+        if para:
+            out.append("<p>" + inline(" ".join(para)) + "</p>")
+            para = []
+
+    for line in text.splitlines():
+        s = line.rstrip()
+        if s.startswith("#"):
+            flush()
+            if in_list:
+                out.append("</ul>"); in_list = False
+            level = min(len(s) - len(s.lstrip("#")), 3)
+            out.append(f"<h{level + 1}>{inline(s.lstrip('#').strip())}</h{level + 1}>")
+        elif s.lstrip().startswith("- "):
+            flush()
+            if not in_list:
+                out.append("<ul>"); in_list = True
+            out.append("<li>" + inline(s.lstrip()[2:]) + "</li>")
+        elif not s.strip():
+            flush()
+            if in_list:
+                out.append("</ul>"); in_list = False
+        else:
+            if in_list:
+                out.append("</ul>"); in_list = False
+            para.append(s.strip())
+    flush()
+    if in_list:
+        out.append("</ul>")
+    return "\n".join(out)
+
+
+async def _hub_reliability(db: AsyncSession, tool_id: str, maker_org_id: int) -> dict:
+    """Runs by OTHERS, 30 days: count, success share, median duration. Counts only; never who."""
+    from datetime import timedelta
+    from sqlalchemy import func, select as _select
+    from ..models import HubRun
+    since = _utcnow_naive() - timedelta(days=30)
+    rows = (await db.execute(
+        _select(HubRun.status, HubRun.duration_ms)
+        .where(HubRun.tool_id == tool_id, HubRun.caller_org_id != maker_org_id,
+               HubRun.version > 0, HubRun.started_at >= since))).all()
+    n = len(rows)
+    ok = sum(1 for s, _ in rows if s == "ok")
+    durs = sorted(d for _, d in rows if d)
+    median = durs[len(durs) // 2] if durs else 0
+    return {"runs": n, "ok": ok, "ok_pct": round(100 * ok / n) if n else None, "median_ms": median}
+
+
+@app.get("/hub/{tool_id}.md", include_in_schema=False)
+@app.get("/hub/{tool_id}", include_in_schema=False)
+async def hub_page(request: Request, tool_id: str, db: AsyncSession = Depends(get_session)):
+    """One hub tool, for a person or an agent that was handed the id: summary, readme, inputs,
+    output, the price line, health, version, the exact call line, the check trace. Never the
+    script, the maker's tools, or a key. `.md` serves the same page as Markdown. Readable without
+    sign-in; calling needs a token and balance. Not in the sitemap and `noindex`: a hub tool is
+    shared by its id, not found by search (round 1 q7)."""
+    from ..application import hub as hub_app
+    from ..models import Org
+    as_md = request.url.path.endswith(".md")
+    raw = tool_id[:-3] if tool_id.endswith(".md") else tool_id
+    if not hub_app.enabled():
+        raise HTTPException(status_code=404, detail="Not Found")
+    row = await hub_app.tool_for(db, raw)
+    if row is None:
+        raise HTTPException(status_code=404, detail="no such hub tool")
+    org = await db.get(Org, row.org_id)
+    maker = org.slug if org else ""
+    base = get_settings().public_url.rstrip("/")
+    m = row.manifest
+    inputs = m.get("inputs", {})
+    out = m.get("output", {})
+    fields = out.get("fields") if isinstance(out, dict) and "fields" in out else list(out)
+    example = {k: v.get("example", v.get("default")) for k, v in inputs.items() if "example" in v or "default" in v}
+    example = {k: v for k, v in example.items() if v not in ("", None, 0)}
+    example_json = json.dumps(example)
+    price_usd = row.price_micro / 1_000_000
+    price_line = f"seller ${price_usd:.6g} + steps" if row.price_micro else "free + steps"
+    per_k = f"${price_usd * 1000:,.2f} per 1,000 runs" if row.price_micro else "no seller price"
+    chk = row.check_result or {}
+    checked_at = str(chk.get("checked_at") or "")[:16].replace("T", " ")
+    rel = await _hub_reliability(db, row.tool_id, row.org_id)
+    caps = m.get("limits", {})
+    kind = "script, sandboxed" if row.kind == "script" else f"{len(m.get('steps', []))} steps"
+    older = await _hub_older_versions(db, row)
+    title = f"{row.name} · a hub tool by {maker}"
+    desc = _serp_desc(row.summary)
+
+    if as_md:
+        md = [f"# {row.name}", "", f"`{row.tool_id}` · a hub tool by **{maker}** · v{row.version} · {row.status}", "",
+              row.summary, "", f"**Price:** {price_line} ({per_k}); per successful run, you pay only what completes.", "",
+              "## Call it", "", "```", f"treg call {row.tool_id} --data '{example_json}'", "",
+              f"POST {base}/call/{row.tool_id}    X-Treg-Token · Content-Type: application/json · body {example_json}", "```", "",
+              f"Your agent: `catalog_get(\"{row.tool_id}\")` then `call`. Needs a treg token and balance.", "",
+              "## Inputs", "", "| name | type | default | example | note |", "|---|---|---|---|---|"]
+        for k, v in inputs.items():
+            dflt = json.dumps(v["default"]) if "default" in v else "required"
+            md.append(f"| {k} | {v.get('type', '')}{(' ≤ ' + str(v['max'])) if 'max' in v else ''} | {dflt} | {v.get('example', '')} | {v.get('note', '')} |")
+        md += ["", "## Output", "", ", ".join(f"`{f}`" for f in fields), "",
+               "## About", "", row.readme, "",
+               "## Health", "", f"{row.status} · check {chk.get('status') or '-'}{(' at ' + checked_at) if checked_at else ''} · "
+               f"{rel['runs']} runs by others in 30 days" + (f", {rel['ok_pct']}% ok, {rel['median_ms']} ms median" if rel["runs"] else ""), "",
+               "## Made of", "", f"made of {len(m.get('uses', []))} tool(s) (catalog tools and the maker's own; names and keys hidden) · {kind} · "
+               f"{caps.get('wall_s', 120)} s · {caps.get('steps', 20)} calls max", ""]
+        if older:
+            md += ["## Versions", ""] + [f"- v{v['version']} callable as `{row.tool_id}@{v['version']}` until {v['until']}" for v in older] + [""]
+        md += ["This page never shows the script, the maker's tools, or any key. A caller sees the trace of their own run only.", ""]
+        return PlainTextResponse("\n".join(md), media_type="text/markdown; charset=utf-8",
+                                 headers={"X-Robots-Tag": "noindex"})
+
+    e = _esc_html
+    rows_html = "".join(
+        f"<tr><td><code>{e(k)}</code></td><td>{e(v.get('type', ''))}{(' ≤ ' + e(str(v['max']))) if 'max' in v else ''}</td>"
+        f"<td>{e(json.dumps(v['default'])) if 'default' in v else '<span class=\"muted\">required</span>'}</td>"
+        f"<td>{e(str(v.get('example', '')))}</td><td>{e(str(v.get('note', '')))}</td></tr>"
+        for k, v in inputs.items())
+    # The check trace shows the SHAPE of the run (waves, steps, outcome, cost, time), never what
+    # each step called: a catalog id or an own-tool name is the maker's recipe (round 5 q7).
+    def _what(call: str) -> str:
+        return "a catalog tool" if "." in call.split("/", 1)[0] else "the maker's own tool"
+    trace_html = "".join(
+        f"<tr><td>{e(str(s.get('wave', '')))}</td><td>{e(str(s.get('name', '')))}</td><td>{e(_what(str(s.get('call', ''))))}</td>"
+        f"<td>{e(str(s.get('outcome', '')))} {e(str(s.get('status') or ''))}</td><td>{e(str(s.get('cost_micro', 0)))} µ$</td><td>{e(str(s.get('ms', '')))} ms</td></tr>"
+        for s in (chk.get("trace") or []))
+    older_html = "".join(f"<li>v{v['version']} callable as <code>{e(row.tool_id)}@{v['version']}</code> until {v['until']}</li>" for v in older)
+    health_word = "healthy" if chk.get("status") == "passed" and row.status == "live" else row.status
+    body = f"""
+<main class="hubpage" style="max-width:900px;margin:0 auto;padding:24px 22px 60px">
+  <p class="muted" style="font-size:13px"><code>{e(row.tool_id)}</code> · <span class="pill">HUB</span> · by <b>{e(maker)}</b> · v{row.version}</p>
+  <h1 style="margin:4px 0 8px">{e(row.name)}</h1>
+  <p style="max-width:66ch">{e(row.summary)}</p>
+  <div class="pricecard">
+    <div class="big">{e(price_line)}</div>
+    <div class="muted" style="font-size:12px">per successful run · {e(per_k)} · you pay only what completes</div>
+    <div style="margin-top:8px;font-size:13px">{e(health_word)}{(' · checked ' + e(checked_at)) if checked_at else ''}</div>
+  </div>
+
+  <h2>Call it</h2>
+  <pre><code>treg call {e(row.tool_id)} --data '{e(example_json)}'
+
+curl -X POST {e(base)}/call/{e(row.tool_id)} \\
+  -H "X-Treg-Token: $TREG_TOKEN" -H "Content-Type: application/json" \\
+  -d '{e(example_json)}'</code></pre>
+  <p class="muted" style="font-size:13px">Needs a treg token and balance. Your agent: <code>catalog_get("{e(row.tool_id)}")</code> then <code>call</code>. This page as text: <a href="/hub/{e(row.tool_id)}.md">/hub/{e(row.tool_id)}.md</a>.</p>
+
+  <h2>Inputs</h2>
+  <div class="scroll"><table><tr><th>Name</th><th>Type</th><th>Default</th><th>Example</th><th>Note</th></tr>{rows_html}</table></div>
+
+  <h2>Output</h2>
+  <p>{", ".join(f"<code>{e(f)}</code>" for f in fields)}</p>
+
+  <h2>About</h2>
+  <div class="readme" style="max-width:66ch">{_md_lite(row.readme)}</div>
+
+  <h2>The check <span class="muted" style="font-size:12px">(run at publish, for real)</span></h2>
+  {('<div class="scroll"><table><tr><th>Wave</th><th>Step</th><th>Called</th><th>Result</th><th>Cost</th><th>ms</th></tr>' + trace_html + '</table></div>') if trace_html else '<p class="muted">no trace recorded</p>'}
+  <p class="muted" style="font-size:12px">inputs <code>{e(json.dumps(row.check.get('inputs', {})))}</code> · {e(chk.get('status') or '-')}{(' at ' + e(checked_at)) if checked_at else ''}</p>
+
+  <h2>Made of</h2>
+  <ul class="facts">
+    <li>made of {len(m.get('uses', []))} tool(s) <span class="muted">(catalog tools and the maker's own; names and keys hidden)</span></li>
+    <li>{e(kind)} · {caps.get('wall_s', 120)} s · {caps.get('steps', 20)} calls max</li>
+    <li>Reliability, 30 days: {rel['runs']} runs by others{(' · ' + str(rel['ok_pct']) + '% ok · ' + str(rel['median_ms']) + ' ms median') if rel['runs'] else ''}</li>
+    {('<li>Older versions: <ul>' + older_html + '</ul></li>') if older_html else ''}
+  </ul>
+  <p class="hidden">This page never shows the script, the maker's tools, or any key. A caller sees the trace of their own run only.</p>
+</main>"""
+    ld = [{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": row.name,
+           "description": row.summary, "applicationCategory": "DeveloperApplication",
+           "offers": {"@type": "Offer", "price": f"{price_usd:.6g}", "priceCurrency": "USD"}}]
+    return _page(title, desc, f"/hub/{row.tool_id}", body, ld, nav_current="",
+                 head_extra='<meta name="robots" content="noindex"/>\n<style>' + _HUB_PAGE_CSS + '</style>')
+
+
+async def _hub_older_versions(db: AsyncSession, row) -> list[dict]:
+    from datetime import timedelta
+    from sqlalchemy import select as _select
+    from ..application import hub as hub_app
+    from ..models import HubTool
+    olds = (await db.execute(_select(HubTool).where(HubTool.tool_id == row.tool_id, HubTool.status == "live",
+                                                    HubTool.version < row.version).order_by(HubTool.version.desc()))).scalars().all()
+    return [{"version": o.version, "until": (row.created_at + timedelta(days=hub_app.OLD_VERSION_DAYS)).date().isoformat()}
+            for o in olds]
 
 
 @app.get("/tools/{service}", include_in_schema=False)

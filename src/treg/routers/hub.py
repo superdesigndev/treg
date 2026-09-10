@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..application import hub as hub_app
+from ..config import get_settings
 from ..domain.hub import ManifestError
 from ..domain.identity.access import Caller, _require_can_register, require_member
 from ..infra.db import get_session
@@ -72,6 +73,7 @@ async def _publish(body: PublishIn, request: Request, caller: Caller, db: AsyncS
            "kind": published.kind, "check": verdict}
     if row.status == "live":
         out["call"] = f"POST /call/{published.tool_id}"
+        out["page"] = f"{get_settings().public_url.rstrip('/')}/hub/{published.tool_id}"
     return out
 
 
