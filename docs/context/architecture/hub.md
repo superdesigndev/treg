@@ -14,6 +14,8 @@ sources:
   - src/treg/routers/catalog.py
   - src/treg/application/hub/health.py
   - src/treg/worker.py
+  - src/treg/web/index.html
+  - src/treg/alembic/versions/0029_hubrun_output.py
   - src/treg/routers/web.py
   - src/treg/web/skill.md
   - src/treg/web/llms.txt
@@ -281,3 +283,22 @@ version's `check_result` with `scheduled: true`. A failing check never retires a
 once, rows kept so earnings and history stay readable. `PATCH /hub/tools/{id}` `{price_usd}`
 (`treg hub price <id> <usd>`) changes the newest live version's price for later runs, no version
 bump; every trace stamps the price it paid.
+
+## The dashboard and the run page (phase 7.4)
+
+The dashboard (`web/index.html`) gains a **Hub** view for the maker: the list (every tool's
+newest version with status, kind, price, derived health, runs by others and earnings over 30
+days, from one `GET /hub/tools/mine`) and a detail with six tabs: Overview (price, inputs, what
+it uses, output, the call line), Versions, Price (a `PATCH`), Earnings (the 90-day table and
+CSV), Runs & log (the last runs from `GET /hub/tools/{id}/health`, each opening its inputs,
+trace, log and error from `GET /hub/runs/{run_id}`), Health. Retire is a two-click button. The
+nav button shows only when the server answers the hub routes (a probe on boot; the flag stays
+server-side). Files are read-only in the dashboard: a new version comes from the terminal or
+the agent (round 5 q3).
+
+`/app/runs/<run_id>` is the run page, served by the SPA shell and opened on load. `GET
+/hub/runs/{run_id}` answers the CALLER's team with what it paid (price + steps), the inputs,
+the trace and the output (`HubRun.output`, migration 0029, stored for successful runs), and the
+MAKER's team with the inputs (secret inputs masked), the trace, the script's log and the full
+error; a caller's error carries the failing step's name and status, never the upstream body;
+any other team gets 404.

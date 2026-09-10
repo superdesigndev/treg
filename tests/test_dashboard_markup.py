@@ -1049,3 +1049,16 @@ def test_the_topup_modal_defaults_auto_on_only_without_a_mandate():
     js = INDEX[INDEX.index("openTopup(){"):]
     js = js[: js.index("tierBonus(")]
     assert "this.topupAuto=!(this.billing.autotopup.enabled||this.billing.autotopup.consented_at)" in js
+
+
+
+def test_the_hub_and_run_views_are_top_level_views():
+    """The Hub view (the maker's tools) and the run page are real views: registered in BOTH view
+    lists (the hash parser and the history handler) and rendered as top-level templates, like
+    the platform view. A view missing from one list deep-links to a blank pane."""
+    html = INDEX
+    assert "view==='hub'" in html and "view==='run'" in html
+    assert html.count("'connections','referrals','hub']") == 2
+    assert html.count("runFromPath(location.pathname)") == 2   # popstate AND the boot (session + token modes share the boot's const)
+    assert html.count("this.openRun(runRoute, true)") == 2      # both sign-in modes open the run page on load
+    assert "go('hub')" in html

@@ -330,7 +330,7 @@ async def run_hub_tool(
         "trace": trace, "log": [],
     }
     await _record(tool, parent, run_id, "ok", counted, spent, ms_total,
-                  masked(manifest["inputs"], inputs), trace, price=earned)
+                  masked(manifest["inputs"], inputs), trace, price=earned, output=output)
     _audit_parent(parent, tool, 200, spent + earned, audit_client)
     return _json(body_out, 200, {"X-Treg-Run-Id": run_id, "X-Treg-Steps": str(counted)}), spent + earned
 
@@ -478,14 +478,14 @@ def _header(response: UpstreamResponse, name: str) -> str | None:
 
 async def _record(tool: HubTool, parent: CallContext, run_id: str, status: str, steps: int,
                   cost: int, ms: int, inputs: dict, trace: list, error: dict | None = None,
-                  log: list | None = None, price: int = 0) -> None:
+                  log: list | None = None, price: int = 0, output: dict | None = None) -> None:
     from datetime import datetime, timezone
     caller = parent.input.caller
     async with session_maker() as s:
         s.add(HubRun(run_id=run_id, tool_id=tool.tool_id, version=tool.version,
                      caller_org_id=caller.org_id, maker_org_id=tool.org_id, caller_email=caller.email,
                      status=status, steps=steps, cost_micro=cost, price_micro=price, duration_ms=ms, inputs=inputs,
-                     trace=trace, log=log or [], error=error,
+                     trace=trace, log=log or [], error=error, output=output,
                      finished_at=datetime.now(timezone.utc).replace(tzinfo=None)))
         await s.commit()
 
@@ -630,7 +630,7 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
                 "usage": {"cost_micro": spent + earned, "steps_micro": spent, "price_micro": earned,
                           "steps": counted, "ms": ms_total}, "trace": trace, "log": log}
     await _record(tool, parent, run_id, "ok", counted, spent, ms_total,
-                  masked(manifest["inputs"], inputs), trace, log=log, price=earned)
+                  masked(manifest["inputs"], inputs), trace, log=log, price=earned, output=output)
     _audit_parent(parent, tool, 200, spent + earned, audit_client)
     return _json(body_out, 200, {"X-Treg-Run-Id": run_id, "X-Treg-Steps": str(counted)}), spent + earned
 

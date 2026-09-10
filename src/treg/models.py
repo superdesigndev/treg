@@ -1203,6 +1203,9 @@ class HubRun(SQLModel, table=True):
     error: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     started_at: datetime = Field(default_factory=_now, index=True)
     finished_at: datetime | None = Field(default=None)
+    # The run's answer, for the caller's run page (docs/HUB-DECISIONS.md round 5 q8); only for
+    # successful runs, capped by the runner's 2 MB output rule. Declared LAST (migration 0029).
+    output: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
 
 
 class ToolRequest(SQLModel, table=True):

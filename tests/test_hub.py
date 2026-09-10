@@ -7,6 +7,8 @@ the flag is on and 404 (exactly as today) when the flag is off.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from httpx import AsyncClient
 
@@ -713,3 +715,46 @@ async def test_the_worker_hub_check_walks_every_live_tool(clients: AsyncClient, 
     import json as _json
     rows = _json.loads(out)
     assert rc == 0 and [r["tool_id"] for r in rows] == [pub["tool_id"]] and rows[0]["check"] == "passed"
+
+
+# ---------------------------------------------------------------------------------------------
+# Phase 7.4: the dashboard's data: the run record, the maker's list, the SPA path
+
+async def test_a_run_is_readable_by_its_caller_and_its_maker_with_different_views(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    pub = await _live_tool_with_readme(clients, monkeypatch, price=0.01)
+    tool_id = pub["tool_id"]
+    token = (await clients.post("/users", json={"email": "reader@example.com"})).json()["token"]
+    h = {"X-Treg-Token": token}
+    run = await clients.post(f"/call/{tool_id}", json={"domain": "figma.com"}, headers=h)
+    run_id = run.json()["run_id"]
+    # the caller: output, what they paid, the trace; never the script's log
+    mine = (await clients.get(f"/hub/runs/{run_id}", headers=h)).json()
+    assert mine["you_are"] == "caller" and mine["output"] == {"leads": {"domain": "figma.com"}}
+    assert mine["usage"] == {"cost_micro": 1000 + 10_000, "steps_micro": 1000, "price_micro": 10_000}
+    assert "log" not in mine and mine["kind"] == "caller's run"
+    # the maker: the log and the error, never the output or the caller's identity
+    theirs = (await clients.get(f"/hub/runs/{run_id}")).json()
+    assert theirs["you_are"] == "maker" and "output" not in theirs and "caller_email" not in theirs and "log" in theirs
+    # a third team: 404
+    other = (await clients.post("/users", json={"email": "third@example.com"})).json()["token"]
+    assert (await clients.get(f"/hub/runs/{run_id}", headers={"X-Treg-Token": other})).status_code == 404
+    # a failed run: the caller's error carries the step and status, not the upstream body; the maker gets it whole
+    monkeypatch.setattr(call_service, "relay", _fake_relay(500, b'{"vendor": "secret error body"}'))
+    bad = await clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers=h)
+    bad_id = bad.json()["detail"]["run_id"]
+    c = (await clients.get(f"/hub/runs/{bad_id}", headers=h)).json()
+    assert c["error"]["step"] == "people" and "secret error body" not in json.dumps(c)
+    m = (await clients.get(f"/hub/runs/{bad_id}")).json()
+    assert "secret error body" in json.dumps(m["error"])
+    # the SPA path for the run page answers with the app
+    page = await clients.get(f"/app/runs/{run_id}")
+    assert page.status_code == 200 and "shared run" in page.text
+
+
+async def test_the_makers_list_carries_health_and_thirty_day_numbers(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    pub = await _live_tool_with_readme(clients, monkeypatch, price=0.02)
+    token = (await clients.post("/users", json={"email": "buyer2@example.com"})).json()["token"]
+    for _ in range(2):
+        assert (await clients.post(f"/call/{pub['tool_id']}", json={"domain": "x"}, headers={"X-Treg-Token": token})).status_code == 200
+    mine = (await clients.get("/hub/tools/mine")).json()
+    assert mine[0]["health"] == "ok" and mine[0]["runs_30d"] == 2 and mine[0]["earned_30d_micro"] == 40_000

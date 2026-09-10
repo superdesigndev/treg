@@ -65,6 +65,7 @@ addEventListener('load', function(){
   .btn:hover{border-color:var(--accent)} .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--onAccent);font-weight:600}
   .btn.sm{padding:4px 9px;font-size:12px} .btn:disabled{opacity:.45;cursor:not-allowed}
   .btn.ico{width:34px;min-width:34px;padding:0;flex:0 0 auto} .btn.sm.ico{width:30px;min-width:30px;min-height:30px}
+  .ok{color:var(--green)} .warn{color:var(--amber)} p.err{color:var(--red)}  /* the hub's state words */
   .btn.danger{border-color:var(--red);color:var(--red)} .btn.danger:hover{background:color-mix(in srgb,var(--red) 15%,transparent);border-color:var(--red)}
   .msel{background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:3px 7px;font-family:var(--mono);font-size:12px}
   .frow{display:flex;align-items:center;gap:10px;margin:8px 0} .frow label{width:78px;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;flex:none}
@@ -1172,6 +1173,7 @@ a:hover{text-decoration-color:var(--muted)}
           <button v-if="authed" class="nav" :class="{active:view==='start'}" @click="go('start')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>Getting started</button>
           <button v-if="canRegister || publicCatalog" class="nav" :class="{active:view==='connections'}" @click="go('connections')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>Catalog</button>
           <button v-if="authed" class="nav" :class="{active:view==='tools'||view==='secrets'}" @click="go('tools')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Your vault</button>
+          <button v-if="authed && hubOn" class="nav" :class="{active:view==='hub'||view==='run'}" @click="go('hub')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>Hub</button>
           <button v-if="authed" class="nav" :class="{active:view==='activity'}" @click="go('activity')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Activity</button>
           <button v-if="authed" class="nav" :class="{active:view==='orgs'}" @click="go('orgs')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Team</button>
           <button v-if="authed" class="nav" :class="{active:view==='referrals'}" @click="go('referrals')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>Refer a friend</button>
@@ -2823,6 +2825,176 @@ product, including per-customer usage tracking and billing.</pre>
 
         <!-- REFERRALS — a person's link and everyone who used it. A top-level view (never nested):
              a view inside a view renders nowhere, and the nav button would look dead. -->
+        <template v-if="view==='hub'">
+          <template v-if="!hub.tool">
+            <h1>Hub - {{activeName}}</h1>
+            <p class="sub">Tools your team published for other people's agents: a JSON steps recipe or a script in a sandbox. Every step runs through your own tools and keys; callers pay the steps and your price.</p>
+            <p v-if="hub.err" class="err">{{hub.err}}</p>
+            <p v-if="hub.note" class="sub">{{hub.note}}</p>
+            <div class="statgrid" style="margin:12px 0;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+              <div class="stat"><div class="n">{{hubLive()}}</div><div class="l">live tools</div></div>
+              <div class="stat"><div class="n">{{money(hubEarned30())}}</div><div class="l">earned, 30 days</div></div>
+              <div class="stat"><div class="n">{{hubRuns30()}}</div><div class="l">runs by others, 30 days</div></div>
+              <div class="stat"><div class="n">{{hubFailing()}}</div><div class="l">failing</div></div>
+            </div>
+            <p class="sub">Create one from your terminal or your agent: <code>treg hub init &lt;name&gt; --script</code> · <code>hub_create</code> over MCP.</p>
+            <p v-if="hub.loading" class="sub">Loading…</p>
+            <p v-else-if="!hubNewest().length" class="sub">No hub tools yet.</p>
+            <table v-else>
+              <tr><th>Tool</th><th>Ver</th><th>Status</th><th>Kind</th><th>Price</th><th>Health</th><th style="text-align:right">Runs 30d</th><th style="text-align:right">Earned 30d</th></tr>
+              <tr v-for="t in hubNewest()" :key="t.tool_id" class="act-row" @click="openHubTool(t)">
+                <td><b>{{t.tool_id}}</b><div class="muted" style="font-size:11px;max-width:52ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{t.summary}}</div></td>
+                <td>{{t.version}}</td>
+                <td><span :class="{ok:t.status==='live', warn:t.status==='failed', muted:t.status==='retired'}">{{t.status}}</span></td>
+                <td>{{t.kind}}</td>
+                <td>${{t.price_usd}}</td>
+                <td><span :class="{ok:t.health==='ok', warn:t.health==='failing', muted:t.health==='unknown'}">{{t.health}}</span><span v-if="t.fails_in_a_row" class="muted"> · {{t.fails_in_a_row}} failed in a row</span></td>
+                <td style="text-align:right">{{t.runs_30d}}</td>
+                <td style="text-align:right">{{money(t.earned_30d_micro)}}</td>
+              </tr>
+            </table>
+          </template>
+
+          <template v-else>
+            <div style="margin-bottom:8px"><button class="btn sm" @click="closeHubTool()">← All tools</button></div>
+            <h1>{{hub.tool.tool_id.split('.').slice(1).join('.')}} <span class="muted" style="font-size:13px">v{{hub.tool.version}} · {{hub.tool.status}} · {{hub.tool.kind}}</span></h1>
+            <p class="sub" style="margin:0 0 8px"><code>{{hub.tool.tool_id}}</code> · <a :href="hubPage(hub.tool)" target="_blank" rel="noopener">public page ↗</a></p>
+            <p v-if="hub.err" class="err">{{hub.err}}</p>
+            <p v-if="hub.note" class="sub">{{hub.note}}</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 4px">
+              <button class="btn sm" @click="copyText(hubCallLine(hub.tool),'the call line')">Copy call line</button>
+              <button class="btn sm" @click="copyText(hubPage(hub.tool),'the share URL')">Copy share URL</button>
+              <button v-if="hub.tool.status==='live' && canRegister" class="btn sm" :class="{danger:hub.confirmRetire===hub.tool.tool_id}" @click="retireHubTool()">{{hub.confirmRetire===hub.tool.tool_id?'Confirm retire':'Retire tool'}}</button>
+            </div>
+            <div class="tabs" style="margin:10px 0 4px">
+              <button :class="{active:hub.tab==='overview'}" @click="hub.tab='overview'">Overview</button>
+              <button :class="{active:hub.tab==='versions'}" @click="hub.tab='versions'">Versions</button>
+              <button :class="{active:hub.tab==='price'}" @click="hub.tab='price'">Price</button>
+              <button :class="{active:hub.tab==='earnings'}" @click="hub.tab='earnings'; loadHubEarnings()">Earnings</button>
+              <button :class="{active:hub.tab==='runs'}" @click="hub.tab='runs'; loadHubHealth()">Runs &amp; log</button>
+              <button :class="{active:hub.tab==='health'}" @click="hub.tab='health'; loadHubHealth()">Health</button>
+            </div>
+
+            <template v-if="hub.tab==='overview'">
+              <div class="statgrid" style="margin:12px 0;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+                <div class="stat"><div class="n">${{hub.tool.price_usd}}</div><div class="l">your price per run</div></div>
+                <div class="stat"><div class="n">{{hub.tool.runs_30d}}</div><div class="l">runs by others, 30d</div></div>
+                <div class="stat"><div class="n">{{money(hub.tool.earned_30d_micro)}}</div><div class="l">earned, 30d</div></div>
+                <div class="stat"><div class="n">{{hub.tool.health}}</div><div class="l">health</div></div>
+              </div>
+              <div class="lbl">Summary <span class="muted">(what an agent reads first)</span></div>
+              <p class="sub">{{hub.tool.summary}}</p>
+              <div class="lbl">Inputs</div>
+              <table><tr><th>Name</th><th>Type</th><th>Default</th><th>Note</th></tr>
+                <tr v-for="(v,k) in hub.tool.inputs" :key="k"><td><code>{{k}}</code></td><td>{{v.type}}<span v-if="v.max!==undefined"> ≤ {{v.max}}</span></td><td>{{v.default!==undefined?JSON.stringify(v.default):'required'}}</td><td class="muted">{{v.note||''}}</td></tr>
+              </table>
+              <div class="lbl" style="margin-top:12px">Uses <span class="muted">(only you see this)</span></div>
+              <p class="sub"><code v-for="u in hub.tool.uses" :key="u" style="margin-right:8px">{{u}}</code></p>
+              <div class="lbl">Output</div>
+              <p class="sub"><code>{{(hub.tool.output&&hub.tool.output.fields)?hub.tool.output.fields.join(', '):Object.keys(hub.tool.output||{}).join(', ')}}</code></p>
+              <div class="lbl">Call it</div>
+              <pre style="white-space:pre-wrap;word-break:break-all">{{hubCallLine(hub.tool)}}
+POST {{proxy}}/call/{{hub.tool.tool_id}}    X-Treg-Token · JSON body of inputs</pre>
+              <p class="sub">Files are read-only here; publish a new version from the terminal (<code>treg hub publish .</code>) or your agent (<code>hub_update</code>).</p>
+            </template>
+
+            <template v-if="hub.tab==='versions'">
+              <p class="sub">The newest live version serves the id. A caller may pin one with <code>@N</code>; a pinned old version stays callable 30 days after a newer one lands.</p>
+              <table><tr><th>Ver</th><th>Status</th><th>Published</th><th>By</th><th>Check</th><th>Health</th></tr>
+                <tr v-for="v in hubVersions(hub.tool.tool_id)" :key="v.version"><td>{{v.version}}</td><td>{{v.status}}</td><td>{{(v.created_at||'').slice(0,16).replace('T',' ')}}</td><td>{{v.created_by}}</td>
+                  <td>{{v.check_result?v.check_result.status:'-'}}<span v-if="v.check_result&&v.check_result.charged_micro" class="muted"> · {{v.check_result.charged_micro}} µ$</span></td><td>{{v.health}}</td></tr>
+              </table>
+            </template>
+
+            <template v-if="hub.tab==='price'">
+              <p class="sub">What a caller pays you per successful run, on top of the metered steps. Applies to later runs; every trace stamps the price it paid. No version bump. 0 = free.</p>
+              <div class="frow"><label>price_usd</label><input v-model="hub.price" type="number" step="0.001" min="0" max="100" style="max-width:140px"><button class="btn primary sm" :disabled="hub.priceSaving||!canRegister" @click="saveHubPrice()">Save</button></div>
+              <p class="sub">Callers see: <b>seller ${{Number(hub.price||0)}} + steps</b> · ${{(Number(hub.price||0)*1000).toFixed(2)}} per 1,000 runs. Earned credit lands on your balance at once. No platform share in the MVP.</p>
+            </template>
+
+            <template v-if="hub.tab==='earnings'">
+              <p v-if="!hub.earnings" class="sub">Loading…</p>
+              <template v-else>
+                <div class="statgrid" style="margin:12px 0;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+                  <div class="stat"><div class="n">{{money(hub.earnings.earned_micro)}}</div><div class="l">earned, 90 days</div></div>
+                  <div class="stat"><div class="n">{{hub.earnings.runs}}</div><div class="l">runs by others</div></div>
+                  <div class="stat"><div class="n">{{hub.earnings.by_day.reduce((a,d)=>a+d.ok,0)}} / {{hub.earnings.by_day.reduce((a,d)=>a+d.failed,0)}}</div><div class="l">ok / failed</div></div>
+                </div>
+                <p class="sub"><a :href="'/hub/tools/'+encodeURIComponent(hub.tool.tool_id)+'/earnings?days=90&format=csv'" target="_blank">Download CSV</a> · counts and amounts only; never who called.</p>
+                <table><tr><th>Day</th><th style="text-align:right">Runs</th><th style="text-align:right">OK</th><th style="text-align:right">Failed</th><th style="text-align:right">Earned</th></tr>
+                  <tr v-for="d in hub.earnings.by_day" :key="d.day"><td>{{d.day}}</td><td style="text-align:right">{{d.runs}}</td><td style="text-align:right">{{d.ok}}</td><td style="text-align:right">{{d.failed}}</td><td style="text-align:right">{{money(d.earned_micro)}}</td></tr>
+                </table>
+              </template>
+            </template>
+
+            <template v-if="hub.tab==='runs'">
+              <p class="sub">The last runs of this version. You see the script's log lines and the full error; a caller sees only their trace.</p>
+              <p v-if="!hub.health" class="sub">Loading…</p>
+              <table v-else><tr><th>When</th><th>Run</th><th>Kind</th><th>Status</th><th style="text-align:right">Steps</th><th style="text-align:right">Steps cost</th><th style="text-align:right">Price</th><th style="text-align:right">ms</th></tr>
+                <template v-for="r in hub.health.runs" :key="r.run_id">
+                  <tr class="act-row" @click="toggleHubRun(r)"><td>{{(r.at||'').slice(5,16).replace('T',' ')}}</td><td><code>{{r.run_id.slice(0,10)}}…</code></td><td>{{r.kind}}</td><td><span :class="{ok:r.status==='ok', warn:r.status!=='ok'}">{{r.status}}</span><span v-if="r.error" class="muted"> · {{r.error}}</span></td><td style="text-align:right">{{r.steps}}</td><td style="text-align:right">{{r.cost_micro}} µ$</td><td style="text-align:right">{{money(r.price_micro)}}</td><td style="text-align:right">{{r.ms}}</td></tr>
+                  <tr v-if="hub.runOpen===r.run_id"><td colspan="8">
+                    <div v-if="!r.detail" class="muted">Loading…</div>
+                    <div v-else style="font-size:12px;line-height:1.6">
+                      <div><span class="muted">inputs</span> <code>{{JSON.stringify(r.detail.inputs)}}</code></div>
+                      <div v-for="(s,i) in (r.detail.trace||[])" :key="i"><span class="muted">trace</span> wave {{s.wave}} · {{s.name}} · <code>{{s.call}}</code> · {{s.outcome}} {{s.status||''}} · {{s.cost_micro}} µ$ · {{s.key||''}} key · {{s.ms}} ms<span v-if="s.error" class="warn"> · {{String(s.error).slice(0,300)}}</span></div>
+                      <div v-for="(l,i) in (r.detail.log||[])" :key="'l'+i"><span class="muted">log</span> {{l}}</div>
+                      <div v-if="r.detail.error&&r.detail.error.message"><span class="muted">error</span> {{r.detail.error.error||''}} {{r.detail.error.message}}</div>
+                    </div>
+                  </td></tr>
+                </template>
+              </table>
+            </template>
+
+            <template v-if="hub.tab==='health'">
+              <p v-if="!hub.health" class="sub">Loading…</p>
+              <template v-else>
+                <div class="card" style="max-width:640px"><b :class="{ok:hub.health.health==='ok', warn:hub.health.health==='failing'}">{{hub.health.health}}</b>
+                  <span class="muted"> · {{hub.health.fails_in_a_row}} failed in a row · last run {{(hub.health.last_run_at||'-').slice(0,16).replace('T',' ')}}</span>
+                  <div v-if="hub.health.last_check" class="sub" style="margin-top:6px">last check: {{hub.health.last_check.status}}<span v-if="hub.health.last_check.scheduled"> (scheduled)</span> at {{(hub.health.last_check.checked_at||'').slice(0,16).replace('T',' ')}}<span v-if="hub.health.last_check.error"> · {{hub.health.last_check.error.error||''}} {{hub.health.last_check.error.message||''}}</span></div>
+                </div>
+                <p class="sub" style="margin-top:10px">A tool is <b>failing</b> after 3 failed runs in a row (callers' runs or the scheduled check). It stays callable; the public page shows the state. Fix and publish a new version, or wait for the next check (<code>treg-worker hub check</code>, every 6 h).</p>
+              </template>
+            </template>
+          </template>
+        </template>
+
+        <template v-if="view==='run'">
+          <div style="margin-bottom:8px"><button class="btn sm" @click="go('hub')">← Hub</button></div>
+          <p v-if="run.loading" class="sub">Loading…</p>
+          <p v-else-if="run.err" class="err">{{run.err}}</p>
+          <template v-else-if="run.data">
+            <h1>Run <code style="font-size:16px">{{run.data.run_id.slice(0,12)}}…</code> <span :class="{ok:run.data.status==='ok', warn:run.data.status!=='ok'}" style="font-size:13px">{{run.data.status}}</span></h1>
+            <p class="sub"><code>{{run.data.tool_id}}@{{run.data.version}}</code> · {{(run.data.started_at||'').slice(0,19).replace('T',' ')}} · {{run.data.kind}} · you are the {{run.data.you_are}}</p>
+            <div class="statgrid" style="margin:12px 0;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+              <div class="stat"><div class="n">{{money(run.data.usage.cost_micro)}}</div><div class="l">{{run.data.you_are==='caller'?'you paid':'the caller paid'}}</div></div>
+              <div class="stat"><div class="n">{{money(run.data.usage.price_micro)}} + {{money(run.data.usage.steps_micro)}}</div><div class="l">seller price + steps</div></div>
+              <div class="stat"><div class="n">{{run.data.steps}}</div><div class="l">steps</div></div>
+              <div class="stat"><div class="n">{{fmtMs(run.data.duration_ms)}}</div><div class="l">duration</div></div>
+            </div>
+            <div class="lbl">Inputs</div>
+            <pre style="white-space:pre-wrap;word-break:break-all">{{JSON.stringify(run.data.inputs, null, 2)}}</pre>
+            <div class="lbl">Trace</div>
+            <table><tr><th>Wave</th><th>Step</th><th>Call</th><th>Result</th><th>Key</th><th style="text-align:right">Cost</th><th style="text-align:right">ms</th></tr>
+              <tr v-for="(s,i) in run.data.trace" :key="i"><td>{{s.wave}}</td><td>{{s.name}}<span v-if="s.item!==undefined" class="muted">[{{s.item}}]</span></td><td><code>{{run.data.you_are==='maker'?s.call:(String(s.call).split('/')[0].includes('.')?'a catalog tool':"the maker's tool")}}</code></td><td><span :class="{ok:s.outcome==='ok', warn:s.outcome==='failed'}">{{s.outcome}}</span> {{s.status||''}}</td><td>{{s.key==='team'?"maker's":(s.key||'')}}</td><td style="text-align:right">{{s.cost_micro}} µ$</td><td style="text-align:right">{{s.ms}}</td></tr>
+              <tr v-if="run.data.usage.price_micro"><td>—</td><td>price</td><td>to the maker</td><td><span class="ok">settled</span></td><td></td><td style="text-align:right">{{run.data.usage.price_micro}} µ$</td><td></td></tr>
+            </table>
+            <p v-if="run.data.you_are==='caller'" class="sub">A failed run shows the failing step's name and status, never the upstream URL or its error body. The maker sees the full error in their run log.</p>
+            <template v-if="run.data.error">
+              <div class="lbl">Error</div>
+              <pre style="white-space:pre-wrap;word-break:break-all">{{run.data.error.error||''}} {{run.data.error.step?('· step '+run.data.error.step):''}} {{run.data.error.message||''}}</pre>
+            </template>
+            <template v-if="run.data.log&&run.data.log.length">
+              <div class="lbl">Log <span class="muted">(the script's lines; only the maker sees them)</span></div>
+              <pre style="white-space:pre-wrap;word-break:break-all">{{run.data.log.join('\n')}}</pre>
+            </template>
+            <template v-if="run.data.output!==undefined && run.data.output!==null">
+              <div class="lbl">Output</div>
+              <pre style="white-space:pre-wrap;word-break:break-all;max-height:480px;overflow:auto">{{JSON.stringify(run.data.output, null, 2)}}</pre>
+            </template>
+          </template>
+        </template>
+
         <template v-if="view==='referrals'">
           <h1>Refer a friend</h1>
           <p class="sub">They get {{money(ref.terms.referred_micro)}} when they add
@@ -3819,8 +3991,15 @@ const LS='treg-dash';
 
 createApp({
   data(){
+    // --- the tool hub (docs/HUB-DECISIONS.md): the maker's view and the run page ---
+    // hubOn: the server answers the hub routes only with TREG_HUB_ENABLED; probed once on boot.
+    // hub.tools: every version of the team's tools (newest first) with health + 30-day numbers.
+    // hub.tool: the opened tool (its newest row); hub.tab: overview|versions|price|earnings|runs|health.
+    // run: the opened run (/app/runs/<id>), for the caller or the maker.
+    const hubState={ hubOn:false, hub:{loading:false, tools:[], tool:null, tab:'overview', earnings:null, health:null, price:'', priceSaving:false, err:'', note:'', confirmRetire:null, runOpen:null},
+                     run:{loading:false, data:null, err:''} };
     let cfg={active:null,orgs:{}}; try{ cfg=JSON.parse(localStorage.getItem(LS))||cfg; }catch(e){}
-    return {
+    return { ...hubState,
       theme: localStorage.getItem('treg-theme')||'light',
       mobileNav: false,  // mobile sidebar toggle
       // True when this load is a PUBLIC catalog URL (/catalog, /catalog/<slug>). The catalog API is
@@ -4722,6 +4901,46 @@ createApp({
     // GET /referrals also runs the payout sweep server-side, so simply opening this page is what
     // makes a reward whose hold has elapsed actually land. That is deliberate: treg has no
     // scheduler, so the work rides on a request someone is already making.
+    // ---- the tool hub ----
+    async probeHub(){ try{ const r=await fetch('/hub/tools/mine',{credentials:'include', headers:this.headers()}); this.hubOn=r.status!==404; }catch(e){ this.hubOn=false; } },
+    async loadHub(){ if(!this.authed) return; this.hub={...this.hub, loading:true, err:''};
+      try{ const tools=await this.api('/hub/tools/mine'); this.hub={...this.hub, tools, loading:false};
+           if(this.hub.tool){ const nt=tools.find(x=>x.tool_id===this.hub.tool.tool_id); if(nt) this.hub.tool=nt; } }
+      catch(e){ this.hub={...this.hub, loading:false, err:this.hubErr(e)}; } },
+    hubNewest(){ const seen={}; return (this.hub.tools||[]).filter(t=>{ if(seen[t.tool_id]) return false; seen[t.tool_id]=true; return true; }); },
+    hubVersions(id){ return (this.hub.tools||[]).filter(t=>t.tool_id===id); },
+    hubLive(){ return this.hubNewest().filter(t=>t.status==='live').length; },
+    hubEarned30(){ return this.hubNewest().reduce((a,t)=>a+(t.earned_30d_micro||0),0); },
+    hubRuns30(){ return this.hubNewest().reduce((a,t)=>a+(t.runs_30d||0),0); },
+    hubFailing(){ return this.hubNewest().filter(t=>t.health==='failing').length; },
+    async openHubTool(t, tab){ this.hub={...this.hub, tool:t, tab:tab||'overview', earnings:null, health:null, price:String(t.price_usd), runOpen:null};
+      await Promise.all([this.loadHubEarnings(), this.loadHubHealth()]); },
+    closeHubTool(){ this.hub={...this.hub, tool:null, runOpen:null}; },
+    async loadHubEarnings(){ if(!this.hub.tool) return; try{ this.hub.earnings=await this.api('/hub/tools/'+encodeURIComponent(this.hub.tool.tool_id)+'/earnings?days=90'); }catch(e){ this.hub.earnings=null; } },
+    async loadHubHealth(){ if(!this.hub.tool) return; try{ this.hub.health=await this.api('/hub/tools/'+encodeURIComponent(this.hub.tool.tool_id)+'/health'); }catch(e){ this.hub.health=null; } },
+    async saveHubPrice(){ if(!this.hub.tool) return; this.hub.priceSaving=true; this.hub.err='';
+      try{ await this.api('/hub/tools/'+encodeURIComponent(this.hub.tool.tool_id), {method:'PATCH', headers:{'content-type':'application/json'}, body:JSON.stringify({price_usd:Number(this.hub.price)})});
+           await this.loadHub(); this.hub.note='Price saved; applies to later runs.'; setTimeout(()=>{ this.hub.note=''; }, 2500); }
+      catch(e){ this.hub.err=this.hubErr(e); }
+      this.hub.priceSaving=false; },
+    async retireHubTool(){ if(!this.hub.tool) return;
+      if(this.hub.confirmRetire!==this.hub.tool.tool_id){ this.hub.confirmRetire=this.hub.tool.tool_id; return; }
+      this.hub.confirmRetire=null;
+      try{ await this.api('/hub/tools/'+encodeURIComponent(this.hub.tool.tool_id), {method:'DELETE'}); this.closeHubTool(); await this.loadHub(); this.hub.note='Retired: off the call road; history kept.'; }
+      catch(e){ this.hub.err=this.hubErr(e); } },
+    hubCallLine(t){ const ex={}; Object.entries(t.inputs||{}).forEach(([k,v])=>{ if(v.example!==undefined) ex[k]=v.example; }); return 'treg call '+t.tool_id+" --data '"+JSON.stringify(ex)+"'"; },
+    hubPage(t){ return (this.proxy||location.origin)+'/hub/'+t.tool_id; },
+    async copyText(s, what){ try{ await navigator.clipboard.writeText(s); this.hub.note='Copied '+(what||'')+'.'; setTimeout(()=>{ this.hub.note=''; }, 1600); }catch(e){} },
+    async toggleHubRun(r){ if(this.hub.runOpen===r.run_id){ this.hub.runOpen=null; return; } this.hub.runOpen=r.run_id;
+      if(!r.detail){ try{ r.detail=await this.api('/hub/runs/'+encodeURIComponent(r.run_id)); }catch(e){ r.detail={error:{message:this.hubErr(e)}}; } } },
+    async openRun(id, fromPop){ this.resetConfirms(); this.detail=null; this.view='run'; this.run={loading:true, data:null, err:''};
+      if(!fromPop) history.pushState({run:id}, '', '/app/runs/'+encodeURIComponent(id));
+      try{ this.run={loading:false, data:await this.api('/hub/runs/'+encodeURIComponent(id)), err:''}; }
+      catch(e){ this.run={loading:false, data:null, err:this.hubErr(e, 'No such run for the team you are in ('+this.activeName+'). A run is readable by the team that called it and the team that made the tool: switch team and reload.')}; } },
+    // api() throws Error('http') with .status and .detail: say the detail, or a plain sentence per status
+    hubErr(e, on404){ if(e&&e.status===404&&on404) return on404; if(e&&e.status===401) return 'Sign in to see this.';
+      const d=e&&e.detail; if(d&&typeof d==='object') return (d.error?d.error+': ':'')+(d.message||d.rule||JSON.stringify(d)); return d||String((e&&e.message)||e); },
+    fmtMs(ms){ return ms>=1000 ? (ms/1000).toFixed(1)+' s' : (ms||0)+' ms'; },
     async loadReferrals(){ if(!this.authed) return;
       this.ref={...this.ref, loading:true};
       // One call: GET mints the code if this is the first visit (asking for the page IS the lazy
@@ -5471,7 +5690,7 @@ createApp({
       // working so an existing /app#usage link, and the balance card's deep link, still land right.
       if(v==='usage'){ this.actTab='usage'; v='activity'; this.loadUsage(); }
       else if(v==='activity'){ this.actTab='feed'; }
-      this.detail=null; this.view=v; if(v==='activity')this.loadCalls(); if(v==='admin')this.loadAdmin(); if(v==='orgs'){this.loadOrgAdmin(); this.loadMyUsage(); this.loadBilling();} if(v==='usage')this.loadUsage(); if(v==='secrets'){this.loadSecrets(); if(!this.providers.length)this.loadConnections();} if(v==='connections')this.loadConnections(); if(v==='referrals')this.loadReferrals();
+      this.detail=null; this.view=v; if(v==='activity')this.loadCalls(); if(v==='admin')this.loadAdmin(); if(v==='orgs'){this.loadOrgAdmin(); this.loadMyUsage(); this.loadBilling();} if(v==='usage')this.loadUsage(); if(v==='secrets'){this.loadSecrets(); if(!this.providers.length)this.loadConnections();} if(v==='connections')this.loadConnections(); if(v==='referrals')this.loadReferrals(); if(v==='hub')this.loadHub();
       // push history so browser Back navigates BETWEEN views instead of leaving the app; the '/app'
       // pathname also walks back from a /app/skills/<x> detail URL so reload doesn't reopen the detail
       if(!fromPop) history.pushState({view:v}, '',
@@ -5479,6 +5698,7 @@ createApp({
     // ---- detail pages (shareable deep links) ----
     routeFromPath(path){ const m=/^\/app\/(skills|tools)\/(.+)$/.exec(path||'');
       return m ? {kind:m[1]==='skills'?'skill':'tool', name:decodeURIComponent(m[2])} : null; },
+    runFromPath(path){ const m=/^\/app\/runs\/([A-Za-z0-9_:-]+)$/.exec(path||''); return m ? m[1] : null; },
     // Marketplace deep links are their own route: they resolve against `providers` (already in
     // memory) rather than fetching a detail payload, so they can't share openDetail's loader.
     mkFromPath(path){ const m=/^\/app\/marketplace\/([^/]+)$/.exec(path||'');
@@ -5533,7 +5753,7 @@ createApp({
     // billing lives on the Team pane's Billing tab, so it aliases there.
     viewFromHash(){ let v=(location.hash||'').replace('#','');
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
-      return ['tools','orgs','activity','usage','admin','help','secrets','start','connections','referrals'].includes(v)?v:null; },
+      return ['tools','orgs','activity','usage','admin','help','secrets','start','connections','referrals','hub'].includes(v)?v:null; },
     openPlatform(slug, fromPop){ this.resetConfirms();
       this.detail=null; this.platSlug=slug; this.view='platform'; this.platOpen={}; this.epOpen={}; this.epTab={}; this.platEx={}; this.platActionsOpen=false;
       this.platClearFilters(); this.platCopied='';
@@ -6139,12 +6359,15 @@ createApp({
       if(pf){ this.openPlatform(pf, true); return; }
       const d=(e.state&&e.state.detail)||this.routeFromPath(location.pathname);
       if(d){ this.openDetail(d.kind, d.name, true); return; }
+      const rid=(e.state&&e.state.run)||this.runFromPath(location.pathname);
+      if(rid){ this.openRun(rid, true); return; }
       let v=(e.state&&e.state.view)||(location.hash||'').replace('#','')||'tools';
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
-      if(['tools','orgs','activity','usage','admin','help','secrets','start','connections','referrals'].includes(v)) this.go(v, true);
+      if(['tools','orgs','activity','usage','admin','help','secrets','start','connections','referrals','hub'].includes(v)) this.go(v, true);
     });
     this.meta = await fetch('/meta',{headers:{'ngrok-skip-browser-warning':'1'}}).then(r=>r.json()).catch(()=>this.meta);
     this.proxy = this.meta.public_url || location.origin;
+    if(this.authed) this.probeHub();
     this.initAnalytics();
     // deploy detection: long-lived tabs learn about a new bundle on tab focus + a slow poll,
     // then offer a one-click refresh (index.html is no-cache, so a soft reload is enough)
@@ -6163,6 +6386,7 @@ createApp({
     // before an OAuth hop (the callback always lands on /app, which would otherwise drop the path).
     let route=this.routeFromPath(location.pathname);
     let mkRoute=this.mkFromPath(location.pathname);
+    const runRoute=this.runFromPath(location.pathname);   // /app/runs/<id>: the hub's run page, members only
     // A public catalog URL renders the marketplace views with or without a session. Set BEFORE the
     // /auth/me check so the first paint is already in public mode, and drop the server-rendered
     // fallback (see `_spa_catalog_page`) now that the real UI is about to take over.
@@ -6181,6 +6405,7 @@ createApp({
       // enter that team — the emailed "Sign in & accept" click was the consent. Otherwise the normal
       // first-run / invite-banner flow.
       if(mkRoute){ this.maybeOnboard(); this.openProvider(mkRoute, true); return; }
+      if(runRoute){ this.maybeOnboard(); this.openRun(runRoute, true); return; }
       // Signed in on a /catalog URL: the same views, but as a member — so `publicCatalog` is
       // dropped and the shell comes back in full (vault, activity, try-it).
       if(catRoute){ this.publicCatalog=false; this.maybeOnboard();
@@ -6206,6 +6431,7 @@ createApp({
         if(catRoute.slug) this.openPlatform(catRoute.slug, true); else this.go('connections', true);
         return; }
       const pfTok=this.platformFromHash();
+      if(runRoute){ this.openRun(runRoute, true); return; }
       if(mkRoute) this.openProvider(mkRoute, true); else if(pfTok) this.openPlatform(pfTok, true); else if(route) this.openDetail(route.kind, route.name, true);
       else { const hv=this.viewFromHash(); if(hv) this.go(hv, true);
         else { this.go('start', true); history.replaceState({view:'start'},'','/app#start'); } }
