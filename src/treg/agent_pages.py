@@ -926,13 +926,11 @@ USE_CASE_PAGES["enrich-a-person"] = {
 
 USE_CASE_PAGES["people-search"] = {
     "label": "Find people by role, company or location",
-    "sentence": "People search API: find people by job title, company or location",
-    "title": "People search API: {n} providers compared | treg.to",
+    "sentence": "People search API: find contacts by title, company or location",
+    "title": "People Search: {n} Providers, Pay Per Result | treg.to",
     "lede": (
-        "Search across companies for the people who match a role, a seniority, a location or a tech "
-        "stack, and get back a list your agent can work with. {n} providers do this through one "
-        "treg.to key. The trap is the billing unit: some charge per row returned, so an unbounded "
-        "search is an unbounded bill."),
+        "Find people by job title, seniority, company or location. {n} providers through one key. "
+        "Pay per row, not per seat. Some searches are free; only contact details cost."),
     "prompt": "Using treg, find 25 heads of growth at US SaaS companies with 50 to 200 employees. "
               "Show me the price first, keep the result set small, and give me name, title, company and LinkedIn URL.",
     "prompt_why": [
