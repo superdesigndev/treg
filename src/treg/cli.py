@@ -3773,20 +3773,31 @@ def cmd_mcp_install(args, cfg) -> None:
     base_url = (cfg.get("base_url") or "https://treg.to").rstrip("/")
     name = getattr(args, "name", None) or "treg"
     out = mcp_install.install_mcp(base_url=base_url, token=token, server_name=name)
+    import textwrap
     ok = 0
+    _section(f"① Registered {name}  ({out['mcp_url']})")
     for display, status, detail in out["results"]:
         if status == "ok":
-            ok += 1; print(f"  ✓ {display} → {detail}")
+            ok += 1
+            _ok(f"{_B}{display}{_R}  {_M}{detail}{_R}")
         elif status == "skipped":
-            print(f"  · {display} skipped — {detail}")
+            print(f"  {_M}·{_R} {display}  {_M}skipped: {detail}{_R}")
         else:
-            print(f"  ✗ {display}: {detail}")
+            print(f"  ✗ {display}  {_M}{detail}{_R}")
     if not out["results"]:
-        print("  (no MCP-capable agents detected — nothing to register)")
-    for display, how in out["manual"]:
-        print(f"  ⚠ {display}: not auto-configured — {how}")
-    print(f"\nRegistered the treg MCP server ({out['mcp_url']}) into {ok} agent(s). "
-          f"Restart an agent to pick it up.")
+        _dim("  no MCP-capable agent found on this machine; nothing to register")
+    if out["manual"]:
+        # One agent per block: its name, then how to add the server by hand, wrapped to the
+        # terminal instead of one long line per agent.
+        _section("② By hand")
+        for display, how in out["manual"]:
+            print(f"  {_A}⚠{_R} {_B}{display}{_R}")
+            for line in textwrap.wrap(how, width=76):
+                _dim(f"      {line}")
+    _section("③ Next")
+    _kv("agents", f"{ok} registered; restart an agent to pick the server up")
+    _arrow(f"in the agent, say \"use the {name} MCP\": call, catalog_search, catalog_get, my_tools, balance"
+           " (and hub_create, hub_update, hub_mine where the hub is on)")
 
 
 def cmd_skill_bootstrap(args, cfg) -> None:
