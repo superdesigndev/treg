@@ -709,8 +709,16 @@ async def test_the_scheduled_check_runs_as_the_maker_and_records_its_verdict(cli
 async def test_the_worker_hub_check_walks_every_live_tool(clients: AsyncClient, hub_on, platform_on, monkeypatch, capsys):
     import argparse
     from treg import worker
+    from treg.config import get_settings
     pub = await _live_tool_with_readme(clients, monkeypatch)
-    rc = await worker._hub_check(argparse.Namespace(only=None, json=True))
+    # _hub_check runs the worker's startup guard verify_db(), which refuses a non-SQLite database
+    # with no TREG_SECRET_KEY. A real worker always has the key; give it one here.
+    monkeypatch.setenv("TREG_SECRET_KEY", "HCmUPIPieol_HNAh92Q6qgmJp85kHPMms_QUwRJMNMc=")
+    get_settings.cache_clear()
+    # `--only` this tool: the check walks EVERY live tool in the database, and on a shared
+    # database (Postgres, serial) earlier test files leave their own live tools behind, so the
+    # test must name its tool rather than assume it is the only one.
+    rc = await worker._hub_check(argparse.Namespace(only=pub["tool_id"], json=True))
     out = capsys.readouterr().out
     import json as _json
     rows = _json.loads(out)
