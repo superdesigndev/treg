@@ -5133,6 +5133,8 @@ def _hub_report(r, *, json_out: bool) -> None:
             _section("④ Call it")
             _arrow(f"treg call {payload.get('tool_id')} --data '{{\"domain\": \"figma.com\"}}'")
             _arrow(f"POST /call/{payload.get('tool_id')}   with X-Treg-Token, a JSON body of inputs")
+            if payload.get("page"):
+                _arrow(f"share: {payload['page']}   (readable without sign-in; .md for agents)")
     else:
         _hub_refusal(payload, r.status_code)
     if r.status_code not in (200, 201):

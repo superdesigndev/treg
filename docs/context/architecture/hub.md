@@ -250,3 +250,15 @@ too: `endpoint.kind == "hub"`, with summary, inputs, output, the price line, hea
 `call_template`, the page URL and the readme; never the script, the maker's tools or a key.
 Search never returns a hub tool (unlisted by design); an unknown hub-shaped id stays a 404 with
 the usual near-miss hints.
+
+## The public share page (phase 7.2)
+
+`GET /hub/<id>` (and `.md` for agents; `<id>@N` for a pinned older version) in `routers/web.py`
+renders one live hub tool through the shared `_page` shell: the id line, summary, the price line
+("seller $0.01 + steps", per 1,000), health from the last check, version, the exact call line
+(CLI and curl), inputs, output fields, the README (a small escaping renderer `_md_lite`:
+headings, lists, code, bold; no raw HTML survives), the publish check's trace, "made of N tools
+of the maker's own (names and keys hidden)", reliability over 30 days (runs by others, success
+share, median), and the older versions still callable. Readable without sign-in; `noindex` and
+absent from the sitemap, because a hub tool is shared by its id, not found by search. The
+publish reply (`POST /hub/tools`) and `treg hub publish` name the page.
