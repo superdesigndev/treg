@@ -49,7 +49,8 @@ def split_id(rest: str) -> tuple[str, int | None]:
 OLD_VERSION_DAYS = 30   # a pinned old version stays callable this long after a newer live one
 
 
-async def tool_for(db: AsyncSession, rest: str, *, live_only: bool = True) -> HubTool | None:
+async def tool_for(db: AsyncSession, rest: str, *, live_only: bool = True,
+                   caller_org_id: int | None = None) -> HubTool | None:
     """The version that serves `rest`: the newest `live` one, or `@N` pinned. A pinned version may
     also be the one UNDER CHECK (the check run pins it: HUB-DECISIONS round 2 q10), and a pinned
     old version stays callable for OLD_VERSION_DAYS after a newer live one exists (round 4 q8)."""
@@ -64,7 +65,8 @@ async def tool_for(db: AsyncSession, rest: str, *, live_only: bool = True) -> Hu
     if row is None:
         return None
     if row.status == "checking":
-        return row
+        # the check run pins it (round 2 q10); anyone else who guesses @N gets nothing (8.1 review)
+        return row if caller_org_id is None or row.org_id == caller_org_id else None
     if live_only and row.status != "live":
         return None
     newer = (await db.execute(
@@ -89,7 +91,7 @@ class Published:
     kind: str
 
 
-MAX_DATA_BYTES = 50_000_000
+MAX_DATA_BYTES = 5_000_000   # the engine holds 64 MB; the rows travel into it on every run (8.1 review)
 
 
 def validate_data(data: Any) -> str | None:
@@ -101,7 +103,7 @@ def validate_data(data: Any) -> str | None:
     if not isinstance(data, str):
         raise ManifestError("data", "the CSV as text (the contents of data.csv)")
     if len(data.encode("utf-8")) > MAX_DATA_BYTES:
-        raise ManifestError("data", "at most 50 MB")
+        raise ManifestError("data", "at most 5 MB")
     try:
         reader = csv.reader(io.StringIO(data))
         header = next(reader, None)
@@ -175,19 +177,28 @@ async def run_check(db: AsyncSession, row: HubTool, *, maker_headers: dict[str, 
     headers = {k: v for k, v in maker_headers.items() if k.lower() in ("x-treg-token", "x-treg-org", "cookie")}
     headers["X-Treg-Client"] = "hub-check"
     headers[hub_runner.RUN_MAX_COST_HEADER] = "5.00"
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://treg.internal",
-                                 headers=headers, timeout=200.0) as client:
-        r = await client.post(f"/call/{row.tool_id}@{row.version}", json=row.check.get("inputs", {}))
-    from .health import verdict_from
     try:
-        body = r.json()
-    except ValueError:
-        body = {"text": r.text[:600]}
-    verdict = verdict_from(row, r.status_code, body, dict(r.headers))
-    row.status = "live" if verdict["status"] == "passed" else "failed"
-    row.check_result = verdict
-    db.add(row)
-    return verdict
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://treg.internal",
+                                     headers=headers, timeout=200.0) as client:
+            r = await client.post(f"/call/{row.tool_id}@{row.version}", json=row.check.get("inputs", {}))
+        from .health import verdict_from
+        try:
+            body = r.json()
+        except ValueError:
+            body = {"text": r.text[:600]}
+        verdict = verdict_from(row, r.status_code, body, dict(r.headers))
+        row.status = "live" if verdict["status"] == "passed" else "failed"
+        row.check_result = verdict
+        db.add(row)
+        return verdict
+    except Exception as exc:  # noqa: BLE001 - a crashed check must not leave the version `checking`
+        verdict = {"status": "failed", "checked_at": _utcnow().isoformat(),
+                   "error": {"error": "check_crashed", "kind": type(exc).__name__,
+                             "message": "the check could not finish; publish again"}}
+        row.status = "failed"
+        row.check_result = verdict
+        db.add(row)
+        return verdict
 
 
 def view(row: HubTool) -> dict[str, Any]:

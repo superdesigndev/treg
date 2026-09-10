@@ -60,7 +60,7 @@ globalThis.ctx = {
   call: async function (target, opts) {
     const reply = JSON.parse(__bridge_call(JSON.stringify([String(target), opts || {}])));
     if (reply.op === "refused") { throw new Error(reply.error); }
-    return { status: reply.status, headers: reply.headers, json: reply.json, text: reply.text };
+    return { status: reply.status, headers: reply.headers, json: reply.json, text: reply.text, truncated: !!reply.truncated };
   },
   csv: __csv,
   log: function (text) { __bridge_log(String(text)); },
@@ -154,10 +154,14 @@ Promise.resolve().then(() => globalThis.__run(globalThis.ctx))
         _emit({"op": "error", "kind": "script", "message": "run(ctx) never settled (an await that waits on nothing)"})
         return 1
     out = ctx.eval("globalThis.__out")
-    if out is None or len(out.encode("utf-8")) > MAX_OUTPUT_BYTES:
+    try:
+        if not isinstance(out, str) or len(out.encode("utf-8")) > MAX_OUTPUT_BYTES:
+            raise ValueError("not a JSON string")
+        parsed = json.loads(out)
+    except (ValueError, TypeError, AttributeError):
         _emit({"op": "error", "kind": "output", "message": f"the returned object must be JSON under {MAX_OUTPUT_BYTES} bytes"})
         return 1
-    _emit({"op": "done", "output": json.loads(out)})
+    _emit({"op": "done", "output": parsed})
     return 0
 
 

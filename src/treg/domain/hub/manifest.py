@@ -200,6 +200,12 @@ def _validate_uses(raw: Any, catalog_ids: set[str], own_tools: set[str],
                    hub_ids: frozenset[str] | set[str], allow_empty: bool = False) -> list[str]:
     if not isinstance(raw, list) or (not raw and not allow_empty):
         raise _fail("uses", "a non-empty list of the tools this recipe may call")
+    # The runner tells an own tool from a catalog id by the dot. An own tool NAMED like a catalog
+    # id would run as the caller and could later resolve to a hub tool of that name: a nested
+    # run with an undisclosed price (8.1 review). Refused here, by name.
+    for i, u in enumerate(raw):
+        if isinstance(u, str) and u in own_tools and "." in u:
+            raise _fail(f"uses[{i}]", f"own tool {u!r} is named like a catalog id; rename it without a dot")
     if len(raw) > MAX_USES:
         raise _fail("uses", f"at most {MAX_USES} entries")
     seen: list[str] = []
@@ -238,6 +244,9 @@ def _validate_limits(raw: Any) -> dict[str, Any]:
 
 
 def _validate_price(raw: Any) -> int:
+    import math
+    if _is_number(raw) and not math.isfinite(float(raw)):
+        raise _fail("price_usd", "a finite number")
     if not _is_number(raw) or raw < 0 or raw > MAX_PRICE_USD:
         raise _fail("price_usd", f"a number from 0 to {MAX_PRICE_USD} (dollars per successful run; 0 = free)")
     micro = round(float(raw) * 1_000_000)

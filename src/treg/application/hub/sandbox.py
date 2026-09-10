@@ -128,8 +128,15 @@ async def run_script(
                 line = await asyncio.wait_for(proc.stdout.readline(), timeout=left)
             except asyncio.TimeoutError:
                 raise SandboxError("timeout", f"the run passed its {wall_s} s wall clock") from None
+            except ValueError:
+                # readline's limit: one bridge line over MAX_LINE_BYTES (a call body or a log the
+                # engine could build but the bridge will not carry)
+                raise SandboxError("protocol", f"the sandbox wrote a line over {MAX_LINE_BYTES // (1024 * 1024)} MiB") from None
             if not line:
                 err = (await proc.stderr.read(4000)).decode("utf-8", "replace").strip()
+                if "Traceback" in err or "MemoryError" in err:
+                    # the maker reads this line; a server traceback with paths is not theirs to read
+                    err = "the sandbox stopped (out of memory, or an internal error)"
                 raise SandboxError("script", err[-600:] or "the sandbox exited without an answer")
             try:
                 msg = json.loads(line)
@@ -141,7 +148,13 @@ async def run_script(
                     log.append(str(msg.get("text", ""))[:MAX_LOG_CHARS])
             elif op == "call":
                 calls += 1
-                req = CallRequest(target=str(msg.get("target", "")), opts=dict(msg.get("opts") or {}))
+                opts = msg.get("opts") or {}
+                if not isinstance(opts, dict):
+                    reply = {"op": "refused", "id": msg.get("id"), "error": "ctx.call's second argument must be an object"}
+                    proc.stdin.write((json.dumps(reply) + "\n").encode())
+                    await proc.stdin.drain()
+                    raise SandboxError("refused", reply["error"])
+                req = CallRequest(target=str(msg.get("target", "")), opts=opts)
                 if calls > MAX_CALLS:
                     reply = {"op": "refused", "id": msg["id"],
                              "error": f"the run passed its cap of {MAX_CALLS} calls"}
@@ -149,7 +162,15 @@ async def run_script(
                     await proc.stdin.drain()
                     raise SandboxError("refused", reply["error"])
                 try:
-                    result = await execute(req)
+                    # the wall clock keeps running while the step is in flight: an upstream that
+                    # answers one byte at a time must not hold the run, the slot and the memory
+                    left = deadline - asyncio.get_running_loop().time()
+                    if left <= 0:
+                        raise SandboxError("timeout", f"the run passed its {wall_s} s wall clock")
+                    try:
+                        result = await asyncio.wait_for(execute(req), timeout=left)
+                    except asyncio.TimeoutError:
+                        raise SandboxError("timeout", f"the run passed its {wall_s} s wall clock during a call") from None
                     reply = {"op": "result", "id": msg["id"], **result}
                 except SandboxError as exc:
                     reply = {"op": "refused", "id": msg["id"], "error": exc.message}

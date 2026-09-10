@@ -17,6 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
+import re
 import time
 from dataclasses import dataclass, replace
 from typing import Any, Callable
@@ -115,6 +117,8 @@ def coerce_inputs(specs: dict[str, dict[str, Any]], given: dict[str, Any]) -> di
                 if isinstance(v, bool):
                     raise ValueError
                 v = float(v)
+                if not math.isfinite(v):
+                    raise ValueError
             elif typ == "bool":
                 v = v if isinstance(v, bool) else str(v).lower() in ("1", "true", "yes", "on")
             elif typ == "list":
@@ -147,10 +151,12 @@ async def run_hub_tool(
     run_id = parent.call_ref
     started = time.monotonic()
     try:
-        given = json.loads(body_bytes or b"{}") if body_bytes.strip() else {}
-    except ValueError:
+        given = (json.loads(body_bytes or b"{}", parse_constant=_no_constants)
+                 if body_bytes.strip() else {})
+    except (ValueError, RecursionError):
         raise ResolutionFailed("hub_input_invalid", status_code=422, detail={
-            "error": "hub_input_invalid", "field": "body", "rule": "a JSON object of inputs"})
+            "error": "hub_input_invalid", "field": "body",
+            "rule": "a JSON object of inputs (finite numbers, a sane depth)"}) from None
     if not isinstance(given, dict):
         raise ResolutionFailed("hub_input_invalid", status_code=422, detail={
             "error": "hub_input_invalid", "field": "body", "rule": "a JSON object of inputs"})
@@ -172,175 +178,205 @@ async def run_hub_tool(
             "error": "hub_run_max_cost", "max_cost_micro": ceiling, "price_micro": price_held,
             "run_id": run_id, "charged_micro": 0, "trace": [],
             "message": f"the tool's own price ({price_held} µ$) already passes {RUN_MAX_COST_HEADER}"})
-    if tool.kind == "script":
-        return await _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_tools,
-                                      upstream_client, execute_child, started, audit_client, price_held)
-    g = hub_graph.build(manifest["steps"])
+    async def _after_reserve():
+        if tool.kind == "script":
+            return await _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_tools,
+                                          upstream_client, execute_child, started, audit_client, price_held)
+        g = hub_graph.build(manifest["steps"])
+        wall_deadline = started + manifest["limits"]["wall_s"]
 
-    scope: dict[str, Any] = {"input": inputs}
-    trace: list[dict[str, Any]] = []
-    spent = 0
-    counted = 0
-    stop: RunStopped | None = None
-    done: set[str] = set()
-    sem = asyncio.Semaphore(MAX_PARALLEL)
-    running: dict[asyncio.Task, str] = {}
+        scope: dict[str, Any] = {"input": inputs}
+        trace: list[dict[str, Any]] = []
+        spent = 0
+        counted = 0
+        stop: RunStopped | None = None
+        done: set[str] = set()
+        sem = asyncio.Semaphore(MAX_PARALLEL)
+        running: dict[asyncio.Task, str] = {}
 
-    async def one_call(step: _Step) -> tuple[_Step, dict[str, Any], Any]:
-        """One child call. Returns (step, trace entry, answer)."""
-        async with sem:
-            spec = step.spec
-            item_scope = dict(scope)
-            if step.item is not None:
-                item_scope[spec["as"]] = step.item_value
-            if spec.get("skip_if_empty") and refs.is_empty(
-                    refs.resolve(spec["skip_if_empty"], item_scope, g.positions)):
-                entry = _entry(step, "skipped", None, 0, 0, key=None)
-                return step, entry, None
-            call = spec["call"]
-            target = call.split("/", 1)[0]
-            ep = None if target in own_tools else catalog.by_id.get(call)
-            inp = refs.resolve(spec.get("input", {}), item_scope, g.positions)
-            method = (spec.get("method") or (ep["method"] if ep else "GET")).upper()
-            as_who = maker if target in own_tools else parent.input.caller
-            child = CallContext(input=_child_input(parent, call, method, inp, as_who),
-                                call_ref=step.ref, meta=parent.meta)
-            t0 = time.monotonic()
-            try:
-                response = await execute_child(child, upstream_client)
-            except CallFailure as exc:
+        async def one_call(step: _Step) -> tuple[_Step, dict[str, Any], Any]:
+            """One child call. Returns (step, trace entry, answer)."""
+            async with sem:
+                spec = step.spec
+                item_scope = dict(scope)
+                if step.item is not None:
+                    item_scope[spec["as"]] = step.item_value
+                if spec.get("skip_if_empty") and refs.is_empty(
+                        refs.resolve(spec["skip_if_empty"], item_scope, g.positions)):
+                    entry = _entry(step, "skipped", None, 0, 0, key=None)
+                    return step, entry, None
+                call = spec["call"]
+                target = call.split("/", 1)[0]
+                ep = None if target in own_tools else catalog.by_id.get(call)
+                inp = refs.resolve(spec.get("input", {}), item_scope, g.positions)
+                method = (spec.get("method") or (ep["method"] if ep else "GET")).upper()
+                as_who = maker if target in own_tools else parent.input.caller
+                child = CallContext(input=_child_input(parent, call, method, inp, as_who),
+                                    call_ref=step.ref, meta=parent.meta)
+                t0 = time.monotonic()
+                try:
+                    response = await execute_child(child, upstream_client)
+                except CallFailure as exc:
+                    ms = int((time.monotonic() - t0) * 1000)
+                    entry = _entry(step, "failed", exc.status_code, ms, 0, key=None,
+                                   error=_short(exc.detail))
+                    if exc.kind in _GLOBAL_REFUSALS:
+                        entry["global"] = exc.kind
+                    return step, entry, exc
+                raw, truncated = await _read(response)
                 ms = int((time.monotonic() - t0) * 1000)
-                entry = _entry(step, "failed", exc.status_code, ms, 0, key=None,
-                               error=_short(exc.detail))
-                if exc.kind in _GLOBAL_REFUSALS:
-                    entry["global"] = exc.kind
-                return step, entry, exc
-            raw = await _read(response)
-            ms = int((time.monotonic() - t0) * 1000)
-            charged = int(_header(response, "X-Treg-Cost-Micro") or 0)
-            key = "treg" if _header(response, "X-Treg-Cost-Micro") is not None else "team"
-            ok = 200 <= response.status < 300
-            try:
-                answer = json.loads(raw) if raw else None
-            except ValueError:
-                answer = raw.decode("utf-8", "replace")
-            entry = _entry(step, "ok" if ok else "failed", response.status, ms, charged, key=key,
-                           error=None if ok else _short(answer))
-            return step, entry, answer if ok else _StepFailed(response.status, answer)
+                charged, key = _child_cost(response, catalog_step=target not in own_tools)
+                ok = 200 <= response.status < 300 and not truncated
+                try:
+                    answer = json.loads(raw) if raw else None
+                except ValueError:
+                    answer = raw.decode("utf-8", "replace")
+                if truncated:
+                    answer = {"error": "answer_too_large", "message": f"the step's answer passed {MAX_BODY_BYTES} bytes"}
+                entry = _entry(step, "ok" if ok else "failed", response.status, ms, charged, key=key,
+                               error=None if ok else _short(answer))
+                return step, entry, answer if ok else _StepFailed(response.status, answer)
 
-    def estimate(spec: dict[str, Any]) -> int:
-        target = spec["call"].split("/", 1)[0]
-        if target in own_tools:
-            return 0
-        ep = catalog.by_id.get(spec["call"])
-        cv = catalog.cost_view(ep.get("cost"), ep.get("provider")) if ep else None
-        usd = (cv or {}).get("usd")
-        return int(round(float(usd) * 1_000_000)) if usd else 0
+        def estimate(spec: dict[str, Any]) -> int:
+            target = spec["call"].split("/", 1)[0]
+            if target in own_tools:
+                return 0
+            ep = catalog.by_id.get(spec["call"])
+            cv = catalog.cost_view(ep.get("cost"), ep.get("provider")) if ep else None
+            usd = (cv or {}).get("usd")
+            return int(round(float(usd) * 1_000_000)) if usd else 0
 
-    def units_for(name: str) -> list[_Step]:
-        spec = g.steps[name]
-        wave = g.wave[name]
-        idx = g.order.index(name)
-        if spec.get("for_each"):
-            items = refs.resolve(spec["for_each"], scope, g.positions)
-            items = items if isinstance(items, list) else ([] if items is None else [items])
-            return [_Step(name, spec, f"{run_id}:s{idx}.{i}", wave, i, v) for i, v in enumerate(items)]
-        return [_Step(name, spec, f"{run_id}:s{idx}", wave)]
+        def units_for(name: str) -> list[_Step]:
+            spec = g.steps[name]
+            wave = g.wave[name]
+            idx = g.order.index(name)
+            if spec.get("for_each"):
+                items = refs.resolve(spec["for_each"], scope, g.positions)
+                items = items if isinstance(items, list) else ([] if items is None else [items])
+                return [_Step(name, spec, f"{run_id}:s{idx}.{i}", wave, i, v) for i, v in enumerate(items)]
+            return [_Step(name, spec, f"{run_id}:s{idx}", wave)]
 
-    pending_units: dict[str, list[_Step]] = {}
-    results: dict[str, list[Any]] = {}
-    try:
-        while True:
-            if stop is None:
-                for name in g.order:
-                    if name in done or name in pending_units:
-                        continue
-                    if not g.parents[name] <= done:
-                        continue
-                    units = units_for(name)
-                    pending_units[name] = []
-                    results[name] = [None] * len(units)
-                    if not units:                 # a repeat over nothing: the step is done, empty
+        pending_units: dict[str, list[_Step]] = {}
+        results: dict[str, list[Any]] = {}
+        try:
+            while True:
+                if stop is None:
+                    for name in g.order:
+                        if name in done or name in pending_units:
+                            continue
+                        if not g.parents[name] <= done:
+                            continue
+                        units = units_for(name)
+                        pending_units[name] = []
+                        results[name] = [None] * len(units)
+                        if not units:                 # a repeat over nothing: the step is done, empty
+                            done.add(name)
+                            scope[name] = []
+                            continue
+                        for u in units:
+                            if counted + 1 > manifest["limits"]["steps"]:
+                                stop = RunStopped("hub_step_cap", 424, {
+                                    "error": "hub_step_cap", "step": name,
+                                    "message": f"the run would pass its step cap ({manifest['limits']['steps']})"})
+                                break
+                            est = estimate(u.spec)
+                            if price_held + spent + _reserved(running, pending_units, estimate) + est > ceiling:
+                                stop = RunStopped("hub_run_max_cost", 402, {
+                                    "error": "hub_run_max_cost", "step": name, "max_cost_micro": ceiling,
+                                    "message": f"the next step would pass {RUN_MAX_COST_HEADER}"})
+                                break
+                            counted += 1
+                            task = asyncio.create_task(one_call(u))
+                            running[task] = name
+                            pending_units[name].append(u)
+                        if stop is not None:
+                            break
+                if not running:
+                    break
+                left = wall_deadline - time.monotonic()
+                if left <= 0:
+                    for task in running:
+                        task.cancel()
+                    stop = RunStopped("hub_wall_clock", 424, {
+                        "error": "hub_wall_clock",
+                        "message": f"the run passed its {manifest['limits']['wall_s']} s wall clock"})
+                    break
+                finished, _ = await asyncio.wait(set(running), return_when=asyncio.FIRST_COMPLETED, timeout=left)
+                if not finished:
+                    continue
+                for task in finished:
+                    name = running.pop(task)
+                    step, entry, answer = task.result()
+                    trace.append(entry)
+                    spent += entry["cost_micro"]
+                    failed = isinstance(answer, (_StepFailed, CallFailure))
+                    if failed and not step.spec.get("allow_fail"):
+                        if stop is None:
+                            stop = RunStopped("hub_step_failed", 424, {
+                                "error": "hub_step_failed", "step": step.name, "status": entry.get("status"),
+                                **({"message": "a refusal that applies to every step"} if entry.get("global") else {})})
+                        if isinstance(answer, CallFailure) and entry.get("global"):
+                            stop = RunStopped(answer.kind, answer.status_code, {
+                                "error": answer.kind, "step": step.name, "detail": answer.detail})
+                        answer = None
+                    elif failed:
+                        entry["outcome"] = "failed_allowed"
+                        answer = None
+                    slot = step.item if step.item is not None else 0
+                    results[name][slot] = answer
+                    if len([t for t, n in running.items() if n == name]) == 0:
                         done.add(name)
-                        scope[name] = []
-                        continue
-                    for u in units:
-                        if counted + 1 > manifest["limits"]["steps"]:
-                            stop = RunStopped("hub_step_cap", 424, {
-                                "error": "hub_step_cap", "step": name,
-                                "message": f"the run would pass its step cap ({manifest['limits']['steps']})"})
-                            break
-                        est = estimate(u.spec)
-                        if price_held + spent + _reserved(running, pending_units, estimate) + est > ceiling:
-                            stop = RunStopped("hub_run_max_cost", 402, {
-                                "error": "hub_run_max_cost", "step": name, "max_cost_micro": ceiling,
-                                "message": f"the next step would pass {RUN_MAX_COST_HEADER}"})
-                            break
-                        counted += 1
-                        task = asyncio.create_task(one_call(u))
-                        running[task] = name
-                        pending_units[name].append(u)
-                    if stop is not None:
-                        break
-            if not running:
-                break
-            finished, _ = await asyncio.wait(set(running), return_when=asyncio.FIRST_COMPLETED)
-            for task in finished:
-                name = running.pop(task)
-                step, entry, answer = task.result()
-                trace.append(entry)
-                spent += entry["cost_micro"]
-                failed = isinstance(answer, (_StepFailed, CallFailure))
-                if failed and not step.spec.get("allow_fail"):
-                    if stop is None:
-                        stop = RunStopped("hub_step_failed", 424, {
-                            "error": "hub_step_failed", "step": step.name, "status": entry.get("status"),
-                            **({"message": "a refusal that applies to every step"} if entry.get("global") else {})})
-                    if isinstance(answer, CallFailure) and entry.get("global"):
-                        stop = RunStopped(answer.kind, answer.status_code, {
-                            "error": answer.kind, "step": step.name, "detail": answer.detail})
-                    answer = None
-                elif failed:
-                    entry["outcome"] = "failed_allowed"
-                    answer = None
-                slot = step.item if step.item is not None else 0
-                results[name][slot] = answer
-                if len([t for t, n in running.items() if n == name]) == 0:
-                    done.add(name)
-                    scope[name] = results[name] if step.spec.get("for_each") else results[name][0]
-    except asyncio.CancelledError:
+                        scope[name] = results[name] if step.spec.get("for_each") else results[name][0]
+        except asyncio.CancelledError:
+            raise
+
+        trace.sort(key=lambda e: (e["wave"], e["name"], e.get("item") or 0))
+        ms_total = int((time.monotonic() - started) * 1000)
+        if stop is not None:
+            await _close_price(tool, run_id, price_held, success=False, reason=stop.kind)
+            detail = {**stop.detail, "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}",
+                      "charged_micro": spent, "price_micro": 0, "trace": trace}
+            await _record(tool, parent, run_id, "failed" if stop.kind == "hub_step_failed" else "stopped",
+                          counted, spent, ms_total, masked(manifest["inputs"], inputs), trace, error=detail)
+            _audit_parent(parent, tool, stop.status, spent, audit_client)
+            raise ResolutionFailed("hub_run_failed", status_code=stop.status, detail=_public_detail(detail))
+
+        output = refs.resolve(manifest["output"], scope, g.positions)
+        earned = await _close_price(tool, run_id, price_held, success=True)
+        body_out = {
+            "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}", "output": output,
+            "usage": {"cost_micro": spent + earned, "steps_micro": spent, "price_micro": earned,
+                      "steps": counted, "ms": ms_total},
+            "trace": _public_trace(trace), "log": [],
+        }
+        await _record(tool, parent, run_id, "ok", counted, spent, ms_total,
+                      masked(manifest["inputs"], inputs), trace, price=earned, output=output)
+        _audit_parent(parent, tool, 200, spent + earned, audit_client)
+        return _json(body_out, 200, {"X-Treg-Run-Id": run_id, "X-Treg-Steps": str(counted)}), spent + earned
+
+
+    # ---------------------------------------------------------------------------------------------
+    # The seller's price (docs/HUB-DECISIONS.md round 3): one extra hold `{run}:price` on the CALLER
+    # at run start, settled to the MAKER as `earned` credit on success, released on failure. Not
+    # charged when the caller IS the maker (their own tool, and the publish check run), so the check
+    # never costs the seller their own price.
+
+
+    # Non-negotiable 2: the price hold closes exactly once on EVERY path. The success paths
+    # settle it themselves (a second close is a no-op); anything else releases it here: a
+    # refusal, a client disconnect, and a crash, which becomes a 424 with a plain name instead
+    # of a 500 with an open hold (the 8.1 review found seven such paths).
+    try:
+        return await _after_reserve()
+    except (CallFailure, asyncio.CancelledError):
+        await _close_price(tool, run_id, price_held, success=False, reason="hub_run_stopped")
         raise
-
-    trace.sort(key=lambda e: (e["wave"], e["name"], e.get("item") or 0))
-    ms_total = int((time.monotonic() - started) * 1000)
-    if stop is not None:
-        await _close_price(tool, run_id, price_held, success=False, reason=stop.kind)
-        detail = {**stop.detail, "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}",
-                  "charged_micro": spent, "price_micro": 0, "trace": trace}
-        await _record(tool, parent, run_id, "failed" if stop.kind == "hub_step_failed" else "stopped",
-                      counted, spent, ms_total, masked(manifest["inputs"], inputs), trace, error=detail)
-        _audit_parent(parent, tool, stop.status, spent, audit_client)
-        raise ResolutionFailed("hub_run_failed", status_code=stop.status, detail=detail)
-
-    output = refs.resolve(manifest["output"], scope, g.positions)
-    earned = await _close_price(tool, run_id, price_held, success=True)
-    body_out = {
-        "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}", "output": output,
-        "usage": {"cost_micro": spent + earned, "steps_micro": spent, "price_micro": earned,
-                  "steps": counted, "ms": ms_total},
-        "trace": trace, "log": [],
-    }
-    await _record(tool, parent, run_id, "ok", counted, spent, ms_total,
-                  masked(manifest["inputs"], inputs), trace, price=earned, output=output)
-    _audit_parent(parent, tool, 200, spent + earned, audit_client)
-    return _json(body_out, 200, {"X-Treg-Run-Id": run_id, "X-Treg-Steps": str(counted)}), spent + earned
-
-
-# ---------------------------------------------------------------------------------------------
-# The seller's price (docs/HUB-DECISIONS.md round 3): one extra hold `{run}:price` on the CALLER
-# at run start, settled to the MAKER as `earned` credit on success, released on failure. Not
-# charged when the caller IS the maker (their own tool, and the publish check run), so the check
-# never costs the seller their own price.
+    except Exception as exc:  # noqa: BLE001 - the last line of defence for the caller's money
+        await _close_price(tool, run_id, price_held, success=False, reason="hub_run_crashed")
+        raise ResolutionFailed("hub_run_failed", status_code=424, detail={
+            "error": "hub_run_crashed", "run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}",
+            "kind": type(exc).__name__, "charged_micro": 0, "price_micro": 0, "trace": [],
+            "message": "the run could not finish; the maker's log has the detail"}) from exc
 
 async def _reserve_price(parent: CallContext, tool: HubTool, run_id: str) -> int:
     """Open the price hold. Returns the amount held (0 when nothing is owed). Raises
@@ -396,13 +432,42 @@ def _reserved(running: dict, pending: dict, estimate) -> int:
     return sum(estimate(pending[n][-1].spec) for n in names if pending.get(n)) if names else 0
 
 
+MAX_RUN_MAX_COST_MICRO = 1_000_000_000   # $1,000: above it the header is a mistake, not a budget
+
+
 def _ceiling(raw: str | None) -> int:
     if not raw:
         return DEFAULT_RUN_MAX_COST_MICRO
     try:
-        return max(0, int(round(float(raw) * 1_000_000)))
-    except ValueError:
-        return DEFAULT_RUN_MAX_COST_MICRO
+        value = float(raw)
+        if not math.isfinite(value) or value < 0 or value * 1_000_000 > MAX_RUN_MAX_COST_MICRO:
+            raise ValueError(raw)
+        return int(round(value * 1_000_000))
+    except (ValueError, OverflowError):
+        raise ResolutionFailed("hub_input_invalid", status_code=422, detail={
+            "error": "hub_input_invalid", "field": RUN_MAX_COST_HEADER,
+            "rule": "a dollar amount between 0 and 1000, e.g. 0.50"}) from None
+
+
+def _no_constants(name: str):
+    raise ValueError(f"{name} is not a JSON number")
+
+
+def _public_detail(detail: dict[str, Any]) -> dict[str, Any]:
+    """A failure as the CALLER reads it: the same fields, the trace in its public shape."""
+    return {**detail, "trace": _public_trace(detail.get("trace") or [])}
+
+
+def _public_trace(trace: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """What a CALLER may read of a trace: waves, steps, outcome, status, cost, time, whose key.
+    Not what each step called (the maker's recipe) and not an upstream error body (round 4 q10,
+    round 5 q7). The full trace stays on the run row for the maker."""
+    out = []
+    for e in trace:
+        call = str(e.get("call", ""))
+        kind = "a catalog tool" if "." in call.split("/", 1)[0] else "the maker's own tool"
+        out.append({k: v for k, v in e.items() if k not in ("call", "error")} | {"call": kind})
+    return out
 
 
 def _entry(step: _Step, outcome: str, status: int | None, ms: int, cost: int, *, key: str | None,
@@ -421,6 +486,7 @@ def _short(v: Any) -> Any:
     return s[:300]
 
 
+_HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]{1,128}$")
 _SCRIPT_HEADER_DENY = frozenset({"authorization", "cookie", "host", "content-length", "transfer-encoding",
                                  "connection", "idempotency-key", "apikey"})
 
@@ -441,7 +507,7 @@ def _child_input(parent: CallContext, call: str, method: str, inp: dict[str, Any
     items = tuple((k, v if isinstance(v, str) else json.dumps(v)) for k, v in q.items() if v is not None)
     return CallInput(method=method, raw_rest=call, raw_headers=tuple(headers), query_items=items,
                      raw_query=urlencode(items), body=_Bytes(payload), caller=as_who,
-                     client_ip=parent.input.client_ip, catalog_only=False)
+                     client_ip=parent.input.client_ip, catalog_only=False, child_of=parent.call_ref)
 
 
 async def _maker_snapshot(parent: CallContext, tool: HubTool):
@@ -453,20 +519,54 @@ async def _maker_snapshot(parent: CallContext, tool: HubTool):
     async with session_maker() as s:
         org = await s.get(Org, tool.org_id)
     if org is None:
-        return caller
+        raise ResolutionFailed("hub_not_runnable", status_code=404, detail={
+            "error": "hub_not_runnable", "message": "the maker's team no longer exists"})
+    from ..call.types import UserSnapshot
+    # The maker's call log must not name the caller (round 3 q10): the own-tool step audits as
+    # "hub-caller:<caller org>", the way the scheduled check audits as "hub-check".
     return replace(caller,
                    membership=replace(caller.membership, org_id=tool.org_id, tool_access=None,
                                       project_access=None),
+                   user=UserSnapshot(id=caller.user.id, email=f"hub-caller:{caller.org_id}"),
                    org=replace(caller.org, id=org.id, slug=org.slug, demo=org.demo,
                                public_demo=org.public_demo))
 
 
-async def _read(response: UpstreamResponse) -> bytes:
-    chunks = []
+MAX_BODY_BYTES = 1_000_000   # a step's answer the runner keeps; beyond it the stream is closed
+
+
+async def _read(response: UpstreamResponse) -> tuple[bytes, bool]:
+    """A step's answer, at most MAX_BODY_BYTES; (bytes, truncated). The runner reads answers
+    into the server's memory, so a maker's own server answering 1 GB must not become 1 GB
+    here (8.1 review)."""
+    chunks: list[bytes] = []
+    size = 0
+    truncated = False
     async for chunk in response.body_stream:
+        if size + len(chunk) > MAX_BODY_BYTES:
+            chunks.append(chunk[:MAX_BODY_BYTES - size])
+            truncated = True
+            break
         chunks.append(chunk)
+        size += len(chunk)
     await response.close()
-    return b"".join(chunks)
+    return b"".join(chunks), truncated
+
+
+def _child_cost(response: UpstreamResponse, *, catalog_step: bool) -> tuple[int, str]:
+    """What treg charged for a child call and whose key served it. The X-Treg-Cost-Micro header
+    is read ONLY on a catalog step, where treg's own code wrote it; on an own-tool step the
+    upstream is the maker's server and could write the header itself (8.1 review), so it is
+    never read: an own-tool step costs the caller nothing, by rule 1."""
+    if not catalog_step:
+        return 0, "team"
+    raw = _header(response, "X-Treg-Cost-Micro")
+    if raw is None:
+        return 0, "team"
+    try:
+        return max(0, int(raw)), "treg"
+    except ValueError:
+        return 0, "treg"
 
 
 def _header(response: UpstreamResponse, name: str) -> str | None:
@@ -566,6 +666,8 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
         if call.startswith("http://") or call.startswith("https://"):
             call, url_query = from_url(call)
         target = call.split("/", 1)[0]
+        if any(part in ("..", ".") for part in call.split("?", 1)[0].split("/")):
+            raise sandbox.SandboxError("refused", "a call path may not contain `..` segments")
         if not (call in uses or (target in own_tools and "/" in call) or target in uses and target in own_tools):
             raise sandbox.SandboxError("refused", f"{call!r} is not in the manifest's `uses`")
         if target not in own_tools and call not in catalog.by_id:
@@ -590,6 +692,9 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
         # Headers a script sets on ctx.call ride to the upstream (a PostgREST `Accept-Profile`, a
         # vendor's `Accept`), minus the ones that carry identity or framing: those are treg's.
         raw_headers = opts.get("headers") if isinstance(opts.get("headers"), dict) else {}
+        for k in raw_headers:
+            if not _HEADER_NAME_RE.match(str(k)):
+                raise sandbox.SandboxError("refused", f"header {str(k)[:40]!r}: a name of ASCII token characters")
         extra_headers = {str(k): str(v) for k, v in raw_headers.items()
                          if str(k).lower() not in _SCRIPT_HEADER_DENY and not str(k).lower().startswith("x-treg-")}
         child = CallContext(input=_child_input(parent, call, method, inp, as_who,
@@ -606,14 +711,13 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
                 raise sandbox.SandboxError("refused", f"{exc.kind}: a refusal that applies to every call")
             return {"status": exc.status_code, "headers": {}, "json": exc.detail if isinstance(exc.detail, dict) else None,
                     "text": str(exc.detail)[:4000]}
-        raw = await _read(response)
+        raw, truncated = await _read(response)
         ms = int((time.monotonic() - t0) * 1000)
-        charged = int(_header(response, "X-Treg-Cost-Micro") or 0)
+        charged, key = _child_cost(response, catalog_step=target not in own_tools)
         spent += charged
-        key = "treg" if _header(response, "X-Treg-Cost-Micro") is not None else "team"
         ok = 200 <= response.status < 300
         try:
-            doc = json.loads(raw) if raw else None
+            doc = None if truncated else (json.loads(raw) if raw else None)
         except ValueError:
             doc = None
         trace.append(_entry(step, "ok" if ok else "failed", response.status, ms, charged, key=key,
@@ -621,7 +725,7 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
         headers = {k.decode("latin-1"): v.decode("latin-1") for k, v in response.raw_headers
                    if not k.lower().startswith(b"x-treg-")}
         return {"status": response.status, "headers": headers, "json": doc,
-                "text": raw[:MAX_TEXT].decode("utf-8", "replace")}
+                "text": raw[:MAX_TEXT].decode("utf-8", "replace"), "truncated": truncated}
 
     data_rows = _csv_rows(tool.data) if getattr(tool, "data", None) else None
     try:
@@ -636,7 +740,7 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
         await _record(tool, parent, run_id, "failed", counted, spent, ms_total,
                       masked(manifest["inputs"], inputs), trace, error=detail, log=log)
         _audit_parent(parent, tool, 424, spent, audit_client)
-        raise ResolutionFailed("hub_run_failed", status_code=424, detail=detail)
+        raise ResolutionFailed("hub_run_failed", status_code=424, detail=_public_detail(detail))
     missing = [f for f in fields if f not in output]
     ms_total = int((time.monotonic() - started) * 1000)
     if missing:
@@ -648,11 +752,11 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
         await _record(tool, parent, run_id, "failed", counted, spent, ms_total,
                       masked(manifest["inputs"], inputs), trace, error=detail, log=log)
         _audit_parent(parent, tool, 424, spent, audit_client)
-        raise ResolutionFailed("hub_run_failed", status_code=424, detail=detail)
+        raise ResolutionFailed("hub_run_failed", status_code=424, detail=_public_detail(detail))
     earned = await _close_price(tool, run_id, price_held, success=True)
     body_out = {"run_id": run_id, "recipe": f"{tool.tool_id}@{tool.version}", "output": output,
                 "usage": {"cost_micro": spent + earned, "steps_micro": spent, "price_micro": earned,
-                          "steps": counted, "ms": ms_total}, "trace": trace, "log": log}
+                          "steps": counted, "ms": ms_total}, "trace": _public_trace(trace), "log": log}
     await _record(tool, parent, run_id, "ok", counted, spent, ms_total,
                   masked(manifest["inputs"], inputs), trace, log=log, price=earned, output=output)
     _audit_parent(parent, tool, 200, spent + earned, audit_client)

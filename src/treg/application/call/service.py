@@ -442,7 +442,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             if ep is None:
                 # Third and last: a hub tool (`<team-slug>.<name>`), only when nothing above
                 # claimed the id — an own tool or a catalog id always wins.
-                hub_row = await hub_app.tool_for(db, rest) if exc.status_code == 404 else None
+                hub_row = (await hub_app.tool_for(db, rest, caller_org_id=caller.org_id)
+                                   if request.context.input.child_of is None else None) if exc.status_code == 404 else None
                 if hub_row is None:
                     raise
             elif (isinstance(exc.detail, dict)
