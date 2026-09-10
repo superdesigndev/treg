@@ -1256,6 +1256,23 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+IMPORTYETI = OAuthProvider(
+    service="importyeti", display_name="ImportYeti", auth_kind="key",
+    token_label="API key", token_placeholder="your ImportYeti API key",
+    token_header="IYApiKey", token_format="{secret}",
+    setup_url="https://docs.importyeti.com/docs/authentication",
+    setup_action_label="Get your ImportYeti API key",
+    setup_steps=("Sign in to ImportYeti and obtain an API key using its API authentication guide.",),
+    setup_note="API credit pricing is separate from website subscriptions. Connect your own key; treg-funded calls are not enabled. Connection verification uses the documented free database update endpoint.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Market data",
+    summary="Find importers, suppliers and shipment records to investigate trade relationships.",
+    base_url="https://data.importyeti.com", docs_url="https://docs.importyeti.com/docs/reference",
+    probe_path="/v1.0/database-updated",
+    # Live 2026-09-10: bogus IYApiKey returns 401 (treg connect rejects with 422).
+    # Valid-key acceptance and paid data remain unverified; listing is a draft.
+)
+
 SUMBLE = OAuthProvider(
     service="sumble", display_name="Sumble", auth_kind="key",
     token_label="API key", token_placeholder="your Sumble API key",
@@ -2813,7 +2830,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        APOLLO, PDL, AKTA, HUNTER, SUMBLE, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
+        APOLLO, PDL, AKTA, HUNTER, IMPORTYETI, SUMBLE, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers

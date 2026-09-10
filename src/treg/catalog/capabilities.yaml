@@ -10,6 +10,7 @@
 # `account` that should not appear as a browsable tab tile.
 
 platforms:
+  trade: {label: "Trade & supply chains", category: "Market data", summary: "Find importers, suppliers and shipment records to investigate trade relationships."}
   # --- SEO: search engines & the open web ------------------------------------------------------
   google: {label: "Google Keyword Data", category: "SEO/AEO", featured: 1, summary: "Organic rankings, keyword volume and full SERP data from Google."}
   web: {label: "Backlinks, authority & domain metrics", category: "SEO/AEO", featured: 2, summary: "Backlinks, referring domains, anchors and authority metrics for any site."}

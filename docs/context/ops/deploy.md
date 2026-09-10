@@ -631,3 +631,11 @@ Its public snapshot endpoint makes a single primary-key read on the API pool; ag
 on the background worker. The default per-process budget is now 27 slots; with two workers and
 two instances a rolling deployment can reach 108. Existing deployment overrides remain necessary
 for the 103-connection plan; this merge does not alter production overrides.
+
+## ImportYeti reserved platform slot
+
+`TREG_PLATFORM_KEY_IMPORTYETI` is declared on the web service and inherited by the
+worker. It has no configured value in this change. API dollar/credit pricing and
+paid settlement remain unverified; FX stays null and all catalog rows explicitly
+block platform calls. Setting a key or allow-list entry alone does not enable this
+provider. Complete the [validation gates](../guides/importyeti-validation.md) first.

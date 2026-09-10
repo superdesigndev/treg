@@ -184,6 +184,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/catalog/google-search-console.yaml` | architecture/catalog.md |
 | `src/treg/catalog/google-tag-manager.extended.yaml` | architecture/catalog.md |
 | `src/treg/catalog/google-tag-manager.yaml` | architecture/catalog.md |
+| `src/treg/catalog/importyeti.yaml` | guides/importyeti-validation.md |
 | `src/treg/catalog/instagram.extended.yaml` | architecture/catalog.md, architecture/instagram-oauth.md |
 | `src/treg/catalog/instagram.yaml` | architecture/catalog.md, architecture/instagram-oauth.md |
 | `src/treg/catalog/justoneapi.extended.yaml` | architecture/catalog.md |
@@ -336,6 +337,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/logos/findymail.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/hunter.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/icypeas.svg` | interface/enrich-arena.md |
+| `src/treg/web/logos/importyeti.svg` | guides/importyeti-validation.md |
 | `src/treg/web/logos/leadmagic.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/leadsforge.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/lusha.svg` | interface/enrich-arena.md |
@@ -389,6 +391,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_feedback_handling_schema.py` | architecture/feedback.md |
 | `tests/test_hints.py` | architecture/feedback.md |
 | `tests/test_import_lightness.py` | architecture/import-boundaries.md |
+| `tests/test_importyeti.py` | guides/importyeti-validation.md |
 | `tests/test_influencersclub_overflow.py` | ops/capacity.md |
 | `tests/test_instagram_oauth_architecture.py` | architecture/instagram-oauth.md |
 | `tests/test_key_providers.py` | architecture/contactout.md |
@@ -434,6 +437,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/super-admin.md` | `api.py`, `admin.py`, `access.py`, `config.py` |
 | `foundation/charter.md` | `2026-06-30-jason-tools-registry.md`, `README.md` |
 | `guides/expanding-a-category.md` | `oauth_providers.py`, `authorization.py`, `oauth_flow.py`, `oauth_exchange.py`, `connect.py`, `connections.py`, `config.py` |
+| `guides/importyeti-validation.md` | `importyeti.yaml`, `importyeti.svg`, `test_importyeti.py` |
 | `interface/api.md` | `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `onboard.py`, `referrals.py`, `signup.py`, `__init__.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `web.py`, `access.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py` |
 | `interface/catalog-review-proposal.md` | `store.py`, `capabilities.yaml` |
 | `interface/cli.md` | `cli.py`, `cli_analytics.py`, `convert.py`, `agents.py` |

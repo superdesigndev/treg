@@ -62,6 +62,12 @@ endpoint using query auth `api`. Both the balance script and sweep use this coll
 not add `bulk_credits` to the balance. No overflow route is claimed. Verify the funded
 account's empty-credit response before adding a signature or enabling overflow.
 
+ImportYeti's draft platform slot also has an acknowledged unrecorded signature.
+Its documentation describes HTTP 403 `Not enough credits`, but no funded key or
+live exhaustion sample is available. No balance collector or overflow route is
+claimed; all catalog rows block platform use pending the
+[live validation gates](../guides/importyeti-validation.md).
+
 ## QuickEnrich subscriptions
 
 `collectors._quickenrich` reads `meta.remaining_credits` from a free Contact Finder miss;

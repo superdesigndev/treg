@@ -1,0 +1,1640 @@
+# DRAFT — no valid-key or paid verification. No public examples are represented as live evidence.
+# Full 26-operation disposition and release gates: docs/context/guides/importyeti-validation.md.
+# US ocean trade coverage excludes air/land and may omit confidential or aliased entities.
+# Shipments are evidence of historical trade, not inventory, revenue, a BOM or a new design win.
+provider: importyeti
+source:
+  docs: https://docs.importyeti.com/docs/reference
+  openapi: null
+  spec_urls:
+  - https://data.importyeti.com/swagger/swagger-ui-init.js
+  curated: '2026-09-10'
+  note: OpenAPI is embedded as swaggerDoc in the Swagger UI initialization script; /openapi.json is not available.
+pricing_url: https://docs.importyeti.com/docs/credits
+proposed_capabilities:
+  trade.shipments.get: Get a bill of lading by number
+  trade.importers.search: Find US importers by name, website or phone
+  trade.importers.profile: Get a US importer profile by resolved slug
+  trade.importers.shipments: List an importer’s shipment records
+  trade.suppliers.search: Find suppliers by name, website or phone
+  trade.suppliers.profile: Get a supplier profile by resolved slug
+  trade.suppliers.shipments: List a supplier’s shipment records
+  trade.products.suppliers: Find suppliers shipping a product
+  trade.products.buyers: Find importers buying a product
+  trade.us_import.shipments.search: Search US import shipment records
+  trade.us_import.buyers.rank: Rank US import buyers by trade filters
+  trade.us_import.suppliers.rank: Rank US import suppliers by trade filters
+  trade.mx_import.declarations.search: Search Mexican import declarations
+  trade.mx_export.declarations.search: Search Mexican export declarations
+  trade.database.updated: Check the database update date
+endpoints:
+- id: importyeti.trade.shipments.get
+  platform: trade
+  domain: shipments
+  scope: any_account
+  method: GET
+  path: /v1.0/bol/{number}
+  name: Get a bill of lading by number
+  summary: Get bill of lading by number
+  capability: trade.shipments.get
+  input:
+    pathParams:
+      number:
+        type: string
+        required: true
+    queryParams:
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_success
+    value: 0.1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: documented
+    note: 'BOL detail: 0.1 API credit per record. Dollar conversion and actual charge unverified.'
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.importers.search
+  platform: trade
+  domain: importers
+  scope: any_account
+  method: GET
+  path: /v1.0/company/search
+  name: Find US importers by name, website or phone
+  summary: Search a US company by name
+  capability: trade.importers.search
+  input:
+    queryParams:
+      page_size:
+        default: 10
+        type: number
+        required: false
+        description: Number of returned results
+      offset:
+        default: 0
+        type: number
+        required: false
+        description: Results starting position
+      name:
+        type: string
+        required: false
+      phone:
+        type: string
+        required: false
+      website:
+        type: string
+        required: false
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_result
+    value: null
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: unknown
+    note: Search is conditionally free as a gateway to full-data endpoints; standalone use costs 0.1 credit/result
+      and may require account configuration. Shared-account billing must be confirmed.
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.importers.profile
+  platform: trade
+  domain: importers
+  scope: any_account
+  method: GET
+  path: /v1.0/company/{company}
+  name: Get a US importer profile by resolved slug
+  summary: Get US company information by ID
+  capability: trade.importers.profile
+  input:
+    pathParams:
+      company:
+        example: ikea-supply
+        type: string
+        required: true
+        description: ImportYeti **company URL slug** — the hyphenated segment from the website path `/company/...`
+          (e.g. `ikea-supply`), **not** the company display or legal name. To resolve a name to a slug, use
+          `GET /company/search`. Slugs use lowercase letters, digits, and hyphens; letter casing in this parameter
+          is normalized. Underscores are accepted in place of hyphens.
+    queryParams:
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: documented
+    note: 'Profile lookup: 1 API credit. Dollar conversion and actual charge unverified.'
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.importers.shipments
+  platform: trade
+  domain: importers
+  scope: any_account
+  method: GET
+  path: /v1.0/company/{company}/bols
+  name: List an importer’s shipment records
+  summary: Get a list of US company BOLs
+  capability: trade.importers.shipments
+  input:
+    pathParams:
+      company:
+        example: ikea-supply
+        type: string
+        required: true
+        description: ImportYeti **company URL slug** — the hyphenated segment from the website path `/company/...`
+          (e.g. `ikea-supply`), **not** the company display or legal name. To resolve a name to a slug, use
+          `GET /company/search`. Slugs use lowercase letters, digits, and hyphens; letter casing in this parameter
+          is normalized. Underscores are accepted in place of hyphens.
+    queryParams:
+      start_date:
+        format: mm/dd/yyyy
+        default: 01/01/2021
+        type: string
+        required: false
+      end_date:
+        format: mm/dd/yyyy
+        type: string
+        required: false
+        note: Upstream defaults to the previous month end. Always supply an explicit MM/DD/YYYY end date for
+          news investigations.
+      page_size:
+        default: 10
+        type: number
+        required: false
+        description: Number of returned results
+      offset:
+        default: 0
+        type: number
+        required: false
+        description: Results starting position
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits. Set explicit MM/DD/YYYY start_date and end_date; the default window starts in 2021 and ends
+      at the previous month end.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_result
+    value: 0.1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: documented
+    note: 'Documented list pricing: 1 API credit per 10 returned records (fractional 0.1 per record). Dollar
+      conversion and actual charge unverified.'
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.suppliers.search
+  platform: trade
+  domain: suppliers
+  scope: any_account
+  method: GET
+  path: /v1.0/supplier/search
+  name: Find suppliers by name, website or phone
+  summary: Search overseas supplier by name
+  capability: trade.suppliers.search
+  input:
+    queryParams:
+      page_size:
+        default: 10
+        type: number
+        required: false
+        description: Number of returned results
+      offset:
+        default: 0
+        type: number
+        required: false
+        description: Results starting position
+      name:
+        type: string
+        required: false
+      phone:
+        type: string
+        required: false
+      website:
+        type: string
+        required: false
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_result
+    value: null
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: unknown
+    note: Search is conditionally free as a gateway to full-data endpoints; standalone use costs 0.1 credit/result
+      and may require account configuration. Shared-account billing must be confirmed.
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.suppliers.profile
+  platform: trade
+  domain: suppliers
+  scope: any_account
+  method: GET
+  path: /v1.0/supplier/{supplier}
+  name: Get a supplier profile by resolved slug
+  summary: Get overseas supplier information by ID
+  capability: trade.suppliers.profile
+  input:
+    pathParams:
+      supplier:
+        example: yiwu-yida-import-and-export-co-ltd
+        type: string
+        required: true
+        description: ImportYeti **supplier URL slug** — the hyphenated segment from the website path `/supplier/...`
+          (e.g. `yiwu-yida-import-and-export-co-ltd`), **not** the supplier display or legal name. To resolve
+          a name to a slug, use `GET /supplier/search`. Slugs use lowercase letters, digits, and hyphens; letter
+          casing in this parameter is normalized. Underscores are accepted in place of hyphens.
+    queryParams:
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: documented
+    note: 'Profile lookup: 1 API credit. Dollar conversion and actual charge unverified.'
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.suppliers.shipments
+  platform: trade
+  domain: suppliers
+  scope: any_account
+  method: GET
+  path: /v1.0/supplier/{supplier}/bols
+  name: List a supplier’s shipment records
+  summary: Get a list of BOLs of an overseas supplier
+  capability: trade.suppliers.shipments
+  input:
+    pathParams:
+      supplier:
+        example: yiwu-yida-import-and-export-co-ltd
+        type: string
+        required: true
+        description: ImportYeti **supplier URL slug** — the hyphenated segment from the website path `/supplier/...`
+          (e.g. `yiwu-yida-import-and-export-co-ltd`), **not** the supplier display or legal name. To resolve
+          a name to a slug, use `GET /supplier/search`. Slugs use lowercase letters, digits, and hyphens; letter
+          casing in this parameter is normalized. Underscores are accepted in place of hyphens.
+    queryParams:
+      start_date:
+        format: mm/dd/yyyy
+        default: 01/01/2021
+        type: string
+        required: false
+      end_date:
+        format: mm/dd/yyyy
+        type: string
+        required: false
+        note: Upstream defaults to the previous month end. Always supply an explicit MM/DD/YYYY end date for
+          news investigations.
+      page_size:
+        default: 10
+        type: number
+        required: false
+        description: Number of returned results
+      offset:
+        default: 0
+        type: number
+        required: false
+        description: Results starting position
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits. Set explicit MM/DD/YYYY start_date and end_date; the default window starts in 2021 and ends
+      at the previous month end.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_result
+    value: 0.1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: documented
+    note: 'Documented list pricing: 1 API credit per 10 returned records (fractional 0.1 per record). Dollar
+      conversion and actual charge unverified.'
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.products.suppliers
+  platform: trade
+  domain: products
+  scope: any_account
+  method: GET
+  path: /v1.0/product/{product}/suppliers
+  name: Find suppliers shipping a product
+  summary: Search a supplier by product name
+  capability: trade.products.suppliers
+  input:
+    pathParams:
+      product:
+        type: string
+        required: true
+    queryParams:
+      page_size:
+        default: 10
+        type: number
+        required: false
+        description: Number of returned results
+      offset:
+        default: 0
+        type: number
+        required: false
+        description: Results starting position
+      countries:
+        example: china,india,brazil
+        type: string
+        required: false
+        description: Comma-separated list of supplier countries
+      exclude_countries:
+        example: china,india,brazil
+        type: string
+        required: false
+        description: Comma-separated list of supplier countries to exclude
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_result
+    value: 0.1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: documented
+    note: 'Documented list pricing: 1 API credit per 10 returned records (fractional 0.1 per record). Dollar
+      conversion and actual charge unverified.'
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.products.buyers
+  platform: trade
+  domain: products
+  scope: any_account
+  method: GET
+  path: /v1.0/product/{product}/companies
+  name: Find importers buying a product
+  summary: Search a US buyer by product name
+  capability: trade.products.buyers
+  input:
+    pathParams:
+      product:
+        type: string
+        required: true
+    queryParams:
+      page_size:
+        default: 10
+        type: number
+        required: false
+        description: Number of returned results
+      offset:
+        default: 0
+        type: number
+        required: false
+        description: Results starting position
+      countries:
+        example: china,india,brazil
+        type: string
+        required: false
+        description: Comma-separated list of supplier countries
+      exclude_countries:
+        example: china,india,brazil
+        type: string
+        required: false
+        description: Comma-separated list of supplier countries to exclude
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_result
+    value: 0.1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: documented
+    note: 'Documented list pricing: 1 API credit per 10 returned records (fractional 0.1 per record). Dollar
+      conversion and actual charge unverified.'
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.us_import.shipments.search
+  platform: trade
+  domain: us_import
+  scope: any_account
+  method: GET
+  path: /v1.0/powerquery/us-import/bols
+  name: Search US import shipment records
+  summary: Search US import documents (bills of lading)
+  capability: trade.us_import.shipments.search
+  input:
+    queryParams:
+      page_size:
+        default: 10
+        type: number
+        required: false
+        description: Number of returned results
+      offset:
+        default: 0
+        type: number
+        required: false
+        description: Results starting position
+      start_date:
+        format: mm/dd/yyyy
+        default: 01/01/2021
+        type: string
+        required: false
+      end_date:
+        format: mm/dd/yyyy
+        type: string
+        required: false
+        note: Upstream defaults to the previous month end. Always supply an explicit MM/DD/YYYY end date for
+          news investigations.
+      page:
+        example: 1
+        type: number
+        required: false
+        description: Page number (1-indexed). Takes precedence over offset.
+      company:
+        example: ikea-supply
+        type: string
+        required: false
+        description: Company identifier
+      supplier:
+        example: damco-india
+        type: string
+        required: false
+        description: Supplier identifier
+      product_description:
+        example: '"cat toys" OR ("dog toys" AND NOT "dog bowls")'
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      weight:
+        example: 0 TO 15000
+        type: string
+        required: false
+        description: Supports ranges
+      teu:
+        example: '* TO 2'
+        type: string
+        required: false
+        description: Supports ranges
+      company_total_shipments:
+        example: 500 TO *
+        type: string
+        required: false
+        description: Supports ranges
+      supplier_total_shipments:
+        example: 500 TO *
+        type: string
+        required: false
+        description: Supports ranges
+      hs_code:
+        example: 7013* AND NOT (701391 OR 701341)
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      entry_port:
+        example: Houston, Tx
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      exit_port:
+        example: Pusan
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      internal_supplier:
+        default: 'false'
+        type: string
+        required: false
+      supplier_country:
+        example: Republic of Korea
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      notify_party:
+        example: Kukdo Chemical America Inc
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      last_visited_foreign_port:
+        example: Vancouver, BC
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      vessel_name:
+        example: Seaspan Yangtze
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      carrier_scac_code:
+        type: string
+        required: false
+        description: 'Example: Oney'
+      container_id:
+        example: DFSU4370223
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      bol_type:
+        example: R
+        type: string
+        required: false
+      company_phone:
+        example: '19058212111'
+        type: string
+        required: false
+        description: Supports wildcards
+      company_email:
+        example: company@example.com
+        type: string
+        required: false
+        description: Supports wildcards
+      include_omitted_data:
+        example: false
+        type: string
+        required: false
+        description: Include records with empty consignee and/or shipper. false by default.
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits. Set explicit MM/DD/YYYY start_date and end_date; the default window starts in 2021 and ends
+      at the previous month end. Space-separated terms default to OR; quote phrases and use explicit AND. page
+      takes precedence over offset.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_result
+    value: 0.1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: documented
+    note: 'Documented list pricing: 1 API credit per 10 returned records (fractional 0.1 per record). Dollar
+      conversion and actual charge unverified.'
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.us_import.buyers.rank
+  platform: trade
+  domain: us_import
+  scope: any_account
+  method: GET
+  path: /v1.0/powerquery/us-import/companies
+  name: Rank US import buyers by trade filters
+  summary: Search companies aggregated from bills of lading
+  capability: trade.us_import.buyers.rank
+  input:
+    queryParams:
+      page_size:
+        default: 10
+        type: number
+        required: false
+        description: Number of returned results
+      offset:
+        default: 0
+        type: number
+        required: false
+        description: Results starting position
+      start_date:
+        format: mm/dd/yyyy
+        default: 01/01/2021
+        type: string
+        required: false
+      end_date:
+        format: mm/dd/yyyy
+        type: string
+        required: false
+        note: Upstream defaults to the previous month end. Always supply an explicit MM/DD/YYYY end date for
+          news investigations.
+      page:
+        example: 1
+        type: number
+        required: false
+        description: Page number (1-indexed). Takes precedence over offset.
+      company:
+        example: ikea-supply
+        type: string
+        required: false
+        description: Company identifier
+      supplier:
+        example: damco-india
+        type: string
+        required: false
+        description: Supplier identifier
+      product_description:
+        example: '"cat toys" OR ("dog toys" AND NOT "dog bowls")'
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      weight:
+        example: 0 TO 15000
+        type: string
+        required: false
+        description: Supports ranges
+      teu:
+        example: '* TO 2'
+        type: string
+        required: false
+        description: Supports ranges
+      company_total_shipments:
+        example: 500 TO *
+        type: string
+        required: false
+        description: Supports ranges
+      supplier_total_shipments:
+        example: 500 TO *
+        type: string
+        required: false
+        description: Supports ranges
+      hs_code:
+        example: 7013* AND NOT (701391 OR 701341)
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      entry_port:
+        example: Houston, Tx
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      exit_port:
+        example: Pusan
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      internal_supplier:
+        default: 'false'
+        type: string
+        required: false
+      supplier_country:
+        example: Republic of Korea
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      notify_party:
+        example: Kukdo Chemical America Inc
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      last_visited_foreign_port:
+        example: Vancouver, BC
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      vessel_name:
+        example: Seaspan Yangtze
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      carrier_scac_code:
+        type: string
+        required: false
+        description: 'Example: Oney'
+      container_id:
+        example: DFSU4370223
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      bol_type:
+        example: R
+        type: string
+        required: false
+      company_phone:
+        example: '19058212111'
+        type: string
+        required: false
+        description: Supports wildcards
+      company_email:
+        example: company@example.com
+        type: string
+        required: false
+        description: Supports wildcards
+      include_omitted_data:
+        example: false
+        type: string
+        required: false
+        description: Include records with empty consignee and/or shipper. false by default.
+      sort_by:
+        example: weight
+        type: string
+        required: false
+        description: Sort aggregation buckets by this sub-aggregation (descending)
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits. Set explicit MM/DD/YYYY start_date and end_date; the default window starts in 2021 and ends
+      at the previous month end. Space-separated terms default to OR; quote phrases and use explicit AND. page
+      takes precedence over offset.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_result
+    value: 0.1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: documented
+    note: 'Documented list pricing: 1 API credit per 10 returned records (fractional 0.1 per record). Dollar
+      conversion and actual charge unverified.'
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.us_import.suppliers.rank
+  platform: trade
+  domain: us_import
+  scope: any_account
+  method: GET
+  path: /v1.0/powerquery/us-import/suppliers
+  name: Rank US import suppliers by trade filters
+  summary: Search suppliers aggregated from bills of lading
+  capability: trade.us_import.suppliers.rank
+  input:
+    queryParams:
+      page_size:
+        default: 10
+        type: number
+        required: false
+        description: Number of returned results
+      offset:
+        default: 0
+        type: number
+        required: false
+        description: Results starting position
+      start_date:
+        format: mm/dd/yyyy
+        default: 01/01/2021
+        type: string
+        required: false
+      end_date:
+        format: mm/dd/yyyy
+        type: string
+        required: false
+        note: Upstream defaults to the previous month end. Always supply an explicit MM/DD/YYYY end date for
+          news investigations.
+      page:
+        example: 1
+        type: number
+        required: false
+        description: Page number (1-indexed). Takes precedence over offset.
+      company:
+        example: ikea-supply
+        type: string
+        required: false
+        description: Company identifier
+      supplier:
+        example: damco-india
+        type: string
+        required: false
+        description: Supplier identifier
+      product_description:
+        example: '"cat toys" OR ("dog toys" AND NOT "dog bowls")'
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      weight:
+        example: 0 TO 15000
+        type: string
+        required: false
+        description: Supports ranges
+      teu:
+        example: '* TO 2'
+        type: string
+        required: false
+        description: Supports ranges
+      company_total_shipments:
+        example: 500 TO *
+        type: string
+        required: false
+        description: Supports ranges
+      supplier_total_shipments:
+        example: 500 TO *
+        type: string
+        required: false
+        description: Supports ranges
+      hs_code:
+        example: 7013* AND NOT (701391 OR 701341)
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      entry_port:
+        example: Houston, Tx
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      exit_port:
+        example: Pusan
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      internal_supplier:
+        default: 'false'
+        type: string
+        required: false
+      supplier_country:
+        example: Republic of Korea
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      notify_party:
+        example: Kukdo Chemical America Inc
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      last_visited_foreign_port:
+        example: Vancouver, BC
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      vessel_name:
+        example: Seaspan Yangtze
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      carrier_scac_code:
+        type: string
+        required: false
+        description: 'Example: Oney'
+      container_id:
+        example: DFSU4370223
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      bol_type:
+        example: R
+        type: string
+        required: false
+      company_phone:
+        example: '19058212111'
+        type: string
+        required: false
+        description: Supports wildcards
+      company_email:
+        example: company@example.com
+        type: string
+        required: false
+        description: Supports wildcards
+      include_omitted_data:
+        example: false
+        type: string
+        required: false
+        description: Include records with empty consignee and/or shipper. false by default.
+      sort_by:
+        example: weight
+        type: string
+        required: false
+        description: Sort aggregation buckets by this sub-aggregation (descending)
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits. Set explicit MM/DD/YYYY start_date and end_date; the default window starts in 2021 and ends
+      at the previous month end. Space-separated terms default to OR; quote phrases and use explicit AND. page
+      takes precedence over offset.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_result
+    value: 0.1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: documented
+    note: 'Documented list pricing: 1 API credit per 10 returned records (fractional 0.1 per record). Dollar
+      conversion and actual charge unverified.'
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.mx_import.declarations.search
+  platform: trade
+  domain: mx_import
+  scope: any_account
+  method: GET
+  path: /v1.0/powerquery/mx-import/declarations
+  name: Search Mexican import declarations
+  summary: Search Mexico import customs declaration documents
+  capability: trade.mx_import.declarations.search
+  input:
+    queryParams:
+      page_size:
+        default: 10
+        type: number
+        required: false
+        description: Number of returned results
+      offset:
+        default: 0
+        type: number
+        required: false
+        description: Results starting position
+      start_date:
+        format: mm/dd/yyyy
+        default: 01/01/2021
+        type: string
+        required: false
+      end_date:
+        format: mm/dd/yyyy
+        type: string
+        required: false
+        note: Upstream defaults to the previous month end. Always supply an explicit MM/DD/YYYY end date for
+          news investigations.
+      page:
+        example: 1
+        type: number
+        required: false
+        description: Page number (1-indexed). Takes precedence over offset.
+      company_name:
+        example: Samsung
+        type: string
+        required: false
+      supplier_name:
+        example: Foxconn
+        type: string
+        required: false
+      product_description:
+        example: Aluminio
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      weight:
+        example: 500 TO 1000
+        type: string
+        required: false
+        description: Supports ranges
+      company_total_shipments:
+        example: 500 TO *
+        type: string
+        required: false
+        description: Supports ranges
+      supplier_total_shipments:
+        example: 500 TO *
+        type: string
+        required: false
+        description: Supports ranges
+      who_pays_freight:
+        default: Foreign entity
+        example: Foreign entity
+        type: string
+        enum:
+        - Foreign entity
+        - Mexico entity
+        required: false
+        description: Foreign entity / Mexico entity
+      hs_code:
+        example: 8471*
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      pedimento_number:
+        example: 26_17_TME840710TR4_6002927
+        type: string
+        required: false
+        description: Line-level pedimento identifier
+      declaration_number:
+        example: '6002927'
+        type: string
+        required: false
+      rfc_number:
+        example: TME840710TR4
+        type: string
+        required: false
+      customs_office:
+        example: Manzanillo
+        type: string
+        required: false
+        description: Destination port / aduana (customs office)
+      transport_type:
+        example: Truck
+        type: string
+        required: false
+      incoterm:
+        example: DAP
+        type: string
+        required: false
+      custom_broker:
+        example: Elsa Castaneda Trevino
+        type: string
+        required: false
+      custom_regime:
+        example: A1
+        type: string
+        required: false
+      supplier_country:
+        example: Estados Unidos De America
+        type: string
+        required: false
+      company_state:
+        example: Coahuila
+        type: string
+        required: false
+      mx_value:
+        example: 1000 TO *
+        type: string
+        required: false
+        description: Supports ranges
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits. Set explicit MM/DD/YYYY start_date and end_date; the default window starts in 2021 and ends
+      at the previous month end. Space-separated terms default to OR; quote phrases and use explicit AND. page
+      takes precedence over offset.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_result
+    value: 0.1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: documented
+    note: 'Documented list pricing: 1 API credit per 10 returned records (fractional 0.1 per record). Dollar
+      conversion and actual charge unverified.'
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.mx_export.declarations.search
+  platform: trade
+  domain: mx_export
+  scope: any_account
+  method: GET
+  path: /v1.0/powerquery/mx-export/declarations
+  name: Search Mexican export declarations
+  summary: Search Mexico export customs declaration documents
+  capability: trade.mx_export.declarations.search
+  input:
+    queryParams:
+      page_size:
+        default: 10
+        type: number
+        required: false
+        description: Number of returned results
+      offset:
+        default: 0
+        type: number
+        required: false
+        description: Results starting position
+      start_date:
+        format: mm/dd/yyyy
+        default: 01/01/2021
+        type: string
+        required: false
+      end_date:
+        format: mm/dd/yyyy
+        type: string
+        required: false
+        note: Upstream defaults to the previous month end. Always supply an explicit MM/DD/YYYY end date for
+          news investigations.
+      page:
+        example: 1
+        type: number
+        required: false
+        description: Page number (1-indexed). Takes precedence over offset.
+      company_name:
+        example: Cemex
+        type: string
+        required: false
+      supplier_name:
+        example: Caterpillar
+        type: string
+        required: false
+      product_description:
+        example: Partes
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      weight:
+        example: 500 TO 1000
+        type: string
+        required: false
+        description: Supports ranges
+      company_total_shipments:
+        example: 500 TO *
+        type: string
+        required: false
+        description: Supports ranges
+      supplier_total_shipments:
+        example: 500 TO *
+        type: string
+        required: false
+        description: Supports ranges
+      who_pays_freight:
+        default: Foreign entity
+        example: Foreign entity
+        type: string
+        enum:
+        - Foreign entity
+        - Mexico entity
+        required: false
+        description: Foreign entity / Mexico entity
+      hs_code:
+        example: 8471*
+        type: string
+        required: false
+        description: Supports boolean operators and wildcards
+      pedimento_number:
+        example: 26_44_EAA731217A14_6001438
+        type: string
+        required: false
+        description: Line-level pedimento identifier
+      declaration_number:
+        example: '6001438'
+        type: string
+        required: false
+      rfc_number:
+        example: EAA731217A14
+        type: string
+        required: false
+      customs_office:
+        example: 440 - Ciudad Acuna, Coahuila
+        type: string
+        required: false
+        description: Departure port / aduana (customs office)
+      transport_type:
+        example: Truck
+        type: string
+        required: false
+      incoterm:
+        example: CFR
+        type: string
+        required: false
+      custom_broker:
+        example: Jose Baltazar Ramon Losoya
+        type: string
+        required: false
+      custom_regime:
+        example: RT - Retorno De Mercancias (Immex)
+        type: string
+        required: false
+      supplier_state:
+        example: PUEBLA
+        type: string
+        required: false
+      company_country:
+        example: Estados Unidos De America
+        type: string
+        required: false
+      mx_value:
+        example: 1000 TO *
+        type: string
+        required: false
+        description: Supports ranges
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits. Set explicit MM/DD/YYYY start_date and end_date; the default window starts in 2021 and ends
+      at the previous month end. Space-separated terms default to OR; quote phrases and use explicit AND. page
+      takes precedence over offset.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: per_result
+    value: 0.1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: documented
+    note: 'Documented list pricing: 1 API credit per 10 returned records (fractional 0.1 per record). Dollar
+      conversion and actual charge unverified.'
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'
+- id: importyeti.trade.database.updated
+  platform: trade
+  domain: database
+  scope: any_account
+  method: GET
+  path: /v1.0/database-updated
+  name: Check the database update date
+  summary: Get the database last updated date
+  capability: trade.database.updated
+  input:
+    queryParams:
+      fields:
+        type: string
+        required: false
+        description: Comma-separated list of fields to keep on each returned record, e.g. `bol_number,arrival_date,supplier_name`.
+          Everything else is omitted. Names that the record does not carry are ignored. The envelope (`requestCost`,
+          `creditsRemaining`, `executionTime`, `totalCount`) is always returned in full. Cannot be combined
+          with `exclude`. Omit for the full record.
+        example: bol_number,arrival_date,supplier_name
+      exclude:
+        type: string
+        required: false
+        description: Comma-separated list of fields to drop from each returned record, e.g. `containers,shipping_rate`.
+          Every other field is kept. Cannot be combined with `fields`. Omit for the full record.
+        example: containers,shipping_rate
+      format:
+        type: string
+        enum:
+        - json
+        - toon
+        default: json
+        required: false
+        description: Response encoding. Defaults to `json`. Pass `toon` to receive [TOON](https://github.com/toon-format/toon)
+          — the same data in a compact, token-efficient text form intended for LLM prompts. Error responses
+          are always JSON.
+    note: Unverified with a valid key. Resolve company/supplier slugs from search before lookup; a name match
+      alone does not establish the legal entity. fields and exclude are mutually exclusive and do not reduce
+      credits.
+  docs_url: https://data.importyeti.com/swagger
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.importyeti.com/docs/credits
+    checked: '2026-09-10'
+    confidence: documented
+    note: Documented free authenticated utility; valid-key success not yet observed.
+  platform_blocked: 'Draft: valid-key access, target coverage, USD/credit rate and requestCost settlement have
+    not been verified. Connect your own key; treg-funded calls remain disabled, including TOON responses.'
+  unverified: 'No valid credential: authenticated success, target data and balance delta pending.'

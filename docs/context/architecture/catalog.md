@@ -1847,3 +1847,13 @@ through `queryParams.phone`. The adapter reads `data.valid`, `data.e164_format`,
 line type and carrier. A boolean false is a returned invalid verdict; a missing verdict is a
 miss. This validates numbering-plan/format details, not line activity or subscriber ownership.
 The single verified adapter is usable by Arena; the two-provider public routing gate stays intact.
+
+## ImportYeti draft trade surface
+
+`importyeti.yaml` introduces the `trade` platform with 15 importer, supplier,
+shipment, product-counterparty, Mexico-declaration and freshness operations.
+Parameters come from the official embedded OpenAPI; all valid-key verification
+is pending. Every row blocks platform calls independently of the unset credit
+rate, including the free freshness utility. Conditional discovery searches have
+unknown prices. See [validation and full surface map](../guides/importyeti-validation.md)
+for observed evidence, deferred operations and requirements to remove the blocks.

@@ -69,4 +69,5 @@ covers (frontmatter `sources:`). Regenerate this index with
 | Fragment | Status | Covers |
 |---|---|---|
 | [Expanding a catalog category — the add-a-provider playbook](guides/expanding-a-category.md) | guide | oauth_providers.py, authorization.py, oauth_flow.py, oauth_exchange.py, … |
+| [ImportYeti trade-data pilot — validation and release gates](guides/importyeti-validation.md) | draft; no valid-key or paid verification | importyeti.yaml, importyeti.svg, test_importyeti.py |
 

@@ -28,6 +28,7 @@
 # NOTE: this block must stay ABOVE `rates_to_usd:` -- catalog_fx_update.py rewrites the file
 # from the text before that key, so anything below it is discarded on the next FX refresh.
 credit_rates_usd:
+  importyeti: {usd: null, basis: "API credits: no verified USD/credit quote or purchase receipt. Website subscription prices are not API credit rates.", source: "https://docs.importyeti.com/docs/credits", checked: "2026-09-10"}
   sumble: {usd: 0.01, basis: "Pro monthly subscription: $99 / 9900 credits = $0.01 per credit, before configured platform margin. Retain this list rate when negotiating a custom plan.", source: "https://sumble.com/pricing", checked: "2026-09-09"}
   quickenrich: {usd: 0.004834, basis: "Starter monthly subscription: $29 / 6000 credits = $0.004833333 per credit, rounded up to 4834 micro-USD. treg base list rate before configured platform margin, assuming all monthly credits are used; unused credits increase effective cost. Free, Starter and Growth use subscription allowances. Unlimited-plan API status is not yet verified", source: "https://quickenrich.io/", checked: "2026-09-09"}
   cloro: {usd: 0.0008, basis: "Lite $30/mo / 37,500 credits = $0.0008/credit — the cheapest paid tier, so the upper bound. Higher tiers are cheaper (Hobby $100/250,000 = $0.0004, Business $1,000/2,800,000 = $0.00036). The free plan grants 500 credits/month, which is not a sustainable rate. Credits are charged only on a successful extraction", source: "https://cloro.dev/pricing", checked: "2026-09-05"}

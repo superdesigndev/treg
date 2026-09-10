@@ -394,3 +394,12 @@ platform-provider allow-list is also required. Own keys always take precedence.
 `oauth_providers.CONTACTOUT` verifies against `/v1/stats` and requires `status_code: 200` as well
 as HTTP success. Its binding injects the raw `token` header. Both garbage rejection and valid
 connection creation were tested live; see [ContactOut](contactout.md).
+
+## ImportYeti draft key provider
+
+ImportYeti uses a plain `IYApiKey` header at `https://data.importyeti.com`.
+The documented free `/v1.0/database-updated` probe rejected a real bogus key
+with HTTP 401 on 2026-09-10; treg returned 422 without creating a tool. Valid-key
+success remains unverified. Registry metadata supplies the binding through the
+existing connect flow; no provider-specific relay behavior is added. See the
+[validation gates](../guides/importyeti-validation.md) before claiming readiness.
