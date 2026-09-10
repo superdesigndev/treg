@@ -366,9 +366,12 @@ listed in search; the maker shares the id or the page `{BASE}/hub/<id>` (`.md` f
   README.md); `treg hub run . --input k=v` runs the folder for real, nothing stored; `treg hub
   publish .` validates, runs check.json once on your balance, and the tool is live on pass. Over
   MCP: `hub_create`, `hub_update`, `hub_mine`.
-- A script gets `ctx.inputs`, `ctx.call(target, {method, query, body, headers})` and `ctx.log`;
-  no network, no files, no `require`. `target` must be in the manifest's `uses`: a catalog id or one
-  of the team's own tools as `<tool>/<path>`. Caps: 120 s, 20 calls, 64 MB, four runs at a time.
+- A script gets `ctx.inputs`, `ctx.call(target, {method, query, body, headers})`, `ctx.csv(text)`,
+  `ctx.data` (the rows of the `data.csv` uploaded with the tool, ≤ 50 MB, read-only) and `ctx.log`;
+  no network, no files, no `require`. `target` must be in the manifest's `uses`: a catalog id, one
+  of the team's own tools as `<tool>/<path>`, or a full URL under that tool's base URL. Your own
+  server or a public Google Sheet is a tool too: `treg tool add my-api --base-url https://…`
+  (secret optional), then name it. Caps: 120 s, 20 calls, 64 MB, four runs at a time.
 - **Never paste a credential into a script.** Register it first (`treg secret add`, `treg tool
   add`), list the tool in `uses`, name it in `ctx.call`. The script never sees the key.
 - Read any hub tool's contract with `GET {BASE}/catalog/endpoints/<id>` (`catalog_get`,

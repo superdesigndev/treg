@@ -228,9 +228,14 @@ treg tool add supabase --base-url https://<ref>.supabase.co \
 ```
 
 **What a script gets — the whole surface:** `ctx.inputs` (checked against the manifest),
-`ctx.call(target, {method, query, body, headers})` → `{status, headers, json, text}`, and
-`ctx.log(text)`. No network, no files, no `require`; `ctx.call` is the only road out, and `target`
-must be in the manifest's `uses`: a catalog id, or one of the team's own tools as `<tool>/<path>`.
+`ctx.call(target, {method, query, body, headers})` → `{status, headers, json, text}`,
+`ctx.csv(text)` → rows keyed by the header, `ctx.data` → the rows of the `data.csv` uploaded with
+the tool (a fifth file, ≤ 50 MB, read-only; replace it and publish again), and `ctx.log(text)`.
+No network, no files, no `require`; `ctx.call` is the only road out, and `target` must be in the
+manifest's `uses`: a catalog id, one of the team's own tools as `<tool>/<path>`, or a full URL
+under such a tool's base URL. **Your own server is a tool:** `treg tool add my-api --base-url
+https://api.mine.com` (a secret is optional; a public Google Sheet needs none), list `my-api` in
+`uses`, then `ctx.call("my-api/v1/things")`. treg makes the request; the sandbox never opens a socket.
 Caps: 120 s, 20 calls, 64 MB, four runs at a time per team. A steps recipe instead names its calls in
 `steps` and reads earlier answers with references (`$input.x`, `$step.path`, `$step[]`,
 `$step.length`); steps that do not depend on each other run four at a time.

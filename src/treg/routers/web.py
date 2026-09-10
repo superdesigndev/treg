@@ -2188,6 +2188,7 @@ curl -X POST {e(base)}/call/{e(row.tool_id)} \\
   <ul class="facts">
     <li>made of {len(m.get('uses', []))} tool(s) <span class="muted">(catalog tools and the maker's own; names and keys hidden)</span></li>
     <li>{e(kind)} · {caps.get('wall_s', 120)} s · {caps.get('steps', 20)} calls max</li>
+    {('<li>data uploaded with the tool: ' + str(max(0, row.data.count(chr(10)) + (0 if row.data.endswith(chr(10)) else 1) - 1)) + ' rows</li>') if getattr(row, 'data', None) else ''}
     <li>Reliability, 30 days: {rel['runs']} runs by others{(' · ' + str(rel['ok_pct']) + '% ok · ' + str(rel['median_ms']) + ' ms median') if rel['runs'] else ''}</li>
     {('<li>Older versions: <ul>' + older_html + '</ul></li>') if older_html else ''}
   </ul>

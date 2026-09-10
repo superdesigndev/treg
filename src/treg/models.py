@@ -1177,6 +1177,10 @@ class HubTool(SQLModel, table=True):
     # The check run's verdict (docs/HUB-DECISIONS.md round 2 q10): {status, run_id, checked_at,
     # error?, trace?}. Declared LAST to match the migration's ALTER TABLE append position.
     check_result: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    # The maker's uploaded CSV (docs/HUB-DECISIONS.md round 1 q6): at most 50 MB, read-only after
+    # upload, a replacement is a new version; the script reads it as ctx.data. Declared LAST
+    # (migration 0030).
+    data: str | None = Field(default=None)
 
 
 class HubRun(SQLModel, table=True):

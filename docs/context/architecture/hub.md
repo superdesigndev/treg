@@ -16,6 +16,9 @@ sources:
   - src/treg/worker.py
   - src/treg/web/index.html
   - src/treg/alembic/versions/0029_hubrun_output.py
+  - src/treg/alembic/versions/0030_hubtool_data.py
+  - docs/hub-recipes/data-sheets/run.js
+  - docs/hub-recipes/data-csv/run.js
   - src/treg/routers/web.py
   - src/treg/web/skill.md
   - src/treg/web/llms.txt
@@ -302,3 +305,21 @@ the trace and the output (`HubRun.output`, migration 0029, stored for successful
 MAKER's team with the inputs (secret inputs masked), the trace, the script's log and the full
 error; a caller's error carries the failing step's name and status, never the upstream body;
 any other team gets 404.
+
+## The data scripts, the URL target, the uploaded CSV (phase 7.5)
+
+Two more things a script gets. `ctx.csv(text)` parses CSV (RFC 4180: quotes, doubled quotes,
+newlines inside quotes) into rows keyed by the header, so a public Google Sheet is one call
+away: the team registers `sheets` as an own tool with base URL `https://docs.google.com` and no
+secret, and the script calls `sheets/spreadsheets/d/<id>/export?format=csv&gid=<gid>`
+(`docs/hub-recipes/data-sheets`). `ctx.data` is the rows of the **fifth file**, `data.csv`,
+uploaded with the version (`HubTool.data`, migration 0030; at most 50 MB, a header and at least
+one row, read-only; a replacement is a new version), parsed once per run in the parent so the
+engine gets JSON (`docs/hub-recipes/data-csv`). A script that serves only its data may have an
+empty `uses`; a steps recipe still must name at least one tool.
+
+The third target shape of round 2: a full URL in `ctx.call` resolves to `<tool>/<path>` when it
+starts with the base URL of an own tool named in `uses` (the URL's query merges under the
+call's), and is refused for any other host. This is also the answer to "my script needs my own
+server": the server is an own tool (`treg tool add my-api --base-url https://api.mine.com`,
+secret optional); treg makes the request; the sandbox never opens a socket.
