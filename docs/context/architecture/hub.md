@@ -1,6 +1,6 @@
 ---
 title: The tool hub — tools a maker publishes, made of other tools
-status: in-progress (phase 6 of 8: the seller's money; behind TREG_HUB_ENABLED, off)
+status: in-progress (phase 7 of 8: the surfaces; behind TREG_HUB_ENABLED, off)
 sources:
   - src/treg/domain/hub/__init__.py
   - src/treg/domain/hub/manifest.py
@@ -11,6 +11,10 @@ sources:
   - src/treg/application/hub/sandbox.py
   - src/treg/application/hub/limits.py
   - src/treg/domain/money/__init__.py
+  - src/treg/routers/catalog.py
+  - src/treg/routers/web.py
+  - src/treg/web/skill.md
+  - src/treg/web/llms.txt
   - src/treg/alembic/versions/0028_hubtool_check_result.py
   - src/treg/mcp.py
   - src/treg/cli.py
@@ -231,3 +235,18 @@ The seller's view: `GET /hub/tools/{id}/earnings?days=90[&format=csv]` and `treg
 <id> [--days N] [--csv]`: per day, runs, successes, failures and what was earned, for a tool the
 team owns. Sales only (the maker's own runs are excluded), counts and amounts only, never who
 called.
+
+## The front door for agents (phase 7.1)
+
+`skill.md` and `llms.txt` carry a hub section (the four files, `ctx.call`, the check, publish,
+price, the share page, and the owner's rule: never paste a credential into a script, register it
+first) inside `<!--hub-->…<!--/hub-->` blocks. `routers/web.py` strips those blocks when
+`hub_enabled` is off, exactly as it strips the routed-discovery blocks, so a deployment never
+documents what it has not switched on. The generated plugin SKILL.md files are regenerated only
+at the final merge, when the flag flips.
+
+`GET /catalog/endpoints/<id>` (behind `catalog_get` and `treg catalog get`) answers for a hub id
+too: `endpoint.kind == "hub"`, with summary, inputs, output, the price line, health, version,
+`call_template`, the page URL and the readme; never the script, the maker's tools or a key.
+Search never returns a hub tool (unlisted by design); an unknown hub-shaped id stays a 404 with
+the usual near-miss hints.

@@ -2858,10 +2858,17 @@ def routed_discovery_on() -> bool:
 
 
 def _strip_routed(text: str) -> str:
-    """Remove the `<!--routed-->…<!--/routed-->` blocks (and, when kept, just the markers)."""
+    """Remove the `<!--routed-->…<!--/routed-->` blocks (and, when kept, just the markers), and the
+    `<!--hub-->…<!--/hub-->` blocks the same way behind `hub_enabled`: an agent-facing file must
+    never describe what this deployment has not switched on (AGENTS.md: do not document what is
+    not built)."""
     if routed_discovery_on():
-        return text.replace("<!--routed-->\n", "").replace("\n<!--/routed-->", "")
-    return re.sub(r"<!--routed-->.*?<!--/routed-->\n?", "", text, flags=re.S)
+        text = text.replace("<!--routed-->\n", "").replace("\n<!--/routed-->", "")
+    else:
+        text = re.sub(r"<!--routed-->.*?<!--/routed-->\n?", "", text, flags=re.S)
+    if get_settings().hub_enabled:
+        return text.replace("<!--hub-->\n", "").replace("\n<!--/hub-->", "")
+    return re.sub(r"<!--hub-->.*?<!--/hub-->\n?", "", text, flags=re.S)
 
 
 def _serve_md(name: str) -> PlainTextResponse:

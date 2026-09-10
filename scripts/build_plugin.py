@@ -51,6 +51,7 @@ Usage:  python3 scripts/build_plugin.py [--check]
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -307,7 +308,18 @@ def render(variant: str) -> str:
     #    setting, so it keeps the content — but the markers themselves must never ship, or the
     #    product's most-read page starts with visible HTML comments.
     out = out.replace("<!--routed-->\n", "").replace("\n<!--/routed-->", "")
+    # 5. `<!--hub-->` / `<!--/hub-->` delimit the tool-hub section, which the SERVER strips while
+    #    `hub_enabled` is off. A plugin is a static file: it ships the hub text only once production
+    #    has switched the hub on — `--with-hub` at that merge; until then the block is dropped, so
+    #    the plugin never teaches what a reader cannot use (AGENTS.md: do not document what is not built).
+    if WITH_HUB:
+        out = out.replace("<!--hub-->\n", "").replace("\n<!--/hub-->", "")
+    else:
+        out = re.sub(r"<!--hub-->.*?<!--/hub-->\n?", "", out, flags=re.S)
     return out.replace("{BASE}", PUBLIC_BASE)
+
+
+WITH_HUB = "--with-hub" in sys.argv
 
 
 def main() -> int:
