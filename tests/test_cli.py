@@ -958,6 +958,10 @@ def test_hub_is_in_the_help_and_parses():
         assert a.hub_cmd == "run" and a.input == ["domain=figma.com", "limit=3"]
         e = parser.parse_args(["hub", "earnings", "acme.leads-db", "--days", "30", "--csv"])
         assert e.hub_cmd == "earnings" and e.days == 30 and e.csv
+        pr = parser.parse_args(["hub", "price", "acme.leads-db", "0.02"])
+        assert pr.hub_cmd == "price" and pr.price_usd == 0.02
+        rt = parser.parse_args(["hub", "retire", "acme.leads-db"])
+        assert rt.hub_cmd == "retire" and rt.tool_id == "acme.leads-db"
 
 
 

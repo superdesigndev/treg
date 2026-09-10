@@ -357,6 +357,31 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "DELETE"
+    ],
+    "name": "retire_hub_tool",
+    "path": "/hub/tools/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "set_hub_tool_price",
+    "path": "/hub/tools/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "hub_tool_health",
+    "path": "/hub/tools/{tool_id}/health"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "GET",
       "HEAD"
     ],
