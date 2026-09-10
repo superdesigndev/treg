@@ -1146,6 +1146,38 @@ META_ADS = OAuthProvider(
 # key" copy. A key provider needs nothing from treg, so it is always offerable (is_configured=True).
 # No `scopes`: there is no consent screen to size, so the marketplace card leans on `summary`.
 
+ORBIT = OAuthProvider(
+    service="orbit",
+    display_name="Orbit",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="sk_orb_…",
+    setup_url="https://developer.orbitsearch.com/dashboard/keys",
+    setup_action_label="Get your Orbit API key",
+    setup_steps=(
+        "Sign in to the Orbit developer dashboard and open API Keys.",
+        "Create a scoped key: search:read for Search and Enrich, profile:read to read profiles.",
+        "Add watchers:write or webhooks:write only if you will manage watchers or webhooks.",
+    ),
+    setup_note="Usage-based credits on your own Orbit account (1 credit = $0.01; rate card at "
+               "https://docs.orbitsearch.com/concepts/credits). Search and Enrich are asynchronous: "
+               "use `treg call --await`, or poll the returned search_id / request_id — never re-POST.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Search for people and read source-backed, in-depth profiles: work history, education, socials, contact fields and life events.",
+    base_url="https://api.orbitsearch.com",
+    docs_url="https://docs.orbitsearch.com/",
+    # Free, unmetered, scope-less self read (any valid key). Live 2026-09-10: a bogus `sk_orb_…` key
+    # gets 403 {"status":"failure","error":{"code":"invalid_api_key",…}}; a valid one 200 with
+    # {"status":"success","payload":{…}}. Reading the body field keeps a 200 error envelope from
+    # ever counting as a verified key.
+    probe_path="/v3/credits/usage",
+    token_ok_field="status",
+    token_ok_value="success",
+)
+
 APOLLO = OAuthProvider(
     service="apollo",
     display_name="Apollo.io",
@@ -2813,7 +2845,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        APOLLO, PDL, AKTA, HUNTER, SUMBLE, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
+        APOLLO, PDL, AKTA, HUNTER, SUMBLE, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE, ORBIT,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers

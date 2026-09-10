@@ -9,6 +9,8 @@ sources:
   - src/treg/application/connect.py
   - src/treg/routers/connections.py
   - src/treg/config.py
+  - src/treg/catalog/orbit.yaml
+  - tests/test_orbit_provider.py
 related:
   - architecture/auth-secrets.md
   - interface/api.md
@@ -31,6 +33,48 @@ pasted-key provider is **`connect_with_token`** (`POST /connections/token`) in
 [auth-secrets](../architecture/auth-secrets.md) + [api](../interface/api.md);
 this fragment is the *process*, not the mechanics reference.
 
+## Orbit (2026-09-10)
+
+Orbit (`orbit`) is a customer-key provider: scoped `sk_orb_…` bearer keys from
+https://developer.orbitsearch.com/dashboard/keys. The 16-row catalog is the whole public v3
+OpenAPI (https://docs.orbitsearch.com/openapi.json): Search + status, profile read, single and
+batch Enrich + status, six watcher routes, four webhook routes.
+
+**Probe.** `GET /v3/credits/usage` — free, unmetered, needs no scope, and answers
+`{"status":"success",…}` for any valid key; `token_ok_field: status` / `token_ok_value: success`
+so a 200 error envelope never counts. Live 2026-09-10: a bogus `sk_orb_…` key gets 403
+`{"status":"failure","error":{"code":"invalid_api_key","message":"Invalid, revoked, expired, or
+malformed API key"}}`; a key without the prefix gets 401 `missing_api_key`. The route ships with
+Orbit's centralized-billing release (2020-api #1280); until then it is a 404 and connect fails
+closed. (The earlier probe, an empty `POST /v3/search` expecting 400, was replaced because the
+eligibility rule wants a 2xx for a valid key.)
+
+**Prices.** Orbit publishes a machine-readable rate card, `GET
+https://api.orbitsearch.com/v2/developer/pricing` (no key), rendered at
+https://docs.orbitsearch.com/concepts/credits. Every paid row is `currency: credit`,
+`source: rate_card_api`, `confidence: documented`; fx.yaml prices a credit at $0.01 (packages
+$10/1,000 … $200/20,000, no volume bonus). Search bills 1 credit per 10 cached results
+(`per: 10`); Candidate Discovery and `profile_depth: full` add per-profile tiers (1 / 5 / 10)
+that the note spells out; profile read 1; Enrich prices out of a `body.operation` table
+(partial 5, full/regenerate 10); status polls, watcher/webhook management are free — watcher
+*runs* bill 1 (+5 on an update) later, on the account's balance. Platform-key slot shipped
+(`platform_key_orbit`, `TREG_PLATFORM_KEY_ORBIT`); the four `any_account` paid rows are
+`platform_eligible`, the own-account management rows are not.
+
+**Async.** Search and single Enrich carry `async` descriptors (`search_id` → `orbit.people.search.status`,
+`request_id` → `orbit.people.enrich.status`; success `completed`/`completed_with_errors`, failure
+`failed`; interval 5 s), so `treg call --await` works. Batch Enrich has no parent poll route — each
+child is polled on its own `request_id` — so it carries none. Status rows are `kind: utility` with
+`resource_ownership.requires` on the `poll:` kind.
+
+**Test requests.** Six rows replay: Search (`"Sam Altman"`, limit 1, no profiles — the cheapest
+paid shape, 1 credit), profile read, Enrich and batch Enrich (all on one public level-3 profile, so
+the two Enrich replays are deliberate no-ops that charge 0), watcher list and webhook list (free).
+The remaining ten are `untestable` with the reason on the row: account-scoped ids from a submit
+route, or mutations that schedule billed runs / register endpoints.
+
+## MillionVerifier (2026-09-08)
+
 MillionVerifier (2026-09-08) follows this key-provider path: query `api` auth, free credits probe
 with an HTTP-200 `error` rejection, two single-host catalog jobs and an existing email-verification
 adapter. The bulk host uses a different auth parameter and is explicitly excluded in the surface
@@ -42,6 +86,7 @@ subscription capacity uses API balance data and is separate from platform list p
 Tests extend the existing auth, capacity and marketplace files. See [catalog](../architecture/catalog.md).
 
 ## The two kinds of provider
+
 - **API-key** (`auth_kind="key"`) — the user pastes a key; self-serve; **the fast path** (research → implement
   → live-test in one session). This is the workhorse and where almost all growth happens.
 - **OAuth** (`auth_kind="oauth"`) — treg holds its own registered app; **heavy** (needs a dev-app registration

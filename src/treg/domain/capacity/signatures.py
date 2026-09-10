@@ -34,6 +34,9 @@ _TABLE: list[tuple[str, int, str, str]] = [
     ("leadmagic", 402, r"insufficient_credits", "balance"),
     ("thecompaniesapi", 403, r"noCreditsRemaining", "balance"),
     ("companyenrich", 402, r"payment required", "balance"),
+    # Orbit: 402 {"status":"failed","error":{"code":"developer_api_credits_insufficient",
+    # "requiredCredits":…,"remainingCredits":…}} (docs.orbitsearch.com/concepts/credits, 2026-09-10).
+    ("orbit", 402, r"developer_api_credits_insufficient", "balance"),
     ("akta", 402, r"insufficient credits", "balance"),
     ("lusha", 400, r"reached your credit limit", "balance"),
     ("predictleads", 402, r"exceeded the monthly request limit", "quota"),
@@ -76,7 +79,7 @@ CAPACITY_PHRASES = (
     r"insufficient (?:credits?|balance|funds)", r"out of credits?", r"credits? (?:exhausted|remaining|left)",
     r"(?:account |api |credit )?(?:balance|quota)(?: (?:has been|is|was))? (?:exceeded|reached|exhausted|limit)",
     r"upgrade your plan", r"insufficient-quota", r"not have enough quota",
-    r"discovery api credit limit reached",
+    r"discovery api credit limit reached", r"developer_api_credits_insufficient",
 )
 _UNRECORDED = re.compile(r"\b(?:" + "|".join(f"(?:{p})" for p in CAPACITY_PHRASES) + r")\b", re.IGNORECASE)
 
