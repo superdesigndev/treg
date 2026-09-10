@@ -82,7 +82,7 @@ serves only its data may leave it empty. Every step's `call` must be in `uses` (
 for an own tool, optional `method`, `allow_fail`). Limits: `steps` ≤ 20, `wall_s` ≤ 120,
 `price_usd` 0–100 with at most six decimals. References must parse and the graph is built at
 publish, so a cycle or an unknown step is refused before anyone pays. `validate_check` pins
-`check.json` to the manifest; `validate_data` checks `data.csv` (≤ 50 MB, a header and one row).
+`check.json` to the manifest; `validate_data` checks `data.csv` (≤ 5 MB, a header and one row; the rows travel into the engine on every run).
 
 ## The reference language and the graph (JSON road)
 
@@ -140,7 +140,7 @@ wall-clock kill, the whole group killed on every exit. Inside, QuickJS (the `qui
 server extra) has no network, no file system, no `require`, no `process`, no timers; the engine's
 heap is capped at 64 MB. The whole surface a script gets: `ctx.inputs`, `ctx.call(target,
 {method, query, body, headers})` → `{status, headers, json, text}`, `ctx.csv(text)` → rows
-keyed by the header (RFC 4180), `ctx.data` → the rows of `data.csv` (parsed once per run in the
+keyed by the header (RFC 4180), `ctx.data` → the rows of `data.csv` (≤ 5 MB, parsed once per run in the
 parent), `ctx.log(text)` (50 lines × 2 KB). `ctx.call` crosses to the parent as one JSON line
 over stdin/stdout; the parent enforces `uses` per call (a call outside the list is refused and
 the run stops), the 20-call cap, the ceiling, and the output (one JSON object ≤ 2 MB carrying
@@ -252,3 +252,25 @@ Templates for more data providers incl. `treg hub init --from <template>`; withd
 listing road (pull request + verification); a private-to-team switch; a platform fee; a script
 editor in the dashboard; live polling of a run; billing compute; Crawl4AI as a built-in; a
 benchmark/auditor; job queue, recipe-calls-recipe, retry, live progress, team sandbox.
+
+## The security pass (8.1, 2026-09-10) and what it changed
+
+Two reviewers plus hostile probes; the findings that matter for launch were fixed in one PR,
+the rest went to the backlog. What is different since: the price hold closes on every path
+(a guard around the whole run: a refusal or a disconnect releases it, a crash becomes 424
+`hub_run_crashed`, never a 500 with an open hold); a step's answer is read into memory up to
+1 MB and the stream is closed beyond it (`truncated` on the script's reply, a failed step on
+the JSON road); the child's cost comes from the call record, never from an upstream
+`X-Treg-Cost-Micro`; a child call never resolves to a hub tool (`CallInput.child_of`) and an
+own tool named with a dot cannot be in `uses` (no nested runs); the caller's trace carries the
+kind of tool and no upstream error body, on the 200 body, the 424 detail and the idempotent
+replay; `GET /hub/tools/{id}` on another team's tool returns the public contract only; the
+public page never prints the check's sample inputs; own-tool steps audit as
+`hub-caller:<org>`; a version under check is visible only to its maker and a crashed check
+leaves it `failed`; the wall clock keeps running during a bridge call and the JSON road has
+one too; publish and the scheduled check hold no database connection during the run; the
+ceiling header, `price_usd`, the run body (depth, `NaN`) and header names are validated to
+4xx; server tracebacks never reach the maker's log; `..` is refused in a call path;
+`data.csv` is capped at 5 MB. Backlog: the platform margin on the seller's price (margin is 0),
+bridge state in writable globals, output-root validation at publish, concurrent publish 409,
+slugs starting with `http`, the shortfall under-pay note, the 402 ceiling path's missing run row.

@@ -114,6 +114,7 @@ async def check_as_maker(db: AsyncSession, row: HubTool, upstream_client) -> dic
     from . import runner as hub_runner
 
     caller = await _maker_caller(db, row)
+    await db.commit()   # non-negotiable 3: the selects above autobegan; nothing stays open during the run
     if caller is None:
         v = {"status": "skipped", "error": {"message": "the maker's team has no member left to run the check as"}}
         row.check_result = {**(row.check_result or {}), **v}
@@ -134,7 +135,8 @@ async def check_as_maker(db: AsyncSession, row: HubTool, upstream_client) -> dic
     context = create_call_context(call_input)
     try:
         response, charged = await hub_runner.run_hub_tool(
-            context, row, payload, lambda _name: None, upstream_client, execute_call, audit_client="hub-check")
+            context, row, payload, lambda name: "5.00" if name == hub_runner.RUN_MAX_COST_HEADER else None,
+            upstream_client, execute_call, audit_client="hub-check")
         raw = b"".join([chunk async for chunk in response.body_stream])
         await response.close()
         body = json.loads(raw) if raw else {}

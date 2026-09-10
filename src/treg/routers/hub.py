@@ -69,6 +69,9 @@ async def _publish(body: PublishIn, request: Request, caller: Caller, db: AsyncS
     await db.commit()
     row = (await db.execute(select(HubTool).where(
         HubTool.tool_id == published.tool_id, HubTool.version == published.version))).scalars().one()
+    # Non-negotiable 3: no database connection is held while the check's upstream calls run.
+    # The select above autobegan a transaction; end it (objects stay usable: expire_on_commit=False).
+    await db.commit()
     verdict = await hub_app.run_check(db, row, maker_headers=dict(request.headers), app=request.app)
     await db.commit()
     out = {"tool_id": published.tool_id, "version": published.version, "status": row.status,
@@ -198,6 +201,13 @@ async def get_hub_tool(
     if row.org_id == caller.org_id:
         out["script"] = row.script
         out["check"] = row.check
+        out["readme"] = row.readme
+    else:
+        # another team reads the public contract only: not the maker's tools, not who
+        # published, not the check's trace (8.1 review)
+        for k in ("uses", "created_by", "check_result"):
+            out.pop(k, None)
+        out["made_of"] = len(row.manifest.get("uses", []))
         out["readme"] = row.readme
     return out
 

@@ -2182,7 +2182,7 @@ curl -X POST {e(base)}/call/{e(row.tool_id)} \\
 
   <h2>The check <span class="muted" style="font-size:12px">(run at publish, for real)</span></h2>
   {('<div class="scroll"><table><tr><th>Wave</th><th>Step</th><th>Called</th><th>Result</th><th>Cost</th><th>ms</th></tr>' + trace_html + '</table></div>') if trace_html else '<p class="muted">no trace recorded</p>'}
-  <p class="muted" style="font-size:12px">inputs <code>{e(json.dumps(row.check.get('inputs', {})))}</code> · {e(chk.get('status') or '-')}{(' at ' + e(checked_at)) if checked_at else ''}</p>
+  <p class="muted" style="font-size:12px">{e(chk.get('status') or '-')}{(' at ' + e(checked_at)) if checked_at else ''}</p>
 
   <h2>Made of</h2>
   <ul class="facts">

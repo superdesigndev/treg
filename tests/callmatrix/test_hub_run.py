@@ -266,7 +266,12 @@ async def test_a_script_runs_a_catalog_call_and_an_own_tool_call(
     assert body["output"] == {"name": "figma.com", "rows": 3, "cost_seen": 200}
     assert body["log"] == ["company status 200"]
     assert body["usage"]["steps"] == 2 and body["usage"]["cost_micro"] == EP_MICRO
-    assert [(e["call"], e["key"], e["cost_micro"]) for e in body["trace"]] == [(EP, "treg", EP_MICRO), ("supabase/rest/v1/leads", "team", 0)]
+    # the caller reads the KIND of tool per step, never the maker's recipe (8.1 review)
+    assert [(e["call"], e["key"], e["cost_micro"]) for e in body["trace"]] == [("a catalog tool", "treg", EP_MICRO), ("the maker's own tool", "team", 0)]
+    assert all("error" not in e for e in body["trace"])
+    # the maker's own run row keeps the real calls
+    mine = (await matrix_clients.get(f"/hub/runs/{body['run_id']}")).json()
+    assert [e["call"] for e in mine["trace"]] == [EP, "supabase/rest/v1/leads"]
     assert r.headers["X-Treg-Cost-Micro"] == str(EP_MICRO)
     hits = fake_provider.hits[before.hit_count:]
     assert len(hits) == 2
@@ -582,3 +587,166 @@ async def test_the_uploaded_csv_recipe_serves_its_own_data_with_no_call(
     # a bad CSV is refused by field and rule; a CSV on a steps recipe too
     bad = await matrix_clients.post("/hub/tools", json={**body, "data": "just one line"})
     assert bad.status_code == 422 and bad.json()["detail"]["field"] == "data"
+
+
+
+# ---------------------------------------------------------------------------------------------
+# 8.2: the security pass. Each test is a finding that was open before it.
+
+async def _no_holds(clients: AsyncClient) -> None:
+    org = (await clients.get("/orgs")).json()[0]["org_id"]
+    assert (await clients.get(f"/orgs/{org}/balance")).json()["holds"] == []
+
+
+async def test_hostile_bodies_and_headers_are_4xx_never_500(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    tool_id = await _publish(matrix_clients, _manifest(
+        steps=[{"name": "a", "call": EP, "input": {"aweme_id": "x"}}], output={"x": "$a.data"}, price_usd=0.01))
+    buyer = (await matrix_clients.post("/users", json={"email": "hostile@example.com"})).json()["token"]
+    h = {**FAKE, "X-Treg-Token": buyer}
+    bomb = "[" * 100_000 + "]" * 100_000
+    r = await matrix_clients.post(f"/call/{tool_id}", content=bomb, headers={**h, "content-type": "application/json"})
+    assert r.status_code == 422 and r.json()["detail"]["field"] == "body"
+    r = await matrix_clients.post(f"/call/{tool_id}", content=b'{"domain": NaN}', headers={**h, "content-type": "application/json"})
+    assert r.status_code == 422
+    for v in ("1e308", "NaN", "abc", "-5", "5000"):
+        r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers={**h, "X-Treg-Run-Max-Cost": v})
+        assert r.status_code == 422 and r.json()["detail"]["field"] == "X-Treg-Run-Max-Cost", (v, r.text)
+    bal = (await matrix_clients.get(f"/orgs/{(await matrix_clients.get('/orgs', headers={'X-Treg-Token': buyer})).json()[0]['org_id']}/balance", headers={"X-Treg-Token": buyer})).json()
+    assert bal["holds"] == []                                       # nothing was held on any refusal
+
+
+async def test_a_crash_inside_the_run_closes_the_price_hold_and_answers_424(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on, monkeypatch,
+):
+    from treg.application.hub import runner
+    tool_id = await _publish(matrix_clients, _manifest(
+        steps=[{"name": "a", "call": EP, "input": {"aweme_id": "x"}}], output={"x": "$a.data"}, price_usd=0.05))
+    buyer = (await matrix_clients.post("/users", json={"email": "crash@example.com"})).json()["token"]
+    h = {"X-Treg-Token": buyer}
+    org = (await matrix_clients.get("/orgs", headers=h)).json()[0]["org_id"]
+    before = (await matrix_clients.get(f"/orgs/{org}/balance", headers=h)).json()["balance_micro"]
+
+    def boom(*a, **k):
+        raise RuntimeError("simulated crash after the price hold")
+    monkeypatch.setattr(runner.hub_graph, "build", boom)
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers={**FAKE, **h})
+    assert r.status_code == 424 and r.json()["detail"]["error"] == "hub_run_crashed"
+    after = (await matrix_clients.get(f"/orgs/{org}/balance", headers=h)).json()
+    assert after["balance_micro"] == before and after["holds"] == []       # the price came back at once
+
+
+async def test_a_step_answer_over_the_cap_is_cut_not_buffered(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on, monkeypatch,
+):
+    from treg.application.hub import runner
+
+    class _Resp:
+        def __init__(self, chunks): self._c = chunks; self.status = 200; self.raw_headers = []
+        @property
+        async def body_stream(self):
+            for c in self._c:
+                yield c
+        async def close(self): pass
+
+    # a step's answer is never buffered whole: read up to the cap, then the stream is closed
+    monkeypatch.setattr(runner, "MAX_BODY_BYTES", 16)
+    raw, cut = await runner._read(_Resp([b"a" * 40]))
+    assert raw == b"a" * 16 and cut is True
+    raw, cut = await runner._read(_Resp([b"ab", b"cd"]))
+    assert raw == b"abcd" and cut is False
+    # end to end: a script reads `r.truncated` from every step reply (the prelude passes it)
+    tool_id = await _publish_script(
+        matrix_clients,
+        'export default async function run(ctx) { const r = await ctx.call("' + EP
+        + '", {}); return { x: [("truncated" in r), r.truncated] }; }',
+        [EP], ["x"])
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers=FAKE)
+    assert r.status_code == 200 and r.json()["output"]["x"] == [True, False]
+
+
+async def test_an_own_tool_named_like_a_catalog_id_cannot_be_used_and_a_child_never_reaches_the_hub(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    sid = (await matrix_clients.post("/secrets", json={"name": "k3", "value": "K"})).json()["id"]
+    r = await matrix_clients.post("/tools", json={"name": "evil.inner", "base_url": "https://fake-provider.invalid", "secret_id": sid})
+    assert r.status_code in (200, 201)
+    bad = await matrix_clients.post("/hub/tools", json={
+        "manifest": _manifest(steps=[{"name": "a", "call": "evil.inner/x", "input": {}}], output={"x": "$a.data"}, uses=["evil.inner"]),
+        "check": {"inputs": {"domain": "x"}, "fields": ["x"]}, "readme": "x"})
+    assert bad.status_code == 422 and bad.json()["detail"]["field"] == "uses[0]" and "dot" in bad.json()["detail"]["rule"]
+    # a child call carries child_of and is never resolved as a hub id
+    from treg.application.call.types import CallInput
+    assert "child_of" in CallInput.__dataclass_fields__
+
+
+async def test_a_caller_never_reads_the_recipe_or_an_upstream_error_body(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    tool_id = await _publish(matrix_clients, _manifest(
+        steps=[{"name": "a", "call": EP, "input": {"aweme_id": "x"}}], output={"x": "$a.data"}))
+    buyer = (await matrix_clients.post("/users", json={"email": "reader2@example.com"})).json()["token"]
+    h = {"X-Treg-Token": buyer}
+    r = await matrix_clients.post(f"/call/{tool_id}", json={"domain": "x"},
+                                  headers={**h, "X-Fake-Status": "500", "X-Fake-Body": '{"vendor": "SECRET-UPSTREAM-BODY"}'})
+    assert r.status_code == 424
+    text = r.text
+    assert "SECRET-UPSTREAM-BODY" not in text and "tikhub" not in text and "a catalog tool" in text
+    # the stored 424 detail is the public one, so an idempotent replay leaks nothing either
+    mine = (await matrix_clients.get(f"/hub/runs/{r.json()['detail']['run_id']}")).json()
+    assert "SECRET-UPSTREAM-BODY" in json.dumps(mine)      # the MAKER keeps the whole error
+    # another team's GET /hub/tools/{id}: the public contract only
+    other = (await matrix_clients.get(f"/hub/tools/{tool_id}", headers=h)).json()
+    assert "uses" not in other and "created_by" not in other and "check_result" not in other and other["made_of"] == 1
+    # the maker's call log names no caller: an own-tool step audits as hub-caller:<org>
+    sid = (await matrix_clients.post("/secrets", json={"name": "k5", "value": "K"})).json()["id"]
+    await matrix_clients.post("/tools", json={"name": "mine3", "base_url": "https://fake-provider.invalid", "secret_id": sid})
+    own = await _publish(matrix_clients, _manifest(name="owned", steps=[{"name": "a", "call": "mine3/x", "input": {}}], output={"x": "$a.data"}, uses=["mine3"]))
+    assert (await matrix_clients.post(f"/call/{own}", json={"domain": "x"}, headers={**h, "X-Fake-Body": '{"data": 1}'})).status_code == 200
+    calls = json.dumps((await matrix_clients.get("/calls", params={"limit": 50})).json())
+    assert "reader2@example.com" not in calls and "hub-caller:" in calls
+
+
+async def test_script_road_refusals_are_clean(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on,
+):
+    sid = (await matrix_clients.post("/secrets", json={"name": "k4", "value": "K"})).json()["id"]
+    await matrix_clients.post("/tools", json={"name": "mine2", "base_url": "https://fake-provider.invalid/api/v1", "secret_id": sid})
+    cases = {
+        "dotdot": ('ctx.call("mine2/../../admin")', "`..`"),
+        "bad header name": ('ctx.call("mine2/x", {headers: {"名": "1"}})', "ASCII token"),
+        "opts not an object": ('__bridge_call(JSON.stringify(["mine2/x", "abc"]))', "must be an object"),
+        "line over 8 MiB": ('ctx.call("mine2/x", {body: {x: "a".repeat(9 << 20)}})', "over 8 MiB"),
+    }
+    for name, (expr, rule) in cases.items():
+        t = await _publish_script(matrix_clients, "export default async function run(ctx){ await " + expr + "; return {x: 1}; }", ["mine2"], ["x"])
+        r = await matrix_clients.post(f"/call/{t}", json={"domain": "x"})
+        assert r.status_code == 424 and rule in r.json()["detail"]["message"], (name, r.text)
+        assert "Traceback" not in r.text and "quickjs" not in r.text
+    await _no_holds(matrix_clients)
+
+
+async def test_a_version_under_check_is_invisible_to_strangers_and_a_crashed_check_ends_failed(
+    matrix_clients: AsyncClient, fake_provider: FakeProvider, platform_on, hub_on, monkeypatch,
+):
+    from sqlalchemy import update
+    from treg.infra.db import session_maker
+    from treg.models import HubTool
+    tool_id = await _publish(matrix_clients, _manifest(
+        steps=[{"name": "a", "call": EP, "input": {"aweme_id": "x"}}], output={"x": "$a.data"}))
+    async with session_maker() as s:
+        await s.execute(update(HubTool).where(HubTool.tool_id == tool_id).values(status="checking"))
+        await s.commit()
+    buyer = (await matrix_clients.post("/users", json={"email": "guess@example.com"})).json()["token"]
+    assert (await matrix_clients.post(f"/call/{tool_id}@1", json={"domain": "x"}, headers={**FAKE, "X-Treg-Token": buyer})).status_code == 404
+    assert (await matrix_clients.post(f"/call/{tool_id}@1", json={"domain": "x"}, headers=FAKE)).status_code == 200   # the maker's own check pins it
+    # a crashed check: the version ends `failed`, never `checking` forever
+    from treg.application.hub import health as hub_health
+    def boom(*a, **k):
+        raise RuntimeError("simulated crash inside the check")
+    monkeypatch.setattr(hub_health, "verdict_from", boom)
+    r = await matrix_clients.post("/hub/tools", json={
+        "manifest": _manifest(name="crashy", steps=[{"name": "a", "call": EP, "input": {"aweme_id": "x"}}], output={"x": "$a.data"}),
+        "check": {"inputs": {"domain": "x"}, "fields": ["x"]}, "readme": "x"})
+    assert r.status_code == 201 and r.json()["status"] == "failed" and r.json()["check"]["error"]["error"] == "check_crashed"

@@ -215,6 +215,9 @@ class CallInput:
     client_ip: str
     # The reviewed /catalog/call surface accepts only a catalog id — team tools never shadow it.
     catalog_only: bool = False
+    # Set on every child call of a hub run: a child never resolves to a hub tool (no nested
+    # runs, no undisclosed second price; 8.1 review).
+    child_of: str | None = None
 
 
 class FinalizationState(Enum):
