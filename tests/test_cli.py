@@ -979,3 +979,26 @@ def test_catalog_get_prints_a_hub_tool_contract(capsys):
     out = capsys.readouterr().out
     assert "seller $0.01 + steps" in out and "domain" in out and "(required)" in out and "rows, count" in out
     assert "treg call acme.leads-db" in out and "https://treg.to/hub/acme.leads-db" in out
+
+
+
+def test_a_hub_refusal_names_the_missing_tool_in_its_fix_commands(capsys):
+    """From the case study walk (2026-09-09): the refusal must name the tool the manifest wants,
+    one command per line, in the order to run them."""
+    from treg import cli
+
+    class R:
+        status_code = 422
+        headers = {"content-type": "application/json"}
+        def json(self):
+            return {"detail": {"error": "manifest_invalid", "field": "uses[0]",
+                               "rule": "'supabase' is not one of your team's tools (register it first: treg tool add)"}}
+    import pytest as _pytest
+    with _pytest.raises(SystemExit):
+        cli._hub_report(R(), json_out=False)
+    out = capsys.readouterr().out
+    assert "uses[0]" in out
+    assert "treg secret add SUPABASE_KEY --value" in out
+    assert "treg tool add supabase --base-url" in out
+    lines = [l for l in out.splitlines() if "treg " in l]
+    assert len(lines) >= 3 and all(l.count("treg ") == 1 for l in lines)     # one command per line
