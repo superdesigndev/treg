@@ -1451,3 +1451,14 @@ async def test_hub_create_over_mcp_publishes_and_names_refusals(clients, monkeyp
         assert bad["error"] == "manifest_invalid" and bad["field"] == "uses[0]"
         v2 = await _call_tool(c, "hub_update", {"tool_id": out["tool_id"], "manifest": manifest, "check": check, "readme": "v2"}, token=token)
         assert v2["version"] == 2 and v2["status"] == "live"
+        # the agent walk (2026-09-10) found `call` refusing a live hub id before the server could
+        # answer: a hub id is neither a catalog id nor <tool>/<path>; it goes through as a POST
+        # with the inputs as params
+        run = await _call_tool(c, "call", {"endpoint_id": out["tool_id"], "params": {"domain": "figma.com"}}, token=token)
+        assert run["status"] == 200 and run["body"]["output"] == {"leads": {"domain": "figma.com"}}, run
+        assert run["body"]["recipe"].startswith(out["tool_id"] + "@")
+        # with the hub off the same id is refused as before
+        monkeypatch.setenv("TREG_HUB_ENABLED", "0"); get_settings.cache_clear()
+        off = await _call_tool(c, "call", {"endpoint_id": out["tool_id"], "params": {"domain": "figma.com"}}, token=token)
+        assert off.get("error", "").startswith("unknown endpoint")
+        monkeypatch.setenv("TREG_HUB_ENABLED", "1"); get_settings.cache_clear()
