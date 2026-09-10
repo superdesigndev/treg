@@ -12,7 +12,7 @@ answer, it overrides the block and says so inline.
 **Paste llms.txt**
 
 ## `S-TRUST-HERO`
-$1.00 of free credit on every new team. No provider signup, no credit card. `F-02` `F-08`
+$1.00 of free credit once per new verified account. No provider signup, no credit card. `F-02` `F-08`
 
 ## `S-SCALE-LINE`
 2,600+ tools across 40+ providers, all answering one token. `F-01`
@@ -78,7 +78,7 @@ provider you might need once, plus learning each one's API shape. It is closer t
 tools than to a data vendor: one base URL, one token, many providers behind it. `F-05`
 
 ## `S-FINAL-CTA-TRUST`
-$1.00 of free credit on every new team. No credit card, no provider signup. treg.to is open source
+$1.00 of free credit once per new verified account. No credit card, no provider signup. treg.to is open source
 (AGPL). `F-02` `F-08` `F-10`
 
 ## `S-INSTALL`

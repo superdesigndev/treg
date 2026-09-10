@@ -1681,7 +1681,7 @@ a:hover{text-decoration-color:var(--muted)}
                                  the expander — parameters, limits, rate card, the copyable command
                                  — is open, and is the part worth reading before you sign up. -->
                             <button class="btn sm" :class="{primary:!mkOauth(e.provider)}" @click.stop="publicCatalog ? openSignin() : openEpTry(e)"
-                                    :title="publicCatalog ? 'Create a free team to call this — $1.00 of credit, no card' : 'Call it now, or copy the agent / CLI / API way to run it'">▶ Try it</button>
+                                    :title="publicCatalog ? 'New verified accounts get $1.00 once on an eligible team, no card' : 'Call it now, or copy the agent / CLI / API way to run it'">▶ Try it</button>
                             <span v-if="catEndpointConnected(e)" class="chip go" title="You have a connected account with an authorization method that can call this"><span class="godot"></span>Connected</span>
                             <button v-else-if="mkOauth(e.provider)" class="btn sm primary" @click.stop="publicCatalog ? openSignin() : openProvider(e.provider)"
                                     :title="endpointConnectLabel(e)+' — calls act as your account'">{{endpointConnectLabel(e)}}</button>
@@ -1812,7 +1812,7 @@ a:hover{text-decoration-color:var(--muted)}
           <div v-if="!loading && !hasAnyTools && !q && canRegister" style="margin-top:14px">
           <div style="max-width:660px;border:1px solid var(--line);border-radius:16px;padding:20px 22px;background:var(--panel2)">
             <h3 style="margin:0 0 6px;font-size:15px">Nothing of your own yet — but you can already call 2,800+ tools</h3>
-            <p class="sub" style="margin:0 0 12px">Your team starts with <b>$1.00 of free credit</b>, so the catalog works before you register anything: find a tool by what it does, see the price, call it. <a href="#" @click.prevent="go('connections')">Browse the catalog →</a><br>When you're ready to add your <i>own</i> keys and skills — your <span class="mono">.env</span> and skill folders — load them here and they become callable tools for the whole team.</p>
+            <p class="sub" style="margin:0 0 12px">New verified accounts get <b>$1.00 of free credit once</b> when creating an eligible team, so the catalog works before you register anything: find a tool by what it does, see the price, call it. <a href="#" @click.prevent="go('connections')">Browse the catalog →</a><br>When you're ready to add your <i>own</i> keys and skills — your <span class="mono">.env</span> and skill folders — load them here and they become callable tools for the whole team.</p>
             <div class="seg" style="margin-bottom:10px">
               <button :class="{on:emptyTab==='agent'}" @click="emptyTab='agent'">Agent instruction</button>
               <button :class="{on:emptyTab==='manual'}" @click="emptyTab='manual'">Manual</button>
@@ -2765,7 +2765,7 @@ product, including per-customer usage tracking and billing.</pre>
 
           <!-- TAB · Access the catalog — agent instruction first, then the manual CLI walkthrough -->
           <div v-show="startTab==='access'" style="max-width:720px">
-            <p class="sub">2,800+ catalogued endpoints: SEO and backlinks, social and trends, people and company enrichment, ads. Find one by what it <i>does</i>, see its price, call it — no provider signup. Your team's <b>$1.00 free credit</b> covers hundreds of calls.</p>
+            <p class="sub">2,800+ catalogued endpoints: SEO and backlinks, social and trends, people and company enrichment, ads. Find one by what it <i>does</i>, see its price, call it — no provider signup. New verified accounts get <b>$1.00 free credit once</b> on an eligible team, covering hundreds of calls.</p>
 
             <div class="lbl" style="margin-top:16px">▸ Set up with your agent <span class="muted" style="font-weight:400">— paste &amp; go</span></div>
             <p class="sub">One line, token included — your agent reads llms.txt and does the rest: installs the CLI, signs in as you, and makes its first call.</p>
@@ -3757,7 +3757,7 @@ treg login</pre></div>
       <p v-else-if="shareGate" class="sub">You'll land on “{{shareGate.name}}” right after.</p>
       <!-- The default line is the SANDBOX's ("bring it into a real account"), which is nonsense to
            someone who arrived on a catalog page from a search result and has no sandbox. -->
-      <p v-else-if="publicCatalog" class="sub">Create a free team and call any of these — <b>$1.00 of credit</b>, no card.</p>
+      <p v-else-if="publicCatalog" class="sub">Verify your new account and create a team to call these tools. <b>$1.00 of credit once</b> on an eligible team, no card.</p>
       <p v-else class="sub">Bring the sandbox into a real account.</p>
       <button v-if="meta.github" class="btn primary" style="width:100%;padding:11px;margin-bottom:8px" @click="githubLogin">Continue with GitHub</button>
       <button v-if="meta.google" class="btn" style="width:100%;padding:11px;margin-bottom:8px" @click="googleLogin">Continue with Google</button>

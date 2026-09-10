@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import BigInteger, JSON, CheckConstraint, Column, Index, Integer, UniqueConstraint, text
+from sqlalchemy import BigInteger, Boolean, JSON, CheckConstraint, Column, Index, Integer, UniqueConstraint, text
 from sqlmodel import Field, SQLModel
 
 # Role ordering for gates (owner > admin > member > viewer).
@@ -28,7 +28,7 @@ def _now() -> datetime:
 
 class Org(SQLModel, table=True):
     """A tenant (team). Owns secrets/tools/bundles; resources are scoped by `org_id`.
-    Every user gets a personal org on registration (like Vercel/GitHub) — no empty state.
+    Verified sign-in creates only a user; the user explicitly creates or joins a team.
     """
 
     id: int | None = Field(default=None, primary_key=True)
@@ -137,6 +137,14 @@ class User(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     email: str = Field(index=True, unique=True)
+    # Only an inbox proof or a provider-verified email can set this. Legacy /users and
+    # admin-visible invitation codes are not email proofs.
+    email_verified_at: datetime | None = Field(default=None)
+    # Consumed atomically with the signup grant; survives leaving/deleting every team.
+    # The DB default is false so pre-upgrade users and old writers never gain a fresh claim.
+    signup_promo_available: bool = Field(
+        default=True, sa_column=Column(Boolean, nullable=False, server_default=text("false")),
+    )
     is_superadmin: bool = Field(default=False)  # cross-tenant platform admin (see /admin/*)
     suspended: bool = Field(default=False)  # suspended users cannot authenticate
     # Bumped to revoke every token this user holds at once (session cookie + CLI tokens). A signed

@@ -25,7 +25,7 @@ import stripe
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 
 from treg import adsconv
 from treg.application import billing
@@ -58,7 +58,7 @@ async def c(monkeypatch):
 
 
 async def _org(c: AsyncClient, email: str = "billing@superdesign.dev") -> tuple[int, str]:
-    r = await c.post("/users", json={"email": email})
+    r = await verified_signup(c, json={"email": email})
     assert r.status_code == 200, r.text
     return r.json()["org_id"], r.json()["token"]
 

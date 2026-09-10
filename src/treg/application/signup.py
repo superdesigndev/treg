@@ -9,10 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import adsconv, analytics, health, sandbox as demo_sandbox
+from ..config import get_settings
 from ..domain import money as ledger
 from ..domain import referrals
 from ..domain.governance.teams import _make_org_membership, _slugify
 from ..domain.identity.access import _email_domain, _is_blocked_email, _is_machine_email, _norm_email
+from ..domain.identity.promotions import claim_signup_promo
 from ..infra.db import session_maker
 from ..models import Org, User
 from ..timeutil import utcnow_naive as _utcnow_naive
@@ -51,13 +53,16 @@ def blocked_email(email: str, door: str) -> bool:
     return True
 
 
-async def find_or_create_user(db: AsyncSession, email: str, *, door: str = "login", created: set[int] | None = None) -> User:
+async def find_or_create_user(
+    db: AsyncSession, email: str, *, door: str = "login",
+    created: set[int] | None = None, verified: bool = False,
+) -> User:
     """Find a user by email, else register them — the user ONLY, **no auto personal org**. The shared
     core of every identity door (GitHub / Google / email OTP). A brand-new user therefore lands with
     zero teams and is asked to NAME + CREATE their first team (the dashboard's mandatory welcome, or
     `treg org create`) — we never spawn a throwaway personal org they didn't ask for. Their identity
     token is user-scoped, so it works before they have any org (org chosen per-request via X-Treg-Org).
-    Caller commits."""
+    Only trusted email-proof callers pass verified=True. Caller commits."""
     email = _norm_email(email)
     # Machine identities (agents, the published demo token) are minted by an admin and act ONLY by
     # their token. This is the single choke point every identity door shares, so blocking here means
@@ -77,9 +82,13 @@ async def find_or_create_user(db: AsyncSession, email: str, *, door: str = "logi
             await db.flush()  # surfaces the unique-email violation on a concurrent first-login race
         except IntegrityError:
             await db.rollback()  # another worker just created this same new user — reuse theirs
-            return (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
-        if created is not None:
-            created.add(user.id)
+            user = (await db.execute(select(User).where(User.email == email))).scalar_one()
+        else:
+            if created is not None:
+                created.add(user.id)
+    if verified and user.email_verified_at is None:
+        user.email_verified_at = _utcnow_naive()
+        db.add(user)
     return user
 
 
@@ -91,45 +100,29 @@ def track_signup(user: User, created: set[int], method: str, entry_surface: str)
         })
 
 
-async def _grant_signup_promo(db: AsyncSession, org: Org) -> None:
-    """Give a BRAND-NEW org its promotional balance, so an agent's first call needs no key and no card
-    (`settings.promo_grant_micro`, $1 by default). Called after the org is committed, from every door
-    that creates a real team — `ledger.grant` is idempotent per (org, kind), so a retried signup or a
-    second door can't double-grant, and existing orgs are never backfilled.
+async def _grant_signup_promo(db: AsyncSession, org: Org, *, user_id: int) -> None:
+    """Queue team attribution and grant at most once to its verified creator.
 
-    Demo/sandbox teams are created elsewhere (demo.py / sandbox.py) and deliberately get nothing: a
-    published demo token must not be able to spend real money. A grant failure must not fail the
-    signup — the org exists, and it can be topped up — so it is logged, not raised.
+    The user claim, money block, balance and ledger entry share one transaction. A
+    failed grant rolls the claim back too; the already-created team remains usable.
+    Unverified and legacy accounts get no automatic credit. Ads remain per-team and
+    independent of eligibility. Demo teams never receive real funding or conversions.
     """
     if org is None or org.id is None or org.demo or org.public_demo:
         return
-    # Read now: the rollback below expires every object this session tracks, and a lazy attribute
-    # load after it is implicit async I/O (MissingGreenlet) - same idiom as money._ClaimedHold.
     org_id = org.id
+    amount = get_settings().promo_grant_micro
     try:
-        # Queue and grant both only STAGE: adsconv.queue() adds a row inside a SAVEPOINT and
-        # ledger.grant() stages the block, balance and entry on this session. The ONE commit below
-        # is what lands the event and its conversion together (see adsconv.queue's docstring).
-        # The queue-first order is kept for the inner-except rationale, not for commit mechanics.
-        # Same door, same once-only guarantee: this function is already the single place a brand-new
-        # real team comes into existence.
+        claimed = amount > 0 and await claim_signup_promo(db, user_id)
         try:
             await adsconv.queue(db, org, adsconv.ACTION_SIGNUP)
-        except Exception as exc:  # noqa: BLE001 — its OWN guard, deliberately, not the outer one
-            # Sharing the outer except would mean an unexpected failure here (anything but the
-            # IntegrityError queue() already absorbs) skips the grant entirely and costs the team
-            # its $1 promotional credit. A marketing metric must not be able to take away a product
-            # benefit: swallow it here so the grant still runs.
+        except Exception as exc:  # noqa: BLE001 - marketing cannot take away the signup benefit
             logging.getLogger("treg").warning("ad conversion queue failed for org %s: %s", org_id, exc)
-        await ledger.grant(db, org_id)  # stages only; the commit below lands grant + conversion together
-        # Unconditional, even when grant returned None (retried signup): the queue no-oped too, so
-        # the commit is empty and harmless - simpler than making it conditional.
+        if claimed:
+            await ledger.grant(db, org_id, amount_micro=amount, once=False,
+                               meta={"source": "signup", "user_id": user_id})
         await db.commit()
-    except Exception as exc:  # noqa: BLE001 — the team is already created; don't 500 the signup over credit
-        # End the transaction the failure poisoned so the referral redemption that follows still has
-        # a working session. The rollback also expires every object this session tracks, which is
-        # why both doors read their response fields BEFORE calling here and why _redeem_referral
-        # revives its arguments.
+    except Exception as exc:  # noqa: BLE001 - team creation already committed
         await db.rollback()
         logging.getLogger("treg").warning("promo grant failed for org %s: %s", org_id, exc)
 
@@ -211,7 +204,7 @@ async def register_user(
         # otherwise a caller could squat an agent address before an admin mints that agent.
         if _is_machine_email(email):
             raise SignupError("machine_identity")
-        if blocked_email(email, "register"):  # mints a promo-funded team in one call; refuse first
+        if blocked_email(email, "register"):  # unverified registration still checks the domain
             raise SignupError("blocked_domain")
         if webhook_url and not health.safe_webhook_url(webhook_url):  # SSRF guard on the alert URL
             raise SignupError("unsafe_webhook")
@@ -247,7 +240,7 @@ async def register_user(
             "role": "owner",
             "token": token,
         }
-        await _grant_signup_promo(db, org)
+        await _grant_signup_promo(db, org, user_id=user.id)
         # Both org-creating doors redeem because both end with a person owning a fresh team.
         await _redeem_referral(db, referral_cookie, user, org)
         return response
@@ -259,8 +252,7 @@ async def create_org(
     async with session_maker() as db:
         if demo_sandbox.is_sandbox_user(user):  # anonymous sandbox visitors cannot mint real teams
             raise SignupError("sandbox_user")
-        # An identity registered BEFORE its domain was listed still holds a live token; every team it
-        # creates is another promo grant, so the blocklist covers this door too, not only sign-in.
+        # Previously registered identities may still hold tokens, so check this door too.
         if blocked_email(user.email, "create_org"):
             raise SignupError("blocked_domain")
         click_field, gclid, landing = _ad_attribution_from(ad_cookie)
@@ -293,6 +285,6 @@ async def create_org(
             "role": "owner",
             "token": token,
         }
-        await _grant_signup_promo(db, org)
+        await _grant_signup_promo(db, org, user_id=user.id)
         await _redeem_referral(db, referral_cookie, user, org)
         return response

@@ -87,6 +87,8 @@ agents then built against a constitution that was wrong.
   allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
+- **Signup credit.** Once per new verified user, enforced by a user-level atomic claim committed
+  with the grant. Team deletion never restores eligibility; legacy registration is not email proof.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
   only in `infra/stripe.py`, orchestration in `application/billing.py`, and `reconcile.py` is
   read-only. See `docs/context/architecture/money.md`.

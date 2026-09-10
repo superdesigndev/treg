@@ -32,6 +32,7 @@ sources:
   - src/treg/models.py
   - src/treg/alembic/versions/0031_archive_result_admission.py
   - src/treg/alembic/versions/0032_archive_body_storage.py
+  - src/treg/alembic/versions/0033_signup_promo_eligibility.py
   - src/treg/timeutil.py
   - src/treg/infra/db.py
   - src/treg/domain/referrals.py
@@ -80,6 +81,12 @@ legacy DB path). Archive remains the only writer. An R2 location is published on
 verified upload finishes outside any DB session; `content_hash` is the object name. No new index,
 backfill, body-column removal or destructive migration occurs. Double-write rows retain their DB
 body/carrier; R2-only rows require no carrier pointer. See [archive](archive.md#body-storage-and-r2-double-writing).
+
+Revision `0033` adds nullable `User.email_verified_at` and non-null `signup_promo_available`,
+with a retained database default of false for existing rows and old writers. New application users
+explicitly insert true. No balances or historical money entries change. Successful email proof sets
+verification; only the atomic identity claim consumes availability, committed with the signup grant.
+See [signup eligibility](money.md#signup-credit-eligibility).
 
 ## Registry tables
 

@@ -30,14 +30,16 @@ environment) and enforcement happens server-side and in the operating system.
 - **Server runs are resource-limited.** `treg run --server` executes each CLI with a scrubbed environment
   (treg's own secrets removed), a per-run throwaway home, an allow-list of runnable commands, output
   redaction, and POSIX resource limits (CPU, file size, no core dumps).
-- **Signup abuse has a brake.** Every new team gets a small promotional balance, which makes bulk
-  registration on throwaway addresses worth an attacker's time. `TREG_BLOCKED_EMAIL_DOMAINS` (the
-  whole blocklist — no list ships in the code, so an unset value blocks nothing; subdomains
-  included, case-insensitive, domain only) refuses the address at every sign-up and sign-in door and
-  at both team-creating endpoints. The refusal names neither the list nor the domain, every block is
-  logged, and a classifier failure lets the sign-in through rather than breaking real signups. It is
-  a speed bump, not a fix: a new domain costs the other side minutes, so treat the variable as
-  something to edit during an incident, and suspend the accounts already created separately.
+- **Signup credit belongs to a verified account, once.** Only an email OTP, provider-verified
+  Google/GitHub email, or inbox-only invitation link marks an identity verified. Legacy `POST /users`
+  and admin-visible invitation codes do not. `claim_signup_promo` atomically consumes the user's
+  eligibility in the same transaction as the money grant; team deletion never restores it. Accounts
+  predating revision `0033` receive no new automatic grant; their existing balances are unchanged.
+  New identities can still be farmed through verified inboxes, so this is not a one-human guarantee.
+  `TREG_PROMO_GRANT_MICRO=0` stops new automatic grants after deployment. The domain blocklist
+  (`TREG_BLOCKED_EMAIL_DOMAINS`, unset means no blocks) remains a configurable speed bump at every
+  sign-in/sign-up door and both team-creating endpoints; it fails open on classifier errors.
+  Suspend abusive users and teams separately, retaining their records for investigation.
 
 ## Archive object storage credentials
 

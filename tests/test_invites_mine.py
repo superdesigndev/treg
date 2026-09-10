@@ -160,6 +160,14 @@ async def test_email_link_post_signs_in_once_and_lands_on_invite_org(client, sen
         assert "treg_session" in r.headers.get("set-cookie", "")  # signed in (first click = registration)
         mine = (await visitor.get("/invites/mine")).json()  # the cookie authenticates the session
         assert [m["org_id"] for m in mine] == [org["org_id"]]  # invite still PENDING — accepted in the app
+        # Inbox-only proof, unlike the admin-visible code, qualifies a new account.
+        team = await visitor.post("/orgs", json={"name": "verified-invite-team"})
+        assert team.status_code == 200
+        balance = await visitor.get(f"/orgs/{team.json()['org_id']}/balance",
+                                    headers={"X-Treg-Token": team.json()["token"]})
+        from treg.config import get_settings
+        assert balance.json()["balance_micro"] == get_settings().promo_grant_micro
+
     # one-time: a second POST (forwarded thread, replay) gets no session
     async with await _fresh() as replayer:
         r = await replayer.post("/auth/invite-signin", content=f"t={t}",

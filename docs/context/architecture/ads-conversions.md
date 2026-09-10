@@ -143,7 +143,9 @@ touches balance.
 ## Atomicity: two of three fire sites are atomic with their event, one is not
 
 - **`signup`** — atomic. `adsconv.queue()` and `ledger.grant()` both stage in `_grant_signup_promo`,
-  and its one commit lands both rows together.
+  and its one commit lands the user claim and credit together with the conversion when eligible.
+  Conversions remain per-team even when a user is unverified, already claimed, legacy-ineligible,
+  or the grant amount is zero; a conversion is not evidence of credited money.
 - **`first_call`** — atomic. `_record_first_call` queues the conversion and commits once, on its own
   session.
 - **`paid`** — **not atomic**. `billing._credit` commits the credit first, then queues the `paid`

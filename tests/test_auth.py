@@ -135,6 +135,8 @@ async def test_github_login_creates_user_session_but_no_auto_org(gc):
     # first login creates the USER ONLY — no throwaway personal org; the user names their first team next
     async with session_maker() as s:
         u = (await s.execute(select(User).where(User.email == "octo@example.com"))).scalar_one()
+        assert u.email_verified_at is not None
+        assert u.signup_promo_available
         n = len((await s.execute(select(Membership).where(Membership.user_id == u.id))).scalars().all())
     assert n == 0
 
@@ -296,6 +298,8 @@ async def test_google_login_creates_user_session_but_no_auto_org(goog):
     assert me.status_code == 200 and me.json()["email"] == "guser@example.com"
     async with session_maker() as s:
         u = (await s.execute(select(User).where(User.email == "guser@example.com"))).scalar_one()
+        assert u.email_verified_at is not None
+        assert u.signup_promo_available
         n = len((await s.execute(select(Membership).where(Membership.user_id == u.id))).scalars().all())
     assert n == 0  # first login registers the user only — no auto personal org
 

@@ -26,7 +26,7 @@ Two kinds of tool answer to the same token, through the same `/call/`:
 
 - **The catalog** — curated external endpoints, callable by id. If nobody on your team holds a key
   for that provider, treg serves eligible endpoints **on its own key**, metered per call against
-  the team's prepaid balance (**$1.00 free** on every new team). No provider signup, no
+  the team's prepaid balance (**$1.00 free** once per new verified account, on an eligible team). No provider signup, no
   subscription.
 - **Your own tools** — anything a teammate registered: an internal service, a paid API account, an
   OAuth connection, a vendor CLI, a SKILL.md. Callable by the whole team, with the credential held
@@ -167,7 +167,7 @@ free of the balance rather than duplicating them.
 1. the org registered its own tool for that provider → that tool, that key;
 2. the org stored a secret for the provider → injected via a virtual tool;
 3. neither → **treg's own key**, billed per call to the team's prepaid balance. Fractions of a
-   cent (a TikTok profile is ~$0.001); every new team starts with **$1.00 free**. No provider
+   cent (a TikTok profile is ~$0.001); new verified accounts receive **$1.00 free once**, when creating an eligible team. No provider
    signup, no subscription.
 
 A few flat-fee providers carry a rate **treg set** rather than one the vendor published (the vendor
@@ -595,7 +595,7 @@ skills` restrict it (`--dir` sets the location).
 
        treg is live — your agent can now call {ENDPOINTS} tools across {PROVIDERS} providers (market data, SEO &
        keywords, social & trends, people/company enrichment, ads, scraping), with $1.00
-       of free credit to spend.
+       of free credit once per new verified account, on an eligible team.
 
    Then **propose exactly 3 things you could do for them right now** and offer to run one.
    Look at the repo and the conversation first: at least one proposal should be tailored to

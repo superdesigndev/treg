@@ -128,7 +128,7 @@ class Settings(BaseSettings):
     # a code change — and so the ledger records the rate that was in force for each call.
     platform_margin: float = 0.0
     # The signup gift, in micro-USD (1e-6 USD): $1 buys ~1,600 catalog calls, enough for an agent to
-    # get real work done before it ever sees a payment form. Granted once, at org creation only.
+    # get real work done before it ever sees a payment form. Granted once per verified user, when creating an eligible team.
     promo_grant_micro: int = 1_000_000
     # Upstream HTTP timeout for a relayed call (the shared httpx client). Also the base of the hold
     # reaper's cutoff: a hold older than call_timeout_s + hold_grace_s belongs to a call that can no

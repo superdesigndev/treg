@@ -46,3 +46,36 @@ async def test_alembic_head_has_no_model_drift():
     finally:
         await _drop_everything()
         await db.reset_db()
+
+
+async def test_signup_upgrade_does_not_reopen_existing_user_claims():
+    """Upgrade actual pre-fix rows on SQLite and the serial PostgreSQL CI database."""
+    await audit.drain()
+    await _drop_everything()
+    try:
+        await _upgrade_to('0032')
+        async with db._engine.begin() as connection:
+            await connection.execute(text('''
+                INSERT INTO "user" (email, is_superadmin, suspended, token_version,
+                                    onboarded, demo, created_at)
+                VALUES ('pre-upgrade@example.org', false, false, 0, false, false, CURRENT_TIMESTAMP)
+            '''))
+        await _upgrade_to('head')
+        async with db._engine.begin() as connection:
+            row = (await connection.execute(text('''
+                SELECT email_verified_at, signup_promo_available
+                FROM "user" WHERE email = 'pre-upgrade@example.org'
+            '''))).one()
+            assert row.email_verified_at is None
+            assert not row.signup_promo_available
+            # Even a successful proof later must not undo the migration's decision.
+            await connection.execute(text('''
+                UPDATE "user" SET email_verified_at = CURRENT_TIMESTAMP
+                WHERE email = 'pre-upgrade@example.org'
+            '''))
+            assert not (await connection.execute(text('''
+                SELECT signup_promo_available FROM "user" WHERE email = 'pre-upgrade@example.org'
+            '''))).scalar_one()
+    finally:
+        await _drop_everything()
+        await db.reset_db()

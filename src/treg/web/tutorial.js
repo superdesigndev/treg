@@ -74,7 +74,7 @@
       notice: "An endpoint treg has no published price for is <b>refused</b>, never served for free — you are told to connect your own key instead." },
 
     { part: "Part 1 · The catalog (no key, no setup)", who: "tom", title: "Call it — with no key anywhere",
-      explain: "No account with TikHub, no signup, no key on the machine. treg holds the credential, injects it server-side, and bills the call to the team's prepaid balance. Every new team starts with <b>$1.00 free</b>, which is hundreds of calls at this price.",
+      explain: "No account with TikHub, no signup, no key on the machine. treg holds the credential, injects it server-side, and bills the call to the team's prepaid balance. New verified accounts receive <b>$1.00 free once</b>, when creating an eligible team, which covers hundreds of calls at this price.",
       cmd: `treg call tikhub.tiktok.user.profile --query uniqueId=tiktok`,
       out: `{\n  "user": {\n    "uniqueId": "tiktok",\n    "nickname": "TikTok",\n    "followerCount": 82400000\n  }\n}`,
       notice: "If your team already has its own key for that provider, it wins automatically — and those calls are never metered." },

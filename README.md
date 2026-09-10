@@ -23,7 +23,7 @@ bills fractions of a cent per call.
 ## Two kinds of tool, one token
 
 - **The catalog** — external endpoints treg can serve **on its own key**, metered against your
-  team's prepaid balance (**$1.00 free** on every new team). No account with the provider needed.
+  team's prepaid balance (**$1.00 free** once per new verified account, on an eligible team). No account with the provider needed.
 - **Your own tools** — anything a teammate registered: a paid API account, an OAuth connection, a
   vendor CLI, a `SKILL.md`. **Your own key always wins over treg's, and those calls are never
   metered.**

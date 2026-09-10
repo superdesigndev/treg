@@ -136,8 +136,7 @@ async def test_admin_credit_org_happy_path(c):
     assert body["amount_usd"] == 50.0
     assert body["ref"] == "hs-1234"
     assert body["block_id"]
-    promo = get_settings().promo_grant_micro
-    assert body["balance_micro"] == promo + 50_000_000
+    assert body["balance_micro"] == 50_000_000  # unverified seed starts with no signup credit
 
     async with session_maker() as db:
         block = (await db.execute(
