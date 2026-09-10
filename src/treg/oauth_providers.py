@@ -1594,6 +1594,33 @@ SCRAPECREATORS = OAuthProvider(
     token_verify_field="creditCount",
 )
 
+VIDKRAKEN = OAuthProvider(
+    service="vidkraken",
+    display_name="Vid Kraken",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Vid Kraken API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://vidkraken.com/dashboard",
+    setup_action_label="Get your Vid Kraken API key",
+    setup_steps=(
+        "Sign in to Vid Kraken with Google and open the Dashboard.",
+        "Copy the API key shown at the top of the dashboard.",
+    ),
+    setup_note="Downloads are billed by bandwidth (delivered file size, 20 MB minimum); metadata lookups draw from a per-plan quota; polling and the account check are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Download YouTube videos, audio tracks and trimmed clips to a CDN file URL, and look up a video's title, duration and audio languages.",
+    base_url="https://vidkraken.com/api/v2",
+    docs_url="https://vidkraken.com/docs",
+    # Free account/balances read. Live 2026-09-10: bogus Bearer -> 401 {"error":"Invalid API key"};
+    # missing header -> 401 {"error":"Missing API key. Provide it as 'Bearer YOUR_API_KEY'"}.
+    probe_path="/me",
+)
+
 # ---- SEO API-key providers -------------------------------------------------------------------
 
 DATAFORSEO = OAuthProvider(
@@ -2815,7 +2842,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # API-key providers
         APOLLO, PDL, AKTA, HUNTER, SUMBLE, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
-        SCRAPECREATORS,
+        SCRAPECREATORS, VIDKRAKEN,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, CLORO,
         # more Enrichment API-key providers

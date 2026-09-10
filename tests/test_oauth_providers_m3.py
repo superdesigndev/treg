@@ -48,7 +48,7 @@ def test_every_provider_is_registered():
         "facebook", "instagram", "meta-ads",
         # API-key providers (auth_kind="key")
         "apollo", "pdl", "akta", "hunter", "sumble", "quickenrich", "contactout", "millionverifier", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush", "justoneapi",
-        "scrapecreators",
+        "scrapecreators", "vidkraken",
         "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
         "cloro",
         "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",

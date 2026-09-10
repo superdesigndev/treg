@@ -1,0 +1,312 @@
+provider: vidkraken
+source:
+  docs: https://vidkraken.com/docs
+  openapi: https://vidkraken.com/openapi.yaml
+  curated: 2026-09-10
+# Vid Kraken is a server-side YouTube download API: submit a URL, poll a job, receive a CDN URL to
+# an MP4 / audio file (optionally a trimmed clip or a dubbed-language audio track). The listing is
+# deliberately just that surface — downloads and the video-info pre-flight — plus the free account
+# read that serves as the probe; channel listing exists on the API but is better served by the
+# dedicated YouTube data providers already in this catalog. Every job route
+# is asynchronous — the file-level `async` block below is the download protocol; the two metadata
+# rows override it with the /info protocol (different status vocabulary) and every synchronous or
+# utility row opts out with `async: false`.
+#
+# Billing (https://vidkraken.com/#pricing, reconciled live 2026-09-10 against GET /me):
+#   - Downloads are billed in BANDWIDTH only — the delivered file size, with a 20 MB minimum per
+#     download, drawn from the plan's monthly allowance. No per-download fee. The USD figure per GB
+#     is the plan's effective rate: Starter $99/mo for 400 GB = $0.25/GB (listed below as the
+#     documented price), Growth $399 for 2 TB = $0.20/GB, Scale $1,499 for 10 TB = $0.15/GB; overage
+#     $0.50 / $0.40 / $0.30 per GB respectively. Free plan: 10 GB and 10 downloads, lifetime.
+#     OBSERVED 2026-09-10: three downloads of 476 KB, 252 KB and 221 KB each moved
+#     balances.bandwidth_mb.used by exactly 20 (the floor) and download_count.used by 1.
+#   - Metadata lookups (POST /info) draw 1 "info request" from a per-plan quota (2× the download
+#     quota, e.g. 200,000/month on Starter; 50 lifetime on Free) and never bandwidth. Never priced
+#     in USD, no overage — a hard stop at the cap. OBSERVED 2026-09-10: two lookups moved
+#     balances.info.used by exactly 2 (the meter lags the response by a few seconds).
+#   - Polling routes, GET /me, failed jobs, 401/403/429 answers: never charged (observed: no meter
+#     moved on any of them).
+# Job status routes answer only the submitting account: a foreign or expired id is 404 ("Download
+# job not found" / "Job not found or expired"). Info job state lives 1 hour; download jobs persist.
+# The API key rides as `Authorization: Bearer <key>`; the free GET /me is the registry's probe.
+limits: "at most 100 downloads queued or in progress per account (429 beyond); jobs finish in seconds for short videos, minutes for long ones; no published per-minute request limit"
+pricing_url: https://vidkraken.com/#pricing
+
+proposed_capabilities:
+  # The youtube platform has metadata/comments/search/channel capabilities but nothing that yields the
+  # media FILE. These are the download jobs an agent reaches for; the clip and audio variants are
+  # priced and requested differently enough (trim bounds; the cheapest tier) to be separate rows.
+  youtube.video.download: "Download a YouTube video as an MP4 file at a chosen resolution"
+  youtube.audio.download: "Download a YouTube video's audio track as a file"
+  youtube.video.clip: "Download a trimmed clip of a YouTube video by start and end time"
+  youtube.video.audio_tracks: "List a video's available audio tracks and dubbed languages"
+  # Polling plumbing for the two async protocols (kind: utility — hidden from the browse surface).
+  youtube.download.job.status: "Check an async download job and get its file URL"
+  youtube.info.job.status: "Check an async video-info job and get its result"
+
+async:
+  id_from: jobId
+  poll:
+    endpoint: vidkraken.youtube.download.job.status
+    param: {in: pathParams, name: jobId}
+  status:
+    path: status
+    success: [COMPLETED]
+    failure: [FAILED]
+  result:
+    path: downloadUrl
+    ttl_note: "CDN URL; download promptly"
+  interval: 5
+
+endpoints:
+  # --- Downloads (async: POST returns a jobId, poll GET /download/{jobId}) ------------------------
+  - id: vidkraken.youtube.video.download
+    capability: youtube.video.download
+    platform: youtube
+    domain: download
+    scope: any_account
+    method: POST
+    path: /download
+    name: "Download a YouTube video (MP4, 360p-1080p)"
+    summary: "Queue a YouTube video for download. Returns a `jobId` that you poll on `GET /download/{jobId}` until status is `COMPLETED` (or `FAILED`)."
+    input:
+      body:
+        url: {type: string, required: true, note: "youtube.com/watch?v=ID, youtu.be/ID or youtube.com/live/ID", example: "https://youtu.be/dQw4w9WgXcQ"}
+        format: {type: string, required: true, enum: ["1080", "720", "480", "360"], example: "720", note: "vertical resolution in pixels; omitting it downloads AUDIO (the API default) — use vidkraken.youtube.audio.download for that. May be capped down for very long videos to fit the plan's per-file limit; the delivered format is `actualFormat`"}
+        language: {type: string, required: false, example: "en-US", note: "BCP-47 tag of the preferred audio track (dubbed videos); falls back to a prefix match, then the original audio. Discover tracks with vidkraken.youtube.video.audio_tracks"}
+        webhookUrl: {type: string, required: false, example: "https://example.com/hooks/vidkraken", note: "public https URL POSTed the final status instead of polling; signed with HMAC-SHA256 over the raw body using the API key"}
+      bodyType: json
+      note: "Submission answers 200 {jobId, title, duration, status: IN_QUEUE} at once; the file appears on the terminal status as `downloadUrl` with `fileSize` in bytes. Failed jobs carry a machine-readable `errorCode` (AGE_RESTRICTED, PRIVATE_VIDEO, GEO_RESTRICTED, LIVE_STREAM_IN_PROGRESS, …) and are not charged"
+    test_request:
+      body: {url: "https://youtu.be/jNQXAC9IVRw", format: "360"}
+    cost:
+      type: per_success
+      value: 0.25
+      currency: USD
+      per: 1
+      unit: GB
+      display: {unit: "GB delivered (20 MB minimum)", variable: true}
+      source: docs
+      source_url: https://vidkraken.com/#pricing
+      checked: '2026-09-10'
+      confidence: documented
+      note: "Bandwidth at the delivered file size, 20 MB minimum per download — so the smallest possible charge is 0.02 GB ($0.005 at the Starter rate). $0.25/GB is the Starter plan's effective rate ($99/mo, 400 GB); Growth is $0.20/GB, Scale $0.15/GB; overage $0.50/$0.40/$0.30 per GB. Charged when the job COMPLETES; submission and failures are free. The test target ('Me at the zoo', 19 s) delivers ~0.5 MB at 360p and OBSERVED 2026-09-10 moved bandwidth_mb.used by exactly 20."
+    docs_url: https://vidkraken.com/docs/endpoint/submit-download
+
+  - id: vidkraken.youtube.audio.download
+    capability: youtube.audio.download
+    platform: youtube
+    domain: download
+    scope: any_account
+    method: POST
+    path: /download
+    name: "Download a YouTube video's audio track"
+    summary: "Queue a YouTube video for download. Returns a `jobId` that you poll on `GET /download/{jobId}` until status is `COMPLETED` (or `FAILED`)."
+    input:
+      body:
+        url: {type: string, required: true, note: "youtube.com/watch?v=ID, youtu.be/ID or youtube.com/live/ID", example: "https://youtu.be/dQw4w9WgXcQ"}
+        format: {type: string, required: true, enum: [audio], example: "audio", note: "best audio stream YouTube offers (~130-160 kbps Opus/AAC) in its native container — no re-encoding. This is the API's default format and its cheapest tier"}
+        language: {type: string, required: false, example: "es", note: "BCP-47 tag of the preferred (dubbed) audio track; falls back to a prefix match, then the original audio"}
+        webhookUrl: {type: string, required: false, example: "https://example.com/hooks/vidkraken", note: "public https URL POSTed the final status instead of polling"}
+      bodyType: json
+      note: "Same job protocol as the video row; the terminal status carries `downloadUrl` and `fileSize`"
+    test_request:
+      body: {url: "https://youtu.be/jNQXAC9IVRw", format: "audio"}
+    cost:
+      type: per_success
+      value: 0.25
+      currency: USD
+      per: 1
+      unit: GB
+      display: {unit: "GB delivered (20 MB minimum)", variable: true}
+      source: docs
+      source_url: https://vidkraken.com/#pricing
+      checked: '2026-09-10'
+      confidence: documented
+      note: "Bandwidth at the delivered file size with the same 20 MB minimum as video, at the plan's per-GB rate (Starter $0.25/GB listed). Audio files are far smaller than video, so most audio downloads settle at the 20 MB floor. OBSERVED 2026-09-10: a 252 KB audio file moved bandwidth_mb.used by exactly 20."
+    docs_url: https://vidkraken.com/docs/endpoint/submit-download
+
+  - id: vidkraken.youtube.video.clip
+    capability: youtube.video.clip
+    platform: youtube
+    domain: download
+    scope: any_account
+    method: POST
+    path: /download
+    name: "Download a trimmed clip of a YouTube video"
+    summary: "Queue a YouTube video for download. Returns a `jobId` that you poll on `GET /download/{jobId}` until status is `COMPLETED` (or `FAILED`)."
+    input:
+      body:
+        url: {type: string, required: true, note: "youtube.com/watch?v=ID, youtu.be/ID or youtube.com/live/ID", example: "https://youtu.be/dQw4w9WgXcQ"}
+        format: {type: string, required: true, enum: ["1080", "720", "480", "360", audio], example: "1080"}
+        startTime: {type: integer, required: true, min: 0, example: 30, note: "trim start in seconds (inclusive); must be in [0, duration)"}
+        endTime: {type: integer, required: true, min: 1, example: 90, note: "trim end in seconds (exclusive); must be in (0, duration] and greater than startTime"}
+        language: {type: string, required: false, example: "en-US", note: "BCP-47 tag of the preferred audio track"}
+        webhookUrl: {type: string, required: false, example: "https://example.com/hooks/vidkraken"}
+      bodyType: json
+      note: "Cuts are frame-accurate (the clip is re-encoded at the cut points), so the delivered file is just the requested range — the bandwidth charge follows the CLIP size, not the full video. Same job protocol as the other download rows"
+    test_request:
+      body: {url: "https://youtu.be/jNQXAC9IVRw", format: "360", startTime: 0, endTime: 5}
+    cost:
+      type: per_success
+      value: 0.25
+      currency: USD
+      per: 1
+      unit: GB
+      display: {unit: "GB delivered (20 MB minimum)", variable: true}
+      source: docs
+      source_url: https://vidkraken.com/#pricing
+      checked: '2026-09-10'
+      confidence: documented
+      note: "Bandwidth at the delivered CLIP size, 20 MB minimum, at the plan's per-GB rate (Starter $0.25/GB listed). OBSERVED 2026-09-10: a 5-second 360p clip (221 KB) moved bandwidth_mb.used by exactly 20."
+    docs_url: https://vidkraken.com/docs/endpoint/submit-download
+
+  - id: vidkraken.youtube.download.job.status
+    kind: utility
+    capability: youtube.download.job.status
+    platform: youtube
+    domain: download
+    scope: any_account
+    method: GET
+    path: /download/{jobId}
+    name: "Check a download job and get the file URL"
+    summary: "Poll the status of a previously-submitted download job. Once `status` is `COMPLETED`, the response carries a `downloadUrl` you can fetch the file from. If `status` is `FAILED`, an `errorCode` identifies why."
+    resource_ownership:
+      requires: {kind: "poll:vidkraken.youtube.download.job.status", param: jobId}
+    async: false
+    input:
+      pathParams:
+        jobId: {type: string, required: true, example: "69cfc45e8a3b4d2f9c1e0a7b", note: "the jobId returned by POST /download"}
+      note: "Status is IN_QUEUE → IN_PROGRESS → COMPLETED | FAILED. Only the submitting account can read a job; any other or unknown id is 404 {\"error\":\"Download job not found\"}. Download jobs persist, so a completed job stays readable"
+    test_request:
+      # a job from the vendor's own verification run — substitute a jobId from YOUR account (404 otherwise)
+      pathParams: {jobId: "6aa2c8d697daf3fb44bcaa51"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling is never charged (observed: no meter moved)."}
+    docs_url: https://vidkraken.com/docs/endpoint/get-download-status
+
+  # --- Metadata (async: POST returns a jobId, poll GET /info/{jobId}) ------------------------------
+  - id: vidkraken.youtube.video.detail
+    capability: youtube.video.detail
+    platform: youtube
+    domain: video
+    scope: any_account
+    method: POST
+    path: /info
+    name: "YouTube video title and duration (download pre-flight)"
+    summary: "Queue a job that fetches metadata for a YouTube video — title and duration. Returns a `jobId` that you poll on `GET /info/{jobId}`."
+    async:
+      id_from: jobId
+      poll:
+        endpoint: vidkraken.youtube.info.job.status
+        param: {in: pathParams, name: jobId}
+      status:
+        path: status
+        success: [success]
+        failure: [failed]
+      result:
+        path: result
+        ttl_note: "1h — job state expires from Redis an hour after submission (404 after)"
+      interval: 2
+    input:
+      body:
+        url: {type: string, required: true, note: "youtube.com/watch?v=ID, youtu.be/ID or youtube.com/live/ID", example: "https://youtu.be/dQw4w9WgXcQ"}
+        includeAudioTracks: {type: boolean, required: false, default: false, note: "leave false here; the audio-track listing is vidkraken.youtube.video.audio_tracks"}
+      bodyType: json
+      note: "Returns title, duration (seconds) and the canonical url — NOT view/like/comment counts (use another youtube.video.detail provider for stats). Its job here is sizing a download before paying for it: duration × format ≈ bandwidth. A failed job carries the same `errorCode` vocabulary as downloads (PRIVATE_VIDEO, AGE_RESTRICTED, …), so it doubles as a free-of-bandwidth pre-check of whether a download would succeed. Intermediate status may read `processing` (treat as still pending)"
+    test_request:
+      body: {url: "https://youtu.be/jNQXAC9IVRw"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://vidkraken.com/openapi.yaml
+      checked: '2026-09-10'
+      confidence: documented
+      note: "1 'info request' from the plan's info quota (Starter 200,000/month; Free 50 lifetime) — a quota counter, never priced in USD and with no overage; no bandwidth. Charged on success only. OBSERVED 2026-09-10: balances.info.used moved by exactly 1 per successful lookup."
+    docs_url: https://vidkraken.com/docs/endpoint/submit-video-info
+
+  - id: vidkraken.youtube.video.audio_tracks
+    capability: youtube.video.audio_tracks
+    platform: youtube
+    domain: video
+    scope: any_account
+    method: POST
+    path: /info
+    name: "List a YouTube video's audio tracks (dubbed languages)"
+    summary: "Set `includeAudioTracks: true` to also resolve the list of available audio tracks (original + dubbed languages, if any). Audio tracks require a full extraction, which is slower and can occasionally fail on hard-to-reach videos."
+    async:
+      id_from: jobId
+      poll:
+        endpoint: vidkraken.youtube.info.job.status
+        param: {in: pathParams, name: jobId}
+      status:
+        path: status
+        success: [success]
+        failure: [failed]
+      result:
+        path: result
+        ttl_note: "1h — job state expires from Redis an hour after submission (404 after)"
+      interval: 3
+    input:
+      body:
+        url: {type: string, required: true, example: "https://www.youtube.com/watch?v=omW5PrTMz-c"}
+        includeAudioTracks: {type: boolean, required: true, enum: [true], example: true}
+      bodyType: json
+      note: "The result's `audio[]` lists {type: original|dubbed, language} — feed a language into a download row's `language` field. Slower than the plain lookup (a few seconds)"
+    test_request:
+      body: {url: "https://www.youtube.com/watch?v=omW5PrTMz-c", includeAudioTracks: true}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://vidkraken.com/openapi.yaml
+      checked: '2026-09-10'
+      confidence: documented
+      note: "Same 1 'info request' as the plain lookup — the audio-track extraction costs no more. OBSERVED 2026-09-10: balances.info.used moved by exactly 1."
+    docs_url: https://vidkraken.com/docs/endpoint/submit-video-info
+
+  - id: vidkraken.youtube.info.job.status
+    kind: utility
+    capability: youtube.info.job.status
+    platform: youtube
+    domain: video
+    scope: any_account
+    method: GET
+    path: /info/{jobId}
+    name: "Check a video-info job and get its result"
+    summary: "Poll the status of a previously-submitted video-info job."
+    resource_ownership:
+      requires: {kind: "poll:vidkraken.youtube.info.job.status", param: jobId}
+    async: false
+    input:
+      pathParams:
+        jobId: {type: string, required: true, example: "6f9c1234-5e8a-4b2f-9c1e-0a7b69cfc45e", note: "the jobId returned by POST /info"}
+      note: "Status is pending (or processing) → success | failed; `result` holds {title, duration, url[, audio]}. Job state expires 1 hour after submission and a foreign id is refused: 404 {\"error\":\"Job not found or expired\"}"
+    test_request:
+      # a job from the vendor's own verification run — expires after 1 h; chain the id from a fresh POST /info
+      pathParams: {jobId: "959763b2-f258-413c-aa30-8d631ba2bec2"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling is never charged (observed: no meter moved)."}
+    docs_url: https://vidkraken.com/docs/endpoint/get-video-info-status
+
+  # --- Account -----------------------------------------------------------------------------------
+  - id: vidkraken.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /me
+    name: "Get plan and remaining bandwidth, downloads and info quota"
+    summary: "Returns the account behind the API key — name, email, current plan, and the live balance on every metered feature."
+    async: false
+    input:
+      note: "no parameters — the key rides in the Authorization header. `balances` is keyed by feature: download_count, bandwidth_mb (THE billed meter) and info on every account; client_download and channel_list only where the add-on is enabled. Each carries granted / used / remaining / unlimited / resetsAt"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free, no call limit; this is the registry's health probe — a bad key answers 401 {\"error\":\"Invalid API key\"}"}
+    docs_url: https://vidkraken.com/docs/endpoint/get-account
