@@ -98,6 +98,40 @@ async def test_missing_archive_is_revisited_and_old_window_removed(clients):
     assert row["unique_requests"]==1 and row["unresolved"]==0
 
 
+async def test_evidence_uses_exact_content_and_carrier_with_repeated_requests(clients):
+    answer = {"data": {"email": "found@example.test"}}
+    first = await record("first", response=answer)
+    repeated = await record("repeated")
+    missing = await record("missing")
+    no_content = await record("no-content", status=404)
+    async with session_maker() as db:
+        original = await db.get(CallRecord, first)
+        key = (await db.execute(select(ArchiveKey).where(
+            ArchiveKey.key_hash == original.archive_key_hash))).scalar_one()
+        carrier = (await db.execute(select(ArchiveSnapshot).where(
+            ArchiveSnapshot.key_id == key.id))).scalar_one()
+        db.add(ArchiveSnapshot(key_id=key.id, version=2, content_hash=carrier.content_hash,
+            body_of=carrier.id, body=None))
+        db.add(ArchiveSnapshot(key_id=key.id, version=3, content_hash="different-answer",
+            body=b'{"data":{"email":null}}'))
+        for ident, content_hash in ((repeated, carrier.content_hash), (missing, "absent"), (no_content, None)):
+            row = await db.get(CallRecord, ident)
+            row.archive_key_hash = key.key_hash
+            row.archive_content_hash = content_hash
+            db.add(row)
+        await db.commit()
+        records = (await db.execute(select(CallRecord).where(
+            CallRecord.id.in_([first, repeated, missing, no_content])))).scalars().all()
+        evidence = await service._evidence(db, records)
+        assert evidence[first][2] == evidence[repeated][2] == answer
+        assert evidence[missing][2] is None
+        assert evidence[no_content][0]["domain"] == "example.test"
+        assert evidence[no_content][2] is None
+        # A batch containing request metadata but no response references is still valid.
+        metadata_only = await service._evidence(db, [r for r in records if r.id == no_content])
+        assert metadata_only == {no_content: evidence[no_content]}
+
+
 @pytest.mark.parametrize("status",["valid","invalid"])
 def test_verification_verdict_is_an_answer(status):
     cat=store.load();ep=cat.by_id["tomba.people.email.verify"]

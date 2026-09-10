@@ -236,7 +236,12 @@ shows the last update time. Prices still come from the catalog and team quote.
 It reads 100 audit records per transaction, follows their exact archive key/content and optional body
 carrier, reclassifies stored responses with current Arena required-field rules, and upserts anonymous
 `ArenaObservation` facts. It never calls vendors or trusts `CallRecord.hit`. No money writes or proxy
-changes are involved. `ArenaInsightState` serializes the cursor across workers and stores the aggregate;
+changes are involved. Evidence lookup deduplicates key/content pairs and finds each pair's newest
+matching snapshot through the existing `(key_id, version)` index. This avoids repeatedly scanning
+the global content index for identical responses shared by many requests. Missing exact content
+remains unresolved; newer different answers never substitute for historical evidence. The values
+CTE requires SQLAlchemy 2.0.42 or newer, reflected in the server dependency floor.
+`ArenaInsightState` serializes the cursor across workers and stores the aggregate;
 initial history is withheld until the first pass completes. Steady state refreshes about every two
 minutes (plus collection time), allowing one minute for audit/archive writes and revisiting ten minutes
 of recent evidence. The first backfill may take longer. Evidence that arrives later than this revisit

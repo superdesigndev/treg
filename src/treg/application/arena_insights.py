@@ -10,7 +10,7 @@ import zlib
 from datetime import timedelta
 from urllib.parse import parse_qs, urlsplit
 
-from sqlalchemy import case, delete, func, select, tuple_
+from sqlalchemy import Integer, String, case, column, delete, func, select, values
 from sqlalchemy.orm import aliased
 
 from ..domain import arena, arena_insights as rules
@@ -86,17 +86,22 @@ async def _evidence(db, records):
     # Read request metadata separately so explicit 404s can still be classified without a body.
     ak = (await db.execute(select(ArchiveKey).where(ArchiveKey.key_hash.in_(keys)))).scalars().all()
     keymap = {k.key_hash: k for k in ak}
-    pairs = [(keymap[r.archive_key_hash].id, r.archive_content_hash) for r in records
-             if r.archive_key_hash in keymap and r.archive_content_hash]
+    pairs = sorted({(keymap[r.archive_key_hash].id, r.archive_content_hash) for r in records
+                    if r.archive_key_hash in keymap and r.archive_content_hash})
     # Only the newest carrier for each exact key/content pair; never substitute the latest answer.
-    ranked = select(ArchiveSnapshot.id, func.row_number().over(
-        partition_by=(ArchiveSnapshot.key_id, ArchiveSnapshot.content_hash),
-        order_by=ArchiveSnapshot.version.desc()).label("n")).where(
-        tuple_(ArchiveSnapshot.key_id, ArchiveSnapshot.content_hash).in_(pairs)).subquery()
     carrier = aliased(ArchiveSnapshot)
-    snaps = (await db.execute(select(ArchiveSnapshot, carrier.body, carrier.enc)
-        .join(ranked, ranked.c.id == ArchiveSnapshot.id)
-        .outerjoin(carrier, carrier.id == ArchiveSnapshot.body_of).where(ranked.c.n == 1))).all()
+    snaps = []
+    if pairs:
+        # Look up each request's newest matching version through the existing (key_id, version)
+        # index. A large OR over key/content pairs can repeatedly scan the global content index
+        # for common responses (e.g. identical verifier verdicts) before intersecting by key.
+        wanted = values(column("key_id", Integer), column("content_hash", String)).data(pairs).cte("wanted")
+        latest = (select(ArchiveSnapshot.id).where(ArchiveSnapshot.key_id == wanted.c.key_id,
+            ArchiveSnapshot.content_hash == wanted.c.content_hash).order_by(ArchiveSnapshot.version.desc())
+            .limit(1).correlate(wanted).scalar_subquery())
+        snaps = (await db.execute(select(ArchiveSnapshot, carrier.body, carrier.enc)
+            .outerjoin(carrier, carrier.id == ArchiveSnapshot.body_of)
+            .where(ArchiveSnapshot.id.in_(select(latest).select_from(wanted))))).all()
     bodies = {(s.key_id, s.content_hash): _decode(s.body if s.body is not None else body,
                s.enc if s.body is not None else enc) for s, body, enc in snaps}
     result = {}
