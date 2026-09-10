@@ -3,29 +3,55 @@ source:
   docs: https://csuitefinder.com/
   openapi: null # not published yet; the landing page documents every route with example values
   curated: 2026-09-09
-# Billing, in one paragraph: CSuiteFinder sells TOKENS at a flat, published $0.0025 each
-# (bundles from $1,000 = 400,000 tokens). Exactly ONE route spends them — /email/find, at 1 token
-# per address resolved. Every other data route is included: it costs 0 tokens but still requires a
-# positive balance, so an exhausted key gets 402 rather than unlimited free enrichment. New
-# accounts self-register and receive 400 trial tokens ($1), which is 400 finds.
+# Billing, in one paragraph: CSuiteFinder is priced in US DOLLARS per answer, not in credits or
+# seats. A work email address resolved from a name and a company domain is $0.0025. The same
+# address from a LinkedIn profile URL is $0.015 — dearer on purpose, see that endpoint's note. A
+# row from a people or company search is $0.0025; a person from a company sweep with a phone
+# number attached is $0.025. Everything else — deliverability, enrichment, identity, company
+# firmographics, address formats — is INCLUDED: it costs $0 but still requires a positive balance,
+# so an exhausted key gets 402 rather than unlimited free enrichment. New accounts self-register
+# and receive $1 of credit, good for one month.
 #
-# Three things a verification run should know, all observed on 2026-09-09 against a fresh trial key
-# (balance delta on GET /billing/balance is the meter):
-#   - A MISS IS FREE. /email/find on a name that does not resolve moved the balance 398 -> 398.
-#     So per_success is real, not a docs claim.
-#   - REPEATS ARE NOT FREE — unlike some providers in this catalog, a second identical /email/find
-#     charges again (399 -> 398). A cached answer is the same answer, priced the same, so an
-#     observed delta of 0 here always means "no result", never "cache hit". That makes the meter
-#     unambiguous during verification.
-#   - The rate card is live and unauthenticated: GET /csuitefinder/pricing returns
-#     token_price_usd and the per-endpoint token cost as JSON. That is the authority for every
-#     cost block below, and it is machine-checkable at review time.
+# Four things a verification run should know, observed against a fresh trial key (the balance
+# delta on GET /billing/balance is the meter):
+#   - A MISS IS FREE, on every route. /email/find on a name that does not resolve does not move
+#     the balance. per_success is real, not a docs claim.
+#   - REPEATS ARE NOT FREE. A second identical /email/find charges again, so an observed delta of
+#     0 always means "no result", never "cache hit". That makes the meter unambiguous at review.
+#   - PER-ROW ROUTES ARE THE PRICE DIAL. /people/search, /company/search and /company/people bill
+#     per row returned and clamp `limit` to what the key can afford, so a 50-row request from a
+#     nearly-empty key returns what it can pay for instead of failing or overdrawing.
+#   - The rate card is live and unauthenticated: GET /csuitefinder/pricing returns every route's
+#     price as JSON. That is the authority for every cost block below, machine-checkable at review.
+#
+# WHY THE EMAIL PRICE IS WHAT IT IS, since it is well under this capability's floor: CSuiteFinder
+# buys a company's address FORMAT once (/email/pattern), then resolves every colleague at that
+# company from the stored pattern without buying another lookup. The per-address price reflects
+# amortised cost across a company, not the cost of one purchased find. It is a different unit
+# economics, not a loss-leader.
 #
 # Auth rides in a header: `Authorization: Bearer <key>` (X-API-Key also accepted). Never in the
 # path. GET and POST are both accepted on every data route; GET with a query string is catalogued
 # because it replays cleanly.
-limits: "no published per-route rate limit; spend is bounded by the token balance (402 when exhausted)"
-pricing_url: https://csuitefinder.com/csuitefinder/pricing  # live JSON rate card; human page at https://csuitefinder.com/
+
+# --- proposed ------------------------------------------------------------------------------
+# `people.email.find` today covers two jobs with different inputs, different prices and different
+# buyers, and the catalog already tracks the split at routing time (providers are matched on
+# `domain+full_name` vs `linkedin_url`). Naming it would let each job carry its own comparison
+# page and stop an agent holding a name and a domain being quoted a LinkedIn-only provider.
+#
+# This is NOT a shelf of one — the overlap already exists on both sides:
+#   from_name    trykitt, tomba.people.email.find, findymail.search.name, hunter, leadmagic,
+#                leadsforge, icypeas, quickenrich, csuitefinder
+#   from_profile tomba.people.email.find.linkedin, findymail.search.business-profile, fiber-ai,
+#                quickenrich, leadsforge, csuitefinder
+#
+# Every endpoint below is mapped to the EXISTING `people.email.find` so this PR is mergeable as-is
+# and routes immediately. Treat the proposal as a refinement to take or leave.
+proposed_capabilities:
+  people.email.find.from_name: "Find a work email address from a person's name and their company domain"
+  people.email.find.from_profile: "Find a work email address from a LinkedIn profile URL"
+
 endpoints:
   - id: csuitefinder.people.email.find
     domain: contacts
@@ -34,8 +60,8 @@ endpoints:
     scope: any_account
     method: GET
     path: /email/find
-    name: "Find a work email from a name and company domain"
-    summary: "Resolve a full name and a company domain to that person's work email address"
+    name: "Email finder: a work email address from a name and a company domain"
+    summary: "Name + company domain -> that person's work email address, with a confidence score. The company's address format is bought once and reused, so the second person at the same company costs nothing to resolve"
     input:
       queryParams:
         full_name: {type: string, required: true, note: "the person's full name; 'Last, First' and accented spellings are normalised", example: "Patrick Collison"}
@@ -227,6 +253,131 @@ endpoints:
       confidence: verified
       note: "0 tokens — included with any balance. Metered 2026-09-09: balance unchanged at 398."
     docs_url: https://csuitefinder.com/
+
+  - id: csuitefinder.people.email.find.linkedin
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: GET
+    path: /email/linkedin
+    name: "Email finder: a work email address from a LinkedIn profile URL"
+    summary: "LinkedIn profile URL -> the member's work email address. If you hold the person's name and their company domain, use /email/find instead — same answer, six times cheaper"
+    input:
+      queryParams:
+        linkedin_url: {type: string, required: true, note: "a profile URL; scheme, www., locale subdomain, query string and trailing slash are all normalised, so the same profile written several ways is one lookup", example: "https://www.linkedin.com/in/jensenhuang"}
+        refresh: {type: boolean, required: false, note: "force a re-check instead of answering from the stored result"}
+      note: "priced above /email/find on purpose: a profile URL carries no company domain, so the address-format shortcut that makes the name route cheap cannot apply and every one of these reaches a lookup"
+    test_request:
+      queryParams: {linkedin_url: "https://www.linkedin.com/in/jensenhuang"}
+    cost:
+      type: per_success
+      value: 0.015
+      currency: USD
+      per: 1
+      unit: call
+      source: rate_card_api
+      source_url: https://csuitefinder.com/csuitefinder/pricing
+      checked: '2026-09-09'
+      confidence: verified
+      note: "a profile that resolves to no address does not move the balance"
+    docs_url: https://csuitefinder.com/developers
+
+  - id: csuitefinder.people.search
+    domain: contacts
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: GET
+    path: /people/search
+    name: "People search: find people by job title, company or country"
+    summary: "Search across companies for everyone holding a role — a lead list rather than one person. Rows carry name, title, employer and domain; any address on a row is a directory listing and is returned marked verified:false"
+    input:
+      queryParams:
+        title: {type: string, required: false, note: "the role to search for", example: "VP of Engineering"}
+        company_domain: {type: string, required: false, note: "narrow to one company; omit to search across companies", example: "stripe.com"}
+        country: {type: string, required: false, note: "ISO country code, where the underlying data supports it", example: "US"}
+        q: {type: string, required: false, note: "a free-text description, for when the structured filters do not fit"}
+        full_name: {type: string, required: false, note: "when you are looking for one named person"}
+        limit: {type: integer, required: false, note: "rows to return, 1-50 (default 10). THE price dial: this route bills per row, and the figure is clamped to what the key can afford", example: 10}
+      note: "at least one filter is required — an unfiltered search is refused rather than billed. Every row is verified:false by design: verify with /email/deliverable before sending, or resolve the address properly with /email/find"
+    test_request:
+      queryParams: {title: "Chief Financial Officer", company_domain: "stripe.com", limit: 3}
+    cost:
+      type: per_result
+      value: 0.0025
+      currency: USD
+      per: 1
+      unit: row
+      source: rate_card_api
+      source_url: https://csuitefinder.com/csuitefinder/pricing
+      checked: '2026-09-09'
+      confidence: verified
+      note: "billed per row returned; a search matching nobody does not move the balance"
+    docs_url: https://csuitefinder.com/developers
+
+  - id: csuitefinder.companies.search
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /company/search
+    name: "Company search: build an account list by industry, size, technology or country"
+    summary: "Describe the companies you want and get rows back, each with a domain — which is the input every other route here takes, so an industry chains straight through to a named person's address"
+    input:
+      queryParams:
+        industry: {type: string, required: false, note: "the industry to search", example: "fintech"}
+        technology: {type: string, required: false, note: "a technology the company runs", example: "snowflake"}
+        size: {type: string, required: false, note: "a headcount band: 50-200, 1000+, or a single figure. Applied to the returned rows as well as sent upstream; a company whose headcount is not reported is kept rather than dropped", example: "50-200"}
+        country: {type: string, required: false, note: "ISO country code, where the underlying data supports it", example: "US"}
+        q: {type: string, required: false, note: "a free-text description, for when the structured filters do not fit"}
+        limit: {type: integer, required: false, note: "rows to return, 1-50 (default 10). THE price dial: this route bills per row", example: 10}
+      note: "at least one filter is required. Rows are written into the same company records /company/info reads, so a domain found here is enriched by any later lookup"
+    test_request:
+      queryParams: {industry: "fintech", limit: 3}
+    cost:
+      type: per_result
+      value: 0.0025
+      currency: USD
+      per: 1
+      unit: row
+      source: rate_card_api
+      source_url: https://csuitefinder.com/csuitefinder/pricing
+      checked: '2026-09-09'
+      confidence: verified
+      note: "billed per company returned; a search matching nothing does not move the balance"
+    docs_url: https://csuitefinder.com/developers
+
+  - id: csuitefinder.companies.emails.list
+    domain: companies
+    capability: companies.emails.list
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /email/company/people
+    name: "Find everyone at a company: named people and work email addresses from one domain"
+    summary: "A company domain -> the people at it with addresses, titles and departments. department=executive narrows it to the C-suite. The email-only route; /company/people is the same sweep with a phone number bought for each person"
+    input:
+      queryParams:
+        domain: {type: string, required: true, note: "the company's domain", example: "stripe.com"}
+        department: {type: string, required: false, note: "executive, engineering, sales, finance, hr, it, marketing, legal, support, operations or communication", example: "executive"}
+        limit: {type: integer, required: false, note: "people to return, 1-50 (default 10). THE price dial: billed per person", example: 10}
+      note: "people are cached per PERSON rather than per query, so a later narrower search of the same company is usually answered from what a broader one already paid for"
+    test_request:
+      queryParams: {domain: "stripe.com", department: "executive", limit: 3}
+    cost:
+      type: per_result
+      value: 0.0025
+      currency: USD
+      per: 1
+      unit: row
+      source: rate_card_api
+      source_url: https://csuitefinder.com/csuitefinder/pricing
+      checked: '2026-09-09'
+      confidence: verified
+      note: "billed per person returned; a domain with nobody behind it does not move the balance"
+    docs_url: https://csuitefinder.com/developers
 
   - id: csuitefinder.account.usage
     kind: account
