@@ -872,7 +872,9 @@ async def _catalog_get_impl(
         "ARRAY of task objects for providers like DataForSEO that expect one) and the query string "
         "for a GET. Either a CATALOG endpoint by its id (from catalog_search), or "
         "one of THIS TEAM'S own tools as '<tool-name>/<path>' (from my_tools) — e.g. "
-        "'render/v1/services'. treg injects the credential server-side and relays the provider's "
+        "'render/v1/services' — or a HUB tool by its id '<team-slug>.<name>' (a maker's tool made of "
+        "tools; `params` are its inputs, see catalog_get for them). treg injects the credential "
+        "server-side and relays the provider's "
         "response unchanged, so you never hold an API key. Catalog calls on treg's key are metered "
         "from the team's prepaid balance; a team's own tool is never metered. Tell the human the "
         "price (from catalog_get) before calling anything that costs more than a cent.\n\n"
@@ -932,7 +934,14 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     # could see and never call — which is how this gap was found.
     cat = catalog_store.load()
     ep = cat.by_id.get(endpoint_id)
-    if ep is None and (catalog_only or "/" not in endpoint_id):
+    # A hub tool (a maker's tool made of tools, `<team-slug>.<name>[@N]`) is neither a catalog id
+    # nor `<tool>/<path>`; the server resolves it last on /call/. Let it through as a POST with
+    # the inputs as the JSON body - the agent walk of the case study found this verb refusing a
+    # live hub id before the server could answer.
+    from .application import hub as hub_app
+    is_hub = (ep is None and not catalog_only and hub_app.enabled()
+              and hub_app.is_hub_id_shape(endpoint_id))
+    if ep is None and not is_hub and (catalog_only or "/" not in endpoint_id):
         near = catalog_store.near_ids(endpoint_id, cat)
         return {"error": f"unknown endpoint {endpoint_id!r}",
                 "hint": ("did you mean " + ", ".join(near) + "?" if near else
@@ -944,7 +953,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     # `body` implies POST — curl's convention, and the CLI's: catalog endpoints reject a method
     # mismatch, so making `body` just work beats asking the caller to repeat what the catalog knows.
     method = (method or (ep.get("method") if ep else None)
-              or ("POST" if body is not None else "GET")).upper()
+              or ("POST" if (body is not None or is_hub) else "GET")).upper()
     if allowed_methods is not None and method not in allowed_methods:
         expected = "GET, HEAD or OPTIONS" if "GET" in allowed_methods else "POST, PUT, PATCH or DELETE"
         return {"error": f"{endpoint_id} is {method}; this tool accepts only {expected} endpoints",
