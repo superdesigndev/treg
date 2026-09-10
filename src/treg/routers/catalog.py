@@ -9,7 +9,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 
 from .. import audit, oauth_providers
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from ..config import get_settings
+from ..infra.db import get_session
 from ..domain.catalog import store as catalog_store
 from ..domain.catalog import stats as endpoint_stats
 
@@ -265,6 +268,7 @@ async def catalog_endpoint(
     endpoint_id: str,
     observations: endpoint_stats.EndpointObservationReader = Depends(
         _endpoint_observation_reader),
+    db: AsyncSession = Depends(get_session),
 ) -> dict:
     """Open: everything about ONE endpoint — the INSPECT half of the loop.
 
@@ -275,6 +279,12 @@ async def catalog_endpoint(
     cat = catalog_store.load()
     ep = cat.by_id.get(endpoint_id)
     if ep is None:
+        # A hub tool (a maker's tool made of tools) answers here too, so an agent that holds the
+        # id reads its contract the same way it reads a catalog endpoint. Unlisted: never in
+        # search, only by id. Flag off ⇒ the branch does not exist.
+        hub_view = await _hub_endpoint_view(endpoint_id, db)
+        if hub_view is not None:
+            return hub_view
         # Name the near misses. An id that is one segment off is the common miss, and a bare 404
         # ends the search → get → call loop at its first step with nothing to try next.
         raise HTTPException(status_code=404, detail={
@@ -357,3 +367,51 @@ async def catalog_example(endpoint_id: str) -> Response:
     if path is None or not path.is_file():
         raise HTTPException(status_code=404, detail=f"no example response for {endpoint_id!r}")
     return Response(content=path.read_bytes(), media_type="application/json")
+
+
+async def _hub_endpoint_view(endpoint_id: str, db: AsyncSession) -> dict | None:
+    """The public contract of one hub tool, in the shape `treg catalog get` and `catalog_get`
+    already print: `endpoint` (with `kind: "hub"`), `provider` (the maker's team). Hides the
+    script, the maker's tools and every key (docs/HUB-DECISIONS.md round 4 q4, round 5 q7)."""
+    from ..application import hub as hub_app
+    from ..models import Org
+    if not hub_app.enabled() or not hub_app.is_hub_id_shape(endpoint_id):
+        return None
+    row = await hub_app.tool_for(db, endpoint_id)
+    if row is None:
+        return None
+    org = await db.get(Org, row.org_id)
+    base = get_settings().public_url.rstrip("/")
+    m = row.manifest
+    inputs = m.get("inputs", {})
+    example = {k: v.get("example", v.get("default")) for k, v in inputs.items()
+               if "example" in v or "default" in v}
+    example = {k: v for k, v in example.items() if v not in ("", None, 0)}
+    return {
+        "endpoint": {
+            "id": row.tool_id, "kind": "hub", "hub": True, "version": row.version,
+            "name": row.name, "summary": row.summary, "provider": org.slug if org else "",
+            "provider_display": org.slug if org else "", "method": "POST",
+            "path": f"/call/{row.tool_id}",
+            "inputs": inputs, "output": m.get("output", {}), "writes": row.writes,
+            "recipe": "script" if row.kind == "script" else "steps",
+            "limits": m.get("limits", {}),
+            "cost": {"type": "per_success", "usd": row.price_micro / 1_000_000, "currency": "USD",
+                     "unit": "run", "note": "the maker's price per successful run; metered steps are billed on top, one trace line each"},
+            "price_line": f"seller ${row.price_micro / 1e6:.6g} + steps",
+            "made_of": len(m.get("uses", [])),
+            "status": row.status,
+            "check": {"status": (row.check_result or {}).get("status"),
+                      "checked_at": (row.check_result or {}).get("checked_at")},
+            "call_template": {
+                "cli": f"treg call {row.tool_id} --data '{json.dumps(example)}'",
+                "http": f"POST {base}/call/{row.tool_id}",
+                "body": example,
+                "headers": {"X-Treg-Token": "<your token>", "Content-Type": "application/json"},
+            },
+            "page": f"{base}/hub/{row.tool_id}",
+            "readme": row.readme,
+        },
+        "provider": {"display_name": org.slug if org else "", "kind": "hub maker"},
+        "siblings": [],
+    }

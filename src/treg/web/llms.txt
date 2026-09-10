@@ -352,6 +352,30 @@ find it — never a vendor key, but a file on disk the subshell version does not
 A recipe-only skill that's just CLI instructions (e.g. `stripe-cli`) auto-becomes runnable — `treg upload`
 recognizes the catalog CLI and wires the credential, so `treg run` works with no `treg.json`.
 
+<!--hub-->
+## The hub — tools your team publishes, made of other tools
+
+A hub tool is one your team publishes for other people's agents: a JSON steps recipe, or a script in
+a sandbox. Every step runs through the team's own tools and keys; a caller pays the metered steps
+plus the price the maker set (`price_usd`), and the price lands on the maker's balance as `earned`
+credit, spendable at once. Callable the moment it is published, by id `<team-slug>.<name>`:
+`POST {BASE}/call/<id>` with the inputs as a JSON body → `{run_id, output, usage, trace}`. Not
+listed in search; the maker shares the id or the page `{BASE}/hub/<id>` (`.md` for agents).
+
+- Make one: `treg hub init <name> [--script]` writes four files (recipe.json, run.js, check.json,
+  README.md); `treg hub run . --input k=v` runs the folder for real, nothing stored; `treg hub
+  publish .` validates, runs check.json once on your balance, and the tool is live on pass. Over
+  MCP: `hub_create`, `hub_update`, `hub_mine`.
+- A script gets `ctx.inputs`, `ctx.call(target, {method, query, body, headers})` and `ctx.log`;
+  no network, no files, no `require`. `target` must be in the manifest's `uses`: a catalog id or one
+  of the team's own tools as `<tool>/<path>`. Caps: 120 s, 20 calls, 64 MB, four runs at a time.
+- **Never paste a credential into a script.** Register it first (`treg secret add`, `treg tool
+  add`), list the tool in `uses`, name it in `ctx.call`. The script never sees the key.
+- Read any hub tool's contract with `GET {BASE}/catalog/endpoints/<id>` (`catalog_get`,
+  `treg catalog get`): inputs, output, price line, health, the call line.
+- Versions: the newest live one serves; `<id>@N` pins one for 30 days after a newer lands.
+  `treg hub earnings <id>` shows runs and credit per day.
+<!--/hub-->
 ## Install the CLI
 
     curl -fsSL {BASE}/install.sh | sh
@@ -406,7 +430,9 @@ A small tool set, the same for every client:
     my_tools         what your team registered that you can call without the key
     catalog_request  request a missing capability
     feedback         share a problem or suggestion (omit private information)
-
+<!--hub-->
+- `hub_create` · `hub_update` · `hub_mine` — publish a tool made of tools (the four files as fields; the check runs once on your balance; live on pass).
+<!--/hub-->
 All need a credential, and the challenge comes EARLY: every id-bearing JSON-RPC request,
 `initialize` included, is answered with **401** and a `WWW-Authenticate` header naming
 `{BASE}/.well-known/oauth-protected-resource`. That header is how a client discovers where to
@@ -442,6 +468,12 @@ are both supported; you do not need to pre-arrange anything with us.
     treg logout
     treg onboard [--mode guided|quick]            guided first-run tutorial (seeds a demo team)
 
+<!--hub-->
+    treg hub init <name> [--script]               four files for a new hub tool (a tool made of tools)
+    treg hub run <dir> --input k=v                run the folder for real on your token; nothing stored
+    treg hub publish <dir>                        validate, run check.json once, live on pass (a new version)
+    treg hub ls | earnings <id> [--days N] [--csv]   your hub tools; what one earned, per day
+<!--/hub-->
     treg org create "Name"                        make a team, become owner
     treg org ls | org use <slug>                  list / switch the active org
     treg org invite <email> --role viewer|member|admin

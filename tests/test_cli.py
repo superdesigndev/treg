@@ -958,3 +958,20 @@ def test_hub_is_in_the_help_and_parses():
         assert a.hub_cmd == "run" and a.input == ["domain=figma.com", "limit=3"]
         e = parser.parse_args(["hub", "earnings", "acme.leads-db", "--days", "30", "--csv"])
         assert e.hub_cmd == "earnings" and e.days == 30 and e.csv
+
+
+
+def test_catalog_get_prints_a_hub_tool_contract(capsys):
+    from treg import cli
+    e = {"id": "acme.leads-db", "kind": "hub", "version": 2, "provider": "acme", "made_of": 2, "recipe": "script",
+         "price_line": "seller $0.01 + steps", "cost": {"usd": 0.01}, "status": "live",
+         "check": {"status": "passed", "checked_at": "2026-09-09T20:11:00"},
+         "inputs": {"domain": {"type": "string", "example": "figma.com", "note": "one domain"},
+                    "limit": {"type": "int", "default": 20, "max": 100}},
+         "output": {"fields": ["rows", "count"]},
+         "call_template": {"cli": "treg call acme.leads-db --data '{\"domain\": \"figma.com\"}'", "http": "POST https://treg.to/call/acme.leads-db"},
+         "page": "https://treg.to/hub/acme.leads-db"}
+    cli._catalog_get_hub(e)
+    out = capsys.readouterr().out
+    assert "seller $0.01 + steps" in out and "domain" in out and "(required)" in out and "rows, count" in out
+    assert "treg call acme.leads-db" in out and "https://treg.to/hub/acme.leads-db" in out

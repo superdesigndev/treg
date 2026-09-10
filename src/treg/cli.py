@@ -5254,6 +5254,34 @@ def _catalog_request(text: str, cfg) -> None:
     _dim("requests steer which provider gets added next — the most-asked-for tools land first")
 
 
+def _catalog_get_hub(e: dict) -> None:
+    """A hub tool's contract: what a caller needs, nothing the maker hides."""
+    def _line(k: str, v: str) -> None:
+        if v:
+            print(f"  {_M}{k:<10}{_R}{v}")
+    _line("maker", f"{e.get('provider')}  (a hub tool made of {e.get('made_of')} tool{'s' if e.get('made_of') != 1 else ''}; {e.get('recipe')} recipe, v{e.get('version')})")
+    _line("price", f"{e.get('price_line')}   (${(e.get('cost') or {}).get('usd', 0):.6g} per successful run to the maker; metered steps on top)")
+    chk = e.get("check") or {}
+    _line("health", f"{e.get('status')} · check {chk.get('status') or '-'} {('at ' + str(chk.get('checked_at'))[:16]) if chk.get('checked_at') else ''}")
+    inputs = e.get("inputs") or {}
+    if inputs:
+        print(f"  {_M}{'inputs':<10}{_R}")
+        for k, v in inputs.items():
+            req = "" if "default" in v else "  (required)"
+            dflt = f"  default {json.dumps(v['default'])}" if "default" in v else ""
+            mx = f"  max {v['max']}" if "max" in v else ""
+            note = f"  — {v['note']}" if v.get("note") else ""
+            print(f"    {k:<12}{v.get('type', ''):<8}{dflt}{mx}{req}{note}")
+    out = e.get("output") or {}
+    fields = out.get("fields") if isinstance(out, dict) and "fields" in out else list(out)
+    _line("output", ", ".join(fields))
+    ct = e.get("call_template") or {}
+    print(f"\n  {_M}{'call':<10}{_R}{ct.get('cli', '')}")
+    print(f"  {_M}{'':<10}{_R}{ct.get('http', '')}   X-Treg-Token · JSON body of inputs")
+    if e.get("page"):
+        print(f"  {_M}{'page':<10}{_R}{e['page']}")
+
+
 def _catalog_get(endpoint_id: str, cfg) -> None:
     """One endpoint, everything about it — the last stop before `treg call`."""
     with _client(cfg, auth=False) as c:
@@ -5290,6 +5318,9 @@ def _catalog_get(endpoint_id: str, cfg) -> None:
     print(f"\n{_B}{e['id']}{_R}")
     if e.get("summary"):
         print(f"{e['summary']}\n")
+    if e.get("kind") == "hub":
+        _catalog_get_hub(e)
+        return
 
     def _line(k: str, v: str) -> None:
         if v:

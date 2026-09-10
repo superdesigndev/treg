@@ -507,3 +507,53 @@ async def test_the_fifth_concurrent_run_is_refused_with_a_retry_time(clients: As
     done = await asyncio.gather(*tasks)
     assert all(r.status_code in (200, 424) for r in done)
     assert not limits._active                         # every slot given back
+
+
+# ---------------------------------------------------------------------------------------------
+# Phase 7.1: the agent-facing files and catalog_get on a hub id
+
+async def test_catalog_get_answers_for_a_hub_id_and_hides_what_the_maker_hides(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": {"domain": "figma.com"}, "body": [1]}'))
+    await _own_supabase(clients)
+    m = _steps_manifest(steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}}],
+                        output={"leads": "$people.data"}, price_usd=0.02)
+    tool_id = (await clients.post("/hub/tools", json={"manifest": m, "check": CHECK, "readme": "About it."})).json()["tool_id"]
+    r = await clients.get(f"/catalog/endpoints/{tool_id}")
+    assert r.status_code == 200, r.text
+    e = r.json()["endpoint"]
+    assert e["kind"] == "hub" and e["id"] == tool_id and e["version"] == 1 and e["status"] == "live"
+    assert e["cost"]["usd"] == 0.02 and e["price_line"].startswith("seller $0.02")
+    assert e["inputs"]["domain"]["example"] == "figma.com" and e["output"] == {"leads": "$people.data"}
+    assert e["call_template"]["cli"].startswith(f"treg call {tool_id} --data")
+    assert e["page"].endswith(f"/hub/{tool_id}") and e["readme"] == "About it."
+    text = r.text
+    assert "supabase" not in text and "tikhub" not in text          # the maker's tools are not on the contract
+    assert "script" not in e or e.get("script") is None
+    # not in search, only by id
+    s = await clients.get("/catalog/search", params={"q": "leads-db"})
+    assert tool_id not in s.text
+    # the same through the MCP-shaped miss path: an unknown hub-shaped id is still a 404 with hints
+    assert (await clients.get("/catalog/endpoints/nobody.nothing")).status_code == 404
+
+
+async def test_catalog_get_on_a_hub_id_with_the_flag_off_is_a_plain_404(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    tool_id = await _publish_live(clients)
+    monkeypatch.setenv("TREG_HUB_ENABLED", "0")
+    get_settings.cache_clear()
+    r = await clients.get(f"/catalog/endpoints/{tool_id}")
+    assert r.status_code == 404 and "hub" not in r.text
+
+
+async def test_the_agent_files_mention_the_hub_only_when_it_is_on(clients: AsyncClient, monkeypatch):
+    for on in ("1", "0"):
+        monkeypatch.setenv("TREG_HUB_ENABLED", on)
+        get_settings.cache_clear()
+        llms = (await clients.get("/llms.txt")).text
+        skill = (await clients.get("/skill.md")).text
+        for body in (llms, skill):
+            assert "<!--hub-->" not in body and "<!--/hub-->" not in body     # markers never leak
+            assert ("treg hub init" in body) is (on == "1")
+            assert ("hub_create" in body) is (on == "1")
+        if on == "1":
+            assert "never paste a credential" in llms.lower() or "never paste a credential" in skill.lower()
+    get_settings.cache_clear()
