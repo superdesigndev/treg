@@ -126,6 +126,9 @@ jobs:
           psql -h 127.0.0.1 -U treg -d treg_test -c "select l.pid, l.locktype, l.mode, l.granted, a.state, left(a.query,90) as query from pg_locks l join pg_stat_activity a using(pid) where not l.granted;" || true
           tests/test_orgs_isolation.py
           tests/test_orgs_mgmt.py
+          tests/test_hub.py
+          tests/test_hub_sandbox.py
+          tests/test_mcp.py
 
   # RESTORED 2026-08-24. This job is a REQUIRED check on main, and the CI rewrite in 528383d
   # dropped it while keeping the requirement — so for three weeks every pull request waited on a
