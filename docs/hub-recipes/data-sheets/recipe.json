@@ -1,0 +1,16 @@
+{
+  "name": "sheet-rows",
+  "summary": "Rows of a public Google Sheet, filtered by one column and a search word. Public-by-link sheets only.",
+  "inputs": {
+    "sheet_id": {"type": "string", "example": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms", "note": "the id in the sheet's URL"},
+    "gid":      {"type": "string", "default": "0", "note": "the tab id; 0 is the first tab"},
+    "column":   {"type": "string", "default": "", "note": "a column name to filter on"},
+    "equals":   {"type": "string", "default": "", "note": "keep rows where `column` equals this"},
+    "search":   {"type": "string", "default": "", "note": "keep rows where any cell contains this"},
+    "limit":    {"type": "int", "default": 20, "max": 100}
+  },
+  "uses": ["sheets"],
+  "script": "run.js",
+  "output": {"fields": ["rows", "count"]},
+  "price_usd": 0
+}

@@ -778,6 +778,18 @@
             "title": "Check",
             "type": "object"
           },
+          "data": {
+            "anyOf": [
+              {
+                "maxLength": 50000000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
           "manifest": {
             "additionalProperties": true,
             "title": "Manifest",
@@ -1555,6 +1567,18 @@
             "additionalProperties": true,
             "title": "Check",
             "type": "object"
+          },
+          "data": {
+            "anyOf": [
+              {
+                "maxLength": 50000000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
           },
           "inputs": {
             "additionalProperties": true,

@@ -115,14 +115,14 @@ def validate(
         raise _fail("writes", "true or false")
 
     inputs = _validate_inputs(raw.get("inputs", {}))
-    uses = _validate_uses(raw.get("uses"), catalog_ids, own_tools, hub_ids)
-    limits = _validate_limits(raw.get("limits", {}))
-    price_micro = _validate_price(raw.get("price_usd", 0))
-
     has_steps, has_script = "steps" in raw, "script" in raw
     if has_steps == has_script:
         raise _fail("steps", "exactly one of `steps` or `script` (found "
                     + ("both" if has_steps else "neither") + ")")
+    # A script may use nothing: a tool that serves its uploaded CSV (ctx.data) makes no call.
+    uses = _validate_uses(raw.get("uses", []), catalog_ids, own_tools, hub_ids, allow_empty=has_script)
+    limits = _validate_limits(raw.get("limits", {}))
+    price_micro = _validate_price(raw.get("price_usd", 0))
 
     if has_script:
         kind = "script"
@@ -197,8 +197,8 @@ def _validate_inputs(raw: Any) -> dict[str, dict[str, Any]]:
 
 
 def _validate_uses(raw: Any, catalog_ids: set[str], own_tools: set[str],
-                   hub_ids: frozenset[str] | set[str]) -> list[str]:
-    if not isinstance(raw, list) or not raw:
+                   hub_ids: frozenset[str] | set[str], allow_empty: bool = False) -> list[str]:
+    if not isinstance(raw, list) or (not raw and not allow_empty):
         raise _fail("uses", "a non-empty list of the tools this recipe may call")
     if len(raw) > MAX_USES:
         raise _fail("uses", f"at most {MAX_USES} entries")

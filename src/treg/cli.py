@@ -5003,7 +5003,7 @@ def cmd_feedback(args, cfg) -> None:
 
 # ---- the tool hub: tools made of tools (docs/HUB-DECISIONS.md) --------------------------------
 
-HUB_FILES = ("recipe.json", "run.js", "check.json", "README.md")
+HUB_FILES = ("recipe.json", "run.js", "check.json", "README.md", "data.csv")
 
 _HUB_STEPS_SKELETON = {
     "name": None,
@@ -5064,6 +5064,8 @@ def _hub_read_folder(path: str) -> dict:
         body["readme"] = (folder / "README.md").read_text()
     if (folder / "run.js").is_file():
         body["script"] = (folder / "run.js").read_text()
+    if (folder / "data.csv").is_file():
+        body["data"] = (folder / "data.csv").read_text()    # the maker's uploaded CSV: ctx.data in the script
     return body
 
 

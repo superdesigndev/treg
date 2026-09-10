@@ -133,3 +133,23 @@ async def test_two_runs_in_parallel_do_not_mix():
         _run("export default async function run(ctx) { return { who: ctx.inputs.who }; }", {"who": "b"}),
     )
     assert a[0] == {"who": "a"} and b[0] == {"who": "b"}
+
+
+async def test_ctx_csv_parses_quotes_commas_and_newlines():
+    out, _ = await _run(r'''
+export default async function run(ctx) {
+  const rows = ctx.csv('name,note,n\r\n"Doe, Jane","said ""hi""\nthen left",3\nBob,,4\n');
+  return { rows, n: rows.length };
+}''')
+    assert out["n"] == 2
+    assert out["rows"][0] == {"name": "Doe, Jane", "note": 'said "hi"\nthen left', "n": "3"}
+    assert out["rows"][1] == {"name": "Bob", "note": "", "n": "4"}
+
+
+async def test_ctx_data_carries_the_uploaded_rows():
+    log: list[str] = []
+    out = await run_script("export default async function run(ctx) { return { n: ctx.data.length, first: ctx.data[0] }; }",
+                           {}, wall_s=10, execute=_echo, log=log, data=[{"a": "1", "b": "x"}, {"a": "2", "b": "y"}])
+    assert out == {"n": 2, "first": {"a": "1", "b": "x"}}
+    out2, _ = await _run("export default async function run(ctx) { return { d: ctx.data }; }")
+    assert out2 == {"d": None}

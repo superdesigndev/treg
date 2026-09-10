@@ -7,7 +7,7 @@ the call through treg's own call path. This file imports nothing from the server
 with a scrubbed environment and must stay that small.
 
 Protocol, JSON lines, one per message:
-  parent → child   {"op": "run", "script": "...", "inputs": {...}, "memory_mb": 64, "wall_s": 120}
+  parent → child   {"op": "run", "script": "...", "inputs": {...}, "data": [rows] | null, "memory_mb": 64, "wall_s": 120}
   child  → parent  {"op": "call", "id": 1, "target": "...", "opts": {...}}
   parent → child   {"op": "result", "id": 1, "status": 200, "headers": {...}, "json": ..., "text": "..."}
                    {"op": "refused", "id": 1, "error": "..."}      (the script sees a thrown Error)
@@ -31,13 +31,38 @@ _EXPORT = re.compile(r"^\s*export\s+default\s+", re.M)
 
 PRELUDE = """
 globalThis.__logs = [];
+// ctx.csv(text): RFC 4180 in 30 lines - quotes, doubled quotes, commas and newlines inside
+// quotes, CRLF. The first row is the header; every other row becomes an object keyed by it.
+function __csv(text) {
+  const rows = []; let row = [], field = "", q = false, i = 0; const s = String(text);
+  while (i < s.length) {
+    const c = s[i];
+    if (q) {
+      if (c === '"') { if (s[i + 1] === '"') { field += '"'; i += 2; continue; } q = false; i++; continue; }
+      field += c; i++; continue;
+    }
+    if (c === '"') { q = true; i++; continue; }
+    if (c === ",") { row.push(field); field = ""; i++; continue; }
+    if (c === "\\r") { i++; continue; }
+    if (c === "\\n") { row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
+    field += c; i++;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  if (!rows.length) return [];
+  const head = rows[0].map(h => h.trim());
+  return rows.slice(1).filter(r => r.length > 1 || (r.length === 1 && r[0] !== "")).map(r => {
+    const o = {}; head.forEach((h, k) => { o[h] = r[k] === undefined ? "" : r[k]; }); return o;
+  });
+}
 globalThis.ctx = {
   inputs: JSON.parse(__inputs_json),
+  data: JSON.parse(__data_json),
   call: async function (target, opts) {
     const reply = JSON.parse(__bridge_call(JSON.stringify([String(target), opts || {}])));
     if (reply.op === "refused") { throw new Error(reply.error); }
     return { status: reply.status, headers: reply.headers, json: reply.json, text: reply.text };
   },
+  csv: __csv,
   log: function (text) { __bridge_log(String(text)); },
 };
 """
@@ -95,6 +120,7 @@ def main() -> int:
     ctx.add_callable("__bridge_call", bridge_call)
     ctx.add_callable("__bridge_log", bridge_log)
     ctx.set("__inputs_json", json.dumps(start.get("inputs", {}), ensure_ascii=False))
+    ctx.set("__data_json", json.dumps(start.get("data"), ensure_ascii=False))   # the uploaded CSV's rows, or null
     try:
         ctx.eval(PRELUDE)
         ctx.eval(script)

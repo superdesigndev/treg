@@ -1,0 +1,14 @@
+{
+  "name": "csv-rows",
+  "summary": "Rows of the CSV I uploaded with this tool, filtered by one column and a search word.",
+  "inputs": {
+    "column": {"type": "string", "default": "", "note": "a column name to filter on"},
+    "equals": {"type": "string", "default": "", "note": "keep rows where `column` equals this"},
+    "search": {"type": "string", "default": "", "note": "keep rows where any cell contains this"},
+    "limit":  {"type": "int", "default": 20, "max": 100}
+  },
+  "uses": [],
+  "script": "run.js",
+  "output": {"fields": ["rows", "count"]},
+  "price_usd": 0.005
+}

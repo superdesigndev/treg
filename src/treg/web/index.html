@@ -2892,6 +2892,8 @@ product, including per-customer usage tracking and billing.</pre>
               <p class="sub"><code v-for="u in hub.tool.uses" :key="u" style="margin-right:8px">{{u}}</code></p>
               <div class="lbl">Output</div>
               <p class="sub"><code>{{(hub.tool.output&&hub.tool.output.fields)?hub.tool.output.fields.join(', '):Object.keys(hub.tool.output||{}).join(', ')}}</code></p>
+              <template v-if="hub.tool.data"><div class="lbl">Data</div>
+              <p class="sub">{{hub.tool.data.rows.toLocaleString()}} rows · {{(hub.tool.data.bytes/1024).toFixed(0)}} KB uploaded with this version (read-only; replace data.csv and publish for a new version)</p></template>
               <div class="lbl">Call it</div>
               <pre style="white-space:pre-wrap;word-break:break-all">{{hubCallLine(hub.tool)}}
 POST {{proxy}}/call/{{hub.tool.tool_id}}    X-Treg-Token · JSON body of inputs</pre>

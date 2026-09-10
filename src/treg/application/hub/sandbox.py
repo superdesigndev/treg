@@ -100,7 +100,7 @@ def _kill_group(pgid: int) -> None:
 
 async def run_script(
     script: str, inputs: dict[str, Any], *, wall_s: int, execute: CallExecutor,
-    log: list[str],
+    log: list[str], data: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Run one script to its output. `execute` runs each ctx.call; `log` receives the script's
     lines. Raises SandboxError when the run cannot produce an output."""
@@ -115,7 +115,7 @@ async def run_script(
     assert proc.stdin and proc.stdout and proc.stderr
     calls = 0
     try:
-        proc.stdin.write((json.dumps({"op": "run", "script": script, "inputs": inputs,
+        proc.stdin.write((json.dumps({"op": "run", "script": script, "inputs": inputs, "data": data,
                                       "memory_mb": MEMORY_MB, "wall_s": wall_s},
                                      ensure_ascii=False) + "\n").encode())
         await proc.stdin.drain()

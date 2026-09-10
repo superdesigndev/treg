@@ -89,9 +89,35 @@ class Published:
     kind: str
 
 
+MAX_DATA_BYTES = 50_000_000
+
+
+def validate_data(data: Any) -> str | None:
+    """The uploaded CSV: text, at most 50 MB, a header row and at least one data row, parseable."""
+    import csv
+    import io
+    if data is None or data == "":
+        return None
+    if not isinstance(data, str):
+        raise ManifestError("data", "the CSV as text (the contents of data.csv)")
+    if len(data.encode("utf-8")) > MAX_DATA_BYTES:
+        raise ManifestError("data", "at most 50 MB")
+    try:
+        reader = csv.reader(io.StringIO(data))
+        header = next(reader, None)
+        first = next(reader, None)
+    except csv.Error as exc:
+        raise ManifestError("data", f"not valid CSV: {exc}") from None
+    if not header or not any(h.strip() for h in header):
+        raise ManifestError("data", "the first row must be the header (column names)")
+    if first is None:
+        raise ManifestError("data", "at least one data row under the header")
+    return data
+
+
 async def publish(
     db: AsyncSession, *, org: Org, maker_email: str,
-    manifest: Any, script: str | None, check: Any, readme: Any,
+    manifest: Any, script: str | None, check: Any, readme: Any, data: Any = None,
 ) -> Published:
     """Validate the four files against this team's world and store one version. Raises
     ManifestError with field + rule; the HTTP layer turns it into a 422 the maker's agent can act
@@ -115,6 +141,9 @@ async def publish(
     output_fields = (v.output["fields"] if v.kind == "script" else list(v.output))
     check_v = validate_check(check, v.inputs, output_fields)
     readme_v = validate_readme(readme)
+    data_v = validate_data(data)
+    if data_v is not None and v.kind != "script":
+        raise ManifestError("data", "an uploaded CSV is read by a script (ctx.data); a steps recipe has no reader for it")
 
     tool_id = f"{org.slug}.{v.name}"
     newest = (await db.execute(
@@ -125,7 +154,7 @@ async def publish(
         org_id=org.id, tool_id=tool_id, name=v.name, version=version, kind=v.kind,
         status="checking", summary=v.summary, writes=v.writes, price_micro=v.price_micro,
         manifest={**v.manifest, "version": version}, script=script if v.kind == "script" else None,
-        check=check_v, readme=readme_v, created_by=maker_email,
+        check=check_v, readme=readme_v, created_by=maker_email, data=data_v,
     )
     db.add(row)
     await db.flush()
@@ -171,11 +200,13 @@ def view(row: HubTool) -> dict[str, Any]:
         "output": row.manifest.get("output", {}), "limits": row.manifest.get("limits", {}),
         "created_by": row.created_by, "created_at": row.created_at.isoformat(),
         "check_result": row.check_result,
+        "data": ({"rows": max(0, (row.data.count("\n") + (0 if row.data.endswith("\n") else 1)) - 1),
+                  "bytes": len(row.data.encode("utf-8"))} if row.data else None),
     }
 
 
 async def transient(db: AsyncSession, *, org: Org, maker_email: str,
-                    manifest: Any, script: str | None, check: Any, readme: Any) -> HubTool:
+                    manifest: Any, script: str | None, check: Any, readme: Any, data: Any = None) -> HubTool:
     """The same validation as publish(), but the row is NOT added to the session: a dry run of a
     folder from the maker's machine. Version 0 marks it in every trace."""
     own_tools = {name for (name,) in (await db.execute(select(Tool.name).where(Tool.org_id == org.id))).all()}
@@ -186,10 +217,11 @@ async def transient(db: AsyncSession, *, org: Org, maker_email: str,
     output_fields = (v.output["fields"] if v.kind == "script" else list(v.output))
     validate_check(check, v.inputs, output_fields)
     validate_readme(readme)
+    data_v = validate_data(data)
     return HubTool(org_id=org.id, tool_id=f"{org.slug}.{v.name}", name=v.name, version=0, kind=v.kind,
                    status="dry-run", summary=v.summary, writes=v.writes, price_micro=v.price_micro,
                    manifest={**v.manifest, "version": 0}, script=script if v.kind == "script" else None,
-                   check=check, readme=readme, created_by=maker_email)
+                   check=check, readme=readme, created_by=maker_email, data=data_v)
 
 
 async def retire(db: AsyncSession, *, org_id: int, tool_id: str) -> int:

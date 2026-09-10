@@ -42,6 +42,7 @@ class PublishIn(BaseModel):
     script: str | None = Field(default=None, max_length=200_000)
     check: dict[str, Any]
     readme: str = Field(min_length=1, max_length=4000)
+    data: str | None = Field(default=None, max_length=50_000_000)   # data.csv, read by the script as ctx.data
 
 
 async def _publish(body: PublishIn, request: Request, caller: Caller, db: AsyncSession,
@@ -58,6 +59,7 @@ async def _publish(body: PublishIn, request: Request, caller: Caller, db: AsyncS
         published = await hub_app.publish(
             db, org=caller.org, maker_email=caller.email,
             manifest=body.manifest, script=body.script, check=body.check, readme=body.readme,
+            data=body.data,
         )
     except ManifestError as exc:
         raise HTTPException(status_code=422, detail={
@@ -224,7 +226,7 @@ async def run_hub_folder(
     try:
         row = await hub_app.transient(db, org=caller.org, maker_email=caller.email,
                                       manifest=body.manifest, script=body.script,
-                                      check=body.check, readme=body.readme)
+                                      check=body.check, readme=body.readme, data=body.data)
     except ManifestError as exc:
         raise HTTPException(status_code=422, detail={
             "error": "manifest_invalid", "field": exc.field, "rule": exc.rule}) from None

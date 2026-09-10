@@ -23,6 +23,7 @@ from typing import Any, Callable
 from urllib.parse import urlencode
 
 import httpx
+from sqlalchemy import select
 
 from ... import audit
 from ...domain.catalog import store as catalog_store
@@ -537,12 +538,34 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
         usd = (cv or {}).get("usd")
         return int(round(float(usd) * 1_000_000)) if usd else 0
 
+    # The maker's own tools named in `uses`, with their base URLs: a full URL in ctx.call resolves
+    # to `<tool>/<path>` when it starts with one of them (HUB-DECISIONS round 2 q2, the third
+    # target shape), and is refused for any other host - the sandbox never reaches a host the
+    # manifest did not name.
+    bases: dict[str, str] = {}
+    if own_tools:
+        from ...models import Tool
+        async with session_maker() as s:
+            rows = (await s.execute(select(Tool.name, Tool.base_url).where(
+                Tool.org_id == tool.org_id, Tool.name.in_(own_tools)))).all()
+        bases = {name: (base or "").rstrip("/") for name, base in rows}
+
+    def from_url(url: str) -> tuple[str, dict[str, str]]:
+        from urllib.parse import parse_qsl, urlsplit
+        for name, base in sorted(bases.items(), key=lambda kv: -len(kv[1])):
+            if base and (url == base or url.startswith(base + "/") or url.startswith(base + "?")):
+                rest = url[len(base):]
+                u = urlsplit(rest if rest.startswith("/") else "/" + rest)
+                return f"{name}{u.path}", dict(parse_qsl(u.query, keep_blank_values=True))
+        raise sandbox.SandboxError("refused", f"{url!r} is not under a tool in `uses`; register the host as a tool and name it")
+
     async def execute(req: sandbox.CallRequest) -> dict[str, Any]:
         nonlocal spent, counted
         call = req.target
+        url_query: dict[str, str] = {}
+        if call.startswith("http://") or call.startswith("https://"):
+            call, url_query = from_url(call)
         target = call.split("/", 1)[0]
-        if call.startswith("http"):
-            raise sandbox.SandboxError("refused", "a script calls a catalog id or one of the team's tools by name, never a URL")
         if not (call in uses or (target in own_tools and "/" in call) or target in uses and target in own_tools):
             raise sandbox.SandboxError("refused", f"{call!r} is not in the manifest's `uses`")
         if target not in own_tools and call not in catalog.by_id:
@@ -557,7 +580,7 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
         opts = req.opts
         ep = None if target in own_tools else catalog.by_id.get(call)
         method = str(opts.get("method") or (ep["method"] if ep else "GET")).upper()
-        query = opts.get("query") if isinstance(opts.get("query"), dict) else {}
+        query = {**url_query, **(opts.get("query") if isinstance(opts.get("query"), dict) else {})}
         body = opts.get("body")
         inp = body if (isinstance(body, dict) and method in ("POST", "PUT", "PATCH")) else query
         if method in ("POST", "PUT", "PATCH") and not isinstance(inp, dict):
@@ -600,9 +623,10 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
         return {"status": response.status, "headers": headers, "json": doc,
                 "text": raw[:MAX_TEXT].decode("utf-8", "replace")}
 
+    data_rows = _csv_rows(tool.data) if getattr(tool, "data", None) else None
     try:
         output = await sandbox.run_script(tool.script or "", inputs, wall_s=manifest["limits"]["wall_s"],
-                                          execute=execute, log=log)
+                                          execute=execute, log=log, data=data_rows)
     except sandbox.SandboxError as exc:
         ms_total = int((time.monotonic() - started) * 1000)
         await _close_price(tool, run_id, price_held, success=False, reason="hub_script_failed")
@@ -636,3 +660,12 @@ async def _run_script_road(parent, tool, inputs, ceiling, maker, catalog, own_to
 
 
 MAX_TEXT = 1_000_000
+
+
+def _csv_rows(text: str) -> list[dict[str, str]]:
+    """The uploaded CSV as rows keyed by its header row, parsed once per run in the parent so the
+    engine gets JSON, never a parser to write."""
+    import csv
+    import io
+    reader = csv.DictReader(io.StringIO(text))
+    return [dict(r) for r in reader]
