@@ -107,11 +107,75 @@ async def update_hub_tool(
 async def my_hub_tools(
     caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
 ) -> list[dict]:
+    """Every version of the team's tools, newest first, each with its derived health and the
+    tool's last-30-day numbers (runs by others, earned) so the dashboard list needs one call."""
     _require_hub()
+    from datetime import timedelta
+    from sqlalchemy import func
+    from ..application.hub import health as hub_health
+    from ..models import HubRun
+    from ..timeutil import utcnow_naive
     rows = (await db.execute(
         select(HubTool).where(HubTool.org_id == caller.org_id)
         .order_by(HubTool.tool_id, HubTool.version.desc()))).scalars().all()
-    return [hub_app.view(r) for r in rows]
+    since = utcnow_naive() - timedelta(days=30)
+    stats = {tid: {"runs_30d": int(n), "earned_30d_micro": int(e or 0)} for tid, n, e in (await db.execute(
+        select(HubRun.tool_id, func.count(HubRun.id), func.coalesce(func.sum(HubRun.price_micro), 0))
+        .where(HubRun.maker_org_id == caller.org_id, HubRun.caller_org_id != caller.org_id,
+               HubRun.version > 0, HubRun.started_at >= since).group_by(HubRun.tool_id))).all()}
+    out = []
+    for r in rows:
+        h = await hub_health.health_of(db, r.tool_id, r.version, r.check_result)
+        out.append({**hub_app.view(r), "health": h.state, "fails_in_a_row": h.fails_in_a_row,
+                    "last_run_at": h.last_run_at,
+                    **stats.get(r.tool_id, {"runs_30d": 0, "earned_30d_micro": 0})})
+    return out
+
+
+@app.get("/hub/runs/{run_id}")
+async def hub_run(
+    run_id: str, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
+) -> dict:
+    """One finished run. The CALLER's team sees what it paid, the inputs, the trace and the
+    output. The MAKER's team sees the run of its tool: inputs (secret inputs masked), the trace,
+    the script's log lines and the failure's error body, never the caller's identity or the
+    output (docs/HUB-DECISIONS.md round 2 q7, round 5 q8, q10). Anyone else: 404."""
+    _require_hub()
+    from ..application.hub import health as hub_health
+    from ..models import HubRun
+    row = (await db.execute(select(HubRun).where(HubRun.run_id == run_id))).scalars().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="no such run")
+    is_caller = row.caller_org_id == caller.org_id
+    is_maker = row.maker_org_id == caller.org_id
+    if not (is_caller or is_maker):
+        raise HTTPException(status_code=404, detail="no such run")
+    out = {"run_id": row.run_id, "tool_id": row.tool_id, "version": row.version, "status": row.status,
+           "started_at": row.started_at.isoformat(), "finished_at": row.finished_at.isoformat() if row.finished_at else None,
+           "duration_ms": row.duration_ms, "steps": row.steps, "inputs": row.inputs, "trace": row.trace,
+           "usage": {"cost_micro": row.cost_micro + row.price_micro, "steps_micro": row.cost_micro,
+                     "price_micro": row.price_micro},
+           "you_are": "caller" if is_caller else "maker",
+           "kind": ("scheduled check" if row.caller_email == hub_health.CHECK_EMAIL else
+                    "maker's run" if row.caller_org_id == row.maker_org_id else "caller's run")}
+    if is_caller:
+        out["output"] = row.output
+        out["caller_email"] = row.caller_email
+        # the caller never reads an upstream error body: strip it from every trace entry
+        out["trace"] = [{k: v for k, v in s.items() if k != "error"} for s in (row.trace or [])]
+        if row.error:
+            e = dict(row.error)
+            # a caller sees the failing step's name, status and the tool's own name, never the
+            # upstream error body (round 4 q10); the maker reads the full error in their log
+            e.pop("log", None)
+            for s in e.get("trace", []) or []:
+                s.pop("error", None)
+            out["error"] = e
+    if is_maker:
+        out["trace"] = row.trace
+        out["log"] = row.log
+        out["error"] = row.error
+    return out
 
 
 @app.get("/hub/tools/{tool_id}")

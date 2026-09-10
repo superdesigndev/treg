@@ -334,6 +334,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "hub_run",
+    "path": "/hub/runs/{run_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "get_hub_tool",
     "path": "/hub/tools/{tool_id}"
   },
@@ -552,6 +561,15 @@
     ],
     "name": "dashboard_tool_page",
     "path": "/app/tools/{name}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "dashboard_run_page",
+    "path": "/app/runs/{run_id}"
   },
   {
     "kind": "APIRoute",

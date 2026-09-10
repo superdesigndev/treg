@@ -2864,7 +2864,7 @@ def _spa_with_og(kind: str, name: str):
     index = _WEB_DIR / "index.html"
     if not index.exists():
         return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
-    label = "skill" if kind == "skills" else "tool"
+    label = {"skills": "skill", "runs": "run"}.get(kind, "tool")
     safe = _esc_html(name)
     meta = (
         f"<title>{safe} · Treg</title>\n"
@@ -2912,6 +2912,12 @@ async def dashboard_skill_page(name: str):
 @app.get("/app/tools/{name}", include_in_schema=False)
 async def dashboard_tool_page(name: str):
     return _spa_with_og("tools", name)
+
+
+@app.get("/app/runs/{run_id}", include_in_schema=False)
+async def dashboard_run_page(run_id: str):
+    """The caller's (or maker's) run page: the app opens `/hub/runs/<id>` on load."""
+    return _spa_with_og("runs", run_id)
 
 
 @app.get("/llms.txt", include_in_schema=False)

@@ -6349,6 +6349,78 @@
         "summary": "Run Hub Folder"
       }
     },
+    "/hub/runs/{run_id}": {
+      "get": {
+        "description": "One finished run. The CALLER's team sees what it paid, the inputs, the trace and the\noutput. The MAKER's team sees the run of its tool: inputs (secret inputs masked), the trace,\nthe script's log lines and the failure's error body, never the caller's identity or the\noutput (docs/HUB-DECISIONS.md round 2 q7, round 5 q8, q10). Anyone else: 404.",
+        "operationId": "hub_run_hub_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Hub Run Hub Runs  Run Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hub Run"
+      }
+    },
     "/hub/tools": {
       "post": {
         "description": "Create (or add a version to) a hub tool: validate the four files, store the version, run\ncheck.json once for real on the maker's balance. Live on pass; `failed` with the reason on\nfail — the version is kept so the maker can read what happened.",
@@ -6424,6 +6496,7 @@
     },
     "/hub/tools/mine": {
       "get": {
+        "description": "Every version of the team's tools, newest first, each with its derived health and the\ntool's last-30-day numbers (runs by others, earned) so the dashboard list needs one call.",
         "operationId": "my_hub_tools_hub_tools_mine_get",
         "parameters": [
           {

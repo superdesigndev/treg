@@ -80,6 +80,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/hub/tools/{tool_id}', ('DELETE',), 'retire_hub_tool'),
     ('/hub/tools/{tool_id}', ('PATCH',), 'set_hub_tool_price'),
     ('/hub/tools/{tool_id}/health', ('GET',), 'hub_tool_health'),
+    ('/hub/runs/{run_id}', ('GET',), 'hub_run'),
+    ('/app/runs/{run_id}', ('GET',), 'dashboard_run_page'),
     ('/hub/{tool_id}', ('GET',), 'hub_page'),
     ('/hub/{tool_id}.md', ('GET',), 'hub_page'),
     ('/auth/github', ('GET',), 'auth_github'),
