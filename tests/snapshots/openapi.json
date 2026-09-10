@@ -742,6 +742,20 @@
         "title": "OrgSettingsIn",
         "type": "object"
       },
+      "PriceIn": {
+        "additionalProperties": false,
+        "properties": {
+          "price_usd": {
+            "title": "Price Usd",
+            "type": "number"
+          }
+        },
+        "required": [
+          "price_usd"
+        ],
+        "title": "PriceIn",
+        "type": "object"
+      },
       "ProjectIn": {
         "properties": {
           "name": {
@@ -6474,6 +6488,76 @@
       }
     },
     "/hub/tools/{tool_id}": {
+      "delete": {
+        "description": "Retire every version of one of your team's tools: off the call road at once, the rows kept\n(earnings and run history stay readable).",
+        "operationId": "retire_hub_tool_hub_tools__tool_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "title": "Tool Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Retire Hub Tool Hub Tools  Tool Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retire Hub Tool"
+      },
       "get": {
         "description": "One version, the newest unless the id carries `@N`. Any status: the maker sees their own\nunchecked and failed versions; other teams see only live ones (the public page is phase 7).",
         "operationId": "get_hub_tool_hub_tools__tool_id__get",
@@ -6543,6 +6627,86 @@
           }
         },
         "summary": "Get Hub Tool"
+      },
+      "patch": {
+        "description": "Change the seller's price of the newest live version; applies to later runs, no version bump.",
+        "operationId": "set_hub_tool_price_hub_tools__tool_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "title": "Tool Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PriceIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Set Hub Tool Price Hub Tools  Tool Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Hub Tool Price"
       },
       "put": {
         "description": "A new version of an existing tool of yours (the same body as POST). The newest live\nversion serves by default; `<id>@N` pins an older one for 30 days after a newer one lands.",
@@ -6711,6 +6875,78 @@
           }
         },
         "summary": "Hub Tool Earnings"
+      }
+    },
+    "/hub/tools/{tool_id}/health": {
+      "get": {
+        "description": "The maker's health view: the derived state, the last check, and the last runs.",
+        "operationId": "hub_tool_health_hub_tools__tool_id__health_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tool_id",
+            "required": true,
+            "schema": {
+              "title": "Tool Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Hub Tool Health Hub Tools  Tool Id  Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Hub Tool Health"
       }
     },
     "/invites/accept": {

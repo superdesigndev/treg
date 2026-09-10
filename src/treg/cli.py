@@ -5218,6 +5218,27 @@ def cmd_hub_earnings(args, cfg) -> None:
             print(f"  {r['day']:<12}{r['runs']:>5}{r['ok']:>5}{r['failed']:>8}{r['earned_micro'] / 1e6:>11.4f}")
 
 
+def cmd_hub_retire(args, cfg) -> None:
+    with _client(cfg) as c:
+        r = c.delete(f"/hub/tools/{args.tool_id}")
+    if r.status_code != 200:
+        _hub_report(r, json_out=getattr(args, "json", False))
+    d = r.json()
+    _section("Retired")
+    _kv("tool", f"{d['tool_id']}  ({d['versions']} version{'s' if d['versions'] != 1 else ''} off the call road; history kept)")
+
+
+def cmd_hub_price(args, cfg) -> None:
+    with _client(cfg) as c:
+        r = c.patch(f"/hub/tools/{args.tool_id}", json={"price_usd": args.price_usd})
+    if r.status_code != 200:
+        _hub_report(r, json_out=getattr(args, "json", False))
+    d = r.json()
+    _section("Price changed")
+    _kv("tool", f"{d['tool_id']}  v{d['version']}")
+    _kv("price", f"${d['price_usd']:.6g} per successful run  (${d['price_usd'] * 1000:,.2f} per 1,000); applies to later runs")
+
+
 def cmd_hub_ls(args, cfg) -> None:
     with _client(cfg) as c:
         r = c.get("/hub/tools/mine")
@@ -5662,7 +5683,7 @@ HELP_GROUPS: list[tuple[str, list[tuple[str, str]]]] = [
         ("skill", "Register / manage skills (a recipe + its secrets + tool(s), as one bundle)."),
         ("secret", "Manage stored credentials (encrypted server-side, never returned)."),
         ("connections", "Your connected accounts: connect providers, health, expiry."),
-        ("hub", "Publish a tool made of tools (JSON steps or a script): init, run, publish, ls, earnings."),
+        ("hub", "Publish a tool made of tools (JSON steps or a script): init, run, publish, ls, earnings, price, retire."),
     ]),
     ("ON YOUR MACHINE — use the team's credentials locally", [
         ("cli", "Run vendor CLIs with the org's credential injected (run · shell · setup)."),
@@ -6309,6 +6330,14 @@ def build_parser() -> argparse.ArgumentParser:
     h_earn.add_argument("--days", type=int, default=90)
     h_earn.add_argument("--csv", action="store_true", help="print CSV instead of the table")
     h_earn.set_defaults(fn=cmd_hub_earnings)
+    h_price = mk(hs, "price", "Change what a caller pays you per successful run (applies to later runs, no version bump).",
+                 "treg hub price acme.leads-db 0.02", "treg hub price acme.leads-db 0   # free")
+    h_price.add_argument("tool_id"); h_price.add_argument("price_usd", type=float)
+    h_price.set_defaults(fn=cmd_hub_price)
+    h_ret = mk(hs, "retire", "Take one of your tools off the call road (every version); history and earnings stay readable.",
+               "treg hub retire acme.leads-db")
+    h_ret.add_argument("tool_id")
+    h_ret.set_defaults(fn=cmd_hub_retire)
 
     fb = mk(sub, "feedback", "Submit or retrieve private team feedback.",
             'treg feedback submit friction "The pagination example is unclear."',

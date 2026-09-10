@@ -242,3 +242,72 @@ async def hub_tool_earnings(
                         headers={"Content-Disposition": f'attachment; filename="{base}-earnings.csv"'})
     return JSONResponse({"tool_id": base, "days": days, "earned_micro": total,
                          "runs": sum(r["runs"] for r in table), "by_day": table})
+
+
+@app.delete("/hub/tools/{tool_id}")
+async def retire_hub_tool(
+    tool_id: str, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Retire every version of one of your team's tools: off the call road at once, the rows kept
+    (earnings and run history stay readable)."""
+    _require_hub()
+    _require_can_register(caller)
+    base, _ = hub_app.split_id(tool_id)
+    n = await hub_app.retire(db, org_id=caller.org_id, tool_id=base)
+    if n == 0:
+        raise HTTPException(status_code=404, detail=f"your team has no live hub tool {base!r}")
+    await db.commit()
+    return {"tool_id": base, "status": "retired", "versions": n}
+
+
+class PriceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    price_usd: float
+
+
+@app.patch("/hub/tools/{tool_id}")
+async def set_hub_tool_price(
+    tool_id: str, body: PriceIn, caller: Caller = Depends(require_member),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Change the seller's price of the newest live version; applies to later runs, no version bump."""
+    _require_hub()
+    _require_can_register(caller)
+    base, _ = hub_app.split_id(tool_id)
+    try:
+        row = await hub_app.set_price(db, org_id=caller.org_id, tool_id=base, price_usd=body.price_usd)
+    except ManifestError as exc:
+        raise HTTPException(status_code=422, detail={"error": "manifest_invalid", "field": exc.field, "rule": exc.rule}) from None
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"your team has no live hub tool {base!r}")
+    await db.commit()
+    return {"tool_id": base, "version": row.version, "price_usd": row.price_micro / 1_000_000}
+
+
+@app.get("/hub/tools/{tool_id}/health")
+async def hub_tool_health(
+    tool_id: str, caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
+) -> dict:
+    """The maker's health view: the derived state, the last check, and the last runs."""
+    _require_hub()
+    from ..application.hub import health as hub_health
+    from ..models import HubRun
+    base, pin = hub_app.split_id(tool_id)
+    q = select(HubTool).where(HubTool.tool_id == base, HubTool.org_id == caller.org_id)
+    if pin is not None:
+        q = q.where(HubTool.version == pin)
+    row = (await db.execute(q.order_by(HubTool.version.desc()).limit(1))).scalars().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"your team has no hub tool {base!r}")
+    h = await hub_health.health_of(db, row.tool_id, row.version, row.check_result)
+    runs = (await db.execute(select(HubRun).where(HubRun.tool_id == row.tool_id, HubRun.version == row.version)
+                             .order_by(HubRun.started_at.desc()).limit(20))).scalars().all()
+    return {"tool_id": row.tool_id, "version": row.version, "status": row.status,
+            "health": h.state, "fails_in_a_row": h.fails_in_a_row, "last_run_at": h.last_run_at,
+            "last_check": row.check_result,
+            "runs": [{"run_id": r.run_id, "at": r.started_at.isoformat(), "status": r.status,
+                      "kind": "scheduled check" if r.caller_email == hub_health.CHECK_EMAIL else
+                              ("maker's run" if r.caller_org_id == r.maker_org_id else "caller's run"),
+                      "steps": r.steps, "cost_micro": r.cost_micro, "price_micro": r.price_micro,
+                      "ms": r.duration_ms, "error": (r.error or {}).get("error") if r.error else None}
+                     for r in runs]}

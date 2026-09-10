@@ -381,6 +381,8 @@ async def _hub_endpoint_view(endpoint_id: str, db: AsyncSession) -> dict | None:
     if row is None:
         return None
     org = await db.get(Org, row.org_id)
+    from ..application.hub.health import health_of
+    health = await health_of(db, row.tool_id, row.version, row.check_result)
     base = get_settings().public_url.rstrip("/")
     m = row.manifest
     inputs = m.get("inputs", {})
@@ -401,6 +403,7 @@ async def _hub_endpoint_view(endpoint_id: str, db: AsyncSession) -> dict | None:
             "price_line": f"seller ${row.price_micro / 1e6:.6g} + steps",
             "made_of": len(m.get("uses", [])),
             "status": row.status,
+            "health": health.state, "fails_in_a_row": health.fails_in_a_row,
             "check": {"status": (row.check_result or {}).get("status"),
                       "checked_at": (row.check_result or {}).get("checked_at")},
             "call_template": {

@@ -620,3 +620,96 @@ async def test_the_public_page_serves_a_pinned_older_version(clients: AsyncClien
     assert "second" in (await clients.get(f"/hub/{tool_id}")).text
     assert "v1" in (await clients.get(f"/hub/{tool_id}@1")).text and "second" not in (await clients.get(f"/hub/{tool_id}@1")).text
     assert f"{tool_id}@1</code> until" in (await clients.get(f"/hub/{tool_id}")).text
+
+
+# ---------------------------------------------------------------------------------------------
+# Phase 7.3: health, the scheduled check, retire, price
+
+async def test_retire_takes_every_version_off_the_call_road_and_keeps_history(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    pub = await _live_tool_with_readme(clients, monkeypatch)
+    tool_id = pub["tool_id"]
+    assert (await clients.post(f"/call/{tool_id}", json={"domain": "x"})).status_code == 200
+    r = await clients.delete(f"/hub/tools/{tool_id}")
+    assert r.status_code == 200 and r.json() == {"tool_id": tool_id, "status": "retired", "versions": 1}
+    assert (await clients.post(f"/call/{tool_id}", json={"domain": "x"})).status_code == 404
+    assert (await clients.get(f"/hub/{tool_id}")).status_code == 404
+    mine = (await clients.get("/hub/tools/mine")).json()
+    assert mine[0]["status"] == "retired"
+    assert (await clients.get(f"/hub/tools/{tool_id}/earnings")).status_code == 200      # history readable
+    assert (await clients.delete(f"/hub/tools/{tool_id}")).status_code == 404            # already retired
+
+
+async def test_price_edit_applies_to_later_runs_without_a_version_bump(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    pub = await _live_tool_with_readme(clients, monkeypatch, price=0.01)
+    tool_id = pub["tool_id"]
+    r = await clients.patch(f"/hub/tools/{tool_id}", json={"price_usd": 0.05})
+    assert r.status_code == 200 and r.json() == {"tool_id": tool_id, "version": 1, "price_usd": 0.05}
+    one = (await clients.get(f"/hub/tools/{tool_id}")).json()
+    assert one["version"] == 1 and one["price_usd"] == 0.05
+    assert "seller $0.05" in (await clients.get(f"/hub/{tool_id}")).text
+    bad = await clients.patch(f"/hub/tools/{tool_id}", json={"price_usd": 500})
+    assert bad.status_code == 422 and bad.json()["detail"]["field"] == "price_usd"
+    # a stranger pays the new price
+    token = (await clients.post("/users", json={"email": "buyer@example.com"})).json()["token"]
+    run = await clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers={"X-Treg-Token": token})
+    assert run.status_code == 200 and run.json()["usage"]["price_micro"] == 50_000
+
+
+async def test_health_is_failing_after_three_failed_runs_and_clears_on_a_pass(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    pub = await _live_tool_with_readme(clients, monkeypatch)
+    tool_id = pub["tool_id"]
+    h = (await clients.get(f"/hub/tools/{tool_id}/health")).json()
+    assert h["health"] == "ok" and h["fails_in_a_row"] == 0 and h["runs"][0]["kind"] == "maker's run"
+    monkeypatch.setattr(call_service, "relay", _fake_relay(500, b'{}'))
+    for _ in range(3):
+        assert (await clients.post(f"/call/{tool_id}", json={"domain": "x"})).status_code == 424
+    h = (await clients.get(f"/hub/tools/{tool_id}/health")).json()
+    assert h["health"] == "failing" and h["fails_in_a_row"] == 3
+    assert (await clients.get(f"/catalog/endpoints/{tool_id}")).json()["endpoint"]["health"] == "failing"
+    assert "failing (the last 3 runs failed)" in (await clients.get(f"/hub/{tool_id}")).text
+    assert (await clients.post(f"/call/{tool_id}", json={"domain": "x"})).status_code == 424    # still callable, still failing
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"data": {"domain": "back"}}'))
+    assert (await clients.post(f"/call/{tool_id}", json={"domain": "x"})).status_code == 200
+    assert (await clients.get(f"/hub/tools/{tool_id}/health")).json()["health"] == "ok"
+
+
+async def test_the_scheduled_check_runs_as_the_maker_and_records_its_verdict(clients: AsyncClient, hub_on, platform_on, monkeypatch):
+    from treg.application.hub.health import CHECK_EMAIL, check_as_maker
+    from treg.api import app
+    from treg.infra.db import session_maker
+    from treg.models import HubRun, HubTool
+    from sqlalchemy import select
+    pub = await _live_tool_with_readme(clients, monkeypatch)
+    tool_id = pub["tool_id"]
+    balance_before = (await clients.get(f"/orgs/{(await clients.get('/orgs')).json()[0]['org_id']}/balance")).json()["balance_micro"]
+    async with session_maker() as s:
+        row = (await s.execute(select(HubTool).where(HubTool.tool_id == tool_id))).scalars().one()
+        v = await check_as_maker(s, row, app.state.http)
+        await s.commit()
+    assert v["status"] == "passed" and v["scheduled"] is True and v["run_id"]
+    async with session_maker() as s:
+        runs = (await s.execute(select(HubRun).where(HubRun.run_id == v["run_id"]))).scalars().all()
+    assert len(runs) == 1 and runs[0].caller_email == CHECK_EMAIL and runs[0].price_micro == 0
+    h = (await clients.get(f"/hub/tools/{tool_id}/health")).json()
+    assert h["last_check"]["scheduled"] is True and h["runs"][0]["kind"] == "scheduled check"
+    org = (await clients.get("/orgs")).json()[0]["org_id"]
+    assert (await clients.get(f"/orgs/{org}/balance")).json()["balance_micro"] == balance_before - 1000   # one metered step, no price
+    # a failing check keeps the tool live and says so
+    monkeypatch.setattr(call_service, "relay", _fake_relay(500, b'{}'))
+    async with session_maker() as s:
+        row = (await s.execute(select(HubTool).where(HubTool.tool_id == tool_id))).scalars().one()
+        v = await check_as_maker(s, row, app.state.http)
+        await s.commit()
+    assert v["status"] == "failed"
+    assert (await clients.get(f"/hub/tools/{tool_id}")).json()["status"] == "live"
+
+
+async def test_the_worker_hub_check_walks_every_live_tool(clients: AsyncClient, hub_on, platform_on, monkeypatch, capsys):
+    import argparse
+    from treg import worker
+    pub = await _live_tool_with_readme(clients, monkeypatch)
+    rc = await worker._hub_check(argparse.Namespace(only=None, json=True))
+    out = capsys.readouterr().out
+    import json as _json
+    rows = _json.loads(out)
+    assert rc == 0 and [r["tool_id"] for r in rows] == [pub["tool_id"]] and rows[0]["check"] == "passed"

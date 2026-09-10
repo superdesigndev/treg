@@ -12,6 +12,8 @@ sources:
   - src/treg/application/hub/limits.py
   - src/treg/domain/money/__init__.py
   - src/treg/routers/catalog.py
+  - src/treg/application/hub/health.py
+  - src/treg/worker.py
   - src/treg/routers/web.py
   - src/treg/web/skill.md
   - src/treg/web/llms.txt
@@ -262,3 +264,20 @@ of the maker's own (names and keys hidden)", reliability over 30 days (runs by o
 share, median), and the older versions still callable. Readable without sign-in; `noindex` and
 absent from the sitemap, because a hub tool is shared by its id, not found by search. The
 publish reply (`POST /hub/tools`) and `treg hub publish` name the page.
+
+## Health, the scheduled check, retire, price (phase 7.3)
+
+Health is derived, never stored (`application/hub/health.py`): a version is `failing` when its
+last three runs, callers' runs and scheduled checks alike, all failed; `ok` otherwise; `unknown`
+before any run. A failing tool stays callable; the public page, `catalog_get` and the maker's
+`GET /hub/tools/{id}/health` say the state, and the next passing run clears it. `treg-worker hub
+check` (cron it every 6 hours) runs every live tool's newest `check.json` once as its maker: the
+identity is rebuilt from the database (the publisher's membership, else an owner's), the run goes
+through the runner as a normal run charged to the maker at step prices and never the seller
+price, the row is a `HubRun` with `caller_email = "hub-check"`, and the verdict lands on the
+version's `check_result` with `scheduled: true`. A failing check never retires a tool by itself.
+
+`DELETE /hub/tools/{id}` (`treg hub retire <id>`) retires every version: off the call road at
+once, rows kept so earnings and history stay readable. `PATCH /hub/tools/{id}` `{price_usd}`
+(`treg hub price <id> <usd>`) changes the newest live version's price for later runs, no version
+bump; every trace stamps the price it paid.

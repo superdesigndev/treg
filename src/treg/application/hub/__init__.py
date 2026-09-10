@@ -143,45 +143,18 @@ async def run_check(db: AsyncSession, row: HubTool, *, maker_headers: dict[str, 
 
     from ...application.hub import runner as hub_runner
 
-    verdict: dict[str, Any] = {"run_id": None, "checked_at": _utcnow().isoformat()}
     headers = {k: v for k, v in maker_headers.items() if k.lower() in ("x-treg-token", "x-treg-org", "cookie")}
     headers["X-Treg-Client"] = "hub-check"
     headers[hub_runner.RUN_MAX_COST_HEADER] = "5.00"
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://treg.internal",
                                  headers=headers, timeout=200.0) as client:
         r = await client.post(f"/call/{row.tool_id}@{row.version}", json=row.check.get("inputs", {}))
-    body: Any
+    from .health import verdict_from
     try:
         body = r.json()
     except ValueError:
         body = {"text": r.text[:600]}
-    verdict["run_id"] = r.headers.get("X-Treg-Run-Id") or r.headers.get("X-Treg-Call-Id")
-    verdict["status_code"] = r.status_code
-    verdict["charged_micro"] = int(r.headers.get("X-Treg-Cost-Micro") or 0)
-    if r.status_code != 200:
-        detail = body.get("detail", body) if isinstance(body, dict) else body
-        verdict["status"] = "failed"
-        verdict["error"] = detail if isinstance(detail, dict) else {"message": str(detail)[:600]}
-        if r.status_code == 402:
-            verdict["error"] = {**verdict["error"], "hint": "the check runs on your own balance at the normal step prices; top up and publish again"}
-    else:
-        output = body.get("output") if isinstance(body, dict) else None
-        missing = [f for f in row.check.get("fields", []) if not isinstance(output, dict) or output.get(f) in (None, "", [], {})]
-        min_rows = int(row.check.get("min_rows", 0) or 0)
-        rows_short = None
-        if min_rows and isinstance(output, dict):
-            lists = [v for v in output.values() if isinstance(v, list)]
-            if not lists or len(lists[0]) < min_rows:
-                rows_short = len(lists[0]) if lists else 0
-        verdict["trace"] = body.get("trace", []) if isinstance(body, dict) else []
-        if missing or rows_short is not None:
-            verdict["status"] = "failed"
-            verdict["error"] = {"error": "check_failed",
-                                **({"missing": missing} if missing else {}),
-                                **({"rows": rows_short, "min_rows": min_rows} if rows_short is not None else {}),
-                                "message": "the run answered, but not what check.json requires"}
-        else:
-            verdict["status"] = "passed"
+    verdict = verdict_from(row, r.status_code, body, dict(r.headers))
     row.status = "live" if verdict["status"] == "passed" else "failed"
     row.check_result = verdict
     db.add(row)
@@ -217,3 +190,30 @@ async def transient(db: AsyncSession, *, org: Org, maker_email: str,
                    status="dry-run", summary=v.summary, writes=v.writes, price_micro=v.price_micro,
                    manifest={**v.manifest, "version": 0}, script=script if v.kind == "script" else None,
                    check=check, readme=readme, created_by=maker_email)
+
+
+async def retire(db: AsyncSession, *, org_id: int, tool_id: str) -> int:
+    """Every version of a team's tool leaves the call road (round 7 of the case study: the owner
+    asked for it). Returns how many versions changed. Does not commit."""
+    from sqlalchemy import update
+    result = await db.execute(update(HubTool).where(
+        HubTool.tool_id == tool_id, HubTool.org_id == org_id, HubTool.status != "retired")
+        .values(status="retired"))
+    return int(result.rowcount or 0)
+
+
+async def set_price(db: AsyncSession, *, org_id: int, tool_id: str, price_usd: float) -> HubTool | None:
+    """The price applies to later runs of the newest live version (round 3 q8): no version bump,
+    every trace stamps the price it paid. Returns the row, or None when the team has no such
+    live tool. Does not commit."""
+    from ...domain.hub import manifest as hub_manifest
+    micro = hub_manifest._validate_price(price_usd)
+    row = (await db.execute(select(HubTool).where(
+        HubTool.tool_id == tool_id, HubTool.org_id == org_id, HubTool.status == "live")
+        .order_by(HubTool.version.desc()).limit(1))).scalars().first()
+    if row is None:
+        return None
+    row.price_micro = micro
+    row.manifest = {**row.manifest, "price_usd": micro / 1_000_000}
+    db.add(row)
+    return row

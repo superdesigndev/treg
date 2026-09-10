@@ -2111,6 +2111,10 @@ async def hub_page(request: Request, tool_id: str, db: AsyncSession = Depends(ge
     title = f"{row.name} · a hub tool by {maker}"
     desc = _serp_desc(row.summary)
 
+    from ..application.hub.health import health_of
+    hstate = (await health_of(db, row.tool_id, row.version, row.check_result)).state
+    health_word = ("failing (the last 3 runs failed)" if hstate == "failing"
+                   else "healthy" if chk.get("status") == "passed" and row.status == "live" else row.status)
     if as_md:
         md = [f"# {row.name}", "", f"`{row.tool_id}` · a hub tool by **{maker}** · v{row.version} · {row.status}", "",
               row.summary, "", f"**Price:** {price_line} ({per_k}); per successful run, you pay only what completes.", "",
@@ -2123,7 +2127,7 @@ async def hub_page(request: Request, tool_id: str, db: AsyncSession = Depends(ge
             md.append(f"| {k} | {v.get('type', '')}{(' ≤ ' + str(v['max'])) if 'max' in v else ''} | {dflt} | {v.get('example', '')} | {v.get('note', '')} |")
         md += ["", "## Output", "", ", ".join(f"`{f}`" for f in fields), "",
                "## About", "", row.readme, "",
-               "## Health", "", f"{row.status} · check {chk.get('status') or '-'}{(' at ' + checked_at) if checked_at else ''} · "
+               "## Health", "", f"{health_word} · check {chk.get('status') or '-'}{(' at ' + checked_at) if checked_at else ''} · "
                f"{rel['runs']} runs by others in 30 days" + (f", {rel['ok_pct']}% ok, {rel['median_ms']} ms median" if rel["runs"] else ""), "",
                "## Made of", "", f"made of {len(m.get('uses', []))} tool(s) (catalog tools and the maker's own; names and keys hidden) · {kind} · "
                f"{caps.get('wall_s', 120)} s · {caps.get('steps', 20)} calls max", ""]
@@ -2148,7 +2152,6 @@ async def hub_page(request: Request, tool_id: str, db: AsyncSession = Depends(ge
         f"<td>{e(str(s.get('outcome', '')))} {e(str(s.get('status') or ''))}</td><td>{e(str(s.get('cost_micro', 0)))} µ$</td><td>{e(str(s.get('ms', '')))} ms</td></tr>"
         for s in (chk.get("trace") or []))
     older_html = "".join(f"<li>v{v['version']} callable as <code>{e(row.tool_id)}@{v['version']}</code> until {v['until']}</li>" for v in older)
-    health_word = "healthy" if chk.get("status") == "passed" and row.status == "live" else row.status
     body = f"""
 <main class="hubpage" style="max-width:900px;margin:0 auto;padding:24px 22px 60px">
   <p class="muted" style="font-size:13px"><code>{e(row.tool_id)}</code> · <span class="pill">HUB</span> · by <b>{e(maker)}</b> · v{row.version}</p>
