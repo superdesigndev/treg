@@ -35,7 +35,7 @@ def cost_at(cost_view: dict | None, request: dict | None = None, adapter: Adapte
         return int(round(usd * units * 1_000_000))
     t = cost_view.get("type")
     per = cost_view.get("per") or 1
-    if t == "per_result":
+    if t in ("per_result", "quota_rows"):
         n = 1
         for k in ("limit", "count", "size", "per_page", "num"):
             v = (request or {}).get(k)

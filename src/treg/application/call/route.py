@@ -137,7 +137,7 @@ class RouteOptions:
         try:
             max_cost = int(round(float(mc) * 1_000_000)) if mc else (
                 default_max_cost_micro if default_max_cost_micro is not None else DEFAULT_MAX_COST_MICRO)
-        except ValueError:
+        except (ValueError, OverflowError):
             raise ResolutionFailed("catalog_parameter_invalid", status_code=400,
                                    detail=f"{MAX_COST_HEADER} must be a USD number, got {mc!r}")
         wf = str(get(WATERFALL_HEADER) or "").strip().lower()
@@ -315,11 +315,17 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                                 derive=contract.derive), dropped=dropped)
 
 
-def _child_input(parent, ep: dict, query: dict[str, str], body: dict) -> object:
+def _child_input(parent, ep: dict, query: dict[str, str], body: dict,
+                 remaining_micro: int | None = None) -> object:
     from .types import CallInput
     has_body = ep["method"] in ("POST", "PUT", "PATCH") and body is not None
     payload = json.dumps(body).encode() if has_body else b""
     headers = [(k, v) for k, v in parent.input.raw_headers if k.lower() not in _DROP_FROM_CHILD]
+    if remaining_micro is not None:
+        # Replace the parent's total ceiling with the unspent amount. The child validates its
+        # resolved, margin-inclusive reservation; advisory candidate prices cannot authorize spend.
+        ceiling = f"{remaining_micro // 1_000_000}.{remaining_micro % 1_000_000:06d}"
+        headers.append((MAX_COST_HEADER.encode(), ceiling.encode()))
     if has_body:
         headers += [(b"content-type", b"application/json"), (b"content-length", str(len(payload)).encode())]
     items = tuple(query.items())
@@ -398,10 +404,15 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
         # anywhere; the bench had post-filtered in the agent). Computed at planning time, where it
         # also ranks the candidate down.
         ignored = cand.ignored
-        child = CallContext(input=_child_input(parent, cand.endpoint, query, body), call_ref=f"{parent.call_ref}:r{n}", meta=parent.meta)
+        remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
+        child = CallContext(input=_child_input(parent, cand.endpoint, query, body, remaining), call_ref=f"{parent.call_ref}:r{n}", meta=parent.meta)
         try:
             response = await execute_child(child, upstream_client)
         except CallFailure as exc:
+            if exc.kind == "route_max_cost":
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "skipped", None, 0,
+                                     "would exceed max cost"))
+                continue
             if exc.kind in _GLOBAL_REFUSALS or (
                 exc.status_code in _CALLER_FAULT and exc.kind not in _CANDIDATE_LOCAL_FAILURES
             ):
@@ -500,6 +511,13 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
     if winner is None and best is not None:
         winner = best[1]          # nobody cleared min_results — the fullest answer we paid for wins
     if winner is None:
+        if tried and all(t.outcome == "skipped" for t in tried):
+            raise ResolutionFailed("route_max_cost", status_code=402, detail={
+                "error": "route_max_cost", "endpoint_id": ep["id"],
+                "max_cost_micro": options.max_cost_micro, "charged_micro": spent,
+                "tried": [t.view() for t in tried],
+                "message": "no candidate fits the remaining cost ceiling; nothing was charged",
+            })
         outcome = "miss" if tried and all(t.outcome in ("miss", "skipped", "weak") for t in tried) else "error"
         if outcome == "miss":
             last = next(t for t in reversed(tried) if t.outcome == "miss")
@@ -516,6 +534,8 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
                        f"every candidate for {ep['id']} failed"})
     cand, doc, output, raw = winner
     served = cand.endpoint["id"]
+    winner_outcome = next(t.outcome for t in reversed(tried)
+                          if t.endpoint_id == served and t.outcome in ("hit", "weak", "miss"))
     merged_from: list[str] = []
     if options.merge and len(answers) > 1:
         # A LIST answer is the only shape a union makes sense for, and the caller has already been
@@ -542,14 +562,14 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
                 "_treg": {"served_by": served, "provider": cand.endpoint["provider"], "tier": cand.tier,
                           **({"merged_from": merged_from} if merged_from else {}),
                           **({"advice": advice} if advice else {}),
-                          "outcome": tried[-1].outcome, "tried": [t.view() for t in tried], "charged_micro": spent,
+                          "outcome": winner_outcome, "tried": [t.view() for t in tried], "charged_micro": spent,
                           **({"ignored_filters": list(cand.ignored)} if cand.ignored else {}),
                           **({"dropped": plan.dropped} if plan.dropped else {})}}
     _audit_parent(parent, ep, 200, spent, audit_client)
     return _json(body_out, 200, {"X-Treg-Served-By": served, "X-Treg-Providers-Tried": ",".join(t.provider for t in tried),
                                  **({"X-Treg-Merged-From": ",".join(merged_from)} if merged_from else {}),
                                  **({"X-Treg-Ignored-Filters": ",".join(cand.ignored)} if cand.ignored else {}),
-                                 "X-Treg-Route-Outcome": tried[-1].outcome}), spent
+                                 "X-Treg-Route-Outcome": winner_outcome}), spent
 
 
 def _audit_parent(parent: CallContext, ep: dict, status: int, charged: int, client: str) -> None:

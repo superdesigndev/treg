@@ -306,6 +306,12 @@ back to the direct vendor response. A skip-direct call has no direct response, s
 returns the original typed `provider_capacity` 503. Cancellation and typed call failures still
 propagate to the call service for their dedicated cleanup and response handling.
 
+Overflow reservations also enforce `MarketplaceCall.max_cost_micro` at the aggregator's own
+estimate, before any aggregator request. The value is inherited from a direct caller's explicit
+ceiling or a routed child's remaining ceiling. A refused reservation releases the temporary
+`OverflowSpend` budget claim and leaves no child hold. See `architecture/money.md` for the shared
+reservation guard.
+
 ## Enabling overflow (step F) — the opt-out and the rollout
 
 `Org.platform_overflow_disabled` (Alembic `0008`; last column in the class on purpose — alembic

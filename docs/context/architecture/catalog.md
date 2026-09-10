@@ -23,6 +23,7 @@ sources:
   - src/treg/catalog/examples/millionverifier.people.email.verify.json
   - src/treg/catalog/examples/millionverifier.account.usage.json
   - src/treg/catalog/adapters.yaml
+  - tests/test_route_cost_ceiling.py
   - src/treg/catalog/tomba.yaml
   - src/treg/catalog/examples/tomba.people.email.verify.json
   - src/treg/catalog/examples/findymail.search.business-profile.json
@@ -1578,7 +1579,13 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   2026-08-28: the endpoint's job is to find the thing, and misses on the per-success children are
   free); `X-Treg-Route-Waterfall: 0` stops at the first miss. Every attempt is settled at its real
   price and `X-Treg-Route-Max-Cost` (default $1) bounds the sum before each reserve (a candidate
-  that would breach it is `skipped`). Response: `{output, raw, _treg: {served_by, provider, tier,
+  that would breach it is `skipped`). Quota-row quotes scale with the requested row count, just
+  like per-result quotes. Each child also receives the remaining ceiling after actual earlier
+  charges; the shared reservation gate checks the resolved estimate including margin, even when
+  the advisory quote was too low or the child uses overflow. A budget refusal skips that candidate
+  without using the provider-error retry allowance; if every candidate is skipped, return 402
+  `route_max_cost`. A retained weak answer keeps its own outcome when later candidates are skipped.
+  Response: `{output, raw, _treg: {served_by, provider, tier,
   outcome, tried[], charged_micro}}`, `X-Treg-Served-By`, `X-Treg-Providers-Tried`,
   `X-Treg-Route-Outcome`, `X-Treg-Cost-Micro` = the sum, one `X-Treg-Call-Id`. The parent owns
   the idempotency label (a success, or a terminal failure after a paid child, replays without

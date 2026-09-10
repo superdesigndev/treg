@@ -70,7 +70,6 @@ from .types import (
     CallInput,
     FinalizationState,
     GatewayFailed,
-    ReservationFailed,
     ResolutionFailed,
     UpstreamRequest,
     UpstreamResponse,
@@ -163,30 +162,16 @@ async def _await_before_reserve(awaitable, request: _ApplicationRequest, call_re
         raise
 
 
-def _enforce_caller_max_cost(request, mk: MarketplaceCall) -> None:
-    """`X-Treg-Route-Max-Cost` on a DIRECT metered call: refuse before the reserve when what the
-    balance would be debited (estimate with margin) exceeds the caller's USD ceiling. Unlike /do/
-    there is NO default — a direct call named its endpoint and page size on purpose, so only an
-    explicit header caps it. Same header and the same `route_max_cost` 402 shape as the routed path,
-    so one agent-side handler covers both. Asked for by a customer whose runner approved $0.23 and
-    was billed $0.56 (2026-09-04): the price was knowable before the call, but nothing enforced it."""
+def _set_caller_max_cost(request, mk: MarketplaceCall) -> None:
+    """Carry the caller's ceiling to the common reservation gate, including overflow."""
     raw = request.headers.get(routed.MAX_COST_HEADER)
     if raw is None or not str(raw).strip():
         return
     try:
-        cap_micro = int(round(float(raw) * 1_000_000))
-    except ValueError:
+        mk.max_cost_micro = int(round(float(raw) * 1_000_000))
+    except (ValueError, OverflowError):
         raise ResolutionFailed("catalog_parameter_invalid", status_code=400,
                                detail=f"{routed.MAX_COST_HEADER} must be a USD number, got {raw!r}")
-    charged = ledger.with_margin(mk.estimate_micro)
-    if charged > cap_micro:
-        raise ReservationFailed("route_max_cost", status_code=402, detail={
-            "error": "route_max_cost", "endpoint_id": mk.endpoint_id, "provider": mk.provider,
-            "max_cost_micro": cap_micro, "estimated_cost_micro": charged,
-            "message": (f"{mk.endpoint_id} would reserve ~${ledger.usd(charged):g} and "
-                        f"{routed.MAX_COST_HEADER} is ${cap_micro / 1_000_000:g}; nothing was charged. "
-                        f"Ask for fewer rows/targets or raise the ceiling."),
-        })
 
 
 def _client_name(request: _ApplicationRequest) -> str:
@@ -738,6 +723,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             read_body=request.body,
         ), request, call_ref)
 
+    if mk is not None and mk.metered:
+        _set_caller_max_cost(request, mk)
+
     if mk is not None and mk.skip_direct:
         # The resolver knows treg's own account is out and an overflow route is on: no direct
         # attempt, no parent hold — straight to the child cycle (plan §4 ladder, tier 4b). The DB
@@ -795,7 +783,6 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # Secret reads above opened the dependency session. Release its pool slot before the
             # application opens the short transaction that owns the reservation.
             await db.commit()
-            _enforce_caller_max_cost(request, mk)
             await _platform_reserve(mk, caller, meta=meta, call_ref=call_ref)
             request.context.finalization = FinalizationState.OPEN
         except asyncio.CancelledError:
@@ -1123,6 +1110,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                          defer_analytics=may_overflow)
         served_via = ""
         if may_overflow:
+            if mk.max_cost_micro is not None:
+                mk.max_cost_micro = max(0, mk.max_cost_micro - charged)
             # Overflow (plan §4.3): the primary attempt is settled ($0) and audited above; a child
             # cycle may now serve the SAME endpoint through an aggregator. Off by default; shadow
             # mode returns the vendor's answer regardless. The event waits for the verdict.
@@ -1136,17 +1125,22 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 _capture(pending)
                 await _finish_cancelled_call(request, mk, call_ref, response)
                 raise
-            except CallFailure as exc:  # the child's own 402 (insufficient balance for the child hold)
-                _capture(pending)
-                request.state.call_cost_micro = 0
-                raise
+            except CallFailure as exc:  # the child's own reservation refusal
+                if exc.kind == "route_max_cost" and charged:
+                    # Keep the paid direct answer and its charge visible to the outer router.
+                    # A refused overflow reservation adds nothing to that completed attempt.
+                    outcome = None
+                else:
+                    _capture(pending)
+                    request.state.call_cost_micro = 0
+                    raise
             if outcome is not None and outcome.failure is not None:
                 _capture(pending)
                 request.state.call_cost_micro = 0
                 raise outcome.failure
             if outcome is not None and outcome.served and outcome.response is not None:
                 await response.close()
-                response, body, charged = outcome.response, outcome.body, outcome.charged_micro
+                response, body, charged = outcome.response, outcome.body, charged + outcome.charged_micro
                 served_via = f"overflow:{outcome.aggregator}"
                 _capture(_overflow_event(pending, outcome, charged))
             else:

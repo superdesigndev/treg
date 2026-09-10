@@ -773,12 +773,14 @@ The response has no id because Starlette owns it, but treg records the row and o
 the handler returns its `StreamingResponse`, are not covered by that compensation path.
 
 A direct metered `/call/` honours **`X-Treg-Route-Max-Cost: <usd>`** as a hard per-call ceiling
-(`service._enforce_caller_max_cost`, 2026-09-05): when the reserve with margin would exceed it the
+(`service._set_caller_max_cost` and `reserve._platform_reserve`): when the reserve with margin would exceed it the
 call is refused **402** `error: route_max_cost` (`max_cost_micro`, `estimated_cost_micro`, no charge,
 audited `refused_by=balance` like every 402) — the same header and body shape the routed path uses,
 so one agent-side handler covers both. Unlike `/do/` there is NO default on a direct call: a caller
 who named the endpoint and page size is uncapped unless they send the header. A non-numeric value is
-a 400. Asked for by a customer whose runner approved $0.23 and was billed $0.56 (2026-09-04).
+a 400. Routed children receive the unspent part of the route ceiling, including the default ceiling;
+this same reservation check also applies to overflow at its own price. Refusing a child cannot
+undo earlier paid attempts. Asked for by a customer whose runner approved $0.23 and was billed $0.56 (2026-09-04).
 
 Metered responses also carry `X-Treg-Cost-Micro`; a reserved call that fails before a provider answer
 carries an explicit `0`. That `0` is what the call ends up costing, but the **balance can lag it**:

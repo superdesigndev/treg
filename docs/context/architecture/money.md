@@ -758,6 +758,16 @@ after a tier-4 balance/quota signature, and `_note_capacity_recovery` removes it
 resolution - and both are listed in the dataplane write allowlist on their own
 (`capacity_exhausted_mark`), not under the money entries. See `ops/capacity.md`.
 
+## Caller cost ceilings
+
+`MarketplaceCall.max_cost_micro` carries the caller's remaining ceiling. `_platform_reserve`
+checks the actual reservation estimate with margin before opening its transaction or creating a
+hold. Direct calls only set it when the caller supplies `X-Treg-Route-Max-Cost`; routed children
+always inherit their route's remaining ceiling, including its default. A refusal is a 402
+`route_max_cost` and moves no money for that attempt. Overflow inherits the same field via its
+child snapshot and checks its own estimate; a preceding direct charge reduces the remainder.
+This is a pre-reservation guard, not a rewrite of provider-reported settlement evidence.
+
 ## Overflow money
 
 The overflow child (`application.call.overflow`) is an ordinary metered cycle on its own hold

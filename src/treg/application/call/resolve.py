@@ -301,6 +301,7 @@ class MarketplaceCall:
     tier: str                       # tool | credential | platform | platform-overflow (child cycle only)
     cost_type: str = ""             # cost.type — decides whether a 4xx is billable (per_call is)
     estimate_micro: int = 0         # RAW provider estimate; the ledger applies the margin
+    max_cost_micro: int | None = None  # remaining caller ceiling, inherited by overflow
     params_hash: str = ""
     call_id: str | None = None      # the ledger hold, once reserved (metered calls only)
     # The call rides a REGISTRY OAUTH CONNECT of a provider that bills treg's app per use (X's

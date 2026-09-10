@@ -991,3 +991,30 @@ async def test_catalog_get_says_nothing_about_overflow_when_the_deployment_canno
     r = await clients.get(f"/catalog/endpoints/{APOLLO_SEARCH_EP}")
     assert "overflow_price_usd" not in r.json()["endpoint"]
     assert not any("overflow relay" in h for h in r.json()["hints"])
+
+
+@pytest.mark.parametrize('skip_direct', [False, True])
+@pytest.mark.parametrize('cap,status', [('0.0015', 402), ('0.003', 200)])
+async def test_caller_ceiling_checks_actual_overflow_reserve(
+    clients, overflow_on, monkeypatch, skip_direct, cap, status,
+):
+    await _route(price_micro=3000)
+    if skip_direct:
+        await _exhausted()
+    monkeypatch.setattr(call_service, 'relay', _fake_relay(402, b'{"detail":"Insufficient balance"}'))
+    seen = []
+    envelope = {'success': True, 'data': VENDOR_BODY, 'priceCents': 0.3,
+                'billing': {'chargedPriceCents': 0.3}}
+    monkeypatch.setattr(O, '_send', _orthogonal([(200, envelope)], seen))
+    before = await _balance(clients)
+    response = await clients.get(f'/call/{EP}?aweme_id=7',
+                                headers={'X-Treg-Route-Max-Cost': cap})
+    assert response.status_code == status, response.text
+    assert before - await _balance(clients) == (3000 if status == 200 else 0)
+    assert len(seen) == (1 if status == 200 else 0)
+    assert await _holds() == []
+    if status == 402:
+        assert response.json()['detail']['error'] == 'route_max_cost'
+        async with session_maker() as db:
+            rows = (await db.execute(select(OverflowSpend))).scalars().all()
+            assert all(row.cost_micro == 0 for row in rows)
