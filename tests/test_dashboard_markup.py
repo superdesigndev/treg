@@ -22,14 +22,17 @@ TUTORIAL = (Path(api.__file__).parent / "web" / "tutorial.html").read_text(encod
 SHARED_DIALOGS = ["tokenAsk", "capAsk", "methodAsk", "resPick"]
 
 
-def test_first_team_signup_conversion_is_opt_in_success_only_and_transaction_deduplicated():
+def test_first_team_signup_conversion_is_site_consented_success_only_and_transaction_deduplicated():
+    assert '<script src="/consent.js"></script>' in INDEX
     assert '<script src="/gtag.js" data-conversion-only></script>' in INDEX
-    assert 'type="checkbox" v-model="welcome.adsMeasurement"' in INDEX
-    assert "adsMeasurement:false" in INDEX
+    assert 'v-model="welcome.adsMeasurement"' not in INDEX
+    assert "adsMeasurementAvailable" not in INDEX
+    assert INDEX.index('src="/consent.js"') < INDEX.index('src="/adtrack.js"')
+    assert INDEX.index('src="/consent.js"') < INDEX.index('src="/gtag.js"')
 
     welcome = INDEX[INDEX.index("async welcomeCreate()") : INDEX.index("welcomeFinish()")]
     created = "await this.api('/orgs'"
-    fired = "window.tregSignupConversion('treg-web-signup-'+o.org_id, this.welcome.adsMeasurement===true)"
+    fired = "window.tregSignupConversion('treg-web-signup-'+o.org_id)"
     assert created in welcome and fired in welcome
     assert welcome.index(created) < welcome.index(fired)
 

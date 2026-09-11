@@ -1,9 +1,9 @@
 // Google Ads measurement. Marketing pages load the base tag; the signed-in dashboard includes
 // this file in `data-conversion-only` mode, which defines tregSignupConversion() without contacting
-// Google until a person explicitly opts in and their first team has been created successfully.
+// Google until optional advertising cookies are accepted and the first team is created successfully.
 //
 // Consent defaults are deliberately queued before config/event. Without an affirmative choice the
-// marketing tag can send only consent-mode cookieless pings and the dashboard sends nothing.
+// Google is not contacted at all. The dashboard sends no ordinary page view in either state.
 // Conversion ID: AW-18392771132
 // Signup action: AW-18392771132/0usqCIeQrO0cELzUrcJE
 (function () {
@@ -11,7 +11,6 @@
 
   var TAG_ID = 'AW-18392771132';
   var SIGNUP_DESTINATION = TAG_ID + '/0usqCIeQrO0cELzUrcJE';
-  var CONSENT_KEY = 'treg-google-ads-consent';
   var source = document.currentScript;
   var conversionOnly = !!(source && source.hasAttribute('data-conversion-only'));
   var loaded = false;
@@ -31,13 +30,10 @@
   });
 
   function consentGranted() {
-    try { return localStorage.getItem(CONSENT_KEY) === 'granted'; }
-    catch (e) { return false; }
+    return !!(window.tregCookieConsent && window.tregCookieConsent.state() === 'granted');
   }
 
   function grantMeasurementConsent() {
-    try { localStorage.setItem(CONSENT_KEY, 'granted'); }
-    catch (e) { /* the current event can still carry the explicit choice */ }
     window.gtag('consent', 'update', {
       ad_storage: 'granted',
       ad_user_data: 'granted',
@@ -63,11 +59,10 @@
 
   if (consentGranted()) grantMeasurementConsent();
 
-  window.tregSignupConversion = function (transactionId, allowed) {
-    // The caller supplies `allowed` from the unchecked-by-default first-team consent control and
-    // calls only after POST /orgs succeeds. Google deduplicates retries of the same transaction ID.
-    if (allowed !== true || !transactionId) return false;
-    grantMeasurementConsent();
+  window.tregSignupConversion = function (transactionId) {
+    // The caller invokes this only after POST /orgs succeeds. Consent is site-wide, not a signup
+    // checkbox, and Google deduplicates retries of the same transaction ID.
+    if (!transactionId || !consentGranted()) return false;
     loadTag(false);
     window.gtag('event', 'conversion', {
       send_to: SIGNUP_DESTINATION,
@@ -78,7 +73,23 @@
     return true;
   };
 
-  // Marketing pages retain their base measurement. In conversion-only mode the external script is
-  // lazy: an ordinary dashboard view makes no Google request.
-  if (!conversionOnly) loadTag(true);
+  // Basic Consent Mode: before acceptance, neither marketing pages nor the dashboard contact
+  // Google. After acceptance, marketing pages load the base tag; the dashboard remains lazy until
+  // its one first-team conversion is ready.
+  if (!conversionOnly && consentGranted()) loadTag(true);
+  if (window.tregCookieConsent) {
+    window.tregCookieConsent.onChange(function (state) {
+      if (state === 'granted') {
+        grantMeasurementConsent();
+        if (!conversionOnly) loadTag(true);
+      } else {
+        window.gtag('consent', 'update', {
+          ad_storage: 'denied',
+          ad_user_data: 'denied',
+          ad_personalization: 'denied',
+          analytics_storage: 'denied'
+        });
+      }
+    });
+  }
 })();

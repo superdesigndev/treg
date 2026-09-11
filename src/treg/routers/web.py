@@ -228,6 +228,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
     </nav>
   </div>
 </footer>
+<script src="/consent.js"></script>
 <script src="/adtrack.js"></script>
 <script src="/gtag.js"></script>
 </body>
@@ -3044,6 +3045,9 @@ def _legal_page(name: str) -> HTMLResponse:
     # registry's crawler that the real page lives on someone else's domain.
     base = get_settings().public_url.rstrip("/")
     html = page.read_text(encoding="utf-8").replace("{BASE}", base)
+    # Consent is a site-wide choice, including the policy where someone can revisit it. Keep this
+    # injection in the shared legal shell so a new support/legal page cannot silently omit it.
+    html = html.replace("</head>", '<script src="/consent.js"></script>\n</head>', 1)
     # no-cache: a legal page must not be served stale after we publish an update.
     return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
 
@@ -3091,10 +3095,23 @@ async def adtrack_js():
     return FileResponse(f, media_type="application/javascript", headers=headers)
 
 
+@app.get("/consent.js", include_in_schema=False)
+async def consent_js():
+    """First-party site-wide choice for optional Google Ads cookies. Unconfigured/self-hosted
+    deployments get an empty file and therefore no banner."""
+    headers = {"Cache-Control": "no-cache"}
+    if not adsconv.enabled():
+        return Response(content="", media_type="application/javascript", headers=headers)
+    f = _WEB_DIR / "consent.js"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="consent.js not bundled")
+    return FileResponse(f, media_type="application/javascript", headers=headers)
+
+
 @app.get("/gtag.js", include_in_schema=False)
 async def gtag_js():
     """Google Ads measurement with consent defaults. Marketing pages load the base tag; the
-    dashboard's conversion-only include stays local until an opted-in first-team creation fires
+    dashboard's conversion-only include stays local until a consented first-team creation fires
     AW-18392771132/0usqCIeQrO0cELzUrcJE. Unconfigured/self-hosted deployments get an empty file."""
     headers = {"Cache-Control": "no-cache"}
     if not adsconv.enabled():

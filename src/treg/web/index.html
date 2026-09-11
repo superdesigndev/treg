@@ -44,6 +44,7 @@ addEventListener('load', function(){
 </script>
 <script src="/tutorial.js"></script>
 <script src="/dashboard-tour/tour.js"></script>
+<script src="/consent.js"></script>
 <script src="/adtrack.js"></script>
 <script src="/gtag.js" data-conversion-only></script>
 <style>
@@ -3386,10 +3387,6 @@ product, including per-customer usage tracking and billing.</pre>
             <h2 style="margin:0 0 8px;font-size:20px">Welcome{{me?', '+me.split('@')[0]:''}} 👋</h2>
             <p class="sub" style="margin:0 0 18px">Create your team — it's where you keep API keys and skills so your teammates and their agents can call them <b>without holding the keys</b>. You can invite people and add secrets right after.</p>
             <div class="field"><input v-model="welcome.name" placeholder="Team name, e.g. Superdesign" @keyup.enter="welcomeCreate"/></div>
-            <label v-if="adsMeasurementAvailable" class="sub" style="display:flex;gap:8px;align-items:flex-start;margin:10px 0 4px;font-size:12px;cursor:pointer">
-              <input type="checkbox" v-model="welcome.adsMeasurement" style="margin-top:2px"/>
-              <span>Allow Google Ads to measure whether an ad led to this signup. Optional; no analytics or personalised advertising. <a href="/privacy" target="_blank" rel="noopener">Privacy</a></span>
-            </label>
             <button class="btn primary" style="width:100%;margin-top:4px" @click="welcomeCreate" :disabled="welcome.busy">{{welcome.busy?'Creating…':'Create team →'}}</button>
           </template>
           <template v-else-if="welcome.step===1">
@@ -3889,8 +3886,7 @@ createApp({
       share:{on:false, email:'', role:'viewer', full:true, busy:false, err:'', sent:null, member:null},  // detail-page "Share…" (invite + land on this page)
       me:'', icHash:'', myOrgs:[], isAdmin:false,
       onboarded:true,  // first-run onboarding done (server flag; gates the welcome modal)
-      welcome:{on:false, step:0, name:'', agent:'openclaw', moreOpen:false, adsMeasurement:false, busy:false, err:''},  // first-run: name your team → pick your agent → setup line
-      adsMeasurementAvailable:typeof window.tregSignupConversion==='function',
+      welcome:{on:false, step:0, name:'', agent:'openclaw', moreOpen:false, busy:false, err:''},  // first-run: name your team → pick your agent → setup line
       emptyTab:'agent',
       tools:[], health:{}, calls:[], runs:[], adminStats:null, adminOrgs:[], adminUsers:[],
       adminBusy:false, confirmAdmUser:null, confirmAdmOrg:null,
@@ -5105,7 +5101,7 @@ createApp({
     async welcomeCreate(){ const name=(this.welcome.name||'').trim(); if(!name){ this.welcome.err='Give your team a name.'; return; }
       this.welcome.busy=true; this.welcome.err='';
       try{ const o=await this.api('/orgs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})});
-        if(this.adsMeasurementAvailable) window.tregSignupConversion('treg-web-signup-'+o.org_id, this.welcome.adsMeasurement===true);
+        if(typeof window.tregSignupConversion==='function') window.tregSignupConversion('treg-web-signup-'+o.org_id);
         this.onboarded=true; try{ await this.api('/onboard/skip',{method:'POST'}); }catch(e){}  // don't re-prompt
         await this.loadAll(); this.switchOrg({slug:o.org});
         this.analyticsIdentify(); this.intercomUpdate(); this.track('onboarding_team_created',{team:o.org});

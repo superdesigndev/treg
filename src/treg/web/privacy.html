@@ -39,7 +39,7 @@
       <li><b>We collect almost nothing about you.</b> An email address to sign in, the teams you're in, and a log of which tools were called. That's the account.</li>
       <li><b>Your credentials are encrypted and never returned.</b> No stored secret value is ever sent back to a client, shown in the dashboard, or read by us.</li>
       <li><b>We don't store what flows through the proxy.</b> A call's request and response bodies pass through and are gone. We keep the method, path, status code, and timestamp — not the content.</li>
-      <li><b>Minimal tracking.</b> Two first-party cookies, both ours: one keeps you signed in, one (only if you arrived from a Google Ads click) tells us the ad worked. Marketing pages load Google's tag with advertising, user-data, personalisation and analytics storage denied by default. When you create your first team, an unchecked optional control can allow Google Ads conversion measurement; only then can Google set advertising cookies and receive that signup. There is no analytics on the dashboard.</li>
+      <li><b>Minimal tracking.</b> A necessary first-party cookie keeps you signed in. Optional Google Ads cookies are off unless you accept them in our site-wide cookie choices. We don't use the Google tag for analytics or personalised advertising. There is no ordinary advertising or analytics page tracking in the dashboard.</li>
       <li><b>No training, no selling.</b> Your credentials, skills, and connected-account data are never sold and never used to train models.</li>
     </ul>
   </div>
@@ -120,10 +120,10 @@
     <li>We never use your credentials, connected-account data, or skill content to <b>train machine
       learning models</b> — ours or anyone else's.</li>
     <li>We do not run <b>analytics or session-replay scripts</b> on the signed-in dashboard. Its local
-      Google Ads helper makes no third-party request on an ordinary visit. If you affirmatively allow
-      conversion measurement while creating your first team, it loads Google's tag once to send that
-      signup. Marketing pages load the tag under Consent Mode; there is no Google Analytics property
-      or session replay anywhere.</li>
+      Google Ads helper makes no third-party request on an ordinary visit. The separate site-wide
+      cookie choice controls optional Google Ads measurement: marketing pages wait for acceptance
+      before loading Google's tag, and an accepted browser loads it in the dashboard only to send the
+      first successful team signup. There is no Google Analytics property or session replay anywhere.</li>
     <li>We never use your stored credentials for anything other than the call you or a permitted
       teammate initiated, plus automated health checks and token refreshes.</li>
   </ul>
@@ -182,7 +182,7 @@
     <tr><td>Resend</td><td>Your email address and the message body</td><td>Sends sign-in codes and invitations</td><td>USA</td></tr>
     <tr><td>Google Fonts</td><td>Your IP address, when you load a treg web page</td><td>Serves the site's typefaces</td><td>USA</td></tr>
     <tr><td>Upstream APIs you connect</td><td>Whatever your call sends them</td><td>The call you asked us to make</td><td>Varies by provider</td></tr>
-    <tr><td>Google Ads</td><td>A click id with server conversion events if you arrived via a Google ad; consent status and a first-team signup event when you separately allow website conversion measurement</td><td>Measures whether the ad that brought you converted</td><td>USA</td></tr>
+    <tr><td>Google Ads</td><td>A click id with server conversion events if you arrived via a Google ad after accepting optional cookies; consent status and one first-team signup event when the site-wide cookie choice is accepted</td><td>Measures whether the ad that brought you converted</td><td>USA</td></tr>
   </table></div>
   <p><b>Referrals.</b> If you sign up through someone's referral link, <b>your email address is
   shown to the person who referred you</b>, along with the date you signed up and whether your team
@@ -213,22 +213,23 @@
   you arrived by carried campaign tags (<code>utm_*</code>) or a referring site, it remembers that source
   so we can tell which links bring people to treg, retained for <b>90 days</b>. It holds no identifier
   and is never sent to a third party.</p>
-  <p><code>treg_ad</code>: set by our own <code>/adtrack.js</code>, not a Google script — if you arrive
-  from a Google Ads click, it records which ad click led to your visit (the click id and the landing
+  <p><code>treg_ad</code>: after you accept optional cookies, this is set by our own
+  <code>/adtrack.js</code>, not a Google script. If you arrive from a Google Ads click, it records
+  which ad click led to your visit (the click id and the landing
   page), retained for <b>90 days</b>. It exists to tell us whether an ad turned into a signup, an active
   agent, or a paying team, so we can tell which ads to keep running. It is <b>first-party</b> (set by
   <code>treg.to</code>, readable only by us, never by Google or any other third party) and it is
   <b>not shared with third parties</b> beyond the conversion event itself — a signup, a first call, or
   a first payment, each tagged with only the click id — uploaded to Google Ads so it can measure the
-  campaign.</p>
-  <p><code>treg-google-ads-consent</code>: an optional browser-storage preference created only when
-  you check “Allow Google Ads” while creating your first team. Before that choice, Google's tag runs
-  on marketing pages with advertising, user-data, personalisation and analytics storage denied; it
-  may send cookieless consent-mode pings but cannot set advertising cookies. If you opt in, Google
-  may set its <code>_gcl_*</code> cookies and receives one signup event with a team-specific
-  transaction reference so retries are not counted twice. The preference remains in that browser
-  until you clear the site's stored data. Analytics storage and personalised advertising remain
-  denied even after opting in.</p>
+  campaign. Without acceptance, this cookie is not created and any older copy is removed.</p>
+  <p><code>treg-cookie-consent-v1</code>: a first-party browser-storage record of whether you accepted
+  or rejected optional Google Ads cookies and when you made that choice. Before acceptance, treg
+  does not load Google's tag, send consent-mode pings, or create the advertising cookies described
+  above. If you accept, Google may set its <code>_gcl_*</code> cookies. When your first team is
+  created successfully, Google receives one signup event with a team-specific transaction reference
+  so retries are not counted twice. Analytics storage and personalised advertising remain denied.
+  Rejecting later removes advertising cookies that treg can access on this domain.</p>
+  <p><button type="button" class="cookie-settings" onclick="window.tregCookieConsent && window.tregCookieConsent.show()">Review cookie choices</button></p>
 
   <h2 class="sec" id="s8"><span class="n">08</span>How we protect it</h2>
   <ul>

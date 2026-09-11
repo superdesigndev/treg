@@ -63,6 +63,10 @@ hr{border:0;border-top:1px solid var(--line);margin:44px 0 0}
   border-radius:0 12px 12px 0;padding:14px 18px}
 .note p{margin:0;color:var(--ink)}
 .note.warn{border-left-color:#E8B419;background:rgba(232,180,25,.10)}
+.cookie-settings{border:1px solid var(--ink);border-radius:7px;background:transparent;color:var(--ink);
+  padding:9px 13px;font:600 12px/1.2 var(--mono);cursor:pointer}
+.cookie-settings:hover{background:var(--tint)}
+.cookie-settings:focus-visible{outline:3px solid var(--link);outline-offset:2px}
 
 /* Wide tables scroll inside their own box rather than pushing the page sideways. Cells wrap —
    nowrap would make the retention/subprocessor tables far wider than any viewport. */

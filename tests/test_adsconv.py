@@ -268,6 +268,12 @@ async def test_adtrack_script_is_empty_when_disabled(clients, ads_disabled):
     assert r.text == ""
 
 
+async def test_consent_script_is_empty_when_disabled(clients, ads_disabled):
+    r = await clients.get("/consent.js")
+    assert r.status_code == 200
+    assert r.text == ""
+
+
 async def test_gtag_script_is_empty_when_disabled(clients, ads_disabled):
     """gtag.js returns empty when ads tracking is disabled, same as adtrack.js."""
     r = await clients.get("/gtag.js")
@@ -275,7 +281,7 @@ async def test_gtag_script_is_empty_when_disabled(clients, ads_disabled):
     assert r.text == ""
 
 
-async def test_gtag_defers_dashboard_contact_and_queues_consent_before_measurement(
+async def test_gtag_defers_all_contact_until_site_consent_and_queues_defaults_first(
     clients, ads_enabled,
 ):
     r = await clients.get("/gtag.js")
@@ -285,18 +291,36 @@ async def test_gtag_defers_dashboard_contact_and_queues_consent_before_measureme
     assert "window.tregSignupConversion" in js
     assert js.index("window.gtag('consent', 'default'") < js.index("window.gtag('config'")
     assert js.index("window.gtag('consent', 'default'") < js.index("window.gtag('event', 'conversion'")
-    assert "allowed !== true" in js
+    assert "!transactionId || !consentGranted()" in js
     assert "transaction_id: String(transactionId)" in js
-    assert "if (!conversionOnly) loadTag(true)" in js
+    assert "if (!conversionOnly && consentGranted()) loadTag(true)" in js
+    assert "window.tregCookieConsent.onChange" in js
 
 
-async def test_privacy_page_discloses_the_opt_in_web_signup_measurement(clients):
+async def test_consent_script_uses_basic_mode_and_equal_site_wide_choice(clients, ads_enabled):
+    r = await clients.get("/consent.js")
+    assert r.status_code == 200
+    js = r.text
+    assert "treg-cookie-consent-v1" in js
+    assert 'data-choice="denied">Reject</button>' in js
+    assert 'data-choice="granted">Accept</button>' in js
+    assert "button.treg-cookie-accept{background:#201c15;color:#fffdf8}" in js
+    assert "treg_ad" in js and "_gcl_" in js
+    assert "googletagmanager" not in js
+
+    adtrack = (await clients.get("/adtrack.js")).text
+    assert "window.tregCookieConsent.state() !== 'granted'" in adtrack
+
+
+async def test_privacy_page_discloses_and_can_reopen_site_wide_cookie_choice(clients):
     r = await clients.get("/privacy")
     assert r.status_code == 200
     assert "Google Ads conversion measurement" in r.text
-    assert "treg-google-ads-consent" in r.text
-    assert "cookieless consent-mode pings" in r.text
-    assert "personalised advertising remain" in r.text
+    assert '<script src="/consent.js"></script>' in r.text
+    assert "treg-cookie-consent-v1" in r.text
+    assert "does not load Google's tag" in r.text
+    assert "Review cookie choices" in r.text
+    assert "personalised advertising remain denied" in r.text
 
 
 async def test_signup_queues_a_conversion_when_attributed(clients, ads_enabled):
