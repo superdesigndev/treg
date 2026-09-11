@@ -1601,9 +1601,12 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   the advisory quote was too low or the child uses overflow. A budget refusal skips that candidate
   without using the provider-error retry allowance; if every candidate is skipped, return 402
   `route_max_cost`. A retained weak answer keeps its own outcome when later candidates are skipped.
+  When the waterfall ends with some candidates skipped due to max-cost, the response includes
+  `_treg.capped: true` and `X-Treg-Route-Capped: true` — a partial miss is distinguishable from an
+  exhaustive one, so callers can raise their budget if needed (feedback #131, 2026-09).
   Response: `{output, raw, _treg: {served_by, provider, tier,
-  outcome, tried[], charged_micro}}`, `X-Treg-Served-By`, `X-Treg-Providers-Tried`,
-  `X-Treg-Route-Outcome`, `X-Treg-Cost-Micro` = the sum, one `X-Treg-Call-Id`. The parent owns
+  outcome, tried[], charged_micro, capped?}}`, `X-Treg-Served-By`, `X-Treg-Providers-Tried`,
+  `X-Treg-Route-Outcome`, `X-Treg-Route-Capped?`, `X-Treg-Cost-Micro` = the sum, one `X-Treg-Call-Id`. The parent owns
   the idempotency label (a success, or a terminal failure after a paid child, replays without
   touching a provider) and writes one audit row
   (`credential_tier: routed`) beside the children's.
