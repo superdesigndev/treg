@@ -193,6 +193,8 @@ key or none, or you will get the old answer back. Reusing one key for a differen
 
 Most retries need none of this — a failed call was never billed.
 
+Catalog entries marked `strict_query: true` accept only their declared query parameters, once each. Include required fields, use allowed values and omit the request body.
+
 ## Task — your own tools: call one the team registered
 
 **Start from what is registered, then use the API exactly as its own docs say.** No treg vocabulary,

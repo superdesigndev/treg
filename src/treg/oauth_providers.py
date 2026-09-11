@@ -1274,6 +1274,22 @@ SUMBLE = OAuthProvider(
     # Live 2026-09-09: bogus Bearer 401; valid key 200 with credits_used=0.
 )
 
+HARVESTAPI = OAuthProvider(
+    service="harvestapi", display_name="HarvestAPI", auth_kind="key",
+    token_label="API key", token_placeholder="your HarvestAPI API key",
+    token_header="X-API-Key", token_format="{secret}",
+    setup_url="https://harvestapi.io/",
+    setup_action_label="Get your HarvestAPI API key",
+    setup_steps=("Sign in to HarvestAPI and open Dashboard → API keys.",
+                 "Create an API key and paste it here."),
+    setup_note="LinkedIn data and enrichment using an API key. Connection verification is free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Retrieve LinkedIn profiles, companies, jobs, posts and ads, and find leads and emails.",
+    base_url="https://api.harvestapi.io", docs_url="https://docs.harvestapi.io",
+    probe_path="/users/my-api-user",  # Internal only; live bad key 401, valid key 200.
+)
+
 QUICKENRICH = OAuthProvider(
     service="quickenrich", display_name="QuickEnrich", auth_kind="key",
     token_label="API key", token_placeholder="your QuickEnrich API key",
@@ -2813,7 +2829,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        APOLLO, PDL, AKTA, HUNTER, SUMBLE, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
+        APOLLO, PDL, AKTA, HUNTER, SUMBLE, HARVESTAPI, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers

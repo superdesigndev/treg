@@ -514,3 +514,8 @@ settlement, archive or replay. This is an explicit size limitation, not support 
 metered JSON. The fault is attributed to treg's buffer limit, not to the provider. Own-key streams
 remain outside this limit. `tests/test_call_response_limits.py` exercises both real HTTP hops,
 CLI output, boundaries, Range, disconnects, settlement evidence, archive and replay behavior.
+
+
+## HarvestAPI integration
+
+Catalog entries can opt into `strict_query`: `_enforce_catalog_query` rejects bodies, undeclared/duplicate query parameters, missing required inputs and unsupported enum values before credential selection. It applies to catalog calls on every tier, leaves unmarked entries unchanged and does not rewrite requests or constrain arbitrary raw own-tool relays. See [HarvestAPI](harvestapi.md).

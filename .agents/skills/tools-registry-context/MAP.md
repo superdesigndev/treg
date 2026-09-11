@@ -27,12 +27,12 @@ Regenerate via `scripts/build-map.py`.
 | `plugins/minimax/.minimax-plugin/plugin.json` | interface/skill.md |
 | `plugins/treg/.cursor-plugin/plugin.json` | interface/skill.md |
 | `pyproject.toml` | architecture/import-boundaries.md, ops/deploy.md |
-| `render.yaml` | ops/deploy.md |
+| `render.yaml` | architecture/harvestapi.md, ops/deploy.md |
 | `scripts/backfill_call_archive_links.py` | architecture/archive.md |
 | `scripts/build_plugin.py` | interface/skill.md |
 | `scripts/catalog_drift.py` | architecture/catalog.md |
 | `scripts/catalog_ingest.py` | architecture/catalog.md, architecture/instagram-oauth.md |
-| `scripts/catalog_validate.py` | architecture/catalog.md |
+| `scripts/catalog_validate.py` | architecture/catalog.md, architecture/harvestapi.md |
 | `scripts/contactout_overflow_verify.py` | architecture/contactout.md |
 | `scripts/dev-local.sh` | ops/deploy.md |
 | `scripts/dump_surface.py` | architecture/composition.md |
@@ -94,7 +94,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/call/invite.py` | architecture/feedback.md |
 | `src/treg/application/call/overflow.py` | architecture/import-boundaries.md, ops/capacity.md |
 | `src/treg/application/call/reserve.py` | architecture/import-boundaries.md, architecture/money.md, architecture/proxy-model.md, interface/api.md |
-| `src/treg/application/call/resolve.py` | architecture/contactout.md, architecture/import-boundaries.md, architecture/instagram-oauth.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, interface/api.md |
+| `src/treg/application/call/resolve.py` | architecture/contactout.md, architecture/harvestapi.md, architecture/import-boundaries.md, architecture/instagram-oauth.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call/route.py` | architecture/catalog.md, architecture/import-boundaries.md |
 | `src/treg/application/call/service.py` | architecture/archive.md, architecture/import-boundaries.md, architecture/instagram-oauth.md, architecture/money.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call/settle.py` | architecture/import-boundaries.md, architecture/money.md, architecture/proxy-model.md, interface/api.md |
@@ -117,7 +117,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/bootstrap_http.py` | architecture/composition.md, interface/api.md |
 | `src/treg/call_surface.py` | architecture/composition.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/caller_metadata.py` | architecture/multi-tenancy.md, interface/api.md |
-| `src/treg/catalog/adapters.yaml` | architecture/catalog.md, architecture/contactout.md |
+| `src/treg/catalog/adapters.yaml` | architecture/catalog.md, architecture/contactout.md, architecture/harvestapi.md |
 | `src/treg/catalog/akta.extended.yaml` | architecture/catalog.md |
 | `src/treg/catalog/aliases.yaml` | architecture/catalog.md |
 | `src/treg/catalog/apify.yaml` | architecture/catalog.md |
@@ -162,6 +162,31 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/catalog/examples/crustdata.people.enrich.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/crustdata.people.search.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/findymail.search.business-profile.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.ads.get.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.ads.search.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.comment.reactions.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.company.posts.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.company.profile.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.company.search.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.geo.search.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.group.get.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.group.search.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.job.get.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.leads.search.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.post.comment_replies.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.post.comments.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.post.get.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.post.reactions.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.post.search.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.profile.search.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.search.jobs.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.service.search.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.user.comments.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.user.posts.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.user.profile.email.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.user.profile.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.user.profile.main.json` | architecture/harvestapi.md |
+| `src/treg/catalog/examples/harvestapi.linkedin.user.reactions.json` | architecture/harvestapi.md |
 | `src/treg/catalog/examples/millionverifier.account.usage.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/millionverifier.people.email.verify.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/minimax.video-gen.from_image.json` | architecture/catalog.md |
@@ -189,6 +214,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/catalog/google-search-console.yaml` | architecture/catalog.md |
 | `src/treg/catalog/google-tag-manager.extended.yaml` | architecture/catalog.md |
 | `src/treg/catalog/google-tag-manager.yaml` | architecture/catalog.md |
+| `src/treg/catalog/harvestapi.yaml` | architecture/harvestapi.md |
 | `src/treg/catalog/hunter.yaml` | architecture/archive.md |
 | `src/treg/catalog/instagram.extended.yaml` | architecture/catalog.md, architecture/instagram-oauth.md |
 | `src/treg/catalog/instagram.yaml` | architecture/catalog.md, architecture/instagram-oauth.md |
@@ -210,7 +236,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/cli.py` | architecture/instagram-oauth.md, interface/cli.md, interface/onboarding.md, interface/shell.md |
 | `src/treg/cli_analytics.py` | interface/cli.md |
 | `src/treg/client_identity.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
-| `src/treg/config.py` | architecture/archive.md, architecture/auth-secrets.md, architecture/feedback.md, architecture/super-admin.md, guides/expanding-a-category.md, ops/deploy.md |
+| `src/treg/config.py` | architecture/archive.md, architecture/auth-secrets.md, architecture/feedback.md, architecture/harvestapi.md, architecture/super-admin.md, guides/expanding-a-category.md, ops/deploy.md |
 | `src/treg/convert.py` | interface/cli.md |
 | `src/treg/crypto.py` | architecture/auth-secrets.md |
 | `src/treg/domain/__init__.py` | architecture/import-boundaries.md |
@@ -218,11 +244,11 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/domain/arena_insights.py` | interface/enrich-arena.md |
 | `src/treg/domain/asynctasks/__init__.py` | architecture/import-boundaries.md, architecture/money.md |
 | `src/treg/domain/capacity/__init__.py` | architecture/import-boundaries.md, ops/capacity.md |
-| `src/treg/domain/capacity/collectors.py` | ops/capacity.md |
+| `src/treg/domain/capacity/collectors.py` | architecture/harvestapi.md, ops/capacity.md |
 | `src/treg/domain/capacity/marks.py` | ops/capacity.md |
 | `src/treg/domain/capacity/overflow_seed.json` | ops/capacity.md |
 | `src/treg/domain/capacity/overflow_spend.py` | ops/capacity.md |
-| `src/treg/domain/capacity/policy.py` | ops/capacity.md |
+| `src/treg/domain/capacity/policy.py` | architecture/harvestapi.md, ops/capacity.md |
 | `src/treg/domain/capacity/routes.py` | ops/capacity.md |
 | `src/treg/domain/capacity/routes_view.py` | ops/capacity.md |
 | `src/treg/domain/capacity/signatures.py` | ops/capacity.md |
@@ -232,12 +258,12 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/domain/catalog/__init__.py` | architecture/catalog.md |
 | `src/treg/domain/catalog/results.py` | architecture/archive.md |
 | `src/treg/domain/catalog/routing/__init__.py` | architecture/catalog.md, architecture/import-boundaries.md |
-| `src/treg/domain/catalog/routing/contracts.py` | architecture/catalog.md |
+| `src/treg/domain/catalog/routing/contracts.py` | architecture/catalog.md, architecture/harvestapi.md |
 | `src/treg/domain/catalog/routing/paths.py` | architecture/catalog.md |
 | `src/treg/domain/catalog/routing/plan.py` | architecture/catalog.md |
 | `src/treg/domain/catalog/routing/synthetic.py` | architecture/catalog.md |
 | `src/treg/domain/catalog/stats.py` | architecture/catalog.md |
-| `src/treg/domain/catalog/store.py` | architecture/catalog.md, architecture/instagram-oauth.md, interface/api.md, interface/catalog-review-proposal.md |
+| `src/treg/domain/catalog/store.py` | architecture/catalog.md, architecture/harvestapi.md, architecture/instagram-oauth.md, interface/api.md, interface/catalog-review-proposal.md |
 | `src/treg/domain/connections/__init__.py` | architecture/auth-secrets.md, architecture/import-boundaries.md |
 | `src/treg/domain/connections/authorization.py` | architecture/auth-secrets.md, architecture/import-boundaries.md, architecture/instagram-oauth.md, guides/expanding-a-category.md |
 | `src/treg/domain/connections/oauth_flow.py` | architecture/auth-secrets.md, architecture/import-boundaries.md, architecture/instagram-oauth.md, guides/expanding-a-category.md |
@@ -294,7 +320,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/mcp_install.py` | interface/skill.md |
 | `src/treg/models.py` | architecture/data-model.md, architecture/money.md, architecture/multi-tenancy.md, interface/enrich-arena.md |
 | `src/treg/oauth.py` | architecture/auth-secrets.md |
-| `src/treg/oauth_providers.py` | architecture/auth-secrets.md, guides/expanding-a-category.md |
+| `src/treg/oauth_providers.py` | architecture/auth-secrets.md, architecture/harvestapi.md, guides/expanding-a-category.md |
 | `src/treg/providers.py` | interface/env-import.md |
 | `src/treg/ratestore.py` | architecture/data-model.md, interface/api.md |
 | `src/treg/reconcile.py` | architecture/money.md |
@@ -343,6 +369,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/logos/companyenrich.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/contactout.svg` | architecture/contactout.md |
 | `src/treg/web/logos/findymail.svg` | interface/enrich-arena.md |
+| `src/treg/web/logos/harvestapi.svg` | architecture/harvestapi.md |
 | `src/treg/web/logos/hunter.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/icypeas.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/leadmagic.svg` | interface/enrich-arena.md |
@@ -406,6 +433,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_error_capture.py` | architecture/proxy-model.md |
 | `tests/test_feedback.py` | architecture/feedback.md |
 | `tests/test_feedback_handling_schema.py` | architecture/feedback.md |
+| `tests/test_harvestapi.py` | architecture/harvestapi.md |
 | `tests/test_hints.py` | architecture/feedback.md |
 | `tests/test_import_lightness.py` | architecture/import-boundaries.md |
 | `tests/test_influencersclub_overflow.py` | ops/capacity.md |
@@ -443,6 +471,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/contactout.md` | `contactout.yaml`, `adapters.yaml`, `contactout.people.email.verify.json`, `test_routing.py`, `contactout.companies.search.json`, `contactout.companies.enrich.json`, `resolve.py`, `contactout.py`, `contactout.svg`, `test_marketplace_call.py`, `test_key_providers.py`, `test_capacity_collectors.py`, `test_catalog_validate.py`, `test_capacity_overflow.py`, `contactout_overflow_verify.py`, `contactout.json` |
 | `architecture/data-model.md` | `alembic.ini`, `env.py`, `0001_baseline_current_schema.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0005_capacity_policy_snapshot.py`, `0006_overflow_route.py`, `0007_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `0009_callrecord_hit.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `0020_callrecord_created_at_indexes.py`, `0021_ledgerentry_org_created_at_index.py`, `0022_org_spent_today_counter.py`, `0023_callrecord_org_user_created_at_index.py`, `0024_membership_calls_today_counter.py`, `0027_enrich_arena.py`, `0028_arena_insights.py`, `0029_arena_verification_snapshot.py`, `0011_callrecord_archive_link.py`, `0015_idempotentcall_membership_cascade.py`, `maintenance.py`, `sitetrack.js`, `models.py`, `0031_archive_result_admission.py`, `0032_archive_body_storage.py`, `0033_signup_promo_eligibility.py`, `timeutil.py`, `db.py`, `referrals.py`, `audit.py`, `analytics.py`, `bootstrap_handlers.py`, `ratestore.py`, `auth.py`, `test_postgres_reset.py`, `test_alembic_expand_safety.py` |
 | `architecture/feedback.md` | `feedback_contract.py`, `__init__.py`, `reports.py`, `reviews.py`, `hints.py`, `config.py`, `call.py`, `invite.py`, `kv.py`, `feedback.py`, `feedback.py`, `0025_feedback.py`, `0026_callreview.py`, `0030_feedback_handling.py`, `test_feedback_handling_schema.py`, `feedback.md`, `test_feedback.py`, `test_reviews.py`, `test_hints.py`, `test_kv.py` |
+| `architecture/harvestapi.md` | `contracts.py`, `harvestapi.yaml`, `harvestapi.svg`, `oauth_providers.py`, `config.py`, `store.py`, `resolve.py`, `collectors.py`, `policy.py`, `adapters.yaml`, `catalog_validate.py`, `render.yaml`, `test_harvestapi.py`, `harvestapi.linkedin.ads.get.json`, `harvestapi.linkedin.ads.search.json`, `harvestapi.linkedin.comment.reactions.json`, `harvestapi.linkedin.company.posts.json`, `harvestapi.linkedin.company.profile.json`, `harvestapi.linkedin.company.search.json`, `harvestapi.linkedin.geo.search.json`, `harvestapi.linkedin.group.get.json`, `harvestapi.linkedin.group.search.json`, `harvestapi.linkedin.job.get.json`, `harvestapi.linkedin.leads.search.json`, `harvestapi.linkedin.post.comment_replies.json`, `harvestapi.linkedin.post.comments.json`, `harvestapi.linkedin.post.get.json`, `harvestapi.linkedin.post.reactions.json`, `harvestapi.linkedin.post.search.json`, `harvestapi.linkedin.profile.search.json`, `harvestapi.linkedin.search.jobs.json`, `harvestapi.linkedin.service.search.json`, `harvestapi.linkedin.user.comments.json`, `harvestapi.linkedin.user.posts.json`, `harvestapi.linkedin.user.profile.email.json`, `harvestapi.linkedin.user.profile.json`, `harvestapi.linkedin.user.profile.main.json`, `harvestapi.linkedin.user.reactions.json` |
 | `architecture/import-boundaries.md` | `pyproject.toml`, `ci.yml`, `__init__.py`, `__init__.py`, `access.py`, `authorize.py`, `idempotency.py`, `overflow.py`, `route.py`, `__init__.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `client_identity.py`, `__init__.py`, `__init__.py`, `access.py`, `budgets.py`, `publicdemo.py`, `teams.py`, `usage.py`, `__init__.py`, `__init__.py`, `authorization.py`, `oauth_flow.py`, `refresh.py`, `__init__.py`, `__init__.py`, `__init__.py`, `__init__.py`, `__init__.py`, `injectors.py`, `relay.py`, `__init__.py`, `limiter.py`, `test_call_architecture.py`, `test_import_lightness.py` |
 | `architecture/instagram-oauth.md` | `catalog_ingest.py`, `access.py`, `resolve.py`, `service.py`, `instagram.yaml`, `instagram.extended.yaml`, `cli.py`, `store.py`, `authorization.py`, `oauth_flow.py`, `oauth_exchange.py`, `mcp.py`, `call.py`, `index.html`, `0010_oauth_authorization_method.py`, `test_instagram_oauth_architecture.py` |
 | `architecture/local-proxy.md` | `localproxy.py`, `server.js` |

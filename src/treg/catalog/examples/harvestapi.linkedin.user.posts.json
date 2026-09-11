@@ -1,0 +1,79 @@
+{
+  "pagination": {
+    "totalElements": 0,
+    "totalPages": 0,
+    "pageNumber": 1,
+    "previousElements": 0,
+    "pageSize": 50
+  },
+  "elements": [
+    {
+      "id": "1234567890",
+      "linkedinUrl": "https://example.com/synthetic-record",
+      "content": "Synthetic example",
+      "author": {
+        "id": "1234567890",
+        "universalName": null,
+        "publicIdentifier": "alex-example",
+        "type": "profile",
+        "name": "Synthetic example",
+        "linkedinUrl": "https://example.com/synthetic-record",
+        "info": "Synthetic example",
+        "website": "https://example.com/synthetic-record",
+        "websiteLabel": "Synthetic example",
+        "avatar": {
+          "url": "https://example.com/synthetic-record",
+          "width": 800,
+          "height": 800
+        },
+        "urn": "Synthetic example",
+        "profileId": "1234567890"
+      },
+      "postedAt": {
+        "timestamp": 1788930965191,
+        "date": "2026-09-09T05:16:05.191Z",
+        "postedAgoShort": "Synthetic example",
+        "postedAgoText": "Synthetic example"
+      },
+      "socialContent": {
+        "hideCommentsCount": false,
+        "hideReactionsCount": false,
+        "hideSocialActivityCounts": false,
+        "hideShareAction": false,
+        "hideSendAction": false,
+        "hideRepostsCount": false,
+        "hideViewsCount": false,
+        "trustInterventionBanner": null,
+        "hideReactAction": false,
+        "hideCommentAction": false,
+        "shareUrl": "https://example.com/synthetic-record",
+        "showContributionExperience": false,
+        "showSocialDetail": true
+      },
+      "comments": [],
+      "header": {
+        "text": null
+      },
+      "shareUrn": "1234567890",
+      "shareLinkedinUrl": "https://example.com/synthetic-record",
+      "engagement": {
+        "id": "1234567890",
+        "likes": 2795,
+        "comments": 986,
+        "shares": 189,
+        "reactions": [
+          {
+            "type": "LIKE",
+            "count": 2395
+          }
+        ]
+      }
+    }
+  ],
+  "status": 200,
+  "retries": 0,
+  "payments": [
+    "linkedinPostSearch"
+  ],
+  "cost": 0.004
+}

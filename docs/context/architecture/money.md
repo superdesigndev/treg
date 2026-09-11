@@ -913,3 +913,8 @@ buffering (`MarketplaceCall.streamable_free_result`). It retains the existing ze
 reserve/settle gates and settles with an explicit zero override before returning the stream. It
 does not observe the original generation task or persist a response for idempotent replay; the
 label is released and retrying performs another free read. MIME type never decides billability.
+
+
+## HarvestAPI integration
+
+HarvestAPI reuses `cost.reported_charge` with path `cost` in USD. Billed misses retain their reported charge; wallet reads may lag and are never per-call evidence. Profile variants reserve their own scalar price. See [HarvestAPI](harvestapi.md).

@@ -53,7 +53,7 @@ for _k in (
     # without this a suite run on their laptop could resolve tier 4 and spend actual money on the
     # in-process upstream's echo. Tests that exercise tier 4 set both halves via monkeypatch.
     "PLATFORM_KEY_TRYKITT", "PLATFORM_PROVIDERS", "PLATFORM_KEY_TIKHUB", "PLATFORM_KEY_DATAFORSEO", "PLATFORM_KEY_SCRAPECREATORS",
-    "PLATFORM_KEY_QUICKENRICH", "PLATFORM_KEY_SUMBLE",
+    "PLATFORM_KEY_QUICKENRICH", "PLATFORM_KEY_SUMBLE", "PLATFORM_KEY_HARVESTAPI",
 ):
     os.environ[f"TREG_{_k}"] = ""  # the test upstream is an in-process ASGI transport, not real DNS
 

@@ -1,0 +1,12 @@
+{
+  "elements": [
+    {
+      "geoId": "1234567890",
+      "title": "Synthetic example"
+    }
+  ],
+  "pagination": null,
+  "status": 200,
+  "retries": 0,
+  "cost": 0
+}

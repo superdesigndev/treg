@@ -1872,3 +1872,21 @@ through `queryParams.phone`. The adapter reads `data.valid`, `data.e164_format`,
 line type and carrier. A boolean false is a returned invalid verdict; a missing verdict is a
 miss. This validates numbering-plan/format details, not line activity or subscriber ownership.
 The single verified adapter is usable by Arena; the two-provider public routing gate stays intact.
+
+
+## HarvestAPI integration
+
+`harvestapi.yaml` adds API-key-only LinkedIn reads with opt-in `strict_query` contracts and three profile variants. See [HarvestAPI](harvestapi.md) for the verified surface, billed misses, pagination traps and adapters.
+
+
+### Verified additional routing categories
+
+An adapter can opt into `additional_capabilities` while its endpoint retains its primary
+catalog capability and direct-call ID. `load_routing` verifies each additional contract against
+the same request/response fixture and admits it through `verified_capabilities` only when the
+primary adapter passes, the extra contract exists, the filter definitions match, and the extra
+fixture check passes. Invalid extra contracts do not disable the primary adapter.
+`Catalog.for_capability` includes these verified memberships for both routed tools and Arena.
+No additional provider request, catalog row or billing path is introduced. The Harvest full
+profile adapter also serves `people.enrich`; its company adapter also serves `companies.enrich`.
+The basic profile adapter retains only its LinkedIn category.

@@ -646,3 +646,18 @@ semaphore, including background-only fallback reads and CPU work. No extra pool 
 `tests/test_db_pool_isolation.py` inventories each background-maker reference by function and count,
 so a new site in an already registered module must name its concurrency budget. Observation follows
 `TREG_ARCHIVE_BODY_READ_LOOKUP`; `TREG_ARCHIVE_CHANGE_OBSERVATION_ENABLED=false` stops change reporting.
+
+
+## HarvestAPI configuration
+
+`TREG_PLATFORM_KEY_HARVESTAPI` and `harvestapi` in `TREG_PLATFORM_PROVIDERS` enable its
+API-key-only read catalog. `render.yaml` declares the web secret and forwards it to the
+capacity cron; no secret value is committed. Local dev-key environment overrides may mask
+root `.env` values. See [HarvestAPI](../architecture/harvestapi.md) for verification and
+billing behavior. This integration does not change production configuration or deploy itself.
+
+Before production use, the owner must enable and confirm Harvest auto top-up. The repository
+default is `cash` / `auto_recharge` with `auto_funding_enabled=true`. If a Harvest capacity
+policy row already exists, check and update it through the existing policy management process;
+the sweep inserts missing policies but does not overwrite stored rows. No vendor payment
+setting or production database row is changed by this repository update.

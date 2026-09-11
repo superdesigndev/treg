@@ -20,6 +20,7 @@ AGGREGATORS = ("orthogonal", "monid")
 # flagged by the sweep — a policy row must be classified by a person, never guessed by code.
 _KNOWN: dict[str, tuple[str, str, str]] = {
     "trykitt": ("cash", "manual", "api"),
+    "harvestapi": ("cash", "auto_recharge", "api"),  # Owner will enable vendor auto top-up for production.
     "dataforseo": ("cash", "auto_recharge", "api"),
     "tikhub": ("cash", "auto_recharge", "api"),
     "lusha": ("credits", "auto_recharge", "api"),

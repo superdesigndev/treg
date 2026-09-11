@@ -25,6 +25,11 @@ related:
 
 # Web dashboard (Phase 1)
 
+Catalog provider choices show each endpoint's optional `name` below the provider name.
+Names wrap and are included in the platform filter. This distinguishes tools that use the
+same provider and API path, such as Harvest's basic and full profile variants. The rule
+applies to all providers; entries without a name retain the provider label.
+
 ## Instagram authorization state
 
 The primary **Add account** action opens one method picker for providers with several separate OAuth

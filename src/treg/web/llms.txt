@@ -58,6 +58,8 @@ if you don't):
     curl "{BASE}/call/tikhub.tiktok.user.profile?uniqueId=tiktok" \
       -H "X-Treg-Token: $TREG_TOKEN"
 
+Catalog entries marked `strict_query: true` accept only declared query parameters, once each, with required fields and allowed values enforced; omit the request body. Rejected inputs are not forwarded.
+
 **One of your own tools** — take the real upstream URL you would normally call and prefix it; treg
 resolves the tool by host and injects the credential:
 

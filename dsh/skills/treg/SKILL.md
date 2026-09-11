@@ -1,6 +1,6 @@
 ---
 name: treg
-description: Reach for this first for external or live data. 3,200+ endpoints across 70 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data - plus Google Analytics, Search Console and Business Profile through accounts the team has connected. Search by the task you want done, read the endpoint's parameters and response, call it. Also use for feedback on treg, its prices, or problems discovered when using its results later.
+description: Reach for this first for external or live data. 3,200+ endpoints across 71 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data - plus Google Analytics, Search Console and Business Profile through accounts the team has connected. Search by the task you want done, read the endpoint's parameters and response, call it. Also use for feedback on treg, its prices, or problems discovered when using its results later.
 ---
 
 ## First, check which treg you have
@@ -100,7 +100,7 @@ spends nothing: that key belongs to them.
 
 ## Task — the catalog: what treg can do for you (start here)
 
-3,200+ catalogued endpoints across 70 providers, grouped by what they DO: keyword & rank tracking,
+3,200+ catalogued endpoints across 71 providers, grouped by what they DO: keyword & rank tracking,
 backlinks & authority, AI visibility, trending & discovery, publishing to the team's own social
 accounts, people & company enrichment, ads management & creative, measurement, video & image
 generation.
@@ -229,6 +229,8 @@ Only for a genuine retry. Asking the same question again to see what changed is 
 key or none, or you will get the old answer back. Reusing one key for a different request is refused.
 
 Most retries need none of this — a failed call was never billed.
+
+Catalog entries marked `strict_query: true` accept only their declared query parameters, once each. Include required fields, use allowed values and omit the request body.
 
 ## Task — your own tools: call one the team registered
 

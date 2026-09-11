@@ -969,6 +969,35 @@ def _document_value(document: object, dotted: str) -> object:
     return current
 
 
+def _enforce_catalog_query(ep: dict, query: QueryValues, has_body: bool) -> None:
+    """Opt-in catalog contract on every credential tier; raw own-tool relays are unaffected.
+
+    A strict GET tool accepts only its declared query fields, once each. No request is rewritten,
+    and invalid values are never echoed (they may be accidentally supplied session credentials).
+    """
+    if not ep.get("strict_query"):
+        return
+    fields = (ep.get("input") or {}).get("queryParams") or {}
+    values: dict[str, str] = {}
+    invalid = has_body
+    for name, value in query.multi_items():
+        spec = fields.get(name)
+        if name in values or not isinstance(spec, dict):
+            invalid = True
+        elif spec.get("enum") is not None and value not in spec["enum"]:
+            invalid = True
+        values[name] = value
+    if any(spec.get("required") and not values.get(name) for name, spec in fields.items()):
+        invalid = True
+    if invalid:
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400,
+            detail={"error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                    "message": "Use only the declared query parameters and allowed values, once each; "
+                               "include required parameters and omit the request body."},
+        )
+
+
 def _enforce_platform_request(ep: dict, body: bytes) -> None:
     """Check explicit platform constraints and fixed pricing selectors before reserve/relay.
 
@@ -1267,6 +1296,7 @@ async def _resolve_marketplace_call(
     ladder. Annotated endpoints select by provider plus grant method. That generic identity avoids
     ambiguous same-host tools without teaching the faithful relay about Instagram or Meta.
     """
+    _enforce_catalog_query(ep, query, has_body)
     await _enforce_capability_pin(ep, caller, db)
     _enforce_catalog_status(ep)
     service = ep["provider"]

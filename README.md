@@ -66,6 +66,8 @@ treg balance                                     # exactly what that cost
 # (or `treg onboard` for the guided walkthrough)
 ```
 
+Catalog tool inputs are described by `treg catalog get <id>`. Tools marked `strict_query` reject undeclared or repeated query parameters, unsupported values and request bodies.
+
 Your token identifies you on every call (`X-Treg-Token` header) and is the same for all tools.
 Discover what your team has shared: `treg tool ls` · check credential health: `treg health`.
 
