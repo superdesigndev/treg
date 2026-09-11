@@ -249,6 +249,10 @@ def test_harvest_auto_topup_policy_still_respects_empty_balance():
 
 
 @pytest.mark.parametrize('capability,identity,child,path,query,element,charge,field', [
+    ('people.enrich', {'linkedin_url': 'https://www.linkedin.com/in/example'}, PROFILE, '/linkedin/profile',
+     {'publicIdentifier': 'example'}, {'id': '1', 'firstName': 'Alex', 'lastName': 'Example'}, 6400, 'full_name'),
+    ('companies.enrich', {'linkedin_url': 'https://www.linkedin.com/company/example'}, COMPANY, '/linkedin/company',
+     {'universalName': 'example'}, {'id': '1', 'name': 'Example'}, 4000, 'name'),
     ('linkedin.user.profile', {'linkedin_handle': 'example'}, PROFILE + '.main', '/linkedin/profile',
      {'publicIdentifier': 'example', 'main': 'true'}, {'id': '1', 'firstName': 'Alex', 'lastName': 'Example'}, 4000, 'full_name'),
     ('linkedin.company.profile', {'linkedin_handle': 'example'}, COMPANY, '/linkedin/company',
@@ -278,3 +282,53 @@ async def test_harvest_routed_contracts_preserve_cost_and_disclose_child(
     assert result['output'][field]
     assert result['raw'] == raw
     assert before - (await balance(clients))['balance_micro'] == charge
+
+
+def test_harvest_arena_categories_preserve_native_routes():
+    from treg.application.arena import public_tasks
+    cat = store.load()
+    expected = {'people.enrich': PROFILE, 'companies.enrich': COMPANY,
+                'people.email.find': PROFILE + '.email'}
+    for task in public_tasks():
+        for variant, previews in zip(task['variants'], task['provider_previews']):
+            rows = [p for p in previews if p['provider'] == 'harvestapi']
+            if task['id'] in expected and variant == ('linkedin_url',):
+                assert [p['endpoint_id'] for p in rows] == [expected[task['id']]]
+            else:
+                assert not rows
+    assert PROFILE in {e['id'] for e in cat.for_capability('linkedin.user.profile')}
+    assert COMPANY in {e['id'] for e in cat.for_capability('linkedin.company.profile')}
+    assert PROFILE + '.main' not in {e['id'] for e in cat.for_capability('people.enrich')}
+
+
+@pytest.mark.parametrize('mode', ['compare', 'waterfall'])
+@pytest.mark.parametrize('own', [False, True])
+@pytest.mark.parametrize('capability,identity,path,query,element,charge', [
+    ('people.enrich', {'linkedin_url': 'https://www.linkedin.com/in/example'},
+     '/linkedin/profile', {'publicIdentifier': 'example'},
+     {'id': '1', 'firstName': 'Alex', 'lastName': 'Example'}, 6400),
+    ('companies.enrich', {'linkedin_url': 'https://www.linkedin.com/company/example'},
+     '/linkedin/company', {'universalName': 'example'}, {'id': '1', 'name': 'Example'}, 4000),
+])
+async def test_harvest_arena_modes_use_normal_credentials_and_billing(
+        clients, monkeypatch, harvest_on, mode, own, capability, identity, path, query, element, charge):
+    from test_enrich_arena import finish
+    if own:
+        await clients.post('/secrets', json={'name': 'harvestapi', 'value': 'TEST-OWN'})
+    seen = []
+    def serve(request):
+        seen.append(request)
+        assert request.url.path == path and dict(request.url.params) == query
+        assert request.headers['x-api-key'] == ('TEST-OWN' if own else 'TEST-PLATFORM-HARVEST')
+        return response(200, json={'element': element, 'cost': charge / 1_000_000})
+    before = (await balance(clients))['balance_micro']
+    async with AsyncClient(transport=httpx.MockTransport(serve)) as upstream:
+        monkeypatch.setattr(app.state, 'http', upstream)
+        q = await clients.post('/arena/plans', json={'capability': capability, 'identity': identity,
+            'mode': mode, 'providers': ['harvestapi'], 'max_cost_micro': 1_000_000})
+        assert q.status_code == 200, q.text
+        assert not seen
+        result = await finish(clients, q.json())
+    assert len(seen) == 1
+    assert result['results'][0]['state'] == 'hit'
+    assert before - (await balance(clients))['balance_micro'] == (0 if own else charge)

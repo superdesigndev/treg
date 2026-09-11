@@ -2108,6 +2108,7 @@ adapters:
 
   # HarvestAPI: native synchronous reads; billed misses still settle the reported cost.
   harvestapi.linkedin.user.profile:
+    additional_capabilities: [people.enrich]
     accepts: [[linkedin_handle]]
     in: {linkedin_handle: queryParams.publicIdentifier}
     out: {full_name: "join(element.firstName, element.lastName)", first_name: element.firstName,
@@ -2133,6 +2134,7 @@ adapters:
           verified: "element.emails[0].status == 'valid'"}
     miss: "element.emails[0].email == null"
   harvestapi.linkedin.company.profile:
+    additional_capabilities: [companies.enrich]
     accepts: [[linkedin_handle]]
     in: {linkedin_handle: queryParams.universalName}
     out: {name: element.name, description: element.description, website: element.website,

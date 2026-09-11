@@ -2,6 +2,7 @@
 title: HarvestAPI — API-key-only LinkedIn reads and reported USD charges
 status: implemented; upstream and local platform/BYOK integration verified
 sources:
+  - src/treg/domain/catalog/routing/contracts.py
   - src/treg/catalog/harvestapi.yaml
   - src/treg/web/logos/harvestapi.svg
   - src/treg/oauth_providers.py
@@ -236,3 +237,30 @@ same environment settings as the final PR verification above. All **125 JavaScri
 **14 import contracts** and **five generated plugin mirror checks** passed. Catalog validation
 passed for **97 files and 3273 endpoints**, with zero errors or warnings. No new live upstream
 calls were made for this synchronization.
+
+
+### Arena category extension
+
+The full profile adapter opts into `people.enrich` and the company profile adapter into
+`companies.enrich`, using shared `additional_capabilities` verification. Their native LinkedIn
+categories and direct-call IDs remain intact. The existing email adapter continues to serve
+`people.email.find`. Arena selects these tools only for LinkedIn URL input, in both run modes.
+Basic profiles are not added to person enrichment. These memberships also apply to public
+routed enrichment tools. Mocked Arena execution tests cover platform and own-key credentials,
+request mapping and charges in Battle and Waterfall.
+
+Local extension verification: the full Python regression suite passed 3690 tests with 6 skipped
+and no deselections. Two additional public-route cases were then added; all six cases in that
+route test passed. All 14 import contracts, five plugin mirrors and catalog validation passed.
+The local browser showed Harvest in all three LinkedIn-URL tasks and in both mode controls.
+
+Live Arena verification on 2026-09-11 used one public example per run, with optional verification
+off. Person Battle returned results from Harvest ($0.0064) and Aviato ($0.05); person Waterfall
+stopped after Harvest ($0.0064), without calling Aviato. Email Battle returned the same address
+from Harvest ($0.02) and Aviato ($0.08); QuickEnrich returned an exhausted-credit/allowance error
+and charged zero treg credits. Email Waterfall continued past that error, stopped at Harvest,
+and charged $0.02 without calling Aviato. Company Battle and Waterfall each returned Stripe
+through Harvest for $0.004. Company tests had no competing eligible provider from the selected
+local provider set. Total local team debit was $0.1908, matching the six run totals. Returned
+emails were not independently verified. These checks establish the observed flow and charges,
+not general provider accuracy or availability.

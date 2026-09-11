@@ -50,6 +50,8 @@ class Adapter:
     body_array: bool = False                   # the provider wants `[body]` (DataForSEO's task list)
     test_identity: dict[str, Any] = field(default_factory=dict)  # what the endpoint's test_request stands for, when `in` cannot read it back
     cost_units: str = ""                      # optional upper-bound chargeable units for a routed request
+    additional_capabilities: tuple[str, ...] = ()  # opt-in reuse of the same request/output mapping
+    verified_capabilities: tuple[str, ...] = ()
     verified: bool = False
     verify_note: str = ""
     _filter_keys: tuple[str, ...] = ()        # contract filter names, set at load (always sent)
@@ -131,6 +133,7 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
             in_expr=dict(a.get("in_expr") or {}), body_array=bool(a.get("body_array")),
             test_identity=dict(a.get("test_identity") or {}),
             cost_units=str(a.get("cost_units") or ""),
+            additional_capabilities=tuple(a.get("additional_capabilities") or ()),
             const=dict(a.get("const") or {}), out_map=dict(a.get("out") or {}), miss=str(a.get("miss") or ""))
     return out
 
@@ -231,5 +234,14 @@ def load_routing(directory: Path, endpoints_by_id: dict[str, dict], read_yaml, r
             verified[eid] = Adapter(**{**ad.__dict__, "verified": False, "verify_note": "unknown endpoint or no contract"})
             continue
         ok, note = verify(ad, contract, ep, read_example(ep))
-        verified[eid] = Adapter(**{**ad.__dict__, "verified": ok, "verify_note": note})
+        additional = []
+        for capability in ad.additional_capabilities:
+            extra = contracts.get(capability)
+            # One adapter has one filter mapping. Different filter contracts need separate adapters.
+            if ok and extra is not None and extra.filters == contract.filters:
+                extra_ok, _ = verify(ad, extra, ep, read_example(ep))
+                if extra_ok:
+                    additional.append(capability)
+        verified[eid] = Adapter(**{**ad.__dict__, "verified": ok, "verify_note": note,
+                                   "verified_capabilities": tuple(additional)})
     return contracts, verified

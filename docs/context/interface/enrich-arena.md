@@ -766,3 +766,14 @@ The selected team must be in the signed-in user's memberships. Signed-out visito
 to sign in; email and social sign-in preserve the run destination. Missing, expired or inaccessible
 runs show an error instead of falling back to another result. These are private bookmarks with
 the existing retention limits, not public share links. New queries remove the run parameter.
+
+
+### Harvest profile lookups
+
+Arena discovers Harvest through the shared verified adapter categories. With LinkedIn URL
+input, Find work email selects the email profile tool, Enrich person selects the full profile
+tool, and Enrich company selects the company profile tool. Basic profiles do not enter person
+enrichment. Both Battle and Waterfall use the existing planner and ordinary call/billing path;
+there are no Harvest branches in Arena. Name, company-domain and email inputs do not select
+these Harvest tools. Native LinkedIn routes remain available. Additional adapter categories
+also make the full and company tools candidates in the corresponding public enrichment routes.

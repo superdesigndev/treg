@@ -106,7 +106,10 @@ class Catalog:
     adapters: dict = field(default_factory=dict)    # endpoint id -> routing.Adapter (verified flag set)
 
     def for_capability(self, capability: str) -> list[dict]:
-        return [e for e in self.endpoints if capability and e["capability"] == capability]
+        return [e for e in self.endpoints if capability and (
+            e["capability"] == capability or
+            (e["id"] in self.adapters and capability in self.adapters[e["id"]].verified_capabilities)
+        )]
 
     def for_platform(self, slug: str) -> list[dict]:
         return [e for e in self.endpoints if e["platform"] == slug]
