@@ -52,6 +52,7 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     "connect_failed": "upstream",
     "read_timeout": "upstream",
     "stream_interrupted": "upstream",
+    "response_buffer_limit": "treg",
     "refresh_failed": "org_connection",
     "credential_missing": "org_connection",
     "authorization_required": "org_connection",

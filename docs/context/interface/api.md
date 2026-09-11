@@ -160,6 +160,12 @@ some JSON. The [local proxy](../architecture/local-proxy.md) needs that distinct
 without ever rewriting a real vendor response. `application.call` failures carry a mechanism `kind`
 and separately mapped `blame`; the compatibility header remains the literal `1`.
 
+`response_buffer_limit` is a treg-attributed 502 with a structured `detail.error` of the same
+name. It means response evidence exceeded the 8 MiB settlement buffer before delivery; the new
+call is not charged and its hold/idempotency claim is released. Authorized free final GET fetches
+needing no body evidence stream without that limit and return zero cost; their retries read the
+provider again. See `proxy-model.md` for the eligibility and close-once lifecycle.
+
 Resolution refusals are actionable: a named miss that resembles one of the caller's usable own tools
 returns a structured `detail` with `hint` and `did_you_mean`, including after a real catalog endpoint
 falls through and finds no usable marketplace credential. A genuine URL-passthrough tie returns 409

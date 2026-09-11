@@ -315,6 +315,11 @@ def test_every_declared_cache_field_in_the_catalog_is_valid():
         if declared is None:
             continue
         if isinstance(declared, dict):
+            if "mode" not in declared:
+                # Comparison declarations do not claim a license or override the default policy.
+                assert set(declared) == {"ignore_paths"}, ep["id"]
+                assert archive.policy(ep) == archive.policy({**ep, "cache": None})
+                continue
             assert declared.get("mode") in ("forbidden", "transient", "archive"), ep["id"]
             assert declared.get("license_quote"), f"{ep['id']}: judged cache needs its quote"
             assert declared.get("source_url"), f"{ep['id']}: judged cache needs its source"
@@ -1281,7 +1286,7 @@ async def test_cache_reports_miss_hit_bypass_and_lookup_failure(clients, serve, 
     assert props[1]["cache_window_s"] == 3600
     for p in props:
         assert p["cache_lookup_ms"] >= 0
-        assert p["cache_comparison_mode"] == "strict"
+        assert p["cache_comparison_mode"] == "json"
         assert p["cache_ttl_policy"] == "adaptive"
         assert not any(k in p for k in ("key_hash", "volatile_paths", "body", "request_headers"))
 
@@ -1443,8 +1448,12 @@ def test_catalog_preserves_ignore_paths_and_defaults(tmp_path):
     cat = catalog_store.load(directory=tmp_path)
     assert cat.by_id['test.inherit']['cache']['ignore_paths'] == paths
     assert cat.by_id['test.override']['cache'].get('ignore_paths', []) == []
-    assert all(not (ep.get('cache') or {}).get('ignore_paths')
-               for ep in catalog_store.load().endpoints if isinstance(ep.get('cache'), dict))
+    declared = {ep['id']: ep['cache']['ignore_paths'] for ep in catalog_store.load().endpoints
+                if isinstance(ep.get('cache'), dict) and ep['cache'].get('ignore_paths')}
+    assert declared == {
+        'hunter.people.email.find': ['data.verification.date'],
+        'hunter.companies.emails': ['data.emails[*].verification.date'],
+    }
 
 
 @pytest.mark.parametrize('old,new,paths,equal', [
@@ -1601,7 +1610,12 @@ async def test_change_skips_unavailable_or_disabled_without_io(clients, shadow, 
     async def forbidden(*args):
         pytest.fail('skipped observation must not start any read/compute')
     monkeypatch.setattr(archive, '_read_change_body', forbidden)
-    monkeypatch.setattr(archive, '_change_compute', forbidden)
+    # TTL comparison remains active when optional change reporting is disabled.
+    compute = archive._change_compute
+    async def no_observation_compute(fn, *args):
+        assert fn is not archive._change_summary
+        return await compute(fn, *args)
+    monkeypatch.setattr(archive, '_change_compute', no_observation_compute)
     before = archive.change_outcomes.copy()
     monkeypatch.setattr(call_service, 'relay', _fake_relay(200, b'{"value":2}'))
     await clients.get(f'/call/{EP}?aweme_id=7')
@@ -1640,3 +1654,24 @@ def test_change_summary_never_reserializes_subtrees(monkeypatch):
         pytest.fail('structure comparison must not reserialize JSON')
     monkeypatch.setattr(archive.json, 'dumps', forbidden)
     assert archive._change_summary(b'{"a":[{"b":1}]}', b'{"a":[{"b":2}]}')['changed_paths'] == ['a[*].b']
+
+
+@pytest.mark.parametrize('before,after,equal', [
+    (b'{"a":1,"nested":{"b":2,"c":3}}', b'{ "nested":{"c":3,"b":2}, "a":1 }', True),
+    (b'[{"a":1,"b":2}]', b'[{"b":2,"a":1}]', True),
+    (b'{"a":[1,2]}', b'{"a":[2,1]}', False),
+    (b'{"a":true}', b'{"a":1}', False),
+    (b'{"a":"1"}', b'{"a":1}', False),
+    (b'{"a":1.0}', b'{"a":1}', False),
+    (b'{"a":1}', b'{"a":2}', False),
+])
+def test_default_json_equality(before, after, equal):
+    assert (archive._normalized_hash(before, []) == archive._normalized_hash(after, [])) is equal
+
+
+@pytest.mark.parametrize('body', [
+    b'{"a":1,"a":2}', b'{"a":0.1234567890123456789}', b'{"a":1e-500}',
+    b'{"a":NaN}', b'{"a":1e500}', b'plain text',
+])
+def test_ambiguous_or_lossy_json_comparison_falls_back(body):
+    assert archive._normalized_hash(body, []) is None

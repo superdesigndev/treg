@@ -43,8 +43,14 @@ def test_real_cli_sdk_delivery_and_opt_out(tmp_path, ingestion):
            'TREG_CLI_POSTHOG_KEY': 'phc_test', 'TREG_CLI_POSTHOG_HOST': host}
 
     def run(*args):
-        return subprocess.run([sys.executable, '-m', 'treg.cli', *args], env=env,
-                              capture_output=True, text=True, timeout=10)
+        # This test asserts delivery, which the production one-second best-effort budget
+        # cannot guarantee during cold SDK imports under xdist load. Exercise the real
+        # CLI/SDK with a longer test-only join; the slow-ingestion test below separately
+        # verifies the unchanged production exit budget.
+        entry = ('from treg import cli, cli_analytics; '
+                 'cli_analytics.EXIT_WAIT_SECONDS = 10; cli.main()')
+        return subprocess.run([sys.executable, '-c', entry, *args], env=env,
+                              capture_output=True, text=True, timeout=30)
 
     result = run('version')
     assert result.returncode == 0

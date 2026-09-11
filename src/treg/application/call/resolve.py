@@ -332,6 +332,17 @@ class MarketplaceCall:
                 and not self.billed_oauth)
 
     @property
+    def streamable_free_result(self) -> bool:
+        """An authorized final fetch with no body evidence to settle or learn."""
+        ownership = self.resource_ownership or {}
+        required = ownership.get("requires") or {}
+        return (self.tier == "platform" and self.cost_type == "free"
+                and self.estimate_micro == 0 and not self.billed_oauth
+                and self.async_owner_call_id is None and not self.async_descriptor
+                and not ownership.get("produces")
+                and str(required.get("kind", "")).startswith("fetch:"))
+
+    @property
     def metered(self) -> bool:
         """True when OUR money is at stake: treg's platform key (tier 4), or an org credential that
         rides treg's pay-per-use OAuth app (`billed_oauth`). Tiers 1/2 on a provider that bills the

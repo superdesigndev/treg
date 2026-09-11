@@ -18,9 +18,10 @@ Everything else in this file is guidance; these are the contract, and they win o
    Keep `reserve` and `settle` separate; read archive pointers, close the session, then fetch bytes.
 4. Plain `/call/` is a faithful relay: the injected credential, the transport headers listed in
    `src/treg/infra/upstream/relay.py`, and (on treg's shared key only) the per-org re-scoping of the
-   caller's `Idempotency-Key` are the only rewrites. Never add upstream-specific modeling or body
-   buffering. Routed endpoints and overflow wrap the child's answer and say so; they never
-   alter it.
+   caller's `Idempotency-Key` are the only rewrites. Never add upstream-specific modeling.
+   Routed endpoints and overflow wrap the child's answer and say so; they never alter it. Responses needing settlement or ownership evidence are buffered by the application
+   up to 8 MiB; exceeding that limit fails without charging, never returns a successful prefix.
+   Authorized free final fetches needing no body evidence stream in full.
 5. Balances change only through money's five entries: grant, topup, reserve, settle, release.
    There is deliberately no refund or adjustment entry; an ops correction is a grant.
 

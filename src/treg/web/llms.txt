@@ -75,10 +75,15 @@ resolves the tool by host and injects the credential:
   `base64+gzip`); treg decodes it server-side, so the upstream still gets the real bytes. The
   `treg` CLI does this automatically on a WAF 403 - you only need it over raw HTTP.
 - **Concurrency:** there is no per-token or per-team concurrency limit - fire calls in parallel
-  (`Promise.all`, `asyncio.gather`); a call in flight holds nothing on treg's side. The only limits
-  are the provider's own rate limits, relayed verbatim. If treg itself is saturated you get a
+  (`Promise.all`, `asyncio.gather`); upstream I/O holds no request database connection.
+  Provider rate limits are relayed verbatim. If treg itself is saturated you get a
   `503` with `{"treg_saturated": true}` and a `Retry-After` header - wait that long and retry the
   same request; nothing was billed. A bare 5xx with no JSON `detail` is never treg's own answer.
+
+- Responses needing settlement or task-ownership evidence are limited to 8 MiB. Larger responses
+  return `502` with `detail.error=response_buffer_limit` and no charge; retrying the same oversized
+  response will not help. Authorized free final downloads needing no body evidence stream in full.
+  Such downloads are fetched again on retry, not retained for local idempotent replay.
 
 ### Retrying a call: `Idempotency-Key`
 
