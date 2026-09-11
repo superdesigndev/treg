@@ -355,8 +355,7 @@ async def verified_signup(client, *, json, headers=None):
         json={**response.json(), "id": user_id, "email": email}, request=response.request)
 
 
-@pytest.fixture
-async def clients():
+async def drain_background_writes():
     # Postgres needs a session-scoped event loop so asyncpg can safely pool connections. That also
     # lets fire-and-forget audit writes survive between tests, so drain both sides of reset_db():
     # before it, to keep an old write out of the new schema, and after the test, to finish its own.
@@ -366,6 +365,11 @@ async def clients():
     # forgives it) — the serial CI job hung exactly here, 5-minute faulthandler timeouts on
     # whichever archive test ran next (2026-08-28, twice).
     await archive.drain()
+
+
+@pytest.fixture
+async def clients():
+    await drain_background_writes()
     # The archive report's 30s server-side cache would outlive this reset and serve the previous
     # test's numbers — clear it with the schema.
     from treg.routers import admin as admin_routes
@@ -381,8 +385,7 @@ async def clients():
             c.headers["X-Treg-Token"] = r.json()["token"]  # authed by default from here on
             yield c
     finally:
-        await audit.drain()
-        await archive.drain()
+        await drain_background_writes()
         await app.state.http.aclose()
 
 
