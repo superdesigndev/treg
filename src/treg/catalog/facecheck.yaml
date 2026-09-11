@@ -1,0 +1,117 @@
+provider: facecheck
+source:
+  docs: https://facecheck.id/en/Face-Search/API
+  openapi: https://facecheck.id/Swagger/v1/swagger.json
+  curated: '2026-09-11'
+pricing_url: https://facecheck.id/en/Face-Search/API
+limits: "Own API token required. Search submission and status use the same POST endpoint. Poll explicitly with status_only=true; treg --await is not supported."
+# Complete business API surface from OpenAPI v1.02. /llms.txt is documentation, not a tool.
+# No verified stamps: a valid credential is not available for upload/search/delete/info checks.
+# A live bogus-token /api/info request returned HTTP 200 with a truthy error field.
+# Shared-key calls stay blocked: POST/body task ownership and once-per-search settlement
+# are not represented by treg's GET-only async descriptor. All responses bypass cache.
+proposed_capabilities:
+  web.face.search: "Search public webpages by face"
+  web.face.upload: "Upload images for a face search"
+  web.face.image.delete: "Remove an image from a face search request"
+endpoints:
+  - id: facecheck.web.face.upload
+    capability: web.face.upload
+    platform: web
+    domain: images
+    kind: utility
+    scope: own_account
+    method: POST
+    path: /api/upload_pic
+    name: "Upload photos for a face search"
+    summary: "Upload images for a face search request"
+    platform_blocked: &byok "Connect your own FaceCheck token. Shared-account search ownership and billing are not supported."
+    cache: forbidden
+    input:
+      body:
+        images: {type: array, items: {type: string, format: binary}, required: true, note: "Binary file parts in multipart/form-data; use CLI --upload images=@/path/to/photo.jpg, repeat for multiple images. Do not send JSON or a URL string."}
+        id_search: {type: string, required: false, note: "Existing search request to add images to; omit for a new request."}
+        reset_prev_images: {type: boolean, required: false}
+      note: "Requires multipart/form-data with a generated boundary. Use CLI --upload or raw HTTP; JSON-only MCP calls cannot upload a file. Read id_search and input[].id_pic from the response."
+    # The stock verifier cannot build multipart file parts; use a real image through --upload.
+    test_request: {}
+    expect: {json_path: error, equals: null}
+    cost: &unknown
+      type: per_call
+      value: null
+      currency: USD
+      source: docs
+      source_url: https://facecheck.id/en/Face-Search/API
+      checked: '2026-09-11'
+      confidence: unknown
+      note: "The docs price a complete full search at 3 credits ($0.30), not each HTTP request. Upload, polling, deletion and retry billing have not been verified; own keys only."
+    docs_url: https://facecheck.id/Swagger/index.html
+
+  - id: facecheck.web.face.search
+    capability: web.face.search
+    platform: web
+    domain: images
+    scope: any_account
+    method: POST
+    path: /api/search
+    name: "Search webpages by face or check an existing search"
+    summary: "Search the Internet by face"
+    platform_blocked: *byok
+    cache: forbidden
+    input:
+      bodyType: json
+      body:
+        id_search: {type: string, required: true, note: "Search ID returned by /api/upload_pic."}
+        with_progress: {type: boolean, required: false, note: "true returns immediately with progress; false waits until the search finishes. Send explicitly."}
+        status_only: {type: boolean, required: false, note: "true does not submit a new search. Set false for submission, true for subsequent checks, including after a timeout."}
+        demo: {type: boolean, required: false, note: "true searches only the first 100,000 faces without deducting credits; use for protocol testing, not coverage evaluation. Send false for a full paid search."}
+        shady_only: {type: boolean, required: false, note: "Present in OpenAPI; semantics are not described. Omit unless confirmed with FaceCheck."}
+      note: "POST repeatedly with status_only=true until output is present or error is non-empty. Match scores do not establish identity. The docs example shows items[].url as a string; OpenAPI declares an object with value. Inspect the actual response; treg relays it unchanged."
+    # Replace the placeholder with an ID from an authorized upload; never submit a full search
+    # automatically. This test is status-only and demo-only, not a valid success fixture.
+    test_request:
+      body: {id_search: REPLACE_WITH_OWN_SEARCH_ID, with_progress: true, status_only: true, demo: true}
+    expect: {json_path: error, equals: null}
+    cost: *unknown
+    docs_url: https://facecheck.id/en/Face-Search/API
+
+  - id: facecheck.web.face.image.delete
+    capability: web.face.image.delete
+    platform: web
+    domain: images
+    kind: utility
+    scope: own_account
+    method: POST
+    path: /api/delete_pic
+    name: "Remove an image from a search request"
+    summary: "Remove an image from a search request"
+    platform_blocked: *byok
+    cache: forbidden
+    input:
+      queryParams:
+        id_search: {type: string, required: true}
+        id_pic: {type: string, required: true}
+      note: "Use IDs returned by your own upload. Removes an input image from that search request; this is not an Internet index removal request."
+    test_request:
+      queryParams: {id_search: REPLACE_WITH_OWN_SEARCH_ID, id_pic: REPLACE_WITH_OWN_IMAGE_ID}
+    expect: {json_path: error, equals: null}
+    cost: *unknown
+    docs_url: https://facecheck.id/Swagger/index.html
+
+  - id: facecheck.account.usage
+    capability: account.usage
+    platform: account
+    kind: account
+    scope: own_account
+    method: POST
+    path: /api/info
+    name: "Check face search credits and service status"
+    summary: "Returns remaining search credits, search engine online status, and number of indexed faces"
+    platform_blocked: *byok
+    cache: forbidden
+    input:
+      note: "No parameters. Returns remaining_credits, has_credits_to_search, is_online and faces. A valid account may have zero credits or the search engine may be offline. HTTP 200 can contain an error."
+    test_request: {body: {}}
+    expect: {json_path: error, equals: null}
+    cost: *unknown
+    docs_url: https://facecheck.id/Swagger/index.html

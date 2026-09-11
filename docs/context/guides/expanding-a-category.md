@@ -41,6 +41,11 @@ Contact Finder probe. All six data tools and five lookup utilities were live che
 subscription capacity uses API balance data and is separate from platform list pricing.
 Tests extend the existing auth, capacity and marketplace files. See [catalog](../architecture/catalog.md).
 
+FaceCheck follows the pasted-token path with raw `Authorization` injection. Its POST account probe
+rejects a bad token through the JSON `error` field even when HTTP is 200. The catalog is explicitly
+own-key only; native POST polling does not fit the shared async descriptor. Positive live checks
+remain unverified. See [FaceCheck](../architecture/facecheck.md).
+
 ## The two kinds of provider
 - **API-key** (`auth_kind="key"`) — the user pastes a key; self-serve; **the fast path** (research → implement
   → live-test in one session). This is the workhorse and where almost all growth happens.
