@@ -364,7 +364,8 @@ def _acknowledge(row: AdConversion, now: datetime) -> None:
 async def drain_once(db: AsyncSession, client) -> dict:
     """Upload one batch of due rows. Returns a small dict for logging.
 
-    Due = not uploaded/terminal, older than the click-availability delay, and past its retry time.
+    Due = not uploaded/terminal and past its retry time. New rows are eligible immediately; the
+    worker's at-most-300-second interval is the only normal scheduling delay.
     HTTP failures retry indefinitely with backoff. Per-row permanent failures are dead-lettered
     after `_MAX_ATTEMPTS`; they remain queryable with `failed_at` + the last Google error.
 

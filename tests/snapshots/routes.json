@@ -698,6 +698,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "consent_js",
+    "path": "/consent.js"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "gtag_js",
     "path": "/gtag.js"
   },

@@ -1,9 +1,14 @@
-// First-party ad-click capture. No Google script, no third-party request: this reads the click id
-// off our own URL and stores it in our own cookie, which the signup POST then carries to the server.
+// First-party ad-click capture. No Google script or third-party request: after optional advertising
+// cookies are accepted, this reads the click id from our URL and stores it in our own cookie, which
+// the signup POST then carries to the server.
 // gbraid/wbraid are what Google substitutes for gclid on iOS traffic — omitting them silently drops
 // a large share of mobile conversions.
 (function () {
-  try {
+  'use strict';
+
+  function capture() {
+    try {
+      if (!window.tregCookieConsent || window.tregCookieConsent.state() !== 'granted') return;
     var q = new URLSearchParams(window.location.search);
     var kind = q.get('gclid') ? 'gclid'
              : q.get('gbraid') ? 'gbraid'
@@ -25,5 +30,13 @@
     var v = encodeURIComponent(kind + '|' + id + '|' + landing);
     document.cookie = 'treg_ad=' + v + ';path=/;max-age=7776000;samesite=lax' +
       (window.location.protocol === 'https:' ? ';secure' : '');
-  } catch (e) { /* never break the page for a marketing cookie */ }
+    } catch (e) { /* never break the page for a marketing cookie */ }
+  }
+
+  capture();
+  if (window.tregCookieConsent) {
+    window.tregCookieConsent.onChange(function (state) {
+      if (state === 'granted') capture();
+    });
+  }
 })();

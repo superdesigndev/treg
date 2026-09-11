@@ -4,8 +4,10 @@ status: shipped
 sources:
   - src/treg/adsconv.py
   - src/treg/application/signup.py
+  - src/treg/web/consent.js
   - src/treg/web/adtrack.js
   - src/treg/web/gtag.js
+  - src/treg/web/privacy.html
 related:
   - architecture/money.md
   - architecture/multi-tenancy.md
@@ -24,23 +26,34 @@ related:
 
 Off unless `google_ads_customer_id` and `ads_conv_refresh_token` are both set (`adsconv.enabled()`) —
 keeps the test suite and self-hosted instances from starting machinery that cannot upload. When off,
-`/adtrack.js` is an empty no-cache response and attribution cookies are ignored, so nothing is
-captured, queued or uploaded; the whole feature is additive. `google_ads_developer_token` is NOT part
+`/consent.js`, `/adtrack.js`, and `/gtag.js` are empty no-cache responses and attribution cookies are
+ignored, so no banner is shown and nothing is captured, queued or uploaded; the whole feature is additive. `google_ads_developer_token` is NOT part
 of this gate: Data Manager has no developer-token header, so that setting only matters for the
 read-side Ads catalog calls (`oauth_providers.GOOGLE_ADS`), a separate credential entirely (below).
 
 ## The chain: capture → store → fire → upload
 
-1. **Capture** (`web/adtrack.js`, a first-party script). It reads `gclid`/`gbraid`/
-   `wbraid` off the URL — `gbraid`/`wbraid` are what Google substitutes on iOS traffic, and omitting
-   them silently drops a large share of mobile conversions — and writes them into a `treg_ad` cookie
+1. **Consent and capture** (`web/consent.js` + `web/adtrack.js`, both first-party scripts). A
+   site-wide “Cookie choices” banner defaults optional Google Ads storage to denied and records an
+   accept/reject choice in `treg-cookie-consent-v1`. Basic Consent Mode is deliberate: before
+   acceptance no Google script or cookieless ping is sent, and no `treg_ad` cookie is written.
+   Rejecting also removes a prior `treg_ad` and any Google `_gcl_*` cookies visible on this domain.
+   After acceptance, `adtrack.js` reads `gclid`/`gbraid`/`wbraid` off the URL — `gbraid`/`wbraid` are
+   what Google substitutes on iOS traffic, and omitting them silently drops a large share of mobile
+   conversions — and writes them into a `treg_ad` cookie
    (90 days, the length of Google's click-through attribution window; `SameSite=Lax` so it survives
    the cross-site top-level navigation an ad click is). The cookie records the mutually-exclusive
    field name as well as its value (`gclid|…`, `gbraid|…`, or `wbraid|…`); the old `CLICK_ID|landing`
    shape remains readable as a legacy GCLID. Marketing pages (landing, use-case pages, resources,
-   tutorial, catalog) also load `web/gtag.js`, which sends pageviews to Google Ads for attribution
-   modeling — this is the only browser-side Google request. The signed-in dashboard does not load
-   gtag.js.
+   tutorial, catalog) also load `web/gtag.js`. It queues Consent Mode v2 denied defaults locally
+   before config, but loads Google's tag only after the site-wide choice is accepted.
+   The signed-in dashboard includes the same first-party file in `data-conversion-only` mode: that
+   mode defines `tregSignupConversion` but makes no Google request during an ordinary dashboard
+   visit. There is no consent control inside onboarding. Only after `POST /orgs` succeeds, and only
+   when the site-wide choice was already accepted, does the function grant `ad_storage` +
+   `ad_user_data`, load Google's tag, and fire the webpage signup action. Analytics storage and ad personalisation remain
+   denied. This tag path lets Google model an eligible mobile-ad → desktop-signup journey that the
+   first-party click cookie cannot bridge.
    Which pages load `adtrack.js` is the whole feature's blast radius and it has been wrong twice —
    once for everything off `_page()` (2026-08-30), once for the standalone landing pages
    `/people-search`, `/grokbot` and `/fable` (2026-09-06, after 4,892 Demand Gen clicks landed on
@@ -67,16 +80,16 @@ read-side Ads catalog calls (`oauth_providers.GOOGLE_ADS`), a separate credentia
    orgs — so the conversion side stays ad-attributed-only while the product metric it rides alongside
    (`first_call_at`) is set for every org.
 4. **Upload** (`adsconv.worker`, started from `lifespan` when `adsconv.enabled()`, drains every 300s).
-   `drain_once` selects due rows — neither uploaded nor terminal, older than a 6-hour delay, and past
+   `drain_once` selects due rows — neither uploaded nor terminal, and past
    `next_attempt_at` — and POSTs one batch to the Google Ads API `uploadClickConversions` with
    `partialFailure`. The payload uses the stored click-id field; a braid is never mislabeled as a
    GCLID. Results are acknowledged per operation index: a successful sibling is marked uploaded, a
    failed sibling is not. `CLICK_CONVERSION_ALREADY_EXISTS` is also acknowledged because Google has
    already stored it. HTTP failures, batch/unparseable responses and explicitly transient row errors
    retry indefinitely with exponential backoff capped at 24 hours. Other indexed per-row errors retry
-   through eight attempts, then retain the row as a visible dead letter (`failed_at` + `error`). The
-   six-hour delay exists because a click id may not be accepted immediately after the click; uploading
-   too early can be rejected.
+   through eight attempts, then retain the row as a visible dead letter (`failed_at` + `error`). New
+   rows are eligible immediately; the worker's at-most-five-minute interval is the only normal
+   scheduling delay, and retry backoff applies only after a failed attempt.
 
 ## Authentication: a platform credential, not a customer's OAuth connection
 
@@ -175,14 +188,23 @@ Created live on Google Ads account `5149790776` (type `UPLOAD_CLICKS`):
 
 | Action | id | Marked |
 |---|---|---|
-| `signup` | `7723667014` | SECONDARY |
+| `signup` | `7723667014` | PRIMARY |
 | `first_call` | `7723667017` | PRIMARY |
 | `paid` (first top-up) | `7723667020` | PRIMARY |
 
-`signup` is deliberately **secondary**, not primary: `marketing/landing/_measurement.md` argues a
-signup measures curiosity, not commercial intent, so it should inform Google's targeting without
-being a bidding goal. `first_call` and `paid` are the two events the campaign should actually bid
-toward — an agent successfully calling a tool, and a team paying for more balance.
+The account currently marks all three upload actions **primary**. The active Demand Gen campaign's
+campaign-specific goal selects only signup, while its current `TARGET_SPEND` strategy maximizes
+clicks and therefore does not yet bid from conversion signals. `first_call` and `paid` remain useful
+quality/value signals — an agent successfully calling a tool, and a team paying for more balance —
+but changing bidding goals or strategy is a Google Ads decision, not a side effect of this code.
+
+There is also one separate Google Ads **website** action, `treg Signup (web)` (`7745505287`,
+`AW-18392771132/0usqCIeQrO0cELzUrcJE`). It is fired only by `web/gtag.js` from `welcomeCreate`, after
+a first team succeeds in a browser that already accepted the site-wide optional-cookie choice. Its `transaction_id` is `treg-web-signup-<org_id>`: retries of the
+same browser event deduplicate inside this action without a browser-global flag that would suppress
+a later legitimate team. Google does not deduplicate it against the server `signup` action, so keep
+the website action **SECONDARY** until a real cross-device conversion has been observed and the
+campaign has exactly one signup action selected for bidding.
 
 ## API version
 

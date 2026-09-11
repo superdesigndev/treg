@@ -44,7 +44,9 @@ addEventListener('load', function(){
 </script>
 <script src="/tutorial.js"></script>
 <script src="/dashboard-tour/tour.js"></script>
+<script src="/consent.js"></script>
 <script src="/adtrack.js"></script>
+<script src="/gtag.js" data-conversion-only></script>
 <style>
   [v-cloak]{display:none}  /* hide the raw template until Vue mounts — else a hard refresh flashes the un-compiled markup while the script downloads. Vue drops the attribute on mount, which is also how the loader guard above detects that it never did. */
   /* ===== Ledger: warm paper + clay, mono-forward. Dark default. ===== */
@@ -5099,6 +5101,7 @@ createApp({
     async welcomeCreate(){ const name=(this.welcome.name||'').trim(); if(!name){ this.welcome.err='Give your team a name.'; return; }
       this.welcome.busy=true; this.welcome.err='';
       try{ const o=await this.api('/orgs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})});
+        if(typeof window.tregSignupConversion==='function') window.tregSignupConversion('treg-web-signup-'+o.org_id);
         this.onboarded=true; try{ await this.api('/onboard/skip',{method:'POST'}); }catch(e){}  // don't re-prompt
         await this.loadAll(); this.switchOrg({slug:o.org});
         this.analyticsIdentify(); this.intercomUpdate(); this.track('onboarding_team_created',{team:o.org});

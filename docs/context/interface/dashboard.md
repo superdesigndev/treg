@@ -370,8 +370,14 @@ Server side (`domain.identity.access`): `require_identity` (who, from token OR s
 - **First-run onboarding** — a brand-new user has **zero teams** (no auto personal org), so `maybeOnboard`
   shows a **mandatory "name your team" welcome** (`welcome.*`; team name pre-suggested from the email
   domain via `_suggestTeamName`). Step 0 is NOT dismissable — no skip, survives Escape/backdrop — the only
-  action is `welcomeCreate` (`POST /orgs`, marks onboarded). The agent picker and setup instruction
-  components and the final Try it out step are shared with Enrich Arena through `/agent-setup.js`, including client definitions,
+  action is `welcomeCreate` (`POST /orgs`, marks onboarded). Consent is not mixed into this required
+  product action: the separate site-wide cookie banner owns the optional Google Ads choice.
+  `/gtag.js` is present in `data-conversion-only` mode but contacts no third party on a normal
+  dashboard load; after a successful first-team response, `welcomeCreate` calls
+  `tregSignupConversion`, which sends only when the site-wide choice is already accepted, using
+  `treg-web-signup-<org_id>` as Google's duplicate-suppression transaction id.
+  The agent picker, setup instruction components and final Try it out step are shared with Enrich
+  Arena through `/agent-setup.js`, including client definitions,
   logo URLs, the optional plugin step and masked/copyable credentials. Three more steps follow **inside the same
   modal**: an **agent picker** (`welcome.step===1` — OpenClaw / Grok Bot / Hermes Agent / Claude.ai /
   Claude Code / Codex, plus a "More" expander with opencode / pi / Cursor / Gemini CLI / Other; LobeHub icons via
