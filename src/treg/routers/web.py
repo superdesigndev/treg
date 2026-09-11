@@ -3093,10 +3093,9 @@ async def adtrack_js():
 
 @app.get("/gtag.js", include_in_schema=False)
 async def gtag_js():
-    """Google Ads conversion tracking via gtag.js. Loads the base tag (AW-18392771132) on every
-    page; the signup conversion (AW-18392771132/0usqCIeQrO0cELzUrcJE) fires from the dashboard
-    on first team creation for a new user. Like adtrack.js, returns empty for unconfigured or
-    self-hosted deployments that don't want external Google requests."""
+    """Google Ads measurement with consent defaults. Marketing pages load the base tag; the
+    dashboard's conversion-only include stays local until an opted-in first-team creation fires
+    AW-18392771132/0usqCIeQrO0cELzUrcJE. Unconfigured/self-hosted deployments get an empty file."""
     headers = {"Cache-Control": "no-cache"}
     if not adsconv.enabled():
         return Response(content="", media_type="application/javascript", headers=headers)

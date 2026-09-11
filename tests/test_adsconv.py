@@ -275,6 +275,30 @@ async def test_gtag_script_is_empty_when_disabled(clients, ads_disabled):
     assert r.text == ""
 
 
+async def test_gtag_defers_dashboard_contact_and_queues_consent_before_measurement(
+    clients, ads_enabled,
+):
+    r = await clients.get("/gtag.js")
+    assert r.status_code == 200
+    js = r.text
+    assert "data-conversion-only" in js
+    assert "window.tregSignupConversion" in js
+    assert js.index("window.gtag('consent', 'default'") < js.index("window.gtag('config'")
+    assert js.index("window.gtag('consent', 'default'") < js.index("window.gtag('event', 'conversion'")
+    assert "allowed !== true" in js
+    assert "transaction_id: String(transactionId)" in js
+    assert "if (!conversionOnly) loadTag(true)" in js
+
+
+async def test_privacy_page_discloses_the_opt_in_web_signup_measurement(clients):
+    r = await clients.get("/privacy")
+    assert r.status_code == 200
+    assert "Google Ads conversion measurement" in r.text
+    assert "treg-google-ads-consent" in r.text
+    assert "cookieless consent-mode pings" in r.text
+    assert "personalised advertising remain" in r.text
+
+
 async def test_signup_queues_a_conversion_when_attributed(clients, ads_enabled):
     r = await clients.post("/users", json={"email": "conv@example.com"},
                               cookies={"treg_ad": "CLICK_SIGNUP|p1"})

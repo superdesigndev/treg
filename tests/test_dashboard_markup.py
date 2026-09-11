@@ -22,6 +22,21 @@ TUTORIAL = (Path(api.__file__).parent / "web" / "tutorial.html").read_text(encod
 SHARED_DIALOGS = ["tokenAsk", "capAsk", "methodAsk", "resPick"]
 
 
+def test_first_team_signup_conversion_is_opt_in_success_only_and_transaction_deduplicated():
+    assert '<script src="/gtag.js" data-conversion-only></script>' in INDEX
+    assert 'type="checkbox" v-model="welcome.adsMeasurement"' in INDEX
+    assert "adsMeasurement:false" in INDEX
+
+    welcome = INDEX[INDEX.index("async welcomeCreate()") : INDEX.index("welcomeFinish()")]
+    created = "await this.api('/orgs'"
+    fired = "window.tregSignupConversion('treg-web-signup-'+o.org_id, this.welcome.adsMeasurement===true)"
+    assert created in welcome and fired in welcome
+    assert welcome.index(created) < welcome.index(fired)
+
+    ordinary = INDEX[INDEX.index("async createOrg()") : INDEX.index("async loadOrgAdmin()")]
+    assert "tregSignupConversion" not in ordinary
+
+
 def test_oauth_entry_opens_the_existing_sign_in_modal_without_minting_a_sandbox():
     assert "qs.get('signin')==='oauth'" in INDEX
     assert "else this.demo.signin=true;  // OAuth returns, use-case CTA arrivals (?ref=)" in INDEX

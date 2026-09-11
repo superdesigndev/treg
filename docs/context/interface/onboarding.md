@@ -160,3 +160,9 @@ watcher; `_restoreAgent` at boot) so Getting started keeps showing the same step
 view for ANY signed-in arrival at `/app` with no deep link or hash. `/onboard/seed-tool` and
 `/onboard/accept-teammate` no longer have a dashboard caller (the CLI/demo paths don't use them either);
 **"Remove demo"** (`resetDemo` → `/onboard/reset`) remains in Help. A clay **`demo` chip** marks a demo org.
+
+Step 0 also carries an unchecked, optional Google Ads measurement choice. The dashboard loads the
+first-party `/gtag.js` helper in conversion-only mode, which makes no Google request by itself. Only
+after `POST /orgs` returns a new team and the choice is checked does `welcomeCreate` load Google's tag
+and send `treg Signup (web)`, keyed by the returned org id for duplicate suppression. Ordinary team
+creation (`createOrg`), failed requests, sign-in, refresh and existing-team sessions never fire it.

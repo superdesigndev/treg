@@ -6,6 +6,7 @@ sources:
   - src/treg/application/signup.py
   - src/treg/web/adtrack.js
   - src/treg/web/gtag.js
+  - src/treg/web/privacy.html
 related:
   - architecture/money.md
   - architecture/multi-tenancy.md
@@ -38,9 +39,15 @@ read-side Ads catalog calls (`oauth_providers.GOOGLE_ADS`), a separate credentia
    the cross-site top-level navigation an ad click is). The cookie records the mutually-exclusive
    field name as well as its value (`gclid|…`, `gbraid|…`, or `wbraid|…`); the old `CLICK_ID|landing`
    shape remains readable as a legacy GCLID. Marketing pages (landing, use-case pages, resources,
-   tutorial, catalog) also load `web/gtag.js`, which sends pageviews to Google Ads for attribution
-   modeling — this is the only browser-side Google request. The signed-in dashboard does not load
-   gtag.js.
+   tutorial, catalog) also load `web/gtag.js`. It queues Consent Mode v2 defaults before config;
+   without a stored affirmative choice Google receives only its consent-mode cookieless ping.
+   The signed-in dashboard includes the same first-party file in `data-conversion-only` mode: that
+   mode defines `tregSignupConversion` but makes no Google request during an ordinary dashboard
+   visit. The first-team welcome offers an unchecked measurement choice. Only after `POST /orgs`
+   succeeds with that choice checked does the function grant `ad_storage` + `ad_user_data`, load
+   Google's tag, and fire the webpage signup action. Analytics storage and ad personalisation remain
+   denied. This tag path lets Google model an eligible mobile-ad → desktop-signup journey that the
+   first-party click cookie cannot bridge.
    Which pages load `adtrack.js` is the whole feature's blast radius and it has been wrong twice —
    once for everything off `_page()` (2026-08-30), once for the standalone landing pages
    `/people-search`, `/grokbot` and `/fable` (2026-09-06, after 4,892 Demand Gen clicks landed on
@@ -183,6 +190,14 @@ Created live on Google Ads account `5149790776` (type `UPLOAD_CLICKS`):
 signup measures curiosity, not commercial intent, so it should inform Google's targeting without
 being a bidding goal. `first_call` and `paid` are the two events the campaign should actually bid
 toward — an agent successfully calling a tool, and a team paying for more balance.
+
+There is also one separate Google Ads **website** action, `treg Signup (web)` (`7745505287`,
+`AW-18392771132/0usqCIeQrO0cELzUrcJE`). It is fired only by `web/gtag.js` from `welcomeCreate`, after
+an opted-in first team succeeds. Its `transaction_id` is `treg-web-signup-<org_id>`: retries of the
+same browser event deduplicate inside this action without a browser-global flag that would suppress
+a later legitimate team. Google does not deduplicate it against the server `signup` action, so keep
+the website action **SECONDARY** until a real cross-device conversion has been observed and the
+campaign has exactly one signup action selected for bidding.
 
 ## API version
 

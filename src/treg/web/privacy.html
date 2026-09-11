@@ -39,7 +39,7 @@
       <li><b>We collect almost nothing about you.</b> An email address to sign in, the teams you're in, and a log of which tools were called. That's the account.</li>
       <li><b>Your credentials are encrypted and never returned.</b> No stored secret value is ever sent back to a client, shown in the dashboard, or read by us.</li>
       <li><b>We don't store what flows through the proxy.</b> A call's request and response bodies pass through and are gone. We keep the method, path, status code, and timestamp — not the content.</li>
-      <li><b>Minimal tracking.</b> Two first-party cookies, both ours: one keeps you signed in, one (only if you arrived from a Google Ads click) tells us the ad worked. On marketing pages (the landing page and use-case pages, not the signed-in dashboard), we load Google's gtag.js so that signups from ad clicks are counted back to Google Ads — this sets Google's <code>_gcl_*</code> cookies and sends pageviews to Google. There is no analytics on the dashboard itself.</li>
+      <li><b>Minimal tracking.</b> Two first-party cookies, both ours: one keeps you signed in, one (only if you arrived from a Google Ads click) tells us the ad worked. Marketing pages load Google's tag with advertising, user-data, personalisation and analytics storage denied by default. When you create your first team, an unchecked optional control can allow Google Ads conversion measurement; only then can Google set advertising cookies and receive that signup. There is no analytics on the dashboard.</li>
       <li><b>No training, no selling.</b> Your credentials, skills, and connected-account data are never sold and never used to train models.</li>
     </ul>
   </div>
@@ -111,6 +111,7 @@
     <tr><td>Call and run audit records</td><td>Show teams who used what; enforce caps; investigate abuse</td><td>Legitimate interests / Contract</td></tr>
     <tr><td>Server logs, rate-limit counters</td><td>Security, abuse prevention, service reliability</td><td>Legitimate interests</td></tr>
     <tr><td>Skills and tool definitions</td><td>Store and share what you asked us to share</td><td>Contract</td></tr>
+    <tr><td>Google Ads conversion measurement</td><td>Measure whether an ad led to a first-team signup</td><td>Consent</td></tr>
   </table></div>
 
   <h2 class="sec" id="s4"><span class="n">04</span>What we never do</h2>
@@ -118,9 +119,11 @@
     <li>We never <b>sell</b> personal data, credentials, or anything reached through them.</li>
     <li>We never use your credentials, connected-account data, or skill content to <b>train machine
       learning models</b> — ours or anyone else's.</li>
-    <li>We do not run <b>analytics or session-replay scripts</b> on the signed-in dashboard. Marketing
-      pages (landing, use-case pages) load Google's gtag.js for ad-conversion measurement only — there
-      is no Google Analytics property, no pixel, and no session replay anywhere.</li>
+    <li>We do not run <b>analytics or session-replay scripts</b> on the signed-in dashboard. Its local
+      Google Ads helper makes no third-party request on an ordinary visit. If you affirmatively allow
+      conversion measurement while creating your first team, it loads Google's tag once to send that
+      signup. Marketing pages load the tag under Consent Mode; there is no Google Analytics property
+      or session replay anywhere.</li>
     <li>We never use your stored credentials for anything other than the call you or a permitted
       teammate initiated, plus automated health checks and token refreshes.</li>
   </ul>
@@ -179,7 +182,7 @@
     <tr><td>Resend</td><td>Your email address and the message body</td><td>Sends sign-in codes and invitations</td><td>USA</td></tr>
     <tr><td>Google Fonts</td><td>Your IP address, when you load a treg web page</td><td>Serves the site's typefaces</td><td>USA</td></tr>
     <tr><td>Upstream APIs you connect</td><td>Whatever your call sends them</td><td>The call you asked us to make</td><td>Varies by provider</td></tr>
-    <tr><td>Google Ads</td><td>A click id and a conversion event (signup, first call, or first payment) — only if you arrived via a Google Ads click</td><td>Measures whether the ad that brought you converted</td><td>USA</td></tr>
+    <tr><td>Google Ads</td><td>A click id with server conversion events if you arrived via a Google ad; consent status and a first-team signup event when you separately allow website conversion measurement</td><td>Measures whether the ad that brought you converted</td><td>USA</td></tr>
   </table></div>
   <p><b>Referrals.</b> If you sign up through someone's referral link, <b>your email address is
   shown to the person who referred you</b>, along with the date you signed up and whether your team
@@ -217,8 +220,15 @@
   <code>treg.to</code>, readable only by us, never by Google or any other third party) and it is
   <b>not shared with third parties</b> beyond the conversion event itself — a signup, a first call, or
   a first payment, each tagged with only the click id — uploaded to Google Ads so it can measure the
-  campaign. There is no advertising pixel, no third-party cookie, and no cross-site tracking script
-  anywhere on the Service.</p>
+  campaign.</p>
+  <p><code>treg-google-ads-consent</code>: an optional browser-storage preference created only when
+  you check “Allow Google Ads” while creating your first team. Before that choice, Google's tag runs
+  on marketing pages with advertising, user-data, personalisation and analytics storage denied; it
+  may send cookieless consent-mode pings but cannot set advertising cookies. If you opt in, Google
+  may set its <code>_gcl_*</code> cookies and receives one signup event with a team-specific
+  transaction reference so retries are not counted twice. The preference remains in that browser
+  until you clear the site's stored data. Analytics storage and personalised advertising remain
+  denied even after opting in.</p>
 
   <h2 class="sec" id="s8"><span class="n">08</span>How we protect it</h2>
   <ul>
