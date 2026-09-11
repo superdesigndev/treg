@@ -195,6 +195,24 @@ def _finite_number(value: object) -> bool:
             and math.isfinite(float(value)))
 
 
+def check_platform_request(rule: object, input_schema: object, where: str,
+                           errors: list[str]) -> None:
+    """Platform-only fixed body values; BYOK input remains an upstream contract."""
+    if not isinstance(rule, dict) or not rule:
+        fail(errors, where, "platform_request must be a non-empty mapping")
+        return
+    fields = _input_fields(input_schema)
+    for path, value in rule.items():
+        spec = fields.get(path) if isinstance(path, str) else None
+        if not isinstance(path, str) or not path.startswith("body.") or spec is None:
+            fail(errors, where, "platform_request must name a declared body field")
+            continue
+        allowed = spec.get("enum")
+        if (not isinstance(allowed, list) or len(allowed) != 1
+                or type(value) is not type(allowed[0]) or value != allowed[0]):
+            fail(errors, where, "platform_request value must match the field's singleton enum")
+
+
 def check_cost_table(cost: dict, input_schema: object, where: str, errors: list[str]) -> None:
     """Validate a first-match AIGC price table and its explicit reserve upper bound."""
     table = cost.get("table")
@@ -482,6 +500,65 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
     per = cost.get("per")
     if per is not None and (not isinstance(per, int) or isinstance(per, bool) or per < 1):
         fail(errors, where, f"cost.per '{per}' must be a positive integer (the quantity `value` covers)")
+    reported = cost.get("reported_charge")
+    if reported is not None:
+        if (not isinstance(reported, dict) or set(reported) != {"path", "unit"}
+                or not isinstance(reported.get("path"), str)
+                or not JSON_PATH.fullmatch(reported["path"]) or reported.get("unit") != "usd"):
+            fail(errors, where, "cost.reported_charge requires a JSON path and unit: usd")
+        if "table" in cost or "settle" in cost or cost.get("type") == "free":
+            fail(errors, where, "cost.reported_charge requires a paid scalar price without cost.settle")
+    if "display" in cost:
+        display = cost["display"]
+        if (not isinstance(display, dict) or not isinstance(display.get("unit"), str)
+                or not display["unit"].strip() or len(display["unit"]) > 40
+                or set(display) - {"unit", "grouped", "round_up", "variable"}):
+            fail(errors, where, "cost.display requires a short unit and optional grouped/round_up/variable flags")
+        else:
+            for flag in {"grouped", "round_up", "variable"} & set(display):
+                if type(display[flag]) is not bool:
+                    fail(errors, where, f"cost.display.{flag} must be boolean")
+            if display.get("round_up") and not display.get("grouped"):
+                fail(errors, where, "cost.display.round_up requires grouped")
+            if display.get("grouped") and (type(cost.get("per")) is not int or cost["per"] <= 0):
+                fail(errors, where, "cost.display.grouped requires positive integer cost.per")
+        if cost.get("type") == "free" or "table" in cost:
+            fail(errors, where, "cost.display requires a scalar paid price")
+    if "sumble" in cost:
+        rule = cost["sumble"]
+        modes = {"single": set(), "results": {"reserve_results"},
+                 "lookup": {"records", "block_size", "max_records"},
+                 "compose": {"records", "base", "attribute", "metric", "free_attributes",
+                             "safe_attributes", "max_records", "default_limit", "max_limit"}}
+        mode = rule.get("mode") if isinstance(rule, dict) else None
+        if mode not in modes or set(rule) != {"mode"} | modes.get(mode, set()):
+            fail(errors, where, "cost.sumble must declare exactly the fields for a supported mode")
+        else:
+            for key in modes[mode] - {"records", "free_attributes", "safe_attributes"}:
+                if type(rule[key]) is not int or rule[key] <= 0:
+                    fail(errors, where, f"cost.sumble.{key} must be a positive integer")
+            for key in {"free_attributes", "safe_attributes"} & modes[mode]:
+                if not isinstance(rule[key], list) or any(not isinstance(v, str) for v in rule[key]):
+                    fail(errors, where, f"cost.sumble.{key} must be a string list")
+            if "records" in rule and (not isinstance(rule["records"], str)
+                                      or not re.fullmatch(r"[a-z_]+", rule["records"])):
+                fail(errors, where, "cost.sumble.records must name a body array")
+        if mode == "lookup" and isinstance(rule, dict) and rule.get("block_size") != cost.get("per"):
+            fail(errors, where, "cost.sumble.block_size must equal cost.per")
+        if cost.get("currency") != "credit" or cost.get("value") != 1:
+            fail(errors, where, "cost.sumble requires a one-credit base price")
+    if "contactout" in cost:
+        rule = cost["contactout"]
+        jobs = {"contact", "person", "email", "linkedin", "search", "decision",
+                "company_search", "domains", "reverse"}
+        rates = rule.get("rates_micro") if isinstance(rule, dict) else None
+        if not isinstance(rule, dict) or rule.get("job") not in jobs:
+            fail(errors, where, "cost.contactout needs a supported job")
+        if not isinstance(rates, dict) or set(rates) != {"work_email", "personal_email", "phone", "search"} \
+                or any(isinstance(v, bool) or not isinstance(v, int) or v <= 0 for v in rates.values()):
+            fail(errors, where, "cost.contactout.rates_micro needs four positive integer micro-USD rates")
+        if cost.get("currency") != "USD":
+            fail(errors, where, "cost.contactout requires USD")
     has_table = "table" in cost
     if has_table:
         if "value" in cost:
@@ -789,6 +866,8 @@ def main(argv: list[str]) -> int:
                 fail(errors, where, f"bad method '{ep.get('method')}'")
             check_status_marker(ep, where, endpoint_status, errors)
             inp = ep.get("input") or {}
+            if "platform_request" in ep:
+                check_platform_request(ep["platform_request"], inp, where, errors)
             default_array_encoding = inp.get("queryArrayEncoding")
             if (default_array_encoding is not None
                     and default_array_encoding not in QUERY_ARRAY_ENCODINGS):

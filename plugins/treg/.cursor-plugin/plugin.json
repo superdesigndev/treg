@@ -1,7 +1,7 @@
 {
   "name": "treg",
-  "displayName": "treg",
-  "version": "0.16.0",
+  "displayName": "01 Treg",
+  "version": "0.19.0",
   "description": "OpenRouter for tools — 2,896 agent-callable endpoints across 60 providers: SEO and SERP data, backlinks, social and trends, people and company enrichment, ads, scraping. Search by the task, see the price, then call it. Credentials are injected server-side, so the agent never holds a key. Pay per call, not per subscription.",
   "author": {
     "name": "Superdesign",

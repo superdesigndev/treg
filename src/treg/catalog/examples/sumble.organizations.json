@@ -1,0 +1,22 @@
+{
+  "id": "example-request-id",
+  "credits_used": 3,
+  "credits_remaining": 9000,
+  "organizations": [
+    {
+      "input": {
+        "url": "stripe.com"
+      },
+      "attributes": {
+        "id": 330446,
+        "name": "Stripe",
+        "url": "stripe.com",
+        "employee_count": 13421,
+        "industry": "Scientific and Technical Services"
+      },
+      "entities": []
+    }
+  ],
+  "matched_count": 1,
+  "total": 1
+}

@@ -141,14 +141,14 @@ endpoints:
     platform: people
     scope: any_account
     method: GET
-    path: /v1/email-verifier/{email}
+    path: /v1/email-verifier
     name: "Verify an email address is deliverable"
     summary: "Deliverability status, score, MX/SMTP checks, catch-all, disposable, gibberish and role-address flags for one address"
     input:
-      pathParams:
-        email: {type: string, required: true, note: "the address to verify, in the path (not a query param)", example: "patrick@stripe.com"}
+      queryParams:
+        email: {type: string, required: true, note: "the address to verify, sent as the email query parameter", example: "m@wordpress.org"}
     test_request:
-      pathParams: {email: "patrick@stripe.com"}
+      queryParams: {email: "m@wordpress.org"}
     cost:
       type: per_call
       value: 1
@@ -160,7 +160,7 @@ endpoints:
       checked: '2026-08-20'
       confidence: verified
       note: "1 credit per verification; the Growth plan grants 5,000 verification credits on top of the 5,000 finder credits, so verification is effectively bundled. /v1/logs reported cost=1"
-    verified: '2026-08-20'
+    verified: '2026-09-08'
     example_response: examples/tomba.people.email.verify.json
     docs_url: https://docs.tomba.io/api/verifier
 
@@ -355,7 +355,7 @@ endpoints:
     input:
       queryParams:
         domain: {type: string, required: true, note: "company domain, no protocol or www", example: "stripe.com"}
-        limit: {type: integer, required: false, note: "results per page — an ENUM, not a free integer: 2 is rejected with 'Error validation on Limit:oneof'. 1 and 10 are known-good; treat it as the page-size dial", example: 1}
+        limit: {type: integer, required: false, note: "Start with 10 (the default): 1 and 10 both cost 1 credit. Non-empty pages cost ceil(limit/10) credits even when partially filled. Tested values: 1, 10, 20, 50; 30 is rejected. Check meta.total before requesting more pages", example: 10}
         page: {type: integer, required: false, note: "1-based page number"}
         department: {type: string, required: false, note: "filter by department, e.g. engineering, sales, executive"}
         type: {type: string, required: false, note: "personal | generic — generic means role addresses like sales@"}
@@ -363,16 +363,16 @@ endpoints:
     test_request:
       queryParams: {domain: "stripe.com", limit: 1}
     cost:
-      type: per_result
+      type: per_success
       value: 1
       currency: credit
       per: 1
-      unit: row
+      unit: call
       source: observed
       source_url: https://tomba.io/pricing
-      checked: '2026-08-20'
+      checked: '2026-09-08'
       confidence: verified
-      note: "rate card: 1 credit per email returned — `limit` is the price dial. /v1/logs reported cost=1 for the live limit=1 call"
+      note: "Base price for a non-empty page of up to 10 requested slots. Larger pages cost ceil(limit/10) credits, based on page size rather than returned email count. Empty pages are free. Upstream duplicate requests may be free, but treg does not detect that discount. Verified against /v1/logs with public test domains."
     verified: '2026-08-20'
     example_response: examples/tomba.companies.emails.list.json
     docs_url: https://docs.tomba.io/cli/search

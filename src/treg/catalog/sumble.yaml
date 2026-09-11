@@ -1,0 +1,1156 @@
+provider: sumble
+source:
+  docs: https://docs.sumble.com/api/api
+  openapi: https://api.sumble.com/openapi.json?version=v9
+  curated: '2026-09-09'
+limits: 10 requests/second aggregated per user; HTTP 429 when exceeded.
+pricing_url: https://sumble.com/pricing
+proposed_capabilities:
+  companies.tech_stack: Get a company’s confirmed-used technology stack
+  companies.teams.search: Find and enrich teams within organizations
+  companies.intelligence_brief: Retrieve an account intelligence brief
+endpoints:
+- id: sumble.organizations
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /organizations
+  name: Unified organizations endpoint
+  summary: Unified organizations endpoint
+  input:
+    bodyType: json
+    body:
+      organizations:
+        anyOf:
+        - items:
+            properties:
+              name:
+                anyOf:
+                - type: string
+                - type: 'null'
+                description: Organization name
+              url:
+                anyOf:
+                - type: string
+                - type: 'null'
+                description: Organization website URL or domain
+              location:
+                anyOf:
+                - type: string
+                - type: 'null'
+                description: Organization location (country name or code)
+              id:
+                anyOf:
+                - type: integer
+                - type: 'null'
+                description: Organization Id on Sumble. When set, the row identifies a Sumble org directly and bypasses
+                  matching; name/url/location are not required.
+              slug:
+                anyOf:
+                - type: string
+                - type: 'null'
+                description: Organization slug on Sumble. When set, the row identifies a Sumble org directly and
+                  bypasses matching; name/url/location are not required.
+            additionalProperties: false
+            type: object
+          type: array
+          maxItems: 1000
+          minItems: 1
+        - type: 'null'
+        description: List of organizations to resolve and enrich. Mutually exclusive with `filter`.
+        required: false
+      filter:
+        anyOf:
+        - properties:
+            query:
+              type: string
+          type: object
+          required:
+          - query
+        - type: 'null'
+        description: Advanced query selecting the organizations to return. Mutually exclusive with `organizations`.
+        required: false
+      include_closed:
+        type: boolean
+        description: 'Filter mode only: include organizations marked permanently closed (`status` = ''closed'')
+          in the results — they are excluded by default. Request the `status` / `status_reason` attributes to identify
+          which results are closed. Not valid with `organizations` (direct lookups always resolve closed organizations).'
+        default: false
+        required: false
+      select:
+        properties:
+          attributes:
+            items:
+              type: string
+              enum:
+              - id
+              - slug
+              - name
+              - url
+              - employee_count
+              - industry
+              - jobs_count
+              - teams_count
+              - jobs_count_rollup
+              - jobs_count_no_rollup
+              - teams_count_rollup
+              - teams_count_no_rollup
+              - people_count_rollup
+              - people_count_no_rollup
+              - headquarters_country
+              - sumble_score
+              - sumble_url
+              - parent_id
+              - subsidiary_ids
+              - tags
+              - status
+              - status_reason
+              - account_status
+              - funding_total_raised
+              - funding_valuation
+              - funding_last_round_raised
+              - funding_last_round_type
+              - funding_last_round_date
+            type: array
+            description: Baseline company attributes to include. Off by default.
+            default: []
+          entities:
+            items:
+              properties:
+                type:
+                  type: string
+                  enum:
+                  - job_function
+                  - technology
+                  - project
+                  - advanced_query
+                  - technology_category
+                  description: The entity type to enrich against.
+                term:
+                  type: string
+                  minLength: 1
+                  description: 'The entity term: a technology name, job function, project, category, or advanced
+                    query string.'
+                metrics:
+                  anyOf:
+                  - items:
+                      type: string
+                    type: array
+                  - type: string
+                    const: all
+                  - type: 'null'
+                  description: Metric names valid for `type`, or "all". Required for every type.
+                granularity:
+                  anyOf:
+                  - type: string
+                    enum:
+                    - aggregate
+                    - exploded
+                  - type: 'null'
+                  description: '`technology_category` only (required there, disallowed elsewhere). `aggregate` rolls
+                    the category up into one set of counts; `exploded` decomposes into per-component-technology
+                    counts.'
+                since:
+                  anyOf:
+                  - type: string
+                  - type: 'null'
+                  description: 'Scopes job_post_count, job_post_used_count, team_count, and people_count to activity
+                    since this date (YYYY-MM-DD). Does not affect people_count_growth_1y. No-rollup metrics are
+                    all-time only: with `since` set they are excluded from `metrics: "all"` and rejected if requested
+                    explicitly.'
+              additionalProperties: false
+              type: object
+              required:
+              - type
+              - term
+            type: array
+            description: Per-entity metric selections.
+            default: []
+        additionalProperties: false
+        type: object
+        description: Dictates exactly which columns are returned.
+        required: true
+      limit:
+        type: integer
+        maximum: 200.0
+        minimum: 1.0
+        description: Maximum number of results to return.
+        default: 10
+        required: false
+      offset:
+        type: integer
+        maximum: 10000.0
+        minimum: 0.0
+        description: Number of results to skip.
+        default: 0
+        required: false
+      order_by_column:
+        anyOf:
+        - type: string
+          enum:
+          - industry
+          - employee_count
+          - employee_count_int
+          - first_activity_time
+          - last_activity_time
+          - jobs_count
+          - teams_count
+          - people_count
+          - jobs_count_growth_6mo
+          - cloud_spend_estimate_millions_usd
+          - account_score
+        - type: string
+          enum:
+          - people_concentration
+          - people_count_growth_1y
+        - type: string
+          const: job_post_concentration
+        - type: 'null'
+        description: 'Column to order by (filter mode only). Parameterized sorts (this endpoint only): `people_concentration`
+          and `people_count_growth_1y` sort by the named job function''s people metrics — the all-time fraction
+          of the org''s tracked people in it, and its current YoY people growth % (latest month vs. one year earlier;
+          orgs without growth data sort last) respectively — and require `order_by_job_function`. `job_post_concentration`
+          sorts by the all-time fraction of the org''s job posts matching `order_by_advanced_query`, which it requires.
+          `source_data_url` is omitted for all three, since the listing page cannot reproduce their ordering.'
+        required: false
+      order_by_direction:
+        anyOf:
+        - type: string
+          enum:
+          - ASC
+          - DESC
+        - type: 'null'
+        description: Direction to order by (filter mode only).
+        required: false
+      order_by_job_function:
+        anyOf:
+        - type: string
+        - type: 'null'
+        description: Job function whose people metrics drive the sort. Required with (and only valid with) `order_by_column="people_concentration"`
+          or `order_by_column="people_count_growth_1y"`.
+        required: false
+      order_by_advanced_query:
+        anyOf:
+        - type: string
+        - type: 'null'
+        description: 'Advanced query whose matching job posts form the sort numerator. Required with (and only valid
+          with) `order_by_column="job_post_concentration"`. Allowed fields: technology, technology_category, job_function,
+          project, job_level, country. Both the matching and total job counts are all-time.'
+        required: false
+      match_source:
+        type: string
+        enum:
+        - any
+        - job_post
+        description: Filter mode only. Which evidence an organization may match the `filter` on. `any` (default)
+          matches on either job posts or the skills its employees list on LinkedIn/Coresignal. `job_post` restricts
+          matches to job-post evidence only, so an org that matches solely because an employee lists the technology
+          (with no job posts mentioning it) is excluded. Applies to all job-side filters (technology, job function,
+          hiring location, etc.).
+        default: any
+        required: false
+    note: 1 base + 1 per paid attribute + 1 per requested entity metric per match. Unmatched inputs free. Explicitly
+      select id/name/url; live responses do not always include them. Platform supports match mode, explicit safe
+      attributes and explicit metrics on technology/job_function/project or aggregate categories; advanced queries,
+      ICP/CRM fields and exploded/all metrics require BYOK.
+  docs_url: https://docs.sumble.com/api/api
+  capability: companies.enrich
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 base + 1 per paid attribute + 1 per requested entity metric per match. Unmatched inputs free. Explicitly
+      select id/name/url; live responses do not always include them. Platform supports match mode, explicit safe
+      attributes and explicit metrics on technology/job_function/project or aggregate categories; advanced queries,
+      ICP/CRM fields and exploded/all metrics require BYOK.
+    display: {unit: result, variable: true}
+    sumble:
+      mode: compose
+      records: organizations
+      base: 1
+      attribute: 1
+      metric: 1
+      free_attributes:
+      - id
+      - name
+      - slug
+      - url
+      - sumble_url
+      - account_status
+      safe_attributes:
+      - id
+      - slug
+      - name
+      - url
+      - employee_count
+      - industry
+      - jobs_count
+      - teams_count
+      - jobs_count_rollup
+      - jobs_count_no_rollup
+      - teams_count_rollup
+      - teams_count_no_rollup
+      - people_count_rollup
+      - people_count_no_rollup
+      - headquarters_country
+      - sumble_url
+      - parent_id
+      - subsidiary_ids
+      - tags
+      - status
+      - status_reason
+      - funding_total_raised
+      - funding_valuation
+      - funding_last_round_raised
+      - funding_last_round_type
+      - funding_last_round_date
+      max_records: 1000
+      default_limit: 10
+      max_limit: 200
+  test_request:
+    body:
+      organizations:
+      - url: stripe.com
+      select:
+        attributes:
+        - id
+        - name
+        - url
+        - employee_count
+        - industry
+  verified: '2026-09-09'
+  example_response: examples/sumble.organizations.json
+- id: sumble.organizations.intelligence_brief
+  platform: companies
+  scope: own_account
+  method: GET
+  path: /organizations/{organization_id}/intelligence-brief
+  name: Retrieve the intelligence brief for an organization
+  summary: Retrieve the intelligence brief for an organization
+  input:
+    pathParams:
+      organization_id:
+        type: integer
+        required: true
+    note: 50 per completed brief; 202 pending is free. Retry same URL after Retry-After. Account-tailored brief;
+      BYOK only.
+  docs_url: https://docs.sumble.com/api/api
+  capability: companies.intelligence_brief
+  cost:
+    type: per_success
+    value: 50
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 50 per completed brief; 202 pending is free. Retry same URL after Retry-After. Account-tailored brief;
+      BYOK only.
+  platform_blocked: Account-tailored intelligence brief; use your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.organizations.signals
+  platform: companies
+  scope: own_account
+  method: GET
+  path: /organizations/{organization_id}/signals
+  name: Get organization signals
+  summary: Get organization signals
+  input:
+    pathParams:
+      organization_id:
+        type: integer
+        required: true
+    queryParams:
+      technology_slugs:
+        anyOf:
+        - type: array
+          items:
+            type: string
+        - type: 'null'
+        description: Technology slugs to filter signals by. Repeat this query parameter to filter by multiple technologies.
+          Use POST /technologies/lookup to resolve technology names, slugs, or aliases to canonical slugs; use POST
+          /technologies/find to search for matching technologies.
+        required: false
+        note: Technology slugs to filter signals by. Repeat this query parameter to filter by multiple technologies.
+          Use POST /technologies/lookup to resolve technology names, slugs, or aliases to canonical slugs; use POST
+          /technologies/find to search for matching technologies.
+    note: 1 per returned signal. Shared response includes account CRM/configuration data, so BYOK only.
+  docs_url: https://docs.sumble.com/api/api
+  capability: companies.news
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 per returned signal. Shared response includes account CRM/configuration data, so BYOK only.
+  platform_blocked: Account signal configuration and CRM context can appear in responses; use your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.organizations.techs
+  platform: companies
+  scope: any_account
+  method: GET
+  path: /organizations/{organization_id}/techs
+  name: Get organization tech stack
+  summary: Get organization tech stack
+  input:
+    pathParams:
+      organization_id:
+        type: integer
+        required: true
+    note: 1 per technology in business_functions[].categories[].technologies, not evidence. No documented result
+      cap; platform reserves an estimate of 100 credits and settles actual credits_used, which can exceed the estimate.
+  docs_url: https://docs.sumble.com/api/api
+  capability: companies.tech_stack
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 per technology in business_functions[].categories[].technologies, not evidence. No documented result
+      cap; platform reserves an estimate of 100 credits and settles actual credits_used, which can exceed the estimate.
+    display: {unit: technology}
+    sumble:
+      mode: results
+      reserve_results: 100
+  test_request:
+    pathParams:
+      organization_id: 1726684
+  verified: '2026-09-09'
+  example_response: examples/sumble.organizations.techs.json
+- id: sumble.people
+  platform: people
+  scope: any_account
+  method: POST
+  path: /people
+  name: Unified people endpoint
+  summary: Unified people endpoint
+  input:
+    bodyType: json
+    body:
+      people:
+        anyOf:
+        - items:
+            properties:
+              person_id:
+                anyOf:
+                - type: integer
+                  minimum: 1.0
+                - type: 'null'
+                description: Person id on Sumble. When set, it identifies the person directly and `linkedin_url`/`email`
+                  are ignored.
+              linkedin_url:
+                anyOf:
+                - type: string
+                - type: 'null'
+                description: LinkedIn profile URL of the person, e.g. 'https://www.linkedin.com/in/<slug>'. Entries
+                  whose URL is not a profile URL come back unmatched. Takes precedence over `email`.
+              email:
+                anyOf:
+                - type: string
+                - type: 'null'
+                description: Work email of the person, resolved via reverse enrichment. Costs 20 extra credits when
+                  it resolves to a returned person; emails that don't resolve come back unmatched, free. Only used
+                  when neither `person_id` nor `linkedin_url` is provided.
+              name:
+                anyOf:
+                - type: string
+                - type: 'null'
+                description: Full name of the person, used only to disambiguate the reverse-enrichment lookup when
+                  resolving by `email`. Not an identifier on its own — an entry with just a name is rejected — and
+                  ignored for `person_id`/`linkedin_url` entries. Supplying it materially improves resolution for
+                  addresses whose local part isn't a parseable name (e.g. `firstname@company.com`), and lets the
+                  matcher recognise people whose email is at a former employer.
+            additionalProperties: false
+            type: object
+          type: array
+          maxItems: 1000
+          minItems: 1
+        - type: 'null'
+        description: List of people to resolve and enrich. One result row per entry, in input order. Mutually exclusive
+          with `filter`.
+        required: false
+      filter:
+        anyOf:
+        - properties:
+            organization_ids:
+              anyOf:
+              - items:
+                  type: integer
+                type: array
+                maxItems: 1000
+                minItems: 1
+              - type: 'null'
+              description: 'Sumble organization ids to search within. People queries are organization-scoped: provide
+                this and/or `organization_list_id`.'
+            organization_list_id:
+              anyOf:
+              - type: integer
+                minimum: 1.0
+              - type: 'null'
+              description: Id of one of your saved organization lists (see /organization-lists) whose organizations
+                to search within. Combined with `organization_ids` when both are provided.
+            query:
+              anyOf:
+              - properties:
+                  query:
+                    type: string
+                type: object
+                required:
+                - query
+              - type: 'null'
+              description: Advanced query narrowing the people returned (job functions, technologies, job levels,
+                locations, ...).
+          additionalProperties: false
+          type: object
+        - type: 'null'
+        description: Query selecting the people to return. Mutually exclusive with `people`.
+        required: false
+      select:
+        properties:
+          attributes:
+            anyOf:
+            - items:
+                type: string
+                enum:
+                - name
+                - email
+                - phone
+                - linkedin_url
+                - job_title
+                - job_function
+                - job_level
+                - location
+                - country
+                - current_employer
+                - technologies
+                - person_score
+                - confidence
+              type: array
+            - type: string
+              const: all
+            description: Person-level attributes to include, or 'all' for every attribute-priced attribute. Off
+              by default. 'all' excludes contact attributes (email, phone), which must be requested explicitly,
+              and includes `person_score` only when it is available (filter mode with exactly one organization in
+              scope and an ICP configured for your account) — otherwise it is skipped, not an error. When `person_score`
+              is included and no `order_by_column` is set, results are ordered by it. Note that 'all' grows — and
+              its cost grows — as new attributes are added to the endpoint.
+            default: []
+          related_people:
+            anyOf:
+            - properties:
+                direction:
+                  items:
+                    type: string
+                    enum:
+                    - managers
+                    - direct_reports
+                  type: array
+                  minItems: 1
+                  description: Which hierarchy direction(s) to return.
+                attributes:
+                  anyOf:
+                  - items:
+                      type: string
+                      enum:
+                      - name
+                      - email
+                      - phone
+                      - linkedin_url
+                      - job_title
+                      - job_function
+                      - job_level
+                      - location
+                      - country
+                      - current_employer
+                      - technologies
+                      - person_score
+                      - confidence
+                    type: array
+                  - type: string
+                    const: all
+                  description: Person-level attributes to include for each related person, or 'all' for every attribute
+                    available here. Contact attributes (email, phone) and `person_score` are not available here;
+                    `confidence` (the inferred relationship's score breakdown) is only available here.
+                  default: []
+              additionalProperties: false
+              type: object
+              required:
+              - direction
+            - type: 'null'
+            description: Also return people related to each matched person, up or down the org hierarchy. Relationships
+              are inferred from org structure and seniority (technology, job function, team, location and job-level
+              similarity), not actual reporting lines. Only available in match mode (`people`), for at most 25 people
+              per request. Each related person returned costs 1 credit.
+        additionalProperties: false
+        type: object
+        description: Dictates exactly which attributes are returned.
+        required: false
+      limit:
+        type: integer
+        maximum: 200.0
+        minimum: 1.0
+        description: Maximum number of people to return (filter mode only; ignored when `people` is provided).
+        default: 10
+        required: false
+      offset:
+        type: integer
+        maximum: 10000.0
+        minimum: 0.0
+        description: Number of results to skip (filter mode only; ignored when `people` is provided).
+        default: 0
+        required: false
+      order_by_column:
+        anyOf:
+        - type: string
+          enum:
+          - person_score
+          - start_date
+          - job_level
+        - type: 'null'
+        description: 'Column to order by (filter mode only): `start_date` (current role start), `job_level` (seniority
+          rank), or `person_score`. `person_score` sorts people by how well they match your ideal customer profile
+          (ICP) and includes — and charges for — the `person_score` attribute on every row; it requires the filter
+          to resolve to exactly one organization and an ICP configured for your account, and only supports descending
+          order. Default: Sumble''s standard people ordering.'
+        required: false
+      order_by_direction:
+        anyOf:
+        - type: string
+          enum:
+          - ASC
+          - DESC
+        - type: 'null'
+        description: Sort direction; DESC when omitted.
+        required: false
+      request_id:
+        anyOf:
+        - type: string
+        - type: 'null'
+        description: (v8 only) Id of a previously started async request (returned by the kickoff call). Provide
+          this alone to poll for the status and result.
+        required: false
+    note: 'Async POST: start with people/filter; poll the SAME endpoint with request_id alone. First succeeded poll
+      charges once; later polls report zero. 1 base + paid attributes (name free), related people 1 each; email
+      reveal 10, phone 80, successful email resolution 20 extra. Contact reveal repeats/misses free. All/scores
+      may include account ICP. treg does not meter BYOK. Platform disabled pending POST-poll ownership and durable
+      charge recovery.'
+  docs_url: https://docs.sumble.com/api/api
+  capability: people.search
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 'Async POST: start with people/filter; poll the SAME endpoint with request_id alone. First succeeded poll
+      charges once; later polls report zero. 1 base + paid attributes (name free), related people 1 each; email
+      reveal 10, phone 80, successful email resolution 20 extra. Contact reveal repeats/misses free. All/scores
+      may include account ICP. treg does not meter BYOK. Platform disabled pending POST-poll ownership and durable
+      charge recovery.'
+  platform_blocked: POST polling with first-success-only charge needs durable settlement/ownership support; use
+    your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.jobs
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /jobs
+  name: Unified jobs endpoint
+  summary: Unified jobs endpoint
+  input:
+    bodyType: json
+    body:
+      jobs:
+        anyOf:
+        - items:
+            properties:
+              job_id:
+                type: integer
+                minimum: 1.0
+                description: Job id on Sumble.
+            additionalProperties: false
+            type: object
+            required:
+            - job_id
+          type: array
+          maxItems: 1000
+          minItems: 1
+        - type: 'null'
+        description: List of jobs to enrich by id. One result row per entry, in input order. Mutually exclusive
+          with `filter`.
+        required: false
+      filter:
+        anyOf:
+        - properties:
+            organization_ids:
+              anyOf:
+              - items:
+                  type: integer
+                type: array
+                maxItems: 1000
+                minItems: 1
+              - type: 'null'
+              description: Sumble organization ids to scope the search to. Unknown ids simply match no jobs.
+            organization_list_id:
+              anyOf:
+              - type: integer
+                minimum: 1.0
+              - type: 'null'
+              description: Id of one of your saved organization lists (see /organization-lists) whose organizations
+                to search within. Combined with `organization_ids` when both are provided.
+            query:
+              anyOf:
+              - properties:
+                  query:
+                    type: string
+                type: object
+                required:
+                - query
+              - type: 'null'
+              description: Advanced query narrowing the jobs returned (technologies, technology categories, job
+                functions, countries, hiring period, ...).
+          additionalProperties: false
+          type: object
+        - type: 'null'
+        description: Query selecting the jobs to return. Mutually exclusive with `jobs`.
+        required: false
+      select:
+        properties:
+          attributes:
+            anyOf:
+            - items:
+                type: string
+                enum:
+                - title
+                - description
+                - location
+                - posted_date
+                - organization
+                - technologies
+                - teams
+                - job_functions
+                - job_levels
+                - projects
+              type: array
+            - type: string
+              const: all
+            description: Job attributes to include, or 'all' for every available attribute (including the full `description`).
+              Off by default. Note that 'all' grows — and its cost grows — as new attributes are added to the endpoint.
+            default: []
+          related_people:
+            anyOf:
+            - properties:
+                attributes:
+                  anyOf:
+                  - items:
+                      type: string
+                      enum:
+                      - name
+                      - email
+                      - phone
+                      - linkedin_url
+                      - job_title
+                      - job_function
+                      - job_level
+                      - location
+                      - country
+                      - current_employer
+                      - technologies
+                      - person_score
+                      - confidence
+                    type: array
+                  - type: string
+                    const: all
+                  description: Person-level attributes to include for each related person, or 'all' for every attribute
+                    available here. Contact attributes (email, phone) and `person_score` are not available here;
+                    `confidence` (the inferred relationship's score breakdown) is only available here.
+                  default: []
+                limit:
+                  type: integer
+                  maximum: 25.0
+                  minimum: 1.0
+                  description: Maximum related people returned per job.
+                  default: 5
+                job_levels:
+                  items:
+                    type: string
+                  type: array
+                  description: Only return related people whose job level is one of these (by name, e.g. 'Director',
+                    'VP'); matching is OR across the list. When provided, this replaces the default seniority filter.
+                    When empty (the default), only likely hiring managers are returned — people at Manager level
+                    or above, and more senior than the role.
+                  default: []
+                job_functions:
+                  items:
+                    type: string
+                  type: array
+                  description: Only return related people whose primary job function is one of these (by name, e.g.
+                    'Engineering') or a descendant of one; matching is OR across the list and all descendants. Combined
+                    with `job_levels` as AND. Empty (the default) applies no job function filter.
+                  default: []
+                sort_order:
+                  type: string
+                  enum:
+                  - score
+                  - level
+                  description: 'How related people are ranked: ''score'' (similarity score, the default; ties broken
+                    by seniority) or ''level'' (seniority; ties broken by score).'
+                  default: score
+                sort_direction:
+                  type: string
+                  enum:
+                  - desc
+                  - asc
+                  description: Direction for `sort_order`. The default 'desc' puts the highest score / most senior
+                    people first.
+                  default: desc
+              additionalProperties: false
+              type: object
+            - type: 'null'
+            description: Also return the people likely involved in each job's hiring — scored hiring managers and
+              team members at the posting organization, inferred from team, job function, location and technology
+              similarity, not actual reporting lines. Available in both modes, for at most 200 jobs per request.
+              Each related person returned costs 1 credit.
+        additionalProperties: false
+        type: object
+        description: Dictates exactly which attributes are returned.
+        required: true
+      limit:
+        type: integer
+        maximum: 200.0
+        minimum: 1.0
+        description: Maximum number of jobs to return (filter mode only; ignored when `jobs` is provided).
+        default: 10
+        required: false
+      offset:
+        type: integer
+        maximum: 10000.0
+        minimum: 0.0
+        description: Number of results to skip (filter mode only; ignored when `jobs` is provided).
+        default: 0
+        required: false
+    note: 1 base + 1 per paid attribute (title free) + 1 per related person returned. Platform requires explicit
+      attributes and list mode or organization_ids-only filtering; related people and advanced queries require BYOK.
+  docs_url: https://docs.sumble.com/api/api
+  capability: companies.jobs.search
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 base + 1 per paid attribute (title free) + 1 per related person returned. Platform requires explicit
+      attributes and list mode or organization_ids-only filtering; related people and advanced queries require BYOK.
+    display: {unit: result, variable: true}
+    sumble:
+      mode: compose
+      records: jobs
+      base: 1
+      attribute: 1
+      metric: 1
+      free_attributes:
+      - title
+      safe_attributes:
+      - title
+      - description
+      - location
+      - posted_date
+      - organization
+      - technologies
+      - teams
+      - job_functions
+      - job_levels
+      - projects
+      max_records: 1000
+      default_limit: 10
+      max_limit: 200
+  test_request:
+    body:
+      filter:
+        organization_ids:
+        - 330446
+      select:
+        attributes:
+        - title
+        - location
+        - posted_date
+      limit: 2
+  verified: '2026-09-09'
+  example_response: examples/sumble.jobs.json
+- id: sumble.teams
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /teams
+  name: Unified teams endpoint
+  summary: Unified teams endpoint
+  input:
+    bodyType: json
+    body:
+      teams:
+        anyOf:
+        - items:
+            type: integer
+          type: array
+          maxItems: 1000
+          minItems: 1
+        - type: 'null'
+        description: List of Sumble team ids to retrieve and enrich. One result row per entry, in input order. Mutually
+          exclusive with `filter`.
+        required: false
+      filter:
+        anyOf:
+        - properties:
+            organization_ids:
+              items:
+                type: integer
+              type: array
+              maxItems: 1000
+              minItems: 1
+              description: Sumble organization ids to search within. Teams are returned for these organizations
+                only — no parent/subsidiary roll-up. Unknown ids simply match no teams.
+            query:
+              anyOf:
+              - properties:
+                  query:
+                    type: string
+                type: object
+                required:
+                - query
+              - type: 'null'
+              description: Advanced query narrowing the teams returned (technologies, technology categories, job
+                functions, hiring period).
+            since:
+              anyOf:
+              - type: string
+              - type: 'null'
+              description: Only count activity (jobs_count, first/last activity) on or after this date (YYYY-MM-DD).
+                Does not affect the aggregated technology / job-function / location lists, which are all-time.
+          additionalProperties: false
+          type: object
+          required:
+          - organization_ids
+        - type: 'null'
+        description: Query selecting the teams to return. Mutually exclusive with `teams`.
+        required: false
+      select:
+        properties:
+          attributes:
+            anyOf:
+            - items:
+                type: string
+                enum:
+                - organization
+                - breadcrumbs
+                - jobs_count
+                - technology_list
+                - job_function_list
+                - location_list
+                - first_activity
+                - last_activity
+                - score
+              type: array
+            - type: string
+              const: all
+            description: Team attributes to include, or 'all' for every available attribute. Off by default. 'all'
+              includes `score` only when it is available (an ICP configured for your account) — otherwise it is
+              skipped, not an error. Note that 'all' grows — and its cost grows — as new attributes are added to
+              the endpoint.
+            default: []
+          related_people:
+            anyOf:
+            - properties:
+                attributes:
+                  anyOf:
+                  - items:
+                      type: string
+                      enum:
+                      - name
+                      - email
+                      - phone
+                      - linkedin_url
+                      - job_title
+                      - job_function
+                      - job_level
+                      - location
+                      - country
+                      - current_employer
+                      - technologies
+                      - person_score
+                      - confidence
+                    type: array
+                  - type: string
+                    const: all
+                  description: Person-level attributes to include for each related person, or 'all' for every attribute
+                    available here. Contact attributes (email, phone) and `person_score` are not available here;
+                    `confidence` (the person-team match score breakdown) is only available here.
+                  default: []
+                max_per_team:
+                  type: integer
+                  maximum: 100.0
+                  minimum: 1.0
+                  description: Maximum related people returned per team.
+                  default: 10
+              additionalProperties: false
+              type: object
+            - type: 'null'
+            description: Also return the people associated with each team, with a person-team match score. Available
+              in both modes. Each related person returned costs 1 credit.
+          job_posts:
+            anyOf:
+            - properties:
+                components:
+                  anyOf:
+                  - items:
+                      type: string
+                      enum:
+                      - job_details
+                      - technologies
+                      - job_functions
+                      - job_level
+                    type: array
+                  - type: string
+                    const: all
+                  description: 'Job components to return per posting, or ''all'' for every available component.
+                    Mirrors the unified jobs endpoint: `job_details` (title, location, posted date), `technologies`,
+                    `job_functions`, `job_level`. Never includes the full description (fetch that from the jobs
+                    endpoint with the returned job ids).'
+                  default: []
+                max_per_team:
+                  type: integer
+                  maximum: 100.0
+                  minimum: 1.0
+                  description: Maximum job postings returned per team.
+                  default: 10
+                since:
+                  anyOf:
+                  - type: string
+                  - type: 'null'
+                  description: Only return job postings pulled on or after this date (YYYY-MM-DD).
+              additionalProperties: false
+              type: object
+            - type: 'null'
+            description: Also return the job postings mentioning each team, with composable job components. Each
+              job posting returned costs 1 credit.
+        additionalProperties: false
+        type: object
+        description: Dictates exactly which attributes are returned.
+        required: true
+      limit:
+        type: integer
+        maximum: 200.0
+        minimum: 1.0
+        description: Maximum number of teams to return (filter mode only; ignored when `teams` is provided).
+        default: 10
+        required: false
+      offset:
+        type: integer
+        maximum: 10000.0
+        minimum: 0.0
+        description: Number of results to skip (filter mode only; ignored when `teams` is provided).
+        default: 0
+        required: false
+      order_by_column:
+        anyOf:
+        - type: string
+          enum:
+          - jobs_count
+          - first_activity
+          - last_activity
+          - score
+        - type: 'null'
+        description: 'Column to order by (filter mode only): `jobs_count`, `first_activity` or `last_activity`.
+          Default: jobs_count.'
+        required: false
+      order_by_direction:
+        anyOf:
+        - type: string
+          enum:
+          - ASC
+          - DESC
+        - type: 'null'
+        description: Sort direction; DESC when omitted.
+        required: false
+    note: 1 base + 1 per paid attribute + 1 per related person + 1 per job post returned. Platform requires explicit
+      attributes excluding score, list mode or organization_ids-only filtering. Related people/job posts and advanced
+      queries require BYOK.
+  docs_url: https://docs.sumble.com/api/api
+  capability: companies.teams.search
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 base + 1 per paid attribute + 1 per related person + 1 per job post returned. Platform requires explicit
+      attributes excluding score, list mode or organization_ids-only filtering. Related people/job posts and advanced
+      queries require BYOK.
+    display: {unit: result, variable: true}
+    sumble:
+      mode: compose
+      records: teams
+      base: 1
+      attribute: 1
+      metric: 1
+      free_attributes: []
+      safe_attributes:
+      - organization
+      - breadcrumbs
+      - jobs_count
+      - technology_list
+      - job_function_list
+      - location_list
+      - first_activity
+      - last_activity
+      max_records: 1000
+      default_limit: 10
+      max_limit: 200
+  test_request:
+    body:
+      filter:
+        organization_ids:
+        - 330446
+      select:
+        attributes:
+        - jobs_count
+        - breadcrumbs
+      limit: 2
+      order_by_column: jobs_count
+  verified: '2026-09-09'
+  example_response: examples/sumble.teams.json

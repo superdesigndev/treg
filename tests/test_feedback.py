@@ -12,7 +12,7 @@ from treg.application import feedback as feedback_app
 from treg.config import get_settings
 from treg.feedback_contract import FEEDBACK_CATEGORIES
 from treg.infra.db import session_maker
-from treg.models import CallRecord, Feedback, LedgerEntry
+from treg.models import CallRecord, Feedback, FeedbackHandling, FeedbackHandlingEvent, LedgerEntry
 
 
 async def rows():
@@ -300,6 +300,10 @@ def test_cli_feedback_without_arguments_shows_help_without_network(monkeypatch, 
     args.fn(args, {})
     output = capsys.readouterr().out
     assert "submit" in output and "get" in output
+    for field in ("category", "message", "--call-id", "--endpoint-id", "feedback_id"):
+        assert field in output
+    assert "call_ids" in output and "not linked automatically" in output
+    assert "1-2000" in output and "up to 100" in output
 
 
 def test_cli_feedback_keeps_category_first_shorthand(monkeypatch):
@@ -316,3 +320,22 @@ def test_cli_feedback_stdin_never_waits_for_interactive_input(monkeypatch, capsy
     with pytest.raises(SystemExit):
         args.fn(args, {})
     assert json.loads(capsys.readouterr().out)["error"] == "stdin_required"
+
+
+async def test_internal_handling_does_not_change_public_receipt(clients):
+    receipt = (await clients.post("/feedback", json={
+        "category": "other", "message": "Synthetic report",
+    })).json()
+    report_id = receipt["feedback_id"]
+    before = (await clients.get(f"/feedback/{report_id}")).json()
+    async with session_maker() as db:
+        db.add(FeedbackHandling(feedback_id=report_id, status="resolved", version=1))
+        db.add(FeedbackHandlingEvent(
+            id="synthetic-internal-event", feedback_id=report_id, version=1,
+            from_status="open", to_status="resolved", note="Internal result only",
+            actor="shared-admin", source="api", links=["https://example.test/pull/1"],
+        ))
+        await db.commit()
+    response = await clients.get(f"/feedback/{report_id}")
+    assert response.status_code == 200
+    assert response.json() == before

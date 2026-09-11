@@ -101,6 +101,16 @@ services:
         sync: false
       - key: TREG_PLATFORM_KEY_HUNTER
         sync: false
+      - key: TREG_PLATFORM_KEY_SUMBLE
+        sync: false
+      - key: TREG_PLATFORM_KEY_QUICKENRICH
+        sync: false
+      - key: TREG_PLATFORM_KEY_TRYKITT
+        sync: false
+      - key: TREG_PLATFORM_KEY_CONTACTOUT
+        sync: false
+      - key: TREG_PLATFORM_KEY_MILLIONVERIFIER
+        sync: false
       - key: TREG_PLATFORM_KEY_LEADMAGIC
         sync: false
       - key: TREG_PLATFORM_KEY_LUSHA
@@ -245,6 +255,31 @@ services:
           type: web
           name: treg
           envVarName: TREG_PLATFORM_KEY_HUNTER
+      - key: TREG_PLATFORM_KEY_SUMBLE
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_SUMBLE
+      - key: TREG_PLATFORM_KEY_QUICKENRICH
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_QUICKENRICH
+      - key: TREG_PLATFORM_KEY_TRYKITT
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_TRYKITT
+      - key: TREG_PLATFORM_KEY_CONTACTOUT
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_CONTACTOUT
+      - key: TREG_PLATFORM_KEY_MILLIONVERIFIER
+        fromService:
+          type: web
+          name: treg
+          envVarName: TREG_PLATFORM_KEY_MILLIONVERIFIER
       - key: TREG_PLATFORM_KEY_LEADMAGIC
         fromService:
           type: web

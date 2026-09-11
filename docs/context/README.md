@@ -17,12 +17,13 @@ covers (frontmatter `sources:`). Regenerate this index with
 | Fragment | Status | Covers |
 |---|---|---|
 | [Google Ads conversion tracking — capture, outbox, upload](architecture/ads-conversions.md) | shipped | adsconv.py, signup.py, adtrack.js, gtag.js |
-| [Archive - every platform answer, kept and versioned (cache = the newest layer)](architecture/archive.md) | building | archive.py, 0002_archive_tables.py, 0003_callrecord_cached.py, 0004_archivekey_request_shape.py, … |
+| [Archive - versioned history and cache admission](architecture/archive.md) | building | archive.py, results.py, 0031_archive_result_admission.py, test_cache_result_admission.py, … |
 | [Auth & secrets — injectors, encryption, OAuth freshness, health](architecture/auth-secrets.md) | shipped | injectors.py, ssrf.py, crypto.py, oauth.py, … |
-| [Endpoint catalog — what you can DO with a connected key, and which provider should do it](architecture/catalog.md) | shipped | contracts.yaml, adapters.yaml, findymail.search.business-profile.json, __init__.py, … |
+| [Endpoint catalog — what you can DO with a connected key, and which provider should do it](architecture/catalog.md) | shipped | quickenrich.yaml, quickenrich.extended.yaml, quickenrich.companies.search.json, quickenrich.people.email.find.json, … |
 | [Application composition and deployment roles](architecture/composition.md) | shipped | bootstrap.py, bootstrap_handlers.py, bootstrap_http.py, call_surface.py, … |
+| [ContactOut — LinkedIn enrichment, Starter billing and independent credit pools](architecture/contactout.md) | implemented; live connect and core surface verified, informational capacity monitoring | contactout.yaml, adapters.yaml, contactout.people.email.verify.json, test_routing.py, … |
 | [Data model — the registry tables, async DB, audit writer](architecture/data-model.md) | shipped | alembic.ini, env.py, 0001_baseline_current_schema.py, 0002_archive_tables.py, … |
-| [Feedback - private intake for problems and suggestions](architecture/feedback.md) | shipped | feedback_contract.py, feedback.py, feedback.py, feedback.py, … |
+| [Feedback - private intake for problems and suggestions](architecture/feedback.md) | shipped | feedback_contract.py, __init__.py, reports.py, reviews.py, … |
 | [Enforced import boundaries](architecture/import-boundaries.md) | shipped | pyproject.toml, ci.yml, __init__.py, __init__.py, … |
 | [Instagram OAuth — direct Login and optional Facebook Page tools](architecture/instagram-oauth.md) | built; Meta configuration and live verification pending | catalog_ingest.py, access.py, resolve.py, service.py, … |
 | [Local proxy — catch a program's own outgoing calls (`treg <command>`)](architecture/local-proxy.md) | shipped | localproxy.py, server.js |
@@ -31,6 +32,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Money — prepaid balance, the ledger, Stripe, and the reports that check it](architecture/money.md) | shipped | __init__.py, settlement.py, __init__.py, models.py, … |
 | [Multi-tenancy — orgs, memberships, invites, per-org scoping](architecture/multi-tenancy.md) | shipped | models.py, api.py, caller_metadata.py, auth.py, … |
 | [The proxy — faithful credential-injecting relay + tool resolution](architecture/proxy-model.md) | shipped | relay.py, ssrf.py, api.py, authorize.py, … |
+| [Sumble — account intelligence, subscription credits and BYOK](architecture/sumble.md) | shipped | sumble.yaml, sumble.extended.yaml, sumble.organizations.json, sumble.py, … |
 | [Super-admin — cross-tenant read + control](architecture/super-admin.md) | shipped | api.py, admin.py, access.py, config.py |
 
 ## Interfaces (API · CLI · skill)
@@ -39,8 +41,9 @@ covers (frontmatter `sources:`). Regenerate this index with
 |---|---|---|
 | [The API — the only brain (FastAPI)](interface/api.md) | shipped | sitetrack.js, api.py, bootstrap_handlers.py, bootstrap_http.py, … |
 | [Catalog browse review — categories, platform placement, and domain sections](interface/catalog-review-proposal.md) | reference | store.py, capabilities.yaml |
-| [The CLI (treg) + skill scaffolding](interface/cli.md) | shipped | cli.py, convert.py, agents.py |
+| [The CLI (treg) + skill scaffolding](interface/cli.md) | shipped | cli.py, cli_analytics.py, convert.py, agents.py |
 | [The web dashboard (served from FastAPI)](interface/dashboard.md) | shipped | sitetrack.js, index.html, dashboard.css, SOURCES.md, … |
+| [Enrich Arena — paid comparisons, one-click feedback, and visible waterfalls](interface/enrich-arena.md) | shipped | arena.py, arena.py, arena.py, models.py, … |
 | [Import — scan a .env AND/OR a skills dir, auto-register as tools + bundles](interface/env-import.md) | in-progress | providers.py, skills.py |
 | [Landing sandbox backend - front-end entry removed](interface/landing-sandbox.md) | shipped | sandbox.py, sandbox_identity.py, pubfeed.py, sandbox.py, … |
 | [Onboarding — the first-run demo team (dashboard + CLI)](interface/onboarding.md) | shipped | auth.py, __init__.py, demo.py, cli.py, … |

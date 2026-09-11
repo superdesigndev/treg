@@ -47,6 +47,12 @@ import httpx
 
 from .config import get_settings
 
+
+def funnel_surface(value: str) -> str:
+    """Bound untrusted attribution to product surfaces; never forward URLs or input data."""
+    return value if isinstance(value, str) and value in {"arena", "leaderboard", "benchmark", "app", "site"} else "unknown"
+
+
 _queue: list[dict] = []
 _MAX_PENDING = 2000        # shed load past this: drop the event rather than grow unbounded
 _BATCH_MAX = 100           # events per /batch/ POST

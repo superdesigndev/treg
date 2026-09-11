@@ -231,6 +231,7 @@ class CallContext:
     credentials: dict[int, Any] | None = None
     finalization: FinalizationState = FinalizationState.NONE
     audited: bool = False
+    cached: bool = False
     cost_micro: int | None = None
 
 

@@ -7,6 +7,10 @@ conftest (`/whoami` echoes; `/units` and `/units-bad` model Semrush's plain-text
 
 from __future__ import annotations
 
+import httpx
+from treg.api import app
+from treg.config import Settings
+from treg.domain.catalog import store as catalog_store
 import dataclasses
 
 from httpx import AsyncClient
@@ -18,7 +22,7 @@ from treg import oauth_providers as P
 def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,
     not shown as 'not configured' the way an unset OAuth provider is."""
-    for svc in ("apollo", "pdl", "akta", "hunter", "crunchbase", "tikhub", "brightdata", "semrush",
+    for svc in ("apollo", "pdl", "akta", "hunter", "sumble", "quickenrich", "contactout", "millionverifier", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush",
                 "justoneapi", "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
                 "cloro",
                 "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
@@ -233,3 +237,124 @@ async def test_query_token_survives_alongside_a_probe_path_query(clients: AsyncC
         probe_path="/needs-query?field=title", token_verify_field=""))
     r = await clients.post("/connections/token", json={"provider": "spyfu", "token": "spyfu-secret"})
     assert r.status_code == 200, r.text
+
+
+async def test_millionverifier_connect_checks_body_and_injects_query(clients, monkeypatch):
+    """The live bad-key response is HTTP 200; zero credits must not reject a valid key."""
+    import httpx
+    from treg.api import app
+
+    def probe(request):
+        assert request.url.path == "/api/v3/credits"
+        assert "authorization" not in request.headers
+        if request.url.params["api"] == "bad-key":
+            return httpx.Response(200, json={"result": "error", "error": "apikey_not_found"})
+        return httpx.Response(200, json={"credits": 0, "bulk_credits": 0, "renewing_credits": 0, "plan": 4})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post("/connections/token", json={"provider": "millionverifier", "token": "bad-key"})
+        assert bad.status_code == 422, bad.text
+        assert "apikey_not_found" in bad.text
+        assert not (await clients.get("/tools")).json()
+        good = await clients.post("/connections/token", json={"provider": "millionverifier", "token": "good-key"})
+        assert good.status_code == 200, good.text
+        tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "millionverifier")
+        binding = tool["bindings"][0]
+        assert binding["location"] == "query" and binding["name"] == "api"
+        assert binding["format"] == "{secret}"
+
+
+def test_millionverifier_platform_key_configuration(monkeypatch):
+    from treg.config import Settings
+    monkeypatch.setenv("TREG_PLATFORM_KEY_MILLIONVERIFIER", "platform-test-key")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "millionverifier")
+    settings = Settings(_env_file=None)
+    assert settings.platform_key_for("millionverifier") == "platform-test-key"
+    assert P.platform_bindings(P.get("millionverifier")) == [
+        {"platform_setting": "platform_key_millionverifier", "injector": "env",
+         "location": "query", "name": "api", "format": "{secret}"}]
+
+
+async def test_quickenrich_connect_uses_free_authenticated_discovery(clients, monkeypatch):
+    import httpx
+    import json
+    from treg.api import app
+
+    def probe(request):
+        assert request.method == 'POST'
+        assert request.url.host == 'app.quickenrich.io'
+        assert request.url.path == '/api/employees/contact-finder'
+        assert json.loads(request.content)['per_page'] == 1
+        if request.headers['authorization'] == 'Bearer bad-key':
+            return httpx.Response(401, json={'success': False, 'message': 'Invalid or inactive API key'})
+        return httpx.Response(200, json={'success': True, 'data': [], 'meta': {'credits_used': 0, 'remaining_credits': 0}})
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, 'http', upstream)
+        bad = await clients.post('/connections/token', json={'provider': 'quickenrich', 'token': 'bad-key'})
+        assert bad.status_code == 422
+        good = await clients.post('/connections/token', json={'provider': 'quickenrich', 'token': 'good-key'})
+        assert good.status_code == 200, good.text
+        tool = next(t for t in (await clients.get('/tools')).json() if t['name'] == 'quickenrich')
+        binding = tool['bindings'][0]
+        assert binding['location'] == 'header' and binding['name'] == 'Authorization'
+        assert binding['format'] == 'Bearer {secret}'
+
+
+def test_quickenrich_platform_key_configuration(monkeypatch):
+    from treg.config import Settings
+    monkeypatch.setenv('TREG_PLATFORM_KEY_QUICKENRICH', 'platform-test-key')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'quickenrich')
+    settings = Settings(_env_file=None)
+    assert settings.platform_key_for('quickenrich') == 'platform-test-key'
+    assert P.platform_bindings(P.get('quickenrich')) == [
+        {'platform_setting': 'platform_key_quickenrich', 'injector': 'env',
+         'location': 'header', 'name': 'Authorization', 'format': 'Bearer {secret}'}]
+
+
+# ---- ContactOut ----
+
+async def test_contactout_connect_rejects_garbage_and_accepts_zero_pools(clients, monkeypatch):
+    def reply(request):
+        assert request.url.path == "/v1/stats"
+        assert request.headers["token"] in ("garbage", "valid-test")
+        if request.headers["token"] == "garbage":
+            return httpx.Response(
+                401, json={"status_code": 401, "message": "Bad credentials"}
+            )
+        return httpx.Response(
+            200,
+            json={
+                "status_code": 200,
+                "usage": {"quota": 0, "phone_quota": 0, "search_quota": 0},
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post(
+            "/connections/token", json={"provider": "contactout", "token": "garbage"}
+        )
+        assert bad.status_code == 422
+        assert not (await clients.get("/tools")).json()
+        good = await clients.post(
+            "/connections/token", json={"provider": "contactout", "token": "valid-test"}
+        )
+        assert good.status_code == 200, good.text
+        binding = (await clients.get("/tools")).json()[0]["bindings"][0]
+        assert binding["name"] == "token" and binding["format"] == "{secret}"
+
+
+def test_contactout_platform_binding(contactout_platform):
+    assert Settings(_env_file=None).platform_key_for("contactout") == "PLATFORM-TEST"
+    assert P.platform_bindings(P.get("contactout")) == [
+        {
+            "platform_setting": "platform_key_contactout",
+            "injector": "env",
+            "location": "header",
+            "name": "token",
+            "format": "{secret}",
+        }
+    ]
+    assert "contactout.account.usage" not in catalog_store.load().by_id

@@ -374,7 +374,7 @@ def test_the_modal_does_not_talk_about_a_sandbox_on_the_catalog():
     """Default copy is the sandbox's ('bring it into a real account') — nonsense to someone who
     arrived from a search result."""
     spa = _spa()
-    assert 'v-else-if="publicCatalog" class="sub">Create a free team' in spa
+    assert 'v-else-if="publicCatalog" class="sub">Verify your new account' in spa
 
 
 async def test_no_page_ships_an_unsubstituted_base(clients: AsyncClient):

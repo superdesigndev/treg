@@ -54,6 +54,10 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+ROOT_SRC = Path(__file__).resolve().parents[1] / "src"
+sys.path.insert(0, str(ROOT_SRC))
+from treg.domain.catalog import store as catalog_store  # noqa: E402  (needs the [server] extra: run via `uv run`)
+
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "src" / "treg" / "web" / "skill.md"
 PUBLIC_BASE = "https://treg.to"
@@ -307,6 +311,10 @@ def render(variant: str) -> str:
     #    setting, so it keeps the content — but the markers themselves must never ship, or the
     #    product's most-read page starts with visible HTML comments.
     out = out.replace("<!--routed-->\n", "").replace("\n<!--/routed-->", "")
+    # `{ENDPOINTS}` / `{PROVIDERS}`: the server fills these per request from the loaded catalog; a
+    # static plugin copy gets the numbers as of generation, refreshed with every release.
+    endpoints, providers = catalog_store.headline_counts(catalog_store.load())
+    out = out.replace("{ENDPOINTS}", endpoints).replace("{PROVIDERS}", str(providers))
     return out.replace("{BASE}", PUBLIC_BASE)
 
 

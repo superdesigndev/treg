@@ -1,0 +1,87 @@
+{
+  "success": true,
+  "message": "Company services fetched",
+  "code": 200,
+  "data": [
+    {
+      "value": "Software Development",
+      "count": 24460
+    },
+    {
+      "value": "Software Company",
+      "count": 13723
+    },
+    {
+      "value": "Software Engineering",
+      "count": 2573
+    },
+    {
+      "value": "Software Solutions",
+      "count": 2318
+    },
+    {
+      "value": "Software Consulting",
+      "count": 1072
+    },
+    {
+      "value": "Software Testing",
+      "count": 817
+    },
+    {
+      "value": "Software Training",
+      "count": 560
+    },
+    {
+      "value": "Software Product Development",
+      "count": 552
+    },
+    {
+      "value": "Software Development Services",
+      "count": 491
+    },
+    {
+      "value": "Softwareentwickler/-hersteller",
+      "count": 490
+    },
+    {
+      "value": "Software design",
+      "count": 487
+    },
+    {
+      "value": "Software Services",
+      "count": 425
+    },
+    {
+      "value": "Software Integration",
+      "count": 378
+    },
+    {
+      "value": "Software Consultancy",
+      "count": 347
+    },
+    {
+      "value": "Software Architecture",
+      "count": 323
+    },
+    {
+      "value": "Software Support",
+      "count": 318
+    },
+    {
+      "value": "Software",
+      "count": 297
+    },
+    {
+      "value": "Software Implementation",
+      "count": 292
+    },
+    {
+      "value": "Software Development Consulting",
+      "count": 257
+    },
+    {
+      "value": "Software Training Institute",
+      "count": 245
+    }
+  ]
+}

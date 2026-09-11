@@ -134,6 +134,8 @@ CATALOG: list[dict] = [
     {"provider": "Ahrefs",      "tokens": ["AHREFS"],              "base_url": "https://api.ahrefs.com/v3",                       "auth": {"shape": "bearer"}},
     {"provider": "Apify",       "tokens": ["APIFY"],               "base_url": "https://api.apify.com/v2",                        "auth": {"shape": "bearer"}, "probe": "users/me"},
     {"provider": "ScrapeCreators", "tokens": ["SCRAPECREATORS"],   "base_url": "https://api.scrapecreators.com",                  "auth": {"shape": "api_key_header", "header": "x-api-key"}},
+    {"provider": "Sumble", "tokens": ["SUMBLE"], "base_url": "https://api.sumble.com/v9",
+     "auth": {"shape": "bearer"}},
     {"provider": "Crustdata", "tokens": ["CRUSTDATA"], "base_url": "https://api.crustdata.com",
      "auth": {"shape": "bearer"}, "probe": "account/credits",
      "required_headers": {"x-api-version": "2025-11-01"}},

@@ -1256,6 +1256,108 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+SUMBLE = OAuthProvider(
+    service="sumble", display_name="Sumble", auth_kind="key",
+    token_label="API key", token_placeholder="your Sumble API key",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://sumble.com/account/api-keys",
+    setup_action_label="Get your Sumble API key",
+    setup_steps=("Sign in to Sumble and open Account → API keys.",
+                 "Create an API key and copy it before closing the dialog."),
+    setup_note="Connect your own key for the full API, including workspace lists, signals and asynchronous people requests. Connection verification uses a free technology-search miss.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find organizations, people, jobs and teams, and explore company technologies and signals.",
+    base_url="https://api.sumble.com/v9", docs_url="https://docs.sumble.com/api/api",
+    probe_path="/technologies/find", probe_method="POST",
+    probe_json={"query": "treg-nonexistent-probe-20260909"},
+    # Live 2026-09-09: bogus Bearer 401; valid key 200 with credits_used=0.
+)
+
+QUICKENRICH = OAuthProvider(
+    service="quickenrich", display_name="QuickEnrich", auth_kind="key",
+    token_label="API key", token_placeholder="your QuickEnrich API key",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://app.quickenrich.io/docs",
+    setup_action_label="Get your QuickEnrich API key",
+    setup_steps=("Sign in to QuickEnrich and copy your API key.",
+                 "If no key is available, contact QuickEnrich support as described in its API docs."),
+    setup_note="Free contact discovery, then selective email or phone enrichment. Free, Starter and Growth API credits reset monthly; GTM Unlimited includes unlimited API credits. Connection verification is free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Discover business contacts for free, find emails and phones, and search companies.",
+    base_url="https://app.quickenrich.io", docs_url="https://app.quickenrich.io/docs",
+    probe_path="/api/employees/contact-finder", probe_method="POST",
+    probe_json={"company_url": {"include": ["treg-probe-nonexistent.invalid"], "exclude": []}, "per_page": 1},
+    # Live 2026-09-08: bad key 401; valid free key 200, credits_used=0.
+)
+
+TRYKITT = OAuthProvider(
+    service="trykitt",
+    display_name="Kitt AI",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Kitt AI API key",
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://admin.trykitt.ai/",
+    setup_action_label="Get your Kitt AI API key",
+    setup_steps=("Sign in to Kitt AI and open API Key in the sidebar.", "Copy your API key."),
+    setup_note="Find verified work emails or verify an existing address. Free API access has variable capacity; PAYG charges per found email and per verification, including unknown/catchall results.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find verified work emails and verify email deliverability, including catch-all addresses.",
+    base_url="https://api.trykitt.ai",
+    docs_url="https://documenter.getpostman.com/view/479833/2s93m62NHf",
+    probe_path="/credit",  # Live: valid zero balance is 200; garbage key is 401.
+)
+
+CONTACTOUT = OAuthProvider(
+    service="contactout", display_name="ContactOut", auth_kind="key",
+    token_label="API token", token_placeholder="your ContactOut API token",
+    token_header="token", token_format="{secret}",
+    setup_url="https://contactout.com/meeting",
+    setup_action_label="Get your ContactOut API token",
+    setup_steps=("Request API access from ContactOut and copy your API token.",),
+    setup_note="Your own key is billed by ContactOut, never metered by treg. Connection checks use the account stats endpoint.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find work emails, personal emails and phones from LinkedIn; search people and companies.",
+    base_url="https://api.contactout.com", docs_url="https://api.contactout.com/",
+    probe_path="/v1/stats", token_ok_field="status_code", token_ok_value="200",
+    # Live: garbage token returns HTTP 401; the supplied platform token returns 200.
+)
+
+MILLIONVERIFIER = OAuthProvider(
+    service="millionverifier",
+    display_name="MillionVerifier",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your MillionVerifier API key",
+    token_location="query",
+    token_param="api",
+    token_format="{secret}",
+    setup_url="https://app.millionverifier.com/api",
+    setup_action_label="Get your MillionVerifier API key",
+    setup_steps=(
+        "Sign in to MillionVerifier and open Account settings → API Keys.",
+        "Add an API key if needed, make sure it is active, and copy it.",
+    ),
+    setup_note="Prepaid credits never expire. Risky (unknown and catch-all) results receive automatic credit returns for eligible accounts; the credits check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Verify email deliverability and identify catch-all, disposable and role addresses.",
+    base_url="https://api.millionverifier.com",
+    docs_url="https://developer.millionverifier.com/",
+    probe_path="/api/v3/credits",
+    # Live 2026-09-08: HTTP 200 {result: error, error: apikey_not_found} for a garbage key.
+    # Do not require a truthy credits balance: a valid exhausted account can still connect.
+    token_reject_field="error",
+)
+
 MINIMAX = OAuthProvider(
     service="minimax",
     display_name="MiniMax",
@@ -2711,7 +2813,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        APOLLO, PDL, AKTA, HUNTER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
+        APOLLO, PDL, AKTA, HUNTER, SUMBLE, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers

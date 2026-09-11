@@ -49,6 +49,9 @@ endpoints:
       queryParams: {website: "stripe.com", preview: true}
     verified: '2026-08-24'
     example_response: examples/aviato.companies.enrich.json
+    miss:
+      status: 404
+      means: "Company not found or required fields unavailable; no credit charged."
     cost:
       type: per_success
       value: 15

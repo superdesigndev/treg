@@ -44,7 +44,7 @@ def snapshot_from(provider: str, row: dict, observed_at=None) -> CapacitySnapsho
     """A collector's dict → the row. Never carries a credential: the note is clipped and checked."""
     note = str(row.get("note") or "")[:300]
     error = ""
-    if row.get("value") is None:
+    if row.get("value") is None and not row.get("informational"):
         if row.get("no_api"):
             error = "no_balance_api"
         elif row.get("no_key"):
@@ -58,7 +58,7 @@ def snapshot_from(provider: str, row: dict, observed_at=None) -> CapacitySnapsho
     return CapacitySnapshot(
         provider=provider, observed_at=observed_at or utcnow_naive(),
         remaining=float(value) if isinstance(value, (int, float)) else None,
-        unit=str(row.get("unit") or ""), source="api", confidence="exact" if error == "" else "stale",
+        unit=str(row.get("unit") or ""), source="api", confidence=("informational" if row.get("informational") else "exact" if error == "" else "stale"),
         note=note, error=error,
     )
 

@@ -93,3 +93,31 @@ async def test_provider_page_reads_the_observation_reader_not_the_session(client
         r = await clients.get("/tools/dataforseo")
     assert r.status_code == 200
     assert "endpoint stats unavailable" not in caplog.text
+
+
+async def test_oauth_access_is_not_labeled_byok_or_free_when_metered(clients, monkeypatch):
+    monkeypatch.setenv('TREG_OAUTH_BILLED_PROVIDERS', 'x')
+    get_settings.cache_clear()
+    try:
+        html = (await clients.get('/tools/x')).text
+        assert 'OAuth connection · metered' in html
+        assert 'BYOK only' not in html
+        assert 'No treg charge' not in html
+        assert 'never metered' not in html
+        assert 'OAuth app are metered' in html
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_unmetered_oauth_access_uses_account_language(clients, monkeypatch):
+    monkeypatch.setenv('TREG_OAUTH_BILLED_PROVIDERS', '')
+    get_settings.cache_clear()
+    try:
+        html = (await clients.get('/tools/x')).text
+        assert 'OAuth connection' in html
+        assert 'BYOK only' not in html
+        assert 'OAuth connection · metered' not in html
+        assert 'No X (Twitter) signup' not in html
+        assert 'This is an own-account connection' in html
+    finally:
+        get_settings.cache_clear()

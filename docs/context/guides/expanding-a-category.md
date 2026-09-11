@@ -31,6 +31,16 @@ pasted-key provider is **`connect_with_token`** (`POST /connections/token`) in
 [auth-secrets](../architecture/auth-secrets.md) + [api](../interface/api.md);
 this fragment is the *process*, not the mechanics reference.
 
+MillionVerifier (2026-09-08) follows this key-provider path: query `api` auth, free credits probe
+with an HTTP-200 `error` rejection, two single-host catalog jobs and an existing email-verification
+adapter. The bulk host uses a different auth parameter and is explicitly excluded in the surface
+map. See [catalog](../architecture/catalog.md) for the live credit evidence and pricing limits.
+
+QuickEnrich (2026-09-08) follows the key-provider path with Bearer auth and a free authenticated
+Contact Finder probe. All six data tools and five lookup utilities were live checked; monthly
+subscription capacity uses API balance data and is separate from platform list pricing.
+Tests extend the existing auth, capacity and marketplace files. See [catalog](../architecture/catalog.md).
+
 ## The two kinds of provider
 - **API-key** (`auth_kind="key"`) — the user pastes a key; self-serve; **the fast path** (research → implement
   → live-test in one session). This is the workhorse and where almost all growth happens.
@@ -166,3 +176,8 @@ Instagram direct Login plus optional Facebook Page tools is the reference implem
 - `test_default_capability_is_the_broadest` — OAuth: `write ⊇ read` (or one capability).
 - `test_every_requested_scope_has_a_label` — a `SCOPE_LABELS` entry per OAuth scope (key providers have none).
 - `test_key_providers` — the offerable + connect-flow coverage for `auth_kind="key"`.
+
+ContactOut uses the same pasted-key path with `token` header auth and a free `/v1/stats` probe.
+Its garbage-token rejection and valid connection were verified live; its independent pools stay
+informational, with monitoring and top-ups managed by the designated account manager.
+See [ContactOut](../architecture/contactout.md).

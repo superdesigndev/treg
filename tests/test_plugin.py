@@ -113,7 +113,7 @@ def test_the_plugin_skill_is_not_stale():
     r = subprocess.run([sys.executable, str(ROOT / "scripts" / "build_plugin.py"), "--check"],
                        capture_output=True, text=True)
     assert r.returncode == 0, (
-        f"plugin SKILL.md is stale — regenerate with `python3 scripts/build_plugin.py`\n"
+        f"plugin SKILL.md is stale — regenerate with `uv run python scripts/build_plugin.py`\n"
         f"{r.stdout}{r.stderr}")
 
 

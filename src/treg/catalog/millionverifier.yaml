@@ -1,0 +1,64 @@
+provider: millionverifier
+source:
+  docs: https://developer.millionverifier.com/
+  openapi: null # OpenAPI 3.0 is embedded in the ReDoc HTML; no separate spec URL confirmed
+  curated: '2026-09-08'
+# Single API only. Bulk uses bulkapi.millionverifier.com and ?key= rather than ?api=.
+# Full documented surface: /api/v3 and /api/v3/credits are catalogued below.
+# Excluded: POST /bulkapi/v2/upload (multipart file and separate host/auth),
+# GET /bulkapi/v2/fileinfo, /bulkapi/v2/filelist, /bulkapi/v2/download,
+# /bulkapi/stop and /bulkapi/v2/delete (the same separate-host bulk job lifecycle).
+# Billing: $89 / 50,000 prepaid credits = $0.00178 per credit; credits never expire.
+# Risky unknown and catch-all credits are automatically returned, except for accounts
+# flagged for misuse: https://help.millionverifier.com/payments-credits/refund-for-risky-emails
+# The response's `free` means a free email service, NOT an unbilled verification.
+pricing_url: https://www.millionverifier.com/
+endpoints:
+  - id: millionverifier.people.email.verify
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: GET
+    path: /api/v3/
+    name: "Verify an email address is deliverable"
+    summary: "Verify an email address in real time"
+    input:
+      queryParams:
+        email: {type: string, required: true, note: "email address to verify", example: "support@millionverifier.com"}
+        timeout: {type: integer, required: false, note: "recipient-server timeout in seconds; 2–60, default 20", example: 10}
+      note: "Returns result (ok | catch_all | invalid | unknown | disposable | unverified), quality, subresult, free and role flags. The API key is injected as the api query parameter. free indicates a free email service, not billing."
+    test_request:
+      queryParams: {email: "support@millionverifier.com"}
+    expect: {json_path: error, equals: ""}
+    cost:
+      type: per_success
+      value: 0.00178
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.millionverifier.com/
+      checked: '2026-09-08'
+      confidence: documented
+      note: "One credit per verification at the $89 / 50,000-credit pack rate, including invalid results. Credits never expire. Upstream deducts a credit first, then automatically returns it for unknown/catch-all results on eligible accounts; accounts flagged for misuse may still pay. On platform keys, treg settles unknown/catch-all at zero without waiting for the upstream return and absorbs any eligibility exception. Own keys are not metered by treg. Credit returns were observed on the promotional account; the account owner confirmed a $89 purchase of the base 50,000-credit pack. This rate excludes the initial free credits and variable promotional bonuses; it is the documented base-pack rate, not the effective cost after bonuses."
+    verified: '2026-09-08'
+    example_response: examples/millionverifier.people.email.verify.json
+    docs_url: https://developer.millionverifier.com/#tag/Single-API
+
+  - id: millionverifier.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /api/v3/credits
+    name: "Check credit balance"
+    summary: "Check the amount of available credits"
+    input:
+      note: "No parameters; the API key is injected as api. Returns credits, bulk_credits, renewing_credits and plan."
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Free account balance check; also the registry's connection probe"}
+    verified: '2026-09-08'
+    example_response: examples/millionverifier.account.usage.json
+    docs_url: https://developer.millionverifier.com/#tag/API-credits

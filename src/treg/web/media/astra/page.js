@@ -25,7 +25,7 @@
     } catch (_) { toast('Could not copy. Select the prompt and copy it manually.'); }
   }
   function capture(event, properties = {}) {
-    try { window.posthog?.capture(event, { campaign: 'astra', ...properties }); } catch (_) { /* Optional analytics. */ }
+    try { window.posthog?.capture(event, { campaign: 'gpt6', ...properties }); } catch (_) { /* Optional analytics. */ }
   }
 
   // Native dialogs provide focus containment, Escape and focus restoration.
@@ -42,7 +42,7 @@
     if (!video.getAttribute('src')) video.src = 'media/astra/launch.mp4';
     $('film-dialog').showModal();
     video.play().catch(() => { /* Native controls remain available if autoplay is blocked. */ });
-    capture('astra_film_play');
+    capture('gpt6_film_play');
   }));
   $('film-dialog').addEventListener('close', () => $('launch-film').pause());
   document.querySelectorAll('[data-setup]').forEach((link) => link.addEventListener('click', async (event) => {
@@ -52,16 +52,16 @@
     button.disabled = true;
     try {
       const response = await fetch('/auth/me', { credentials: 'same-origin' });
-      if (response.ok) { window.location.href = '/app?ref=astra'; return; }
+      if (response.ok) { window.location.href = '/app?ref=gpt6'; return; }
     } catch (_) { /* A connection failure must not hide the sign-in options. */ }
     finally { button.disabled = false; }
-    try { localStorage.setItem('treg-ref', 'astra'); } catch (_) { /* Storage is optional. */ }
+    try { localStorage.setItem('treg-ref', 'gpt6'); } catch (_) { /* Storage is optional. */ }
     $('account-dialog').showModal();
     ($('email-verify-form').hidden ? $('signin-email') : $('signin-code')).focus();
     syncDemo();
-    capture('astra_setup_click');
+    capture('gpt6_setup_click');
   }));
-  document.querySelectorAll('[data-plugin]').forEach((link) => link.addEventListener('click', () => capture('astra_plugin_cta_click')));
+  document.querySelectorAll('[data-plugin]').forEach((link) => link.addEventListener('click', () => capture('gpt6_plugin_cta_click')));
 
   // Same email OTP endpoints and session cookie as the other treg sign-in surfaces.
   async function postSignin(path, body) {
@@ -101,7 +101,7 @@
     $('signin-error').textContent = '';
     try {
       await postSignin('/auth/email/verify', { email: signinEmail, code: $('signin-code').value.trim() });
-      window.location.href = '/app?ref=astra';
+      window.location.href = '/app?ref=gpt6';
     } catch (error) { $('signin-error').textContent = error.message || 'Could not verify the code. Please try again.'; }
     finally { button.disabled = false; $('email-change').disabled = false; button.textContent = 'Sign in'; }
   });
@@ -273,3 +273,111 @@
   });
   $('copy-prompt').addEventListener('click', () => copy('Use treg to ' + uses[selectedUse].prompt.charAt(0).toLowerCase() + uses[selectedUse].prompt.slice(1)));
 })();
+
+  /* ---------- use-case cards: each loops its mini film while on screen ---------- */
+  (function () {
+    var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var arr = Array.from;
+    var PHONE_FROM = '+1 (•••) •••-••••', PHONE_TO = '+1 (415) 630-2214';
+    /* the person and company cards play the same beats: input line, one row, then the chips */
+    function lineRowChips(at, el) {
+      at(250, function () { el.q('.uc-in').classList.add('in'); });
+      at(850, function () { el.rows[0].classList.add('in'); });
+      el.chips.forEach(function (c, i) { at(1250 + i * 260, function () { c.classList.add('in'); }); });
+    }
+    var anims = {
+      email: function (at, el) {
+        var rows = el.rows, sts = el.sts;
+        rows.forEach(function (r, i) { at(200 + i * 160, function () { r.classList.add('in'); }); });
+        at(1000, function () { sts[0].textContent = 'miss · $0.00'; sts[0].className = 'st miss'; rows[0].classList.add('dim'); });
+        at(1550, function () { sts[1].textContent = '429 · $0.00'; sts[1].className = 'st miss'; rows[1].classList.add('dim'); });
+        at(2100, function () { sts[2].textContent = '✓ $0.024'; sts[2].className = 'st hit'; rows[2].classList.add('picked'); });
+        at(2500, function () { el.q('.uc-em').classList.add('in'); });
+      },
+      phone: function (at, el) {
+        at(250, function () { el.q('.uc-in').classList.add('in'); });
+        var mask = el.q('.uc-mask'), n = 0;
+        for (var i = 0; i < PHONE_TO.length; i++) if (PHONE_FROM[i] !== PHONE_TO[i]) {
+          n++;
+          (function (upto) {
+            at(750 + upto * 140, function () {
+              var out = '', seen = 0;
+              for (var k = 0; k < PHONE_TO.length; k++) {
+                if (PHONE_FROM[k] === PHONE_TO[k]) { out += PHONE_TO[k]; continue; }
+                seen++; out += seen <= upto ? PHONE_TO[k] : '•';
+              }
+              mask.textContent = out;
+            });
+          })(n);
+        }
+        at(2450, function () { el.chips[0].classList.add('in'); });
+        at(2700, function () { el.chips[1].classList.add('in'); });
+      },
+      person: lineRowChips,
+      company: lineRowChips,
+      lookalike: function (at, el) {
+        at(250, function () { el.rows[0].classList.add('in'); });
+        at(600, function () { el.rows[0].classList.add('picked'); });
+        el.rows.forEach(function (r, i) {
+          if (i === 0) return;
+          at(950 + (i - 1) * 300, function () { r.classList.add('in'); });
+        });
+      },
+      verify: function (at, el) {
+        el.rows.forEach(function (r, i) { at(200 + i * 140, function () { r.classList.add('in'); }); });
+        el.rows.forEach(function (r, i) {
+          at(1350 + i * 320, function () {
+            var st = el.sts[i];
+            if (i === 2) { st.textContent = '✕ bounced'; st.className = 'st miss'; r.classList.add('dim'); }
+            else { st.textContent = '✓'; st.className = 'st hit'; }
+          });
+        });
+        at(2900, function () { el.chips[0].classList.add('in'); });
+      },
+      role: function (at, el) {
+        at(250, function () { el.rows[0].classList.add('in'); });
+        el.rows.forEach(function (r, i) {
+          if (i === 0) return;
+          at(950 + (i - 1) * 280, function () { r.classList.add('in'); });
+        });
+        at(2100, function () { el.rows[2].classList.add('picked'); });
+      },
+      signals: function (at, el) {
+        el.rows.forEach(function (r, i) { at(400 + i * 560, function () { r.classList.add('in'); }); });
+        at(2500, function () { el.chips[0].classList.add('in'); });
+      }
+    };
+    document.querySelectorAll('.uc[data-uc]').forEach(function (card) {
+      var kind = card.getAttribute('data-uc'), fn = anims[kind];
+      if (!fn) return;
+      var el = {
+        q: function (sel) { return card.querySelector(sel); },
+        rows: arr(card.querySelectorAll('.uc-row')),
+        sts: arr(card.querySelectorAll('.st')),
+        chips: arr(card.querySelectorAll('.uc-chip'))
+      };
+      var orig = el.sts.map(function (st) { return { t: st.textContent, c: st.className }; });
+      function resetCard() {
+        el.rows.forEach(function (r) { r.classList.remove('in', 'dim', 'picked'); });
+        el.chips.forEach(function (c) { c.classList.remove('in'); });
+        ['.uc-em', '.uc-in'].forEach(function (sel) { var n = el.q(sel); if (n) n.classList.remove('in'); });
+        el.sts.forEach(function (st, i) { st.textContent = orig[i].t; st.className = orig[i].c; });
+        var mask = el.q('.uc-mask'); if (mask) mask.textContent = PHONE_FROM;
+      }
+      if (reduced) { fn(function (ms, f) { f(); }, el); return; }
+      var timers = [], running = false;
+      function cycle() {
+        timers = [];
+        resetCard();
+        fn(function (ms, f) { timers.push(setTimeout(f, ms)); }, el);
+        timers.push(setTimeout(cycle, 5600));
+      }
+      var io2 = new IntersectionObserver(function (es) {
+        es.forEach(function (e) {
+          if (e.isIntersecting && !running) { running = true; cycle(); }
+          else if (!e.isIntersecting && running) { running = false; timers.forEach(clearTimeout); timers = []; }
+        });
+      }, { threshold: 0.3 });
+      io2.observe(card);
+    });
+  })();

@@ -163,6 +163,16 @@ Rung 3 only applies where treg has both a key and a published price for that end
 unpriced is refused rather than served, and you are told to connect your own key. Your own key is
 never billed to the balance.
 
+## Review a catalog call
+
+`treg review <call_id> <useful|partly|not_useful|not_sure> [--reason "text"]` rates a catalog
+call after you have used the result. Phase 1 invites only direct catalog calls served on treg's
+own platform key; sampled calls print an invitation on stderr. Routed and own-key catalog calls
+can still be reviewed uninvited. `not_sure` is fine when you cannot tell. The optional reason is
+1-200 characters after trimming. Omit private data and raw payloads. Use `feedback` for anything confusing or wrong, then keep going
+with the task. The receipt contains `review_id` and `status` (`received` or `already_reviewed`).
+If the call record is not written yet, retry shortly with the same call ID.
+
 ## Feedback
 
 `treg feedback submit <quality|pricing|friction|other> "message"` submits a problem or suggestion to the
@@ -450,3 +460,15 @@ credential that stops working and webhooks the owner (if a `webhook_url` was set
 - `secret_file` — a JSON token file; pull `secret_field`
 - `oauth` — a JSON OAuth token; pull `secret_field` (auto-refreshed if refreshable)
 - `cli_auth` — material lifted from a CLI's keychain (placed like a string)
+
+## Anonymous usage analytics
+
+When using treg.to, the CLI sends basic usage through PostHog: command name, success/exit code,
+duration, CLI version and OS, linked to a random local installation ID. It does not send command
+arguments, credentials, request/response content, email or team identifiers. Help and argument
+parsing errors are not tracked. Analytics adds at most 1 second of waiting at command exit;
+slow or offline delivery may be dropped.
+
+Disable it with `export TREG_TELEMETRY=0` (or `DO_NOT_TRACK=1`). Self-hosted registries default to
+no analytics; set `TREG_CLI_POSTHOG_KEY` and optionally `TREG_CLI_POSTHOG_HOST` to use your own
+PostHog project. The random ID is stored in `analytics-id` beside the CLI config file.

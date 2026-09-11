@@ -26,7 +26,9 @@ class Contract:
     default_max_cost_usd: float | None = None  # the per-call ceiling when the caller sends none
     # One sentence the router attaches as `_treg.advice` to a HIT whose `output.verified` is not
     # true — a found contact the provider did not confirm deliverable, which an agent should verify
-    # before outreach. Empty = no advice (a search result is not something you "verify"). A
+    # before outreach. Empty = no advice. A search contract has no `verified` output, so advice
+    # set there attaches to EVERY hit — deliberate for `people.search`, whose rows carry emails
+    # nobody vouched for (2026-09-08: 73 of 79 bounces were unverified directory rows). A
     # suggestion only: treg never chains the verify call itself, which would double every hit's
     # price and change what the find bills for.
     advice_unverified: str = ""
@@ -47,6 +49,7 @@ class Adapter:
     in_expr: dict[str, str] = field(default_factory=dict) # provider param ← expression over the request (filters)
     body_array: bool = False                   # the provider wants `[body]` (DataForSEO's task list)
     test_identity: dict[str, Any] = field(default_factory=dict)  # what the endpoint's test_request stands for, when `in` cannot read it back
+    cost_units: str = ""                      # optional upper-bound chargeable units for a routed request
     verified: bool = False
     verify_note: str = ""
     _filter_keys: tuple[str, ...] = ()        # contract filter names, set at load (always sent)
@@ -127,6 +130,7 @@ def parse_adapters(doc: dict) -> dict[str, Adapter]:
             endpoint_id=eid, accepts=_variants(a.get("accepts")), in_map=dict(a.get("in") or {}),
             in_expr=dict(a.get("in_expr") or {}), body_array=bool(a.get("body_array")),
             test_identity=dict(a.get("test_identity") or {}),
+            cost_units=str(a.get("cost_units") or ""),
             const=dict(a.get("const") or {}), out_map=dict(a.get("out") or {}), miss=str(a.get("miss") or ""))
     return out
 

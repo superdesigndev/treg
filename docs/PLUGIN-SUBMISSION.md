@@ -66,7 +66,7 @@ whatever balance it can reach, and the token goes into a form.
 Upload the bundle at `plugin/`. Regenerate first so the skill matches what is served:
 
 ```bash
-python3 scripts/build_plugin.py --check     # must print OK
+uv run python scripts/build_plugin.py --check     # must print OK
 ```
 
 OpenAI scans the bundle for policy compliance, secrets, unnecessary access and conflicting

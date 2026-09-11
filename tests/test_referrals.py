@@ -25,7 +25,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 
 from treg.application import billing
 from treg.domain import money as ledger
@@ -65,7 +65,7 @@ def _ref_cookie(code: str) -> dict:
 
 async def _signup(c: AsyncClient, email: str, *, ref: str = "") -> tuple[int, str]:
     """Register a user (and their first team), optionally carrying a referral cookie."""
-    r = await c.post("/users", json={"email": email}, headers=_ref_cookie(ref) if ref else None)
+    r = await verified_signup(c, json={"email": email}, headers=_ref_cookie(ref) if ref else None)
     assert r.status_code == 200, r.text
     return r.json()["org_id"], r.json()["token"]
 

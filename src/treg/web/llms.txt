@@ -1,7 +1,7 @@
 # treg — the tool catalog for your agent
 
 > **OpenRouter, but for agent tools instead of models.** Point an agent at ONE base URL with ONE
-> token and it can do the *job*: 2,600+ catalogued endpoints across 60+ providers (SEO and SERP
+> token and it can do the *job*: {ENDPOINTS} catalogued endpoints across {PROVIDERS} providers (SEO and SERP
 > data, backlinks, social and trends, people and company enrichment, ads, scraping) — plus your
 > own team's keys, skills and CLIs. Every credential is injected **server-side**; nothing
 > sensitive lands on the agent's machine, and every call is audited.
@@ -26,7 +26,7 @@ Two kinds of tool answer to the same token, through the same `/call/`:
 
 - **The catalog** — curated external endpoints, callable by id. If nobody on your team holds a key
   for that provider, treg serves eligible endpoints **on its own key**, metered per call against
-  the team's prepaid balance (**$1.00 free** on every new team). No provider signup, no
+  the team's prepaid balance (**$1.00 free** once per new verified account, on an eligible team). No provider signup, no
   subscription.
 - **Your own tools** — anything a teammate registered: an internal service, a paid API account, an
   OAuth connection, a vendor CLI, a SKILL.md. Callable by the whole team, with the credential held
@@ -39,6 +39,11 @@ Multi-tenant: a token = a (user, org) membership; resources are org-scoped.
 
 Base URL: {BASE}
 Repo: https://github.com/superdesigndev/treg
+
+Review: if a call result invites a review, rate that one call after using it with
+`treg review CALL_ID USEFULNESS [--reason "..."]` or MCP `review(call_id, usefulness, reason?)`.
+Use `useful`, `partly`, `not_useful`, or `not_sure`; one review per invitation; omit private data;
+use feedback for anything confusing or wrong, then continue.
 
 Feedback: `treg feedback submit <quality|pricing|friction|other> "message"`, or the MCP `feedback` tool.
 Include call IDs when available and omit private information. Instructions: `{BASE}/feedback.md`.
@@ -138,7 +143,7 @@ ledger.
 
 ## The catalog — tools you do not have a key for
 
-Curated endpoints across 60+ providers, grouped by what they DO: keyword and rank tracking,
+{ENDPOINTS} curated endpoints across {PROVIDERS} providers, grouped by what they DO: keyword and rank tracking,
 backlinks and authority, AI visibility, trending and discovery, publishing to socials, people and
 company enrichment, ads management and creative, measurement, video and image generation. Ask for the task; the catalog tells
 you which endpoints serve it, what each costs, and how you would be served. Exact live counts:
@@ -162,7 +167,7 @@ free of the balance rather than duplicating them.
 1. the org registered its own tool for that provider → that tool, that key;
 2. the org stored a secret for the provider → injected via a virtual tool;
 3. neither → **treg's own key**, billed per call to the team's prepaid balance. Fractions of a
-   cent (a TikTok profile is ~$0.001); every new team starts with **$1.00 free**. No provider
+   cent (a TikTok profile is ~$0.001); new verified accounts receive **$1.00 free once**, when creating an eligible team. No provider
    signup, no subscription.
 
 A few flat-fee providers carry a rate **treg set** rather than one the vendor published (the vendor
@@ -204,8 +209,10 @@ treg does **not** choose or fail over **between providers** for you, by design: 
 inputs you hold, and treg relays your request rather than rewriting it. One thing it may do, and
 tells you when it does: if treg's OWN account for the provider is out, it can serve the **same
 endpoint** through a treg-owned relay account — same request, same response shape, the relay's
-real price — with `X-Treg-Served-Via: overflow:<name>` on the response (a team can opt out with
-`treg org overflow off`). Your own keys are never relayed.
+real price — with `X-Treg-Served-Via: overflow:<name>` on the response, or `served_via` plus a hint
+on the MCP `call` result (a team can opt out with `treg org overflow off`). `catalog_get` shows that
+relay price up front as `overflow_price_usd` when the deployment can relay the endpoint: a "free"
+endpoint with one may bill exactly that, so quote it. Your own keys are never relayed.
 
 <!--routed-->
 **Routed endpoints — when you WANT treg to choose.** `treg.<capability>` rows (today:
@@ -224,6 +231,12 @@ A found contact is not a confirmed one: an email or phone find is the provider's
 only `output.verified: true` means it checked the mailbox. Otherwise the answer carries
 `_treg.advice` naming the verify step (`treg.people.email.verify`, a fraction of a cent) — run it
 before outreach, and never re-send the same find: every hit bills, repeats included.
+Verify before you send, every address, every time — including rows from a company or domain
+search (`treg.people.search`, `hunter.companies.emails`): those are directory listings, and a
+row's email is unconfirmed unless that row's own verification field says so. `invalid` is dead,
+`accept_all` is risky. Never send to an address the provider did not return: an empty domain
+search means `info@` is a guess, not a result. (Live 2026-09-08: 73 of one team's 79 bounces were
+unverified rows and guesses that one $0.006 verify call each would have caught.)
 Call a specific provider's endpoint when you need a particular one.
 
 <!--/routed-->
@@ -400,6 +413,7 @@ A small tool set, the same for every client:
     my_tools         what your team registered that you can call without the key
     catalog_request  request a missing capability
     feedback         share a problem or suggestion (omit private information)
+    review           rate a catalog call after using its result
 
 All need a credential, and the challenge comes EARLY: every id-bearing JSON-RPC request,
 `initialize` included, is answered with **401** and a `WWW-Authenticate` header naming
@@ -579,9 +593,9 @@ skills` restrict it (`--dir` sets the location).
 8. **Report the outcome as a doorway, not an install log.** Nobody signed up to read which
    Python version uv picked. Open with ONE line about what they just gained, e.g.:
 
-       treg is live — your agent can now call 2,800+ tools across 60 providers (market data, SEO &
+       treg is live — your agent can now call {ENDPOINTS} tools across {PROVIDERS} providers (market data, SEO &
        keywords, social & trends, people/company enrichment, ads, scraping), with $1.00
-       of free credit to spend.
+       of free credit once per new verified account, on an eligible team.
 
    Then **propose exactly 3 things you could do for them right now** and offer to run one.
    Look at the repo and the conversation first: at least one proposal should be tailored to

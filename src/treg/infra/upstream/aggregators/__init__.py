@@ -30,7 +30,8 @@ class AggregatorRequest:
 AGGREGATOR_SIDE = ("aggregator_auth", "aggregator_balance", "malformed")
 """The `failure` kinds that blame the aggregator (our key, its account, its host or envelope), never
 the route or the vendor: the call path marks the aggregator unhealthy on them, the verifier leaves
-the route as it is. `contract` is this route's fault; `pending` is nobody's yet."""
+the route as it is. `contract` is request-scoped (this route, this request) and never marks the
+aggregator; `pending` is nobody's yet."""
 
 VENDOR_DRY = "vendor_dry"
 """The aggregator relayed the vendor's own out-of-credit / quota answer (a 402, Apollo's 422, a
@@ -56,12 +57,13 @@ def with_vendor_verdict(res: "AggregatorResult", provider: str) -> "AggregatorRe
 class AggregatorResult:
     """`failure` is None when the aggregator relayed the vendor's answer (whatever its status).
     Otherwise it names who to blame, which is what decides the next rung:
-      aggregator_auth    — our key was rejected → mark the aggregator unhealthy
-      aggregator_balance — the aggregator's own account is empty → unhealthy
-      contract           — the aggregator's stricter input schema refused the request → this
-                           route is wrong for this call; no vendor call happened
-      pending            — async run not finished; poll `poll_url`
-      malformed          — not the envelope we know
+      aggregator_auth    - our key was rejected → mark the aggregator unhealthy
+      aggregator_balance - the aggregator's own account is empty → unhealthy
+      contract           - the aggregator's own per-request refusal (its stricter input schema,
+                           a validation 4xx with no vendor data) → this route is wrong for this
+                           call; no vendor call happened, nothing is charged, nothing is struck
+      pending            - async run not finished; poll `poll_url`
+      malformed          - not an envelope at all: non-JSON, a 5xx, a transport error
     `cost_micro` is the aggregator's in-band charge for this call (0 on a miss), the number the
     caller pays. None when the envelope carried no price."""
     upstream_status: int | None

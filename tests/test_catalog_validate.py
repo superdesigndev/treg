@@ -493,3 +493,113 @@ def test_async_descriptor_rejects_a_retired_or_broken_poll_target():
     validator.check_async_descriptor(_valid_async(), "demo.yaml:submit", "demo", index,
                                      {"type": "per_success"}, errors)
     assert any("marked 'retired'" in e for e in errors)
+
+
+@pytest.mark.parametrize('rule', [
+    {'path': 'billing.charge', 'unit': 'usd'},
+    {'path': 'billing.charge', 'unit': 'credits'},
+    {'path': '', 'unit': 'usd'},
+    {'path': 'billing.charge', 'unit': 'usd', 'scale': 2},
+])
+def test_reported_charge_requires_supported_units_and_path(rule):
+    cost = dict(catalog_store.load().by_id['trykitt.people.email.find']['cost'])
+    cost['reported_charge'] = rule
+    errors = []
+    validator.check_cost(cost, 'test', errors, [])
+    assert bool(errors) is (rule != {'path': 'billing.charge', 'unit': 'usd'})
+
+
+@pytest.mark.parametrize('rule,valid', [
+    ({'body.realtime': True}, True),
+    ({'body.realtime': 1}, False),
+    ({'body.realtime': False}, False),
+    ({'body.missing': True}, False),
+    ({'queryParams.realtime': True}, False),
+    ({}, False),
+])
+def test_platform_request_requires_declared_fixed_body_value(rule, valid):
+    errors = []
+    validator.check_platform_request(rule, {'body': {
+        'realtime': {'type': 'boolean', 'enum': [True]},
+    }}, 'test', errors)
+    assert (not errors) is valid
+
+
+# ---- ContactOut ----
+
+def _contactout_cost(eid):
+    return catalog_store.load().cost_view(
+        catalog_store.load().by_id["contactout." + eid]["cost"], "contactout"
+    )
+
+
+def test_contactout_catalog_prices_validate_and_surface_is_bounded():
+    from scripts.catalog_validate import check_cost
+
+    cat = catalog_store.load()
+    entries = [e for e in cat.endpoints if e.get("provider") == "contactout"]
+    assert len(entries) == 20
+    assert not any("batch" in e["path"] for e in entries)
+    errors = []
+    for e in entries:
+        check_cost(e["cost"], e["id"], errors, [], e["input"])
+    assert errors == []
+    broken = _contactout_cost("people.contact.work") | {
+        "contactout": {"job": "contact", "rates_micro": {"phone": -1}}
+    }
+    check_cost(broken, "test", errors, [])
+    assert errors
+
+
+def test_contactout_free_checkers_are_not_advertised_as_contact_finders():
+    cat = catalog_store.load()
+    for eid in ("people.work_email.available", "people.personal_email.available", "people.phone.available"):
+        assert cat.by_id["contactout." + eid]["capability"].endswith(".availability")
+    assert cat.by_id["contactout.people.count"]["capability"] == "people.count"
+
+
+def test_contactout_catalog_distribution_preserves_ids_and_global_discovery():
+    from collections import Counter
+    cat = catalog_store.load()
+    entries = [e for e in cat.endpoints if e.get("provider") == "contactout"]
+    assert Counter(e["platform"] for e in entries) == {
+        "linkedin": 8, "people": 10, "companies": 2}
+    for e in entries:
+        assert e["capability"].split(".")[0] == e["platform"]
+    assert cat.by_id["contactout.people.contact.work"]["platform"] == "linkedin"
+    results, _ = catalog_store.search("contactout linkedin work email", cat, limit=100)
+    assert any(e["id"] == "contactout.people.contact.work" for e, _ in results)
+
+
+def test_contactout_person_routes_cannot_recapture_pii():
+    from pathlib import Path
+    import yaml
+    path = Path("src/treg/catalog/contactout.yaml")
+    endpoints = yaml.safe_load(path.read_text())["endpoints"]
+    safe = {"contactout.people.count", "contactout.people.email.verify",
+            "contactout.companies.search", "contactout.companies.enrich"}
+    for ep in endpoints:
+        if ep["id"] in safe:
+            continue
+        assert ep["untestable"]
+        assert not any(key in ep for key in ("test_request", "verified", "example_response"))
+        assert not (path.parent / "examples" / (ep["id"] + ".json")).exists()
+    work = next(ep for ep in endpoints if ep["id"] == "contactout.people.enrich.work_email")
+    assert work["cost"]["value"] == 0.17
+
+
+@pytest.mark.parametrize('display,valid', [
+    ({'unit':'records','grouped':True,'round_up':True}, True),
+    ({'unit':'item','variable':True}, True),
+    ({'unit':'records','round_up':True}, False),
+    ({'unit':'item','variable':'yes'}, False),
+    ({'unit':''}, False),
+    ({'unit':'item','provider':'sumble'}, False),
+])
+def test_generic_price_display_metadata(display, valid):
+    cost = {'type':'per_result','value':1,'currency':'USD','per':25,'unit':'record',
+            'source':'docs','source_url':'https://example.com','checked':'2026-09-09',
+            'confidence':'documented','display':display}
+    errors = []
+    validator.check_cost(cost, 'test', errors, [])
+    assert (not errors) == valid

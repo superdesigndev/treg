@@ -3,7 +3,7 @@
 ![treg — the tool catalog for your agent](docs/assets/treg-hero.png)
 
 **OpenRouter, but for agent tools instead of models.** Point an agent at one base URL with one token
-and it can do the job: **2,896 catalogued endpoints across 60 providers** — SEO and backlinks,
+and it can do the job: **3,000+ catalogued endpoints across 60+ providers** — SEO and backlinks,
 social and trends, people and company enrichment, ads, scraping — **priced per call, from a cent**,
 with no provider signup. Plus your own team's keys, skills and CLIs, callable by every teammate's
 agent without the credential ever leaving the server.
@@ -23,7 +23,7 @@ bills fractions of a cent per call.
 ## Two kinds of tool, one token
 
 - **The catalog** — external endpoints treg can serve **on its own key**, metered against your
-  team's prepaid balance (**$1.00 free** on every new team). No account with the provider needed.
+  team's prepaid balance (**$1.00 free** once per new verified account, on an eligible team). No account with the provider needed.
 - **Your own tools** — anything a teammate registered: a paid API account, an OAuth connection, a
   vendor CLI, a `SKILL.md`. **Your own key always wins over treg's, and those calls are never
   metered.**
@@ -127,6 +127,11 @@ treg topup            # add funds, or set up automatic top-ups
 Out of balance is an HTTP **402** carrying `balance_micro`, `estimated_cost_micro` and a `topup_url`,
 so an agent can act on it without reading prose.
 
+**Enrich Arena** lives at `/enrich-arena`, outside the dashboard. Compare enrichment answers with each vendor’s cost and speed,
+vote for the best answer in one click, or watch a sequential waterfall. Browsing is
+public; submitting requires login, and billable attempts use your team's credits. See the
+[Arena guide](docs/context/interface/enrich-arena.md).
+
 ## Share & use your own tools
 
 The zero-thought path — point treg at a project and it figures out what's shareable:
@@ -221,6 +226,10 @@ treg oauth connect gsc --client-secret client_secret.json \
 
 Full options for every command: [`USAGE.md`](USAGE.md).
 
+The CLI sends anonymous command usage to PostHog when using treg.to (no arguments or credentials).
+Disable with `TREG_TELEMETRY=0` or `DO_NOT_TRACK=1`.
+See [analytics details](USAGE.md#anonymous-usage-analytics).
+
 ## Teams
 
 Everything is scoped to an **org**: a token = a `(user, org)` membership, and every secret, tool,
@@ -238,6 +247,8 @@ treg org access <member> --tools a,b          # per-member tool access (admin+)
 
 - **Feedback:** `treg feedback submit friction "The pagination example is unclear."`
   Share problems or suggestions without private information. See [feedback instructions](https://treg.to/feedback.md).
+- **Review:** `treg review CALL_ID useful`
+  Rate an invited catalog call after using its result; `not_sure` is fine. Omit private data and continue the task.
 
 - [`USAGE.md`](USAGE.md) — the full `treg` CLI reference.
 - [`/llms.txt`](https://treg.to/llms.txt) — the agent-onboarding file: call
@@ -304,6 +315,7 @@ Environment variables (prefix `TREG_`, read from `.env`):
 | `TREG_BLOCKED_EMAIL_DOMAINS`              | *(empty)*                       | comma-separated email domains refused at every sign-up/sign-in door and at team creation (subdomains included, case-insensitive). Empty blocks nothing — no list ships in the code |
 | `TREG_ADMIN_TOKEN`                        | *(empty)*                       | cross-tenant **super-admin** bearer; authorizes every `/admin/*` endpoint. Empty disables the env path (only `is_superadmin` users reach `/admin`). Keep it long + secret. |
 | `TREG_EMAIL_DEV_MODE`                     | `false`                         | when true, `/auth/email/start` returns the OTP in its response (no mail sender needed) — **dev/local only**, never in prod.                                                |
+| `TREG_KV_URL`                             | *(empty)*                       | shared key-value store (Redis protocol) for counters every worker must agree on, today the per-team review-invitation budget. Empty = an in-process fallback, fine for one worker |
 
 
 No `.env` is needed for local dev — every setting has a working default (ephemeral key, sqlite).

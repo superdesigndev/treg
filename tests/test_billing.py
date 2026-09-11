@@ -25,7 +25,7 @@ import stripe
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 
 from treg import adsconv
 from treg.application import billing
@@ -58,7 +58,7 @@ async def c(monkeypatch):
 
 
 async def _org(c: AsyncClient, email: str = "billing@superdesign.dev") -> tuple[int, str]:
-    r = await c.post("/users", json={"email": email})
+    r = await verified_signup(c, json={"email": email})
     assert r.status_code == 200, r.text
     return r.json()["org_id"], r.json()["token"]
 
@@ -1161,3 +1161,53 @@ async def test_a_topup_checkout_arms_a_consented_policy_that_was_waiting_for_a_c
     await c.post("/billing/autotopup", json={"enabled": False, "consent": False}, headers=_h(owner))
     await _deliver(c, session_event)
     assert (await c.get("/billing", headers=_h(owner))).json()["autotopup"]["enabled"] is False
+
+
+@pytest.mark.parametrize("first", ["checkout", "payment_intent"])
+async def test_arena_checkout_attribution_survives_either_webhook_and_is_durable(c, monkeypatch, first):
+    from treg import analytics
+    from treg.models import LedgerEntry
+    org_id, owner = await _org(c)
+    sdk_calls, events = [], []
+    async def sdk(fn, /, **kw):
+        sdk_calls.append((str(fn), kw))
+        if "Customer" in str(fn):
+            return {"id": "cus_tracking"}
+        if "Session" in str(fn):
+            return {"id": "cs_tracking", "url": "https://checkout.stripe.com/test"}
+        return {}
+    monkeypatch.setattr(billing, "_sdk", sdk)
+    monkeypatch.setattr(analytics, "capture", lambda *a, **k: events.append((a, k)))
+    c.cookies.set("treg_entry_surface", "site")
+    response = await c.post("/billing/topup", json={"amount_usd": 10, "checkout_source": "arena"}, headers=_h(owner))
+    assert response.status_code == 200, response.text
+    kw = next(kw for fn, kw in sdk_calls if "Session" in fn)
+    for metadata in (kw["metadata"], kw["payment_intent_data"]["metadata"]):
+        assert metadata["entry_surface"] == "site"
+        assert metadata["checkout_source"] == "arena"
+    pi = _pi_event(org_id, pi="pi_tracking", cents=1000, metadata=kw["payment_intent_data"]["metadata"])
+    checkout = {"id": "evt_tracking", "type": "checkout.session.completed", "data": {"object": {
+        "mode": "payment", "payment_status": "paid", "payment_intent": "pi_tracking", "amount_total": 1000,
+        "metadata": kw["metadata"],
+    }}}
+    pair = [checkout, pi] if first == "checkout" else [pi, checkout]
+    for event in pair + pair:
+        assert (await _deliver(c, event)).status_code == 200
+    started = [a for a, k in events if a[1] == "topup_started"]
+    completed = [(a, k) for a, k in events if a[1] == "topup_completed"]
+    assert len(started) == len(completed) == 1
+    for props in (started[0][2], completed[0][0][2]):
+        assert props["entry_surface"] == "site" and props["checkout_source"] == "arena"
+    assert completed[0][1]["groups"]["team"] == completed[0][0][2]["org"]
+    async with session_maker() as db:
+        entries = (await db.execute(select(LedgerEntry).where(LedgerEntry.org_id == org_id, LedgerEntry.kind == "topup"))).scalars().all()
+        assert len(entries) == 1
+        assert entries[0].meta["entry_surface"] == "site"
+        assert entries[0].meta["checkout_source"] == "arena"
+
+
+def test_funnel_attribution_never_accepts_arbitrary_urls_or_payloads():
+    from treg.analytics import funnel_surface
+    for value in [None, {}, [], "https://example.test/?email=secret", "person@example.test", "arena\nsecret"]:
+        assert funnel_surface(value) == "unknown"
+    assert funnel_surface("arena") == "arena"

@@ -6,7 +6,43 @@ Each test mocks the upstream API response and verifies that the collector return
 
 from __future__ import annotations
 
+from datetime import timedelta
+from treg.domain.capacity import policy, sweep
+from treg.timeutil import utcnow_naive
 from treg.domain.capacity import collectors
+import httpx
+import pytest
+
+
+@pytest.mark.parametrize("balance", [0, 465])
+async def test_millionverifier_balance_uses_query_key_without_double_counting(monkeypatch, balance):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_MILLIONVERIFIER", "private-test-key")
+    collectors.get_settings.cache_clear()
+    def reply(request):
+        assert request.url.path == "/api/v3/credits"
+        assert request.url.params["api"] == "private-test-key"
+        return httpx.Response(200, json={"credits": balance, "bulk_credits": balance})
+    try:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as client:
+            row = await collectors.provider_balance("millionverifier", client)
+        assert row == {"provider": "millionverifier", "value": balance, "unit": "credits", "note": ""}
+    finally:
+        collectors.get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("status,body", [(200, {"error": "apikey_not_found"}), (401, {}), (200, {})])
+async def test_millionverifier_balance_errors_do_not_expose_key(monkeypatch, status, body):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_MILLIONVERIFIER", "private-test-key")
+    collectors.get_settings.cache_clear()
+    try:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+                lambda request: httpx.Response(status, json=body))) as client:
+            row = await collectors.provider_balance("millionverifier", client)
+        assert row["value"] is None
+        assert row["note"]
+        assert "private-test-key" not in str(row)
+    finally:
+        collectors.get_settings.cache_clear()
 
 
 class MockResponse:
@@ -144,3 +180,80 @@ def test_implemented_collectors_are_registered_and_do_not_overlap_absent_list():
         assert provider not in collectors.NO_BALANCE_API
     overlap = set(collectors.BALANCE_ROUTES.keys()) & set(collectors.NO_BALANCE_API.keys())
     assert not overlap, f"Providers in both maps: {overlap}"
+
+
+@pytest.mark.parametrize('remaining,expected', [(300, 300), (0, 0), (None, None), (-1, None), ('unlimited', None), (True, None)])
+async def test_quickenrich_subscription_allowance_from_free_discovery(remaining, expected):
+    def reply(request):
+        import json
+        assert request.method == 'POST' and request.url.path == '/api/employees/contact-finder'
+        assert request.headers['authorization'] == 'Bearer private-test-key'
+        assert json.loads(request.content)['per_page'] == 1
+        return httpx.Response(200, json={'success': True, 'data': [], 'meta': {'credits_used': 0, 'remaining_credits': remaining}})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as client:
+        row = await collectors._quickenrich(client, 'private-test-key')
+    assert row['value'] == expected
+    assert 'private-test-key' not in str(row)
+
+
+@pytest.mark.parametrize('balance',[0,9.992])
+async def test_trykitt_balance_is_usd(monkeypatch,kitt_on,balance):
+    def reply(request):
+        assert request.headers['x-api-key']=='TEST-KITT-KEY'
+        assert request.url.path=='/credit'
+        return httpx.Response(200,json={'credits':balance})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as client:
+        row=await collectors.provider_balance('trykitt',client)
+    assert row['value']==balance and row['unit']=='USD'
+
+
+# ---- ContactOut ----
+
+async def test_contactout_pool_stats_are_informational_even_when_empty(contactout_platform):
+    for extra in ({}, {"remaining": -5, "phone_remaining": 0, "search_remaining": 20}):
+        usage = {
+            "count": 10,
+            "quota": 0,
+            "phone_count": 20,
+            "phone_quota": 0,
+            "search_count": 30,
+            "search_quota": 20,
+        } | extra
+        async with httpx.AsyncClient(
+            transport=httpx.MockTransport(
+                lambda r: httpx.Response(200, json={"status_code": 200, "usage": usage})
+            )
+        ) as c:
+            row = await collectors.provider_balance("contactout", c)
+        snap = sweep.snapshot_from("contactout", row)
+        assert not snap.error and snap.remaining is None
+        assert "email: used=10, quota=0" in snap.note
+        state = policy.latest_state(
+            policy.default_policy("contactout", has_key=True), snap
+        )
+        assert state.confidence == "informational" and state.exhausted_until is None
+        old = policy.latest_state(
+            policy.default_policy("contactout", has_key=True),
+            snap,
+            now=utcnow_naive() + timedelta(hours=7),
+        )
+        assert old.health == "stale" and old.exhausted_until is None
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"status_code": 401},
+        {"status_code": 200, "usage": {}},
+        {"status_code": 200, "usage": {"count": True, "quota": 1}},
+    ],
+)
+async def test_contactout_bad_stats_are_not_valid_observations(contactout_platform, payload):
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda r: httpx.Response(200, json=payload))
+    ) as c:
+        row = await collectors.provider_balance("contactout", c)
+    assert row["value"] is None and not row.get("informational")
+    assert "PLATFORM-TEST" not in str(row)
+    assert sweep.snapshot_from("contactout", row).error

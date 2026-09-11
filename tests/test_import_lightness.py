@@ -23,6 +23,7 @@ _LIGHTWEIGHT_MODULES = (
     "treg.domain.asynctasks",
 )
 _SERVER_DEPENDENCY_ROOTS = (
+    "obstore",
     "aiosqlite",
     "alembic",
     "asyncpg",

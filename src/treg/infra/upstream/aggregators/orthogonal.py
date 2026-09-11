@@ -5,7 +5,9 @@ must be strings — Orthogonal rejects numbers), the vendor's body comes back ve
 and `priceCents` / `billing.chargedPriceCents` is the real charge (a vendor miss is still billed).
 An upstream error is relayed as `success: false` with the vendor's status in `error` and its body
 in `data`; Orthogonal's OWN refusals ride `_orthogonal.error` (`orthogonal_endpoint_contract` =
-its stricter schema said no, no vendor call, no charge).
+its stricter schema said no, no vendor call, no charge). A bare 4xx from Orthogonal with no vendor
+data (its request validation) is the same request-scoped `contract` verdict; only a non-JSON body,
+a 5xx or an envelope with neither `success` nor `data` is `malformed`.
 """
 
 from __future__ import annotations
@@ -69,9 +71,23 @@ def parse(status: int, body: bytes | dict) -> AggregatorResult:
     if own.get("error") == "orthogonal_endpoint_contract" and data is None:
         return AggregatorResult(None, b"", 0, "contract", str(own.get("message", ""))[:160])
     if upstream_status is None:
-        # No vendor body and no vendor status: Orthogonal itself refused. 402 = ITS balance.
-        kind = "aggregator_balance" if status == 402 else "aggregator_auth" if status in (401, 403) else "malformed"
-        return AggregatorResult(None, b"", 0 if kind != "malformed" else cost, kind, err[:120])
+        # No vendor body and no vendor status: Orthogonal itself refused. 402 = ITS balance;
+        # 401/403 = OUR key. Any other 4xx is Orthogonal's own per-request answer (a validation
+        # 400, a 422 on the envelope, a 404 for a slug it no longer lists): request-scoped, no
+        # vendor call, no charge - `contract`, never a strike on the whole aggregator. Found
+        # 2026-09-08: one such 400 read as `malformed` took overflow:orthogonal offline for every
+        # org for 15 minutes. `malformed` is reserved for what is NOT an envelope at all: a
+        # non-JSON body, a 5xx, a 2xx that carries neither success nor data.
+        if status == 402:
+            kind = "aggregator_balance"
+        elif status in (401, 403):
+            kind = "aggregator_auth"
+        elif 400 <= status < 500:
+            kind = "contract"
+        else:
+            kind = "malformed"
+        detail = (str(own.get("message") or "")[:160] if own else "") or err[:160]
+        return AggregatorResult(None, b"", 0 if kind != "malformed" else cost, kind, detail)
     # The vendor answered (an error, but ITS error): relay it as data. An upstream 402 through the
     # aggregator means the AGGREGATOR's vendor account is empty — the caller decides that (E).
     return AggregatorResult(upstream_status, _dump(data) if data is not None else b"", cost or 0, None,

@@ -123,8 +123,8 @@ Public TikTok profile by username (uniqueId) or secUid
 ## Step 3 - Call it, with no key anywhere
 
 No account with TikHub, no signup, no key on the machine. treg holds the credential, injects it
-server-side, and bills the call to the team's prepaid balance. Every new team starts with
-**$1.00 free**, which is hundreds of calls at this price.
+server-side, and bills the call to the team's prepaid balance. New verified accounts receive
+**$1.00 free once**, when creating an eligible team, which covers hundreds of calls at this price.
 
 ```bash
 treg call tikhub.tiktok.user.profile --query uniqueId=tiktok

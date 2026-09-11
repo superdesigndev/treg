@@ -15,6 +15,7 @@
      cannot reach used to leave the whole signed-in dashboard blank (issue #137). Version lives in
      the filename — bump it here and in src/treg/web/vendor/ together. -->
 <script src="/vendor/vue-3.5.41.global.prod.js"></script>
+<script src="/agent-setup.js"></script>
 <script>
 // Fail loudly. `[v-cloak]{display:none}` hides the un-compiled template until Vue mounts, so
 // anything that stops Vue mounting turns the dashboard into a silent blank page with nothing in
@@ -1157,12 +1158,14 @@ a:hover{text-decoration-color:var(--muted)}
         </div>
 
 
+
       </div>
       <nav class="rd-navs" aria-label="Primary navigation"><button v-if="authed" class="rd-nav" :class="{active:view==='start'}" :aria-current="(view==='start')?'page':null" @click="go('start')"><img src="/media/redesign/nav-getting-started.svg" alt="">Getting started</button>
 <button v-if="canRegister" class="rd-nav" :class="{active:view==='connections'}" :aria-current="(view==='connections')?'page':null" @click="go('connections')"><img src="/media/redesign/nav-catalog.svg" alt="">Catalog</button>
 <button v-if="authed" class="rd-nav" :class="{active:view==='tools'||view==='secrets'}" :aria-current="(view==='tools'||view==='secrets')?'page':null" @click="go('tools')"><img src="/media/redesign/nav-vault.svg" alt="">Your own tools</button>
 <button v-if="authed" class="rd-nav" :class="{active:view==='activity'}" :aria-current="(view==='activity')?'page':null" @click="go('activity')"><img src="/media/redesign/nav-activity.svg" alt="">Activity</button>
-<button v-if="authed" class="rd-nav" :class="{active:view==='orgs'}" :aria-current="(view==='orgs')?'page':null" @click="go('orgs')"><img src="/media/redesign/nav-team.svg" alt="">Team</button></nav>
+<button v-if="authed" class="rd-nav" :class="{active:view==='orgs'}" :aria-current="(view==='orgs')?'page':null" @click="go('orgs')"><img src="/media/redesign/nav-team.svg" alt="">Team</button>
+<a v-if="authed" class="rd-nav" href="/enrich-arena" target="_blank" rel="noopener" aria-label="Arena (opens in a new tab)" style="text-decoration:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 17.5 3 3L21 17l-3-3M3 3l1.5 5.5L17 21l4-4L8.5 4.5ZM13 19l6-6M16 5l4-2-1 5-4 4M3 21l6-6M3 17l4 4"/></svg>Arena<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-left:auto"><path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg></a></nav>
       <div class="rd-account">
         <div class="rd-social"><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener" aria-label="GitHub"><img src="/media/redesign/social-github.svg" alt=""></a><a href="https://discord.gg/6mQYYfFMAn" target="_blank" rel="noopener" aria-label="Discord"><img src="/media/redesign/social-discord.svg" alt=""></a></div>
         <button v-if="billing" class="rd-balance" @click="orgTab='billing'; go('orgs')"><span>Balance</span><b>{{money(billing.balance_micro)}}</b></button>
@@ -1570,7 +1573,7 @@ a:hover{text-decoration-color:var(--muted)}
                         <span v-if="r.pillsMore" class="pchip more" :title="r.pillsMoreTitle">+{{r.pillsMore}}</span>
                       </div>
                       <span v-else class="lpath mono"><b>{{r.endpoints[0].provider_display||r.endpoints[0].provider}}</b>
-                        <span class="cat-m">{{r.endpoints[0].method}}</span>{{r.endpoints[0].path}}<!--
+                        <span class="chip" v-if="r.endpoints[0].platform_eligible===false">{{endpointAccessLabel(r.endpoints[0])}}</span><span class="cat-m">{{r.endpoints[0].method}}</span>{{r.endpoints[0].path}}<!--
                         --><span v-if="r.mgmt" class="chip lkind"
                               :title="r.endpoints[0].kind==='account' ? 'Manages the provider account itself — lists, campaigns, webhooks' : 'A helper route: token exchange, enum lookups, format cleanup'">{{r.endpoints[0].kind}}</span></span>
                     </td>
@@ -1593,6 +1596,7 @@ a:hover{text-decoration-color:var(--muted)}
                           <span class="lcar">▸</span>
                           <span class="plogo-tile"><img class="plogo" :src="'/logos/'+e.provider+'.svg'" alt="" aria-hidden="true" @error="$event.target.style.visibility='hidden'"></span>
                           <b>{{e.provider_display||e.provider}}</b>
+                          <span class="chip">{{endpointAccessLabel(e)}}</span>
                           <span class="lsub-price" :title="costTitle(e.cost)">{{costShort(e.cost)}}</span>
                           <span v-if="e.verified" class="vmark" :title="'Called for real on '+e.verified">✓</span>
                           <span v-else class="xmark" title="Documented, but treg has not called it with a live key yet">·</span>
@@ -1612,6 +1616,7 @@ a:hover{text-decoration-color:var(--muted)}
                             <!-- The short form even here: the chip is a label, and "per result ·
                                  price in provider dashboard" is a sentence. It rides in the facts
                                  list below, where a sentence belongs. -->
+                            <span class="chip">{{endpointAccessLabel(e)}}</span>
                             <span class="chip" :title="costTitle(e.cost)">{{costShort(e.cost)}}<span
                                   v-if="costNative(e.cost)" class="cost-nat">({{costNative(e.cost)}})</span></span>
                             <span v-if="e.verified" class="chip ver" :title="'Called for real on '+e.verified+' and the response captured'">verified {{e.verified}}</span>
@@ -1654,7 +1659,7 @@ a:hover{text-decoration-color:var(--muted)}
                                  the expander — parameters, limits, rate card, the copyable command
                                  — is open, and is the part worth reading before you sign up. -->
                             <button class="btn sm" :class="{primary:!mkOauth(e.provider)}" @click.stop="publicCatalog ? openSignin() : openEpTry(e)"
-                                    :title="publicCatalog ? 'Create a free team to call this — $1.00 of credit, no card' : 'Call it now, or copy the agent / CLI / API way to run it'">▶ Try it</button>
+                                    :title="publicCatalog ? 'New verified accounts get $1.00 once on an eligible team, no card' : 'Call it now, or copy the agent / CLI / API way to run it'">▶ Try it</button>
                             <span v-if="catEndpointConnected(e)" class="chip go" title="You have a connected account with an authorization method that can call this"><span class="godot"></span>Connected</span>
                             <button v-else-if="mkOauth(e.provider)" class="btn sm primary" @click.stop="publicCatalog ? openSignin() : openProvider(e.provider)"
                                     :title="endpointConnectLabel(e)+' — calls act as your account'">{{endpointConnectLabel(e)}}</button>
@@ -1785,7 +1790,7 @@ a:hover{text-decoration-color:var(--muted)}
           <div v-if="!loading && !hasAnyTools && !q && canRegister" style="margin-top:14px">
           <div style="max-width:660px;border:1px solid var(--line);border-radius:16px;padding:20px 22px;background:var(--panel2)">
             <h3 style="margin:0 0 6px;font-size:15px">Nothing of your own yet — but you can already call 2,800+ tools</h3>
-            <p class="sub" style="margin:0 0 12px">Your team starts with <b>$1.00 of free credit</b>, so the catalog works before you register anything: find a tool by what it does, see the price, call it. <a href="#" @click.prevent="go('connections')">Browse the catalog →</a><br>When you're ready to add your <i>own</i> keys and skills — your <span class="mono">.env</span> and skill folders — load them here and they become callable tools for the whole team.</p>
+            <p class="sub" style="margin:0 0 12px">New verified accounts get <b>$1.00 of free credit once</b> when creating an eligible team, so the catalog works before you register anything: find a tool by what it does, see the price, call it. <a href="#" @click.prevent="go('connections')">Browse the catalog →</a><br>When you're ready to add your <i>own</i> keys and skills — your <span class="mono">.env</span> and skill folders — load them here and they become callable tools for the whole team.</p>
             <div class="seg" style="margin-bottom:10px">
               <button :class="{on:emptyTab==='agent'}" @click="emptyTab='agent'">Agent instruction</button>
               <button :class="{on:emptyTab==='manual'}" @click="emptyTab='manual'">Manual</button>
@@ -2737,7 +2742,7 @@ product, including per-customer usage tracking and billing.</pre>
 
           <!-- TAB · Access the catalog — agent instruction first, then the manual CLI walkthrough -->
           <div v-show="startTab==='access'" style="max-width:720px">
-            <p class="sub">2,800+ catalogued endpoints: SEO and backlinks, social and trends, people and company enrichment, ads. Find one by what it <i>does</i>, see its price, call it — no provider signup. Your team's <b>$1.00 free credit</b> covers hundreds of calls.</p>
+            <p class="sub">2,800+ catalogued endpoints: SEO and backlinks, social and trends, people and company enrichment, ads. Find one by what it <i>does</i>, see its price, call it — no provider signup. New verified accounts get <b>$1.00 free credit once</b> on an eligible team, covering hundreds of calls.</p>
 
             <div class="lbl" style="margin-top:16px">▸ Set up with your agent <span class="muted" style="font-weight:400">— paste &amp; go</span></div>
             <p class="sub">One line, token included — your agent reads llms.txt and does the rest: installs the CLI, signs in as you, and makes its first call.</p>
@@ -3362,57 +3367,21 @@ product, including per-customer usage tracking and billing.</pre>
             <div style="color:var(--accent);font-size:15px;letter-spacing:.5px;margin-bottom:12px">▚ treg</div>
             <h2 style="margin:0 0 8px;font-size:20px">Which agent are you using?</h2>
             <p class="sub" style="margin:0 0 18px">Choose your agent for the best setup instructions.</p>
-            <div class="agent-grid">
-              <button v-for="a in welcomeAgents" :key="a.id" type="button" class="agent-card" :class="{on:welcome.agent===a.id}" @click="welcome.agent=a.id; welcome.moreOpen=false">
-                <img :src="agentIcon(a.icon)" alt="" onerror="this.style.visibility='hidden'"/><span>{{a.name}}</span>
-              </button>
-              <button type="button" class="agent-card" :class="{on:welcome.moreOpen || welcomeIsMore}" @click="welcome.moreOpen=!welcome.moreOpen">
-                <span style="font-size:15px;width:20px;text-align:center;flex:none">☰</span><span>{{welcomeIsMore && !welcome.moreOpen ? welcomeAgent.name : 'More'}}</span><span style="margin-left:auto;color:var(--muted)">▾</span>
-              </button>
-            </div>
-            <div v-if="welcome.moreOpen" class="agent-grid" style="margin-top:10px">
-              <button v-for="a in welcomeMoreAgents" :key="a.id" type="button" class="agent-card" :class="{on:welcome.agent===a.id}" @click="welcome.agent=a.id; welcome.moreOpen=false">
-                <img v-if="a.icon" :src="agentIcon(a.icon)" alt="" onerror="this.style.visibility='hidden'"/><span v-else style="font-size:15px;width:20px;text-align:center;flex:none">✳</span><span>{{a.name}}</span>
-              </button>
-            </div>
+            <treg-agent-picker v-model="welcome.agent" :icon="agentIcon"></treg-agent-picker>
             <div class="wc-foot">
               <a href="#" class="sub" @click.prevent="welcomeFinish">Skip</a>
               <button class="btn primary" @click="track('onboarding_agent_picked',{agent:welcome.agent}); welcome.step=2">Next →</button>
             </div>
           </template>
           <template v-else-if="welcome.step===2">
-            <p class="sub" style="display:flex;align-items:center;gap:8px;margin:0 0 16px"><img v-if="welcomeAgent.icon" :src="agentIcon(welcomeAgent.icon)" alt="" style="width:18px;height:18px" onerror="this.style.visibility='hidden'"/>Setting up treg for <b style="color:var(--ink)">{{welcomeAgent.name}}</b></p>
-            <template v-if="welcomeAgent.plugin">
-              <h2 style="margin:0 0 10px;font-size:19px">1. Install the treg plugin</h2>
-              <a class="btn" :href="welcomeAgent.plugin" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;margin-bottom:18px" @click="track('onboarding_plugin_install_clicked',{agent:welcome.agent})"><img :src="agentIcon(welcomeAgent.icon)" alt="" style="width:16px;height:16px"/>Install plugin in {{welcomeAgent.name}} ↗</a>
-              <h2 style="margin:0 0 14px;font-size:19px">2. In your Bot's chat, send:</h2>
-            </template>
-            <h2 v-else style="margin:0 0 14px;font-size:19px">In your agent's chat, send:</h2>
-            <div class="lc-codewrap"><button class="lc-cp" @click="copyStart(welcomeSetupFull,'wc')">{{startCopied==='wc'?'✓ copied':'copy'}}</button><pre style="white-space:pre-wrap;word-break:break-all">{{welcomeSetupMasked}}</pre></div>
-            <a v-if="myToken" href="#" class="sub" style="font-size:12px;display:inline-block;margin-top:6px" @click.prevent="startTokenShow=!startTokenShow">{{startTokenShow?'Hide':'Show'}} key</a>
-            <p class="sub" style="font-size:12px;margin:12px 0 0">{{welcomeAgent.plugin ? 'Your Bot reads that file and signs in with your team & token — then it can call every tool in the catalog.' : 'Your agent reads that file and signs in with your team & token — it installs the CLI and starts calling tools.'}}</p>
+            <treg-setup-instructions :agent="welcomeAgent" :icon="agentIcon" :command="welcomeSetupCmd" :team="activeSlugNow || '<team-slug>'" :token="myToken" :show-token="startTokenShow" :copied="startCopied==='wc'" @copy="copyStart($event,'wc')" @toggle-token="startTokenShow=!startTokenShow" @plugin="track('onboarding_plugin_install_clicked',{agent:welcome.agent})"></treg-setup-instructions>
             <div class="wc-foot">
               <a href="#" class="sub" @click.prevent="welcome.step=1">← Back</a>
               <button class="btn primary" @click="welcome.step=3">Next →</button>
             </div>
           </template>
           <template v-else>
-            <h2 style="margin:0 0 6px;font-size:19px">Try it out</h2>
-            <div class="wc-wait" style="margin:0 0 16px"><span class="wc-waitdot"></span>Waiting for your agent — copy an example below and send it to get your first result.</div>
-            <div class="try-grid">
-              <button v-for="ex in tryExamples" :key="ex.k" type="button" class="try-card" @click="track('tryit_prompt_copied',{key:ex.k,cat:ex.cat,from:'onboarding'}); copyStart(ex.prompt,'wtry-'+ex.k)">
-                <span class="try-cat"><span style="display:inline-flex;align-items:center;gap:7px"><img class="try-ico" :src="'/logos/platforms/'+ex.logo+'.svg'" alt=""/><img v-if="ex.avatar" class="try-ico avatar" :src="ex.avatar" alt=""/>{{ex.cat}}</span><span class="try-copy" :class="{done:startCopied==='wtry-'+ex.k}">{{startCopied==='wtry-'+ex.k ? '✓ copied' : '⧉ copy'}}</span></span>
-                <span class="try-txt">{{ex.prompt}}</span>
-              </button>
-            </div>
-            <div class="oauth-div"><span>also connect OAuth to unlock new agent capabilities</span></div>
-            <div v-for="g in tryOauth" :key="g.label" style="margin-top:12px">
-              <div class="oauth-grp">{{g.label}}</div>
-              <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-                <button v-for="p in g.items" :key="p.s" type="button" class="prov-chip" @click="track('tryit_oauth_clicked',{service:p.s,group:g.label,from:'onboarding'}); welcome.on=false; openProvider(p.s)"><img :src="'/logos/'+p.s+'.svg'" alt=""/>{{p.n}}</button>
-                <span v-if="g.soon.length" class="soon-note" :data-tip="g.soon.map(p=>p.n).join(', ')">{{g.soon.length}} coming soon</span>
-              </div>
-            </div>
+            <treg-try-it-out :copied="startCopied.startsWith('wtry-')?startCopied.slice(5):''" @example="track('tryit_prompt_copied',{key:$event.k,cat:$event.cat,from:'onboarding'}); copyStart($event.prompt,'wtry-'+$event.k)" @provider="welcomeTryProvider"></treg-try-it-out>
             <div class="wc-foot">
               <a href="#" class="sub" @click.prevent="welcomeFinish">Skip</a>
               <button class="btn primary" @click="track('tryit_browse_catalog',{from:'onboarding'}); welcome.on=false; go('connections')">Browse all catalog →</button>
@@ -3765,7 +3734,7 @@ treg login</pre></div>
       <p v-else-if="shareGate" class="sub">You'll land on “{{shareGate.name}}” right after.</p>
       <!-- The default line is the SANDBOX's ("bring it into a real account"), which is nonsense to
            someone who arrived on a catalog page from a search result and has no sandbox. -->
-      <p v-else-if="publicCatalog" class="sub">Create a free team and call any of these — <b>$1.00 of credit</b>, no card.</p>
+      <p v-else-if="publicCatalog" class="sub">Verify your new account and create a team to call these tools. <b>$1.00 of credit once</b> on an eligible team, no card.</p>
       <p v-else class="sub">Bring the sandbox into a real account.</p>
       <button v-if="meta.github" class="btn primary" style="width:100%;padding:11px;margin-bottom:8px" @click="githubLogin">Continue with GitHub</button>
       <button v-if="meta.google" class="btn" style="width:100%;padding:11px;margin-bottom:8px" @click="googleLogin">Continue with Google</button>
@@ -3794,6 +3763,7 @@ const { createApp } = Vue;
 const LS='treg-dash';
 
 createApp({
+  components:{TregTryItOut:TregAgentSetup.TryItOut,TregAgentPicker:TregAgentSetup.AgentPicker,TregSetupInstructions:TregAgentSetup.SetupInstructions},
   data(){
     let cfg={active:null,orgs:{}}; try{ cfg=JSON.parse(localStorage.getItem(LS))||cfg; }catch(e){}
     return {
@@ -4205,21 +4175,8 @@ createApp({
     // instructions, so this prompt only has to name the repo, the page, and the contact email.
     vendorPromptText(){ return `Help me create a PR to treg (https://github.com/superdesigndev/treg) that adds our API to its tool catalog. Follow the instructions at ${this.proxy}/vendor-listing — and include our contact email in the PR description so the maintainers can reach us to arrange live verification.`; },
     // first-run welcome: the agent picker (step 1) and the per-agent setup line (step 2)
-    welcomeAgents(){ return [
-      {id:'openclaw', name:'OpenClaw', icon:'openclaw-color'},
-      {id:'grokbot', name:'Grok Bot', icon:'/logos/agents/grokbot.png', plugin:'https://x.ai/bot/plugin/55647425'},  // bundled mark (no lobehub icon for the Bot product); `plugin` = the install step shown before the setup line
-      {id:'hermes', name:'Hermes Agent', icon:'hermesagent'},
-      {id:'claudeai', name:'Claude.ai', icon:'claude-color'},
-      {id:'claude-code', name:'Claude Code', icon:'claudecode-color'},
-      {id:'codex', name:'Codex', icon:'codex-color'},
-    ]; },
-    welcomeMoreAgents(){ return [
-      {id:'opencode', name:'opencode', icon:'opencode'},
-      {id:'pi', name:'pi', icon:'pi'},
-      {id:'cursor', name:'Cursor', icon:'cursor'},
-      {id:'gemini-cli', name:'Gemini CLI', icon:'gemini-color'},
-      {id:'other', name:'Other', icon:null},
-    ]; },
+    welcomeAgents(){ return TregAgentSetup.agents; },
+    welcomeMoreAgents(){ return TregAgentSetup.moreAgents; },
     welcomeAgent(){ return this.welcomeAgents.concat(this.welcomeMoreAgents).find(a=>a.id===this.welcome.agent) || this.welcomeAgents[0]; },
     welcomeIsMore(){ return this.welcomeMoreAgents.some(a=>a.id===this.welcome.agent); },
     welcomeSetupCmd(){ return this.buildAgentPrompt('agent', true); },
@@ -4264,18 +4221,8 @@ createApp({
       const what=this.epTry.summary ? this.epTry.summary.replace(/\.$/,'') : this.epTry.id;
       const auth=this.epTryAuthMethod ? ` Use authorization_method=${this.epTryAuthMethod}.` : '';
       return `Use treg to call ${this.epTry.id} — ${what}.${auth}`; },
-    tryExamples(){ return [
-      {k:'trend',cat:'Trending videos pattern', logo:'tiktok',  prompt:'Use treg to pull today\'s trending TikTok videos (video links included)'},
-      {k:'enr',  cat:'Get contact emails',      logo:'people', avatar:'https://pbs.twimg.com/profile_images/1131851609774985216/OcsssQ9J_400x400.png', prompt:'Use treg to find the work email of Peter Steinberger'},
-      {k:'serp', cat:'Keyword volume',          logo:'google',  prompt:'Use treg to pull real monthly search volume and top related keywords worth targeting for my business'},
-      {k:'soc',  cat:'Scrape linkedin',         logo:'linkedin',prompt:'Use treg to look up linkedin.com/in/jasonzhoudesign'},
-    ]; },
-    tryOauth(){ return [
-      {label:'Post on social',      items:[{s:'x',n:'X (Twitter)'},{s:'youtube',n:'YouTube'},{s:'tiktok',n:'TikTok'},{s:'linkedin',n:'LinkedIn'},{s:'facebook',n:'Facebook Pages'},{s:'instagram',n:'Instagram'}],
-                                    soon:[]},
-      {label:'Manage ad campaigns', items:[{s:'google-ads',n:'Google Ads'},{s:'meta-ads',n:'Meta Ads'}], soon:[]},
-      {label:'SEO on your own site',items:[{s:'google-analytics',n:'Google Analytics'},{s:'google-search-console',n:'Search Console'},{s:'google-business-profile',n:'Business Profile'}], soon:[]},
-    ]; },
+    tryExamples(){ return TregAgentSetup.examples; },
+    tryOauth(){ return TregAgentSetup.oauthGroups; },
     // What to actually DO with a freshly minted agent token, in the three shapes people need.
     agentSnippet(){ const a=this.newAgent||this.snipAgent; if(!a) return '';
       const base=this.proxy||location.origin, org=a.org||this.activeSlugNow;
@@ -4738,7 +4685,7 @@ createApp({
       // Named differently from the server's topup_started (same click, two vantage points —
       // a shared name would double-count in trends); this one exists to link session replays.
       this.track('topup_checkout_opened',{amount_usd:amount});
-      try{ const out=await this.api('/billing/topup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount_usd:amount})});
+      try{ const out=await this.api('/billing/topup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount_usd:amount,checkout_source:window.TregTracking?.checkoutSource()||'app'})});
         // Stripe's own hosted page does the payment; the balance moves when its webhook lands, never
         // on the return redirect (which a payer could simply type). Same tab, so the return lands here.
         window.location.href=out.url; }
@@ -4769,7 +4716,7 @@ createApp({
           this.billing=await this.api('/billing/autotopup',{method:'POST',headers:{'content-type':'application/json'},
             body:JSON.stringify({enabled:true, consent:true, amount_usd:this.autoAmount, threshold_usd:this.autoThreshold, monthly_cap_usd:this.autoCapUsd, setup_url:false})});
         }
-        const out=await this.api('/billing/topup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount_usd:usd})});
+        const out=await this.api('/billing/topup',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({amount_usd:usd,checkout_source:window.TregTracking?.checkoutSource()||'app'})});
         window.location.href=out.url; }
       catch(e){ this.topupErr='Could not start the payment: '+(e.detail||e.status); this.billingBusy=false; } },
     // The toggle itself never arms auto top-up - it can only DISARM (off is safe) or open the
@@ -5067,7 +5014,7 @@ createApp({
         this.skillResults=r.results; await this.loadAll();
         if(r.results.length && r.results.every(x=>x.ok)){ setTimeout(()=>{ this.newSkill=false; }, 1000); } }
       catch(e){ this.skillErr='Import failed: '+(e.detail||e.message||(e.status?('HTTP '+e.status):'request failed - try registering fewer skills at once')); } finally{ this.skillBusy=false; } },
-    logout(){ try{ if(window.Intercom) window.Intercom('shutdown'); }catch(e){}  // drop the Intercom cookie so the next user on this machine can't read these conversations
+    logout(){ window.TregTracking?.identify('',''); try{ if(window.Intercom) window.Intercom('shutdown'); }catch(e){}  // drop the Intercom cookie so the next user on this machine can't read these conversations
       if(this.sessionMode){ fetch('/auth/logout',{method:'POST',credentials:'include'}).finally(()=>{localStorage.removeItem('treg-active');location.reload();}); } else { this.cfg={active:null,orgs:{}}; this.save(); location.reload(); } },
     dot(s){ return s==='unknown'||s==='-'?'○':'●'; },
     short(e){ return (e||'').split('@')[0]; },
@@ -5159,7 +5106,7 @@ createApp({
         session_recording:{maskAllInputs:true, maskTextSelector:'pre, .lc-codewrap, .agent-copy'}});
       this.analyticsIdentify();
     },
-    analyticsIdentify(){ if(!window.posthog || !window.posthog.identify || !this.me) return;
+    analyticsIdentify(){ if(!this.me)return; if(window.TregTracking){window.TregTracking.identify(this.me,this.activeSlugNow);return;} if(!window.posthog || !window.posthog.identify || !this.me) return;
       try{ window.posthog.identify(this.me, {email:this.me}); if(this.activeSlugNow) window.posthog.group('team', this.activeSlugNow); }catch(e){} },
     track(name, props){ try{ if(window.posthog && window.posthog.capture) window.posthog.capture(name, props||{}); }catch(e){} },
     // Support chat (Intercom) — only when this deployment opted in (meta.intercom_app_id present);
@@ -5210,6 +5157,7 @@ createApp({
       if(this.sessionMode){ this.activeSlug=o.slug; localStorage.setItem('treg-active',o.slug); this.loadAll(); this.intercomUpdate(); return; }
       if(!this.connected(o.slug)){ this.addOrg=true; return; }
       this.cfg.active=o.slug; this.save(); this.loadAll(); this.intercomUpdate(); },
+    welcomeTryProvider(service,group){this.track('tryit_oauth_clicked',{service,group,from:'onboarding'});this.welcome.on=false;this.openProvider(service);},
     async copyStart(text, tag){
       this.startCopyError=''; this.startCopied='';
       try {
@@ -5220,6 +5168,7 @@ createApp({
         this.startCopyError='Could not copy. Select the text and copy it manually. For an API key, choose Show key first.';
       }
     },
+
     // ---- connections (registry OAuth) ----
     async loadConnections(){
       this.connErr='';
@@ -5432,7 +5381,7 @@ createApp({
     // token, the team, permission to run things, and "do it now". `kind` is ignored (call sites keep
     // their argument) so there is a single text to keep true.
     buildAgentPrompt(kind, inclToken){  // ONE line — llms.txt carries the whole setup flow (auth included)
-      return `set up treg — ${this.proxy}/llms.txt`;
+      return TregAgentSetup.command(this.proxy);
     },
     async copyAgentPrompt(){ if(!(await this.toClipboard(this.agentPromptText))) return; this.agentGuideCopied=true; setTimeout(()=>this.agentGuideCopied=false,1500); },
     async copyVendorPrompt(){ if(!(await this.toClipboard(this.vendorPromptText))) return; this.vendorCopied=true; setTimeout(()=>this.vendorCopied=false,1500); },
@@ -5582,7 +5531,7 @@ createApp({
       const sym={CNY:'¥'}[c.currency];
       const num=n>=0.01 ? n.toFixed(2) : n.toFixed(6).replace(/0+$/,'').replace(/\.$/,'');
       return sym ? sym+num : num+' '+c.currency; },
-    costNative(c){ return this.nativeAmount(c); },
+    costNative(c){ return c && c.display_unit ? '' : this.nativeAmount(c); },
     // The card's starting price. `price_from` arrives as null OR as an empty object, and an empty
     // one must read as "no price on the row" — otherwise it short-circuits the OAuth-free branch
     // below and an OAuth-only platform silently loses its "free with your account".
@@ -5609,6 +5558,14 @@ createApp({
       return ['The cheapest published rate across this platform’s endpoints',
               p.native ? 'billed as '+p.native+' / '+this.priceUnit(pf.type)+', converted at the catalog’s FX rate' : '',
               pf.note].filter(Boolean).join(' — '); },
+    endpointAccessLabel(e){
+      if(e.kind==='routed') return 'Routed platform call';
+      const p=this.providers.find(p=>p.service===e.provider)
+        || (this.platData&&this.platData.providers||{})[e.provider] || {};
+      if(p.auth_kind==='oauth') return p.metered ? 'OAuth · metered' : 'OAuth connection';
+      if(p.auth_kind==='key') return e.platform_eligible ? 'Platform + BYOK' : 'BYOK only';
+      return e.platform_eligible ? 'Platform access' : 'Own connection required';
+    },
     catConnected(service){ return !!this.connCount[service]; },
     endpointAuthMethods(e){ return [...new Set([e&&e.authorization_method,
       ...((e&&e.authorization_methods)||[]), ...Object.keys((e&&e.authorization_paths)||{})].filter(Boolean))]; },
@@ -5672,7 +5629,7 @@ createApp({
         const free=this.capFree(e), n=free?0:this.costUsd(e.cost);
         if(n==null) continue;
         if(best===null || n<best.n)
-          best={n, label:(free||n===0)?'free':this.costLabel(e.cost), native:(free||n===0)?'':this.nativeAmount(e.cost)};
+          best={n, label:(free||n===0)?'free':this.costLabel(e.cost), native:(free||n===0||e.cost.display_unit)?'':this.nativeAmount(e.cost)};
       }
       return best; },
     // "See Zhihu, Toutiao, and 6 more" — two names so the row says what KIND of thing is hiding,
@@ -5701,16 +5658,16 @@ createApp({
       const by=new Map();
       for(const e of eps){
         const cur=by.get(e.provider), n=this.costUsd(e.cost);
-        if(!cur) by.set(e.provider, {name:e.provider_display||e.provider, cost:e.cost, n, verified:!!e.verified});
+        if(!cur) by.set(e.provider, {name:e.provider_display||e.provider, cost:e.cost, n, endpoint:e, verified:!!e.verified});
         else { cur.verified = cur.verified || !!e.verified;
-               if(n!=null && (cur.n==null || n<cur.n)){ cur.cost=e.cost; cur.n=n; } }
+               if(n!=null && (cur.n==null || n<cur.n)){ cur.cost=e.cost; cur.n=n; cur.endpoint=e; } }
       }
       // Cheapest first, then verified: only three of these are ever shown, so the three that
       // survive have to be the ones worth seeing. Unpriced providers sort to the tail — they are
       // exactly the ones whose pill would say nothing but a name.
       return [...by.values()]
         .sort((a,b)=>(a.n==null)-(b.n==null) || (a.n-b.n) || (b.verified-a.verified))
-        .map(p=>({name:p.name, verified:p.verified, price:this.pillPrice(p.cost)})); },
+        .map(p=>({name:p.name, verified:p.verified, price:p.endpoint.platform_eligible ? this.pillPrice(p.cost) : this.endpointAccessLabel(p.endpoint)})); },
     // A pill prices an endpoint only when there IS a price: a published number, or "free". A
     // credit-metered or dashboard-only rate has no number to show, and saying so at length is what
     // broke the row — the pill just drops it, and the sub-row below carries the full story.
@@ -5780,6 +5737,7 @@ createApp({
     // "free", "—". The provider's own figure follows as a muted suffix (see `costNative`).
     costLabel(c){
       if(!c || !c.type) return '—';
+      if(c.display_unit && typeof c.display_usd==='number') return '$'+this.usdNum(c.display_usd)+(c.display_suffix||'')+'/'+c.display_unit;
       if(c.type==='free') return 'free';
       // Known billing unit, unpublished number: say which, and where the number lives. A bare
       // "per success" reads as free, and "—" hides that we do know how it's metered.
@@ -5797,6 +5755,7 @@ createApp({
       if(typeof c.usd_min==='number' && c.usd_min<c.usd) return '$'+this.usdNum(c.usd_min)+'-$'+this.usdNum(c.usd)+'/'+unit;
       return '$'+this.usdNum(c.usd)+'/'+unit; },
     costTitle(c){ if(!c) return 'The catalog has no price for this endpoint';
+      if(c.display_unit) return this.costLabel(c)+(c.note ? ' — '+c.note : '');
       const nat=this.nativeAmount(c);
       return [c.note,
               nat ? 'billed as '+nat+'/'+this.priceUnit(c.type)+', converted at the catalog’s FX rate' : '',
@@ -5944,7 +5903,7 @@ createApp({
     admSuspendOrg(o){ this._adm('/admin/orgs/'+o.id+'/suspend','POST',{value:!o.suspended}); },
     admDeleteOrg(o){ if(this.confirmAdmOrg!==o.id){ this.confirmAdmOrg=o.id; return; } this.confirmAdmOrg=null; this._adm('/admin/orgs/'+o.id,'DELETE'); },
     samplePath(host){ // known-good, runnable GET paths (relative to each tool's base_url) for common hosts
-      return ({'httpbin.org':'headers','postman-echo.com':'get',
+      return ({'api.trykitt.ai':'credit','httpbin.org':'headers','postman-echo.com':'get',
         'api.intercom.io':'me','api.stripe.com':'balance','api.render.com':'services?limit=1',
         'api.vercel.com':'v2/user','app.posthog.com':'api/projects/@current','eu.posthog.com':'api/projects/@current',
         'searchconsole.googleapis.com':'webmasters/v3/sites','googleads.googleapis.com':'v25/customers:listAccessibleCustomers',

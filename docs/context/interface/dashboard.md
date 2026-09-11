@@ -6,6 +6,7 @@ sources:
   - src/treg/web/index.html
   - src/treg/web/media/redesign/dashboard.css
   - src/treg/web/media/redesign/SOURCES.md
+  - src/treg/web/agent-setup.js
   - src/treg/web/vendor/README.md
   - src/treg/web/vendor/vue-3.5.41.global.prod.js
   - src/treg/web/tutorial.js
@@ -135,6 +136,19 @@ Enter and Space; Escape restores focus to its trigger. Direct `go` navigation re
 the destination; Back/Forward leaves scroll restoration to the browser. Category/team tabs and wide
 tables scroll locally on small screens, and the onboarding OAuth divider wraps instead of widening
 the page.
+
+## Standalone Enrich Arena
+
+Signed-in users have an **Arena** top-navigation link immediately after **Team**. It opens
+`/enrich-arena` in a new tab, with an external-link icon aligned to the right. The link is also
+available in the mobile navigation drawer.
+
+`/enrich-arena` and `/enrich-arena/leaderboard` share Arena | Leaderboard navigation, their
+own public layout and account controls, outside the dashboard shell. Arena keeps the vendor
+stats table; Leaderboard contains metric charts and task/input filters.
+It checks authentication on query submission, preserves the query across login, and spends the
+selected team's normal credits. Google/GitHub accept an allowlisted Arena return cookie; other
+dashboard and CLI login destinations retain their existing behavior. See [Enrich Arena](enrich-arena.md).
 
 ## Auth — three doors
 Two are **session** (cookie) paths, one is a token fallback:
@@ -369,7 +383,9 @@ Server side (`domain.identity.access`): `require_identity` (who, from token OR s
 - **First-run onboarding** — a brand-new user has **zero teams** (no auto personal org), so `maybeOnboard`
   shows a **mandatory "name your team" welcome** (`welcome.*`; team name pre-suggested from the email
   domain via `_suggestTeamName`). Step 0 is NOT dismissable — no skip, survives Escape/backdrop — the only
-  action is `welcomeCreate` (`POST /orgs`, marks onboarded). Three more steps follow **inside the same
+  action is `welcomeCreate` (`POST /orgs`, marks onboarded). The agent picker and setup instruction
+  components and the final Try it out step are shared with Enrich Arena through `/agent-setup.js`, including client definitions,
+  logo URLs, the optional plugin step and masked/copyable credentials. Three more steps follow **inside the same
   modal**: an **agent picker** (`welcome.step===1` — OpenClaw / Grok Bot / Hermes Agent / Claude.ai /
   Claude Code / Codex, plus a "More" expander with opencode / pi / Cursor / Gemini CLI / Other; LobeHub icons via
   unpkg, theme-aware light/dark variants through `agentIcon`, except Grok Bot's bundled
@@ -1008,3 +1024,23 @@ made a correct payout look like a failure. Both are needed — the
 amount is chosen at the buttons, and the first preset ($5) is below the $10 minimum, so a note on its
 own would let the most-clicked button quietly forfeit the reward. Null offer = the page renders
 exactly as it did before this shipped.
+
+## Sumble catalog presentation
+
+Company data contains 25 Sumble operations; People & contact data contains people search and
+four contact-list operations. Account operations and helpers use the existing management expander.
+Endpoint details use credential-registry `auth_kind` and the configured `metered` flag to distinguish
+platform + BYOK, BYOK only and OAuth connections. Routed tools retain their own label. Public
+catalog responses include the same provider facts for signed-out visitors. No free-call claim is
+inferred from platform eligibility alone. Provider pills keep the endpoint that supplied the price. `costLabel` and `costTitle` consume `cost_view` display metadata
+for selected-attribute pricing, rounded lookup blocks and per-technology charges. Billing notes
+remain available in expanded details.
+
+## Arena attribution at the dashboard boundary
+
+The credit link from Arena opens `/app?from=enrich-arena#billing`. `sitetrack.js` snapshots that
+entry point before SPA navigation can remove the query, and both manual top-up actions send
+`checkout_source=arena` (ordinary app entry sends `app`). First-observed acquisition surface is
+kept separately in the `treg_entry_surface` cookie. `analyticsIdentify` delegates to the shared
+`TregTracking` identity/group helper, matching the Arena-to-app person and clearing stale team
+groups on switches. See [Arena conversion tracking](enrich-arena.md#conversion-tracking).

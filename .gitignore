@@ -2,6 +2,12 @@
 __pycache__/
 *.pyc
 *.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite*-wal
+*.sqlite*-shm
 *.bak
 .env
 .env.*
@@ -79,3 +85,6 @@ body.json
 
 # Test screenshots — regenerated on demand, not versioned.
 tests/screenshots/
+
+# Arena production statistics belong in the database, never a bundled snapshot.
+/src/treg/web/enrich-arena/insights.json

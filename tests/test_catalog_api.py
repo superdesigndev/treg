@@ -1212,3 +1212,40 @@ async def test_search_caps_a_routed_group_at_a_few_children(clients: AsyncClient
     kids = [r for r in rows if r["capability"] == "people.search" and r.get("kind") != "routed"]
     assert len(kids) <= 5 and parent["children_hidden"] >= 1
     assert "treg.people.email.find" in {r["id"] for r in rows}, "the next job fits on the page now"
+
+
+async def test_enrichment_catalog_prices_and_routed_child_rates(clients):
+    from treg.domain.catalog import store
+    cat = store.load()
+    endpoints = [e for e in cat.by_id.values() if e['provider'] == 'quickenrich']
+    assert len(endpoints) == 11
+    assert sum(e['cost']['type'] == 'free' for e in endpoints) == 6
+    for ep in endpoints:
+        cost = cat.cost_view(ep['cost'], ep['provider'])
+        assert cost['usd'] == (0 if cost['type'] == 'free' else 0.004834)
+    for cap in ('people.email.find', 'people.phone.find', 'people.enrich', 'people.search', 'companies.search'):
+        response = await clients.get('/catalog/endpoints/treg.' + cap)
+        assert response.status_code == 200
+        doc = response.json()
+        children = [c for c in doc['routing']['plan'] if c['endpoint_id'].startswith('quickenrich.')]
+        assert children
+        for child in children:
+            ep = cat.by_id[child['endpoint_id']]
+            assert child['usd'] == cat.cost_view(ep['cost'], ep['provider'])['usd']
+
+
+def test_generic_display_prices_match_web_and_cli():
+    from treg.domain.catalog import store
+    from treg.routers.web import _price_label
+    from treg.cli import _cost_usd, _cost_label
+    cat = store.load()
+    for quantity, rate in [(25, 2.0), (100, 1.0)]:
+        raw = {'type': 'per_result', 'currency': 'USD', 'value': rate, 'per': quantity,
+               'display': {'unit': 'records', 'grouped': True, 'round_up': True}}
+        cost = cat.cost_view(raw, 'any-provider')
+        expected = f'${rate:g}/started {quantity} records'
+        assert cost['usd'] == rate / quantity
+        assert _price_label(cost) == _cost_usd(cost) == _cost_label(cost) == expected
+    cost = cat.cost_view({'type': 'per_result', 'currency': 'USD', 'value': 2,
+                         'display': {'unit': 'item', 'variable': True}}, 'another-provider')
+    assert _price_label(cost) == _cost_usd(cost) == _cost_label(cost) == '$2+/item'

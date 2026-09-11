@@ -130,6 +130,21 @@ contracts:
     # No phone provider reports a line check, so every hit carries this.
     advice_unverified: "This number was found, not confirmed live. Validate it (catalog_search 'verify phone number', e.g. tomba.people.phone.verify) before dialing or texting."
 
+  people.phone.verify:
+    summary: "Validate a phone number's format and numbering-plan validity; not a live-line check"
+    identity:
+      - {phone: str}
+    filters:
+      country_code: {type: str, note: "ISO-2 country context for parsing a national-format number, e.g. US; unnecessary for an international number"}
+    output:
+      valid: {type: bool, required: true, note: "numbering-plan validity, not proof the line is active"}
+      phone: {type: str}
+      country_code: {type: str}
+      line_type: {type: str}
+      carrier: {type: str}
+    miss: "valid == null"
+    idempotent: true
+
   people.email.verify:
     summary: "Verify an email address — treg picks the provider (own keys first, then cheapest) and names the one that served"
     identity:
@@ -266,6 +281,11 @@ contracts:
       next_cursor: {type: str}
     miss: "people == []"
     idempotent: true
+    # Search rows are directory listings. An email in a row is found, not confirmed deliverable,
+    # unless that row's own verification field says so — a team that mailed Hunter domain-search
+    # rows unverified (`verification: null`, confidence 10) bounced on 73 of 79 addresses that one
+    # $0.006 verify call each would have caught (2026-09-08).
+    advice_unverified: "Rows are provider directory listings: an email in a row is found, not confirmed deliverable, unless that row's own verification field says so. Run treg.people.email.verify on each address before outreach (a fraction of a cent), and never send to an address that is not in a row."
 
   # ---- batch 5: company enrichment (2026-08-28) -----------------------------------------------
   companies.enrich:
@@ -293,6 +313,17 @@ contracts:
       location: {type: str}
       linkedin_url: {type: str}
     miss: "name == null"
+    idempotent: true
+
+  companies.similar:
+    summary: "Find companies similar to a seed domain"
+    identity:
+      - {domain: str}
+    filters: {}
+    output:
+      companies: {type: list, required: true}
+      count: {type: int}
+    miss: "companies == []"
     idempotent: true
 
   companies.search:

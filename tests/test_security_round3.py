@@ -1,8 +1,6 @@
 """Round-3 fixes — SSRF encodings/call-time, update_tool grandfather, RunRecord cascade, delete_bundle gap."""
 from __future__ import annotations
 
-import socket
-
 from httpx import AsyncClient
 from sqlmodel import select
 
@@ -15,23 +13,15 @@ def test_ssrf_blocks_numeric_ip_encodings():
     assert safe_webhook_url("https://api.stripe.com/v1") is True
 
 
-def test_host_is_public_resolves_and_blocks_internal(monkeypatch):
+def test_host_is_public_resolves_and_blocks_internal(fake_getaddrinfo):
     addresses = {
         "localhost": ["127.0.0.1"],
         "api.stripe.com": ["8.8.8.8", "2001:4860:4860::8888"],
         "mixed.example": ["8.8.8.8", "10.0.0.1"],
+        "nonexistent.invalid.tld.zzz": [],
     }
 
-    def resolve(host, _port):
-        if host not in addresses:
-            raise socket.gaierror("unresolvable")
-        return [
-            (socket.AF_INET6 if ":" in address else socket.AF_INET, socket.SOCK_STREAM, 0, "",
-             (address, 0, 0, 0) if ":" in address else (address, 0))
-            for address in addresses[host]
-        ]
-
-    monkeypatch.setattr(socket, "getaddrinfo", resolve)
+    fake_getaddrinfo(addresses)
     assert host_is_public("localhost") is False
     assert host_is_public("nonexistent.invalid.tld.zzz") is False   # unresolvable → refuse
     assert host_is_public("api.stripe.com") is True

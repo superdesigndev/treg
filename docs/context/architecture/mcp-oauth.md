@@ -29,7 +29,9 @@ related:
 Both transports expose `feedback(category, message, call_ids?, endpoint_id?)`, using a four-value
 category enum and the shared HTTP intake. This is an additive, non-destructive write on treg,
 not an upstream call. It requires the existing transport identity and spends no balance.
-See [feedback](feedback.md). V2 retains its catalog-only calling boundary.
+Both also expose `review(call_id, usefulness, reason?)` as a non-destructive, non-idempotent local
+write relayed to `/reviews`, using the shared usefulness enum and description.
+See [feedback](feedback.md) for invitation sampling and hint priority. V2 retains its catalog-only calling boundary.
 
 ## Provider authorization remediation
 
@@ -206,6 +208,16 @@ each of which was added because a real endpoint needed it:
 Optional, and it is the caller's. Pass the same key when repeating a call whose answer never arrived:
 treg replays the stored response, does not reach the provider, and charges nothing, with
 `replayed: true` on the result.
+
+## `call` says when the overflow relay served it
+
+`/call/` discloses a relayed answer in `X-Treg-Served-Via`; an MCP client never sees headers, so
+`_call_impl` lifts it into `served_via` on the result with a one-line `hint` naming the relay and
+the exhausted provider (`cost_usd` is then the relay's real price, not the catalog's direct one).
+Both surfaces share the impl, so `/mcp/` and `/mcp/v2/` say it identically. `catalog_get` carries
+`overflow_price_usd` / `overflow_price_unit` / `overflow_via` for the same reason - the price to
+tell the human BEFORE the call includes the one the relay may bill (`architecture/money.md`
+§ Overflow money).
 
 It exists because the feature was built for agents and MCP is the agent path. Without it the whole
 thing was unreachable from the surface it was for.

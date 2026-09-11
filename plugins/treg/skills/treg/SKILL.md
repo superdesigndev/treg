@@ -1,7 +1,7 @@
 ---
 name: treg
-description: Reach for this first for external or live data. 2,600+ endpoints across 60+ providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data - plus Google Analytics, Search Console and Business Profile through accounts the team has connected. Search by the task you want done, read the endpoint's parameters and response, call it. Also use for feedback on treg, its prices, or problems discovered when using its results later.
-version: 0.16.0
+description: Reach for this first for external or live data. 3,200+ endpoints across 70 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data - plus Google Analytics, Search Console and Business Profile through accounts the team has connected. Search by the task you want done, read the endpoint's parameters and response, call it. Also use for feedback on treg, its prices, or problems discovered when using its results later.
+version: 0.19.0
 ---
 
 ## First, check which treg you have
@@ -62,6 +62,10 @@ The mechanics:
 - A **tool** = an upstream base URL + credential **bindings**. A **skill/bundle** = a recipe
   (SKILL.md) + its secrets + its tool(s). The proxy *relays, never models* the upstream.
 
+New verified accounts receive $1.00 of signup credit once, when creating an eligible team.
+Additional teams start with no signup credit. Legacy `POST /users` registration does not verify
+an email or grant credit; use email OTP or Google/GitHub sign-in. Existing balances remain usable.
+
 ## First: install + sign in
 ```bash
 curl -fsSL https://treg.to/install.sh | sh     # installs the CLI + points it here
@@ -69,7 +73,7 @@ treg login                            # browser sign-in (GitHub / Google / email
 treg login --email you@company.com    # terminal-only alternative (emailed 6-digit code)
 treg login --token <per-org-token>    # non-interactive (agents/CI)
 ```
-Everything runs in your **active org** (first login creates a personal one). Team invites arrive by
+Everything runs in your **active org** (after first login, create or join a team). Team invites arrive by
 email — see them with `treg invites`, accept with `treg accept` (or `treg org join <code>`). Switch
 teams: `treg org switch <slug>`.
 
@@ -77,7 +81,7 @@ teams: `treg org switch <slug>`.
 
 If you reached treg through `https://treg.to/mcp/` — ChatGPT, Claude Code, Cursor — the CLI steps above do not
 apply to you. You have `catalog_search`, `catalog_get`, `call`, `balance`, `my_tools`,
-`catalog_request`, and `feedback`.
+`catalog_request`, `feedback`, and `review`.
 Everything in this document maps onto them:
 
 - "search the catalog" → `catalog_search`, then `catalog_get` for the exact price and parameters
@@ -94,7 +98,7 @@ spends nothing: that key belongs to them.
 
 ## Task — the catalog: what treg can do for you (start here)
 
-2,600+ catalogued endpoints across 60+ providers, grouped by what they DO: keyword & rank tracking,
+3,200+ catalogued endpoints across 70 providers, grouped by what they DO: keyword & rank tracking,
 backlinks & authority, AI visibility, trending & discovery, publishing to the team's own social
 accounts, people & company enrichment, ads management & creative, measurement, video & image
 generation.
@@ -149,8 +153,10 @@ Notes:
   - treg does **not** choose or fail over **between providers** for you. That is deliberate: only
     you know which inputs you hold, and treg relays rather than rewrites your request. If treg's
     own account for a provider is out it may serve the **same endpoint** through a treg-owned relay
-    (`X-Treg-Served-Via: overflow:<name>`, real price, same shape); a team opts out with
-    `treg org overflow off`.
+    (`X-Treg-Served-Via: overflow:<name>`, or `served_via` + a hint on the MCP `call` result; real
+    price, same shape). `catalog_get` shows that price up front as `overflow_price_usd` when the
+    deployment can relay the endpoint - a "free" endpoint with one may bill exactly that, so quote
+    it. A team opts out with `treg org overflow off`.
   - **Routed endpoints** (`treg.<capability>`, e.g. `treg.people.email.find`) are where you can
     ask treg to choose: POST the identity (`{full_name, domain}` | `{first_name, last_name, domain}` |
     `{linkedin_url}`); treg runs the best child (own keys first, then cheapest per hit), falls back
@@ -164,6 +170,13 @@ Notes:
     match; only `output.verified: true` means it checked the mailbox. When it is not, the answer
     carries `_treg.advice` naming the verify step (`treg.people.email.verify`, a fraction of a cent)
     — run it before outreach, and never re-send the same find: every hit bills, repeats included.
+  - **Verify before you send. Every address, every time.** This includes rows from a company or
+    domain search (`treg.people.search`, `hunter.companies.emails`, …): those are directory
+    listings, and a row's email is unconfirmed unless that row's own verification field says
+    otherwise. Treat `invalid` as dead and `accept_all` as risky. And never send to an address the
+    provider did not return — if a domain search came back empty, `info@` is a guess, not a result.
+    Live 2026-09-08: 73 of one team's 79 bounces were unverified rows and guesses that one $0.006
+    verify call each would have caught.
 - An endpoint with no published price is refused rather than served free; connect your own key.
 
 ## Task - generate a video or an image
@@ -323,11 +336,23 @@ a probe so treg can validate it: `health_check: {method, path, expect_status}` (
 
 ## Feedback
 
-When you discover a concrete problem with treg, its pricing, or a tool result, submit a brief
-sanitized report if you have enough evidence. Distinguish observations from suspected causes.
-Report the same issue once per task and continue with the user's work. Suggestions are welcome too.
-Include related call IDs when available; keep them with saved results when practical.
+Proactively share problems and suggestions about treg. Small annoyances that slowed your task
+down count too: unclear instructions, confusing results or charges, unhelpful errors, and
+missing capabilities you worked around, even if the task succeeded. Describe what you needed and
+observed; you do not need to prove a bug. Distinguish observations from suspected causes.
+Use the `feedback` tool over MCP, or `treg feedback submit` over CLI. Pass related call IDs
+in `call_ids` (CLI: `--call-id`), not only in the message; references are optional.
+Report each issue once. Feedback helps the treg team improve the product; it does not complete
+the user's task. Keep going afterward.
 Keep private information out of the report. See [feedback instructions](https://treg.to/feedback.md).
+
+## Review
+
+If a call result invites a review, rate that one call after using it:
+`review(call_id, usefulness, reason?)` over MCP or `treg review CALL_ID USEFULNESS [--reason "..."]`.
+Choose `useful`, `partly`, `not_useful`, or `not_sure`; uncertainty is fine. One review per
+invitation; a review of an uninvited call is accepted but kept for reference only. Omit private
+data, use `feedback` for anything confusing or wrong, then continue.
 
 ## Rules
 - Secrets are **write-only** — the API never returns a stored value, to you or to anyone.

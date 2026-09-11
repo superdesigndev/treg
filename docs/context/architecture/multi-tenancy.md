@@ -16,6 +16,7 @@ sources:
   - src/treg/domain/governance/usage.py
   - src/treg/domain/identity/access.py
   - src/treg/domain/identity/session.py
+  - src/treg/domain/identity/promotions.py
   - tests/test_auth.py
   - tests/test_token_revocation.py
   - src/treg/routers/auth.py
@@ -41,11 +42,18 @@ pair, so every list/create/mutation and the proxy are scoped to the caller's org
 `docs/MULTI-TENANCY-PLAN.md` (standalone plan).
 
 ## The model (`models.py`)
+
+[Enrich Arena](../interface/enrich-arena.md) runs and evaluations require both the creating user
+and the active team to match. Regular team membership alone does not expose another member's results.
+Team deletion removes evaluations before their runs through `ORG_SCOPED_MODELS`.
+
 - **`Org`** — `id, name, slug (unique), suspended, demo, public_demo, created_at`. The tenant that owns
   secrets/tools/bundles. **`public_demo`** marks a team whose member token is PUBLISHED (e.g. on the
   landing page): non-admin members are locked to `/call` + reads and may never act as a user — enforced in
   `require_member` / `require_identity`.
-- **`User`** — identity only: `id, email (unique), created_at`. No token, no role.
+- **`User`** - identity only: `id, email (unique), created_at`, plus `email_verified_at` and
+  `signup_promo_available`. No token, no role. Verified accounts can claim signup credit once
+  across all teams; old accounts cannot claim again. See [money](money.md#signup-credit-eligibility).
 - **`Membership`** — `user_id, org_id, role (owner|admin|member|viewer), token_hash (idx), webhook_url,
   daily_call_cap` (per-user daily usage cap; `-1` = unlimited, admin-set — see the API fragment's
   usage-metering section), **`tool_access`** (JSON; **NULL = ALL tools** — the default, so nobody is
@@ -115,8 +123,8 @@ pair, so every list/create/mutation and the proxy are scoped to the caller's org
   (which predates it and creates a `User` directly) and `auth_email_start` (refuse early, mint no code).
   `list_members` carries `is_agent` so one roster can show people and machines apart.
 - **Email-domain blocklist.** The same choke points, for throwaway mail and domains used for bulk
-  registration. A new team is created with a promotional balance, which is what makes registering in
-  bulk on throwaway addresses worth someone's while. **Entirely configuration**: the classifier
+  registration. New verified accounts can receive one promotional balance, so farming verified inboxes
+  remains an abuse path even though repeated team creation no longer earns credit. **Entirely configuration**: the classifier
   (`_is_blocked_email` in `domain/identity/access.py`, pure — it only answers) reads
   `TREG_BLOCKED_EMAIL_DOMAINS` and nothing else, parsed once per distinct value in `config.py`
   (trim, drop a leading `@`/`.`, lowercase, and drop any dotless entry so a typed `com` cannot
@@ -213,7 +221,7 @@ bearer path refuses it once expired rather than reviving an expired cookie.
   org exists. **`create_org` uses `require_identity`, NOT `require_member`** — else a zero-org user could
   never make their first team. See [api](../interface/api.md).
 - **Code-free invites:** `my_invites` (`GET /invites/mine`, `require_identity`) lists pending invites for
-  the caller's proven email; `accept_my_invite` (`POST /invites/{id}/accept`, `require_identity`) joins
+  the caller's proven email, newest creation time first with descending ID breaking timestamp ties; `accept_my_invite` (`POST /invites/{id}/accept`, `require_identity`) joins
   with no code (403 if `invite.email != user.email`, 409 if already a member). The code path stays.
 - **Org management endpoints:** `register_user` (`POST /users`, legacy open-registration, used by the
   test fixture) still creates the user + an org + owner membership via `_make_org_membership` (mints the
@@ -308,3 +316,11 @@ Two consequences worth stating plainly:
 - **Shared-provider async objects are org-scoped.** Platform-key poll and result-fetch utility calls
   must resolve their id through an org-owned `AsyncTaskRecord` or `AsyncResourceRecord` before the
   upstream is contacted. BYOK calls keep access to ids in the team's own provider account.
+
+## Signup analytics boundary
+
+`find_or_create_user` optionally collects the IDs it actually inserted after a successful flush;
+a concurrent insert loser returns the existing user without marking it new. Email OTP and
+GitHub/Google auth pass that collection to `track_signup` **after their commit**, emitting
+`signup_completed` only for new accounts. The optional entry-surface cookie is analytics metadata,
+allowlisted by `analytics.funnel_surface`; it never affects authentication or team access.

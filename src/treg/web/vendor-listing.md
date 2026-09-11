@@ -37,6 +37,18 @@ that fails them will be declined.
    (`value`, `currency`, `type`, `source`, `source_url`, `checked`, `confidence`). Follow the
    schema in the worked example.
 
+## Capability first
+
+For every endpoint, before writing its `capability`:
+
+1. **Reuse.** Search `src/treg/catalog/capabilities.yaml` and the other `src/treg/catalog/*.yaml`
+   files for the job it does. If a capability exists, use that id — never a near-duplicate.
+2. **Propose only when missing.** If another provider already has an endpoint doing the same job
+   but no capability covers it, propose one under `proposed_capabilities:` and name that
+   endpoint in the PR so reviewers attach both.
+3. **Prefer overlap.** Endpoints sharing a capability with other providers are the ones agents
+   compare and route between; a new capability with a single provider is a shelf of one.
+
 ## Map the FULL surface before selecting
 
 List every documented operation your API exposes, then choose the 8–15 you catalog. The PR

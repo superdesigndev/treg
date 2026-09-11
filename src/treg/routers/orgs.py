@@ -540,7 +540,7 @@ async def my_invites(
     login method) is enough to see these; the invite code becomes a shortcut, not a requirement."""
     rows = (
         await db.execute(select(Invite).where(Invite.email == user.email, Invite.status == "pending")
-                         .order_by(Invite.created_at.desc()))  # newest first — the invite you just clicked
+                         .order_by(Invite.created_at.desc(), Invite.id.desc()))  # stable newest-first order
     ).scalars().all()
     now = _utcnow_naive()
     orgs = {  # batch the org lookup (was one db.get per invite)

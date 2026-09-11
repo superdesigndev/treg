@@ -352,7 +352,7 @@ async def test_admin_archive_report(clients: AsyncClient, shadow, monkeypatch):
         assert r.status_code == 200, r.text
         d = r.json()
         assert d["mode"] == "shadow" and d["keys"] == 2 and d["snapshots"] == 3
-        assert d["bodies_kept"] == 2 and d["kept_bytes"] > 0   # v2 deduplicated, never re-stored
+        assert d["bodies_kept"] == 3 and d["kept_bytes"] > 0   # counts readable versions, including dedup
         row = next(x for x in d["endpoints"] if x["endpoint_id"] == EP)
         assert row == {"endpoint_id": EP, "provider": "tikhub", "policy": "transient",
                        "keys": 2, "refetches": 1, "stable": 1, "changed": 0,
@@ -380,6 +380,9 @@ def test_ttl_fixed_guesses_and_vendor_ceiling():
 @pytest.fixture
 def serve(platform_on, monkeypatch):
     monkeypatch.setattr(get_settings(), "archive_mode", "serve")
+    monkeypatch.setattr(get_settings(), "archive_serve_endpoints", EP)
+    monkeypatch.setattr(get_settings(), "archive_serve_percent", 100)
+    monkeypatch.setattr(get_settings(), "archive_refresh_daily_cap", 50)
     monkeypatch.setitem(catalog_store.load().by_id[EP], "cache", "transient")
 
 
@@ -405,6 +408,30 @@ async def test_a_hit_serves_stored_bytes_and_bills_like_live(clients: AsyncClien
     await audit.drain()
     rows = (await clients.get("/calls")).json()
     assert [row.get("cached") for row in rows[:2]] == [True, False]
+
+
+@pytest.mark.parametrize("cache_header", [True, False])
+async def test_archive_hit_never_invites_review(clients: AsyncClient, serve, monkeypatch, cache_header):
+    monkeypatch.setattr(get_settings(), "review_sample_rate", 1)
+    original = call_service._served_response
+
+    def stored_response(served, body):
+        response = original(served, body)
+        if not cache_header:
+            response.raw_headers = tuple((name, value) for name, value in response.raw_headers
+                                         if name.lower() != b"x-treg-cache")
+        return response
+
+    monkeypatch.setattr(call_service, "_served_response", stored_response)
+    live = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+    assert live.headers["X-Treg-Hint"] == "review"
+    assert live.headers["X-Treg-Review"] == "requested"
+    await archive.drain()
+    hit = await clients.get(f"/call/{EP}?aweme_id=7&count=5")
+    assert hit.status_code == 200 and hit.content == live.content
+    assert "X-Treg-Hint" not in hit.headers and "X-Treg-Review" not in hit.headers
+    await audit.drain()
+    assert (await clients.get("/calls")).json()[0]["cached"] is True
 
 
 async def test_a_hit_is_not_a_new_observation(clients: AsyncClient, serve):
@@ -449,6 +476,8 @@ async def test_a_stale_snapshot_is_not_served(clients: AsyncClient, serve, monke
 async def test_default_forbidden_never_serves(clients: AsyncClient, platform_on, monkeypatch):
     monkeypatch.setattr(get_settings(), "archive_mode", "serve")
     monkeypatch.setattr(get_settings(), "archive_default_policy", "forbidden")
+    monkeypatch.setattr(get_settings(), "archive_serve_endpoints", EP)
+    monkeypatch.setattr(get_settings(), "archive_serve_percent", 100)
     # With keep-all switched off, an unjudged entry is recorded hash-only and never served.
     await clients.get(f"/call/{EP}?aweme_id=7")
     await archive.drain()
@@ -500,7 +529,26 @@ async def test_changed_refetch_shrinks_the_timer(clients: AsyncClient, shadow, m
     assert keys[0].change_seen == 1 and keys[0].ttl_s == 1800   # 3600 × 0.5
 
 
-async def test_repeated_noise_counts_as_stable(clients: AsyncClient, shadow, monkeypatch):
+@pytest.mark.parametrize("comparison", ["strict", "typo"])
+async def test_repeated_business_change_is_strict_by_default(clients: AsyncClient, shadow, monkeypatch,
+                                                            comparison):
+    assert not hasattr(get_settings(), "archive_comparison_mode")
+    from tests.test_marketplace_call import _fake_relay
+    for revenue in (100, 200, 300):
+        body = json.dumps({"company": "A", "country": "US", "currency": "USD",
+                           "year": 2026, "revenue": revenue}).encode()
+        monkeypatch.setattr(call_service, "relay", _fake_relay(200, body))
+        response = await clients.get(f"/call/{EP}?aweme_id=7")
+        assert response.status_code == 200 and response.content == body
+        await archive.drain()
+    keys, snaps = await _rows()
+    assert keys[0].change_seen == 2 and keys[0].stable_seen == 0
+    assert keys[0].ttl_s == 900
+    assert len(snaps) == 3 and all(s.body is not None for s in snaps)
+
+
+async def test_removed_noise_mode_cannot_weaken_strict_comparison(clients: AsyncClient, shadow, monkeypatch):
+    assert not hasattr(get_settings(), "archive_comparison_mode")
     monkeypatch.setitem(catalog_store.load().by_id[EP], "cache", "transient")
     from tests.test_marketplace_call import _fake_relay
     bodies = [json.dumps({"req_id": i, "ts": i * 10,
@@ -510,10 +558,9 @@ async def test_repeated_noise_counts_as_stable(clients: AsyncClient, shadow, mon
         await clients.get(f"/call/{EP}?aweme_id=7")
         await archive.drain()                          # recordings must land in call order
     keys, _ = await _rows()
-    # fetch 2 differs (first diff: counts changed, remembers the set); fetch 3 repeats the SAME
-    # small diff-set ⇒ noise ⇒ stable.
-    assert keys[0].change_seen == 1 and keys[0].stable_seen == 1
-    assert keys[0].volatile_paths == ["$.req_id", "$.ts"]
+    # A legacy configuration value cannot restore heuristic comparisons. Both changes count.
+    assert keys[0].change_seen == 2 and keys[0].stable_seen == 0
+    assert keys[0].volatile_paths == []
 
 
 async def test_always_changing_key_marks_itself_never_cache(clients: AsyncClient, serve, monkeypatch):
@@ -630,8 +677,11 @@ async def test_admin_archive_keys_endpoint(clients: AsyncClient, serve, monkeypa
     get_settings.cache_clear()
     try:
         monkeypatch.setattr(get_settings(), "archive_mode", "serve")
+        monkeypatch.setattr(get_settings(), "archive_serve_endpoints", EP)
+        monkeypatch.setattr(get_settings(), "archive_serve_percent", 100)
         monkeypatch.setitem(catalog_store.load().by_id[EP], "cache", "transient")
         await clients.get(f"/call/{EP}?aweme_id=7")   # live, recorded
+        await archive.drain()
         await clients.get(f"/call/{EP}?aweme_id=7")   # hit
         await archive.drain()
         await audit.drain()
@@ -668,6 +718,8 @@ async def test_admin_archive_body_viewer(clients: AsyncClient, serve, monkeypatc
     get_settings.cache_clear()
     try:
         monkeypatch.setattr(get_settings(), "archive_mode", "serve")
+        monkeypatch.setattr(get_settings(), "archive_serve_endpoints", EP)
+        monkeypatch.setattr(get_settings(), "archive_serve_percent", 100)
         monkeypatch.setitem(catalog_store.load().by_id[EP], "cache", "transient")
         await clients.get(f"/call/{EP}?aweme_id=7", headers={"Cache-Control": "no-cache"})
         await clients.get(f"/call/{EP}?aweme_id=7", headers={"Cache-Control": "no-cache"})
@@ -837,8 +889,8 @@ async def test_endpoint_stats_match_direct_aggregation(clients: AsyncClient, sha
         assert st.snapshots == len(snaps) == 4
         assert st.stable == sum(k.stable_seen for k in keys) == 1
         assert st.changed == sum(k.change_seen for k in keys) == 1
-        assert st.bodies_kept == sum(1 for x in snaps if x.body is not None)
-        assert st.kept_bytes == sum(x.size_bytes for x in snaps if x.body is not None)
+        assert st.bodies_kept == sum(1 for x in snaps if x.body_storage is not None)
+        assert st.kept_bytes == sum(x.size_bytes for x in snaps if x.body_storage is not None)
         assert st.newest_fetch is not None
 
 
@@ -932,7 +984,7 @@ async def test_pruner_never_cache_keeps_only_newest(clients: AsyncClient, shadow
         s.add(k); await s.commit()
     assert await archive.prune_once() == 2               # young age is no defense for never-cache
     _, snaps = await _rows()
-    assert sum(1 for x in snaps if x.body is not None) == 1
+    assert sum(1 for x in snaps if x.body_storage is not None) == 1
     assert next(x.version for x in snaps if x.body is not None) == 3
 
 
@@ -1169,3 +1221,88 @@ async def test_pending_bytes_released_when_task_completes(monkeypatch):
         await aio.gather(*archive._pending, return_exceptions=True)
         archive._pending.clear()
         monkeypatch.setattr(archive, "_pending_bytes", 0)
+
+
+@pytest.mark.parametrize("endpoints,percent,reason", [
+    ("", 100, "endpoint_disabled"), (EP, 0, "rollout_disabled"),
+    (EP, 101, "rollout_disabled"), (EP, -1, "rollout_disabled"),
+])
+async def test_rollout_bypass_never_queries_cache(clients, serve, monkeypatch,
+                                                 endpoints, percent, reason):
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    await archive.drain()
+    monkeypatch.setattr(get_settings(), "archive_serve_endpoints", endpoints)
+    monkeypatch.setattr(get_settings(), "archive_serve_percent", percent)
+    events = []
+    monkeypatch.setattr(call_service.analytics, "capture",
+                        lambda who, event, props, **kw: events.append((event, props)))
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 200 and "x-treg-cache" not in r.headers
+    props = [p for e, p in events if e == "tool_called"][-1]
+    assert props["cache_outcome"] == reason
+    assert not archive.worker_enabled()
+
+
+def test_rollout_cohorts_are_stable_and_nested(monkeypatch):
+    monkeypatch.setattr(get_settings(), "archive_serve_endpoints", EP)
+    monkeypatch.setattr(get_settings(), "archive_serve_percent", 10)
+    first = {str(i) for i in range(1000) if archive.rollout_reason(EP, str(i)) == "selected"}
+    assert 50 < len(first) < 150
+    assert first == {str(i) for i in range(1000)
+                     if archive.rollout_reason(EP, str(i)) == "selected"}
+    monkeypatch.setattr(get_settings(), "archive_serve_percent", 50)
+    second = {str(i) for i in range(1000) if archive.rollout_reason(EP, str(i)) == "selected"}
+    assert first < second
+    assert archive.rollout_reason(EP, "") == "missing_cohort"
+
+
+async def test_cache_reports_miss_hit_bypass_and_lookup_failure(clients, serve, monkeypatch):
+    events = []
+    monkeypatch.setattr(call_service.analytics, "capture",
+                        lambda who, event, props, **kw: events.append((event, props)))
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    await archive.drain()
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    await clients.get(f"/call/{EP}?aweme_id=7", headers={"Cache-Control": "no-cache"})
+    async def broken(**kwargs):
+        raise RuntimeError("lookup failed")
+    monkeypatch.setattr(archive, "lookup", broken)
+    response = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert response.status_code == 200
+    props = [p for e, p in events if e == "tool_called"]
+    assert [p["cache_outcome"] for p in props] == [
+        "key_missing", "hit", "caller_bypass", "lookup_error"]
+    assert props[1]["cache_age_s"] >= 0
+    assert props[1]["cache_window_s"] == 3600
+    for p in props:
+        assert p["cache_lookup_ms"] >= 0
+        assert p["cache_comparison_mode"] == "strict"
+        assert p["cache_ttl_policy"] == "adaptive"
+        assert not any(k in p for k in ("key_hash", "volatile_paths", "body", "request_headers"))
+
+
+@pytest.mark.parametrize("timer,outcome", [
+    (30 * 86400, "hit"), (3600, "stale"), (archive.TTL_NEVER, "ttl_disabled"),
+])
+async def test_strict_comparison_preserves_existing_ttl(clients, serve, monkeypatch, timer, outcome):
+    from datetime import timedelta
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    await archive.drain()
+    async with session_maker() as session:
+        key = (await session.execute(select(ArchiveKey))).scalars().one()
+        snap = (await session.execute(select(ArchiveSnapshot))).scalars().one()
+        key.ttl_s = timer
+        snap.fetched_at -= timedelta(hours=2)
+        session.add(key)
+        session.add(snap)
+        await session.commit()
+    events = []
+    monkeypatch.setattr(call_service.analytics, "capture",
+                        lambda who, event, props, **kw: events.append((event, props)))
+    r = await clients.get(f"/call/{EP}?aweme_id=7")
+    assert r.status_code == 200
+    assert (r.headers.get("x-treg-cache") == "hit") == (outcome == "hit")
+    props = [p for e, p in events if e == "tool_called"][-1]
+    assert props["cache_outcome"] == outcome
+    if timer > 0:
+        assert props["cache_window_s"] == timer

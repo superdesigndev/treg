@@ -31,9 +31,9 @@ class RouteView:
         self._routes, self._loaded_at = list(rows), time.monotonic()
         return self._routes
 
-    def for_endpoint(self, endpoint_id: str) -> list[OverflowRoute]:
+    def for_endpoint(self, endpoint_id: str, *, estimate_micro: int | None = None) -> list[OverflowRoute]:
         """Enabled routes, Orthogonal first. Sync."""
-        return route_for(self._routes, endpoint_id)
+        return route_for(self._routes, endpoint_id, estimate_micro=estimate_micro)
 
     def invalidate(self) -> None:
         self._loaded_at = -1.0

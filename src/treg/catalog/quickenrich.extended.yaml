@@ -1,0 +1,147 @@
+provider: quickenrich
+source:
+  docs: https://app.quickenrich.io/docs
+  curated: '2026-09-08'
+  spec_urls:
+  - https://app.quickenrich.io/docs
+endpoints:
+- id: quickenrich.x.country-codes
+  tier: extended
+  platform: companies
+  kind: utility
+  scope: any_account
+  method: GET
+  path: /api/lookups/country-codes
+  name: List countries
+  summary: Lookup allowed countries filter values
+  input:
+    note: Public upstream route; no API key required. Not suitable for validating credentials.
+  test_request:
+    queryParams: {}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://app.quickenrich.io/docs
+    checked: '2026-09-08'
+    confidence: documented
+    note: Public lookup; no credits or upstream key required.
+  docs_url: https://app.quickenrich.io/docs
+  verified: '2026-09-08'
+  example_response: examples/quickenrich.x.country-codes.json
+- id: quickenrich.x.industries
+  tier: extended
+  platform: companies
+  kind: utility
+  scope: any_account
+  method: GET
+  path: /api/lookups/industries
+  name: List industries
+  summary: Lookup allowed industries filter values
+  input:
+    note: Public upstream route; no API key required. Not suitable for validating credentials.
+  test_request:
+    queryParams: {}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://app.quickenrich.io/docs
+    checked: '2026-09-08'
+    confidence: documented
+    note: Public lookup; no credits or upstream key required.
+  docs_url: https://app.quickenrich.io/docs
+  verified: '2026-09-08'
+  example_response: examples/quickenrich.x.industries.json
+- id: quickenrich.x.employee-ranges
+  tier: extended
+  platform: companies
+  kind: utility
+  scope: any_account
+  method: GET
+  path: /api/lookups/employee-ranges
+  name: List employee ranges
+  summary: Lookup allowed employee ranges filter values
+  input:
+    note: Public upstream route; no API key required. Not suitable for validating credentials.
+  test_request:
+    queryParams: {}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://app.quickenrich.io/docs
+    checked: '2026-09-08'
+    confidence: documented
+    note: Public lookup; no credits or upstream key required.
+  docs_url: https://app.quickenrich.io/docs
+  verified: '2026-09-08'
+  example_response: examples/quickenrich.x.employee-ranges.json
+- id: quickenrich.x.revenue-ranges
+  tier: extended
+  platform: companies
+  kind: utility
+  scope: any_account
+  method: GET
+  path: /api/lookups/revenue-ranges
+  name: List revenue ranges
+  summary: Lookup allowed revenue ranges filter values
+  input:
+    note: Public upstream route; no API key required. Not suitable for validating credentials.
+  test_request:
+    queryParams: {}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://app.quickenrich.io/docs
+    checked: '2026-09-08'
+    confidence: documented
+    note: Public lookup; no credits or upstream key required.
+  docs_url: https://app.quickenrich.io/docs
+  verified: '2026-09-08'
+  example_response: examples/quickenrich.x.revenue-ranges.json
+- id: quickenrich.x.company-services
+  tier: extended
+  platform: companies
+  kind: utility
+  scope: any_account
+  method: GET
+  path: /api/lookups/company-services
+  name: List company services
+  summary: Lookup allowed company services filter values
+  input:
+    queryParams:
+      q:
+        type: string
+        required: false
+        example: software
+  test_request:
+    queryParams:
+      q: software
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://app.quickenrich.io/docs
+    checked: '2026-09-08'
+    confidence: documented
+    note: Public lookup; no credits or upstream key required.
+  docs_url: https://app.quickenrich.io/docs
+  verified: '2026-09-08'
+  example_response: examples/quickenrich.x.company-services.json

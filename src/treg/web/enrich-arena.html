@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Enrich Arena — compare the answers</title>
+  <meta name="description" content="One enrichment query. Independent answers. Compare enrichment results, vendors, cost and speed, and vote for the best answer.">
+  <link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/enrich-arena/arena.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&amp;family=Geist+Pixel&amp;family=Google+Sans+Flex:opsz,wght@6..144,400..700&amp;display=swap">
+  <script src="/adtrack.js"></script>
+  <script src="/vendor/vue-3.5.41.global.prod.js" defer></script>
+  <script src="/agent-setup.js" defer></script>
+  <script src="/enrich-arena/bench.js" defer></script>
+  <script src="/enrich-arena/arena.js" defer></script>
+</head>
+<body>
+<div id="arena" v-cloak class="ph-no-capture ph-hide" :class="{'is-leaderboard':leaderboard,'is-benchmark':benchmark}">
+  <header class="masthead">
+    <a href="/" class="brand" aria-label="treg home"><svg class="brandmark" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg><span class="brand-name">treg</span><span class="brand-divider">/</span><span class="brand-sub">Enrich Arena</span></a>
+    <nav class="arena-page-tabs" aria-label="Arena pages">
+      <a :href="sectionUrl(false)" :aria-current="!leaderboard&&!benchmark?'page':null"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m4 3 13 13M3 3h4L17 13v4h-4L3 7V3Zm10 0h4v4l-5 5M7 12l-4 4m-1-3 5 5m6-1 4-4"/></svg>Arena</a>
+      <a :href="sectionUrl(true)" :aria-current="leaderboard?'page':null" @click="saveDraft(false)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17H3V9h4m0 8h6V3H7v14Zm6-5h4v5h-4"/></svg>Leaderboard</a>
+      <a href="/enrich-arena/people-search-bench" :aria-current="benchmark?'page':null" @click="saveDraft(false)"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M5 2h10v16H5zM8 6h4M8 10h4M8 14h2"/></svg>Benchmark</a>
+      <a href="https://treg.to" @click="saveDraft(false)">Treg <span aria-hidden="true">↗</span></a>
+    </nav>
+    <nav aria-label="Arena account">
+      <span class="arena-community" role="group" aria-label="Community links">
+        <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener" aria-label="Open source on GitHub" title="Open source on GitHub"><svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg><span>Open source</span></a>
+        <a href="https://discord.gg/6mQYYfFMAn" target="_blank" rel="noopener" aria-label="treg on Discord" title="treg on Discord"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.37a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.058a.082.082 0 0 0 .031.056 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z"/></svg></a>
+        <a href="https://x.com/treg_ai" target="_blank" rel="noopener" aria-label="treg on X (Twitter)" title="treg on X (Twitter)"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.451-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117l11.966 15.644Z"/></svg></a>
+      </span>
+      <template v-if="user">
+        <label v-if="teams.length > 1" class="team-switcher desktop-team-switcher"><span>Team</span><select aria-label="Team paying for runs" v-model="team" @change="changeTeam" :disabled="running || busy"><option v-for="t in teams" :value="t.slug">{{t.name}}</option></select></label>
+        <div class="account-actions">
+          <button class="balance" v-if="balance !== null" type="button" @click="topUp" :aria-label="'Top up credits · balance '+usd(balance)" title="Top up credits">{{usd(balance)}} <span>credits</span></button>
+          <button class="text-button desktop-signout" @click="logout" :disabled="running || busy">Sign out</button>
+          <details class="mobile-account-menu">
+            <summary aria-label="Account options" title="Account options"><svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m5 7.5 5 5 5-5"/></svg></summary>
+            <div class="account-menu-panel"><label v-if="teams.length > 1" class="team-switcher"><span>Team</span><select aria-label="Team paying for runs" v-model="team" @change="changeTeam" :disabled="running || busy"><option v-for="t in teams" :value="t.slug">{{t.name}}</option></select></label><button class="text-button" type="button" @click="logout" :disabled="running || busy">Sign out</button></div>
+          </details>
+        </div>
+      </template>
+      <button v-else class="sign-in-button" @click="openLogin(false)">Sign up <span aria-hidden="true">↗</span></button>
+    </nav>
+  </header>
+  <div class="arena-layout" :class="{'has-history':!leaderboard && !benchmark && user && history.length}">
+    <aside v-if="!leaderboard && !benchmark && user && history.length" class="session-sidebar" aria-label="Query sessions">
+      <button class="new-session" @click="newSession" :disabled="busy || running"><span aria-hidden="true">＋</span> New query</button>
+      <div class="session-list" role="navigation" aria-label="Previous queries">
+        <button v-for="h in history" :key="h.id" class="session-item" :class="{active:run?.id===h.id}" :aria-current="run?.id===h.id?'page':null" :title="Object.values(h.identity).join(' · ')" :disabled="busy || running" @click="loadHistory(h.id)">
+          <span class="session-title">{{h.entry_count>1?h.entry_count+' entries · ':''}}{{Object.values(h.identity).join(' · ')}}</span>
+          <span class="session-meta">{{taskLabel(h.capability)}} · {{h.mode==='compare'?'Battle':'Waterfall'}}</span>
+          <span class="session-date">{{historyDate(h.created_at)}}<span v-if="h.state==='running'"> · Running</span></span>
+        </button>
+        <button v-if="historyHasMore" class="history-load-more" type="button" @click="loadMoreHistory" :disabled="historyLoading || busy || running">{{historyLoading?'Loading…':'Load more'}}</button>
+      </div>
+    </aside>
+  <main>
+    <section v-if="!leaderboard && !benchmark" class="intro">
+      <span class="intro-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><path d="M4 3h3v3h3v3h3v3h-3v-2H7V7H4zM17 3h3v4h-3v3h-3v2h-3V9h3V6h3zM5 13h3v3h3v3H8v-2H5v3H2v-3h3zM16 13h3v4h3v3h-3v-3h-3v2h-3v-3h3z"/></svg></span>
+      <div class="intro-title"><h1>{{leaderboard?'Enrichment Leaderboard':'Enrich Arena'}}</h1><div class="powered-by"><span>Powered by</span><svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#101010"/><rect x="111" y="111" width="140.5" height="140.5" rx="20" fill="#fff"/><rect x="260.5" y="260.5" width="140.5" height="140.5" rx="20" fill="#fff"/></svg><span class="powered-by-name">Treg</span></div></div>
+      <button class="setup-trigger" type="button" @click="openSetup" aria-label="Setup treg in Claude Code, Codex, OpenClaw, Hermes and more agents"><span>Setup treg in</span><span class="setup-logos" aria-hidden="true"><img v-for="agent in setupFeatured" :key="agent.id" :src="setupIcon(agent.icon)" :title="agent.name" alt=""><span>+{{setupOtherCount}}</span></span></button>
+    </section>
+
+
+
+    <section v-if="benchmark" class="people-bench" aria-label="People Search Bench">
+      <div class="leaderboard-title bench-title"><div><h1>People Search Bench</h1><p>How well do agents find the right people?</p></div><button class="setup-trigger" type="button" @click="openSetup">Setup treg <span aria-hidden="true">↗</span></button></div>
+      <p class="bench-source">Published results from <a href="https://treg.to/people-search#bench" target="_blank" rel="noopener">treg’s people-search benchmark ↗</a></p>
+      <div v-if="benchLoading" class="bench-message" role="status">Loading benchmark results…</div>
+      <div v-else-if="benchError" class="bench-message" role="alert"><p>{{benchError}}</p><button class="text-button" @click="loadBenchmark">Try again</button> · <a href="https://treg.to/people-search#bench" target="_blank" rel="noopener">Open source ↗</a></div>
+      <template v-else-if="benchSelected">
+        <div class="bench-category-tabs" role="group" aria-label="Benchmark use case"><button v-for="category in benchCategories" :key="category.id" :aria-pressed="category.id===benchCategory" @click="benchCategory=category.id">{{category.name}}</button></div>
+        <div class="bench-chart" role="group" :aria-label="benchSelected.name+' benchmark scores'">
+          <div class="bench-chart-heading"><div><h2>{{benchSelected.name}}</h2><p>Published score · higher is better</p></div><span>0–100 scale</span></div>
+          <div class="bench-axis" aria-hidden="true"><span>0</span><span>25</span><span>50</span><span>75</span><span>100</span></div>
+          <div class="bench-bar-row" v-for="row in benchRows" :key="row.id" :style="{'--bench-color':row.color}"><span class="bench-system"><img :src="row.icon" alt="" width="24" height="24">{{row.label}}</span><div class="bench-bar-track"><span :style="{width:row.score+'%'}"></span></div><strong>{{row.score.toFixed(1)}}</strong></div>
+          <p class="bench-chart-note">Scores compare complete search systems across a use case. They do not measure an individual enrichment vendor’s hit rate or email-verification accuracy.</p>
+        </div>
+        <div class="bench-overview-heading"><h2>Across every use case</h2><p>The same scale, side by side.</p></div>
+        <div class="bench-overview"><article class="bench-mini" v-for="category in benchCategories" :key="category.id"><h3>{{category.name}}</h3><div class="bench-mini-row" v-for="row in category.rows" :key="row.id" :style="{'--bench-color':row.color}"><span><img :src="row.icon" alt="" width="18" height="18">{{row.label}}</span><div class="bench-bar-track"><span :style="{width:row.score+'%'}"></span></div><strong>{{row.score.toFixed(1)}}</strong></div></article></div>
+        <details class="bench-methodology"><summary>About these results and sources</summary><p>These charts reproduce the category scores published on treg’s people-search landing page. They are a published snapshot, not a new benchmark run. No overall score is calculated here.</p><p>The original People Search Bench evaluates relevance, coverage and information utility. Its current GitHub results differ from the figures on the landing page; use the linked methodology for those definitions and results. A score is not a guarantee that a returned email can receive mail.</p><p><a href="https://treg.to/people-search#bench" target="_blank" rel="noopener">Published treg results ↗</a><a href="https://github.com/LessieAI/people-search-bench" target="_blank" rel="noopener">Benchmark & methodology ↗</a></p></details>
+      </template>
+    </section>
+
+    <section v-if="leaderboard" class="leaderboard-controls" aria-label="Leaderboard use case">
+      <div class="leaderboard-title"><div><h1>{{taskLabel(taskId)}}</h1><p>Which vendors return the data you need?</p></div><button class="setup-trigger" type="button" @click="openSetup" aria-label="Setup treg in Claude Code, Codex, OpenClaw, Hermes and more agents"><span>Setup treg in</span><span class="setup-logos" aria-hidden="true"><img v-for="agent in setupFeatured" :key="agent.id" :src="setupIcon(agent.icon)" :title="agent.name" alt=""><span>+{{setupOtherCount}}</span></span></button></div>
+      <arena-task-tabs :groups="jobGroups" :value="taskId" :disabled="!tasks.length" @change="chooseTask"></arena-task-tabs>
+    </section>
+
+    <section v-if="!leaderboard && !benchmark" id="composer" class="workspace" aria-label="Enrichment query">
+      <form @submit.prevent="submit" novalidate>
+        <arena-task-tabs :groups="jobGroups" :value="taskId" :disabled="busy || running || !tasks.length" @change="chooseTask"></arena-task-tabs>
+        <div class="compose-main" id="task-inputs" role="tabpanel" :aria-labelledby="'arena-task-'+taskId">
+          <div class="entry-inputs" :class="{'multiple-entries':inputRows.length>1}" :style="{'--input-columns':inputKeys.length}">
+          <div v-if="inputRows.length>1" class="entry-labels" aria-hidden="true"><span></span><span v-for="key in inputKeys" :key="key" class="entry-column-label">{{fieldLabel(key)}}</span><span></span></div>
+          <div class="input-row" v-for="(entry,index) in visibleInputs" :key="index"><span v-if="inputRows.length>1" class="entry-number" aria-hidden="true">{{index+1}}</span><label class="query-field" v-for="key in inputKeys" :key="key"><span :class="{'sr-only':inputRows.length>1}">{{fieldLabel(key)}}<span class="sr-only"> · Entry {{index+1}}</span></span><input v-model="entry[key]" :type="key==='email'?'email':key==='phone'?'tel':'text'" :inputmode="key==='email'?'email':key==='phone'?'tel':['domain','company_domain','linkedin_url'].includes(key)?'url':'text'" :spellcheck="false" :placeholder="placeholder(key)" :maxlength="500" :disabled="busy || running" required autocomplete="off" @input="quote=null" @paste="pasteEntries($event,index)"></label><button v-if="inputRows.length>1" type="button" class="remove-entry" :aria-label="'Remove entry '+(index+1)" :disabled="busy || running" @click="removeEntry(index)">×</button>
+          </div>
+          </div>
+          <div class="entry-tools">
+            <div class="entry-actions">
+              <button class="text-button" type="button" @click="addEntry" :disabled="busy || running || inputRows.length>=maxEntries">+ Add entry</button>
+              <label class="input-method" v-if="currentTask.variants.length>1">Using <select aria-label="Input type" :value="variant" @change="chooseVariant(Number($event.target.value))" :disabled="busy || running"><option v-for="(v,i) in currentTask.variants" :value="i">{{variantLabel(v)}}</option></select></label>
+            </div>
+            <div v-if="verificationTask" class="auto-verify-control" :class="{'hint-dismissed':verificationHintHidden}" @mouseenter="verificationHintHidden=false" @focusin="verificationHintHidden=false" @keydown.esc="verificationHintHidden=true">
+              <label class="verification-switch" :class="{enabled:autoVerify,disabled:busy || running || verificationPreview===null}">
+                <input type="checkbox" role="switch" v-model="autoVerify" aria-describedby="verification-cost-hint" :disabled="busy || running || verificationPreview===null">
+                <span class="verification-switch-track" aria-hidden="true"><span></span></span>
+                <span>{{taskId==='people.phone.find'?'Phone verification':'Email verification'}}</span>
+                <svg class="verification-info" viewBox="0 0 20 20" fill="none" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 9v5M10 6v1"/></svg>
+              </label>
+              <span id="verification-cost-hint" role="tooltip" class="verification-cost-hint"><strong>{{verificationPreview===null?'Verification unavailable':readyQuote?.auto_verify?'Up to '+usd(readyQuote.auto_verify.estimate_micro)+' extra per found result':'From '+usd(verificationPreview)+' extra per found result'}}</strong><span>{{taskId==='people.phone.find'?'Automatically check each phone number found.':'Check each email through a verification waterfall; unavailable providers fall back within the quoted limit.'}} {{readyQuote?.auto_verify?'Already included in your run estimate.':'The cost is included in your run estimate when enabled.'}}</span></span>
+            </div>
+            <button v-if="inputRows.length>3" class="text-button" type="button" @click="showAllEntries=!showAllEntries">{{showAllEntries?'Show fewer':'Show all '+inputRows.length+' entries'}}</button>
+            <span v-if="inputRows.length>1">{{inputRows.length}} / {{maxEntries}} entries</span>
+            <div class="entry-submit"><span class="spreadsheet-hint">or paste rows from a spreadsheet</span><button class="run-button" type="submit" :disabled="busy || running || pricing || !tasks.length">{{runButtonLabel}} <span aria-hidden="true">→</span></button></div>
+          </div>
+        </div>
+
+        <p v-if="discovery" class="discovery-hint">Up to {{currentTask.result_limit}} matches per vendor and query · {{maxEntries}} queries per batch</p>
+        <div v-if="readyQuote" class="query-options">
+          <span class="price-hint">{{inputRows.length>1?(mode==='waterfall'?'From = cheapest first step for every entry. ':'Estimate covers all entries. '):''}}Estimated cost; final charges may vary.</span>
+        </div>
+      </form>
+    </section>
+
+    <div v-if="error" role="alert" class="notice error-notice"><span>{{error}}</span><button @click="error=''" aria-label="Dismiss error">×</button></div>
+
+    <section v-if="!benchmark && (leaderboard || showProviderPreview) && tasks.length" class="results-section provider-preview" :class="{'leaderboard-results':leaderboard}" :id="leaderboard?'task-inputs':null" :role="leaderboard?'tabpanel':null" :aria-labelledby="leaderboard?'arena-task-'+taskId:null" aria-label="Vendors and pricing">
+      <arena-fighters requestable @request-vendor="openVendorRequest" v-if="!leaderboard && !benchmark" :entries="availableProviders" :mode="mode" selectable choosable :enabled-providers="enabledProviders" @toggle-provider="toggleProvider" :disabled="busy || running" @change-mode="setMode"></arena-fighters>
+      <aside v-if="leaderboard" class="leaderboard-filters" aria-label="Chart filters">
+        <p class="filter-label">Compare by</p>
+        <div class="stats-views" role="group" aria-label="Vendor stats view"><button v-for="view in chartViews" :key="view.id" type="button" :aria-pressed="statsView===view.id" :class="{active:statsView===view.id}" @click="statsView=view.id;chartFocus=null"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path v-if="view.id==='rate'||view.id==='verified'" d="M4 16V9m6 7V4m6 12V7"/><template v-else-if="view.id==='speed'"><circle cx="10" cy="11" r="6"/><path d="M10 7v4l3 2M7 2h6"/></template><template v-else-if="view.id==='price'"><circle cx="10" cy="10" r="7"/><path d="M10 5v10m3-8H9a2 2 0 0 0 0 4h2a2 2 0 0 1 0 4H7"/></template><template v-else><path d="M3 3v14h14"/><circle cx="7" cy="11" r="1"/><circle cx="11" cy="7" r="1"/><circle cx="15" cy="5" r="1"/></template></svg>{{view.label}}</button></div>
+        <fieldset class="leaderboard-inputs"><legend class="filter-label">Input type</legend><label v-for="(v,i) in currentTask.variants" :key="i" :class="{active:variant===i}"><input type="radio" name="leaderboard-input" :value="i" :checked="variant===i" @change="chooseVariant(i)"><span>{{variantLabel(v)}}</span></label></fieldset>
+        <p class="leaderboard-source">{{statsView==='verified'?'Published verification pilot':'From real enrichment calls'}}<span>{{statsView==='verified'?verificationWindow:insightWindow}}</span></p>
+      </aside>
+      <div v-if="leaderboard && !discovery" class="vendor-chart" :class="{'price-chart':statsView==='price'}" aria-label="Vendor performance chart">
+        <div class="chart-heading"><div><h3>{{chartViews.find(v=>v.id===statsView)?.label}} <span>{{variantLabel(inputKeys)}}</span></h3><p>{{statsView==='verified'?(taskId==='people.email.find'?'Valid among sampled emails · higher rate to the left':'Reachability and ownership checks unavailable'):statsView==='price'?'Estimated price per entry · cheapest first':statsView==='speed'?'Median response time · lower is faster':statsView==='value'?'Lower price ← · ↑ higher '+(insightVerification?'verdict rate':'hit rate'):(insightVerification?'Returned verdicts':'Returned data')+' · higher rate to the left'}}</p></div><span class="chart-source">{{statsView==='verified'?'Verification pilot':statsView==='price'?'Catalog estimates':'Observed calls'}}</span></div>
+        <p v-if="statsView==='verified'" class="verified-explanation">{{verifiedExplanation}}</p>
+        <template v-if="statsView==='price'">
+          <div v-if="chartBars.length" class="price-comparison" role="group" aria-label="Vendor price comparison">
+            <button v-for="p in chartBars" :key="p.endpoint_id" type="button" class="price-comparison-row" :class="{picked:chartFocus===p.endpoint_id}" :aria-label="chartLabel(p)" @mouseenter="chartFocus=p.endpoint_id" @focus="chartFocus=p.endpoint_id" @click="chartFocus=p.endpoint_id">
+              <span class="price-vendor"><img :src="'/logos/'+p.provider+'.svg?v=arena-real-1'" alt="" width="22" height="22" @error="$event.target.style.visibility='hidden'"><span>{{providerName(p.provider)}}</span></span>
+              <span class="price-track" aria-hidden="true"><span :style="{width:(100*p.value/chartMax)+'%',background:p.color}"></span></span>
+              <span class="price-amount">{{usd(p.value)}}</span>
+            </button>
+            <p class="price-scale-note">Bar length shows relative price · USD per entry</p>
+          </div>
+          <p v-else class="chart-empty" role="status">No vendor prices available for this selection yet.</p>
+        </template>
+        <template v-else-if="statsView!=='value'">
+          <div v-if="chartBars.length" class="bar-chart-scroll" tabindex="0" role="region" :aria-label="statsView==='price'?'Vendor price bars':statsView==='speed'?'Vendor response time bars':'Vendor rate bars'">
+            <div class="bar-chart" :style="{'--chart-columns':chartBars.length}">
+              <div class="bar-grid" aria-hidden="true"><div v-for="fraction in [1,.75,.5,.25,0]" :style="{bottom:(fraction*100)+'%'}"><span>{{chartTick(chartMax*fraction)}}</span></div></div>
+              <div class="bar-columns">
+                <button v-for="p in chartBars" :key="p.endpoint_id" type="button" class="bar-column" :class="{picked:chartFocus===p.endpoint_id}" :style="{'--vendor-color':p.color}" :aria-label="chartLabel(p)" @mouseenter="chartFocus=p.endpoint_id" @focus="chartFocus=p.endpoint_id" @click="chartFocus=p.endpoint_id">
+                  <span class="bar-track"><span class="bar-fill" :style="{height:(100*p.value/chartMax)+'%'}"><span class="bar-value">{{statsView==='verified'?verifiedRate(p):statsView==='price'?usd(p.estimate_micro):statsView==='speed'?insightResponseTime(p):insightRate(p)}}</span></span></span>
+                  <span class="bar-vendor"><img :src="'/logos/'+p.provider+'.svg?v=arena-real-1'" alt="" @error="$event.target.style.visibility='hidden'"><span><template v-for="(part,index) in providerLabelParts(p.provider)" :key="index"><wbr v-if="index">{{part}}</template></span></span>
+                </button>
+              </div>
+            </div>
+          </div>
+          <p v-else class="chart-empty" role="status">{{statsView==='verified'?(taskId==='people.phone.find'?'Phone reachability and ownership have not been verified.':'No comparable verification samples for this selection yet.'):statsView==='price'?'No vendor prices available for this selection yet.':insightsState==='loading'?'Loading historical stats…':insights?.status==='warming'?'Processing stored call history…':'No comparable samples for this selection yet.'}} <a :href="sectionUrl(false)">View vendor prices in Arena →</a></p>
+        </template>
+        <template v-else>
+          <div v-if="chartPoints.length" class="scatter-chart">
+            <div class="scatter-plot">
+              <div class="scatter-grid" aria-hidden="true"><div v-for="tick in [0,25,50,75,100]" :style="{bottom:tick+'%'}"><span>{{tick}}%</span></div></div>
+              <div class="scatter-x" aria-hidden="true"><span v-for="fraction in [0,.25,.5,.75,1]" :style="{left:(fraction*100)+'%'}">{{usd(chartPriceMax*fraction)}}</span></div>
+              <button v-for="p in chartPoints" :key="p.endpoint_id" class="scatter-dot" type="button" :class="{picked:chartFocus===p.endpoint_id}" :style="{left:(100*p.estimate_micro/chartPriceMax)+'%',bottom:p.rate+'%','--vendor-color':p.color}" :aria-label="chartLabel(p)" @mouseenter="chartFocus=p.endpoint_id" @focus="chartFocus=p.endpoint_id" @click="chartFocus=p.endpoint_id"><span class="scatter-logo-fallback" aria-hidden="true">{{providerName(p.provider).slice(0,1)}}</span><img :src="'/logos/'+p.provider+'.svg?v=arena-real-1'" alt="" width="24" height="24" @error="$event.target.style.display='none'"></button>
+            </div>
+            <div class="scatter-axis-title">Estimated price{{inputRows.length>1?' · '+inputRows.length+' entries':' per entry'}} →</div>
+            <div class="chart-legend" role="group" aria-label="Chart vendors"><button v-for="p in chartPoints" :key="p.endpoint_id" type="button" :aria-pressed="chartFocus===p.endpoint_id" @mouseenter="chartFocus=p.endpoint_id" @focus="chartFocus=p.endpoint_id" @click="chartFocus=p.endpoint_id"><i :style="{background:p.color}" aria-hidden="true"></i>{{providerName(p.provider)}}</button></div>
+          </div>
+          <p v-else class="chart-empty" role="status">No vendors have both a rate and price for this selection yet.</p>
+        </template>
+        <p v-if="statsView==='verified'&&chartDetail" class="verified-explanation">{{verifiedRateNote(chartDetail)}}</p>
+        <div class="chart-detail" aria-live="polite"><template v-if="chartDetail"><strong>{{providerName(chartDetail.provider)}}</strong><span>{{insightVerification?'Verdict rate':'Hit rate'}} <b>{{insightRate(chartDetail)}}</b></span><span v-if="supportsVerifiedRate" :title="verifiedRateNote(chartDetail)">{{verifiedRateLabel}} <b>{{verifiedRate(chartDetail)}}</b></span><span>Response <b>{{insightResponseTime(chartDetail)}}</b></span><span>Price <b>{{chartDetail.estimate_micro==null?'—':usd(chartDetail.estimate_micro)}}</b></span></template><span v-else>Hover or select a vendor to compare its rate, speed and price.</span></div>
+        <p v-if="statsView==='price'" class="chart-caveat">Current catalog estimates per entry. Billing may be per request or per successful result; final pricing depends on your team and query.</p><p v-else class="chart-caveat">Different vendors received different inputs. These are observed results, not a controlled benchmark{{insightVerification?' or verification accuracy':''}}.</p>
+      </div>
+      <div v-else class="results-table-wrap" tabindex="0" role="region" aria-label="Vendor stats and pricing table" @scroll.passive="metricTooltip=null">
+        <table class="results-table pricing-table" :class="{'discovery-pricing':discovery}">
+          <caption class="sr-only">{{discovery?'Vendor estimates':'Vendor hit rates, response times and estimated prices'}} for {{currentTask.label}} using {{variantLabel(inputKeys)}}</caption>
+          <thead><tr><th scope="col">Vendor</th><th v-if="!discovery" scope="col" class="number-cell">{{insightVerification?'Verdict rate':'Hit rate'}}</th><th v-if="showVerifiedRateColumn" scope="col" class="number-cell metric-help-header" @mouseenter="showMetricTooltip" @mouseleave="metricTooltip=null" @focusin="showMetricTooltip" @focusout="metricTooltip=null" @keydown.esc="metricTooltip=null"><button type="button" class="metric-help-trigger" :aria-describedby="metricTooltip?'email-validity-help':null" @click="showMetricTooltip">{{verifiedRateLabel}}</button></th><th v-if="!discovery" scope="col" class="number-cell">Response time</th><th scope="col" class="number-cell">Price <span v-if="inputRows.length>1">· {{inputRows.length}} entries</span></th></tr></thead>
+          <tbody><tr v-for="p in chartRows" :key="p.endpoint_id">
+            <th scope="row"><div class="vendor-name"><span class="vendor-logo"><span aria-hidden="true">{{providerName(p.provider).slice(0,1)}}</span><img :src="'/logos/'+p.provider+'.svg?v=arena-real-1'" alt="" width="24" height="24" @error="$event.target.style.display='none'"></span>{{providerName(p.provider)}}</div></th>
+            <td v-if="!discovery" class="number-cell historical-rate"><div class="inline-metric"><span class="metric-track" :class="{missing:p.rate===null}" aria-hidden="true"><span v-if="p.rate!==null" :style="{width:p.rate+'%'}"></span></span><span class="metric-value">{{insightRate(p)}}</span></div><small v-if="insightSampleLabel(p)">{{insightSampleLabel(p)}}</small></td>
+            <td v-if="showVerifiedRateColumn" class="number-cell historical-rate" :title="verifiedRateNote(p)" tabindex="0" :aria-label="verifiedRateLabel+' '+verifiedRate(p)+'. '+verifiedRateNote(p)"><div class="inline-metric"><span class="metric-track verified-track" :class="{missing:p.verifiedRate===null}" aria-hidden="true"><span v-if="p.verifiedRate!==null" :style="{width:p.verifiedRate+'%'}"></span></span><span class="metric-value">{{verifiedRate(p)}}</span></div></td>
+            <td v-if="!discovery" class="number-cell"><div class="inline-metric"><span class="metric-track time-track" :class="{missing:p.ms===null}" aria-hidden="true"><span v-if="p.ms!==null" :style="{width:(100*p.ms/chartTimeMax)+'%'}"></span></span><span class="metric-value">{{insightResponseTime(p)}}</span></div><small v-if="insightResponseTime(p)!=='—'">median · shorter is faster</small></td>
+            <td class="number-cell">{{p.estimate_micro==null?'Price unavailable':usd(p.estimate_micro)}}<small>{{billingLabel(p)}}</small></td>
+          </tr><tr v-if="!previewProviders.length"><td :colspan="showVerifiedRateColumn?5:discovery?2:4" class="result-empty">{{customServices?'Click a vendor avatar to include it.':'No services support this input type.'}}</td></tr></tbody>
+        </table>
+      </div>
+      <teleport to="body"><div v-if="metricTooltip" id="email-validity-help" role="tooltip" class="metric-help-tooltip" :style="{left:metricTooltip.left+'px',top:metricTooltip.top+'px',width:metricTooltip.width+'px'}">{{verifiedExplanation}}</div></teleport>
+      <p class="pricing-note">{{readyQuote?(!leaderboard&&mode==='waterfall'?'Quoted order · stops at the first hit.':'Estimates for your team.'):'Catalog estimates · access and final pricing depend on your team and query.'}}</p>
+      <p v-if="!discovery && (insightsState==='loading' || insightsState==='idle')" class="pricing-note" role="status">Loading historical stats…</p>
+      <p v-else-if="!discovery && insightsState==='error'" class="pricing-note" role="status">Stats refresh unavailable; any displayed values are from the last update. <button type="button" class="text-button" @click="loadInsights">Retry</button></p>
+      <details v-else-if="!discovery" class="stats-methodology">
+        <summary>About these stats <span>{{insightWindow}}</span></summary>
+        <p v-if="insightVerification">Verdict rate is the share of unique evaluable requests that returned a verdict, including valid, invalid and unknown answers. It does not measure verification accuracy.</p>
+        <p v-else>Hit rate is the share of unique evaluable lookups that returned the task’s required fields. We keep the latest evaluable response per identical request for each vendor, so repeat calls do not dominate. Under 20 unique lookups shows no rate; under 100 is a small sample.</p>
+        <p>Known bad requests, rate limits, balance/credit failures, access and service failures, refusals and pending responses are excluded. Genuine no-result responses count as misses; ambiguous or missing evidence is omitted. Response time is the median of successful calls, including repeats, with at least 20 returned results.</p>
+        <p v-if="supportsVerifiedRate">{{verifiedExplanation}} Verifier details and check dates are available on hover. Samples with fewer than 20 completed checks are withheld. Risky, unknown and conflicting judgments are not counted as valid; unfinished checks are excluded.</p>
+        <p v-if="insights?.status==='warming'">Processing stored call history. Stats will appear when the first collection finishes.</p>
+        <p>These stats use calls with treg’s credentials over a rolling 30-day window. <span v-if="insightReviewedOn">Updated {{insightReviewedOn}}.</span> Vendors received different inputs and waterfall positions, so these figures are not a controlled ranking or verified accuracy. Prices are current estimates for your selection.</p>
+        <a href="/arena/insights" download="enrich-arena-insights.json">Download aggregate data ↗</a>
+      </details>
+    </section>
+
+    <section v-if="!leaderboard && run" class="results-section" aria-label="Enrichment results" aria-live="polite">
+      <arena-fighters requestable @request-vendor="openVendorRequest" :key="run.id" :entries="resultFighters" :choosable="!showProviderPreview && !running" :enabled-providers="enabledProviders" @toggle-provider="toggleProvider" :mode="run.mode" :active="running" :selected="winnerIds" :awards="battleAwards" :selectable="!showProviderPreview" :disabled="busy || running" @change-mode="setMode"><template #actions><button v-if="running" class="battle-stop text-button" @click="cancelRun" :disabled="busy">Stop</button></template></arena-fighters>
+      <p v-if="run.state==='interrupted' || run.state==='failed'" class="notice">This run did not finish. Completed answers are kept; uncertain calls will not be retried automatically.</p>
+      <template v-if="isBatch">
+        <div class="results-table-wrap batch-scoreboard" tabindex="0" role="region" aria-label="Batch vendor scoreboard">
+          <table v-sticky-header class="results-table">
+            <caption class="sr-only">Coverage and costs across {{runEntries.length}} entries</caption>
+            <thead><tr><th>Vendor</th><th>{{discoveryRun()?'Queries with matches':run.mode==='waterfall'?'Additional results':'Found'}}</th><th v-if="hasBatchFeedback">Feedback</th><th class="number-cell">{{discoveryRun()?'Cost / kept query':'Cost / kept'}}</th><th>Median time</th></tr></thead>
+            <tbody><template v-for="v in batchVendors" :key="v.provider">
+              <tr class="vendor-summary" :class="{clickable:v.attempted,picked:selectedVendor===v.provider}" :tabindex="v.attempted?0:null" :aria-expanded="v.attempted?selectedVendor===v.provider:null" :aria-controls="v.attempted?'vendor-detail-'+v.provider:null" @click="toggleVendorRow($event,v)" @keydown.enter.self.prevent="selectVendor(v)" @keydown.space.self.prevent="selectVendor(v)">
+                <th scope="row"><div class="vendor-name"><span class="vendor-logo"><span aria-hidden="true">{{providerName(v.provider).slice(0,1)}}</span><img :src="'/logos/'+v.provider+'.svg?v=arena-real-1'" alt="" width="24" height="24" @error="$event.target.style.display='none'"></span><button v-if="v.attempted" class="matrix-entry" :aria-label="'Results from '+providerName(v.provider)" :aria-expanded="selectedVendor===v.provider" :aria-controls="'vendor-detail-'+v.provider" @click="selectVendor(v)"><span class="entry-chevron" aria-hidden="true">{{selectedVendor===v.provider?'−':'+'}}</span>{{providerName(v.provider)}}</button><span v-else>{{providerName(v.provider)}}</span></div></th>
+                <td>{{run.mode==='compare'?Math.round(v.found/v.total*100)+'% · ':''}}{{v.found}} / {{run.mode==='compare'?v.total:v.attempted}}<small v-if="run.mode==='waterfall'"> attempted</small></td><td v-if="hasBatchFeedback"><span v-if="v.up">{{v.up}} 👍</span><span v-if="v.up && v.down"> · </span><span v-if="v.down">{{v.down}} 👎</span></td><td class="number-cell">{{usd(v.costPerKept)}}<small>{{usd(v.cost)}} total</small></td><td class="time-cell">{{v.median==null?'—':seconds(v.median)}}</td>
+              </tr>
+              <tr v-if="selectedVendor===v.provider" :id="'vendor-detail-'+v.provider" class="vendor-expansion"><td :colspan="hasBatchFeedback?5:4"><div class="vendor-detail-panel"><arena-result-table :rows="vendorResults" entry-view></arena-result-table></div></td></tr>
+            </template></tbody>
+          </table>
+        </div>
+        <p class="pricing-note">{{run.mode==='waterfall'?'Later vendors receive only unresolved entries; their hit rates are not directly comparable.':'Coverage crowns use results kept after thumbs-down rejections.'}} {{discoveryRun()?'Coverage counts queries with matches, not the number or relevance of contacts.':'Found is not verified accuracy.'}} Timing excludes queue time.</p>
+      </template>
+      <div class="run-cost-summary">
+      <dl class="run-cost-metrics">
+        <div><dt>{{running||runCostSummary.pending?'Total cost so far':'Total cost'}}</dt><dd>{{usd(runCostSummary.total)}}<small v-if="runCostSummary.pending"> · Finalizing charges</small></dd></div>
+        <div :title="'Total run charges, including verification and unsuccessful calls, divided by entries with a found result that has not been rejected. Each entry counts once across vendors; this is not verified accuracy.'"><dt>{{discoveryRun()?'Average per matched query':'Average per result'}}</dt><dd>{{usd(runCostSummary.average)}}<small v-if="runCostSummary.found"> · {{runCostSummary.found}} {{discoveryRun()?'queries matched':'entries found'}}</small></dd></div>
+      </dl>
+      <button class="setup-trigger" type="button" @click="openSetup" aria-label="Setup treg in Claude Code, Codex, OpenClaw, Hermes and more agents"><span>Setup treg in</span><span class="setup-logos" aria-hidden="true"><img v-for="agent in setupFeatured" :key="agent.id" :src="setupIcon(agent.icon)" :title="agent.name" alt=""><span>+{{setupOtherCount}}</span></span></button>
+      </div>
+      <template v-if="isBatch">
+        <div class="batch-controls"><span>{{runEntries.length}} entries <span v-if="running">· {{run.progress}} / {{run.total}} outcomes</span></span><label class="input-method"><span class="sr-only">Filter entries</span><select v-model="resultFilter"><option value="all">All entries</option><option value="found">Found</option><option value="unresolved">Unresolved</option><option value="disagreement">Different answers</option></select></label></div>
+        <div class="results-table-wrap batch-results-wrap" tabindex="0" role="region" aria-label="Entry by vendor results">
+          <table v-sticky-header class="results-table batch-matrix" :style="{'--vendor-count':batchVendors.length}">
+            <caption class="sr-only">Select an entry to expand its vendor details in place</caption>
+            <thead><tr>
+              <th scope="col">Entry</th>
+              <th scope="col" v-for="v in batchVendors" :key="v.provider"><div class="vendor-name"><img :src="'/logos/'+v.provider+'.svg?v=arena-real-1'" alt="" width="20" height="20">{{providerName(v.provider)}}</div></th>
+            </tr></thead>
+            <tbody>
+              <template v-for="entry in matrixEntries" :key="entry.index">
+                <tr class="matrix-overview" :class="{picked:selectedEntry===entry.index}" tabindex="0" :aria-expanded="selectedEntry===entry.index" :aria-controls="'entry-detail-'+entry.index" @click="toggleEntryRow($event,entry.index)" @keydown.enter.self.prevent="selectEntry(entry.index)" @keydown.space.self.prevent="selectEntry(entry.index)">
+                  <th scope="row"><button class="matrix-entry" @click="selectEntry(entry.index)" :aria-expanded="selectedEntry===entry.index" :aria-controls="'entry-detail-'+entry.index"><span class="entry-chevron" aria-hidden="true">{{selectedEntry===entry.index?'−':'+'}}</span>{{entry.index+1}}. {{entryLabel(entry.identity)}}</button></th>
+                  <td v-for="v in batchVendors" :key="v.provider" :data-vendor="providerName(v.provider)" :class="{unattempted:['not_attempted','skipped'].includes(entryResult(entry,v.provider)?.state)}">
+                    <template v-for="r in [entryResult(entry,v.provider)]" :key="r?.id">
+                      <button v-if="r && hasAttempt(r)" class="matrix-result" @click="selectEntry(entry.index,r)" :aria-expanded="selectedEntry===entry.index" :aria-controls="'entry-detail-'+entry.index" :aria-label="'Details for entry '+(entry.index+1)+', '+providerName(r.provider)">
+                        <span class="outcome" :class="outcomeClass(r)">{{outcomeLabel(r)}}</span>
+                        <span v-if="summaryFields(r).length" class="matrix-value">{{displayValue(r.output[summaryFields(r)[0]])}}</span>
+                        <span v-else class="matrix-value">{{emptyLabel(r)}}</span>
+                      </button>
+                    </template>
+                  </td>
+                </tr>
+                <tr v-if="selectedEntry===entry.index" :id="'entry-detail-'+entry.index" class="entry-expansion">
+                  <td :colspan="batchVendors.length+1">
+                    <div class="entry-detail-panel"><arena-result-table :rows="entry.results"></arena-result-table></div>
+                  </td>
+                </tr>
+              </template>
+              <tr v-if="!matrixEntries.length"><td :colspan="batchVendors.length+1" class="result-empty">No entries match this filter.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+      <arena-result-table v-if="!isBatch" :rows="run.results"></arena-result-table>
+      <p class="waterfall-stop" v-if="run.mode==='waterfall' && !running">{{run.stop_reason}}</p>
+      <div class="after-actions" v-if="!running"><button class="text-button" v-if="run.mode==='compare'" @click="tryWaterfall">Try as waterfall ↗</button><button class="text-button" @click="exportResult">Export results</button></div>
+    </section>
+
+  </main>
+  </div>
+  <footer><span>Built with <a href="/">treg</a> — tools for the work ahead.</span><span>{{benchmark?'Published benchmark results':leaderboard?'Aggregate call stats':'Private results · Retained for 30 days'}}</span><a href="/privacy">Privacy</a></footer>
+
+  <dialog ref="setupDialog" class="setup-dialog" :class="{'setup-try-dialog':setupStep===3}" aria-labelledby="setup-title" @cancel.prevent="closeSetup" @click.self="closeSetup">
+    <button class="dialog-close" type="button" aria-label="Close setup" :disabled="setupStep===0&&setupLoading" @click="closeSetup">×</button>
+    <template v-if="setupStep===0">
+      <p class="eyebrow">▚ treg</p><h2 id="setup-title">Name your team.</h2>
+      <p class="setup-subtitle">Create a team to get your API key and connect your agent. You can invite others later.</p>
+      <form @submit.prevent="createSetupTeam">
+        <label>Team name<input v-model="setupTeamName" required maxlength="80" placeholder="Your team" :disabled="setupLoading"></label>
+        <div class="setup-footer"><button class="text-button" type="button" @click="closeSetup" :disabled="setupLoading">Cancel</button><button class="primary" type="submit" :disabled="setupLoading">{{setupLoading?'Creating…':'Create team & continue →'}}</button></div>
+      </form>
+    </template>
+    <template v-else-if="setupStep===1">
+      <p class="eyebrow">▚ treg</p><h2 id="setup-title">Which agent are you using?</h2><p class="setup-subtitle">Choose your agent for the best setup instructions.</p>
+      <treg-agent-picker v-model="setupAgentId"></treg-agent-picker>
+      <div class="setup-footer"><button class="text-button" type="button" @click="closeSetup">Cancel</button><button class="primary" type="button" @click="prepareSetup" :disabled="setupLoading">{{setupLoading?'Loading…':'Next →'}}</button></div>
+    </template>
+    <template v-else-if="setupStep===2">
+      <h2 id="setup-title" class="sr-only">Set up treg in {{setupAgent.name}}</h2>
+      <treg-setup-instructions :agent="setupAgent" :command="setupCommand" :team="setupToken?team:''" :token="setupToken" :show-token="setupShowToken" :copied="setupCopied" @copy="copySetup" @toggle-token="setupShowToken=!setupShowToken"></treg-setup-instructions>
+      <div class="setup-footer"><button class="text-button" type="button" @click="setupStep=1;setupShowToken=false">← Back</button><button class="primary" type="button" @click="showSetupExamples">Next →</button></div>
+    </template>
+    <template v-else>
+      <treg-try-it-out heading-id="setup-title" :copied="setupExampleCopied" @example="copySetup($event.prompt,$event.k)" @provider="openSetupCatalog"></treg-try-it-out>
+      <div class="setup-footer"><button class="text-button" type="button" @click="openSetupCatalog()">Browse all catalog</button><button class="primary" type="button" @click="closeSetup">Done</button></div>
+    </template>
+    <p v-if="setupError" role="alert" class="auth-error">{{setupError}}</p>
+  </dialog>
+
+  <dialog ref="vendorRequestDialog" class="vendor-request-dialog" aria-labelledby="vendor-request-title" @cancel.prevent="closeVendorRequest" @click.self="closeVendorRequest">
+    <button type="button" class="dialog-close" aria-label="Close vendor request" :disabled="requestBusy" @click="closeVendorRequest">×</button>
+    <h2 id="vendor-request-title">{{requestDone?'Request sent':'Request a vendor'}}</h2>
+    <form v-if="!requestDone" @submit.prevent="submitVendorRequest">
+      <p class="request-intro">Tell us which vendor or capability you’d like in Arena.</p>
+      <label>What's missing<input v-model="requestForm.capability" maxlength="200" placeholder="e.g. a vendor for finding work emails" required autofocus :disabled="requestBusy"></label>
+      <label><span>Details <span class="request-optional">— optional</span></span><textarea v-model="requestForm.note" maxlength="2000" rows="3" placeholder="What you'd use it for, or a link to the provider's docs" :disabled="requestBusy"></textarea></label>
+      <label v-if="!user"><span>Contact <span class="request-optional">— optional, to hear when it lands</span></span><input v-model="requestForm.contact" maxlength="200" placeholder="you@work.com" :disabled="requestBusy"></label>
+      <p v-if="requestError" role="alert" class="auth-error">{{requestError}}</p>
+      <div class="request-footer"><button type="submit" class="primary" :disabled="requestBusy">{{requestBusy?'Sending…':'Send request'}}</button><span>Takes ten seconds — no signup needed.</span></div>
+    </form>
+    <div v-else class="vendor-request-success" role="status"><span aria-hidden="true">✓</span><p>Thanks for the suggestion. The catalog team will review your request.</p></div>
+    <section class="vendor-selfserve" aria-labelledby="vendor-selfserve-title">
+      <h3 id="vendor-selfserve-title">Are you a vendor?</h3>
+      <p>Add your API by opening a PR. Paste this prompt into your coding agent to get started.</p>
+      <textarea class="vendor-listing-prompt" :value="vendorListingPrompt" readonly rows="3" aria-label="Vendor listing prompt" spellcheck="false"></textarea>
+      <div class="vendor-selfserve-actions"><button type="button" class="vendor-copy-prompt" @click="copyVendorListingPrompt">{{vendorPromptCopied?'✓ Copied':'Copy prompt'}}</button><button v-if="requestDone" type="button" class="text-button" @click="closeVendorRequest">Done</button><span class="sr-only" role="status">{{vendorPromptCopied?'Prompt copied to clipboard.':''}}</span></div>
+      <p v-if="vendorPromptError" class="auth-error" role="alert">{{vendorPromptError}}</p>
+    </section>
+  </dialog>
+
+  <dialog ref="loginDialog" @cancel="closeLogin"><button class="dialog-close" aria-label="Close signup" @click="closeLogin">×</button><h2>Sign up to continue.</h2><p>{{linkedRunPending?'Sign in with the account that owns this saved result. Opening it will not rerun any lookups.':'Your query is saved. Create an account, then set up treg in your agent.'}}</p><div class="social-buttons"><button v-if="meta.google" @click="socialLogin('google')">Continue with Google ↗</button><button v-if="meta.github" @click="socialLogin('github')">Continue with GitHub ↗</button></div><form @submit.prevent="emailStep==='code'?verifyEmail():sendCode()"><label>Email<input v-model="email" type="email" autocomplete="email" required :disabled="emailStep==='code'"></label><label v-if="emailStep==='code'">Verification code<input v-model="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><p v-if="devCode" class="notice">Local development code: {{devCode}}</p><p v-if="authError" role="alert" class="auth-error">{{authError}}</p><button class="primary" :disabled="authBusy">{{authBusy?'One moment…':emailStep==='code'?'Verify & continue':'Email me a code'}}</button></form><p class="fine">By continuing, you agree to the <a href="/terms">Terms</a> and <a href="/privacy">Privacy Policy</a>.</p></dialog>
+
+  <dialog ref="teamDialog"><p class="eyebrow">A HOME FOR YOUR CREDITS</p><h2>Name your team.</h2><p>Arena uses your team balance. Create a team to continue.</p><form @submit.prevent="createTeam"><label>Team name<input v-model="newTeamName" required maxlength="80" placeholder="Your team"></label><p v-if="authError" class="auth-error">{{authError}}</p><button class="primary" :disabled="authBusy">Create team & continue ↗</button></form></dialog>
+
+
+
+</div>
+<template id="arena-result-table-template">
+      <div class="results-table-wrap result-detail-table" tabindex="0" role="region" :aria-label="entryView?'Entries attempted by '+arena.providerName(rows[0]?.provider):arena.run.mode==='waterfall'?'Waterfall results table':'Comparison results table'">
+        <table v-sticky-header class="results-table" :class="{'waterfall-table':arena.run.mode==='waterfall'}">
+          <caption class="sr-only">{{entryView?'Attempted entries and results':arena.run.mode==='waterfall'?'Services in waterfall order':'Compare enrichment services and vote for the best answer'}}</caption>
+          <thead><tr><th scope="col">{{entryView?'Entry':arena.run.mode==='waterfall'?'Step / vendor':'Vendor'}}</th><th scope="col">Status</th><th scope="col">Result</th><th scope="col" class="number-cell">Cost</th><th scope="col" class="time-cell">{{arena.run.mode==='waterfall'?'Timeline':'Time'}}</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody>
+            <template v-for="(r,i) in rows" :key="r.id">
+              <tr class="vendor-row" :class="{picked:arena.winnerIds.includes(r.id),unattempted:['not_attempted','skipped'].includes(r.state)}" tabindex="0" :aria-expanded="arena.expandedResults.includes(r.id)" :aria-controls="'detail-'+r.id" @click="arena.toggleResultRow($event,r.id)" @keydown.enter.self.prevent="arena.toggleDetails(r.id)" @keydown.space.self.prevent="arena.toggleDetails(r.id)">
+                <th scope="row"><span v-if="entryView" class="result-entry-name">{{(r.entry_index||0)+1}}. {{arena.entryLabel(arena.runEntries[r.entry_index||0])}}</span><div v-else class="vendor-name"><span v-if="arena.run.mode==='waterfall'" class="step-number">{{i+1}}</span><span class="vendor-logo"><span aria-hidden="true">{{arena.providerName(r.provider).slice(0,1)}}</span><img :src="'/logos/'+r.provider+'.svg?v=arena-real-1'" alt="" width="24" height="24" @error="$event.target.style.display='none'"></span><span>{{arena.providerName(r.provider)}}<span v-if="arena.battleAwards[r.id]" class="result-awards"><span v-for="badge in arena.battleAwards[r.id]" :key="badge" class="award-badge" :class="badge.toLowerCase()" :title="arena.awardTitle(badge)">{{badge}}</span></span></span></div></th>
+                <td><span class="outcome" :class="arena.outcomeClass(r)">{{arena.outcomeLabel(r)}}</span></td>
+                <td class="result-cell"><template v-if="arena.summaryFields(r).length"><div class="result-value"><span v-if="arena.discoveryRun()">Matches returned: </span><span v-if="typeof r.output[arena.summaryFields(r)[0]]==='boolean'">{{arena.fieldLabel(arena.summaryFields(r)[0])}}: </span>{{arena.displayValue(r.output[arena.summaryFields(r)[0]])}}</div><div v-if="arena.summaryFields(r).length>1" class="result-meta"><span v-for="key in arena.summaryFields(r).slice(1)">{{arena.fieldLabel(key)}}: {{arena.displayValue(r.output[key])}}</span></div></template><span v-else class="result-empty">{{arena.emptyLabel(r)}}</span><div v-if="r.verification" class="verification-result"><strong :class="arena.verificationClass(r)" :title="r.verification.output?.status">{{arena.verificationVerdict(r)}}</strong><span v-if="!r.verification.not_started">{{arena.providerName(r.verification.provider)}}<template v-if="r.verification.output?.line_type"> · {{r.verification.output.line_type}}</template></span></div><div v-if="r.verification?.not_started" class="result-note">{{r.verification.detail}}</div><div v-if="arena.domainMismatch(r)" class="result-note">{{arena.domainMismatch(r)}}</div><div v-if="arena.identityWarning(r)" class="result-note">{{arena.identityWarning(r)}}</div><div v-if="r.report && (arena.ratingValue(r)==='down' || r.report.feedback_context==='automated_verification')" class="reported-note" :title="r.report.comment"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M14 3H6a2 2 0 0 0-2 1.6L2.6 10a2 2 0 0 0 2 2.5H8v4a1.5 1.5 0 0 0 2.6 1L14 12V3Z M14 3h3v9h-3"/></svg> {{r.report.feedback_context==='automated_verification'?'Invalid email · automatically reported':'Issue reported'}}</div></td>
+                <td class="number-cell"><span>{{r.charged_micro===null?'Pending':arena.usd(r.charged_micro)}}</span><small v-if="r.tier!=='platform'">Your key</small><small v-if="r.cached">Cached</small><small v-if="r.manual">Additional call</small><small v-if="r.verification" class="verification-cost"><span>Incl. verification</span><span class="verification-cost-amount">{{r.verification.charged_micro==null?'Pending':arena.usd(r.verification.charged_micro)}}</span></small></td>
+                <td class="time-cell"><span class="duration">{{r.duration_ms==null?(r.state==='running'?'Running…':'—'):arena.seconds(r.duration_ms)}}</span><div class="timing-track" v-if="arena.run.mode==='waterfall' && r.duration_ms" :title="'Started '+arena.seconds(r.started_ms||0)+' after run start'"><div :style="{marginLeft:arena.timeLeft(r)+'%',width:arena.timeWidth(r)+'%'}"></div></div></td>
+                <td class="row-actions"><div><button v-if="r.can_verify" class="try-vendor" :disabled="arena.verificationPending[r.id]" @click="arena.verifyResult(r)">{{arena.verificationLabel(r)}}</button><button v-if="r.can_try" class="try-vendor" :disabled="arena.busy || arena.manualPending[r.id]" :aria-label="arena.manualLabel(r)+' with '+resultLabel(r)" @click="arena.tryVendor(r)">{{arena.manualLabel(r)}}</button><template v-if="['hit','miss','error','timeout'].includes(r.state)"><button v-for="value in ['up','down']" :key="value" class="rating-button" :class="'thumb-'+value" :disabled="arena.busy || arena.running" :aria-pressed="arena.ratingValue(r)===value" :title="value==='up'?'Thumbs up':'Thumbs down · optional details'" :aria-label="'Thumbs '+value+': '+resultLabel(r)" @click="arena.rateResult(r,value)"><svg aria-hidden="true" viewBox="0 0 20 20"><path d="M14 3H6a2 2 0 0 0-2 1.6L2.6 10a2 2 0 0 0 2 2.5H8v4a1.5 1.5 0 0 0 2.6 1L14 12V3Z M14 3h3v9h-3"/></svg></button></template><button class="details-button" :aria-label="'Details: '+resultLabel(r)" :aria-expanded="arena.expandedResults.includes(r.id)" :aria-controls="'detail-'+r.id" @click="arena.toggleDetails(r.id)"><span aria-hidden="true">{{arena.expandedResults.includes(r.id)?'−':'+'}}</span></button></div></td>
+              </tr>
+              <tr v-if="arena.reporting===r.id" class="detail-row"><td colspan="6"><form class="report-form" @submit.prevent="arena.sendReport(r)"><strong role="status">{{arena.busy?'Saving feedback…':'Thumbs down saved'}} · {{arena.providerName(r.provider)}}</strong><label>Reason (optional)<select v-model="arena.reportDrafts[r.id].reason" :disabled="arena.busy || !!r.report"><option value="">Choose a reason</option><option value="incorrect_data">Incorrect data</option><option value="wrong_person">Wrong person</option><option value="wrong_company">Wrong company</option><option value="outdated_data">Outdated data</option><option value="other">Something else</option></select></label><label>Details (optional)<textarea v-model="arena.reportDrafts[r.id].comment" rows="2" maxlength="1000" :disabled="arena.busy || !!r.report" placeholder="What should we know about this result?"></textarea></label><div><button v-if="!r.report" class="primary" :disabled="arena.busy || arena.running || (!arena.reportDrafts[r.id].reason && !arena.reportDrafts[r.id].comment.trim())">Save details</button><span v-else>Details saved</span><button type="button" class="text-button" @click="arena.reporting=''">Done</button></div></form></td></tr>
+              <tr v-if="arena.expandedResults.includes(r.id)" :id="'detail-'+r.id" class="detail-row"><td colspan="6"><div class="row-detail"><p v-if="r.detail" class="step-reason">{{r.detail}}</p><div v-if="arena.searchMatches(r).length" class="search-results"><p class="quality-note">{{arena.searchMatches(r).length}} {{arena.searchMatches(r).length===1?'match':'matches'}} returned · Review relevance and contact details before use.</p><div class="search-match" v-for="(match,index) in arena.searchMatches(r)" :key="index"><span class="search-match-index">{{index+1}}</span><div><strong>{{match.name||match.domain||match.email||'Profile'}}</strong><p>{{[match.title,match.company,match.location].filter(Boolean).join(' · ')}}</p><p v-if="match.description">{{match.description}}</p><div class="search-match-links"><a v-if="match.linkedin_url" :href="match.linkedin_url" target="_blank" rel="noopener noreferrer">LinkedIn ↗</a><span v-if="match.domain">{{match.domain}}</span><span v-if="match.email">{{match.email}}</span></div></div></div></div><dl v-else-if="Object.keys(r.output).length" class="field-list"><div v-for="key in arena.run.fields" :class="{missing:r.output[key]==null || r.output[key]===''}"><dt>{{arena.fieldLabel(key)}}</dt><dd>{{arena.displayValue(r.output[key])}}</dd></div></dl><p class="quality-note" v-if="!r.verification && arena.run.capability==='people.email.find' && r.state==='hit'">{{r.output.verified===true?'Service reports this email as verified.':'Found, not confirmed deliverable. Verify before outreach.'}}</p><p class="quality-note" v-if="arena.run.capability==='people.phone.find' && r.state==='hit'">Found, not confirmed to be a live line.</p><details v-if="r.verification"><summary>Verification details</summary><p>{{arena.verificationVerdict(r)}}<template v-if="!r.verification.not_started"> · {{arena.providerName(r.verification.provider)}}</template></p><p v-if="r.verification.capability==='people.phone.verify'">Phone validity does not confirm a live line or ownership.</p><pre>{{JSON.stringify(r.verification.output,null,2)}}</pre><p v-if="r.verification.detail">{{r.verification.detail}}</p></details><details v-if="r.raw"><summary>Original response</summary><p class="variant-name">{{r.endpoint_id}}</p><pre>{{JSON.stringify(r.raw,null,2)}}</pre></details></div></td></tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <p v-if="rows.some(r=>r.raw_omitted && arena.expandedResults.includes(r.id))" class="quality-note">An original response was too large to retain in this batch. Its extracted result fields are still shown.</p>
+</template>
+<template id="arena-fighters-template">
+  <div class="pixel-arena" :class="[mode,{'is-live':active}]" role="group" aria-label="Vendor fighters">
+    <div class="battle-toolbar">
+      <div v-if="selectable" class="battle-modes" role="group" aria-label="Execution mode">
+        <button type="button" :aria-pressed="mode==='waterfall'" :class="{active:mode==='waterfall'}" :disabled="disabled || active" @click="chooseMode('waterfall')"><svg aria-hidden="true" viewBox="0 0 24 18"><path d="M6 3h6v5M14 10h6v4"/><rect x="1" y="1" width="5" height="4"/><rect x="9" y="7" width="5" height="4"/><rect x="18" y="14" width="5" height="3"/></svg>Waterfall</button>
+        <button type="button" :aria-pressed="mode==='compare'" :class="{active:mode==='compare'}" :disabled="disabled || active" @click="chooseMode('compare')"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 17.5 3-3L5 2H2v3L14.5 17.5ZM13 19l6-6M16 16l4 4M19 21l2-2M14.5 6.5 4.5 16.5M17.5 9.5 22 5V2h-3l-4.5 4.5M5 13l6 6M8 16l-4 4M3 19l2 2"/></svg>Battle</button>
+      </div>
+      <span v-else class="battle-mode-label">{{mode==='compare'?'Battle':'Waterfall'}}</span>
+      <span class="battle-explainer">{{mode==='compare'?'Run & compare results from all vendors':'Running from cheapest vendor, until get a valid result'}}</span>
+      <slot name="actions"></slot>
+    </div>
+    <div class="fighter-roster" tabindex="0" role="region" aria-label="Vendor fighter lineup">
+      <component :is="choosable?'button':'div'" v-for="(entry,i) in entries" :key="entry.provider" class="fighter" :class="[state(entry),{'fighter-toggle':choosable}]" :style="{'--beat':(i%4)*-0.17+'s'}" :type="choosable?'button':null" :role="choosable?null:'img'" :disabled="choosable && (disabled || active)" :aria-pressed="choosable?enabled(entry):null" :aria-label="choosable?name(entry.provider):name(entry.provider)+': '+[label(entry),...(awards[entry.id]||[])].join(' · ')" :aria-description="choosable?[label(entry),...(awards[entry.id]||[])].join(' · '):null" @click="chooseProvider(entry)">
+        <span v-if="choosable" class="fighter-check" aria-hidden="true">{{enabled(entry)?'✓':'+'}}</span>
+        <div class="fighter-scene" aria-hidden="true">
+          <svg class="fighter-celebration" viewBox="0 0 72 20"><path class="victory-stars" d="M10 3h4v4h4v4h-4v4h-4v-4H6V7h4z M58 0h3v3h3v3h-3v3h-3V6h-3V3h3z"/><path class="vote-crown" d="M25 6h4v4h4V3h6v7h4V6h4v13H25z"/></svg>
+          <span class="fighter-alert">!</span>
+          <div class="fighter-facing"><div class="fighter-sprite">
+            <svg class="fighter-body" viewBox="0 0 64 72" fill="currentColor" shape-rendering="crispEdges">
+              <g class="fighter-leg back"><path d="M34 47h8v14h4v5H34z"/></g><g class="fighter-leg front"><path d="M22 47h8v19H18v-5h4z"/></g>
+              <path d="M22 30h20v20H22z"/><path class="fighter-shirt" d="M26 31h12v11H26z"/><path class="fighter-belt" d="M22 44h20v4H22z"/>
+              <g class="fighter-arm back"><path d="M14 32h12v8H10V28h8v8h-4z"/><path class="fighter-glove" d="M8 25h12v10H8z"/></g>
+              <g class="fighter-arm front"><path d="M40 32h14v8H40z"/><path class="fighter-glove" d="M50 26h12v12H50z"/></g>
+            </svg>
+            <span class="fighter-head"><span>{{name(entry.provider).slice(0,1)}}</span><img :src="'/logos/'+entry.provider+'.svg?v=arena-real-1'" alt="" width="26" height="26" @error="$event.target.style.display='none'"></span>
+        <span v-if="awards[entry.id]" class="fighter-awards" :class="{'double-belt':awards[entry.id].length>1}" aria-hidden="true"><span v-for="badge in awards[entry.id]" :key="badge" class="award-badge" :class="badge.toLowerCase()">{{badge}}</span></span>
+          </div><svg class="fighter-impact" viewBox="0 0 24 24" shape-rendering="crispEdges"><path d="M10 0h4v7h-4z M10 17h4v7h-4z M0 10h7v4H0z M17 10h7v4h-7z M8 8h8v8H8z"/></svg></div>
+          <span class="fighter-shadow"></span>
+        </div>
+        <span v-if="i<entries.length-1" class="fighter-link" aria-hidden="true"><span v-if="mode==='compare'">VS</span><svg v-else viewBox="0 0 24 14"><path d="M1 3h9v8h12M18 7l4 4-4 3"/></svg></span>
+        <span class="fighter-name" aria-hidden="true">{{name(entry.provider)}}</span><span class="fighter-verdict" aria-hidden="true">{{label(entry)}}</span>
+      </component>
+      <button v-if="requestable" type="button" class="fighter-request" aria-label="Request a vendor" title="Request a vendor" @click="$emit('request-vendor')"><span class="fighter-request-plus" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor" shape-rendering="crispEdges"><path d="M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6z"/></svg></span><span class="sr-only">Request vendor</span></button>
+    </div>
+    <p v-if="choosable" class="fighter-hint">Click a fighter to include or exclude</p>
+  </div>
+</template>
+<noscript><p class="loader-fallback">Enrich Arena needs JavaScript to compare results. Enable JavaScript and reload.</p></noscript>
+<script>setTimeout(function(){var a=document.getElementById('arena');if(a&&a.hasAttribute('v-cloak')){var p=document.createElement('p');p.className='loader-fallback';p.textContent='Arena could not load. Please reload this page.';a.after(p);}},5000);</script>
+<script src="/sitetrack.js" data-private-page="true"></script>
+</body>
+</html>

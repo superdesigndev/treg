@@ -1,0 +1,151 @@
+# Surface: POST /job/find_email and POST /job/verify_email listed.
+# Account checks are internal: /credit probes keys and collects balances.
+# Excluded: GET /job?id= (HTTP 500 in repeated live tests); async/webhooks (deprecated/out of v1 scope).
+# Pricing FAQ: https://help.trykitt.ai/en/articles/11739656-pricing-faqs
+provider: trykitt
+source:
+  docs: https://documenter.getpostman.com/view/479833/2s93m62NHf
+  curated: '2026-09-09'
+pricing_url: https://trykitt.ai/pricing
+limits: Free-tier capacity is variable; observed HTTP 418 temporary throttling. No
+  numeric free-tier limit established. Paid concurrency has not been live-tested.
+  Docs use HTTP 402 for both rate limits and insufficient funds.
+endpoints:
+- id: trykitt.people.email.find
+  domain: contacts
+  capability: people.email.find
+  platform: people
+  scope: any_account
+  method: POST
+  path: /job/find_email
+  name: Find a verified work email
+  summary: Find a verified B2B email from a name and domain
+  input:
+    body:
+      fullName:
+        type: string
+        required: true
+        example: erol Toker
+      domain:
+        type: string
+        required: true
+        example: trykitt.ai
+      linkedinStandardProfileURL:
+        type: string
+        required: false
+      strictNameMatches:
+        type: boolean
+        required: false
+      realtime:
+        type: boolean
+        required: true
+        enum:
+        - true
+        example: true
+        note: Platform calls require true; asynchronous submissions and polling are
+          outside this listing.
+      customData:
+        type: string
+        required: false
+    bodyType: json
+    note: Only found verified B2B emails are charged; email=no-results-found is a
+      free miss. Found emails include Kitt verification. Base rate for the first million
+      finds per billing period; subsequent finds are documented at $0.0025. Billing
+      period starts on the day of first credit purchase. Platform settlement uses
+      credits.jobCredits in USD, including explicit zero; missing/null billing falls
+      back to the base rate after miss detection. remainingCredits is a delayed balance,
+      never per-call cost.
+  platform_request:
+    body.realtime: true
+  test_request:
+    body:
+      fullName: erol Toker
+      domain: trykitt.ai
+      realtime: true
+  cost:
+    type: per_success
+    value: 0.005
+    reported_charge:
+      path: credits.jobCredits
+      unit: usd
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://trykitt.ai/pricing
+    checked: '2026-09-09'
+    confidence: verified
+    note: Only found verified B2B emails are charged; email=no-results-found is a
+      free miss. Found emails include Kitt verification. Base rate for the first million
+      finds per billing period; subsequent finds are documented at $0.0025. Billing
+      period starts on the day of first credit purchase. Platform settlement uses
+      credits.jobCredits in USD, including explicit zero; missing/null billing falls
+      back to the base rate after miss detection. remainingCredits is a delayed balance,
+      never per-call cost.
+  verified: '2026-09-09'
+  example_response: examples/trykitt.people.email.find.json
+  docs_url: https://documenter.getpostman.com/view/479833/2s93m62NHf
+- id: trykitt.people.email.verify
+  domain: contacts
+  capability: people.email.verify
+  platform: people
+  scope: any_account
+  method: POST
+  path: /job/verify_email
+  name: Verify an email address
+  summary: Verify an existing B2B email address, including catch-all domains
+  input:
+    body:
+      email:
+        type: string
+        required: true
+        example: erol@trykitt.ai
+      treatAliasesAsValid:
+        type: boolean
+        required: false
+      realtime:
+        type: boolean
+        required: true
+        enum:
+        - true
+        example: true
+        note: Platform calls require true; asynchronous submissions and polling are
+          outside this listing.
+      customData:
+        type: string
+        required: false
+    bodyType: json
+    note: Completed verification costs $0.0015 including invalid, unknown and catchall
+      results. Valid and invalid charges were observed; unknown/catchall billing is
+      documented in the pricing FAQ, not live-tested. Platform settlement uses credits.jobCredits
+      in USD, including explicit zero; missing/null billing falls back to the base
+      rate after miss detection. remainingCredits is a delayed balance, never per-call
+      cost.
+  platform_request:
+    body.realtime: true
+  test_request:
+    body:
+      email: erol@trykitt.ai
+      realtime: true
+  cost:
+    type: per_success
+    value: 0.0015
+    reported_charge:
+      path: credits.jobCredits
+      unit: usd
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://trykitt.ai/pricing
+    checked: '2026-09-09'
+    confidence: verified
+    note: Completed verification costs $0.0015 including invalid, unknown and catchall
+      results. Valid and invalid charges were observed; unknown/catchall billing is
+      documented in the pricing FAQ, not live-tested. Platform settlement uses credits.jobCredits
+      in USD, including explicit zero; missing/null billing falls back to the base
+      rate after miss detection. remainingCredits is a delayed balance, never per-call
+      cost.
+  verified: '2026-09-09'
+  example_response: examples/trykitt.people.email.verify.json
+  docs_url: https://documenter.getpostman.com/view/479833/2s93m62NHf

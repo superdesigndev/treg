@@ -10,6 +10,8 @@ useDefault = true
 description = "Fake, non-secret placeholders used by tests and the demo sandbox"
 regexTarget = "line"
 regexes = [
+  # Deliberately invalid ContactOut connect-test token; also present in branch history.
+  '''"token": "treg-intentionally-invalid-20260908",\s*$''',
   '''sk_live_DEMO0000PLACEHOLDER''',      # src/treg/sandbox.py — demo starter (credential to nothing)
   '''phx_DEMO0000PLACEHOLDER''',          # src/treg/sandbox.py — demo starter (credential to nothing)
   '''sk_live_ABCDEFGHIJKLMNOP1234''',     # tests/test_localrun.py — proves output redaction masks a key
@@ -47,7 +49,12 @@ paths = ['''src/treg/catalog/examples/.*\.json''']
 # it authorises nothing but "submit URLs for this host". Matched by the line, not the value, so a
 # real credential on the same line shape elsewhere still fires.
 regexTarget = "line"
-regexes = ['''INDEXNOW_KEY\s*=|#\s*must match INDEX''']
+regexes = [
+  '''INDEXNOW_KEY\s*=|#\s*must match INDEX''',
+  # Public PostHog ingestion token from https://treg.to/meta, not a personal API key.
+  # Match this exact assignment only; other PostHog keys still trigger the scanner.
+  '''POSTHOG_KEY = "phc_sAgf5A7TPRRA6faCzuqGVUo8pyb3x5Nq7TJYfn6ZVif9"''',
+]
 # (An allowlist entry for a real dev/e2e Fernet key lived here as a stopgap while
 # `feat/error-capture` carried it in `e2e-server.sh`. That branch now generates a fresh key per run
 # — the harness deletes its database between runs, so it never needed a constant — and the value has

@@ -94,6 +94,33 @@ async def _overflow_sync(args) -> int:
     return 0
 
 
+RENEW_MAX_USD = 1.00
+"""Per-route price cap for RENEWING a route that is enabled or was stamped before. The 2¢ default
+`--max-usd` is a discovery cap for never-verified pairs under `--all`; held to it, the weekly cron
+skipped every stamped route priced above 2¢ (46 of them on 2026-09-07, all mapped and verified on
+2026-08-26) and they decayed off with no run ever able to bring them back."""
+VERIFY_BUDGET_USD = 15.00
+"""What one verify run may spend in total (relay fee + direct comparison), whatever the caps say."""
+
+
+def _verify_plan(rows, *, all_rows: bool, only: set[str] | None, max_usd: float,
+                 renew_max_usd: float) -> list[tuple[object, float]]:
+    """Which routes this run visits, in order, each with the price cap it is held to. Renewals
+    (enabled or previously stamped) come first, oldest stamp first, so the route nearest its 7-day
+    decay is reached before the budget is; never-verified pairs follow only under `--all`."""
+    renew, discover = [], []
+    for r in rows:
+        if only and r.provider not in only:
+            continue
+        if r.enabled or r.last_verified_at:
+            renew.append(r)
+        elif all_rows:
+            discover.append(r)
+    renew.sort(key=lambda r: (r.last_verified_at is not None, r.last_verified_at or 0, r.endpoint_id))
+    discover.sort(key=lambda r: r.endpoint_id)
+    return [(r, renew_max_usd) for r in renew] + [(r, max_usd) for r in discover]
+
+
 async def _overflow_verify(args) -> int:
     import httpx
     from sqlalchemy import select
@@ -112,10 +139,14 @@ async def _overflow_verify(args) -> int:
     by_id = {e["id"]: e for e in cat.endpoints}
     async with session_maker() as db:
         rows = (await db.execute(select(OverflowRoute))).scalars().all()
-    todo = [r for r in rows if args.all or r.enabled or r.last_verified_at]
+    only = {p.strip() for p in (getattr(args, "only", None) or "").split(",") if p.strip()}
+    renew_max_usd = getattr(args, "renew_max_usd", RENEW_MAX_USD)
+    budget_usd = getattr(args, "budget_usd", VERIFY_BUDGET_USD)
+    todo = _verify_plan(rows, all_rows=args.all, only=only or None,
+                        max_usd=args.max_usd, renew_max_usd=renew_max_usd)
     keys = {"orthogonal": s.overflow_key_orthogonal, "monid": s.overflow_key_monid}
     tally = {"passed": 0, "failed": 0, "aggregator": 0, "inconclusive": 0}
-    skipped, key_failures = 0, []
+    skipped, over_budget, spent_usd, key_failures = 0, 0, 0.0, []
     # One SHORT transaction per route. The first prod run (2026-08-28) kept a single session open
     # across every network round-trip: each `db.get` autoflushed the previous row's UPDATE, the row
     # locks piled up for minutes, and the run died at route 60 with LockNotAvailableError. Where
@@ -124,17 +155,25 @@ async def _overflow_verify(args) -> int:
     # database role carries one. Recorded as observed rather than explained: the fix (one short
     # transaction per route) is right whatever set it.
     async with httpx.AsyncClient(timeout=60) as c:
-        for r in todo:
+        for r, cap in todo:
             ep = by_id.get(r.endpoint_id)
             key = keys.get(r.aggregator)
             tr = (ep or {}).get("test_request")
             usd = (r.agg_price_micro or 0) / 1e6
-            if not ep or not key or not tr or usd > args.max_usd:
+            if not ep or not key or not tr or usd > cap:
                 skipped += 1
                 continue
             direct = None
             prov = oauth_providers.get(ep["provider"])
             pkey = getattr(s, platform_setting_name(ep["provider"]), "")
+            # The run budget bounds what one run may spend: the relay's fee plus, when we hold the
+            # vendor key, the direct comparison at the same list price. A route that does not fit
+            # is skipped, not the rest of the run - a cheaper route further down may still fit.
+            est_usd = usd * (2 if prov is not None and pkey else 1)
+            if spent_usd + est_usd > budget_usd:
+                over_budget += 1
+                continue
+            spent_usd += est_usd
             hdrs = {}
             if prov is not None and pkey:
                 url = prov.base_url.rstrip("/") + "/" + ep["path"].lstrip("/")
@@ -179,7 +218,8 @@ async def _overflow_verify(args) -> int:
                   f"direct={v.direct_status} relay={v.relay_status} cost={v.cost_micro} {v.note}")
     attempted = sum(tally.values())
     print(f"verified {tally['passed']}, failed {tally['failed']}, inconclusive {tally['inconclusive']}, "
-          f"aggregator errors {tally['aggregator']}, skipped {skipped}")
+          f"aggregator errors {tally['aggregator']}, skipped {skipped}, over budget {over_budget} "
+          f"(~${spent_usd:.2f} of ${budget_usd:g})")
     # A failed ROUTE is a result (its row is disabled with the reason). A failed RUN is one that
     # could not verify: our key or our balance refused on any route, every attempt lost to the
     # aggregator's side (a host down for the whole run, not one timeout), or nothing attempted at
@@ -217,7 +257,13 @@ def main(argv: list[str] | None = None) -> int:
     sync.set_defaults(fn=_overflow_sync)
     ver = ovsub.add_parser("verify", help="re-verify routes with a cheap call (spends money; needs keys)")
     ver.add_argument("--all", action="store_true", help="every row, not only enabled/previously verified")
-    ver.add_argument("--max-usd", type=float, default=0.02, help="skip routes priced above this")
+    ver.add_argument("--only", help="comma-separated providers (default: all)")
+    ver.add_argument("--max-usd", type=float, default=0.02,
+                     help="per-route price cap for never-verified routes (discovery under --all)")
+    ver.add_argument("--renew-max-usd", type=float, default=RENEW_MAX_USD,
+                     help="per-route price cap for routes already enabled or previously verified")
+    ver.add_argument("--budget-usd", type=float, default=VERIFY_BUDGET_USD,
+                     help="stop attempting routes once the run's estimated spend would exceed this")
     ver.set_defaults(fn=_overflow_verify)
     tasks = sub.add_parser("asynctasks", help="deferred asynchronous task settlement")
     tasksub = tasks.add_subparsers(dest="cmd", required=True)

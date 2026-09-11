@@ -1,0 +1,35 @@
+{
+  "id": "example-request-id",
+  "credits_used": 1,
+  "credits_remaining": 9000,
+  "matched_count": 2,
+  "results": [
+    {
+      "input": "Software Engineer",
+      "job_function": {
+        "id": 97,
+        "slug": "software-engineer",
+        "name": "Software Engineer"
+      },
+      "job_level": {
+        "id": -1,
+        "name": "Individual Contributor",
+        "level_rank": 0
+      }
+    },
+    {
+      "input": "VP of Sales",
+      "job_function": {
+        "id": 90,
+        "slug": "sales",
+        "name": "Sales"
+      },
+      "job_level": {
+        "id": 6,
+        "name": "VP",
+        "level_rank": 14
+      }
+    }
+  ],
+  "file": null
+}

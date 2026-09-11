@@ -93,3 +93,31 @@ async def test_dev_mode_off_hides_the_code(client):
     finally:
         object.__setattr__(settings, "email_dev_mode", True)
         get_settings.cache_clear()
+
+
+async def test_signup_tracking_only_after_new_identity_not_login_or_bad_code(client, monkeypatch):
+    from treg import analytics
+    events = []
+    monkeypatch.setattr(analytics, "capture", lambda *a, **k: events.append((a, k)))
+    client.cookies.set("treg_entry_surface", "arena")
+    email = "tracking@example.test"
+    code = (await client.post("/auth/email/start", json={"email": email})).json()["dev_code"]
+    assert (await client.post("/auth/email/verify", json={"email": email, "code": "wrong"})).status_code == 401
+    assert events == []
+    assert (await client.post("/auth/email/verify", json={"email": email, "code": code})).status_code == 200
+    await _otp_login(client, email)
+    signups = [a for a, _ in events if a[1] == "signup_completed"]
+    assert len(signups) == 1
+    assert signups[0] == (email, "signup_completed", {"signup_method": "email", "entry_surface": "arena"})
+
+
+@pytest.mark.parametrize("method", ["github", "google"])
+async def test_social_signup_tracking_reuses_same_new_user_rule(client, monkeypatch, method):
+    from treg import analytics
+    from treg.application.auth import _provision_social_user
+    events = []
+    monkeypatch.setattr(analytics, "capture", lambda *a, **k: events.append(a))
+    await _provision_social_user("social@example.test", "unused", method, "arena")
+    await _provision_social_user("social@example.test", "unused", method, "arena")
+    assert len(events) == 1
+    assert events[0][1:] == ("signup_completed", {"signup_method": method, "entry_surface": "arena"})

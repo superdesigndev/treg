@@ -22,6 +22,7 @@ sources:
   - src/treg/domain/governance/publicdemo.py
   - src/treg/domain/governance/usage.py
   - src/treg/routers/call.py
+  - tests/test_ssrf_public_addresses.py
   - tests/test_call_application_contract.py
   - tests/test_call_cancellation.py
   - tests/test_error_capture.py
@@ -48,6 +49,13 @@ finalization. `application.call.resolve` selects the target and credential;
 Named catalog calls with authorization metadata select the provider and grant method before
 comparing hosts. This separates Facebook and Instagram tools sharing `graph.facebook.com`;
 the resulting tool enters the same relay without provider-specific relay logic.
+
+Cache experiment metadata is attached to the existing `tool_called` event by the call-service
+capture funnel: outcome/reason, comparison and TTL policy, rollout percentage, lookup duration,
+and candidate age/window. It contains no response/request content or cache key. The stable
+team/endpoint rollout runs before archive DB lookup; unselected calls retain the normal relay
+and money path. See [archive](archive.md#conservative-comparison-and-controlled-serving-2026-09-08)
+for controls and metric denominators. This does not remove authorization/reserve/settle DB work.
 
 ## The faithful-relay contract
 `relay()` alters **only three things**; everything else is verbatim (method, path, all query params
@@ -77,6 +85,13 @@ incl. duplicates, headers, cookies, body bytes):
 Faithfulness mechanics inside `relay()`:
 - request headers rebuilt from `UpstreamRequest.raw_headers` into an `httpx.Headers` multidict (preserves
   duplicate headers / cookies); injection (`headers[name] = v`) overwrites only the named one.
+- on the platform tier only, `service` first passes the raw headers through
+  `relay.scope_shared_idempotency_key`, which replaces the caller's `Idempotency-Key` with a digest of
+  (org, label). Every org shares one provider account on treg's key, and a provider that honors the
+  header (LeadsForge does) would otherwise return org A's job to org B under the same label — and
+  `resource_ownership.produces` would then record A's job id as B's. Treg's own idempotency table
+  already replays a caller's answer for the same label, so the caller loses nothing. A team's own key
+  relays the header verbatim: that account is theirs.
 - query as the router-captured ordered pairs in `UpstreamRequest.query_items` (keeps duplicate keys
   like `?tag=a&tag=b`).
 - path rebuilt from `request.scope["raw_path"]` (in `call_tool`), not Starlette's URL-decoded path
@@ -172,9 +187,12 @@ near-id matching remains provider-local and takes precedence for genuine misspel
 
 If both shapes miss with 404, a dotted target gets one final lookup in the endpoint catalog. A live
 row enters `_resolve_marketplace_call` and its credential ladder. `_marketplace_upstream` fills catalog
-path placeholders by percent-encoding raw values, but preserves a value containing a valid `%HH` escape;
-this prevents an already encoded Search Console property id such as `sc-domain%3Aexample.com` becoming
-double-encoded as `%253A`. Literal/invalid percent signs remain encoded. A `retired`/`broken` tombstone is
+path placeholders by percent-encoding raw values, but preserves a value containing a valid `%HH`
+escape. This prevents an already encoded Search Console property id such as
+`sc-domain%3Aexample.com` becoming double-encoded as `%253A`. Raw `@` remains literal because it is
+a legal path-segment character. This also supports email-path APIs such as Tomba's verifier, which
+rejects `%40` before decoding. Slashes, query/fragment delimiters and invalid percent signs remain
+escaped; URL-passthrough bytes are unchanged. A `retired`/`broken` tombstone is
 instead refused with 410, its `status_note`, and its optional `superseded_by`, before credentials are
 selected or the relay can run; the refusal is audited as `refused_by=retired`. This ordering is
 deliberate: an org's own tool named exactly like the old catalog id already resolved above and is not
@@ -224,6 +242,16 @@ After credential refresh and relay, `_audit` records the attempt and mirrors it 
 `_tool_called_props` / `analytics.capture`. Provider identity is the catalog provider or the
 own tool's upstream host. Analytics includes outcome, status, timing, cost, call reference,
 capacity/cache/smoothing signals and user-agent attribution, never params or bodies.
+
+`domain.catalog.results.classify` shares verified hit/miss rules between business-hit telemetry
+and cache admission. Found means `hit=true`, explicit empty means false, and errors/unknown
+results mean null. Hunter company emails, LeadMagic employee finder, and SE Ranking keyword
+volume have additional field checks; other verified adapters retain their miss expressions.
+Only endpoints with enabled hit/miss rules adopt result-aware cache behavior; unconfigured or
+unverified endpoints keep original cache learning and serving. Classification inspects only
+already-buffered bodies and does not change relay bytes or settlement. Existing `tool_called`
+events expose `result_state`, `result_reason`, `cache_admission` and `cache_result_policy`.
+See [archive result admission](archive.md#result-admission).
 
 Overflow retains both attempt rows under the same call reference, but emits one product event for
 the final answer. `defer_analytics` holds the parent's event until the child succeeds or the
@@ -277,6 +305,12 @@ that resolves differently later. Registration itself (`infra.upstream.ssrf.safe_
 by `health` and reused for `base_url`)
 also rejects numeric IP encodings - decimal/hex/octal/short forms like `2130706433` / `0x7f000001` /
 `127.1` are normalized via `inet_aton` and re-checked, so they can't sneak past the literal-IP block.
+Targets must be globally routable unicast addresses. CGNAT `100.64.0.0/10` is internal
+service space: Tailscale, WireGuard overlay deployments, Fly.io, some Kubernetes pod CIDRs,
+and Alibaba Cloud's metadata endpoint `100.100.100.200` use addresses in this range. These are
+precisely the services a caller-controlled upstream must not reach. NAT64 translation prefixes
+mapping non-global IPv4 addresses do not make those targets public; `64:ff9b::/96` remains blocked.
+
 (A narrow resolve-vs-connect race remains; pinning the resolved IP would need a custom transport.)
 
 > Why relay instead of modeling the upstream: [foundation/charter.md](../foundation/charter.md).
@@ -362,7 +396,8 @@ maybe_overflow` runs a **child cycle** after the primary's settle released its h
 
 1. Route from the in-process route view (`domain.capacity.routes_view`, Orthogonal first), skipping
    an aggregator marked unhealthy (`overflow:<name>` in the capacity view) or without a key; budget
-   check against `OverflowSpend` (`overflow_daily_budget_usd`, $20/aggregator/day) on a short session.
+   check against `OverflowSpend` (`overflow_daily_budget_usd` per aggregator per day; $20 in code,
+   production's value lives in the private Blueprint) on a short session.
 2. **Child hold**, own id `{call_ref}:overflow`, through the ordinary `_platform_reserve` (tag
    budgets, daily cap, trial allowance apply; an empty balance is the normal 402). Never the parent's
    id: release-by-id is a conditional claim and `_finish_cancelled_call` releases both ids exactly once.
@@ -375,19 +410,35 @@ maybe_overflow` runs a **child cycle** after the primary's settle released its h
    the one allowlisted overflow write (`overflow_spend_in_settle`).
 5. The vendor's body goes back as the answer, `X-Treg-Served-Via: overflow:<name>`, `X-Treg-Cost-Micro`
    the child's charge, `X-Treg-Call-Id` the parent's. Two audit rows share the `call_ref`: the primary
-   attempt with its real status and the child with `credential_tier="platform-overflow"`.
+   attempt with its real status and the child with `credential_tier="platform-overflow"`. The MCP
+   `call` result carries the same disclosure as `served_via` plus a hint (an MCP client never sees
+   headers), and `/catalog/endpoints/{id}` / `catalog_get` show the route's price up front as
+   `overflow_price_usd` - see `architecture/money.md` § Overflow money.
 
 When the resolver already knows the account is out (the exhausted view) **and** a route is on, the
 ladder skips the direct attempt entirely (`MarketplaceCall.skip_direct`): no parent hold, no vendor
 402, straight to the child - the plan's tier 4b.
+
+Influencers Club discovery/search and similar-creators routes have a verified flat Orthogonal
+price against our per-creator direct price. Both entry points pass the direct request estimate
+to the route view: `routes.route_for` excludes these routes when the fixed fee exceeds 4× that
+estimate, before any child hold or aggregator budget is reserved. The worker also bounds the fee
+by the verified $0.03 ceiling. A one-creator request currently cannot overflow; a request for two
+or more can. The original paging/filter body is relayed unchanged and the child settles once at
+the aggregator's reported price, even if the page is empty. See `ops/capacity.md` for verification.
 
 **An aggregator failure is data.** Its own 401/402/403 or a malformed envelope releases the child
 hold and marks `overflow:<name>` unhealthy for everyone; a relayed vendor answer the signature table
 reads as that vendor's own out-of-credit or quota dialect (`VENDOR_DRY`: a 402, Apollo's 422 through
 Orthogonal's dry Apollo account, a period 429) releases the child hold and marks
 `overflow:<name>:<provider>` only - one vendor's cap never takes the others offline. Either mark
-lasts 15 minutes, and the caller gets the typed `provider_capacity` 503 with alternatives; a second aggregator is never tried on the same call. Its
-stricter-schema refusal (`contract`) releases the child and lets the vendor's own answer stand.
+lasts 15 minutes, and the caller gets the typed `provider_capacity` 503 with alternatives; a second aggregator is never tried on the same call.
+The aggregator's own per-request refusal (`contract`: its stricter schema, or Orthogonal's bare
+400/422/404 with no vendor data) is request-scoped - it releases the child, charges nothing and marks
+nothing; the vendor's own answer stands, and on the skip-direct ladder, where there is none, the caller
+gets the typed 503 naming the refusal rather than the aggregator's envelope dressed as the vendor's
+answer. `malformed` is reserved for what is not an envelope at all (non-JSON, a 5xx, a transport
+error); one validation 400 read as `malformed` once took Orthogonal offline for every org for 15 minutes.
 
 **Shadow mode** (`TREG_OVERFLOW_MODE=shadow`): the aggregator is called, status / shape / cost logged
 and the probe's cost recorded in `OverflowSpend` (treg pays, budget-bounded) - the caller still gets

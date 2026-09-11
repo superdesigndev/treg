@@ -301,6 +301,7 @@ class MarketplaceCall:
     tier: str                       # tool | credential | platform | platform-overflow (child cycle only)
     cost_type: str = ""             # cost.type — decides whether a 4xx is billable (per_call is)
     estimate_micro: int = 0         # RAW provider estimate; the ledger applies the margin
+    max_cost_micro: int | None = None  # remaining caller ceiling, inherited by overflow
     params_hash: str = ""
     call_id: str | None = None      # the ledger hold, once reserved (metered calls only)
     # The call rides a REGISTRY OAUTH CONNECT of a provider that bills treg's app per use (X's
@@ -553,9 +554,35 @@ def _marketplace_pricing(
     """
     if not cost:
         return 0, 0
+    if provider == "sumble" and cost.get("sumble"):
+        from . import sumble
+        credit = _usd_to_micro(float(cost.get("usd") or 0) * int(cost.get("per") or 1))
+        return sumble.estimate(cost["sumble"], _json_object(body)) * credit, credit
+    if provider == "contactout":
+        from . import contactout
+        request = _json_object(body) if body else dict(query.multi_items())
+        return contactout.estimate(cost, request), 0
     estimate = _platform_estimate_micro(cost, query, body)
     unit = (_usd_to_micro(cost["usd"])
             if cost.get("type") in ("per_result", "quota_rows") and cost.get("usd") else 0)
+    if provider == "quickenrich":
+        credit = _usd_to_micro(float(cost.get("usd") or 0))
+        if endpoint_id == "quickenrich.people.search.domain":
+            # Fixed 20-row page; title queries charge each contactable employee, otherwise one page.
+            return credit * (20 if query.get("title") else 1), credit
+        if endpoint_id == "quickenrich.companies.search":
+            doc = _json_object(body)
+            size = doc.get("per_page", 10)
+            size = max(1, min(size, 100)) if type(size) is int else 100
+            return size * credit, credit
+        return estimate, credit
+    if provider == "tomba" and endpoint_id == "tomba.companies.emails.list":
+        # Tomba bills requested page slots in blocks of ten, with a ten-slot default.
+        # A partial non-empty page still costs the full block; settlement frees empty pages.
+        raw = query.get("limit")
+        size = int(str(raw)) if raw is not None and str(raw).isdigit() else 10
+        credit = _usd_to_micro(float(cost.get("usd") or 0))
+        return max(1, (size + 9) // 10) * credit, credit
     if provider == "crustdata" and endpoint_id in (
         "crustdata.companies.enrich", "crustdata.people.enrich"
     ):
@@ -856,7 +883,10 @@ def _marketplace_upstream(
         # Agents often pass `siteUrl` straight from GSC's sites list, where it may already be
         # encoded. Preserve a value containing a real %HH escape; otherwise encode it exactly once.
         # A literal/invalid percent sequence has no valid escape and therefore becomes `%25`.
-        rendered = value if _VALID_PERCENT_ESCAPE_RE.search(value) else quote(value, safe="")
+        # @ is a legal character inside a path segment (RFC 3986 pchar), not a path/query
+        # delimiter. Email-path APIs may validate it before percent-decoding (Tomba does).
+        # Keep it literal; slashes, ?, # and other delimiters still need escaping.
+        rendered = value if _VALID_PERCENT_ESCAPE_RE.search(value) else quote(value, safe="@")
         path = path.replace("{%s}" % name, rendered)
         consumed.add(name)
     required = [k for k, v in (inp.get("queryParams") or {}).items()
@@ -928,15 +958,18 @@ def _document_value(document: object, dotted: str) -> object:
     return current
 
 
-def _enforce_platform_pricing_selectors(ep: dict, body: bytes) -> None:
-    """Bind a platform-priced row to its fixed request discriminator before reserve/relay.
+def _enforce_platform_request(ep: dict, body: bytes) -> None:
+    """Check explicit platform constraints and fixed pricing selectors before reserve/relay.
 
     Catalog tables may price several rows on one upstream path. A table condition whose body field
     has a singleton enum is the row identity, not caller choice: accepting another value lets a cheap
     row reserve for an expensive model. Full schema validation remains out of the faithful BYOK path.
     """
     input_schema = ep.get("input") or {}
-    selectors: dict[str, object] = {}
+    selectors: dict[str, object] = {
+        path.removeprefix("body."): value
+        for path, value in (ep.get("platform_request") or {}).items()
+    }
     for row in (ep.get("cost") or {}).get("table") or []:
         for path in (row.get("when") or {}):
             if not str(path).startswith("body."):
@@ -951,7 +984,7 @@ def _enforce_platform_pricing_selectors(ep: dict, body: bytes) -> None:
     document = _strict_json_object(body, ep["id"])
     for path, expected in sorted(selectors.items()):
         actual = _document_value(document, path)
-        if actual != expected:
+        if actual != expected or (isinstance(expected, bool) and type(actual) is not bool):
             raise ResolutionFailed(
                 "catalog_parameter_invalid", status_code=400, detail={
                     "error": "catalog_parameter_invalid",
@@ -960,7 +993,7 @@ def _enforce_platform_pricing_selectors(ep: dict, body: bytes) -> None:
                     "expected": expected,
                     "message": (
                         f"{ep['id']} fixes body.{path} to {expected!r}; "
-                        "choose the catalog endpoint for the requested value"
+                        "use the required value for a platform call"
                     ),
                 },
             )
@@ -1330,7 +1363,34 @@ async def _resolve_marketplace_call(
     cost = _platform_offer(ep, provider, caller.org)
     async_owner_call_id = None
     if cost is not None:
-        _enforce_platform_pricing_selectors(ep, body)
+        _enforce_platform_request(ep, body)
+        if service == "sumble":
+            from . import sumble
+            sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
+        if service == "contactout":
+            # Fixed catalog splits must not silently fall into ContactOut's personal+work default.
+            inputs = ep.get("input") or {}
+            values = _json_object(body) if body else dict(query.multi_items())
+            if ep["id"] == "contactout.people.search.reveal":
+                size = values.get("page_size")
+                if not isinstance(size, int) or isinstance(size, bool) or not 1 <= size <= 25:
+                    raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": "page_size",
+                        "message": "Specify page_size from 1 to 25; each result reserves up to $0.67.",
+                    })
+            for name, spec in (inputs.get("body") or inputs.get("queryParams") or {}).items():
+                if not isinstance(spec, dict) or not spec.get("required") or len(spec.get("enum", [])) != 1:
+                    continue
+                expected, actual = spec["enum"][0], values.get(name)
+                if isinstance(expected, bool) and isinstance(actual, str):
+                    actual = actual.lower() == "true" if actual.lower() in ("true", "false") else actual
+                if actual != expected:
+                    raise ResolutionFailed("catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                        "parameter": name, "expected": expected,
+                        "message": f"{ep['id']} requires {name}={expected!r}; use the matching catalog tool.",
+                    })
         async_owner_call_id = await _enforce_platform_async_ownership(ep, query, caller, db)
     skip_direct = False
     probe_lock_id = None
@@ -1344,7 +1404,7 @@ async def _resolve_marketplace_call(
         if lock is not None and capacity_marks.probe_due(lock.key):
             probe_lock_id = lock.lock_id
         elif (get_settings().overflow_mode == "on" and not caller.org.platform_overflow_disabled
-                and overflow_routes_view.for_endpoint(ep["id"])):
+                and overflow_routes_view.for_endpoint(ep["id"], estimate_micro=info_est)):
             skip_direct = True
         else:
             raise _provider_capacity_unavailable(

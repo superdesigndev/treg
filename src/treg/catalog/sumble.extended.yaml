@@ -1,0 +1,1079 @@
+provider: sumble
+source:
+  spec_urls:
+  - https://api.sumble.com/openapi.json?version=v9
+  docs: https://docs.sumble.com/api/api
+  openapi: https://api.sumble.com/openapi.json?version=v9
+  curated: '2026-09-09'
+limits: 10 requests/second aggregated per user; HTTP 429 when exceeded.
+pricing_url: https://sumble.com/pricing
+endpoints:
+- id: sumble.technologies.find
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /technologies/find
+  name: Find technologies by name
+  summary: Find technologies by name
+  input:
+    bodyType: json
+    body:
+      query:
+        type: string
+        required: true
+  docs_url: https://docs.sumble.com/api/api
+  kind: utility
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    display: {unit: success}
+    sumble:
+      mode: single
+  test_request:
+    body:
+      query: kubernetes
+  verified: '2026-09-09'
+  example_response: examples/sumble.technologies.find.json
+  tier: extended
+- id: sumble.technologies.lookup
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /technologies/lookup
+  name: Look up technologies by name, slug, or alias
+  summary: Look up technologies by name, slug, or alias
+  input:
+    bodyType: json
+    body:
+      technologies:
+        items:
+          type: string
+        type: array
+        maxItems: 1000
+        minItems: 1
+        description: List of technology names, slugs, or aliases to look up
+        required: true
+    note: 1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline
+      arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also
+      tested separately.
+  docs_url: https://docs.sumble.com/api/api
+  kind: utility
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 100
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline
+      arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also
+      tested separately.
+    display: {unit: matches, grouped: true, round_up: true}
+    sumble:
+      mode: lookup
+      records: technologies
+      block_size: 100
+      max_records: 1000
+  test_request:
+    body:
+      technologies:
+      - kubernetes
+      - python
+  verified: '2026-09-09'
+  example_response: examples/sumble.technologies.lookup.json
+  tier: extended
+- id: sumble.technologies.categories.lookup
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /technologies/categories/lookup
+  name: Look up technology categories by slug or name
+  summary: Look up technology categories by slug or name
+  input:
+    bodyType: json
+    body:
+      technology_categories:
+        items:
+          type: string
+        type: array
+        maxItems: 1000
+        minItems: 1
+        description: List of technology category slugs or names to look up
+        required: true
+    note: 1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline
+      arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also
+      tested separately.
+  docs_url: https://docs.sumble.com/api/api
+  kind: utility
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 100
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline
+      arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also
+      tested separately.
+    display: {unit: matches, grouped: true, round_up: true}
+    sumble:
+      mode: lookup
+      records: technology_categories
+      block_size: 100
+      max_records: 1000
+  test_request:
+    body:
+      technology_categories:
+      - crm
+  verified: '2026-09-09'
+  example_response: examples/sumble.technologies.categories.lookup.json
+  tier: extended
+- id: sumble.job_functions.lookup
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /jobs/title-lookup
+  name: Look up the function and level for job titles
+  summary: Look up the function and level for job titles
+  input:
+    bodyType: json
+    body:
+      titles:
+        items:
+          type: string
+        type: array
+        maxItems: 1000
+        minItems: 1
+        description: List of job titles to look up
+        required: true
+      file_name:
+        anyOf:
+        - type: string
+        - type: 'null'
+        description: Return the classifications as a downloadable CSV instead of including the result rows inline.
+          Use a filename ending in .csv.
+        required: false
+    note: 1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline
+      arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also
+      tested separately.
+  docs_url: https://docs.sumble.com/api/api
+  kind: utility
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 100
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline
+      arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also
+      tested separately.
+    display: {unit: matches, grouped: true, round_up: true}
+    sumble:
+      mode: lookup
+      records: titles
+      block_size: 100
+      max_records: 1000
+  test_request:
+    body:
+      titles:
+      - Software Engineer
+      - VP of Sales
+  verified: '2026-09-09'
+  example_response: examples/sumble.job_functions.lookup.json
+  tier: extended
+- id: sumble.projects.lookup
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /projects/lookup
+  name: Look up projects by name
+  summary: Look up projects by name
+  input:
+    bodyType: json
+    body:
+      projects:
+        items:
+          type: string
+        type: array
+        maxItems: 1000
+        minItems: 1
+        description: List of project names or slugs to look up
+        required: true
+    note: 1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline
+      arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also
+      tested separately.
+  docs_url: https://docs.sumble.com/api/api
+  kind: utility
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 100
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 credit per started block of 100 matched inputs (ceil). Unmatched inputs free. Platform accepts inline
+      arrays only; file_name export requires BYOK. Single/multi-input hit cost observed; 101-input rounding also
+      tested separately.
+    display: {unit: matches, grouped: true, round_up: true}
+    sumble:
+      mode: lookup
+      records: projects
+      block_size: 100
+      max_records: 1000
+  test_request:
+    body:
+      projects:
+      - cloud migration
+  verified: '2026-09-09'
+  example_response: examples/sumble.projects.lookup.json
+  tier: extended
+- id: sumble.documentation.search
+  platform: companies
+  scope: any_account
+  method: GET
+  path: /documentation/search
+  name: Search Sumble's product documentation
+  summary: Search Sumble's product documentation
+  input:
+    queryParams:
+      query:
+        type: string
+        minLength: 1
+        maxLength: 500
+        description: Words or a short question to search for. Uses BM25 and bag of words.
+        required: true
+        note: Words or a short question to search for. Uses BM25 and bag of words.
+      limit:
+        type: integer
+        maximum: 10
+        minimum: 1
+        default: 5
+        required: false
+  docs_url: https://docs.sumble.com/api/api
+  kind: utility
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+  test_request:
+    queryParams:
+      query: technology lookup
+      limit: 1
+  verified: '2026-09-09'
+  example_response: examples/sumble.documentation.search.json
+  tier: extended
+- id: sumble.contact_lists.list
+  platform: people
+  scope: own_account
+  method: GET
+  path: /contact-lists
+  name: List contact lists
+  summary: List contact lists
+  input:
+    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
+      live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
+      live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.contact_lists.create
+  platform: people
+  scope: own_account
+  method: POST
+  path: /contact-lists
+  name: Create a contact list
+  summary: Create a contact list
+  input:
+    bodyType: json
+    body:
+      name:
+        type: string
+        required: true
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.contact_lists.add
+  platform: people
+  scope: own_account
+  method: POST
+  path: /contact-lists/{list_id}/people
+  name: Add people to a contact list
+  summary: Add people to a contact list
+  input:
+    pathParams:
+      list_id:
+        type: integer
+        required: true
+    bodyType: json
+    body:
+      people_ids:
+        items:
+          type: integer
+        type: array
+        maxItems: 10000
+        required: true
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.contact_lists.get
+  platform: people
+  scope: own_account
+  method: GET
+  path: /contact-lists/{list_id}
+  name: Get contact list details
+  summary: Get contact list details
+  input:
+    pathParams:
+      list_id:
+        type: integer
+        required: true
+    queryParams:
+      file_name:
+        anyOf:
+        - type: string
+        - type: 'null'
+        required: false
+    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
+      live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
+      live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.organization_lists.list
+  platform: companies
+  scope: own_account
+  method: GET
+  path: /organization-lists
+  name: List organization lists
+  summary: List organization lists
+  input:
+    queryParams:
+      include_deleted:
+        type: boolean
+        default: false
+        required: false
+    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
+      live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
+      live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.organization_lists.create
+  platform: companies
+  scope: own_account
+  method: POST
+  path: /organization-lists
+  name: Create an organization list
+  summary: Create an organization list
+  input:
+    bodyType: json
+    body:
+      name:
+        type: string
+        required: true
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.organization_lists.get
+  platform: companies
+  scope: own_account
+  method: GET
+  path: /organization-lists/{list_id}
+  name: Get organization list details
+  summary: Get organization list details
+  input:
+    pathParams:
+      list_id:
+        type: integer
+        required: true
+    queryParams:
+      include_deleted:
+        type: boolean
+        default: false
+        required: false
+      file_name:
+        anyOf:
+        - type: string
+        - type: 'null'
+        required: false
+    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
+      live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
+      live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.organization_lists.rename
+  platform: companies
+  scope: own_account
+  method: POST
+  path: /organization-lists/{list_id}/name
+  name: Rename an organization list
+  summary: Rename an organization list
+  input:
+    pathParams:
+      list_id:
+        type: integer
+        required: true
+    bodyType: json
+    body:
+      name:
+        type: string
+        maxLength: 255
+        minLength: 1
+        required: true
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.organization_lists.set_deleted
+  platform: companies
+  scope: own_account
+  method: POST
+  path: /organization-lists/{list_id}/deleted
+  name: Set an organization list's deleted status
+  summary: Set an organization list's deleted status
+  input:
+    pathParams:
+      list_id:
+        type: integer
+        required: true
+    bodyType: json
+    body:
+      deleted:
+        type: boolean
+        required: true
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.organization_lists.add
+  platform: companies
+  scope: own_account
+  method: POST
+  path: /organization-lists/{list_id}/organizations
+  name: Add organizations to a list
+  summary: Add organizations to a list
+  input:
+    pathParams:
+      list_id:
+        type: integer
+        required: true
+    bodyType: json
+    body:
+      organization_ids:
+        items:
+          type: integer
+        type: array
+        default: []
+        required: false
+      organization_slugs:
+        items:
+          type: string
+        type: array
+        default: []
+        required: false
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.organization_lists.set_signals
+  platform: companies
+  scope: own_account
+  method: POST
+  path: /organization-lists/{list_id}/signals
+  name: Set a list's signals inclusion setting
+  summary: Set a list's signals inclusion setting
+  input:
+    pathParams:
+      list_id:
+        type: integer
+        required: true
+    bodyType: json
+    body:
+      include_in_signals:
+        type: boolean
+        required: true
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.signals.search
+  platform: companies
+  scope: own_account
+  method: POST
+  path: /signals
+  name: Search signals
+  summary: Search signals
+  input:
+    bodyType: json
+    body:
+      filter:
+        properties:
+          organization_ids:
+            anyOf:
+            - items:
+                type: integer
+                exclusiveMinimum: 0.0
+              type: array
+            - type: 'null'
+            description: Organization IDs to filter signals by.
+            examples:
+            - - 171
+          person_ids:
+            anyOf:
+            - items:
+                type: integer
+                exclusiveMinimum: 0.0
+              type: array
+            - type: 'null'
+            description: Sumble person IDs to filter signals by.
+            examples:
+            - - 12729201
+          signal_ids:
+            anyOf:
+            - items:
+                type: integer
+                exclusiveMinimum: 0.0
+              type: array
+            - type: 'null'
+            description: Signal IDs to filter signals by.
+            examples:
+            - - 123
+          technology_slugs:
+            anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+            description: Canonical technology slugs to filter signals by, such as `kubernetes` or `salesforce`.
+            examples:
+            - - zoominfo
+          job_functions:
+            anyOf:
+            - items:
+                type: string
+              type: array
+            - type: 'null'
+            description: Job function names to filter signals by, such as `Engineering` or `Sales`.
+            examples:
+            - - Account Executive
+          priorities:
+            anyOf:
+            - items:
+                type: string
+                enum:
+                - high
+                - medium
+                - low
+              type: array
+            - type: 'null'
+            description: Priorities to filter signals by. Matches the `priority` field returned on each signal.
+            examples:
+            - - high
+          account_list_ids:
+            anyOf:
+            - items:
+                type: integer
+                exclusiveMinimum: 0.0
+              type: array
+            - type: 'null'
+            description: Account list IDs to filter signals to accounts in those lists.
+            examples:
+            - - 4
+          signal_config_ids:
+            anyOf:
+            - items:
+                type: integer
+                exclusiveMinimum: 0.0
+              type: array
+            - type: 'null'
+            description: Signal config IDs to filter signals by. Matches the `signal_config_id` returned on each
+              signal.
+            examples:
+            - - 512
+        additionalProperties: false
+        type: object
+        description: Filter criteria for signals search.
+        required: false
+      limit:
+        type: integer
+        maximum: 100.0
+        minimum: 1.0
+        description: Maximum number of signals to return.
+        default: 100
+        required: false
+      offset:
+        type: integer
+        maximum: 10000.0
+        minimum: 0.0
+        description: Number of signals to skip.
+        default: 0
+        required: false
+    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
+      live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
+      live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.signals.priority
+  platform: companies
+  scope: own_account
+  method: POST
+  path: /signals/priority
+  name: Search priority signals
+  summary: Search priority signals
+  input:
+    bodyType: json
+    body:
+      filter:
+        properties:
+          organization_ids:
+            anyOf:
+            - items:
+                type: integer
+                exclusiveMinimum: 0.0
+              type: array
+            - type: 'null'
+            description: Organization IDs to filter priority signals by.
+            examples:
+            - - 171
+          person_ids:
+            anyOf:
+            - items:
+                type: integer
+                exclusiveMinimum: 0.0
+              type: array
+            - type: 'null'
+            description: Sumble person IDs to filter priority signals by.
+            examples:
+            - - 12729201
+          signal_ids:
+            anyOf:
+            - items:
+                type: integer
+                exclusiveMinimum: 0.0
+              type: array
+            - type: 'null'
+            description: Signal IDs to filter priority signals by.
+            examples:
+            - - 123
+          job_post_ids:
+            anyOf:
+            - items:
+                type: integer
+                exclusiveMinimum: 0.0
+              type: array
+            - type: 'null'
+            description: Job post IDs to filter priority signals by.
+            examples:
+            - - 789
+          is_relevant:
+            anyOf:
+            - type: boolean
+            - type: 'null'
+            description: 'Filter by your relevance feedback: true for priority signals you marked relevant, false
+              for ones you marked not relevant. Omit to return priority signals regardless of feedback -- this does
+              not match only unreviewed (null-feedback) signals.'
+            examples:
+            - true
+        additionalProperties: false
+        type: object
+        description: Filter criteria for priority signals search.
+        required: false
+      limit:
+        type: integer
+        maximum: 100.0
+        minimum: 1.0
+        description: Maximum number of priority signals to return.
+        default: 20
+        required: false
+      offset:
+        type: integer
+        maximum: 10000.0
+        minimum: 0.0
+        description: Number of priority signals to skip.
+        default: 0
+        required: false
+    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
+      live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: 1 credit per list, organization, person or signal returned, according to this operation. BYOK only; no
+      live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.signals.priority.relevance
+  platform: companies
+  scope: own_account
+  method: POST
+  path: /signals/priority/{item_id}/relevance
+  name: Update priority signal relevance
+  summary: Update priority signal relevance
+  input:
+    pathParams:
+      item_id:
+        type: integer
+        required: true
+    bodyType: json
+    body:
+      is_relevant:
+        anyOf:
+        - type: boolean
+        - type: 'null'
+        description: Whether this priority signal is relevant (true) or not relevant (false). Pass null to clear
+          previously-set feedback.
+        required: true
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.signals.configs
+  platform: companies
+  scope: own_account
+  method: POST
+  path: /signals/configs
+  name: List signal configs
+  summary: List signal configs
+  input:
+    bodyType: json
+    body: {}
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.support.data_quality
+  platform: companies
+  scope: own_account
+  method: POST
+  path: /support/data-quality
+  name: Create Data Quality Report
+  summary: Create Data Quality Report
+  input:
+    bodyType: json
+    body:
+      message:
+        type: string
+        maxLength: 5000
+        required: true
+      url:
+        anyOf:
+        - type: string
+          maxLength: 2048
+        - type: 'null'
+        required: false
+      page_title:
+        anyOf:
+        - type: string
+          maxLength: 500
+        - type: 'null'
+        required: false
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden
+- id: sumble.support
+  platform: companies
+  scope: own_account
+  method: POST
+  path: /support
+  name: Create Support Request
+  summary: Create Support Request
+  input:
+    bodyType: json
+    body:
+      message:
+        type: string
+        maxLength: 5000
+        required: true
+      url:
+        anyOf:
+        - type: string
+          maxLength: 2048
+        - type: 'null'
+        required: false
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  docs_url: https://docs.sumble.com/api/api
+  tier: extended
+  kind: account
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.sumble.com/api/api
+    checked: '2026-09-09'
+    confidence: documented
+    note: Free account operation. BYOK only; no live workspace mutation or support message was performed.
+  platform_blocked: This operation uses the key owner’s workspace; connect your own Sumble key.
+  untestable: Requires the caller’s workspace or asynchronous result; documented schema, no public fixture. Use
+    BYOK.
+  cache: forbidden

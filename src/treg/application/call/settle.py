@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from collections.abc import Callable
 
 from sqlalchemy import update
@@ -108,6 +109,45 @@ def _brightdata_record_count(body: bytes) -> int | None:
         return 0
     return None
 
+def _quickenrich_cost_micro(mk: MarketplaceCall, doc: dict) -> int | None:
+    """Subscription credits at the frozen list rate, independent of the upstream plan fee."""
+    if mk.cost_type == "free":
+        return 0
+    meta = doc.get("meta")
+    if isinstance(meta, dict) and "credits_used" in meta:
+        credits = meta["credits_used"]
+        # The documented meter is whole credits. Reject booleans, negative and malformed usage.
+        return credits * mk.unit_micro if type(credits) is int and credits >= 0 else None
+    if "data" not in doc or doc.get("success") is not True:
+        return None
+    data = doc["data"]
+    if data is None or data == [] or data == {}:
+        return 0
+
+    def present(value):
+        return isinstance(value, str) and value.strip().lower() not in ("", "n/a", "null", "none")
+
+    if mk.endpoint_id == "quickenrich.people.search.domain" and isinstance(data, list):
+        if not all(isinstance(row, dict) for row in data):
+            return None
+        title = (mk.request_data.get("queryParams") or {}).get("title", "")
+        credits = (sum(present(row.get("email")) or present(row.get("employee_phone")) for row in data)
+                   if title else 1)
+        return credits * mk.unit_micro
+    if mk.endpoint_id == "quickenrich.companies.search" and isinstance(data, list):
+        return len(data) * mk.unit_micro if all(isinstance(row, dict) for row in data) else None
+    if isinstance(data, dict):
+        if mk.endpoint_id == "quickenrich.people.email.find":
+            if "email" not in data and "employee_phone" not in data:
+                return None
+            return int(present(data.get("email")) or present(data.get("employee_phone"))) * mk.unit_micro
+        if mk.endpoint_id == "quickenrich.people.phone.find" and "employee_phone" in data:
+            return int(present(data["employee_phone"])) * mk.unit_micro
+        if mk.endpoint_id == "quickenrich.people.enrich":
+            return mk.unit_micro
+    return None
+
+
 def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int | None:
     """The provider's OWN reported charge for this call, in micro-USD, or None when it doesn't say.
 
@@ -174,7 +214,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         if credits >= 0 and rate:
             return _usd_to_micro(credits * rate)
     if not body:
-        return None
+        return 0 if provider == "contactout" else None
     if provider == "brightdata" and mk.cost_type == "per_result" and mk.unit_micro > 0:
         # DERIVED by counting records — Bright Data's bill is per record delivered and the body is
         # the only place that number exists (see _brightdata_record_count for the shapes).
@@ -183,13 +223,32 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     try:
         doc = json.loads(body)
     except (ValueError, UnicodeDecodeError):
-        return None
+        return 0 if provider == "contactout" else None
     if provider == "aviato" and mk.endpoint_id == "aviato.people.enrich.bulk":
         if isinstance(doc, list) and mk.unit_micro > 0:
             return sum(item is not None for item in doc) * mk.unit_micro
         return None
     if not isinstance(doc, dict):
+        return 0 if provider == "contactout" else None
+    reported = (ep.get("cost") or {}).get("reported_charge") if ep else None
+    if reported:
+        amount = _dig(doc, reported["path"])
+        if isinstance(amount, (int, float, str)) and not isinstance(amount, bool):
+            try:
+                dollars = Decimal(str(amount))
+                if dollars.is_finite() and dollars >= 0:
+                    return int((dollars * 1_000_000).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+            except (InvalidOperation, ValueError, OverflowError):
+                pass
+        # Missing or invalid charge evidence leaves the normal miss/base rules in force.
+    if provider == "sumble":
+        credits = doc.get("credits_used")
+        # The request-time unit freezes the credit rate, including legitimate zero usage.
+        if type(credits) is int and credits >= 0:
+            return credits * mk.unit_micro
         return None
+    if provider == "quickenrich":
+        return _quickenrich_cost_micro(mk, doc)
     if provider == "aviato" and mk.endpoint_id == "aviato.companies.enrich.bulk":
         rows = doc.get("companies")
         if isinstance(rows, list) and mk.unit_micro > 0:
@@ -216,6 +275,17 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
             return int(cost * 1_000_000 + 0.5)
         return None
+    if provider == "contactout" and cost:
+        from . import contactout
+        return contactout.observed(cost, mk.request_data, doc)
+    if provider == "millionverifier" and mk.endpoint_id == "millionverifier.people.email.verify":
+        # Risky results receive automatic credit returns for eligible accounts. Keep the verdict
+        # as a routed answer, but never bill the caller for unknown/catch-all. `free` is the email
+        # service type, NOT a charge flag; `credits` is a delayed account balance, NOT usage.
+        # Misuse-flagged upstream accounts may lose credit-return eligibility; treg absorbs that
+        # exception instead of charging callers for a result advertised as free.
+        if doc.get("result") in ("unknown", "catch_all"):
+            return 0
     if provider == "exa":
         # REPORTED in dollars: every Exa response carries `costDollars.total` — the search base,
         # the per-result rider beyond 10, deep-mode uplifts and each contents type summed (verified
@@ -252,6 +322,19 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         if (isinstance(info, dict) and info.get("method") == "charged-now" and rate
                 and isinstance(credits, (int, float)) and not isinstance(credits, bool) and credits >= 0):
             return int(credits * rate * 1_000_000 + 0.5)
+        return None
+    if provider == "tomba" and mk.endpoint_id == "tomba.companies.emails.list":
+        # Live billing evidence: a non-empty page costs ceil(pageSize / 10) credits,
+        # even when fewer emails are returned. The catalog supplies the frozen credit price.
+        data = doc.get("data")
+        emails = data.get("emails") if isinstance(data, dict) else None
+        if isinstance(emails, list):
+            if not emails:
+                return 0
+            meta = doc.get("meta")
+            size = meta.get("pageSize") if isinstance(meta, dict) else None
+            if type(size) is int and size > 0 and mk.unit_micro > 0:
+                return ((size + 9) // 10) * mk.unit_micro
         return None
     if provider == "hunter" and mk.endpoint_id == "hunter.companies.emails":
         # DERIVED, like apollo. Hunter's domain search does not bill per row at all: it takes ONE

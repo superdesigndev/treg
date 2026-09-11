@@ -112,7 +112,7 @@ endpoints:
     method: GET
     path: /domain-search
     name: "Find email addresses at a company domain, with roles"
-    summary: "People and email addresses Hunter knows at a company, with roles and confidence"
+    summary: "People and email addresses Hunter knows at a company, with roles and confidence. DELIVERABILITY WARNING: this is a directory listing, not a verified list — each row's `verification.status` is null unless Hunter has checked that mailbox, and `confidence` below ~50 is a pattern guess. Live 2026-09-08, a team that mailed generic rows (info@, sales@) straight from this endpoint bounced on 73 of 79; a hunter.people.email.verify call per address ($0.012, or leadmagic.people.email.verify at $0.006) would have caught all 73. Verify before outreach, and never invent info@ for a domain this returned nothing for."
     input:
       queryParams:
         domain: {type: string, required: false, note: "the company's domain — preferred over company", example: "stripe.com"}
