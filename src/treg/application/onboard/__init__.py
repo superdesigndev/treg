@@ -55,7 +55,9 @@ async def _user(user_id: int, db: AsyncSession) -> User:
 
 async def provision_demo(*, user_id: int, team_name: str) -> dict:
     async with session_maker() as db:
-        return await demo_seed.provision(db, await _user(user_id, db), team_name)
+        response = await demo_seed.provision(db, await _user(user_id, db), team_name)
+        await db.commit()
+        return response
 
 
 async def skip(*, user_id: int) -> dict:

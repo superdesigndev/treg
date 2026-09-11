@@ -24,7 +24,12 @@ seeded with teammates, a working tool, and a real audit trail — one backend br
 
 ## The one brain - `src/treg/application/onboard/demo.py`
 
-`provision(db, owner, team_name)` seeds a REAL org owned by the caller, marked `Org.demo=True`:
+`provision(db, owner, team_name)` seeds a REAL org owned by the caller, marked `Org.demo=True`.
+It shares the 10-owned-team cap with regular creation, with the user lock held until
+`application.onboard.provision_demo` commits. Existing demo teams can still be reused at the cap;
+a new demo team over the cap returns HTTP 403.
+
+The seeded content includes:
 
 - **Fake teammates** (`TEAMMATES`): Ada·admin, Ben·member, Cora·viewer — roster-only `User` rows
   with `demo=True` on the unusable domain **`demo.treg.local`** (`DEMO_DOMAIN`). Reused across demo

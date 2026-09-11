@@ -17,6 +17,7 @@ sources:
   - src/treg/domain/identity/access.py
   - src/treg/domain/identity/session.py
   - src/treg/domain/identity/promotions.py
+  - tests/test_team_limit.py
   - tests/test_auth.py
   - tests/test_token_revocation.py
   - src/treg/routers/auth.py
@@ -40,6 +41,18 @@ The registry is **tenant-isolated**: an **Org** owns resources, a **User** is a 
 **Membership** links them with a role and IS where the caller's token lives. A token = a `(user, org)`
 pair, so every list/create/mutation and the proxy are scoped to the caller's org. Design source:
 `docs/MULTI-TENANCY-PLAN.md` (standalone plan).
+
+## Owned-team limit
+
+An account may own at most 10 teams (`MAX_OWNED_TEAMS`). All owner memberships count,
+including demo and suspended teams; joining as a member, admin or viewer does not.
+`require_owned_team_slot` locks the user through the ownership write and commit, then checks
+current owner memberships. The identity `lock_user` uses a no-op update for cross-process
+serialization on Postgres and SQLite. Normal creation, onboarding demo creation and explicit
+owner promotion share the guard. Requests over the limit return HTTP 403 with an actionable message.
+Deleting a team or relinquishing ownership frees a slot. Existing excess teams stay accessible,
+and recovery when an administrator deletes a sole owner is preserved; no migration or balance
+change is required. This is a current-ownership cap, not a daily creation limit.
 
 ## The model (`models.py`)
 

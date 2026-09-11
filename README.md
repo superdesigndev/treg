@@ -232,6 +232,8 @@ See [analytics details](USAGE.md#anonymous-usage-analytics).
 
 ## Teams
 
+An account can own up to 10 teams. Joining other teams as a member does not count toward this limit.
+
 Everything is scoped to an **org**: a token = a `(user, org)` membership, and every secret, tool,
 and skill belongs to the active org. Roles: **owner / admin / member / viewer**.
 

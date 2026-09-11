@@ -508,6 +508,8 @@ are both supported; you do not need to pre-arrange anything with us.
 
 ## Roles (what a member may do)
 
+An account can own up to 10 teams. Joining other teams as a member does not count toward this limit.
+
 - **viewer** - call any tool + read the inventory. Nothing else.
 - **member** - + register secrets/tools/skills, edit/delete their OWN resources.
 - **admin**  - + invite/remove members, edit/delete ANY resource in the team.

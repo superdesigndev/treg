@@ -289,6 +289,8 @@ expires. Same storage; a credential can graduate from manual to auto with no mig
   One-time setup: add `https://treg.to/oauth/callback` to your OAuth app's redirect URIs.
 
 ## Task — manage the team + monitor
+
+An account can own up to 10 teams. Joining other teams as a member does not count toward this limit.
 ```bash
 treg tool ls / secret ls / skill ls / calls          # inventory + audit log — scoped to the active org
 treg tool rm <id> / secret rm <id> / skill rm <id>   # secret rm is blocked while a tool binds it

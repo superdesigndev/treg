@@ -17,7 +17,8 @@ from ..domain.identity.access import (
 )
 from ..models import User
 from .auth import _client_ip
-from .orgs import _require_admin_of
+from .orgs import _require_admin_of, _owned_team_limit_error
+from ..domain.governance.teams import OwnedTeamLimitReached
 
 
 # app is the APIRouter alias so mechanically moved @app decorators stay byte-identical.
@@ -64,8 +65,11 @@ async def onboard_demo(
     """Seed a sandbox team owned by the caller — fake teammates (one per role) + a working `echo`
     tool + sample activity — so a brand-new user can feel the product immediately. Idempotent
     (reuses an existing demo team); marks the caller onboarded. Same seed for dashboard + CLI."""
-    return await onboard_use_cases.provision_demo(
-        user_id=user.id, team_name=(body.team_name if body else "Acme Design"))
+    try:
+        return await onboard_use_cases.provision_demo(
+            user_id=user.id, team_name=(body.team_name if body else "Acme Design"))
+    except OwnedTeamLimitReached as exc:
+        raise _owned_team_limit_error() from exc
 
 
 @app.post("/onboard/skip")
