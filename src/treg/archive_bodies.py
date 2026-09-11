@@ -1,13 +1,14 @@
 """Archive body I/O and upload scheduling, separate from archive indexing and TTL learning."""
 import asyncio
-from collections import Counter
+from collections import Counter, OrderedDict
 from dataclasses import dataclass
 import logging
 import re
+import random
 import time
 
 from .config import get_settings
-from .infra.object_store import ObjectInfo, ObjectStore, ObjectStoreError
+from .infra.object_store import ObjectInfo, ObjectStore, ObjectStoreError, exception_name, failure_reason
 
 _log = logging.getLogger("treg.archive_bodies")
 _store: ObjectStore | None = None
@@ -15,13 +16,20 @@ _pending: set[asyncio.Task] = set()
 _pending_bytes = 0
 _sem = None
 _sem_loop = None
+_RECENT_UPLOADS = 20_000
+_uploaded: OrderedDict[str, None] = OrderedDict()
+_inflight: dict[str, asyncio.Future] = {}
+_queued_hashes: set[str] = set()
 # Operational counters have bounded labels and no call, team, key or body dimensions.
 outcomes: Counter = Counter()
 
 
 def configure(store: ObjectStore | None) -> None:
-    global _store
+    global _store, _uploaded, _inflight, _queued_hashes
     _store = store
+    # A new store/bucket must not inherit success from the previous one. Leaders retain their
+    # old maps so their completion cannot populate the newly configured cache.
+    _uploaded, _inflight, _queued_hashes = OrderedDict(), {}, set()
 
 
 def uses_r2() -> bool:
@@ -95,46 +103,83 @@ async def prepare(body: bytes, content_hash: str, *, mode: str, observation: Sto
                   terminal: bool = False) -> WritePlan:
     if mode == "db":
         return WritePlan("db")
-    reason = "store_error"
-    attempts = get_settings().archive_r2_terminal_attempts if terminal else 1
-    try:
-        for attempt in range(attempts):
-            try:
-                queued = time.monotonic()
-                async with _upload_sem():
-                    observation.props["archive_body_queue_wait_ms"] += (time.monotonic() - queued) * 1000
-                    transfer = time.monotonic()
-                    try:
-                        async with asyncio.timeout(get_settings().archive_r2_timeout_s):
-                            if _store is None:
-                                raise RuntimeError("archive object store unavailable")
-                            info = await _store.put(body, content_hash=content_hash)
-                            if info != ObjectInfo(content_hash, len(body)):
-                                raise ObjectStoreError("hash_mismatch")
-                    finally:
-                        observation.props["archive_body_upload_ms"] += (time.monotonic() - transfer) * 1000
-                observation.props["archive_body_upload_status"] = "uploaded"
-                return WritePlan(mode)
-            except TimeoutError:
-                reason = "timeout"
-            except ObjectStoreError as exc:
-                reason = exc.reason
-            except Exception:
-                reason = "store_error"
-            if attempt + 1 < attempts:
-                await asyncio.sleep(min(0.1 * 2 ** attempt, 1.0))
-        observation.props["archive_body_upload_status"] = "failed"
-        _log.error("archive body upload failed after %s attempt(s): %s", attempts, reason)
-        # Double write preserves the DB copy when R2 fails, without publishing an R2 pointer.
-        return WritePlan("db" if mode == "both" else None, reason=reason)
-    finally:
-        observation.props["archive_body_upload_ms"] = round(observation.props["archive_body_upload_ms"], 3)
+    uploaded, inflight = _uploaded, _inflight
+    if content_hash in uploaded:
+        uploaded.move_to_end(content_hash)
+        observation.props["archive_body_upload_status"] = "skipped_duplicate"
+        outcomes["skipped_duplicate"] += 1
+        return WritePlan(mode)
+
+    flight = inflight.get(content_hash)
+    if flight is not None:
+        queued = time.monotonic()
+        # Cancelling a waiter (including a terminal deadline) must not cancel the leader.
+        reason = await asyncio.shield(flight)
+        observation.props["archive_body_queue_wait_ms"] += (time.monotonic() - queued) * 1000
+        observation.props["archive_body_upload_status"] = "coalesced" if reason is None else "failed"
+        outcomes["coalesced"] += 1
+    else:
+        flight = asyncio.get_running_loop().create_future()
+        inflight[content_hash] = flight
+        reason = "cancelled"
+        try:
+            error_type, attempt = "none", 0
+            attempts = get_settings().archive_r2_terminal_attempts if terminal else 2
+            queued = time.monotonic()
+            async with _upload_sem():
+                observation.props["archive_body_queue_wait_ms"] += (time.monotonic() - queued) * 1000
+                transfer = time.monotonic()
+                try:
+                    # Attempts and jitter share the existing transfer timeout. Slot waiting stays
+                    # outside it. The terminal caller still has its original overall deadline.
+                    async with asyncio.timeout(get_settings().archive_r2_timeout_s):
+                        for attempt in range(1, attempts + 1):
+                            try:
+                                if _store is None:
+                                    raise ObjectStoreError("store_unavailable")
+                                info = await _store.put(body, content_hash=content_hash)
+                                if info != ObjectInfo(content_hash, len(body)):
+                                    raise ObjectStoreError("hash_mismatch")
+                                reason = None
+                                break
+                            except Exception as exc:
+                                reason, error_type = failure_reason(exc), exception_name(exc)
+                            transient = reason in {"rate_limited", "upstream_error"}
+                            if (attempt == attempts or (transient and attempt >= 2)
+                                    or (not transient and not terminal)):
+                                break
+                            delay = (random.uniform(1.0, 1.5) if transient
+                                     else min(0.1 * 2 ** (attempt - 1), 1.0))
+                            await asyncio.sleep(delay)
+                except TimeoutError:
+                    reason, error_type = "timeout", "TimeoutError"
+                finally:
+                    observation.props["archive_body_upload_ms"] += (time.monotonic() - transfer) * 1000
+            if reason is not None:
+                _log.error("archive body upload failed after %s attempt(s): %s exception_type=%s",
+                           attempt, reason, error_type)
+            if reason is None:
+                uploaded[content_hash] = None
+                if len(uploaded) > _RECENT_UPLOADS:
+                    uploaded.popitem(last=False)
+            observation.props["archive_body_upload_status"] = "uploaded" if reason is None else "failed"
+        finally:
+            # Publish failures too, and never cache them. A cancelled leader releases its waiters
+            # to their normal DB fallback; a later call may attempt the immutable object again.
+            inflight.pop(content_hash, None)
+            flight.set_result(reason)
+            observation.props["archive_body_upload_ms"] = round(observation.props["archive_body_upload_ms"], 3)
+    return WritePlan(mode) if reason is None else WritePlan("db" if mode == "both" else None, reason=reason)
 
 
-def submit(factory, body_len: int, observation: StorageReport) -> str | None:
+def submit(factory, body_len: int, observation: StorageReport, *, content_hash: str) -> str | None:
     """Separate count/byte budgets from archive's DB queue and DB semaphore."""
     global _pending_bytes
     s = get_settings()
+    queued_hashes = _queued_hashes
+    if content_hash in _uploaded or content_hash in queued_hashes or content_hash in _inflight:
+        outcomes["duplicate_queue_bypass"] += 1
+        return "duplicate"
     reason = ("upload_queue_full" if len(_pending) >= s.archive_r2_max_pending else
               "upload_bytes_full" if _pending_bytes + body_len > s.archive_r2_max_pending_bytes else None)
     if reason:
@@ -142,6 +187,7 @@ def submit(factory, body_len: int, observation: StorageReport) -> str | None:
         observation.props["archive_body_upload_drop_reason"] = reason
         return reason
     _pending_bytes += body_len
+    queued_hashes.add(content_hash)
 
     task = asyncio.create_task(factory())
     _pending.add(task)
@@ -150,6 +196,7 @@ def submit(factory, body_len: int, observation: StorageReport) -> str | None:
         global _pending_bytes
         _pending.discard(task)
         _pending_bytes -= body_len
+        queued_hashes.discard(content_hash)
         if task.cancelled():
             observation.finish(reason="cancelled")
     task.add_done_callback(done)
@@ -199,7 +246,7 @@ async def _db_fallback(pointer):
 
 async def read(pointer: BodyPointer, path: str, *, diagnostics: dict | None = None) -> bytes | None:
     """Call only after closing every DB session owned by the request."""
-    reason, elapsed = "none", 0.0
+    reason, elapsed, error_type = "none", 0.0, "none"
     def observed(body, source):
         if diagnostics is not None:
             diagnostics.update(cache_body_source=source, cache_body_fallback_reason=reason,
@@ -219,20 +266,15 @@ async def read(pointer: BodyPointer, path: str, *, diagnostics: dict | None = No
                 else:
                     elapsed = round((time.monotonic() - started) * 1000, 3)
                     return observed(body, "r2")
-        except TimeoutError:
-            reason = "timeout"
-        except PermissionError:
-            reason = "permission_denied"
-        except ObjectStoreError as exc:
-            reason = exc.reason if exc.reason in {
-                "not_found", "timeout", "permission_denied", "hash_mismatch", "too_large",
-                "store_unavailable", "store_error"} else "store_error"
-        except Exception:
-            reason = "store_error"
+        except Exception as exc:
+            reason, error_type = failure_reason(exc), exception_name(exc)
         elapsed = round((time.monotonic() - started) * 1000, 3)
+        if reason in {"not_found", "hash_mismatch"}:
+            _uploaded.pop(pointer.content_hash, None)
         outcomes["read_fallback_" + path] += 1
         outcomes["read_fallback_" + path + "_" + reason] += 1
         level = logging.ERROR if reason in {"permission_denied", "hash_mismatch", "too_large"} else logging.WARNING
-        _log.log(level, "archive R2 read fallback path=%s reason=%s elapsed_ms=%s", path, reason, elapsed)
+        _log.log(level, "archive R2 read fallback path=%s reason=%s elapsed_ms=%s exception_type=%s",
+                 path, reason, elapsed, error_type)
     body = await _db_fallback(pointer)
     return observed(body, "db" if body is not None else "none")

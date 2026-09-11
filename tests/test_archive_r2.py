@@ -121,6 +121,7 @@ async def test_r2_queue_has_independent_concurrency_and_sheds_observably(clients
     monkeypatch.setattr(service.analytics, 'capture', capture)
     try:
         for i in range(4):
+            monkeypatch.setattr(service, 'relay', _fake_relay(200, RAW + b' ' * i))
             await clients.get(URL + '&count=' + str(i))
         # Wait for the DB fallback's completion event, not an arbitrary scheduling delay.
         await asyncio.wait_for(dropped.wait(), 5)
@@ -129,7 +130,7 @@ async def test_r2_queue_has_independent_concurrency_and_sheds_observably(clients
     finally:
         r2.gate.set()
     await archive.drain()
-    assert len(await snapshots()) == 4 and len(r2.objects) == 1
+    assert len(await snapshots()) == 4 and len(r2.objects) == 3
     assert len([p for name, p in events if name == 'tool_called']) == 4
 
 
@@ -425,7 +426,8 @@ async def test_obstore_factory_configuration_and_missing_objects(monkeypatch, wr
 
 @pytest.mark.parametrize('path', ['lookup', 'result', 'terminal'])
 @pytest.mark.parametrize('reason,level', [('not_found', 'WARNING'), ('timeout', 'WARNING'),
-                                         ('permission_denied', 'ERROR'), ('hash_mismatch', 'ERROR')])
+                                         ('permission_denied', 'ERROR'), ('hash_mismatch', 'ERROR'),
+                                         ('rate_limited', 'WARNING'), ('upstream_error', 'WARNING')])
 async def test_read_fallback_reason_level_and_diagnostics(r2, monkeypatch, caplog, path, reason, level):
     from treg.infra.object_store import ObjectStoreError
     monkeypatch.setattr(get_settings(), 'archive_body_read_' + path, 'r2-first')
@@ -672,3 +674,240 @@ async def test_object_boundary_classifies_put_and_get_by_type(error, reason):
         with pytest.raises(ObjectStoreError) as caught:
             await store.get(archive.content_hash(RAW))
         assert str(caught.value) == reason
+
+
+async def test_same_body_refetch_skips_duplicate_put(clients, r2, monkeypatch):
+    events = []
+    monkeypatch.setattr(service.analytics, 'capture', lambda who, name, props, **kw: events.append((name, props)))
+    for _ in range(2):
+        response = await clients.get(URL, headers={'Cache-Control': 'no-cache'})
+        assert response.content == RAW
+        await archive.drain()
+    assert r2.put_calls == 1
+    assert len(await snapshots()) == 2
+    reports = [p for name, p in events if name == 'archive_body_stored']
+    assert [p['upload_status'] for p in reports] == ['uploaded', 'skipped_duplicate']
+    assert all(p['storage'] == 'both' and not p['dropped'] for p in reports)
+
+
+async def test_concurrent_same_body_calls_share_one_put(clients, r2):
+    r2.gate = asyncio.Event()
+    try:
+        for i in range(8):
+            assert (await clients.get(URL + '&count=' + str(i))).content == RAW
+        await asyncio.wait_for(r2.entered.wait(), 2)
+        await asyncio.sleep(0)
+        assert r2.put_calls == 1
+    finally:
+        r2.gate.set()
+    await archive.drain()
+    rows = await snapshots()
+    assert len(rows) == 8 and all(row.body_storage == 'both' for row in rows)
+    assert r2.put_calls == 1 and not archive_bodies._inflight
+
+
+@pytest.mark.parametrize('status', [429, 500, 503])
+@pytest.mark.parametrize('exhausted', [False, True])
+async def test_transient_put_retry_and_db_fallback(clients, r2, monkeypatch, status, exhausted, caplog):
+    r2.put_failures = [status] * (2 if exhausted else 1)
+    events, delays = [], []
+    def jitter(low, high):
+        delays.append((low, high))
+        return 0.001
+    monkeypatch.setattr(archive_bodies.random, 'uniform', jitter)
+    monkeypatch.setattr(service.analytics, 'capture', lambda who, name, props, **kw: events.append((name, props)))
+    assert (await clients.get(URL)).content == RAW
+    await archive.drain()
+    assert r2.put_calls == 2 and delays == [(1.0, 1.5)]
+    row = (await snapshots())[0]
+    assert archive._unpack(row.body, row.enc) == RAW
+    report = next(p for name, p in events if name == 'archive_body_stored')
+    reason = 'rate_limited' if status == 429 else 'upstream_error'
+    if exhausted:
+        assert row.body_storage == 'db' and not r2.objects
+        assert report['upload_status'] == 'failed' and report['drop_reason'] == reason
+        assert reason in caplog.text
+        assert archive.content_hash(RAW) not in archive_bodies._uploaded
+    else:
+        assert row.body_storage == 'both' and report['upload_status'] == 'uploaded'
+    assert report['dropped'] is False
+
+
+async def test_retry_jitter_stays_inside_existing_upload_budget(clients, r2, monkeypatch):
+    monkeypatch.setattr(get_settings(), 'archive_r2_timeout_s', 0.02)
+    r2.put_failures = [429]
+    events = []
+    monkeypatch.setattr(service.analytics, 'capture', lambda who, name, props, **kw: events.append((name, props)))
+    await clients.get(URL)
+    await archive.drain()
+    assert r2.put_calls == 1 and (await snapshots())[0].body_storage == 'db'
+    report = next(p for name, p in events if name == 'archive_body_stored')
+    assert report['drop_reason'] == 'timeout' and report['upload_ms'] < 500
+    assert not archive_bodies._inflight and not archive_bodies._uploaded
+
+
+async def test_recent_upload_lru_is_bounded_and_resets_with_store(r2, monkeypatch):
+    monkeypatch.setattr(archive_bodies, '_RECENT_UPLOADS', 2)
+    async def put(raw):
+        return await archive_bodies.prepare(raw, archive.content_hash(raw), mode='both',
+                                            observation=archive_bodies.StorageReport())
+    for raw in (b'a', b'b', b'a', b'c'):
+        assert (await put(raw)).storage == 'both'
+    assert len(archive_bodies._uploaded) == 2 and r2.put_calls == 3
+    assert archive.content_hash(b'b') not in archive_bodies._uploaded
+    await put(b'b')
+    assert r2.put_calls == 4
+    replacement = MemoryObjectStore()
+    archive_bodies.configure(replacement)
+    await put(b'b')
+    assert replacement.put_calls == 1
+
+
+@pytest.mark.parametrize('cancel_leader', [False, True])
+async def test_singleflight_cancellation_releases_waiters(r2, cancel_leader):
+    r2.gate = asyncio.Event()
+    async def put():
+        return await archive_bodies.prepare(RAW, archive.content_hash(RAW), mode='both',
+                                            observation=archive_bodies.StorageReport())
+    leader = asyncio.create_task(put())
+    await asyncio.wait_for(r2.entered.wait(), 2)
+    follower = asyncio.create_task(put())
+    await asyncio.sleep(0)
+    cancelled, remaining = (leader, follower) if cancel_leader else (follower, leader)
+    cancelled.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled
+    r2.gate.set()
+    plan = await asyncio.wait_for(remaining, 2)
+    assert plan.storage == ('db' if cancel_leader else 'both')
+    assert not archive_bodies._inflight
+    assert (await put()).storage == 'both'
+    assert r2.put_calls == (2 if cancel_leader else 1)
+
+
+@pytest.mark.parametrize('path', ['lookup', 'result', 'terminal', 'put'])
+async def test_store_error_logs_only_underlying_exception_class(r2, monkeypatch, caplog, path):
+    from treg.infra.object_store import ObjectStoreError
+    async def fail(*args, **kwargs):
+        raise ObjectStoreError('store_error', exception_type='GenericError')
+    if path == 'put':
+        monkeypatch.setattr(r2, 'put', fail)
+        plan = await archive_bodies.prepare(RAW, archive.content_hash(RAW), mode='both',
+                                            observation=archive_bodies.StorageReport())
+        assert plan.reason == 'store_error'
+    else:
+        monkeypatch.setattr(get_settings(), 'archive_body_read_' + path, 'r2-first')
+        monkeypatch.setattr(r2, 'get', fail)
+        pointer = archive_bodies.BodyPointer(archive.content_hash(RAW), 'both', RAW, None)
+        assert await archive_bodies.read(pointer, path) == RAW
+    assert 'exception_type=GenericError' in caplog.text
+    assert RAW.decode() not in caplog.text and archive.content_hash(RAW) not in caplog.text
+
+
+@pytest.mark.parametrize('status,reason', [(429, 'rate_limited'), (500, 'upstream_error'),
+                                         (503, 'upstream_error'), (400, 'store_error')])
+async def test_real_obstore_http_status_classification(status, reason):
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from threading import Thread
+    from obstore.exceptions import GenericError
+    from obstore.store import S3Store
+    from treg.infra.object_store import R2ObjectStore, ObjectStoreError
+
+    calls = []
+    class Handler(BaseHTTPRequestHandler):
+        def fail(self):
+            calls.append(self.command)
+            self.rfile.read(int(self.headers.get('Content-Length', 0)))
+            self.send_response(status)
+            self.end_headers()
+            if self.command != 'HEAD':
+                self.wfile.write(b'<Error><Code>TestError</Code><Message>private-body-token</Message></Error>')
+        do_PUT = do_GET = do_HEAD = fail
+        def log_message(self, *args):
+            pass
+
+    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        sdk = S3Store('test', config={'endpoint': f'http://127.0.0.1:{server.server_port}',
+                                      'region': 'auto', 'access_key_id': 'test', 'secret_access_key': 'test'},
+                      client_options={'allow_http': True}, retry_config={'max_retries': 0})
+        store = R2ObjectStore(sdk, 1000, status_errors=(GenericError,))
+        key = archive.content_hash(RAW)
+        for operation in (lambda: store.put(RAW, content_hash=key), lambda: store.get(key), lambda: store.head(key)):
+            before = len(calls)
+            with pytest.raises(ObjectStoreError) as caught:
+                await operation()
+            assert len(calls) == before + 1  # real SDK max_retries=0, including HTTP 429
+            assert caught.value.reason == reason
+            assert str(caught.value) == reason
+            assert caught.value.exception_type == 'GenericError'
+    finally:
+        await asyncio.to_thread(server.shutdown)
+        server.server_close()
+        thread.join()
+
+
+async def test_generic_sdk_body_cannot_spoof_http_status():
+    from obstore.exceptions import GenericError
+    from treg.infra.object_store import R2ObjectStore
+    store = R2ObjectStore(None, 1000, status_errors=(GenericError,))
+    for text in ('503 secret-body', 'Server returned non-2xx status code: 429 secret-body',
+                 'Generic S3 error: Error performing GET https://test/abc in 1ms - '
+                 'Server returned non-2xx status code: 400 Bad Request: '
+                 'Server returned non-2xx status code: 429 Too Many Requests'):
+        error = store._failure(GenericError(text))
+        assert error.reason == 'store_error' and str(error) == 'store_error'
+
+
+async def test_same_query_burst_bypasses_upload_queue_budget(clients, r2, monkeypatch):
+    # A burst of identical search results, before any upload can finish. Duplicates must not
+    # consume the distinct-upload budget even before the first background task starts.
+    monkeypatch.setattr(get_settings(), 'archive_r2_max_pending', 1)
+    monkeypatch.setattr(get_settings(), 'archive_r2_max_pending_bytes', len(RAW))
+    r2.gate = asyncio.Event()
+    reports = []
+    for _ in range(300):
+        archive.record(method='GET', endpoint_id=EP, provider='tikhub', url=URL,
+                       caller_body=b'', headers={}, status_code=200, media_type='application/json', body=RAW,
+                       observation=archive_bodies.StorageReport(emit=reports.append))
+    assert len(archive_bodies._pending) == 1
+    assert archive_bodies._pending_bytes == len(RAW)
+    try:
+        await asyncio.wait_for(r2.entered.wait(), 2)
+        assert r2.put_calls == 1
+    finally:
+        r2.gate.set()
+    await archive.drain()
+    rows = await snapshots()
+    assert len(rows) == 300 and len({row.key_id for row in rows}) == 1
+    assert len(reports) == 300 and all(p['storage'] == 'both' and not p['dropped'] for p in reports)
+    assert r2.put_calls == 1 and not archive_bodies._queued_hashes
+    assert archive_bodies._pending_bytes == 0
+
+
+async def test_cached_hash_bypasses_saturated_upload_queue(clients, r2, monkeypatch):
+    await clients.get(URL)
+    await archive.drain()
+    monkeypatch.setattr(get_settings(), 'archive_r2_max_pending', 0)
+    response = await clients.get(URL, headers={'Cache-Control': 'no-cache'})
+    await archive.drain()
+    assert response.content == RAW and r2.put_calls == 1
+    assert all(row.body_storage == 'both' for row in await snapshots())
+
+
+async def test_singleflight_shares_exhausted_retry_result(r2, monkeypatch):
+    r2.gate = asyncio.Event()
+    r2.put_failures = [429, 429]
+    monkeypatch.setattr(archive_bodies.random, 'uniform', lambda low, high: 0.001)
+    async def put():
+        return await archive_bodies.prepare(RAW, archive.content_hash(RAW), mode='both',
+                                            observation=archive_bodies.StorageReport())
+    tasks = [asyncio.create_task(put()) for _ in range(30)]
+    await asyncio.wait_for(r2.entered.wait(), 2)
+    r2.gate.set()
+    plans = await asyncio.gather(*tasks)
+    assert all(plan.storage == 'db' and plan.reason == 'rate_limited' for plan in plans)
+    assert r2.put_calls == 2 and not archive_bodies._uploaded and not archive_bodies._inflight
+    assert (await put()).storage == 'both' and r2.put_calls == 3

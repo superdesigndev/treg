@@ -320,11 +320,13 @@ def record(
             method=method, endpoint_id=endpoint_id, provider=provider, url=url,
             caller_body=caller_body, headers=headers, status_code=status_code,
             media_type=media_type, body=body, origin=origin, key_hash=kh, body_hash=ch,
-            observation=observation, plan=plan), len(body), observation)
+            observation=observation, plan=plan), len(body), observation, content_hash=ch)
         if rejection is None:
             return kh, ch
-        plan = archive_bodies.WritePlan("db" if plan.keep_db else None, reason=rejection)
-        # Both mode preserves the old DB path even when the separate upload queue sheds.
+        if rejection != "duplicate":
+            plan = archive_bodies.WritePlan("db" if plan.keep_db else None, reason=rejection)
+        # Duplicates use the existing bounded DB queue and still join prepare's shared upload.
+        # Both mode preserves the DB copy when admission of a distinct upload is rejected.
 
     body_len = len(body)
     # Shed on EITHER count OR bytes — whichever bound bites first. The bytes bound prevents OOM

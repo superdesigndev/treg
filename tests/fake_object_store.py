@@ -11,6 +11,7 @@ class MemoryObjectStore:
         self.put_calls = 0
         self.get_calls = 0
         self.fail_puts = 0
+        self.put_failures: list[int] = []
         self.fail_gets = False
         self.gate = None
         self.entered = asyncio.Event()
@@ -22,6 +23,10 @@ class MemoryObjectStore:
         self.entered.set()
         if self.gate is not None:
             await self.gate.wait()
+        if self.put_failures:
+            status = self.put_failures.pop(0)
+            raise ObjectStoreError('rate_limited' if status == 429 else
+                                   'upstream_error' if 500 <= status < 600 else 'store_error')
         if self.fail_puts:
             self.fail_puts -= 1
             raise ObjectStoreError('store_error')

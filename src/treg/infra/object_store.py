@@ -30,15 +30,43 @@ def _key(content_hash: str) -> str:
 
 class ObjectStoreError(ValueError):
     """A bounded, credential-free reason at the SDK boundary."""
-    def __init__(self, reason: str):
+    def __init__(self, reason: str, *, exception_type: str | None = None):
         self.reason = reason
+        self.exception_type = exception_type
         super().__init__(reason)
 
 
+_FAILURE_REASONS = frozenset({"not_found", "timeout", "permission_denied", "hash_mismatch",
+                              "too_large", "store_unavailable", "store_error", "rate_limited",
+                              "upstream_error"})
+# obstore 0.11 GenericError has no status attribute. Match only its transport prefix, never a
+# bare number or provider response body. The SDK exception text must not leave this boundary.
+_HTTP_STATUS = re.compile(
+    r"^Generic S3 error: Error performing (?:PUT|GET|HEAD) \S+ in [^\r\n]+?"
+    r" - Server returned non-2xx status code: ([0-9]{3})\b")
+
+
+def failure_reason(exc: Exception) -> str:
+    if isinstance(exc, ObjectStoreError):
+        return exc.reason if exc.reason in _FAILURE_REASONS else "store_error"
+    if isinstance(exc, PermissionError):
+        return "permission_denied"
+    if isinstance(exc, FileNotFoundError):
+        return "not_found"
+    if isinstance(exc, TimeoutError):
+        return "timeout"
+    return "store_error"
+
+
+def exception_name(exc: Exception) -> str:
+    return (getattr(exc, "exception_type", None) or type(exc).__name__)[:80]
+
+
 class R2ObjectStore:
-    def __init__(self, client, max_body_bytes: int, *, auth_errors=()):
+    def __init__(self, client, max_body_bytes: int, *, auth_errors=(), status_errors=()):
         self._client, self._max_bytes = client, max_body_bytes
         self._auth_errors = (PermissionError, *auth_errors)
+        self._status_errors = status_errors
 
     async def put(self, body: bytes, *, content_hash: str | None = None) -> ObjectInfo:
         if len(body) > self._max_bytes:
@@ -57,6 +85,8 @@ class R2ObjectStore:
             meta = await self._client.head_async(key)
         except FileNotFoundError:
             return None
+        except Exception as exc:
+            raise self._failure(exc) from None
         return ObjectInfo(key, int(meta["size"]))
 
     async def get(self, content_hash: str) -> bytes | None:
@@ -79,18 +109,23 @@ class R2ObjectStore:
             raise self._failure(exc) from None
 
     def _failure(self, exc):
+        reason = failure_reason(exc)
         if isinstance(exc, self._auth_errors):
-            return ObjectStoreError("permission_denied")
-        if isinstance(exc, FileNotFoundError):
-            return ObjectStoreError("not_found")
-        if isinstance(exc, TimeoutError):
-            return ObjectStoreError("timeout")
-        return ObjectStoreError("store_error")
+            reason = "permission_denied"
+        elif isinstance(exc, self._status_errors):
+            match = _HTTP_STATUS.match(str(exc))
+            if match:
+                status = int(match[1])
+                if status == 429:
+                    reason = "rate_limited"
+                elif 500 <= status < 600:
+                    reason = "upstream_error"
+        return ObjectStoreError(reason, exception_type=type(exc).__name__)
 
 
 @asynccontextmanager
 async def open_r2(settings):
-    from obstore.exceptions import PermissionDeniedError, UnauthenticatedError
+    from obstore.exceptions import GenericError, PermissionDeniedError, UnauthenticatedError
     from obstore.store import S3Store
 
     transport_timeout = max(settings.archive_r2_timeout_s, settings.archive_r2_read_timeout_s)
@@ -108,4 +143,4 @@ async def open_r2(settings):
     # One shared Rust HTTP pool for the lifespan. S3Store has no explicit close operation;
     # dropping the store after archive drains releases its client and pool.
     yield R2ObjectStore(client, settings.archive_max_body_bytes,
-                        auth_errors=(PermissionDeniedError, UnauthenticatedError))
+                        auth_errors=(PermissionDeniedError, UnauthenticatedError), status_errors=(GenericError,))

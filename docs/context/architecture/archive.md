@@ -68,7 +68,8 @@ Every object name is the raw body's SHA-256, with no prefix. The caller supplies
 uses `checksum_algorithm=SHA256` so R2 verifies the upload checksum. A successful single PUT
 returns its hash and byte size, with no follow-up HEAD. HEAD makes one request for size. No custom
 sha256 attribute is stored or checked; GET enforces size limits and verifies the downloaded hash.
-Same-body concurrent uploads are harmless. R2 stores raw bytes, independent of the media type of any particular call.
+Same-body concurrent uploads share one PUT in the process; recent successful hashes skip PUT.
+R2 stores raw bytes, independent of the media type of any particular call.
 DB compression remains unchanged. GET verifies the full hash before returning data.
 
 Migration `0032` adds nullable `ArchiveSnapshot.body_storage`: `db`, `both`, or `r2`; NULL is
@@ -94,16 +95,20 @@ content-addressed object; no pointer names a failed upload. Existing policy and 
 before uploading. Hash-only history stays in DB when bytes are ineligible.
 
 R2 has independent `ARCHIVE_R2_UPLOAD_CONCURRENCY` (8), `ARCHIVE_R2_MAX_PENDING` (256), and
-`ARCHIVE_R2_MAX_PENDING_BYTES` (128 MiB) budgets. Only PUT holds an
-upload slot. The DB stage keeps its original two slots and 30-second deadline. Upload admission
+`ARCHIVE_R2_MAX_PENDING_BYTES` (128 MiB) budgets. A leader holds one upload slot for
+its bounded attempt sequence, including retry jitter; duplicate waiters hold no upload slot. The DB stage keeps its original two slots and 30-second deadline. Upload admission
 failure falls back to the separately bounded DB queue: `both` retains DB bytes, while `r2`
 retains only hash/history/statistics if DB admission succeeds.
-`ARCHIVE_R2_TIMEOUT_S` (10 seconds) bounds PUT only; upload-slot waiting is measured separately as `queue_wait_ms`.
+`ARCHIVE_R2_TIMEOUT_S` (10 seconds) bounds the complete PUT/retry sequence after upload-slot
+admission, including retry jitter. Upload-slot waiting is outside that timeout and is measured
+separately as `queue_wait_ms`. No extra timeout layer is introduced.
 `ARCHIVE_R2_READ_TIMEOUT_S` (2 seconds, configurable) separately bounds each lookup/result/terminal
 GET including materializing bytes. The shared SDK transport uses the larger timeout so it cannot
 prematurely cut off either operation; application deadlines enforce the separate budgets.
 Terminal evidence bypasses best-effort queue admission and synchronously retries uploads up to
-`ARCHIVE_R2_TERMINAL_ATTEMPTS` (3), with bounded backoff, before the DB write. Terminal evidence has an 8-second total upload budget (including queue
+`ARCHIVE_R2_TERMINAL_ATTEMPTS` (3), with bounded backoff, before the DB write.
+429/5xx are capped at two attempts even for terminal evidence; other terminal failures retain
+the configured attempt limit, now within the shared transfer budget. Terminal evidence has an 8-second total upload budget (including queue
 wait and retries), at most 20 seconds for DB, and a 28-second total deadline. Upload exhaustion
 falls back to DB even for terminal evidence in R2-only mode. A cancelled waiter drains that
 bounded evidence operation before propagating cancellation; failures and deadlines log explicitly. Its settlement has
@@ -131,7 +136,9 @@ Read diagnostics are in place before enabling any `r2-first` switch. Lookup adds
 All paths log bounded reasons without exception text, keys, bodies or credentials:
 `not_found` and `timeout` are WARNING; `permission_denied` (including signature failures) and
 `hash_mismatch` are ERROR. Oversized objects are also ERROR (`too_large`); other transport errors
-and an unavailable client are WARNING (`store_error`, `store_unavailable`). Result and terminal
+and an unavailable client are WARNING (`store_error`, `store_unavailable`). HTTP 429 is
+`rate_limited`, HTTP 5xx is `upstream_error`, both WARNING on read fallback. These same reason
+names appear on failed uploads. Logs include the exception class, never the exception text. Result and terminal
 reads use these logs because they have no `tool_called`. Existing per-path process counters remain;
 additional bounded per-path/reason counters distinguish the failure classes.
 
@@ -520,7 +527,7 @@ done callback releases bytes when a task completes, keeping the budget accurate.
 R2 queue adds 128 MiB by default, for a combined 384 MiB body budget before SDK, compression
 and terminal-evidence overhead.
 
-The semaphore is process-local, while production runs multiple processes. An exact in-process key
+The semaphore is process-local; the recorder also supports deployment with multiple processes. An exact in-process key
 lock is acquired before the semaphore, so duplicate recordings queue without consuming both
 database-write slots and unrelated keys keep moving; weak references discard inactive locks. Once
 admitted, the writer locks and refreshes the matching `ArchiveKey` row before reading the newest
@@ -545,7 +552,12 @@ script has no bucket argument and accepts only `treg-archive-dev`.
 
 ObjectStore owns the sole download hash validation; the memory fake follows the same contract.
 `put` accepts the internally computed content hash to avoid rehashing immutable bytes. Read and
-write errors use the same typed classification; SDK text is never parsed or logged.
+write errors use the same classification. `R2ObjectStore._failure` preserves typed auth/not-found/
+timeout reasons. obstore 0.11.1 exposes HTTP 429/5xx as `GenericError` without a status attribute;
+only that SDK type is inspected for its anchored transport-status prefix. Bare numbers and status
+text inside a response body do not qualify. No SDK text is logged or emitted; `ObjectStoreError`
+carries only a bounded reason and the underlying exception class. The real-wheel loopback test
+`test_real_obstore_http_status_classification` covers PUT/GET/HEAD and proves zero SDK retries.
 
 Pruning still strips eligible DB bytes during double writing. A stripped `both` row becomes
 `r2`; its content hash and object remain intact, and logical retained-body statistics do not
@@ -564,3 +576,54 @@ inferred from its storage location; failed R2-only uploads become hash-only plan
 recording emits its completion report from one `finally` block, while queue callbacks release
 budgets and report cancellation of tasks that never started. `tool_called` remains independent.
 The object-store lifespan chooses a real or injected context once and always resets the seam.
+
+
+## Same-hash upload deduplication
+
+`archive_bodies.prepare` keeps a process-local LRU of 20,000 successfully uploaded content hashes.
+An LRU hit returns a successful `WritePlan` with `upload_status=skipped_duplicate`, zero new
+transfer time and no PUT/HEAD. Only a completed PUT with matching `ObjectInfo` enters the LRU.
+Failures and cancellations never do. `configure` resets the cache when the store changes; restart
+or LRU eviction permits a later idempotent re-upload. A GET that finds an object missing or corrupt
+invalidates its recent-success entry so the existing live-refetch path can repair it.
+
+For a new hash, `prepare` registers one in-flight future before waiting for the upload semaphore.
+Followers await its result with `asyncio.shield`, holding no semaphore slot or DB connection, and
+report `upload_status=coalesced` on success. A cancelled follower cannot cancel its leader. A
+cancelled leader releases followers to normal DB fallback and removes the in-flight entry. All
+followers share the failure reason; none publishes an R2 pointer for a failed flight. In-flight
+entries are removed on every exit and stay within the existing admitted recording work.
+
+`submit` checks recent, queued and in-flight hashes before the R2 count/byte admission gates.
+A queued hash is registered synchronously, so even a burst before background tasks start consumes
+only one R2 pending entry and one body-sized byte allocation. Duplicate recordings instead use
+archive's existing bounded DB queue; `prepare` still joins/skips the PUT before any DB session.
+Every admitted call keeps its own history/statistics write as before. Duplicates never turn into
+unbounded work: the DB queue's 512-record/256 MiB limits still apply. Distinct-body bursts can
+still exhaust R2's unchanged 256-record/128 MiB budget; increasing those settings is not part of
+this fix. `duplicate_queue_bypass`, `skipped_duplicate` and `coalesced` process counters supplement
+the existing per-record `archive_body_stored.upload_status` values.
+
+Residual `rate_limited`/`upstream_error` failures get one retry on nonterminal uploads too, with
+1.0-1.5 seconds of jitter before retry. This clears the one-write-per-second same-key window and
+shares the existing transfer deadline rather than restarting it. Exhaustion keeps `storage=db`
+in `both` mode with `upload_status=failed` and the classified `drop_reason`; the DB copy is not
+reported as dropped. R2-only mode retains its existing hash-only fallback. No SDK retries are
+enabled, no new DB writes/columns/tables are added, and no production setting is changed.
+
+### Timing and queue interpretation
+
+Before this fix, `upload_ms` already started after acquiring the upload semaphore and ended after
+`ObjectStore.put` returned/raised. Nonterminal recordings made one attempt. Semaphore wait was
+already isolated in `queue_wait_ms`; a four-second failed nonterminal `upload_ms` was therefore
+four seconds in the SDK/transport operation, not four seconds waiting for a local slot. The
+locked obstore 0.11.1 with `max_retries=0` issues exactly one HTTP request on a 429 in the loopback
+regression; its configured SDK retry count remains zero. Neither fact identifies which part of a
+production network/server operation caused the delay.
+
+After this fix, leader `upload_ms` includes all attempts and jitter under its transfer budget;
+followers record their shared-flight wait in `queue_wait_ms` and zero transfer time. LRU hits have
+zero transfer/wait time. Do not interpret these post-fix per-record values as one SDK request's
+latency, or average duplicate statuses and zero-transfer failed waiters into physical PUT latency. R2 pending accounting spans the
+recording's DB completion too; it is not just the number of active PUTs. Compare existing failure/
+drop reasons, leader timing, and duplicate statuses after rollout before increasing queue budgets.
