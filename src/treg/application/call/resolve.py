@@ -422,8 +422,8 @@ def _body_limit(body: bytes) -> int | None:
         val = doc.get(name)
         if isinstance(val, int) and not isinstance(val, bool) and val > 0:
             return val
-    for name in ("targets", "keywords", "domains", "urls", "lookups", "emails"):
-        val = doc.get(name)  # one row per item: moz targets, dataforseo keywords, companyenrich domains, brightdata urls
+    for name in ("targets", "keywords", "domains", "urls", "lookups", "emails", "contacts", "companies"):
+        val = doc.get(name)  # one row per item: moz targets, dataforseo keywords, companyenrich domains, brightdata urls, lusha contacts/companies
         if isinstance(val, list) and val:
             return len(val)
     # icypeas / lusha: {"pagination": {"size": 10}}; influencersclub: {"paging": {"limit": 10}} —
@@ -591,6 +591,19 @@ def _marketplace_pricing(
             "domains", "names", "professional_network_profile_urls", "business_emails"
         ))
         return _usd_to_micro(float(cost.get("usd") or 0) * count), unit
+    if provider == "hunter" and endpoint_id == "hunter.companies.emails":
+        # Hunter charges 1 search credit per 10 emails RETURNED, rounded UP — not linear per-email.
+        # The settle logic uses ceil(emails/10); the estimate must match to avoid billing mismatch.
+        # With limit=1 returning 1 email: linear estimate would be $0.00245, but settle is 1 credit
+        # = $0.0245 — a 10x overbill. Use the same rounding here.
+        raw = query.get("limit")
+        asked = int(str(raw)) if raw is not None and str(raw).isdigit() else 10  # Hunter's default
+        asked = max(1, min(asked, 100))  # Hunter's max
+        rate = catalog_store.load().credit_rates.get("hunter")
+        if rate:
+            credits = -(-asked // 10)  # ceil division: whole credits, minimum 1
+            return _usd_to_micro(credits * rate), _usd_to_micro(rate)
+        return estimate, unit
     if provider != "aviato":
         return estimate, unit
 
