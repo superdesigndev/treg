@@ -60,7 +60,7 @@ source:
 # ============================================================================================
 
 
-limits: "2000 requests/min; up to 100 tasks per POST array"
+limits: "2000 requests/min. Live endpoints (/live) accept exactly 1 task per POST; async task_post endpoints accept up to 100."
 pricing_url: https://dataforseo.com/pricing  # A billable 'SERP' is 10 results, not a whole page. Credits never expire; pay-as-you-go after the minimum top-up. Live mode is ~3x Standard.; free tier: 1 USD trial credit on si
 endpoints:
   # --- Backlinks (the Moz overlap group) --------------------------------------------------------
@@ -84,7 +84,7 @@ endpoints:
         internal_list_limit: {type: integer, required: false, note: "max elements per internal breakdown array, 10-1000; default 10", example: 10}
         rank_scale: {type: string, required: false, note: "one_hundred | one_thousand; default one_thousand"}
         backlinks_filters: {type: array, required: false, note: "narrow the backlink set the aggregates are computed over"}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
         - {target: "moz.com", internal_list_limit: 10}
@@ -115,7 +115,7 @@ endpoints:
         exclude_internal_backlinks: {type: boolean, required: false, note: "default true"}
         filters: {type: array, required: false, note: "max 8 conditions"}
         order_by: {type: array, required: false, note: "max 3 rules, e.g. [\"rank,desc\"]"}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
         - {target: "moz.com", limit: 2, mode: "one_per_domain"}
@@ -146,7 +146,7 @@ endpoints:
         exclude_internal_backlinks: {type: boolean, required: false, note: "default true"}
         filters: {type: array, required: false}
         order_by: {type: array, required: false}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
         - {target: "moz.com", limit: 2}
@@ -176,7 +176,7 @@ endpoints:
         include_subdomains: {type: boolean, required: false, note: "default true"}
         filters: {type: array, required: false}
         order_by: {type: array, required: false}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
         - {target: "moz.com", limit: 2}
@@ -205,7 +205,7 @@ endpoints:
       body:
         targets: {type: array, required: true, note: "up to 1000 domains/subdomains (no scheme, no www) or full page URLs", example: ["moz.com"]}
         rank_scale: {type: string, required: false, note: "one_hundred (0-100, comparable to Moz DA) | one_thousand (default)"}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
         - {targets: ["moz.com"], rank_scale: "one_hundred"}
@@ -234,7 +234,7 @@ endpoints:
         main_domain: {type: boolean, required: false, note: "return main domains only; default false"}
         filters: {type: array, required: false}
         order_by: {type: array, required: false}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
         - {target: "moz.com", limit: 2}
@@ -265,7 +265,7 @@ endpoints:
         device: {type: string, required: false, note: "desktop (default) | mobile"}
         os: {type: string, required: false, note: "windows/macos for desktop, android/ios for mobile"}
       note: |
-        POST body is an array of these task objects; one element = one billable task.
+        POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays).
         `/live/regular` is the cheap variant used here: plain organic + a few SERP feature types.
         `/live/advanced` costs more and adds the full set of SERP features (people_also_ask,
         AI overview, images, videos, …) — switch paths if you need those elements.
@@ -300,7 +300,7 @@ endpoints:
         date_to: {type: string, required: false, note: "yyyy-mm-dd, cannot be later than last month"}
         include_adult_keywords: {type: boolean, required: false, note: "default false"}
         sort_by: {type: string, required: false, note: "relevance (default) | search_volume | competition_index | low_top_of_page_bid | high_top_of_page_bid"}
-      note: "POST body is an array of these task objects; one task is billed as one call regardless of keyword count, so batch keywords rather than looping"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays); the task is billed as one call regardless of keyword count, so batch keywords within a single task"
     test_request:
       body:
         - {keywords: ["coffee"], location_code: 2840, language_code: "en"}
@@ -334,7 +334,7 @@ endpoints:
         ignore_synonyms: {type: boolean, required: false, note: "drop near-duplicate keywords; default false"}
         filters: {type: array, required: false, note: "max 8 conditions"}
         order_by: {type: array, required: false, note: "max 3 rules"}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
         - {keyword: "coffee", location_code: 2840, language_code: "en", depth: 1, limit: 2}
@@ -366,7 +366,7 @@ endpoints:
         load_rank_absolute: {type: boolean, required: false, note: "include absolute SERP position; default false"}
         filters: {type: array, required: false, note: "max 8 conditions"}
         order_by: {type: array, required: false, note: "max 3 rules"}
-      note: "POST body is an array of these task objects; one element = one billable task"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)"
     test_request:
       body:
         - {target: "moz.com", location_code: 2840, language_code: "en", limit: 2}
@@ -396,7 +396,7 @@ endpoints:
         enable_browser_rendering: {type: boolean, required: false, note: "measure Core Web Vitals; implies enable_javascript; costs more; default false"}
         accept_language: {type: string, required: false}
         check_spell: {type: boolean, required: false, note: "default false"}
-      note: "POST body is an array of these task objects; one element = one billable task (one page crawled)"
+      note: "POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays; one page crawled per task)"
     test_request:
       body:
         - {url: "https://moz.com/"}
