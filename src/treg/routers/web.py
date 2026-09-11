@@ -2804,6 +2804,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/docs", "", "0.7"),
     ("/resources", "resources.html", "0.8"),
     ("/blog", "", "0.7"),
+    ("/blog/people-search-bench", "", "0.6"),
     ("/vendor-listing", "vendor-listing.md", "0.5"),
     ("/support", "support.html", "0.4"),
     ("/connectors/claude", "claude-connector.html", "0.6"),
@@ -3213,15 +3214,32 @@ _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
      "Give your agent 1B+ contacts. The destination the launch film points at."),
 ]
 
+# Identity/receipt posts: thin announcements that live under /blog/. These are not launches (which
+# have their own top-level routes), but they sit prominently on the /blog index above launches.
+_BLOG_POSTS: list[tuple[str, str, str, str]] = [
+    # (slug under /blog/, title, date, one-line blurb)
+    ("people-search-bench", "#1 on People Search Bench", "2026-09",
+     "treg.to scores 80.0% on recruiting, 78.2% on B2B prospecting. 119 real tasks, same agent."),
+]
+
 
 @app.get("/blog", include_in_schema=False)
 async def blog_index():
     """Thin index of launch pages and notes. The launches stay at their existing routes; this page
     links to them without moving files or creating /blog/grokbot clones. Indexed, canonical, in
-    the sitemap. Room for future partner listicles (the empty PARTNER_POSTS placeholder)."""
+    the sitemap. Blog posts (identity/receipt announcements) sit above launches."""
     if not _hosted():
         raise HTTPException(status_code=404, detail="not found")
     base = get_settings().public_url.rstrip("/")
+
+    # Blog posts (identity/receipt announcements) come first, prominently
+    post_cards = "".join(
+        f'<a class="pcard" href="/blog/{_esc_html(slug)}">'
+        f'<h3>{_esc_html(title)}</h3>'
+        f'<p>{_esc_html(blurb)}</p>'
+        f'<div class="meta">{_esc_html(date)}</div></a>'
+        for slug, title, date, blurb in _BLOG_POSTS
+    )
 
     launch_cards = "".join(
         f'<a class="pcard" href="{_esc_html(slug)}">'
@@ -3238,11 +3256,11 @@ async def blog_index():
         '<p class="lede">Product launches, partner posts and notes from the treg.to team. '
         'Each launch page shows a real run with the catalog and the bill.</p>'
         '</div>'
-        '<section class="cat"><h2>Launches</h2>'
+        + (f'<section class="cat"><h2>Posts</h2><div class="grid">{post_cards}</div></section>'
+           if _BLOG_POSTS else '')
+        + '<section class="cat"><h2>Launches</h2>'
         f'<div class="grid">{launch_cards}</div></section>'
-        '<section class="cat"><h2>Partner posts</h2>'
-        '<div class="cap"><p style="margin:0">Coming soon: partner listicles and identity/receipt posts.</p></div>'
-        '</section></main>'
+        '</main>'
     )
 
     ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
@@ -3253,6 +3271,66 @@ async def blog_index():
                  "Product launches, partner posts and notes from the treg.to team. "
                  "Each launch page shows a real run with the catalog and the bill.",
                  "/blog", body, ld)
+
+
+@app.get("/blog/people-search-bench", include_in_schema=False)
+async def blog_people_search_bench():
+    """Identity/receipt post: treg.to is #1 on People Search Bench by LessieAI. Links to /grokbot#bench
+    for the interactive chart. Numbers from the benchmark: 119 real tasks, % answered correctly."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+
+    # The benchmark numbers (from /grokbot#bench and the LessieAI chart)
+    scores = [
+        ("Recruiting", "80.0%"),
+        ("B2B prospecting", "78.2%"),
+        ("Deterministic", "76.3%"),
+        ("Influencer", "62.9%"),
+    ]
+    score_rows = "".join(
+        f'<tr><td>{_esc_html(cat)}</td><td style="text-align:right;font-weight:600">{_esc_html(pct)}</td></tr>'
+        for cat, pct in scores
+    )
+
+    body = (
+        '<main class="wrap" style="max-width:680px">'
+        '<div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/blog">Blog</a> / '
+        '<a href="/blog/people-search-bench">#1 on People Search Bench</a></div>'
+        '<h1>#1 on People Search Bench</h1>'
+        '<p class="lede">treg.to scores highest on People Search Bench by LessieAI: '
+        '119 real tasks, same agent, with and without the plugin.</p>'
+        '</div>'
+        '<section class="cat">'
+        '<p>People Search Bench tests whether an agent can answer real recruiting, B2B prospecting, '
+        'deterministic lookup and influencer discovery questions. The benchmark runs the same agent '
+        'with and without the treg.to plugin, measuring % answered correctly across 119 tasks.</p>'
+        '<table style="width:100%;margin:24px 0;border-collapse:collapse">'
+        '<thead><tr style="border-bottom:1px solid var(--border)">'
+        '<th style="text-align:left;padding:8px 0">Category</th>'
+        '<th style="text-align:right;padding:8px 0">treg.to score</th>'
+        '</tr></thead>'
+        f'<tbody style="font-size:1.1em">{score_rows}</tbody>'
+        '</table>'
+        '<p style="color:var(--muted);font-size:0.9em">Source: People Search Bench by LessieAI, 119 real tasks, '
+        '% answered correctly. Same agent, with and without the plugin.</p>'
+        '<p style="margin-top:24px"><a href="/grokbot#bench" style="font-weight:600">'
+        'See the interactive chart on the Grok Bot launch page &rarr;</a></p>'
+        '</section>'
+        '</main>'
+    )
+
+    ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
+        {"@type": "ListItem", "position": 3, "name": "#1 on People Search Bench",
+         "item": base + "/blog/people-search-bench"}]}]
+
+    return _page("#1 on People Search Bench | treg.to",
+                 "treg.to scores 80.0% on recruiting, 78.2% on B2B prospecting on People Search Bench "
+                 "by LessieAI. 119 real tasks, same agent with and without the plugin.",
+                 "/blog/people-search-bench", body, ld)
 
 
 @app.get("/resources", include_in_schema=False)
