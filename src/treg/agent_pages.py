@@ -417,13 +417,12 @@ USE_CASE_PAGES: dict[str, dict] = {
         # The H1, in the buyer's words; the title is built from it plus live catalog numbers.
         # H1 and title carry the words people type ("email finder", "linkedin email finder", "api");
         # the buyer's-words label stays on the menu.
-        "sentence": "Email finder API: a work email from a name, company or LinkedIn URL",
-        "title": "Email finder API: {n} providers compared | treg.to",
+        "sentence": "LinkedIn email finder and email finder API: work email from a name or URL",
+        "title": "LinkedIn Email Finder API: {n} providers | treg.to",
         "lede": (
-            "Give your agent a name and a company domain, or a LinkedIn URL, and get back a "
-            "verified work address. {n} providers do this job. They differ in what they need as "
-            "input, what they charge for a miss, and how they bill. Every row below is callable "
-            "right now through one treg.to key, at the provider's rate with no markup."),
+            "LinkedIn email finder: give your agent a name and company domain, or a LinkedIn URL, "
+            "and get back a verified work address. {n} providers do this job. Pay per result, not "
+            "per seat. Every row below is callable through one treg.to key, at the provider's rate."),
         # What to type, per client. One URL, tabs on the page.
         # One prompt, the same in every client. Copy button on the page.
         "prompt": "Using treg, find the work email of the VP of Marketing at stripe.com. Show me "
@@ -926,11 +925,11 @@ USE_CASE_PAGES["enrich-a-person"] = {
 
 USE_CASE_PAGES["people-search"] = {
     "label": "Find people by role, company or location",
-    "sentence": "People search API: find contacts by title, company or location",
-    "title": "People Search: {n} Providers, Pay Per Result | treg.to",
+    "sentence": "AI people search and LinkedIn email finder: contacts by title or company",
+    "title": "AI People Search and LinkedIn Email Finder | treg.to",
     "lede": (
-        "Find people by job title, seniority, company or location. {n} providers through one key. "
-        "Pay per row, not per seat. Some searches are free; only contact details cost."),
+        "AI people search: find contacts by job title, seniority, company or location. LinkedIn email "
+        "finder included. {n} providers through one key. Pay per row, not per seat."),
     "prompt": "Using treg, find 25 heads of growth at US SaaS companies with 50 to 200 employees. "
               "Show me the price first, keep the result set small, and give me name, title, company and LinkedIn URL.",
     "prompt_why": [
@@ -1015,13 +1014,12 @@ USE_CASE_PAGES["people-search"] = {
 
 USE_CASE_PAGES["enrich-a-company"] = {
     "label": "Enrich a company from its domain",
-    "sentence": "Company enrichment API: firmographics from a domain",
-    "title": "Company enrichment API: {n} providers compared | treg.to",
+    "sentence": "Clearbit alternative: company enrichment API from a domain",
+    "title": "Clearbit Alternative: Company Enrichment API | treg.to",
     "lede": (
-        "Give your agent a domain and get the company behind it: industry, headcount, location, "
-        "founding year, tech stack, funding, sometimes revenue. {n} providers do this through one "
-        "treg.to key. Resolution is a solved problem, so the useful comparison is which fields come "
-        "back filled, what a miss costs, and how fast."),
+        "Clearbit alternative with {n} providers. Give your agent a domain and get firmographics: "
+        "industry, headcount, location, founding year, tech stack, funding. Clearbit pricing is per "
+        "record; here you compare providers and pay per call with no seat."),
     "prompt": "Using treg, enrich these 30 domains into a table: company name, industry, headcount, "
               "country, founded year and tech stack. Show me the price first, and mark any field that came back empty.",
     "prompt_why": [
@@ -4554,8 +4552,8 @@ WORKFLOWS["find-and-verify-a-lead-list"] = {
 
 
 WORKFLOWS["screen-instagram-creators-before-outreach"] = {
-    "sentence": "Screen Instagram creators before outreach: batch profile pulls with keep/skip decisions",
-    "title": "Screen Instagram creators before outreach | treg.to",
+    "sentence": "Instagram profile scraper and email finder: screen creators before outreach",
+    "title": "Instagram Profile Scraper: Screen Creators | treg.to",
     "lede": (
         "Give your agent a list of Instagram handles and get back a CSV with followers, bio, "
         "private status, business email and a keep/skip recommendation. {steps} steps, each a "
@@ -4634,8 +4632,8 @@ WORKFLOWS["screen-instagram-creators-before-outreach"] = {
 
 
 WORKFLOWS["discover-creators-in-a-niche"] = {
-    "sentence": "Discover creators in a niche: filtered Instagram, TikTok and YouTube search",
-    "title": "Discover creators in a niche | treg.to",
+    "sentence": "Influencer finder: discover creators by niche, followers, engagement",
+    "title": "Influencer Finder: Find Creators by Niche | treg.to",
     "lede": (
         "Give your agent a niche description and follower range, and get back a list of creators "
         "across Instagram, TikTok or YouTube with engagement rates and audience demographics. "
@@ -4713,8 +4711,8 @@ WORKFLOWS["discover-creators-in-a-niche"] = {
 
 
 WORKFLOWS["keyword-demand-to-ad-budget"] = {
-    "sentence": "Keyword demand to ad budget: search volume and seasonality for budget planning",
-    "title": "Keywords to ad budget: volume and seasonality | treg.to",
+    "sentence": "Keyword volume checker: search volume and seasonality for budget planning",
+    "title": "Keyword Volume Checker: Demand to Ad Budget | treg.to",
     "lede": (
         "Give your agent a list of keywords and get back search volume, CPC, competition and "
         "12-month seasonality. {steps} steps through one treg.to key, with prices before each. "
@@ -4792,8 +4790,8 @@ WORKFLOWS["keyword-demand-to-ad-budget"] = {
 
 
 WORKFLOWS["mine-competitor-meta-ads-as-creative-pack"] = {
-    "sentence": "Mine competitor Meta ads: extract copy patterns from the ad library",
-    "title": "Mine competitor Meta ads as a creative pack | treg.to",
+    "sentence": "Facebook Ads Library API: extract competitor ad copy patterns",
+    "title": "Facebook Ads Library API: Competitor Creative | treg.to",
     "lede": (
         "Give your agent a competitor's Facebook page or a category keyword and get back their "
         "live Meta ads with recurring copy structures extracted. {steps} steps through one "
