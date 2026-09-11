@@ -95,6 +95,7 @@ remain unverified. See [FaceCheck](../architecture/facecheck.md).
 | 200 on a bad key; a truthy field = valid | `token_verify_field` | Slack `ok`, Apollo `is_logged_in` |
 | 200 on a bad key; a field == a value = valid | `token_ok_field` + `token_ok_value` | Majestic `Code=="OK"` |
 | 200 on a bad key; an error object present = invalid | `token_reject_field` | Serpstat `error` |
+| Successful probe fields can be zero or false | `token_required_fields` requires non-null fields; combine with the bad-key error check | FaceCheck account fields; incomplete responses return 502 without saving the token |
 | 200 on a bad key; an `ERROR …` text body | handled automatically (text-error guard) | Semrush |
 | No free probe; valid key 400s on empty body, invalid 401s | `probe_reject_statuses=(401,403)` | Coresignal |
 | The provider's OWN "test my auth" endpoint answers 200 with prose for a bad key | probe a DATA endpoint instead | Tiingo `/api/test` (2026-08-14; `/tiingo/daily/aapl` 403s cleanly) |

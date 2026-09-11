@@ -54,8 +54,60 @@ def test_catalog_blocks_shared_keys_even_if_pricing_is_later_verified():
         assert not catalog.platform_eligible(priced)
 
 
-async def test_byok_upload_search_poll_and_delete_relay_without_metering(clients, monkeypatch):
-    await clients.post("/secrets", json={"name": "facecheck", "value": "own-facecheck-token"})
+@pytest.mark.parametrize("body", [
+    b"<html>Maintenance</html>", b"{}", b"[]", b"null",
+    b'{"remaining_credits":0,"is_online":false}',
+    b'{"remaining_credits":null,"has_credits_to_search":false,"is_online":false}',
+])
+async def test_incomplete_probe_does_not_create_connection(clients, monkeypatch, body):
+    async with httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: httpx.Response(200, content=body)
+    )) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        result = await clients.post("/connections/token", json={
+            "provider": "facecheck", "token": "unverified-test-token"})
+        assert result.status_code == 502, result.text
+        assert "incomplete verification response" in result.text
+        assert "unverified-test-token" not in result.text
+        assert not (await clients.get("/connections")).json()
+        assert not (await clients.get("/tools")).json()
+
+
+async def test_failed_reconnect_preserves_working_connection(clients, monkeypatch):
+    def reply(request):
+        body = (b'{}' if request.headers["authorization"] == "replacement-token" else
+                b'{"remaining_credits":0,"has_credits_to_search":false,"is_online":false}')
+        return httpx.Response(200, headers={"content-type": "application/json"},
+                              stream=httpx.ByteStream(body))
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(reply)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        connected = await clients.post("/connections/token", json={
+            "provider": "facecheck", "token": "working-token"})
+        assert connected.status_code == 200, connected.text
+        before = (await clients.get("/connections")).json()
+        failed = await clients.post("/connections/token", json={
+            "provider": "facecheck", "token": "replacement-token"})
+        assert failed.status_code == 502, failed.text
+        assert (await clients.get("/connections")).json() == before
+        info = await clients.post("/call/facecheck.account.usage")
+        assert info.status_code == 200, info.text
+        assert info.json()["remaining_credits"] == 0
+
+
+@pytest.mark.parametrize("via_connection", [False, True])
+async def test_byok_upload_search_poll_and_delete_relay_without_metering(clients, monkeypatch, via_connection):
+    if via_connection:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, json={
+                "remaining_credits": 0, "has_credits_to_search": False, "is_online": False})
+        )) as upstream:
+            monkeypatch.setattr(app.state, "http", upstream)
+            connected = await clients.post("/connections/token", json={
+                "provider": "facecheck", "token": "own-facecheck-token"})
+            assert connected.status_code == 200, connected.text
+    else:
+        await clients.post("/secrets", json={"name": "facecheck", "value": "own-facecheck-token"})
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     before = (await clients.get(f"/orgs/{org_id}/balance")).json()
     seen = []

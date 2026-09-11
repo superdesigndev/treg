@@ -111,6 +111,9 @@ class OAuthProvider:
     # The INVERSE: reject if this JSON field is present/truthy — for providers that answer 200 with an
     # error object on a bad key (Serpstat's JSON-RPC `error`).
     token_reject_field: str = ""
+    # Non-null fields required in a successful probe; zero and false remain valid values.
+    # Empty preserves status-only probes for providers that do not need this check.
+    token_required_fields: tuple[str, ...] = ()
     # POST-style verify probe, for providers whose key-check needs a request body (Serpstat's JSON-RPC
     # limits call). `probe_method` defaults to GET; `probe_json` is sent as the JSON body when set.
     probe_method: str = "GET"
@@ -1293,6 +1296,7 @@ FACECHECK = OAuthProvider(
     probe_url="https://facecheck.id/api/info", probe_method="POST", probe_json={},
     # Live 2026-09-11: a bogus token returns HTTP 200 with error="Invalid API token! ...".
     token_reject_field="error",
+    token_required_fields=("remaining_credits", "has_credits_to_search", "is_online"),
 )
 
 QUICKENRICH = OAuthProvider(

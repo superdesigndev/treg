@@ -26,6 +26,11 @@ signals. The absolute `probe_url` makes this a connection-only check: the existi
 health-check builder takes `probe_path` as GET, which does not describe FaceCheck's POST API.
 The provisioned tool instead includes a POST `api/info` example for its first call.
 
+`token_required_fields` requires non-null `remaining_credits`, `has_credits_to_search` and
+`is_online`. Empty/non-JSON or incomplete responses return an inconclusive HTTP 502 rather than
+creating a connection; a failed reconnect preserves the existing credential. Zero and false values
+are accepted. This checks field presence, not the entire upstream response schema.
+
 ## Catalog surface
 
 `facecheck.yaml` follows the official
