@@ -277,6 +277,8 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/llms.txt` | interface/seo.md |
 | `src/treg/web/media/astra/page.css` | interface/seo.md |
 | `src/treg/web/media/astra/page.js` | interface/seo.md |
+| `src/treg/web/media/redesign/SOURCES.md` | interface/dashboard.md |
+| `src/treg/web/media/redesign/dashboard.css` | interface/dashboard.md |
 | `src/treg/web/people-search.html` | interface/seo.md |
 | `src/treg/web/robots.txt` | interface/seo.md |
 | `src/treg/web/selfhost.sh` | ops/deploy.md |
@@ -351,7 +353,7 @@ Regenerate via `scripts/build-map.py`.
 | `interface/api.md` | `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `onboard.py`, `referrals.py`, `signup.py`, `__init__.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `web.py`, `access.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py` |
 | `interface/catalog-review-proposal.md` | `store.py`, `capabilities.yaml` |
 | `interface/cli.md` | `cli.py`, `convert.py`, `agents.py` |
-| `interface/dashboard.md` | `sitetrack.js`, `index.html`, `README.md`, `vue-3.5.41.global.prod.js`, `tutorial.js`, `tutorial.html`, `tour.js`, `index.html`, `api.py`, `web.py`, `session.py` |
+| `interface/dashboard.md` | `sitetrack.js`, `index.html`, `dashboard.css`, `SOURCES.md`, `README.md`, `vue-3.5.41.global.prod.js`, `tutorial.js`, `tutorial.html`, `tour.js`, `index.html`, `api.py`, `web.py`, `session.py` |
 | `interface/env-import.md` | `providers.py`, `skills.py` |
 | `interface/landing-sandbox.md` | `sandbox.py`, `sandbox_identity.py`, `pubfeed.py`, `sandbox.py`, `__init__.py`, `sandbox.py`, `api.py`, `onboard.py`, `web.py`, `index.html`, `install.sh` |
 | `interface/onboarding.md` | `auth.py`, `__init__.py`, `demo.py`, `cli.py`, `auth.py`, `onboard.py`, `index.html` |
