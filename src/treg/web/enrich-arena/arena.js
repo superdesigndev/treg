@@ -154,10 +154,10 @@
     components:{ArenaTaskTabs,TregTryItOut:TregAgentSetup.TryItOut,TregAgentPicker:TregAgentSetup.AgentPicker,TregSetupInstructions:TregAgentSetup.SetupInstructions,ArenaFighters,ArenaResultTable:{directives:{stickyHeader:StickyHeader},inject:['arena'],props:{rows:{type:Array,required:true},entryView:Boolean},methods:{resultLabel(r){return this.arena.providerName(r.provider)+(this.entryView?' · '+this.arena.entryLabel(this.arena.runEntries[r.entry_index||0]):'');}},template:'#arena-result-table-template'}},
     provide(){return {arena:this};},
     data:()=>({benchmark:(location.pathname||'').endsWith('/people-search-bench'),benchCategories:[],benchCategory:'',benchLoading:false,benchError:'',leaderboard:(location.pathname||'').endsWith('/leaderboard'),setupStep:1,setupTeamName:'',setupExampleCopied:'',setupAgentId:'claude-code',setupToken:null,setupShowToken:false,setupCopied:false,setupError:'',setupLoading:false,setupSequence:0,tasks:[],taskId:'people.email.find',variant:0,inputs:{},extraInputs:[],showAllEntries:false,selectedEntry:null,selectedVendor:'',resultFilter:'all',mode:'waterfall',autoVerify:true,verificationHintHidden:false,verificationQuotes:{},verificationPending:{},
-      user:null,teams:[],team:'',balance:null,meta:{},busy:false,error:'',run:null,quote:null,history:[],customServices:false,services:[],
+      user:null,teams:[],team:'',balance:null,meta:{},intercomStarted:false,intercomIdentity:'',busy:false,error:'',run:null,quote:null,history:[],customServices:false,services:[],
       insights:null,insightsState:'idle',insightsTimer:null,statsView:'rate',chartFocus:null,metricTooltip:null,requestDone:false,requestBusy:false,vendorPromptCopied:false,vendorPromptError:'',requestError:'',requestQuery:'',requestForm:{capability:'',note:'',contact:''},
       manualQuotes:{},manualPending:{},reporting:'',reportDrafts:{},pricing:false,quoteTimer:null,quoteSequence:0,pricedKey:'',expandedResults:[],email:'',code:'',emailStep:'email',devCode:'',authBusy:false,authError:'',
-      newTeamName:'',pendingSubmit:false,pollTimer:null,pollFailures:0,runTeam:'',booted:false,draftRestored:false,historySequence:0,historyLoading:false,historyHasMore:false,linkedRunPending:false,urlPopHandler:null}),
+      newTeamName:'',pendingSubmit:false,pollTimer:null,pollFailures:0,scrollOnComplete:'',runTeam:'',booted:false,draftRestored:false,historySequence:0,historyLoading:false,historyHasMore:false,linkedRunPending:false,urlPopHandler:null}),
     watch:{
       'run.id'(){this.selectedVendor='';},
       quoteKey(){this.scheduleQuote();},
@@ -173,6 +173,13 @@
       visibleInputs(){return this.showAllEntries?this.inputRows:this.inputRows.slice(0,3);},
       runEntries(){return this.run?.identities||[this.run?.identity||{}];},
       isBatch(){return this.runEntries.length>1;},
+      runCostSummary(){
+        const results=this.run?.results||[];
+        const found=new Set(results.filter(r=>r.state==='hit'&&this.ratingValue(r)!=='down').map(r=>r.entry_index??0)).size;
+        const pending=!!this.run?.charge_pending||results.some(r=>this.hasAttempt(r)&&r.charged_micro==null);
+        const total=Number.isFinite(this.run?.charged_micro)?this.run.charged_micro:null;
+        return {total,found,pending,average:!pending&&found&&total!==null?total/found:null};
+      },
       vendorResults(){return (this.run?.results||[]).filter(r=>r.provider===this.selectedVendor&&this.hasAttempt(r));},
       hasBatchFeedback(){return this.batchVendors.some(v=>v.up>0||v.down>0);},
       visibleResults(){return this.isBatch?this.run.results.filter(r=>r.entry_index===this.selectedEntry):this.run?.results||[];},
@@ -234,9 +241,10 @@
         }).sort((a,b)=>this.providerName(a.provider).localeCompare(this.providerName(b.provider)));
       },
       supportsVerifiedRate(){return ['people.email.find','people.phone.find'].includes(this.taskId);},
+      showVerifiedRateColumn(){return this.supportsVerifiedRate&&(this.taskId!=='people.phone.find'||this.chartRows.some(p=>Number.isFinite(p.verifiedRate)));},
       vendorListingPrompt(){return 'Read https://treg.to/vendor-listing.md and add our API to the treg catalog, then open a PR.';},
-      verifiedRateLabel(){return this.taskId==='people.email.find'?'Email validity rate':'Verified hit rate';},
-      verifiedExplanation(){return this.taskId==='people.phone.find'?'Phone format checks do not establish reachability or ownership. Verified hit rate is not available yet.':'Percentage of sampled returned emails with completed checks that both verifiers marked valid. Risky, unknown and conflicting verdicts do not count as valid.';},
+      verifiedRateLabel(){return this.taskId==='people.email.find'?'Email validity rate':'Phone format validity';},
+      verifiedExplanation(){return this.taskId==='people.phone.find'?'Percentage of sampled returned phone numbers with completed checks that passed the verifier’s number-format check. This does not confirm a live line, deliverability or ownership.':'Percentage of sampled returned emails with completed checks that both verifiers marked valid. Risky, unknown and conflicting verdicts do not count as valid.';},
       verificationWindow(){const v=this.insights?.verification;if(!v)return 'No published pilot';const date=x=>new Date(x).toLocaleDateString('en-US',{timeZone:'UTC'});return 'Sample '+date(v.sample_since)+'–'+date(v.sample_until)+' · Checked '+date(v.checked_at)+' · UTC';},
       insightVerification(){return ['people.email.verify','people.phone.verify'].includes(this.taskId);},
       insightWindow(){if(!this.insights)return '';const date=s=>new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}).format(new Date(s));const observed=this.insights.observed_since&&this.insights.observed_until;return (observed?'Recorded ':'Window ')+date(observed?this.insights.observed_since:this.insights.since)+' – '+date(observed?this.insights.observed_until:this.insights.until)+' · UTC';},
@@ -312,7 +320,7 @@
         if(!this.user){await this.openLogin(false);return true;}
         const team=params.get('team');
         if(team&&!this.teams.some(t=>t.slug===team)){this.error='This saved run is not available to your account or team.';return true;}
-        if(team)this.team=team;
+        if(team){this.team=team;this.syncIntercom();}
         if(!this.team){this.error='This saved run is not available to your account or team.';return true;}
         await this.loadHistory(id,{replace:true});this.linkedRunPending=false;
         await this.loadBalance();await this.refreshHistory();return true;
@@ -331,15 +339,18 @@
       showMetricTooltip(event){const r=event.currentTarget.getBoundingClientRect(),width=Math.min(300,window.innerWidth-24);this.metricTooltip={width,left:Math.max(12,Math.min(r.left+(r.width-width)/2,window.innerWidth-width-12)),top:Math.max(12,Math.min(r.bottom+8,window.innerHeight-140))};},
       verifiedRateValue(row){
         const a=row.audit;
-        return this.taskId==='people.email.find'&&a?.method==='email_verifier_consensus'&&a.checked_n>=20&&Number.isFinite(a.validity_rate)&&a.validity_rate>=0&&a.validity_rate<=100?a.validity_rate:null;
+        const email=this.taskId==='people.email.find',phone=this.taskId==='people.phone.find';
+        if(!a||!(a.checked_n>=20)||!(email&&a.method==='email_verifier_consensus'||phone&&a.method==='phone_format'))return null;
+        const rate=email?a.validity_rate:a.format_validity_rate;
+        return Number.isFinite(rate)&&rate>=0&&rate<=100?rate:null;
       },
       verifiedRate(row){const rate=this.verifiedRateValue(row);return rate===null?'—':rate.toFixed(1)+'%';},
       verifiedRateNote(row){
-        if(this.taskId==='people.phone.find')return 'Format checked only; reachability and ownership are not verified.';
         const a=row.audit;
         if(!a)return 'No published verification sample for this endpoint and input.';
         if(!(a.checked_n>=20))return 'Insufficient completed verification sample.';
         const v=this.insights?.verification,date=x=>x?new Date(x).toLocaleDateString('en-US',{timeZone:'UTC'}):'';
+        if(this.taskId==='people.phone.find')return 'Share of sampled returned phone numbers that passed '+a.verifiers.map(p=>this.providerName(p)).join(' + ')+' number-format checks. Checks completed '+date(v?.checked_at)+'. Unresolved inputs are excluded; reachability and ownership are not verified.';
         return 'Share of sampled returned emails marked valid by '+a.verifiers.map(p=>this.providerName(p)).join(' + ')+'. Checks completed '+date(v?.checked_at)+'. '+'Risky, unknown and conflicting verdicts are not counted as valid; unfinished checks are excluded. Verifier agreement does not confirm delivery or ownership.';
       },
       insightRate(row){
@@ -484,17 +495,42 @@
       },
       track(event,props={}){window.TregTracking?.capture(event,props);},
       identify(){window.TregTracking?.identify(this.user?.email||'',this.team);},
+      shutdownIntercom(){
+        try{if(this.intercomStarted)window.Intercom?.('shutdown');}catch{}
+        this.intercomStarted=false;this.intercomIdentity='';delete window.intercomSettings;
+      },
+      syncIntercom(){
+        const app=this.meta.intercom_app_id,user=this.user;
+        if(!app||!user){this.shutdownIntercom();return;}
+        if(this.intercomStarted&&this.intercomIdentity!==user.email)this.shutdownIntercom();
+        const payload={app_id:app};
+        // Match /app: never identify an email without the server's signed hash.
+        if(user.email&&user.intercom_user_hash){
+          payload.email=user.email;payload.user_hash=user.intercom_user_hash;
+          if(this.team)payload.company={id:this.team,name:this.team};
+        }
+        try{
+          if(!window.Intercom){
+            const intercom=function(){intercom.q.push(arguments);};intercom.q=[];window.Intercom=intercom;
+            const appId=encodeURIComponent(app),script=document.createElement('script');script.async=true;script.src='https://widget.intercom.io/widget/'+appId;
+            document.head.appendChild(script);
+          }
+          window.intercomSettings=payload;
+          window.Intercom(this.intercomStarted?'update':'boot',payload);
+          this.intercomStarted=true;this.intercomIdentity=user.email;
+        }catch{} // Support chat must not block Arena when the widget is unavailable.
+      },
       async loadIdentity(){
-        try{this.user=await this.api('/auth/me',{},'');}catch(e){if(e.status!==401)throw e;this.user=null;this.teams=[];this.team='';this.balance=null;this.history=[];this.historySequence++;this.identify();return;}
+        try{this.user=await this.api('/auth/me',{},'');}catch(e){if(e.status!==401)throw e;this.user=null;this.teams=[];this.team='';this.balance=null;this.history=[];this.historySequence++;this.identify();this.syncIntercom();return;}
         this.identify();
         const orgs=await this.api('/orgs');this.teams=orgs.filter(t=>!t.demo);
         let saved='';try{saved=localStorage.getItem('treg.arena.team')||'';}catch{}
         this.team=this.teams.find(t=>t.slug===this.team)?.slug||this.teams.find(t=>t.slug===saved)?.slug||this.teams[0]?.slug||'';
-        this.identify();
+        this.identify();this.syncIntercom();
         if(this.team){await this.loadBalance();if(!this.leaderboard&&!this.benchmark)await this.refreshHistory();}
       },
       async loadBalance(){const t=this.teams.find(t=>t.slug===this.team);if(!t)return;const b=await this.api('/orgs/'+t.org_id+'/balance?limit=1');this.balance=b.balance_micro;},
-      async changeTeam(){this.quote=null;this.run=null;this.history=[];this.historySequence++;clearTimeout(this.pollTimer);remove(ACTIVE);this.linkedRunPending=false;this.syncUrl();try{localStorage.setItem('treg.arena.team',this.team);this.identify();await this.loadBalance();await this.refreshHistory();}catch(e){this.error=e.message;}},
+      async changeTeam(){this.quote=null;this.run=null;this.history=[];this.historySequence++;clearTimeout(this.pollTimer);remove(ACTIVE);this.linkedRunPending=false;this.syncUrl();this.syncIntercom();try{localStorage.setItem('treg.arena.team',this.team);this.identify();await this.loadBalance();await this.refreshHistory();}catch(e){this.error=e.message;}},
       setupIcon(icon){return TregAgentSetup.iconUrl(icon);},
       async openSetup(){
         this.setupStep=this.user&&!this.team?0:1;this.setupTeamName='';this.setupToken=null;this.setupShowToken=false;this.setupCopied=false;this.setupError='';this.setupLoading=false;this.setupSequence++;
@@ -601,7 +637,7 @@
       async startRun(){
         if(this.busy||this.running||!this.readyQuote)return;
         const id=this.readyQuote.id;this.busy=true;this.error='';this.selectedEntry=null;this.resultFilter='all';this.expandedResults=[];this.runTeam=this.team;clearTimeout(this.quoteTimer);
-        try{await this.api('/arena/runs/'+id+'/start',{method:'POST'},this.runTeam);this.quote=null;await this.pollRun(id);this.syncUrl(id);if(this.running)await this.refreshHistory();}
+        try{await this.api('/arena/runs/'+id+'/start',{method:'POST'},this.runTeam);this.scrollOnComplete=id;this.quote=null;await this.pollRun(id);this.syncUrl(id);if(this.running)await this.refreshHistory();}
         catch(e){if(e.status===401){this.user=null;this.quote=null;await this.openLogin(true);}else if(e.status===402){this.topUp();}else{this.error=e.message;if(e.status===409){this.quote=null;await this.prepare(true);}}}
         finally{this.busy=false;}
       },
@@ -609,12 +645,20 @@
         clearTimeout(this.pollTimer);
         try{this.run=await this.api('/arena/runs/'+id,{},this.runTeam);this.pollFailures=0;
           if(this.run.state==='running')this.pollTimer=setTimeout(()=>this.pollRun(id),1500);
-          else{await this.loadBalance();await this.refreshHistory();}
+          else{await this.scrollToCompletedResults(id);await this.loadBalance();await this.refreshHistory();}
         }catch(e){this.error=e.message;this.pollFailures++;if(this.pollFailures<5&&e.status!==401&&e.status!==403&&e.status!==404)this.pollTimer=setTimeout(()=>this.pollRun(id),3000);}
+      },
+      async scrollToCompletedResults(id){
+        if(this.scrollOnComplete!==id)return;
+        this.scrollOnComplete='';
+        await this.$nextTick();
+        if(this.run?.id!==id||this.running||this.leaderboard||this.benchmark)return;
+        const target='.results-section .run-cost-summary';
+        document.querySelector(target)?.scrollIntoView({block:'start',behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches?'instant':'smooth'});
       },
       verificationEstimate(task){const prices=(this.tasks.find(t=>t.id===task)?.provider_previews?.[0]||[]).filter(p=>Number.isFinite(p.estimate_micro));return prices.length?Math.min(...prices.map(p=>p.estimate_micro)):null;},
       verificationLabel(r){const task=({'people.email.find':'people.email.verify','people.phone.find':'people.phone.verify'})[this.run?.capability],q=this.verificationQuotes[r.id],price=q?.estimate_micro??this.verificationEstimate(task);return (this.verificationPending[r.id]?'Verifying…':q?.affordable===false?'Top up':task==='people.phone.verify'?'Verify phone':'Verify email')+(price==null?'':' · '+this.usd(price));},
-      verificationVerdict(r){const v=r.verification;if(!v)return '';if(['queued','running'].includes(v.state))return 'Verifying…';if(v.state!=='hit')return 'Verification unavailable';const o=v.output||{};if(v.capability==='people.phone.verify')return o.valid===true?'Valid phone format':o.valid===false?'Invalid phone number':'Unknown';return this.emailVerdict(o).label;},
+      verificationVerdict(r){const v=r.verification;if(!v)return '';if(v.not_started)return 'Verification not run';if(['queued','running'].includes(v.state))return 'Verifying…';if(v.state!=='hit')return 'Verification unavailable';const o=v.output||{};if(v.capability==='people.phone.verify')return o.valid===true?'Valid phone format':o.valid===false?'Invalid phone number':'Unknown';return this.emailVerdict(o).label;},
       async verifyResult(r){
         if(!r.can_verify||this.verificationPending[r.id])return;
         const id=this.run.id,team=this.runTeam,task=({'people.email.find':'people.email.verify','people.phone.find':'people.phone.verify'})[this.run.capability];
@@ -707,7 +751,7 @@
           this.variant=Math.max(0,this.currentTask.variants.findIndex(v=>v.every(k=>k in this.inputs)));
           this.customServices=true;this.services=[...new Set(result.results.map(r=>r.provider))];this.quote=null;this.saveDraft(false);
           this.syncUrl(id,replace);
-          if(this.running)this.pollTimer=setTimeout(()=>this.pollRun(id),1500);
+          if(this.running){this.scrollOnComplete=id;this.pollTimer=setTimeout(()=>this.pollRun(id),1500);}
         }catch(e){this.error=[403,404,410].includes(e.status)?'This saved run is unavailable, expired, or belongs to another account.':e.message;}finally{this.busy=false;}
       },
       async newSession(){
@@ -718,7 +762,7 @@
       async newQuery(){this.manualQuotes={};this.reporting='';this.expandedResults=[];this.run=null;this.quote=null;this.linkedRunPending=false;clearTimeout(this.pollTimer);remove(ACTIVE);this.syncUrl();this.scheduleQuote();await this.$nextTick();document.querySelector('#composer')?.scrollIntoView({behavior:'smooth'});},
       tryWaterfall(){const previous=this.run;this.taskId=previous.capability;this.inputs={...previous.identity};this.extraInputs=(previous.identities||[]).slice(1).map(r=>({...r}));this.variant=Math.max(0,this.currentTask.variants.findIndex(v=>v.every(k=>k in previous.identity)));this.mode='waterfall';this.customServices=false;this.services=[];this.newQuery();},
       exportResult(){const b=new Blob([JSON.stringify(this.run,null,2)],{type:'application/json'});const url=URL.createObjectURL(b);const a=document.createElement('a');a.href=url;a.download='enrich-arena-'+this.run.id+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);},
-      async logout(){try{await this.api('/auth/logout',{method:'POST'});this.user=null;this.teams=[];this.team='';this.balance=null;this.run=null;this.quote=null;this.history=[];this.historySequence++;remove(ACTIVE);remove(DRAFT);}catch(e){this.error=e.message;}}
+      async logout(){try{await this.api('/auth/logout',{method:'POST'});this.shutdownIntercom();this.user=null;this.teams=[];this.team='';this.balance=null;this.run=null;this.quote=null;this.history=[];this.historySequence++;remove(ACTIVE);remove(DRAFT);}catch(e){this.error=e.message;}}
     },
     async mounted(){
       this.track('arena_page_viewed');

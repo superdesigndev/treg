@@ -650,6 +650,7 @@ async def list_calls(
     rows = (await db.execute(q.order_by(CallRecord.id.desc()).limit(limit))).scalars().all()
     # A metered async submission audited its RESERVE as the charge. The task record is the account
     # of what happened afterwards (settled, refunded, timed out) and what the caller bought.
+    await db.close()  # release the request session before terminal archive object I/O
     tasks = await async_task_app.views_for(
         caller.org_id, [c.call_ref for c in rows if c.call_ref and c.credential_tier == "platform"])
     return [
@@ -739,7 +740,9 @@ async def get_call_result(
         else:
             out["note"] = "not stored: recording was off when this call was made"
         return out
-    found = await archive.resolve_result(db, row.archive_key_hash, row.archive_content_hash)
+    key_hash, body_hash = row.archive_key_hash, row.archive_content_hash
+    await db.close()
+    found = await archive.resolve_result(key_hash, body_hash)
     if found is None:
         out["note"] = "expired: this answer is no longer on file"
         return out
@@ -768,6 +771,7 @@ async def get_call(
         .order_by(LedgerEntry.created_at))).scalars().all()
     if row is None and not entries:
         raise HTTPException(status_code=404, detail="no call with that id")
+    await db.close()
     task = (await async_task_app.views_for(caller.org_id, [call_ref])).get(call_ref)
     view = None
     if row is not None:

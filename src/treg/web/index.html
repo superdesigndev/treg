@@ -1178,6 +1178,7 @@ a:hover{text-decoration-color:var(--muted)}
           <button v-if="authed" class="nav" :class="{active:view==='activity'}" @click="go('activity')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Activity</button>
           <button v-if="authed" class="nav" :class="{active:view==='orgs'}" @click="go('orgs')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Team</button>
           <button v-if="authed" class="nav" :class="{active:view==='referrals'}" @click="go('referrals')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>Refer a friend</button>
+          <a v-if="authed" class="nav" href="/enrich-arena" target="_blank" rel="noopener" aria-label="Arena (opens in a new tab)" style="gap:6px;text-decoration:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 17.5 3 3L21 17l-3-3M3 3l1.5 5.5L17 21l4-4L8.5 4.5ZM13 19l6-6M16 5l4-2-1 5-4 4M3 21l6-6M3 17l4 4"/></svg>Arena<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-left:auto"><path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg></a>
           <div v-if="isAdmin"><div class="grp">Platform</div><button class="nav" :class="{active:view==='admin'}" @click="go('admin')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Admin</button></div>
           <div class="grp" style="margin-top:auto">Help</div>
           <a class="nav" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener" style="gap:6px;text-decoration:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.75 2.69 1.25 3.34.95.1-.74.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.9 10.9 0 0 1 5.74 0c2.19-1.49 3.15-1.18 3.15-1.18.62 1.59.23 2.76.11 3.05.73.81 1.18 1.83 1.18 3.09 0 4.41-2.69 5.38-5.25 5.67.41.35.77 1.04.77 2.1 0 1.52-.01 2.74-.01 3.11 0 .3.2.66.8.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>Open source</a>
@@ -1683,7 +1684,7 @@ a:hover{text-decoration-color:var(--muted)}
                                  the expander — parameters, limits, rate card, the copyable command
                                  — is open, and is the part worth reading before you sign up. -->
                             <button class="btn sm" :class="{primary:!mkOauth(e.provider)}" @click.stop="publicCatalog ? openSignin() : openEpTry(e)"
-                                    :title="publicCatalog ? 'Create a free team to call this — $1.00 of credit, no card' : 'Call it now, or copy the agent / CLI / API way to run it'">▶ Try it</button>
+                                    :title="publicCatalog ? 'New verified accounts get $1.00 once on an eligible team, no card' : 'Call it now, or copy the agent / CLI / API way to run it'">▶ Try it</button>
                             <span v-if="catEndpointConnected(e)" class="chip go" title="You have a connected account with an authorization method that can call this"><span class="godot"></span>Connected</span>
                             <button v-else-if="mkOauth(e.provider)" class="btn sm primary" @click.stop="publicCatalog ? openSignin() : openProvider(e.provider)"
                                     :title="endpointConnectLabel(e)+' — calls act as your account'">{{endpointConnectLabel(e)}}</button>
@@ -1814,7 +1815,7 @@ a:hover{text-decoration-color:var(--muted)}
           <div v-if="!loading && !hasAnyTools && !q && canRegister" style="margin-top:14px">
           <div style="max-width:660px;border:1px solid var(--line);border-radius:16px;padding:20px 22px;background:var(--panel2)">
             <h3 style="margin:0 0 6px;font-size:15px">Nothing of your own yet — but you can already call 2,800+ tools</h3>
-            <p class="sub" style="margin:0 0 12px">Your team starts with <b>$1.00 of free credit</b>, so the catalog works before you register anything: find a tool by what it does, see the price, call it. <a href="#" @click.prevent="go('connections')">Browse the catalog →</a><br>When you're ready to add your <i>own</i> keys and skills — your <span class="mono">.env</span> and skill folders — load them here and they become callable tools for the whole team.</p>
+            <p class="sub" style="margin:0 0 12px">New verified accounts get <b>$1.00 of free credit once</b> when creating an eligible team, so the catalog works before you register anything: find a tool by what it does, see the price, call it. <a href="#" @click.prevent="go('connections')">Browse the catalog →</a><br>When you're ready to add your <i>own</i> keys and skills — your <span class="mono">.env</span> and skill folders — load them here and they become callable tools for the whole team.</p>
             <div class="seg" style="margin-bottom:10px">
               <button :class="{on:emptyTab==='agent'}" @click="emptyTab='agent'">Agent instruction</button>
               <button :class="{on:emptyTab==='manual'}" @click="emptyTab='manual'">Manual</button>
@@ -2767,7 +2768,7 @@ product, including per-customer usage tracking and billing.</pre>
 
           <!-- TAB · Access the catalog — agent instruction first, then the manual CLI walkthrough -->
           <div v-show="startTab==='access'" style="max-width:720px">
-            <p class="sub">2,800+ catalogued endpoints: SEO and backlinks, social and trends, people and company enrichment, ads. Find one by what it <i>does</i>, see its price, call it — no provider signup. Your team's <b>$1.00 free credit</b> covers hundreds of calls.</p>
+            <p class="sub">2,800+ catalogued endpoints: SEO and backlinks, social and trends, people and company enrichment, ads. Find one by what it <i>does</i>, see its price, call it — no provider signup. New verified accounts get <b>$1.00 free credit once</b> on an eligible team, covering hundreds of calls.</p>
 
             <div class="lbl" style="margin-top:16px">▸ Set up with your agent <span class="muted" style="font-weight:400">— paste &amp; go</span></div>
             <p class="sub">One line, token included — your agent reads llms.txt and does the rest: installs the CLI, signs in as you, and makes its first call.</p>
@@ -3759,7 +3760,7 @@ treg login</pre></div>
       <p v-else-if="shareGate" class="sub">You'll land on “{{shareGate.name}}” right after.</p>
       <!-- The default line is the SANDBOX's ("bring it into a real account"), which is nonsense to
            someone who arrived on a catalog page from a search result and has no sandbox. -->
-      <p v-else-if="publicCatalog" class="sub">Create a free team and call any of these — <b>$1.00 of credit</b>, no card.</p>
+      <p v-else-if="publicCatalog" class="sub">Verify your new account and create a team to call these tools. <b>$1.00 of credit once</b> on an eligible team, no card.</p>
       <p v-else class="sub">Bring the sandbox into a real account.</p>
       <button v-if="meta.github" class="btn primary" style="width:100%;padding:11px;margin-bottom:8px" @click="githubLogin">Continue with GitHub</button>
       <button v-if="meta.google" class="btn" style="width:100%;padding:11px;margin-bottom:8px" @click="googleLogin">Continue with Google</button>

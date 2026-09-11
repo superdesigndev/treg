@@ -320,11 +320,17 @@ bound to a closed maintenance loop. Calling `maintenance.upgrade()` directly doe
   code is exposed only through `Settings.expose_dev_code`, which requires `email_dev_mode` **and** a
   **local sqlite** `database_url` — so even a stray `TREG_EMAIL_DEV_MODE=true` on Postgres (a real deploy)
   can never leak a login code.
+- `promo_grant_micro` (`TREG_PROMO_GRANT_MICRO`, default 1,000,000) gives one signup grant per
+  new verified user. Set it to zero and deploy to pause automatic grants without changing existing
+  balances. For the `0033` rollout, keep it zero while migrating and replacing old application
+  processes; restore it only after all serving processes enforce the user claim. Application
+  rollback must retain zero because old code still grants per team. The migration leaves existing
+  users ineligible, without debiting balances or rewriting historical grants.
 - `blocked_email_domains` (`TREG_BLOCKED_EMAIL_DOMAINS`, default empty) - the WHOLE email-domain
   blocklist: comma-separated domains refused at every identity door and at both team-creating doors
-  (`POST /users` and `POST /orgs`). There is no list in the code, so **this variable is the only
-  thing standing between a bulk-registration run and the promo grant** — an empty value blocks
-  nothing. Example: `example-one.io,example-two.net`. Case-insensitive; a listed domain also blocks
+  (`POST /users` and `POST /orgs`). There is no list in the code; an empty value blocks
+  no domains. Verification and the once-per-user signup claim enforce credit eligibility
+  independently of this blocklist. Example: `example-one.io,example-two.net`. Case-insensitive; a listed domain also blocks
   its subdomains; a leading `@` or `.` and surrounding whitespace are tolerated; a dotless entry
   (`com`) is ignored so one typo cannot refuse every address on earth. Edit it in the Render
   dashboard the moment a new domain appears; changing it restarts the service. Existing accounts on
@@ -430,9 +436,12 @@ grep. **A quiet audit table is now a bug you can alert on**, not one you find ou
 task closure — up to `_MAX_PENDING` (512) tasks × `archive_max_body_bytes` (2 MB) = 1 GB worst case.
 After #363 reduced `_MAX_CONCURRENT_WRITES` from 4 to 2, backlog built faster than it drained under
 heavy `/call` + MCP traffic, and the 2026-09-07T00:43:06Z OOM killed the web service at 4 GB.
-`_MAX_PENDING_BYTES` (256 MB) now caps total body bytes in pending work: `record()` sheds when
+`_MAX_PENDING_BYTES` (256 MiB) caps body bytes in the DB queue: `record()` sheds when
 EITHER the task count OR the bytes threshold is exceeded. The done callback releases bytes when a
-task completes; a regression test pins the bound.
+task completes; a regression test pins the bound. R2 uploads have a separate
+`archive_r2_max_pending_bytes` budget (128 MiB by default), so the two queues together can
+retain **384 MiB** of body bytes. This is not an RSS ceiling: SDK buffers, compression and
+mandatory terminal evidence (outside the best-effort queues) need additional headroom.
 
 The proxy is thin and IO-bound (a relay, low CPU/memory), so cheap machines scale it.
 

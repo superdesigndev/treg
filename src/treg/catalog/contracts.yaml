@@ -134,7 +134,8 @@ contracts:
     summary: "Validate a phone number's format and numbering-plan validity; not a live-line check"
     identity:
       - {phone: str}
-    filters: {}
+    filters:
+      country_code: {type: str, note: "ISO-2 country context for parsing a national-format number, e.g. US; unnecessary for an international number"}
     output:
       valid: {type: bool, required: true, note: "numbering-plan validity, not proof the line is active"}
       phone: {type: str}

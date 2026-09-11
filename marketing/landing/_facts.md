@@ -17,7 +17,7 @@ treg catalog get <endpoint_id>                                  # price + measur
 | Key | Value | Source | Verified |
 |---|---|---|---|
 | `F-01` | **2,600+ tools · 40+ providers** | treg.to hero (2,617 / 42); rounded down so it holds under every count | 2026-08-17 |
-| `F-02` | $1.00 free credit on every new team | treg.to; `llms.txt`; `config.py promo_grant_micro = 1_000_000` | 2026-08-17 |
+| `F-02` | $1.00 free credit once per new verified account | treg.to; `llms.txt`; `application/signup.py`; `config.py promo_grant_micro = 1_000_000` | 2026-09-10 |
 | `F-03` | 0% additional fee — treg.to does not mark up provider call prices | treg.to ("0% additional fee — we earn on volume pricing with vendors, not on you") | 2026-08-17 |
 | `F-04` | Credentials injected server-side; response relayed verbatim; every call audited | `llms.txt` | 2026-08-17 |
 | `F-05` | Your own key always wins over treg's, and those calls are never metered | `llms.txt`; treg.to | 2026-08-17 |

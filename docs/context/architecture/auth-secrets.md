@@ -335,6 +335,12 @@ never alert), then falling back to a current org-owner's webhook if the owner ha
 unauthenticated `register_user`), so non-http(s) / loopback / private / link-local hosts are rejected at
 set-time and re-checked before POST (blind-SSRF guard). Triggered on demand or by a cron hitting
 `POST /health/run` (a super-admin may pass `?all_orgs=1` so one cron token sweeps the whole platform).
+Webhook targets follow the same globally routable unicast rule as upstream calls. Rejecting
+CGNAT `100.64.0.0/10` protects overlay-network services and metadata endpoints such as Alibaba
+Cloud's `100.100.100.200`, even though the range is not ordinary private IPv4 space. NAT64
+translation prefixes mapping non-global IPv4 targets are also internal, not a route around this
+rule. See [proxy target guards](proxy-model.md#resolution-and-relay-guards) for the address-space rationale.
+
 Verdicts follow **worst-status-wins** within a run (a no-probe tool can't downgrade a secret a real
 probe just marked `invalid`), a transport error / `5xx` / `429` maps to `unknown` (not a false `invalid`
 + webhook spam), an injection failure maps to `invalid`, and only secrets **evaluated this run** are

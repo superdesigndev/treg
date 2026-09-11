@@ -60,6 +60,8 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "bootstrap.py": {BACKGROUND},
     # `lookup` is on the API pool inside a caller's /call/; every write here is background.
     "archive.py": {API, BACKGROUND},
+    # On-request fallback reads only, opened after R2 I/O has finished. No body writes.
+    "archive_bodies.py": {API},
 }
 
 

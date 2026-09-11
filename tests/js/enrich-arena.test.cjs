@@ -19,6 +19,37 @@ function setup(location={}){
   const price=(extra={})=>{app.quote=quote(extra);app.pricedKey=app.quoteKey;};
   return {app,quote,price,stored,destinations,components:options.components,directives:options.directives,runtime,mounted:options.mounted};
 }
+test('Intercom loads only for authenticated users on opted-in deployments and reuses its loader',()=>{
+ const {app,runtime}=setup(),scripts=[];
+ runtime.document.createElement=()=>({});runtime.document.head={appendChild:s=>scripts.push(s)};
+ app.meta={intercom_app_id:'test-app'};app.user=null;app.syncIntercom();assert.equal(scripts.length,0);
+ app.user={email:'test@example.com',intercom_user_hash:'signed-test-hash'};app.meta={};app.syncIntercom();assert.equal(scripts.length,0);
+ app.meta={intercom_app_id:'test-app'};app.syncIntercom();app.syncIntercom();
+ assert.equal(scripts.length,1);assert.equal(scripts[0].src,'https://widget.intercom.io/widget/test-app');
+ const calls=runtime.window.Intercom.q;
+ assert.equal(calls[0][0],'boot');assert.equal(calls[1][0],'update');assert.equal(calls[0][1].user_hash,'signed-test-hash');
+ assert.equal(calls[0][1].email,'test@example.com');assert.equal(calls[0][1].company.id,'test-team');
+});
+test('Intercom does not send unhashed identity and clears conversations between accounts',async()=>{
+ const {app,runtime}=setup(),calls=[];runtime.window.Intercom=(...args)=>calls.push(args);
+ app.meta={intercom_app_id:'test-app'};app.user={email:'first@example.com'};app.syncIntercom();
+ assert.deepEqual(Object.keys(calls[0][1]),['app_id']);
+ app.user={email:'second@example.com',intercom_user_hash:'second-hash'};app.syncIntercom();
+ assert.deepEqual(calls.map(c=>c[0]),['boot','shutdown','boot']);
+ app.api=async()=>({});await app.logout();assert.equal(calls.at(-1)[0],'shutdown');assert.equal(runtime.window.intercomSettings,undefined);
+ app.syncIntercom();assert.equal(calls.length,4);
+ app.user={email:'first@example.com',intercom_user_hash:'first-hash'};app.syncIntercom();assert.equal(calls.at(-1)[0],'boot');
+ app.api=async()=>{throw {status:401};};await app.loadIdentity();assert.equal(calls.at(-1)[0],'shutdown');assert.equal(app.intercomStarted,false);
+});
+test('Identity loading boots Intercom with the selected team, and team changes update it',async()=>{
+ const {app,runtime,stored}=setup(),calls=[];runtime.window.Intercom=(...args)=>calls.push(args);
+ app.meta={intercom_app_id:'test-app'};stored.set('treg.arena.team','second-team');
+ app.api=async path=>{if(path==='/auth/me')return {email:'test@example.com',intercom_user_hash:'signed-test-hash'};if(path==='/orgs')return [{slug:'first-team'},{slug:'second-team'}];throw Error(path);};
+ app.loadBalance=async()=>{};app.refreshHistory=async()=>{};
+ await app.loadIdentity();assert.equal(calls.length,1);assert.equal(calls[0][0],'boot');assert.equal(calls[0][1].company.id,'second-team');
+ app.team='first-team';await app.changeTeam();assert.equal(calls.at(-1)[0],'update');assert.equal(calls.at(-1)[1].company.id,'first-team');
+ runtime.window.Intercom=()=>{throw Error('Widget blocked');};await app.changeTeam();assert.equal(app.error,'');
+});
 test('Page-scrolling headers stop at table bounds, offset nested headers, and clean up listeners',()=>{
  const {directives,runtime}=setup(),listeners=new Map();let pending,offset,disconnected=false;
  runtime.requestAnimationFrame=fn=>{pending=fn;return 1;};runtime.cancelAnimationFrame=()=>{pending=null;};
@@ -41,6 +72,31 @@ test('Page-scrolling headers stop at table bounds, offset nested headers, and cl
  table.closest=()=>({closest:()=>({tHead:head,querySelector:()=>row})});listeners.get('scroll')();pending();assert.equal(offset,'370px');
  bounds.top=-2000;listeners.get('scroll')();pending();assert.equal(offset,'960px');
  directives.stickyHeader.unmounted(table);assert.equal(listeners.size,0);assert.equal(disconnected,true);
+});
+for(const mode of ['compare','waterfall'])for(const batch of [false,true])test(`${mode} completion reveals ${batch?'entries':'single-entry results'} once, including fast runs`,async()=>{
+ const {app,price,runtime}=setup(),scrolls=[];let rendered=false;
+ app.mode=mode;if(batch)app.extraInputs=[{full_name:'Second Person',domain:'second.example'}];price();
+ runtime.document.querySelector=selector=>({scrollIntoView:options=>{assert.equal(rendered,true);scrolls.push({selector,...options});}});
+ app.$nextTick=async()=>{rendered=true;};app.loadBalance=async()=>{};app.refreshHistory=async()=>{};
+ const result={id:'q1',state:'completed',capability:app.taskId,mode,identity:app.inputs,identities:app.inputRows,results:[]};
+ app.api=async(path,options)=>options?.method==='POST'?{}:{...result};
+ await app.startRun();assert.equal(scrolls.length,1);assert.equal(scrolls[0].selector,'.results-section .run-cost-summary');assert.equal(scrolls[0].behavior,'smooth');
+ await app.pollRun('q1');assert.equal(scrolls.length,1,'A repeated completion poll must not scroll again');
+ app.run.state='running';await app.pollRun('q1');assert.equal(scrolls.length,1,'Later Try/Verify calls must not scroll again');
+});
+test('Result scroll honors reduced motion and ignores a run replaced before rendering',async()=>{
+ const {app,runtime}=setup(),scrolls=[];runtime.window.matchMedia=()=>({matches:true});
+ runtime.document.querySelector=()=>({scrollIntoView:o=>scrolls.push(o)});
+ app.run={id:'run',state:'completed'};app.scrollOnComplete='run';await app.scrollToCompletedResults('run');assert.equal(scrolls[0].behavior,'instant');
+ app.scrollOnComplete='run';app.$nextTick=async()=>{app.run=null;};await app.scrollToCompletedResults('run');assert.equal(scrolls.length,1);
+});
+test('Opening completed history does not scroll, but a resumed running history scrolls on completion',async()=>{
+ const {app,runtime}=setup(),scrolls=[];runtime.document.querySelector=()=>({scrollIntoView:o=>scrolls.push(o)});
+ app.loadBalance=async()=>{};app.refreshHistory=async()=>{};
+ let state='completed';app.api=async()=>({id:'saved',state,capability:app.taskId,mode:'waterfall',identity:app.inputs,results:[]});
+ await app.loadHistory('saved');assert.equal(scrolls.length,0);assert.equal(app.scrollOnComplete,'');
+ state='running';await app.loadHistory('saved');assert.equal(scrolls.length,0);assert.equal(app.scrollOnComplete,'saved');
+ state='completed';await app.pollRun('saved');assert.equal(scrolls.length,1);
 });
 test('Waterfall is the default and the priced button includes its estimate',()=>{
  const {app,price}=setup();assert.equal(app.mode,'waterfall');price();assert.equal(app.runButtonLabel,'Run from $0.025');
@@ -649,6 +705,7 @@ test('Verification verdicts preserve catch-all and distinguish invalid phone for
  assert.equal(app.verificationVerdict({verification:{state:'hit',output:{valid:false,status:'catch_all'}}}),'Risky');
  assert.equal(app.verificationVerdict({verification:{capability:'people.phone.verify',state:'hit',output:{valid:false}}}),'Invalid phone number');
  assert.equal(app.verificationVerdict({verification:{state:'error'}}),'Verification unavailable');
+ assert.equal(app.verificationVerdict({verification:{state:'error',not_started:true}}),'Verification not run');
 });
 test('Verification is priced, claims once per row, and can run alongside other requests',async()=>{
  const {app}=setup();app.tasks.push({id:'people.email.verify',provider_previews:[[{estimate_micro:6250}]]});
@@ -730,10 +787,19 @@ test('Email validity matches exact endpoint and input and is independent of look
  audit.checked_n=40;audit.validity_rate=NaN;assert.equal(app.chartBars.length,0);
 });
 
-test('Phone format-only evidence never becomes verified hit rate',()=>{
+test('Phone format validity uses its own metric and never implies verified hit rate',()=>{
  const {app}=setup();app.taskId='people.phone.find';
- const row={audit:{method:'phone_format',sample_n:100,checked_n:100,validity_rate:100,baseline_n:200,rate:100,estimate:true}};
- assert.equal(app.verifiedRate(row),'—');assert.match(app.verifiedRateNote(row),/ownership/);assert.ok(app.chartViews.some(v=>v.id==='verified'));
+ const row={audit:{method:'phone_format',sample_n:100,checked_n:100,validity_rate:100,baseline_n:200,rate:100,verifiers:['tomba']}};
+ assert.equal(app.verifiedRate(row),'—','Legacy email and projected rates must not leak into phone metrics');
+ row.audit.format_validity_rate=82.5;assert.equal(app.verifiedRate(row),'82.5%');
+ assert.equal(app.verifiedRateLabel,'Phone format validity');assert.match(app.verifiedExplanation,/does not confirm a live line/);
+ assert.match(app.verifiedRateNote(row),/ownership are not verified/);assert.ok(app.chartViews.some(v=>v.id==='verified'));
+ row.audit.format_validity_rate=0;assert.equal(app.verifiedRate(row),'0.0%');
+ row.audit.checked_n=19;assert.equal(app.verifiedRate(row),'—');
+ delete row.audit.checked_n;assert.equal(app.verifiedRate(row),'—');
+ row.audit.checked_n=100;row.audit.format_validity_rate=101;assert.equal(app.verifiedRate(row),'—');
+ row.audit.format_validity_rate=82.5;row.audit.method='email_verifier_consensus';assert.equal(app.verifiedRate(row),'—');
+ app.taskId='people.email.find';assert.equal(app.verifiedRate(row),'100.0%','Email still uses email validity only');
  app.taskId='people.email.verify';assert.ok(!app.chartViews.some(v=>v.id==='verified'));
 });
 
@@ -903,4 +969,30 @@ test('Arena counts arrival before data loading, including a failed page-data req
  app.api=async()=>{assert.equal(events[0][0],'arena_page_viewed');throw new Error('Data unavailable');};
  await mounted.call(app);
  assert.equal(events.length,1);assert.equal(app.error,'Data unavailable');
+});
+
+test('Phone format column follows published data for displayed providers',()=>{
+ const {app}=setup();app.taskId='people.phone.find';
+ assert.equal(app.showVerifiedRateColumn,false);
+ app.tasks.push({id:'people.phone.find',variants:[['linkedin_url']],provider_previews:[[{provider:'quickenrich',endpoint_id:'quickenrich.phone'}]]});
+ const audit={task:app.taskId,input:app.insightInput,endpoint:'quickenrich.phone',method:'phone_format',checked_n:19,format_validity_rate:0};
+ app.insights={verification:{rows:[audit]}};
+ assert.equal(app.showVerifiedRateColumn,false,'Insufficient checks stay hidden');
+ audit.checked_n=20;assert.equal(app.showVerifiedRateColumn,true,'Zero is a real format validity rate');
+ app.customServices=true;app.services=[];assert.equal(app.showVerifiedRateColumn,false,'Hidden vendors do not keep the column visible');
+ app.taskId='people.email.find';assert.equal(app.showVerifiedRateColumn,true,'Email validity visibility is unchanged');
+});
+
+test('Run costs include every charge but count found entries once across vendors',()=>{
+ const {app}=setup();app.run={charged_micro:90000,results:[
+  {state:'hit',entry_index:0,charged_micro:30000,verification:{charged_micro:10000}},
+  {state:'hit',entry_index:0,charged_micro:20000},
+  {state:'hit',entry_index:1,charged_micro:30000},
+  {state:'miss',entry_index:2,charged_micro:10000}]};
+ assert.equal(app.runCostSummary.total,90000);assert.equal(app.runCostSummary.found,2);assert.equal(app.runCostSummary.average,45000);
+ app.resultFilter='unresolved';assert.equal(app.runCostSummary.average,45000);
+ app.run.charge_pending=true;assert.equal(app.runCostSummary.average,null);
+ app.run.charge_pending=false;app.run.results[0].charged_micro=null;assert.equal(app.runCostSummary.pending,true);
+ app.run.results=[];assert.equal(app.runCostSummary.average,null);
+ app.run={charged_micro:0,results:[{state:'hit',charged_micro:0}]};assert.equal(app.runCostSummary.average,0);
 });

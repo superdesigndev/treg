@@ -105,6 +105,8 @@ def validate_identity(capability: str, identity: dict) -> dict[str, str]:
     if task is None:
         raise ArenaError("Choose an Arena task.")
     allowed = {k for variant in task.variants for k in variant}
+    if capability == "people.phone.verify":
+        allowed.add("country_code")
     if any(k not in allowed for k in identity):
         raise ArenaError("This task does not accept those input fields.")
     clean = {}
@@ -115,10 +117,16 @@ def validate_identity(capability: str, identity: dict) -> dict[str, str]:
             clean[k] = v.strip()
     if not any(set(v) <= clean.keys() for v in task.variants):
         raise ArenaError("Complete one of the task's input options.")
+    if "country_code" in clean:
+        if not re.fullmatch(r"[A-Za-z]{2}", clean["country_code"]):
+            raise ArenaError("Use a two-letter phone country code, such as US or GB.")
+        clean["country_code"] = clean["country_code"].upper()
     if "phone" in clean:
         phone = re.sub(r"[\s().-]", "", clean["phone"])
-        if not re.fullmatch(r"\+[1-9][0-9]{6,14}", phone):
-            raise ArenaError("Use an international phone number with a + country calling code.")
+        international = re.fullmatch(r"\+[1-9][0-9]{6,14}", phone)
+        national = clean.get("country_code") and re.fullmatch(r"[0-9]{6,15}", phone)
+        if not international and not national:
+            raise ArenaError("Use an international phone number with a + country calling code, or supply its two-letter country code.")
         clean["phone"] = phone
     if "full_name" in clean:
         parts = clean["full_name"].split()
@@ -147,6 +155,19 @@ def validate_identity(capability: str, identity: dict) -> dict[str, str]:
             raise ArenaError("Use a LinkedIn company URL." if prefix == "/company/" else "Use a LinkedIn person URL.")
         clean["linkedin_url"] = "https://www.linkedin.com" + u.path.rstrip("/")
     return clean
+
+
+def verification_identity(capability: str, output: dict) -> dict[str, str]:
+    """Preserve a lookup's country context without guessing the number's country."""
+    field = "phone" if capability == "people.phone.verify" else "email"
+    identity = {field: output.get(field, "")}
+    if field == "phone" and not str(identity[field]).lstrip().startswith("+"):
+        country = output.get("country_code")
+        if isinstance(country, str) and re.fullmatch(r"[A-Za-z]{2}", country.strip()):
+            identity["country_code"] = country.strip()
+        else:
+            raise ArenaError("Verification needs a country code: the provider returned a local phone number without usable country information. No verification call was made.")
+    return validate_identity(capability, identity)
 
 
 def validate_entries(capability: str, identity: dict | None, identities: list[dict] | None) -> list[dict]:
@@ -310,7 +331,7 @@ def present(payload: dict, *, mode: str, state: str, capability: str = "") -> di
         v = a.get("verification")
         row["can_verify"] = capability in VERIFICATION_TASKS and a["state"] == "hit" and not v and (not payload.get("auto_verify") or state in TERMINAL)
         if v:
-            row["verification"] = {k:v.get(k) for k in ("id", "capability", "state", "provider", "endpoint_id", "charged_micro", "duration_ms", "detail", "raw", "call_ref", "tried", "served_by")}
+            row["verification"] = {k:v.get(k) for k in ("id", "capability", "state", "not_started", "provider", "endpoint_id", "charged_micro", "duration_ms", "detail", "raw", "call_ref", "tried", "served_by")}
             row["verification"]["output"] = safe_output(v.get("output", {}), capability=v.get("capability", ""))
             row["lookup_charged_micro"] = row["charged_micro"]
             row["charged_micro"] = None if row["charged_micro"] is None or v.get("charged_micro") is None else row["charged_micro"] + v["charged_micro"]

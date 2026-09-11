@@ -67,6 +67,10 @@ The mechanics:
 - A **tool** = an upstream base URL + credential **bindings**. A **skill/bundle** = a recipe
   (SKILL.md) + its secrets + its tool(s). The proxy *relays, never models* the upstream.
 
+New verified accounts receive $1.00 of signup credit once, when creating an eligible team.
+Additional teams start with no signup credit. Legacy `POST /users` registration does not verify
+an email or grant credit; use email OTP or Google/GitHub sign-in. Existing balances remain usable.
+
 ## First: install + sign in
 ```bash
 curl -fsSL https://treg.to/install.sh | sh     # installs the CLI + points it here
@@ -74,7 +78,7 @@ treg login                            # browser sign-in (GitHub / Google / email
 treg login --email you@company.com    # terminal-only alternative (emailed 6-digit code)
 treg login --token <per-org-token>    # non-interactive (agents/CI)
 ```
-Everything runs in your **active org** (first login creates a personal one). Team invites arrive by
+Everything runs in your **active org** (after first login, create or join a team). Team invites arrive by
 email — see them with `treg invites`, accept with `treg accept` (or `treg org join <code>`). Switch
 teams: `treg org switch <slug>`.
 

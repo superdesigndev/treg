@@ -262,7 +262,7 @@ adapters:
 
   tomba.people.phone.verify:
     accepts: [[phone]]
-    in: {phone: queryParams.phone}
+    in: {phone: queryParams.phone, country_code: queryParams.country_code}
     out: {valid: data.valid, phone: data.e164_format, country_code: data.country_code, line_type: data.line_type, carrier: data.carrier}
     miss: "data.valid == null"
 
@@ -2039,7 +2039,7 @@ adapters:
   quickenrich.people.phone.find:
     accepts: [[linkedin_url], [first_name, last_name, domain]]
     in: {linkedin_url: queryParams.linkedin_url, first_name: queryParams.first_name, last_name: queryParams.last_name, domain: queryParams.company_url}
-    out: {phone: "null_if(data.employee_phone, '', 'n/a', 'null', 'none')", line_type: "null_if(data.employee_phone_type, '', 'n/a', 'null', 'none')"}
+    out: {phone: "null_if(data.employee_phone, '', 'n/a', 'null', 'none')", line_type: "null_if(data.employee_phone_type, '', 'n/a', 'null', 'none')", country_code: "null_if(data.country_code, '', 'n/a', 'null', 'none')"}
     miss: "null_if(data.employee_phone, '', 'n/a', 'null', 'none') == null"
   quickenrich.people.enrich:
     accepts: [[email]]

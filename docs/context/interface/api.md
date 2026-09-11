@@ -200,8 +200,11 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
 
 ## Endpoints
 
-- **Users / orgs:** `register_user` (`POST /users`, open, legacy - used by the test fixture) creates the
-  user + an org + owner membership and returns a token **once**; the dashboard/CLI login doors do NOT go
+- **Users / orgs:** `register_user` (`POST /users`, open, legacy, unverified) creates the
+  user + an org + owner membership with **zero signup credit** and returns a token **once**.
+  Email OTP, Google/GitHub or an inbox-only invite link establishes verification. A new verified
+  account can claim credit once when creating an eligible team; old accounts cannot reclaim it.
+  The dashboard/CLI login doors do NOT go
   through it (they create the user only, no auto org). Both this door and `create_org` read the
   first-party `treg_ad` cookie (`_ad_attribution_from`) and, when conversion tracking is enabled,
   stamp `Org.ad_gclid`/`ad_click_id_type`/`ad_landing`/`ad_click_at` on the new org when present - see

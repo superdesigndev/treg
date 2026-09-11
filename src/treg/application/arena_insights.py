@@ -53,12 +53,24 @@ def _empty(at):
 
 
 async def public_snapshot(session_factory=session_maker):
-    # Two bounded snapshot reads; never scan raw audit evidence on a page request.
+    # Read only saved snapshots; never scan raw audit evidence on a page request.
     from .arena_verification_insights import public_snapshot as verification_snapshot
     _, _, version = _catalog()
     async with session_factory() as db:
         state = await db.get(ArenaInsightState, version)
-        payload = dict(state.payload) if state and state.payload else _empty(now())
+        saved = state.payload if state else None
+        if not saved:
+            # A new catalog version must not blank the page during its first pass.
+            # The cursor's updated_at is cleared on refresh, so order by the
+            # publication timestamp inside the retained payload instead.
+            snapshot = ArenaInsightState.payload
+            saved = (await db.execute(select(snapshot).where(
+                snapshot["version"].as_integer() == 2,
+                snapshot["status"].as_string() == "ready",
+                snapshot["updated_at"].as_string().is_not(None),
+            ).order_by(snapshot["updated_at"].as_string().desc(), ArenaInsightState.id)
+                .limit(1))).scalar_one_or_none()
+        payload = dict(saved) if saved else _empty(now())
         payload["verification"] = await verification_snapshot(db)
         return payload
 

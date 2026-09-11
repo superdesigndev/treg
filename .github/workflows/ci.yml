@@ -105,6 +105,8 @@ jobs:
           tests/test_arena_verification_insights.py
           tests/test_feedback.py
           tests/test_archive.py
+          tests/test_cache_result_admission.py
+          tests/test_archive_r2.py
           tests/test_call_cancellation.py
           tests/test_call_pool_discipline.py
           tests/test_postgres_reset.py

@@ -10,6 +10,12 @@ sources:
   - src/treg/web/usecase.css
   - src/treg/web/index.html
   - src/treg/web/landing.html
+  - src/treg/web/terms.html
+  - src/treg/web/usecase-seo.html
+  - src/treg/web/usecase-company.html
+  - src/treg/web/usecase-enrichment.html
+  - src/treg/web/usecase-social.html
+  - src/treg/web/usecase-ads.html
   - src/treg/web/people-search.html
   - src/treg/web/grokbot.html
   - src/treg/web/fable-gtm.html
@@ -42,6 +48,11 @@ answering 405 everywhere, no `og:`/`twitter:` tags or image, no structured data,
 FastAPI's stock Swagger shell — a kilobyte of JavaScript to anything that does not run scripts.
 
 ## The pieces
+
+Signup-credit copy across the dashboard, rendered catalog pages, use-case pages, landing offer
+and terms describes one grant per new verified account, not per team. Extra teams start without
+a new signup grant. Actual eligibility and migration behavior live in
+[money](../architecture/money.md#signup-credit-eligibility).
 
 The landing footer links to the public standalone [Enrich Arena](enrich-arena.md) page. Its query
 form is visible before login; submission is authenticated and metered against team credits.

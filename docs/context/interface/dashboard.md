@@ -131,6 +131,10 @@ account controls are gone.
 
 ## Standalone Enrich Arena
 
+Signed-in users have an **Arena** sidebar link immediately after **Refer a friend**. It opens
+`/enrich-arena` in a new tab, with an external-link icon aligned to the right. The link is also
+available in the mobile navigation drawer.
+
 `/enrich-arena` and `/enrich-arena/leaderboard` share Arena | Leaderboard navigation, their
 own public layout and account controls, outside the dashboard shell. Arena keeps the vendor
 stats table; Leaderboard contains metric charts and task/input filters.

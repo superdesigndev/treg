@@ -15,7 +15,7 @@ from treg.api import app
 from treg.domain import money as ledger
 from treg.infra.db import reset_db, session_maker
 from treg.models import Hold, Org
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 
 EP = "acme.thing.get"
 
@@ -30,7 +30,7 @@ async def c():
 
 
 async def _org(c: AsyncClient) -> int:
-    r = await c.post("/users", json={"email": "counter@superdesign.dev"})
+    r = await verified_signup(c, json={"email": "counter@superdesign.dev"})
     assert r.status_code == 200, r.text
     return r.json()["org_id"]
 

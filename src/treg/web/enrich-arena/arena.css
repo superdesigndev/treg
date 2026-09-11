@@ -793,16 +793,24 @@ dialog form>.primary { width:100%; margin-top:5px; }
 .vendor-copy-prompt:hover { background:#eaf1ed; }
 
 /* Shared landing-page community links, kept visible beside the account controls. */
-.masthead>nav[aria-label="Arena account"] { flex-wrap:wrap; justify-content:flex-end; row-gap:8px; }
+.masthead>nav[aria-label="Arena account"] { flex-wrap:nowrap; justify-content:flex-end; }
+.masthead>nav[aria-label="Arena account"]>.text-button { flex-shrink:0; white-space:nowrap; }
 .arena-community { display:flex; align-items:center; gap:14px; flex-shrink:0; }
 .arena-community a { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:36px; color:var(--muted); text-decoration:none; white-space:nowrap; }
 .arena-community a:hover { color:var(--ink); }
 .arena-community a:focus-visible { outline:2px solid var(--teal-ink); outline-offset:4px; border-radius:6px; }
 .arena-community svg { flex-shrink:0; }
-@media(max-width:1280px) {
+@media(max-width:1800px) {
   .masthead { grid-template-columns:minmax(0,1fr) auto; }
   .masthead .arena-page-tabs { grid-column:1/-1; grid-row:2; }
   .masthead>nav[aria-label="Arena account"] { grid-column:2; grid-row:1; }
+}
+
+@media(min-width:601px) and (max-width:960px) {
+  .masthead>nav[aria-label="Arena account"] { gap:10px; }
+  .arena-community { gap:4px; }
+  .arena-community a { min-width:32px; }
+  .arena-community a>span { display:none; }
 }
 
 /* Mobile layouts keep wide data inside their own scroll regions. */
@@ -817,11 +825,8 @@ body:has(dialog[open]) { overflow:hidden; }
   .masthead { grid-template-columns:minmax(0,1fr) auto auto; gap:8px; padding:12px 16px; }
   .masthead>nav[aria-label="Arena account"] { display:contents; }
   .masthead .brand { grid-column:1; grid-row:1; min-height:44px; }
-  .masthead .sign-in-button,.masthead .balance { grid-column:3; grid-row:1; justify-self:end; }
+  .masthead .sign-in-button,.masthead .account-actions { grid-column:3; grid-row:1; justify-self:end; }
   .masthead .arena-community { grid-column:2; grid-row:1; }
-  .masthead nav>.text-button { grid-column:3; grid-row:2; justify-self:end; }
-  .masthead .team-switcher { grid-column:1/3; grid-row:2; }
-  .masthead:has(nav>.text-button) .arena-page-tabs { grid-row:3; }
   .masthead .arena-page-tabs { grid-column:1/-1; grid-row:2; width:100%; gap:2px; margin-top:0; }
   .masthead .arena-page-tabs a { flex:1; min-height:44px; justify-content:center; padding:10px 6px; font-size:12px; }
   .arena-community { gap:0; }
@@ -874,8 +879,31 @@ body:has(dialog[open]) { overflow:hidden; }
 }
 
 /* Keep community links in the top row without shrinking their touch targets. */
-@media(max-width:440px) { .masthead .arena-community a>span { display:none; } }
+@media(max-width:600px) { .masthead .arena-community a>span { display:none; } }
 @media(max-width:360px) {
   .masthead .brand-name { display:none; }
   .masthead .sign-in-button { padding-inline:14px; }
 }
+
+.run-cost-summary { display:flex; align-items:center; flex-wrap:wrap; gap:20px 40px; margin:24px 4px 12px; scroll-margin-top:24px; }
+.run-cost-metrics { display:flex; flex-wrap:wrap; gap:20px 40px; margin:0; }
+.run-cost-summary dt { color:var(--muted); font-size:13px; margin-bottom:6px; }
+.run-cost-summary dd { margin:0; font-size:20px; font-variant-numeric:tabular-nums; }
+.run-cost-summary dd small { font-size:12px; color:var(--muted); }
+
+.account-actions { display:flex; align-items:center; gap:10px; }
+.mobile-account-menu { display:none; position:relative; margin:0; }
+.mobile-account-menu summary { display:flex; align-items:center; justify-content:center; width:32px; min-height:44px; cursor:pointer; list-style:none; border-radius:10px; }
+.mobile-account-menu summary::-webkit-details-marker { display:none; }
+.mobile-account-menu summary:focus-visible { outline:2px solid var(--teal-ink); outline-offset:2px; }
+.account-menu-panel { position:absolute; top:calc(100% + 6px); right:0; z-index:30; min-width:128px; padding:6px; border:1px solid var(--line); border-radius:14px; background:#fff; box-shadow:0 8px 24px #00000012; }
+.account-menu-panel button { width:100%; text-align:left; padding:10px 14px; white-space:nowrap; }
+@media(max-width:600px) {
+  .account-actions { gap:0; }
+  .account-actions .desktop-signout,.masthead .desktop-team-switcher { display:none; }
+  .mobile-account-menu { display:block; }
+}
+
+.account-menu-panel .team-switcher { flex-direction:column; align-items:stretch; gap:6px; padding:8px; width:220px; max-width:calc(100vw - 56px); }
+.account-menu-panel .team-switcher>span { padding:0 4px; font-size:12px; }
+.masthead .account-menu-panel select { width:100%; max-width:100%; }

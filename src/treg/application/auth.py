@@ -256,7 +256,7 @@ async def verify_email_login(email: str, code: str, *, entry_surface: str = "") 
         await ratestore.kv_pop(db, OTP_NS, email)
         created: set[int] = set()
         try:
-            user = await signup.find_or_create_user(db, email, door="otp_verify", created=created)
+            user = await signup.find_or_create_user(db, email, door="otp_verify", created=created, verified=True)
         except signup.MachineIdentityError as exc:
             raise EmailAuthError("machine_identity") from exc
         except signup.BlockedEmailError as exc:  # a code minted before the domain was listed
@@ -437,7 +437,9 @@ async def _provision_social_user(email: str, state: str, door: str, entry_surfac
     created: set[int] = set()
     async with database.session_maker() as db:
         try:
-            user = await signup.find_or_create_user(db, email, door=door, created=created)  # first login = registration (user only; no auto org)
+            user = await signup.find_or_create_user(
+                db, email, door=door, created=created, verified=True,
+            )  # first login creates only the user
         except signup.MachineIdentityError as exc:
             raise SocialLoginError("machine_identity") from exc
         except signup.BlockedEmailError as exc:  # a Google/GitHub account on a listed domain
@@ -612,7 +614,9 @@ async def confirm_invite_signin(email_token: str) -> InviteSigninProof:
         if invite is None:  # consumed / expired / revoked / suspended org → the SPA's expired banner
             raise InviteSigninError("expired")
         try:
-            user = await signup.find_or_create_user(db, invite.email, door="invite_link")  # first click = registration (user only, no auto org)
+            user = await signup.find_or_create_user(
+                db, invite.email, door="invite_link", verified=True,
+            )  # only the inbox-only link proves the email
         except signup.MachineIdentityError as exc:
             raise InviteSigninError("machine_identity") from exc
         except signup.BlockedEmailError as exc:  # an invite to a listed domain must not become a session

@@ -83,6 +83,8 @@ def build_snapshot(data):
         row["checked_n"] = row["sample_n"] - row["unresolved_n"]
         eligible_validity = row["method"] == "email_verifier_consensus" and row["checked_n"] >= 20
         row["validity_rate"] = round(100 * row["passed_n"] / row["checked_n"], 2) if eligible_validity else None
+        if row["method"] == "phone_format":
+            row["format_validity_rate"] = round(100 * row["passed_n"] / row["checked_n"], 2) if row["checked_n"] >= 20 else None
     return payload
 
 

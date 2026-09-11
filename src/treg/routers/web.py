@@ -841,7 +841,7 @@ async def agent_page(request: Request, agent: str):
         '<div class="ctas">'
         f'<a class="candy" href="/app?ref=agents-{_esc_html(agent)}">Start free</a>'
         '<a class="ghostbtn" href="#use-cases">See what it can do</a></div>'
-        '<div class="trust">$1.00 of free credit on every new team &middot; no provider signup &middot; no card</div>'
+        '<div class="trust">$1.00 of free credit once per new verified account &middot; no provider signup &middot; no card</div>'
         f'<div class="subline">Your own keys always win and are never metered. '
         f'{_esc_html(name)} sees the price before it spends.</div>'
         + (f'<div class="provstrip"><div class="pl">a few of the {p} platforms</div>'
@@ -1460,7 +1460,7 @@ async def use_case_job_page(request: Request, job: str,
         '<div class="ctas">'
         f'<a class="candy" href="/app?ref=uc-{_esc_html(job_slug)}">Start free</a>'
         '<a class="ghostbtn" href="#bts">See the comparison</a></div>'
-        f'<div class="trust">$1.00 of free credit on every new team &middot; no provider signup &middot; no card</div>'
+        f'<div class="trust">$1.00 of free credit once per new verified account &middot; no provider signup &middot; no card</div>'
         f'<div class="subline">{n_ver} of {len(eps)} endpoints on this page are live-verified against the provider.</div>'
         f'{provstrip}</div></div>'
 
@@ -1788,7 +1788,7 @@ async def workflow_page(request: Request, slug: str,
         '<div class="ctas">'
         f'<a class="candy" href="/app?ref=wf-{_esc_html(wf_slug)}">Start free</a>'
         '<a class="ghostbtn" href="#run">See the receipt</a></div>'
-        '<div class="trust">$1.00 of free credit on every new team &middot; no provider signup &middot; no card</div>'
+        '<div class="trust">$1.00 of free credit once per new verified account &middot; no provider signup &middot; no card</div>'
         f'{provstrip}</div></div>'
 
         '<section id="ask"><div class="wrap"><div class="seclab">Try it</div>'
@@ -2103,7 +2103,7 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         f'<a class="ghostbtn" href="#tools">See all {len(eps)} tools</a>'
         + (f'<a class="ghostbtn" href="{_esc_html(docs_url)}" target="_blank" rel="noopener">API docs ↗</a>'
            if docs_url else "") + "</div>"
-        '<div class="trust">$1.00 of free credit on every new team · no card · platform tools need no provider signup</div>'
+        '<div class="trust">$1.00 of free credit once per new verified account · no card · platform tools need no provider signup</div>'
         + (f'<div class="subline">{verified} of {len(eps)} tools on this page are live-verified '
            "against the provider.</div>" if verified else "")
         + f'<div class="provstrip"><div class="pl">works in</div><div class="ptiles">{_agent_ptiles()}</div></div>'

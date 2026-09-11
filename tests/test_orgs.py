@@ -1,3 +1,5 @@
+from conftest import verified_signup
+
 
 
 # ---- deleting a team must clear everything that points at it -------------------------------
@@ -57,7 +59,7 @@ async def test_a_team_with_a_BALANCE_can_still_be_deleted(clients):
     `test_org_delete_clears_EVERY_org_scoped_table` above, which checks the SCHEMA rather than the
     behaviour. This test is kept because it documents the real-world shape of the failure, but do not
     mistake it for the protection."""
-    r = await clients.post("/orgs", json={"name": "throwaway-team"})
+    r = await verified_signup(clients, json={"email": "throwaway-team@example.org"})
     assert r.status_code == 200, r.text
     org_id, slug, token = r.json()["org_id"], r.json()["org"], r.json()["token"]
     # the new team's OWN token: a per-org token has its org baked in, so X-Treg-Org cannot switch it
@@ -65,7 +67,7 @@ async def test_a_team_with_a_BALANCE_can_still_be_deleted(clients):
 
     bal = await clients.get(f"/orgs/{org_id}/balance", headers=hdr)
     assert bal.status_code == 200 and bal.json()["balance_micro"] > 0, (
-        "expected the new-team grant — without a balance this test would not reproduce the bug")
+        "expected the verified-account grant — without a balance this test would not reproduce the bug")
 
     gone = await clients.request("DELETE", f"/orgs/{org_id}", params={"confirm": slug}, headers=hdr)
     assert gone.status_code == 200, gone.text

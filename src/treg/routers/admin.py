@@ -420,7 +420,7 @@ async def admin_archive(
             "kept_bytes": st.kept_bytes,
         })
     report = {"mode": archive_mod.mode(),
-              "comparison_mode": archive_mod.comparison_mode(),
+              "comparison_mode": "strict",
               "ttl_policy": "adaptive",
               "serve_endpoints": sorted(archive_mod.serve_endpoints()),
               "serve_percent": get_settings().archive_serve_percent,
@@ -476,7 +476,6 @@ async def admin_archive_keys(
             "fetched_at": k.fetched_at.isoformat(),
             "last_requested_at": k.last_requested_at.isoformat() if k.last_requested_at else None,
             "last_changed_at": k.last_changed_at.isoformat() if k.last_changed_at else None,
-            "volatile_paths": k.volatile_paths or [],
             "question": f"{k.req_method} {k.req_url}"[:200] if k.req_url else "",
             "versions": [{
                 "version": version, "origin": origin, "size_bytes": size_bytes,
@@ -529,10 +528,13 @@ async def admin_archive_body(
     return {"key_hash": key_hash, "version": snap.version, "origin": snap.origin,
             "fetched_at": snap.fetched_at.isoformat(), "media_type": snap.media_type,
             "size_bytes": snap.size_bytes, "stored": body is not None,
+            "body_storage": snap.body_storage,
             "carried_by_version": carrier,
             "body_text": text,
             "note": None if body is not None else
-            "hash-only: the licence (or the size cap) did not allow keeping the bytes"}
+            "body stored in object storage; this DB viewer does not fetch it"
+            if snap.body_storage in ("r2", "both") else
+            "hash-only: body bytes are unavailable (policy, size, pruning or storage failure)"}
 
 
 @app.get("/admin/archive/panel", response_class=HTMLResponse, include_in_schema=False)

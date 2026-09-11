@@ -30,6 +30,9 @@ sources:
   - src/treg/maintenance.py
   - src/treg/web/sitetrack.js
   - src/treg/models.py
+  - src/treg/alembic/versions/0031_archive_result_admission.py
+  - src/treg/alembic/versions/0032_archive_body_storage.py
+  - src/treg/alembic/versions/0033_signup_promo_eligibility.py
   - src/treg/timeutil.py
   - src/treg/infra/db.py
   - src/treg/domain/referrals.py
@@ -68,6 +71,22 @@ Migration `0019` adds `consecutive_failures` with a retained server default of z
 writers during rollout. Valid polls reset it; failures grow the retry delay to 15 minutes.
 `attempts` also acts as a claim version: old workers cannot overwrite a newer claim. Caller polling
 can finalize the original task independently; the terminal-state guard prevents duplicate charges.
+
+Migration `0031` adds nullable `ArchiveKey.result_state`, `result_snapshot_id`, and
+`result_observed_version`. Archive owns them: the last decisive result is independent of the
+latest historical response. No backfill or TTL reset occurs; legacy observations are classified
+lazily. See [archive result admission](archive.md#result-admission).
+Migration `0032` adds nullable `ArchiveSnapshot.body_storage` (`db`, `both`, `r2`; NULL uses the
+legacy DB path). Archive remains the only writer. An R2 location is published only after a
+verified upload finishes outside any DB session; `content_hash` is the object name. No new index,
+backfill, body-column removal or destructive migration occurs. Double-write rows retain their DB
+body/carrier; R2-only rows require no carrier pointer. See [archive](archive.md#body-storage-and-r2-double-writing).
+
+Revision `0033` adds nullable `User.email_verified_at` and non-null `signup_promo_available`,
+with a retained database default of false for existing rows and old writers. New application users
+explicitly insert true. No balances or historical money entries change. Successful email proof sets
+verification; only the atomic identity claim consumes availability, committed with the signup grant.
+See [signup eligibility](money.md#signup-credit-eligibility).
 
 ## Registry tables
 
@@ -536,3 +555,11 @@ publication time and aggregate JSON keep verification pilots independent of roll
 It holds no contacts or raw evidence. The public insights API selects the latest publication through
 the publication-time index; see [Enrich Arena](../interface/enrich-arena.md) for estimate semantics
 and the aggregate-only import workflow.
+
+## Archive retention
+
+Archive retention statistics count logical snapshots with recoverable bodies, including R2
+and deduplicated versions. Pruning DB bytes changes `both` to `r2` without reducing those
+counts; pruning the last DB copy clears `body_storage` and decrements them. Failed R2-only
+uploads still append a hash-only snapshot with a null location. The retired `volatile_paths`
+column remains for compatibility and no longer appears in admin responses.

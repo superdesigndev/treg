@@ -255,26 +255,6 @@ def _burst_retry_after(provider: str, response: UpstreamResponse, body: bytes) -
     return float(signal.retry_after_s)
 
 
-def _hit_verdict(mk: MarketplaceCall, status: int, body: bytes) -> bool | None:
-    """Found or not, read off a 2xx body by the endpoint's fixture-verified routing adapter; None
-    when nothing can tell. The verdict is all that is kept — never the body."""
-    if not 200 <= status < 300:
-        return None
-    adapter = catalog_store.load().adapters.get(mk.endpoint_id)
-    if adapter is None or not adapter.verified:
-        return None
-    try:
-        doc = json.loads(body)
-    except ValueError:
-        return None
-    if not isinstance(doc, dict):
-        return None
-    try:
-        return not adapter.is_miss(doc)
-    except Exception:  # noqa: BLE001 — an undecidable predicate is a NULL, not a wrong verdict
-        return None
-
-
 def _refusal_kind(status_code: int) -> str | None:
     if status_code >= 500:
         return None
@@ -563,12 +543,13 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     audit_slug = caller.org.slug  # PostHog group key — must match the browser's posthog.group('team', slug)
 
     cache_diagnostics: dict = {"cache_outcome": "not_attempted", "cache_mode": archive.mode(),
-                               "cache_comparison_mode": archive.comparison_mode(),
+                               "cache_comparison_mode": "strict",
                                "cache_ttl_policy": "adaptive",
                                "cache_rollout_percent": get_settings().archive_serve_percent}
 
     def _capture(props: dict) -> None:
-        analytics.capture(audit_email, "tool_called", props | cache_diagnostics,
+        analytics.capture(audit_email, "tool_called", props | cache_diagnostics |
+                          {"archive_body_write": get_settings().archive_body_write},
                           groups={"team": audit_slug})
 
     def _overflow_event(props: dict, outcome, charged: int) -> dict:
@@ -937,6 +918,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 if mk.metered and archive.recording() and 200 <= response.status < 300:
                     _ct = next((v.decode("latin-1") for k, v in response.raw_headers
                                 if k.lower() == b"content-type"), "")
+                    body_observation = archive.archive_bodies.StorageReport(
+                        call_ref=call_ref, emit=lambda props: analytics.capture(
+                            audit_email, "archive_body_stored", props, groups={"team": audit_slug}))
                     archive_key_hash, archive_content_hash = archive.record(
                         method=request.method, endpoint_id=mk.endpoint_id, provider=mk.provider,
                         url=archive.key_url(upstream_url,
@@ -944,7 +928,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                                             drop_params or set()),
                         caller_body=caller_body,
                         headers={k: request.headers.get(k, "") for k in ("accept", "accept-language")},
-                        status_code=response.status, media_type=_ct, body=body)
+                        status_code=response.status, media_type=_ct, body=body,
+                        observation=body_observation)
             elif response.status >= 400:
                 # Preserve streaming for own-key and own-tool calls while retaining only the small
                 # diagnostic head. The replacement response replays every consumed byte verbatim.
@@ -1103,9 +1088,18 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 err_response = _error_response_evidence(
                     response.raw_headers, body, _renderings)
         may_overflow = response.status >= 400 and mk.tier == "platform"
+        from ...domain.catalog.results import classify, has_result_rules
+
+        result = classify(mk.endpoint_id, response.status, body)
+        result_aware = has_result_rules(mk.endpoint_id)
+        cache_diagnostics.update(
+            result_state=result.state, result_reason=result.reason,
+            cache_result_policy="hit_miss" if result_aware else "legacy",
+            cache_admission=("eligible" if result.state == "found" else result.state)
+            if result_aware else "not_applicable")
         pending = _audit(response.status, observed_micro=observed,
                          charged_micro=None if deferred else charged,
-                         duration_ms=duration_ms, response_bytes=len(body), hit=_hit_verdict(mk, response.status, body),
+                         duration_ms=duration_ms, response_bytes=len(body), hit=result.hit,
                          capacity_signal=capacity_signal, error_request=err_request, error_response=err_response,
                          defer_analytics=may_overflow)
         served_via = ""

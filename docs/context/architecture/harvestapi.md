@@ -223,3 +223,16 @@ validation remained at 97 files and 3273 endpoints with no errors or warnings. B
 full and email tool names, prices, summaries and identifier instructions were checked
 in the local dashboard. The server remains running for local review; production rollout
 and the owner's vendor auto-top-up confirmation remain separate steps.
+
+
+### PR main synchronization — 2026-09-11
+
+Merged main at `3cf4c45a` into the Harvest branch. The only conflict was the generated
+context map; rebuilding the map retained both branches' source coverage. Main's archive,
+signup, SSRF and dashboard changes remain in place. No Harvest runtime changes were needed.
+
+The full Python suite passed **3677 tests with 6 skipped and no deselections** using the
+same environment settings as the final PR verification above. All **125 JavaScript tests**,
+**14 import contracts** and **five generated plugin mirror checks** passed. Catalog validation
+passed for **97 files and 3273 endpoints**, with zero errors or warnings. No new live upstream
+calls were made for this synchronization.

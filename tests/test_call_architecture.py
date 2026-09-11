@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from treg import bootstrap
+from treg import archive, archive_bodies, bootstrap
 from treg.application import billing
 from treg.application.call import authorize, overflow, reserve, service, settle
 from treg.domain import money
@@ -20,6 +20,13 @@ from treg.domain.governance import usage as usage_policy
 _SRC = Path(__file__).parents[1] / "src" / "treg"
 
 _DATAPLANE_DERIVED_WRITES = {
+    # Body objects preserve the paid response. Upload completes before the archive DB transaction
+    # starts, and only its verified content hash can be published on the snapshot.
+    "archive_body_object": (
+        (service._execute_call, "archive.record"),
+        (archive._store, "archive_bodies.prepare"),
+        (archive_bodies.prepare, "_store.put"),
+    ),
     "auto_topup_task": (
         (reserve._platform_reserve, "billing.maybe_schedule_autotopup"),
         (billing.maybe_schedule_autotopup, "loop.create_task"),
@@ -73,6 +80,7 @@ _DATAPLANE_DERIVED_WRITES = {
     ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
+    "archive_body_object",
     "auto_topup_task",
     "public_demo_ratestore_hit",
     "sandbox_ratestore_hit",
@@ -86,6 +94,8 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "member_daily_cap_slot",
 })
 _DERIVED_WRITE_FILES = {
+    _SRC / "archive.py": {"archive_bodies.prepare"},
+    _SRC / "archive_bodies.py": {"_store.put"},
     _SRC / "application" / "billing.py": {"loop.create_task"},
     _SRC / "application" / "call" / "authorize.py": {
         "publicdemo_policy.enforce_public_demo_ip_cap", "usage_policy.enforce_daily_cap",
@@ -102,6 +112,7 @@ _DERIVED_WRITE_FILES = {
         "overflow_spend_ledger.release_reservation_in_transaction",
     },
     _SRC / "application" / "call" / "service.py": {
+        "archive.record",
         "async_task_app.observe_owned_poll",
         "async_task_app.remember_platform_resources",
     },
@@ -112,6 +123,9 @@ _DERIVED_WRITE_FILES = {
     _SRC / "domain" / "money" / "__init__.py": {"reap_stale_holds", "release"},
 }
 _EXPECTED_DERIVED_WRITE_SITES = {
+    ("application/call/service.py", "_execute_call", "archive.record"),
+    ("archive.py", "_store", "archive_bodies.prepare"),
+    ("archive_bodies.py", "prepare", "_store.put"),
     ("application/billing.py", "maybe_schedule_autotopup", "loop.create_task"),
     ("application/call/authorize.py", "authorize_call",
      "publicdemo_policy.enforce_public_demo_ip_cap"),

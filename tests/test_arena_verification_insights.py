@@ -87,3 +87,19 @@ def test_validity_uses_completed_returned_emails_not_lookup_baseline():
     data["rows"][0].update(task="people.phone.find", endpoint="tomba.people.phone.find",
                            method="phone_format", verifiers=["tomba"], unresolved_n=0)
     assert build_snapshot(data)["rows"][0]["validity_rate"] is None
+
+
+def test_phone_format_validity_has_a_separate_completed_check_denominator():
+    data = aggregate()
+    data["rows"][0].update(task="people.phone.find", endpoint="tomba.people.phone.find",
+                           method="phone_format", verifiers=["tomba"], unresolved_n=5)
+    row = build_snapshot(data)["rows"][0]
+    assert row["format_validity_rate"] == 85.71
+    assert row["validity_rate"] is None and row["rate"] is None
+    data["rows"][0].update(passed_n=0, unresolved_n=21)
+    assert build_snapshot(data)["rows"][0]["format_validity_rate"] is None
+    data["rows"][0]["unresolved_n"] = 40
+    assert build_snapshot(data)["rows"][0]["format_validity_rate"] is None
+    data["rows"][0]["unresolved_n"] = 0
+    assert build_snapshot(data)["rows"][0]["format_validity_rate"] == 0
+    assert "format_validity_rate" not in build_snapshot(aggregate())["rows"][0]

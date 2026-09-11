@@ -11,6 +11,8 @@ The transport is exercised as a real MCP client would: JSON-RPC over the mounted
 
 from __future__ import annotations
 
+from conftest import verified_signup
+
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -977,7 +979,7 @@ async def test_the_same_key_through_MCP_bills_once(clients, monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tikhub")
     get_settings.cache_clear()
 
-    token = (await clients.post("/users", json={"email": "mcponce@superdesign.dev"})).json()["token"]
+    token = (await verified_signup(clients, json={"email": "mcponce@superdesign.dev"})).json()["token"]
     prev = clients.headers.get("X-Treg-Token")
     clients.headers["X-Treg-Token"] = token
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]

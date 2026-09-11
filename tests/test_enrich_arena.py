@@ -1381,3 +1381,99 @@ async def test_tracking_counts_one_batch_run_and_keeps_inputs_out(clients, enric
     # Event identity is the account email; search inputs and returned contact data are absent.
     props = json.dumps([a[2] for a, k in events])
     assert IDENTITY["domain"] not in props and SECOND_IDENTITY["domain"] not in props
+
+@pytest.mark.parametrize('automatic', [True, False])
+@pytest.mark.parametrize('country', ['US', 'GB', None, 'N/A'])
+async def test_national_phone_verification_preserves_provider_country(clients, enrichment_on, monkeypatch, automatic, country):
+    from treg.config import get_settings
+    monkeypatch.setenv('TREG_PLATFORM_KEY_QUICKENRICH', 'PLATFORM-QUICKENRICH-KEY')
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'quickenrich,tomba')
+    get_settings.cache_clear()
+    phone = '020 7946 0958' if country == 'GB' else '415-555-0100'
+    seen = []
+    monkeypatch.setattr(service, 'relay', _relay_by_provider({
+        'quickenrich': [(200, {'success':True,'data':{'employee_phone':phone,'country_code':country},'meta':{'credits_used':1}})],
+        'tomba': [(200, {'data':{'valid':True,'country_code':country}})],
+    }, seen))
+    q = await clients.post('/arena/plans', json={'capability':'people.phone.find','identity':{'linkedin_url':'https://www.linkedin.com/in/example'},'providers':['quickenrich'],'mode':'waterfall','auto_verify':automatic})
+    assert q.status_code == 200, q.text
+    before = await _balance(clients)
+    final = await finish(clients, q.json())
+    if not automatic:
+        root = '/arena/runs/'+final['id']+'/attempts/'+final['results'][0]['id']+'/verification'
+        quote = await clients.post(root+'/plan')
+        if country not in ('US','GB'):
+            assert quote.status_code == 422 and 'country code' in quote.json()['detail']
+        else:
+            assert quote.status_code == 200, quote.text
+            assert (await clients.post(root+'/start', json={'quote_id':quote.json()['id']})).status_code == 200
+            await asyncio.wait_for(asyncio.shield(arena._owners[final['id']]), 10)
+            final = (await clients.get('/arena/runs/'+final['id'])).json()
+    hit = final['results'][0]
+    assert hit['output']['phone'] == phone, 'Keep the provider value as returned'
+    if country in ('US','GB'):
+        assert hit['verification']['state'] == 'hit'
+        assert seen[1][2] == {'phone':phone.replace(' ','').replace('-',''), 'country_code':country}
+        assert len(seen) == 2
+    else:
+        assert len(seen) == 1, 'Do not guess US or dispatch an uncheckable number'
+        if automatic:
+            assert hit['verification']['charged_micro'] == 0
+            assert hit['verification']['not_started'] is True
+            assert 'country code' in hit['verification']['detail']
+    assert final['charged_micro'] == before - await _balance(clients)
+
+
+def test_phone_verification_context_does_not_override_explicit_calling_code():
+    assert rules.verification_identity('people.phone.verify', {'phone':'+44 20 7946 0958','country_code':'US'}) == {'phone':'+442079460958'}
+    assert rules.validate_identity('people.phone.verify', {'phone':'020 7946 0958','country_code':'gb'}) == {'phone':'02079460958','country_code':'GB'}
+    with pytest.raises(rules.ArenaError):
+        rules.validate_identity('people.phone.verify', {'phone':'4155550100','country_code':'USA'})
+
+
+async def test_run_finishes_while_cancel_poll_is_reading(clients, enrichment_on, monkeypatch):
+    """Finish a real run while the cancellation poll is materializing a SQLite SELECT."""
+    from aiosqlite import Cursor
+    from treg.infra import db as database
+
+    if not database._is_sqlite:
+        pytest.skip("SQLite cursor cancellation regression")
+    queried = asyncio.Event()
+    release = asyncio.Event()
+    interrupted = []
+    execute = Cursor.execute
+    save = arena._save
+
+    async def slow_poll(cursor, sql, parameters=None):
+        result = await execute(cursor, sql, parameters)
+        if ("watch_cancel" in asyncio.current_task().get_coro().__qualname__
+                and sql.startswith("SELECT") and not queried.is_set()):
+            queried.set()
+            asyncio.get_running_loop().call_later(0.05, release.set)
+            try:
+                await release.wait()
+            except asyncio.CancelledError:
+                interrupted.append(True)
+                raise
+        return result
+
+    async def last_save(run_id, payload, state=None, **kwargs):
+        await save(run_id, payload, state, **kwargs)
+        if state is None and all(a["state"] in {"hit", "miss"} for a in payload["attempts"]):
+            await asyncio.wait_for(queried.wait(), 5)
+
+    monkeypatch.setattr(Cursor, "execute", slow_poll)
+    monkeypatch.setattr(arena, "_save", last_save)
+    monkeypatch.setattr(service, "relay", _relay_by_provider({
+        "hunter": [(200, HUNTER_HIT)], "tomba": [(200, TOMBA_HIT)]}, []))
+    try:
+        result = await finish(clients, await plan(clients))
+        assert result["state"] == "completed"
+        assert not interrupted, "run completion cancelled the poll inside SQLite cursor execution"
+        # Match the next fixture boundary: drain the writes, then rebuild the schema.
+        from treg import archive, audit
+        await audit.drain()
+        await archive.drain()
+        await database.reset_db()
+    finally:
+        release.set()

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from conftest import verified_signup
+
 import asyncio
 import json
 import re
@@ -107,7 +109,7 @@ async def test_generation_is_never_replayed_across_orgs(
     assert first.status_code == 201
     await archive.drain()
     monkeypatch.setitem(entry, "cache", "forbidden")
-    other = await clients.post("/users", json={"email": "cache-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "cache-stranger@example.com"})
     async def live(*args, **kwargs):
         return _response(201, {"id": "private-second-task"})
     monkeypatch.setattr(call_service, "relay", live)
@@ -1386,7 +1388,7 @@ async def test_shared_key_idempotency_label_is_partitioned_per_org(
     body = {"input": {"prompt": "A red kite over a beach.", "num_outputs": 1,
                       "aspect_ratio": "1:1", "output_format": "webp"}}
     label = {"Idempotency-Key": "retry-1"}
-    other = await clients.post("/users", json={"email": "idem-stranger@example.com"})
+    other = await verified_signup(clients, json={"email": "idem-stranger@example.com"})
     stranger = {"X-Treg-Token": other.json()["token"], **label}
 
     assert (await clients.post(f"/call/{EP}", json=body, headers=label)).status_code == 201

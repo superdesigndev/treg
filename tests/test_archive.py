@@ -352,7 +352,7 @@ async def test_admin_archive_report(clients: AsyncClient, shadow, monkeypatch):
         assert r.status_code == 200, r.text
         d = r.json()
         assert d["mode"] == "shadow" and d["keys"] == 2 and d["snapshots"] == 3
-        assert d["bodies_kept"] == 2 and d["kept_bytes"] > 0   # v2 deduplicated, never re-stored
+        assert d["bodies_kept"] == 3 and d["kept_bytes"] > 0   # counts readable versions, including dedup
         row = next(x for x in d["endpoints"] if x["endpoint_id"] == EP)
         assert row == {"endpoint_id": EP, "provider": "tikhub", "policy": "transient",
                        "keys": 2, "refetches": 1, "stable": 1, "changed": 0,
@@ -532,7 +532,7 @@ async def test_changed_refetch_shrinks_the_timer(clients: AsyncClient, shadow, m
 @pytest.mark.parametrize("comparison", ["strict", "typo"])
 async def test_repeated_business_change_is_strict_by_default(clients: AsyncClient, shadow, monkeypatch,
                                                             comparison):
-    monkeypatch.setattr(get_settings(), "archive_comparison_mode", comparison)
+    assert not hasattr(get_settings(), "archive_comparison_mode")
     from tests.test_marketplace_call import _fake_relay
     for revenue in (100, 200, 300):
         body = json.dumps({"company": "A", "country": "US", "currency": "USD",
@@ -547,8 +547,8 @@ async def test_repeated_business_change_is_strict_by_default(clients: AsyncClien
     assert len(snaps) == 3 and all(s.body is not None for s in snaps)
 
 
-async def test_repeated_noise_counts_as_stable(clients: AsyncClient, shadow, monkeypatch):
-    monkeypatch.setattr(get_settings(), "archive_comparison_mode", "legacy_noise")
+async def test_removed_noise_mode_cannot_weaken_strict_comparison(clients: AsyncClient, shadow, monkeypatch):
+    assert not hasattr(get_settings(), "archive_comparison_mode")
     monkeypatch.setitem(catalog_store.load().by_id[EP], "cache", "transient")
     from tests.test_marketplace_call import _fake_relay
     bodies = [json.dumps({"req_id": i, "ts": i * 10,
@@ -558,10 +558,9 @@ async def test_repeated_noise_counts_as_stable(clients: AsyncClient, shadow, mon
         await clients.get(f"/call/{EP}?aweme_id=7")
         await archive.drain()                          # recordings must land in call order
     keys, _ = await _rows()
-    # fetch 2 differs (first diff: counts changed, remembers the set); fetch 3 repeats the SAME
-    # small diff-set ⇒ noise ⇒ stable.
-    assert keys[0].change_seen == 1 and keys[0].stable_seen == 1
-    assert keys[0].volatile_paths == ["$.req_id", "$.ts"]
+    # A legacy configuration value cannot restore heuristic comparisons. Both changes count.
+    assert keys[0].change_seen == 2 and keys[0].stable_seen == 0
+    assert keys[0].volatile_paths == []
 
 
 async def test_always_changing_key_marks_itself_never_cache(clients: AsyncClient, serve, monkeypatch):
@@ -890,8 +889,8 @@ async def test_endpoint_stats_match_direct_aggregation(clients: AsyncClient, sha
         assert st.snapshots == len(snaps) == 4
         assert st.stable == sum(k.stable_seen for k in keys) == 1
         assert st.changed == sum(k.change_seen for k in keys) == 1
-        assert st.bodies_kept == sum(1 for x in snaps if x.body is not None)
-        assert st.kept_bytes == sum(x.size_bytes for x in snaps if x.body is not None)
+        assert st.bodies_kept == sum(1 for x in snaps if x.body_storage is not None)
+        assert st.kept_bytes == sum(x.size_bytes for x in snaps if x.body_storage is not None)
         assert st.newest_fetch is not None
 
 
@@ -985,7 +984,7 @@ async def test_pruner_never_cache_keeps_only_newest(clients: AsyncClient, shadow
         s.add(k); await s.commit()
     assert await archive.prune_once() == 2               # young age is no defense for never-cache
     _, snaps = await _rows()
-    assert sum(1 for x in snaps if x.body is not None) == 1
+    assert sum(1 for x in snaps if x.body_storage is not None) == 1
     assert next(x.version for x in snaps if x.body is not None) == 3
 
 

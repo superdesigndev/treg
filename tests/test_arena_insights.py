@@ -80,6 +80,60 @@ async def test_initial_backlog_hidden_and_incremental_refresh(clients, monkeypat
     assert (await service.public_snapshot(session_maker))["rows"][0]["unique_requests"]==2
 
 
+async def test_catalog_rebuild_serves_previous_snapshot_until_new_one_is_complete(clients, monkeypatch):
+    await record("first", response={"data": {"email": "found@example.test"}}, duration=100)
+    await service.collect_batch(session_maker)
+    initial = await service.public_snapshot(session_maker)
+    cat, endpoints, _ = service._catalog()
+    monkeypatch.setattr(service, "_catalog", lambda: (cat, endpoints, "next-catalog"))
+    monkeypatch.setattr(service, "BATCH_SIZE", 1)
+
+    # A fresh process can use the database snapshot before its worker starts.
+    assert await service.public_snapshot(session_maker) == initial
+    await record("second", response={"data": {"email": "other@example.test"}}, duration=300)
+    for _ in range(2):
+        assert await service.collect_batch(session_maker)
+        assert await service.public_snapshot(session_maker) == initial
+
+    assert not await service.collect_batch(session_maker)
+    refreshed = await service.public_snapshot(session_maker)
+    assert refreshed["status"] == "ready"
+    assert refreshed["rows"][0]["unique_requests"] == 2
+    assert refreshed["rows"][0]["median_hit_ms"] == 200
+    async with session_maker() as db:
+        state = await db.get(ArenaInsightState, "next-catalog")
+        assert refreshed["updated_at"] == state.payload["updated_at"]
+
+
+async def test_fallback_uses_latest_compatible_publication_even_during_refresh(clients):
+    await record("first", response={"data": {"email": "found@example.test"}})
+    await service.collect_batch(session_maker)
+    initial = await service.public_snapshot(session_maker)
+    _, _, version = service._catalog()
+    async with session_maker() as db:
+        current = await db.get(ArenaInsightState, version)
+        original = dict(current.payload)
+        current.payload = {}
+        current.updated_at = None
+        # Newest completed publication is retained even when its cursor is busy.
+        db.add(ArenaInsightState(id="prior", scan_until=now(), payload=original))
+        db.add(ArenaInsightState(id="older", scan_until=now(), updated_at=now(),
+            payload={**original, "updated_at": "2000-01-01T00:00:00Z", "rows": []}))
+        db.add(ArenaInsightState(id="incompatible", scan_until=now(), updated_at=now(),
+            payload={**original, "version": 1, "updated_at": "2099-01-01T00:00:00Z"}))
+        db.add(ArenaInsightState(id="unfinished", scan_until=now(),
+            payload=service._empty(now())))
+        await db.commit()
+    assert await service.public_snapshot(session_maker) == initial
+
+    # A completed current snapshot wins even if it legitimately has no rows.
+    async with session_maker() as db:
+        current = await db.get(ArenaInsightState, version)
+        current.payload = {**original, "rows": []}
+        await db.commit()
+    assert (await service.public_snapshot(session_maker))["rows"] == []
+
+
 async def test_missing_archive_is_revisited_and_old_window_removed(clients):
     ident=await record("late",ago=180)
     await record("expired",response={"data":{"email":"old@example.test"}},ago=31*86400)

@@ -55,6 +55,11 @@ Import Linter reads the contracts under `tool.importlinter` in `pyproject.toml`.
 job installs the lock with `uv sync --locked` (failing on a stale lock), then runs
 `uv run --locked lint-imports` before the test suite. Keeping the check in that job reuses the
 development environment and avoids a second install for a fast static architecture check.
+The R2 SDK (`obstore`) is installed only through `[server]` and forbidden from
+lightweight CLI imports. `infra.object_store.open_r2` loads it lazily; bootstrap assembles the
+concrete client or an injected in-memory implementation. Call write allowlists include the
+archive body PUT chain because it persists the paid response outside any DB transaction.
+
 The separate `test-postgres` job runs its database-sensitive subset serially against Postgres 16;
 it uses unbuffered Python output and a 15-minute job budget so a slow test remains diagnosable. The
 subset includes agent attribution, credential health, local-run reporting and ads-conversion coverage

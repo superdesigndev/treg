@@ -17,7 +17,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from conftest import make_upstream
+from conftest import make_upstream, verified_signup
 
 from treg.domain import money as ledger
 from treg.api import app
@@ -41,7 +41,7 @@ async def c():
 
 async def _org(c: AsyncClient, email: str = "money@superdesign.dev") -> tuple[int, str]:
     """Register a user (which creates their org and fires the signup promo). Returns (org_id, token)."""
-    r = await c.post("/users", json={"email": email})
+    r = await verified_signup(c, json={"email": email})
     assert r.status_code == 200, r.text
     return r.json()["org_id"], r.json()["token"]
 
@@ -113,7 +113,8 @@ async def test_two_deliveries_of_one_payment_credit_once(c: AsyncClient):
 
     Each task needs its OWN session: two coroutines sharing one AsyncSession is a different bug.
     """
-    from treg.models import AdConversion
+    from treg.models import AdConversion, User
+    from treg.timeutil import utcnow_naive
 
     org_id, _ = await _org(c)
     promo = get_settings().promo_grant_micro
@@ -214,9 +215,9 @@ async def test_concurrent_sweeps_pay_a_referral_once(c: AsyncClient):
     from treg.domain import referrals
     from treg.models import Referral
 
-    r = await c.post("/users", json={"email": "referrer@superdesign.dev"})
+    r = await verified_signup(c, json={"email": "referrer@superdesign.dev"})
     referrer_org, referrer_user = r.json()["org_id"], r.json()["id"]
-    r = await c.post("/users", json={"email": "referee@superdesign.dev"})
+    r = await verified_signup(c, json={"email": "referee@superdesign.dev"})
     referred_org, referred_user = r.json()["org_id"], r.json()["id"]
     promo = get_settings().promo_grant_micro
 
@@ -262,9 +263,9 @@ async def test_sweep_grants_and_stamps_commit_together(c: AsyncClient, monkeypat
     from treg.domain import referrals
     from treg.models import Referral
 
-    r = await c.post("/users", json={"email": "atomic-ref@superdesign.dev"})
+    r = await verified_signup(c, json={"email": "atomic-ref@superdesign.dev"})
     referrer_org, referrer_user = r.json()["org_id"], r.json()["id"]
-    r = await c.post("/users", json={"email": "atomic-referee@superdesign.dev"})
+    r = await verified_signup(c, json={"email": "atomic-referee@superdesign.dev"})
     referred_org, referred_user = r.json()["org_id"], r.json()["id"]
     promo = get_settings().promo_grant_micro
 
@@ -308,9 +309,9 @@ async def test_referee_instant_grant_failure_after_staging_never_raises(
     from treg.domain import referrals
     from treg.models import Referral
 
-    r = await c.post("/users", json={"email": "ref-boom-a@superdesign.dev"})
+    r = await verified_signup(c, json={"email": "ref-boom-a@superdesign.dev"})
     referrer_user = r.json()["id"]
-    r = await c.post("/users", json={"email": "ref-boom-b@superdesign.dev"})
+    r = await verified_signup(c, json={"email": "ref-boom-b@superdesign.dev"})
     referred_org, referred_user = r.json()["org_id"], r.json()["id"]
     async with session_maker() as db:
         db.add(Referral(code="ref-instant-boom", referrer_user_id=referrer_user,
@@ -351,11 +352,11 @@ async def test_sweep_grant_failure_after_staging_never_raises(c: AsyncClient, mo
     from treg.domain import referrals
     from treg.models import Referral
 
-    r = await c.post("/users", json={"email": "sweep-boom-ref@superdesign.dev"})
+    r = await verified_signup(c, json={"email": "sweep-boom-ref@superdesign.dev"})
     referrer_user = r.json()["id"]
     rows = []
     for i in range(2):  # TWO due rows: the second iteration's log is the one a loop-local copy misses
-        r = await c.post("/users", json={"email": f"sweep-boom-{i}@superdesign.dev"})
+        r = await verified_signup(c, json={"email": f"sweep-boom-{i}@superdesign.dev"})
         rows.append((r.json()["org_id"], r.json()["id"]))
     async with session_maker() as db:
         for i, (org_id, user_id) in enumerate(rows):
@@ -395,7 +396,7 @@ async def test_referrals_page_survives_a_sweep_rollback(c: AsyncClient, monkeypa
     from treg.domain import referrals
     from treg.application import referrals as referrals_app
 
-    r = await c.post("/users", json={"email": "page-boom@superdesign.dev"})
+    r = await verified_signup(c, json={"email": "page-boom@superdesign.dev"})
     user_id = r.json()["id"]
 
     async def sweep_boom(db, **kw):
@@ -416,10 +417,15 @@ async def test_referrals_page_survives_a_sweep_rollback(c: AsyncClient, monkeypa
 
     from treg import adsconv
     from treg.application import signup
-    from treg.models import AdConversion
+    from treg.models import AdConversion, User
+    from treg.timeutil import utcnow_naive
 
     monkeypatch.setattr(adsconv, "enabled", lambda: True)
     async with session_maker() as db:
+        user = User(email="promo-atomic@example.org", email_verified_at=utcnow_naive())
+        db.add(user)
+        await db.flush()
+        user_id = user.id
         org = Org(name="promo-atomic", slug="promo-atomic", ad_gclid="CLICK_SIGNUP")
         db.add(org)
         await db.commit()
@@ -437,7 +443,7 @@ async def test_referrals_page_survives_a_sweep_rollback(c: AsyncClient, monkeypa
 
     monkeypatch.setattr(SAAsyncSession, "commit", failing_commit)
     async with session_maker() as db:
-        await signup._grant_signup_promo(db, await db.get(Org, org_id))  # must not raise
+        await signup._grant_signup_promo(db, await db.get(Org, org_id), user_id=user_id)  # must not raise
     assert state["failed"], "the promo commit was never attempted"
 
     async with session_maker() as db:  # neither half survived the failed commit
@@ -447,7 +453,7 @@ async def test_referrals_page_survives_a_sweep_rollback(c: AsyncClient, monkeypa
     assert await _assert_invariant(org_id) == 0
 
     async with session_maker() as db:  # the retry lands BOTH, in one commit
-        await signup._grant_signup_promo(db, await db.get(Org, org_id))
+        await signup._grant_signup_promo(db, await db.get(Org, org_id), user_id=user_id)
     async with session_maker() as db:
         assert [e.kind for e in await ledger.entries_of(db, org_id)] == ["grant"]
         assert len((await db.execute(select(AdConversion).where(
@@ -461,7 +467,7 @@ async def test_a_grant_failure_cannot_fail_signup(c: AsyncClient, monkeypatch):
         raise RuntimeError("grant broke")
 
     monkeypatch.setattr(ledger, "grant", boom)
-    r = await c.post("/users", json={"email": "promo-fails@superdesign.dev"})
+    r = await verified_signup(c, json={"email": "promo-fails@superdesign.dev"})
     assert r.status_code == 200, r.text
     org_id = r.json()["org_id"]
     async with session_maker() as db:
@@ -489,7 +495,7 @@ async def test_a_grant_failure_after_staging_still_returns_the_signup(c: AsyncCl
 
     monkeypatch.setattr(ledger, "grant", grant_then_boom)
 
-    r = await c.post("/users", json={"email": "promo-fails-late@superdesign.dev"},
+    r = await verified_signup(c, json={"email": "promo-fails-late@superdesign.dev"},
                      headers={"Cookie": f"{REFERRAL_COOKIE}={code}"})
     assert r.status_code == 200, r.text
     body = r.json()
@@ -895,5 +901,5 @@ async def test_demo_orgs_get_no_promo_credit(c: AsyncClient):
         await db.commit()
         # the hook is what enforces this — a demo org that somehow reaches it gets nothing
         from treg.application.signup import _grant_signup_promo
-        await _grant_signup_promo(db, await db.get(Org, org_id))
+        await _grant_signup_promo(db, await db.get(Org, org_id), user_id=-1)
         assert await ledger.balance_of(db, org_id) == 0

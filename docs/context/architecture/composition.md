@@ -47,6 +47,12 @@ implied HEAD operations, shared HTTP client creation, startup work, shutdown dra
 conversion worker. Registration order is compatibility behavior. The four stage-0 snapshots stay
 byte-identical for `role="all"` unless that composition intentionally changes.
 
+When archive settings select R2, the lifespan validates object-store configuration before DB
+verification, then owns the asynchronous client until archive and analytics drains finish. This
+conditional resource setup does no object I/O at startup and adds no worker. Tests can supply
+`create_app(..., archive_object_store=...)`; `configure_archive_object_store` is the shared
+in-memory injection seam. See [archive](archive.md) for switches and queue behavior.
+
 For every role, the factory wires the Catalog observation port to one process-local
 `CachedEndpointObservationReader` backed by short `background_session_maker` reads — the cache never
 awaits the source on the request path (a miss returns empty and schedules a refresh), so those
@@ -149,3 +155,8 @@ Shutdown cancels and awaits every started background worker before draining Aren
 analytics or closing the shared client, so database rollback/close finishes before event-loop teardown.
 
 `POST /reviews` and `GET /admin/reviews` belong to control, alongside feedback intake and reads.
+
+The archive object-store lifespan normalizes configuration once, chooses an R2 factory or
+injected in-memory context, and resets the store on exit. R2 validation runs before DB startup
+verification; an obsolete comparison-mode environment variable no longer blocks migration CLI
+settings construction.
