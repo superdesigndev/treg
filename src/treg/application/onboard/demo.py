@@ -18,7 +18,8 @@ from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import crypto
-from ...domain.governance.teams import cascade_delete_org, drop_member_deny_rules
+from ...domain.governance.teams import cascade_delete_org, drop_member_deny_rules, require_owned_team_slot
+from ...domain.identity.access import lock_user
 from .models import CallRecord, Membership, Org, Secret, Tool, User
 
 DEMO_DOMAIN = "demo.treg.local"      # fake teammates live here; api refuses login for this domain
@@ -64,13 +65,14 @@ async def existing_demo_org(db: AsyncSession, owner: User) -> Org | None:
 
 async def provision(db: AsyncSession, owner: User, team_name: str) -> dict:
     """Create + seed the demo team owned by `owner`. Idempotent: reuses an existing demo org.
-    Marks the owner `onboarded`. Caller need not commit — we commit here."""
+    Marks the owner `onboarded`. Caller commits."""
+    await lock_user(db, owner.id)
     existing = await existing_demo_org(db, owner)
     if existing is not None:
         owner.onboarded = True
-        await db.commit()
         return _view(existing, reused=True)
 
+    await require_owned_team_slot(db, owner.id)
     name = (team_name or "").strip() or "Acme Design"
     org = Org(name=name, slug=await _unique_slug(_slug(name), db), demo=True)
     db.add(org)
@@ -113,7 +115,6 @@ async def provision(db: AsyncSession, owner: User, team_name: str) -> dict:
                           created_at=now - timedelta(minutes=mins)))
 
     owner.onboarded = True
-    await db.commit()
     return _view(org, reused=False)
 
 

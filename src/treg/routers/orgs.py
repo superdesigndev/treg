@@ -356,6 +356,13 @@ _SIGNUP_HTTP_ERRORS = {
 }
 
 
+def _owned_team_limit_error() -> HTTPException:
+    return HTTPException(status_code=403, detail=(
+        f"You can own at most {teams.MAX_OWNED_TEAMS} teams. "
+        "Delete a team or transfer ownership before creating or owning another."
+    ))
+
+
 def _signup_http_error(exc: signup_use_cases.SignupError) -> HTTPException:
     status_code, detail = _SIGNUP_HTTP_ERRORS[exc.kind]
     return HTTPException(status_code=status_code, detail=detail)
@@ -378,6 +385,8 @@ async def register_user(body: UserIn, request: Request) -> dict:
         )
     except signup_use_cases.SignupError as exc:
         raise _signup_http_error(exc) from exc
+    except teams.OwnedTeamLimitReached as exc:
+        raise _owned_team_limit_error() from exc
 
 
 @app.post("/orgs")
@@ -395,6 +404,8 @@ async def create_org(
         )
     except signup_use_cases.SignupError as exc:
         raise _signup_http_error(exc) from exc
+    except teams.OwnedTeamLimitReached as exc:
+        raise _owned_team_limit_error() from exc
 
 
 app = APIRouter()
@@ -800,6 +811,11 @@ async def set_member_role(
         target = await db.get(User, user_id)
         if target is not None and _is_machine_email(target.email):
             raise HTTPException(status_code=422, detail="a machine identity cannot be an owner")
+    if body.role == "owner" and membership.role != "owner":
+        try:
+            await teams.require_owned_team_slot(db, user_id)
+        except teams.OwnedTeamLimitReached as exc:
+            raise _owned_team_limit_error() from exc
     if membership.role == "owner" and body.role != "owner" and await _count_owners(org_id, db) <= 1:
         raise HTTPException(status_code=409, detail="cannot demote the last owner — promote another owner first")
     membership.role = body.role

@@ -41,7 +41,24 @@ from ...models import (
     User,
 )
 from ..identity import session as sess
-from ..identity.access import _membership_by_token, _resolve_org
+from ..identity.access import _membership_by_token, _resolve_org, lock_user
+
+
+MAX_OWNED_TEAMS = 10
+
+
+class OwnedTeamLimitReached(Exception):
+    """The account already owns the maximum number of teams."""
+
+
+async def require_owned_team_slot(db: AsyncSession, user_id: int) -> None:
+    """Hold the user lock through the ownership insert and its commit. No reservation counter."""
+    await lock_user(db, user_id)
+    owned = (await db.execute(select(Membership.id).where(
+        Membership.user_id == user_id, Membership.role == "owner",
+    ).limit(MAX_OWNED_TEAMS))).scalars().all()
+    if len(owned) >= MAX_OWNED_TEAMS:
+        raise OwnedTeamLimitReached
 
 
 def _slugify(text: str) -> str:
@@ -61,6 +78,8 @@ async def _make_org_membership(
     """Create an Org + an owner/role Membership for `user`, minting a fresh org-scoped token.
     Returns (org, plaintext token). Caller commits.
     """
+    if role == "owner":
+        await require_owned_team_slot(db, user.id)
     org = Org(name=name, slug=await _unique_slug(slug_base, db))
     db.add(org)
     await db.flush()
