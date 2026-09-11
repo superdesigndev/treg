@@ -653,8 +653,11 @@ async def agents_hub():
         if head == defn and len(defn) > 140:  # a future definition without the clause still fits
             head = defn[:140].rsplit(" ", 1)[0]
         return head.rstrip(".") + "."
+    def _agent_href(slug: str) -> str:
+        # grok-bot links to the launch page at /grokbot
+        return "/grokbot" if slug == "grok-bot" else f"/agents/{slug}"
     cards = "".join(
-        f'<a class="pcard" href="/agents/{slug}"><h3>{_esc_html(spec["name"])}</h3>'
+        f'<a class="pcard" href="{_agent_href(slug)}"><h3>{_esc_html(spec["name"])}</h3>'
         f'<p>{_esc_html(_blurb(spec["definition"].format(n=n, p=p)))}</p>'
         f'<div class="meta">{n} tools &middot; {p} platforms</div></a>'
         for slug, spec in agent_pages.AGENTS.items())
@@ -690,6 +693,10 @@ async def agent_page(request: Request, agent: str):
     `/agents/<agent>.md` is the same page as Markdown, for agents and answer engines."""
     as_md = request.url.path.endswith(".md")
     raw = agent[:-3] if agent.endswith(".md") else agent
+    # grok-bot redirects to the launch page at /grokbot: the launch page is what people expect
+    # when they click "Grok Bot", and the /agents/grok-bot URL was never the primary destination.
+    if raw.lower() == "grok-bot":
+        return RedirectResponse("/grokbot", status_code=301)
     # Resolve to the dict's OWN key, never the request's bytes: `agent` is interpolated into the
     # canonical, the rel=alternate href and the JSON-LD breadcrumb below, and a path parameter
     # must not reach those unescaped (CodeQL py/reflective-xss). The lookup is case-insensitive,
@@ -2868,6 +2875,8 @@ async def sitemap_xml():
         copy_day = _iso_day(Path(agent_pages.__file__).stat().st_mtime)
         add("/agents", copy_day, "0.8")
         for slug in agent_pages.AGENTS:
+            if slug == "grok-bot":
+                continue  # redirects to /grokbot; list only the canonical
             add(f"/agents/{slug}", copy_day, "0.8")
         add("/use-cases", copy_day, "0.8")
         for j in agent_pages.USE_CASE_PAGES:

@@ -151,7 +151,9 @@ async def test_agents_hub_lists_every_agent(clients: AsyncClient):
     assert r.status_code == 200, r.text[:200]
     html = r.text
     for slug, spec in agent_pages.AGENTS.items():
-        assert f'href="/agents/{slug}"' in html, slug
+        # grok-bot links to /grokbot (the launch page), not /agents/grok-bot
+        href = "/grokbot" if slug == "grok-bot" else f"/agents/{slug}"
+        assert f'href="{href}"' in html, slug
         assert spec["name"] in html, slug
     assert 'href="/agents"' in (await clients.get("/agents/chatgpt")).text  # nav + breadcrumb parent
     assert f"<loc>{_base()}/agents</loc>" in (await clients.get("/sitemap.xml")).text
@@ -381,7 +383,9 @@ async def test_use_cases_hub_lists_every_written_page(clients: AsyncClient):
 
 # Every page that ships, not a hand-kept list: this set grows by 59 as the use-case pages land, and
 # a title that overflows is invisible in exactly the way nobody notices during review.
-ALL_PAGES = ([f"/agents/{a}" for a in agent_pages.AGENTS] + ["/agents", "/use-cases", "/workflows"]
+# Exclude grok-bot: it 301s to /grokbot (the launch page is the canonical).
+ALL_PAGES = ([f"/agents/{a}" for a in agent_pages.AGENTS if a != "grok-bot"]
+             + ["/agents", "/use-cases", "/workflows"]
              + [f"/use-cases/{j}" for j in agent_pages.USE_CASE_PAGES]
              + [f"/workflows/{w}" for w in agent_pages.WORKFLOWS])
 
