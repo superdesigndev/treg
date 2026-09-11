@@ -641,6 +641,12 @@ on the background worker. The default per-process budget is now 27 slots; with t
 two instances a rolling deployment can reach 108. Existing deployment overrides remain necessary
 for the 103-connection plan; this merge does not alter production overrides.
 
+Archive change observation and declared ignore comparisons share the existing two-slot archive
+semaphore, including background-only fallback reads and CPU work. No extra pool consumer is added.
+`tests/test_db_pool_isolation.py` inventories each background-maker reference by function and count,
+so a new site in an already registered module must name its concurrency budget. Observation follows
+`TREG_ARCHIVE_BODY_READ_LOOKUP`; `TREG_ARCHIVE_CHANGE_OBSERVATION_ENABLED=false` stops change reporting.
+
 
 ## HarvestAPI configuration
 

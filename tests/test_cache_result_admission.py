@@ -313,3 +313,27 @@ def test_verified_adapter_positive_fixture_is_admissible(ep):
     body = (Path(__file__).parents[1] / 'src/treg/catalog/examples' / (ep + '.json')).read_bytes()
     result = classify(ep, 200, body)
     assert result.state == 'found' and result.reason == 'adapter_hit'
+
+
+async def test_ignore_cannot_mask_result_transitions_and_uses_decisive_baseline(clients, cache_on, monkeypatch):
+    from treg.domain.catalog import store
+    monkeypatch.setitem(store.load().by_id[EP], 'cache',
+                        {'mode': 'transient', 'ignore_paths': ['meta', 'data']})
+    events = []
+    monkeypatch.setattr(service.analytics, 'capture',
+                        lambda who, event, props, **kw: events.append((event, props)))
+    await _call(clients, monkeypatch, FOUND)
+    await _call(clients, monkeypatch, b'{}', live=True)  # unknown, retain found baseline
+    changed = FOUND.replace(b'hello@', b'other@')
+    await _call(clients, monkeypatch, changed, live=True)
+    assert (await _key()).stable_seen == 1
+    await _call(clients, monkeypatch, EMPTY, live=True)
+    k = await _key()
+    assert (k.stable_seen, k.change_seen, k.result_state) == (1, 1, 'empty')
+    observed = [p for name, p in events if name == 'archive_change_observed']
+    assert [p['masked_by_ignore'] for p in observed] == [False, True, False]
+    await _call(clients, monkeypatch, EMPTY)
+    assert (await _key()).change_seen == 1
+    response = await _call(clients, monkeypatch, changed)
+    assert response.content == changed and 'x-treg-cache' not in response.headers
+    assert (await _key()).change_seen == 2

@@ -218,28 +218,35 @@ class BodyPointer:
     snapshot_id: int | None = None
 
 
+def _r2_first(path: str) -> bool:
+    # Observation shares lookup's rollout/rollback switch; it never enables R2 independently.
+    path = "lookup" if path == "observation" else path
+    return getattr(get_settings(), "archive_body_read_" + path) == "r2-first"
+
+
 def read_options(path):
     from sqlalchemy.orm import defer
     from .models import ArchiveSnapshot
-    return (defer(ArchiveSnapshot.body),) if getattr(get_settings(), "archive_body_read_" + path) == "r2-first" else ()
+    return (defer(ArchiveSnapshot.body),) if _r2_first(path) else ()
 
 
 async def pointer(session, snapshot, path):
     """Capture metadata only for R2-first; DB fallback is loaded in a later short session."""
-    if getattr(get_settings(), "archive_body_read_" + path) == "r2-first":
+    if _r2_first(path):
         return BodyPointer(snapshot.content_hash, snapshot.body_storage, None, None, snapshot.id)
     from .archive import _snapshot_body
     body = await _snapshot_body(session, snapshot)
     return BodyPointer(snapshot.content_hash, snapshot.body_storage, body, None)
 
 
-async def _db_fallback(pointer):
-    from .infra.db import session_maker
+async def _db_fallback(pointer, path):
+    from .infra.db import session_maker, background_session_maker
     from .models import ArchiveSnapshot
     from .archive import _snapshot_body, _unpack
     if pointer.snapshot_id is None:
         return _unpack(pointer.body, pointer.enc)
-    async with session_maker() as session:
+    maker = background_session_maker if path == "observation" else session_maker
+    async with maker() as session:
         row = await session.get(ArchiveSnapshot, pointer.snapshot_id)
         return await _snapshot_body(session, row) if row is not None else None
 
@@ -253,7 +260,7 @@ async def read(pointer: BodyPointer, path: str, *, diagnostics: dict | None = No
                                cache_r2_read_ms=elapsed)
         return body
 
-    if (getattr(get_settings(), f"archive_body_read_{path}") == "r2-first"
+    if (_r2_first(path)
             and pointer.storage in ("both", "r2")):
         started = time.monotonic()
         try:
@@ -276,5 +283,5 @@ async def read(pointer: BodyPointer, path: str, *, diagnostics: dict | None = No
         level = logging.ERROR if reason in {"permission_denied", "hash_mismatch", "too_large"} else logging.WARNING
         _log.log(level, "archive R2 read fallback path=%s reason=%s elapsed_ms=%s exception_type=%s",
                  path, reason, elapsed, error_type)
-    body = await _db_fallback(pointer)
+    body = await _db_fallback(pointer, path)
     return observed(body, "db" if body is not None else "none")

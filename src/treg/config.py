@@ -310,6 +310,7 @@ class Settings(BaseSettings):
     # enable. Staged deliberately so production can sit in "shadow" while phase 0 measures.
     archive_mode: str = "off"
     archive_body_write: Literal["db", "both", "r2"] = "db"
+    archive_change_observation_enabled: bool = True
     archive_body_read_lookup: Literal["db", "r2-first"] = "db"
     archive_body_read_result: Literal["db", "r2-first"] = "db"
     archive_body_read_terminal: Literal["db", "r2-first"] = "db"

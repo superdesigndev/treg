@@ -323,6 +323,7 @@ def _parse(directory: Path) -> Catalog:
         # The provider's cache policy (docs/context/architecture/archive.md): one licence judgment
         # at the file header covers every endpoint below it; an endpoint's own `cache:` overrides.
         # Kept as the dict/provenance form, not stringified — archive.policy reads `mode` from it.
+        _validate_cache(doc.get("cache"))
         if doc.get("cache") and not meta.get("cache"):
             meta["cache"] = doc["cache"]
         for raw in doc.get("endpoints") or []:
@@ -522,7 +523,20 @@ def _effective_cost(raw: dict):
             "note": "price observed at live verification (provider-reported charge)"}
 
 
+_IGNORE_PATH = re.compile(r"(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\[\*\])(?:\[\*\])*(?:\.[A-Za-z0-9_][A-Za-z0-9_-]*(?:\[\*\])*)*")
+
+
+def _validate_cache(cache) -> None:
+    if not isinstance(cache, dict) or "ignore_paths" not in cache:
+        return
+    paths = cache["ignore_paths"]
+    if (not isinstance(paths, list) or
+            any(not isinstance(path, str) or not _IGNORE_PATH.fullmatch(path) for path in paths)):
+        raise ValueError("cache.ignore_paths must be a list of dot paths with optional [*] array wildcards")
+
+
 def _normalize(raw: dict, provider: str, directory: Path) -> dict:
+    _validate_cache(raw.get("cache"))
     capability = raw.get("capability") or ""
     platform = raw.get("platform") or (capability.split(".")[0] if capability else "other")
     verified = raw.get("verified")

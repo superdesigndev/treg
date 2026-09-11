@@ -219,7 +219,7 @@ The pointer is owned by the archive writer and key ownership is checked on reads
 never deleted, so no cyclic foreign key is introduced.
 
 For endpoints with enabled hit/miss rules, only found-to-found observations can count stable.
-Strict mode compares exact raw-byte hashes.
+The default compares exact raw-byte hashes; declared `cache.ignore_paths` can relax only found-to-found equality.
 Found-to-empty counts one change and invalidates serving; repeated empty results neither grow
 nor shrink TTL. Empty-to-found counts a change and restores eligibility. Errors and unknowns add
 history under the existing capture policy but do not replace decisive evidence or update learning.
@@ -241,10 +241,10 @@ by min(30 d, the judged `cache.max_age_s`); changed ⇒ ×0.5, floored at 60 s. 
 until a stable refetch resets it. The lookup prefers the learned timer (`ttl_s > 0`) over the
 fixed phase-1 guesses.
 
-**Strict comparison.** Result admission still selects the decisive baseline and controls which
-transitions train TTL. Among found-to-found observations, identical raw hashes count stable and
-differing hashes count changed. The legacy field-noise heuristic is removed; hash comparison
-never fetches an old R2 body.
+**Comparison.** Result admission selects the decisive baseline and controls which transitions
+train TTL. Identical raw hashes count stable; differing hashes count changed unless an explicit
+`cache.ignore_paths` list makes the JSON comparison equal. The default list is empty. The legacy
+field-noise heuristic remains removed; observation reporting never determines TTL.
 
 ## The refresh worker (PR 5)
 
@@ -294,7 +294,7 @@ One licence judgment per PROVIDER, written once at the YAML file header and inhe
 endpoint below it; an endpoint's own `cache:` overrides. `catalog_store` carries the header form
 into `provider_meta["cache"]` (dict, not stringified) and stamps the effective value onto each
 normalized endpoint (`entry["cache"]`, absent ⇒ None ⇒ forbidden). The provenance form is
-`{mode, license_quote, source_url, checked}` plus optional `max_age_s` — a vendor-imposed refresh
+`{mode, license_quote, source_url, checked}` plus optional `ignore_paths` and `max_age_s` — a vendor-imposed refresh
 ceiling the learner (PR 5) must treat as a hard cap. `tests/test_archive.py` validates every
 declared field in the shipped catalog: a judged entry must carry its quote, source and date.
 
@@ -353,8 +353,9 @@ enable. Rollback in production is a dashboard env edit, no deploy.
 ## Conservative comparison and controlled serving (2026-09-08)
 
 The comparison setting and helper are removed. Old `TREG_ARCHIVE_COMPARISON_MODE` environment
-values are ignored, including `legacy_noise`; events and admin props report `strict`. Only exact
-found-to-found hashes count stable.
+values are ignored, including `legacy_noise`; existing events and admin props still report the
+default `strict` mode. Endpoint declarations can now relax found-to-found comparison using
+`cache.ignore_paths`; `archive_change_observed.masked_by_ignore` reports actual rescued decisions.
 
 TTL learning and lookup retain the original behavior: stable observations grow the timer by
 1.5, changed observations halve it, and TTL_NEVER remains respected. The fixed capability timer
@@ -627,3 +628,120 @@ zero transfer/wait time. Do not interpret these post-fix per-record values as on
 latency, or average duplicate statuses and zero-transfer failed waiters into physical PUT latency. R2 pending accounting spans the
 recording's DB completion too; it is not just the number of active PUTs. Compare existing failure/
 drop reasons, leader timing, and duplicate statuses after rollout before increasing queue budgets.
+
+
+## Change observation
+
+After `_store_locked` commits, `_observe_change` reports a byte-hash change from the immediately
+preceding snapshot for `caller` and `refresh` origins only. Cache hits and async terminal evidence
+never emit `archive_change_observed`. The background task has a separate three-second observation
+budget after the existing 30-second DB stage. Failure cannot undo or prevent the recording.
+`_read_change_body` collects an `archive_bodies.pointer` in a short background session, closes it,
+then calls `archive_bodies.read`. Observation follows `TREG_ARCHIVE_BODY_READ_LOOKUP`: default
+`db` makes no R2 requests; `r2-first` uses verified GET and falls back exclusively to the background
+pool. It cannot enable R2 independently of the existing startup checks or rollback switches.
+`TREG_ARCHIVE_CHANGE_OBSERVATION_ENABLED=false` disables change reporting and its reads/CPU work
+(default true). Declared ignore-path TTL comparison remains a separate decision mechanism.
+Both ignore comparison and change reporting share the recorder/touch semaphore budget of two,
+including fallback sessions and CPU work. No DB connection is held during object I/O. New bodies
+not retained by policy/size/storage and known hash-only previous snapshots skip observation.
+Process-local `change_outcomes` counts `observed`, `body_unavailable`, `observation_failed`,
+`ignore_body_unavailable` and `ignore_comparison_failed`. `/admin/archive` exposes this mapping and
+`body_outcomes` (archive_bodies.outcomes), including on cached report responses; counters reset on
+restart and are per process, not durable or fleet-wide totals.
+
+`_change_summary` runs off the event loop. Structure comparison visits each subtree once without
+repeated JSON serialization, retaining type-sensitive comparisons. Cancellation keeps the semaphore
+slot occupied until the bounded-size CPU job finishes; asyncio timeout does not stop a Python thread. JSON differences use dot paths, collapse array indices
+to `[*]`, stop at six levels and retain the first 20 sorted distinct paths. `path_count` counts all
+distinct paths before truncation; `truncated` marks more than 20. Added/removed fields, array length
+and type changes count; a changed container at the depth boundary counts at its boundary path.
+Root changes use `$`. `leaf_count` counts new-body leaves at the same depth boundary (empty
+containers count as one). Byte-only whitespace/key-order changes can have zero changed paths.
+Non-JSON pairs use `changed_paths: [non_json]`, `path_count: 1`, `leaf_count: 0`.
+`sole_path` is the sole path when count is one, otherwise null.
+
+Analytics emits `archive_change_observed` with distinct ID `archive` and only `endpoint_id`,
+`provider`, `changed_paths`, `path_count`, `truncated`, `leaf_count`, `sole_path` and
+`masked_by_ignore` (true only when a declared ignore comparison actually rescues a stable TTL
+decision). The path report compares the latest historical snapshot; result-aware TTL can instead
+compare an older decisive found snapshot across intervening unknown/error observations. No values, body
+snippets, call references or key identities are sent. Paths are structural property names from JSON;
+these reports are not a schema or evidence that a field is safe to ignore. Observation is read-only
+and does not alter admission, learning, stored bytes, deduplication or serving.
+
+### Seven-day HogQL review
+
+Paste into the PostHog SQL editor. One row per endpoint/path; all ratios use that endpoint's
+observed byte changes as denominator. `sole_change_ratio` counts events where that path alone
+changed; `endpoint_sole_ratio` counts any sole-path change. Empty path lists remain in the total.
+Truncation makes per-path ratios lower bounds, so inspect `truncated_ratio` before choosing a
+list. Missing bodies and dropped analytics are not in these denominators. `non_json` is a marker,
+not an ignore candidate. SQL uses PostHog's supported [JSON/array functions](https://posthog.com/docs/sql/clickhouse-functions).
+
+```sql
+WITH observed AS (
+    SELECT properties.endpoint_id AS endpoint_id,
+           properties.sole_path AS sole_path,
+           toInt(properties.path_count) AS path_count,
+           properties.truncated = true AS truncated,
+           JSONExtract(ifNull(toString(properties.changed_paths), '[]'), 'Array(String)') AS paths
+    FROM events
+    WHERE event = 'archive_change_observed'
+      AND timestamp >= now() - INTERVAL 7 DAY
+), totals AS (
+    SELECT endpoint_id, count() AS changes,
+           countIf(path_count = 1) / count() AS endpoint_sole_ratio,
+           countIf(truncated) / count() AS truncated_ratio
+    FROM observed GROUP BY endpoint_id
+), per_path AS (
+    SELECT endpoint_id, path, count() AS path_changes,
+           countIf(sole_path = path) AS sole_changes
+    FROM (SELECT endpoint_id, sole_path, arrayJoin(paths) AS path FROM observed)
+    GROUP BY endpoint_id, path
+)
+SELECT totals.endpoint_id, totals.changes, per_path.path,
+       per_path.path_changes / totals.changes AS path_ratio,
+       per_path.sole_changes / totals.changes AS sole_change_ratio,
+       totals.endpoint_sole_ratio, totals.truncated_ratio
+FROM totals LEFT JOIN per_path ON totals.endpoint_id = per_path.endpoint_id
+ORDER BY totals.changes DESC, path_ratio DESC, per_path.path
+```
+
+
+## Declared ignore comparison
+
+`cache.ignore_paths` is an optional list in the same catalog block as `max_age_s`, empty by default.
+No endpoint has a list in this delivery. Only human-reviewed declarations can enable it; there is
+no automatic learning of ignore paths and `ArchiveKey.volatile_paths` remains unused.
+
+`_normalized_hash` parses a private JSON copy, deletes the declared paths, then hashes JSON with
+sorted object keys and compact separators. Array order, length and all unignored values remain
+significant; ignoring `items[*].request_id` preserves array elements, while `items[*]` deliberately
+removes all elements. Missing paths and type mismatches are no-ops. Normalization also disregards
+whitespace and object-key order whenever a nonempty list is declared. Non-JSON or unreadable
+baselines fall back to the original byte hashes. Ignore matching has no six-level observation
+limit. It never uses reported/truncated paths to make a decision.
+
+`_ignored_matches` preloads at most the latest and decisive snapshot bodies via `archive_bodies`
+in the background recorder, before the DB write stage. Pointer sessions close before object I/O.
+This optional pre-read holds the shared archive semaphore and has its own three-second budget,
+leaving the DB stage's 30 seconds intact. Hash-only baselines and unstored new bodies are skipped.
+It returns matching snapshot IDs only. `_store_locked` still locks and selects the actual baseline;
+if another recording advances it beyond those IDs, that recording conservatively uses raw hashes.
+No cross-process lock is held during object I/O, and no retry/reconciliation write is introduced.
+`ignore_body_unavailable` and `ignore_comparison_failed` process counters expose read failures.
+
+The only relaxed decision is stable/changed TTL learning, including its existing counters and
+TTL_NEVER recovery. Found/empty transitions, hit/miss classification, decisive evidence, admission,
+raw body storage, `content_hash`, deduplication and response bytes are untouched. A cache hit still
+returns exactly the retained answer; the learned expiration can change only for an opted-in endpoint.
+Read/analysis failures preserve strict comparison. No schema migration, new DB write, serving
+allowlist change, production configuration, field selection UI or automated ignore proposal ships.
+
+Known deferred limitation: `changed_paths` compares the immediately previous snapshot, while
+`masked_by_ignore` can refer to a different decisive baseline. No endpoint currently declares
+ignore paths, so the latter is always false. **This must be fixed before the first ignore list
+is introduced.** This delivery only documents the mismatch; it does not change snapshot pairing.
+
+Ignore-path segments may begin with digits, e.g. `2fa_enabled` or `data.123status`.
