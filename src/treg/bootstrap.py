@@ -548,6 +548,12 @@ def _lifespan(role: AppRole):
             mcp_reader_bound = role != "control" and _mcp is not None
             if mcp_reader_bound:
                 _mcp.configure_endpoint_observation_reader(endpoint_observations)
+            # MCP metrics worker — only on roles that serve MCP traffic
+            mcp_metrics_task = None
+            if role != "control" and _mcp is not None and analytics.enabled():
+                from .mcp_limits import metrics_worker as mcp_metrics_worker
+                mcp_metrics_task = asyncio.create_task(mcp_metrics_worker(interval_s=60.0))
+
             fault_handler = analytics.install_fault_handler()
             try:
                 if role == "control" or _mcp is None:
@@ -562,6 +568,7 @@ def _lifespan(role: AppRole):
                 try:
                     workers = [task for task in (
                         gauge_task, ads_task, archive_task, prune_task, insights_task,
+                        mcp_metrics_task,
                     ) if task is not None]
                     for task in workers:
                         task.cancel()
