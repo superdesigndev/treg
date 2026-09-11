@@ -1,6 +1,7 @@
 """Archive body I/O and upload scheduling, separate from archive indexing and TTL learning."""
 import asyncio
 from collections import Counter, OrderedDict
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 import logging
 import re
@@ -62,6 +63,31 @@ class StorageReport:
         self.finished = False
         self.props = {"archive_body_upload_status": "not_requested", "archive_body_upload_ms": 0.0,
                       "archive_body_queue_wait_ms": 0.0}
+        self.timings = dict.fromkeys(("compare_sem_wait", "compare", "record_key_wait",
+                                     "record_sem_wait", "record_db", "observe_sem_wait", "observe"))
+        self.failure_phase = None
+
+    @contextmanager
+    def measure(self, phase):
+        """Include interrupted work; an unentered phase stays unknown rather than zero."""
+        started = time.monotonic()
+        try:
+            yield
+        except BaseException:
+            self.failure_phase = phase
+            raise
+        finally:
+            self.timings[phase] = (time.monotonic() - started) * 1000
+
+    @asynccontextmanager
+    async def wait(self, gate, phase):
+        # Measure acquisition only, then retain the original lock/semaphore lifetime.
+        with self.measure(phase):
+            await gate.acquire()
+        try:
+            yield
+        finally:
+            gate.release()
 
     def finish(self, *, storage=None, reason=None):
         if self.finished:
@@ -73,6 +99,9 @@ class StorageReport:
                 "upload_ms": round(self.props["archive_body_upload_ms"], 3),
                 "queue_wait_ms": round(self.props["archive_body_queue_wait_ms"], 3),
                 "dropped": storage is None, "drop_reason": reason or "none"}
+        data.update({phase + "_ms": round(ms, 3) if ms is not None else None
+                     for phase, ms in self.timings.items()})
+        data["failure_phase"] = self.failure_phase
         if self.emit is not None:
             self.emit(data)
         elif self.call_ref:

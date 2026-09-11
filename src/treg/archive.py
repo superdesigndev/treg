@@ -536,32 +536,39 @@ async def _store(
         ignore_paths = cache.get("ignore_paths", []) if isinstance(cache, dict) else []
         ignored_matches = set()
         if plan.storage is not None and origin in ("caller", "refresh"):
-            async with _get_sem():
-                ignored_matches = await _ignored_matches(kh, body, ignore_paths)
+            async with observation.wait(_get_sem(), "compare_sem_wait"):
+                with observation.measure("compare"):
+                    ignored_matches = await _ignored_matches(kh, body, ignore_paths)
 
         # Same-key waiters must queue before taking a scarce database-write slot. Otherwise four
         # duplicate recordings can occupy the whole semaphore while only one touches the database.
-        async with asyncio.timeout(_TERMINAL_DB_S if origin == "async_terminal" else _STORE_TIMEOUT_S), _get_key_lock(kh):
-            async with _get_sem():
-                # Postgres row locking handles other processes. A retry also covers the narrow
-                # first-key race and multi-process SQLite, where SELECT FOR UPDATE is ignored.
-                for attempt in range(4):
-                    try:
-                        change = await _store_locked(
-                            method=method, endpoint_id=endpoint_id, provider=provider, url=url,
-                            caller_body=caller_body, headers=headers, status_code=status_code,
-                            media_type=media_type, body=body, origin=origin,
-                            key_hash=kh, body_hash=ch, plan=plan, ignored_matches=ignored_matches)
-                        stored, reason = plan.storage, plan.reason
-                        break
-                    except IntegrityError:
-                        if attempt == 3:
-                            raise
-                        await asyncio.sleep(0.01 * (attempt + 1))
+        async with (
+            asyncio.timeout(_TERMINAL_DB_S if origin == "async_terminal" else _STORE_TIMEOUT_S),
+            observation.wait(_get_key_lock(kh), "record_key_wait"),
+        ):
+            async with observation.wait(_get_sem(), "record_sem_wait"):
+                # Wall time includes pool checkout, packing, SQL/commit and integrity retries.
+                with observation.measure("record_db"):
+                    # Postgres row locking handles other processes. A retry also covers the narrow
+                    # first-key race and multi-process SQLite, where SELECT FOR UPDATE is ignored.
+                    for attempt in range(4):
+                        try:
+                            change = await _store_locked(
+                                method=method, endpoint_id=endpoint_id, provider=provider, url=url,
+                                caller_body=caller_body, headers=headers, status_code=status_code,
+                                media_type=media_type, body=body, origin=origin,
+                                key_hash=kh, body_hash=ch, plan=plan, ignored_matches=ignored_matches)
+                            stored, reason = plan.storage, plan.reason
+                            break
+                        except IntegrityError:
+                            if attempt == 3:
+                                raise
+                            await asyncio.sleep(0.01 * (attempt + 1))
         if change is not None and get_settings().archive_change_observation_enabled:
             previous_id, masked_by_ignore = change
-            async with _get_sem():
-                await _observe_change(previous_id, body, endpoint_id, provider, masked_by_ignore)
+            async with observation.wait(_get_sem(), "observe_sem_wait"):
+                with observation.measure("observe"):
+                    await _observe_change(previous_id, body, endpoint_id, provider, masked_by_ignore)
     except asyncio.CancelledError:
         reason = "cancelled"
         raise
@@ -666,9 +673,6 @@ async def _ignored_matches(key_hash: str, body: bytes, paths: list[str]) -> set[
     matches = set()
     try:
         async with asyncio.timeout(_CHANGE_TIMEOUT_S):
-            new_hash = await _change_compute(_normalized_hash, body, paths)
-            if new_hash is None:
-                return matches
             async with background_session_maker() as s:
                 key = (await s.execute(select(ArchiveKey).where(
                     ArchiveKey.key_hash == key_hash))).scalar_one_or_none()
@@ -685,6 +689,13 @@ async def _ignored_matches(key_hash: str, body: bytes, paths: list[str]) -> set[
                 matches.update(row.id for row in rows if row.content_hash == raw_hash)
                 pointers = [(row.id, await archive_bodies.pointer(s, row, "observation"))
                             for row in rows if row.content_hash != raw_hash and _has_change_body(row)]
+            if not pointers:
+                return matches
+            # New keys and raw-identical baselines need no JSON parsing or serialization.
+            # Close the pointer session before any off-thread work or object I/O.
+            new_hash = await _change_compute(_normalized_hash, body, paths)
+            if new_hash is None:
+                return matches
             for snapshot_id, pointer in pointers:
                 previous = await archive_bodies.read(pointer, "observation")
                 if previous is None:

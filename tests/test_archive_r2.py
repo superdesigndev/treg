@@ -89,6 +89,52 @@ async def test_upload_precedes_pointer_and_call_does_not_wait(clients, r2, monke
     assert len(props) == 1 and props[0]['upload_status'] == 'uploaded'
     assert props[0]['upload_ms'] >= 0
     assert props[0]['dropped'] is False
+    assert props[0]['failure_phase'] is None
+    for phase in ('compare_sem_wait', 'compare', 'record_key_wait', 'record_sem_wait', 'record_db'):
+        assert props[0][phase + '_ms'] >= 0
+
+
+@pytest.mark.parametrize('phase', ['record_key_wait', 'record_sem_wait', 'record_db'])
+async def test_call_reports_where_archive_db_deadline_expires(clients, r2, monkeypatch, phase):
+    # The upstream answer and R2 object succeed even when archive indexing cannot finish.
+    monkeypatch.setattr(archive, '_STORE_TIMEOUT_S', .05)
+    blocked = asyncio.Lock()
+    await blocked.acquire()
+    if phase == 'record_key_wait':
+        monkeypatch.setattr(archive, '_get_key_lock', lambda key: blocked)
+    elif phase == 'record_sem_wait':
+        comparison_sem = asyncio.Semaphore(2)
+        calls = 0
+        def get_sem():
+            nonlocal calls
+            calls += 1
+            return comparison_sem if calls == 1 else blocked
+        monkeypatch.setattr(archive, '_get_sem', get_sem)
+    else:
+        async def blocked_store(**kwargs):
+            await asyncio.Event().wait()
+        monkeypatch.setattr(archive, '_store_locked', blocked_store)
+    reports = []
+    monkeypatch.setattr(service.analytics, 'capture',
+                        lambda who, name, props, **kw: reports.append(props)
+                        if name == 'archive_body_stored' else None)
+    try:
+        response = await clients.get(URL)
+        assert response.status_code == 200 and response.content == RAW
+        await archive.drain()
+    finally:
+        blocked.release()
+    assert r2.objects[archive.content_hash(RAW)] == RAW
+    assert await snapshots() == []
+    assert len(reports) == 1
+    report = reports[0]
+    assert report['drop_reason'] == 'record_timeout' and report['dropped'] is True
+    assert report['failure_phase'] == phase
+    assert report[phase + '_ms'] >= 40
+    if phase != 'record_db':
+        assert report['record_db_ms'] is None
+    if phase == 'record_key_wait':
+        assert report['record_sem_wait_ms'] is None
 
 
 @pytest.mark.parametrize('mode,expected_rows', [('both', 1), ('r2', 1)])
@@ -642,6 +688,65 @@ async def test_db_deadline_reports_timeout_not_cancelled(clients, r2, monkeypatc
     assert any('record_timeout' in record.message for record in caplog.records)
 
 
+@pytest.mark.parametrize('phase', [
+    'compare_sem_wait', 'compare', 'record_key_wait', 'record_sem_wait', 'record_db',
+    'observe_sem_wait', 'observe',
+])
+async def test_cancelled_record_reports_elapsed_phase(clients, r2, monkeypatch, phase):
+    entered = asyncio.Event()
+    class BlockedGate(asyncio.Semaphore):
+        async def acquire(self):
+            entered.set()
+            return await super().acquire()
+    blocked_gate = BlockedGate(0)
+    async def blocked_work(*args, **kwargs):
+        entered.set()
+        await asyncio.Event().wait()
+    sem = asyncio.Semaphore(2)
+    key_lock = asyncio.Lock()
+    sem_calls = 0
+    def get_sem():
+        nonlocal sem_calls
+        sem_calls += 1
+        blocked_call = {'compare_sem_wait': 1, 'record_sem_wait': 2, 'observe_sem_wait': 3}.get(phase)
+        return blocked_gate if sem_calls == blocked_call else sem
+    monkeypatch.setattr(archive, '_get_sem', get_sem)
+    monkeypatch.setattr(archive, '_get_key_lock',
+                        lambda key: blocked_gate if phase == 'record_key_wait' else key_lock)
+    if phase == 'compare':
+        monkeypatch.setattr(archive, '_ignored_matches', blocked_work)
+    elif phase == 'record_db':
+        monkeypatch.setattr(archive, '_store_locked', blocked_work)
+    elif phase == 'observe':
+        monkeypatch.setattr(archive, '_observe_change', blocked_work)
+    # A prior version ensures the post-commit observation phases are reached.
+    if phase.startswith('observe'):
+        await archive._store(method='GET', endpoint_id=EP, provider='tikhub', url=URL,
+                             caller_body=b'', headers={}, status_code=200,
+                             media_type='application/json', body=b'{"before":1}',
+                             plan=archive_bodies.WritePlan('db'))
+        sem_calls = 0
+    reports = []
+    task = asyncio.create_task(archive._store(
+        method='GET', endpoint_id=EP, provider='tikhub', url=URL, caller_body=b'',
+        headers={}, status_code=200, media_type='application/json', body=RAW,
+        plan=archive_bodies.WritePlan('db'),
+        observation=archive_bodies.StorageReport(emit=reports.append)))
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        await asyncio.sleep(.01)
+    finally:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    assert len(reports) == 1
+    assert reports[0]['drop_reason'] == 'cancelled'
+    assert reports[0]['failure_phase'] == phase
+    assert reports[0][phase + '_ms'] > 0
+    assert reports[0]['dropped'] is (not phase.startswith('observe'))
+    assert sem._value == 2 and not key_lock.locked() and blocked_gate._value == 0
+
+
 async def test_cancel_before_start_reports_once(clients, r2, monkeypatch):
     reports = []
     archive.record(method='GET', endpoint_id=EP, provider='tikhub', url=URL,
@@ -652,6 +757,8 @@ async def test_cancel_before_start_reports_once(clients, r2, monkeypatch):
         task.cancel()
     await archive.drain()
     assert len(reports) == 1 and reports[0]['drop_reason'] == 'cancelled'
+    assert reports[0]['failure_phase'] is None
+    assert reports[0]['record_key_wait_ms'] is None and reports[0]['record_db_ms'] is None
 
 
 @pytest.mark.parametrize('error,reason', [
@@ -688,6 +795,37 @@ async def test_same_body_refetch_skips_duplicate_put(clients, r2, monkeypatch):
     reports = [p for name, p in events if name == 'archive_body_stored']
     assert [p['upload_status'] for p in reports] == ['uploaded', 'skipped_duplicate']
     assert all(p['storage'] == 'both' and not p['dropped'] for p in reports)
+
+
+@pytest.mark.parametrize('write_mode', ['both', 'r2'])
+async def test_new_and_identical_calls_skip_unused_normalization(clients, r2, monkeypatch, write_mode):
+    monkeypatch.setattr(get_settings(), 'archive_body_write', write_mode)
+    if write_mode == 'r2':
+        monkeypatch.setattr(get_settings(), 'archive_body_read_lookup', 'r2-first')
+    normalized = []
+    real_normalize = archive._normalized_hash
+    def normalize(body, paths):
+        normalized.append(body)
+        return real_normalize(body, paths)
+    monkeypatch.setattr(archive, '_normalized_hash', normalize)
+    for _ in range(2):
+        response = await clients.get(URL, headers={'Cache-Control': 'no-cache'})
+        assert response.status_code == 200 and response.content == RAW
+        await archive.drain()
+        assert normalized == []
+
+    # Default JSON equality still applies when the raw bytes actually differ.
+    reformatted = b'  ' + RAW + b'\n'
+    monkeypatch.setattr(service, 'relay', _fake_relay(200, reformatted))
+    assert (await clients.get(URL, headers={'Cache-Control': 'no-cache'})).content == reformatted
+    await archive.drain()
+    assert RAW in normalized and reformatted in normalized
+    async with db.session_maker() as s:
+        key = (await s.execute(select(ArchiveKey))).scalar_one()
+        assert key.stable_seen == 2 and key.change_seen == 0
+    rows = await snapshots()
+    assert len(rows) == 3
+    assert [row.content_hash for row in rows] == [archive.content_hash(raw) for raw in (RAW, RAW, reformatted)]
 
 
 async def test_concurrent_same_body_calls_share_one_put(clients, r2):
