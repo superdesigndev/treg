@@ -47,6 +47,15 @@ HTTP 200 with `error: apikey_not_found` for a garbage key; `token_reject_field="
 that body while allowing valid zero-credit accounts. `platform_key_millionverifier` reads
 `TREG_PLATFORM_KEY_MILLIONVERIFIER`; platform access also requires the existing allow-list.
 
+`FACECHECK` uses raw `Authorization` token injection and a connection-only POST `/api/info` probe.
+`token_reject_field="error"` rejects its HTTP-200 invalid-token envelope; zero credits and engine
+availability do not determine authentication. The provider stays own-key only. See [FaceCheck](facecheck.md).
+
+Key providers may opt into `token_required_fields`: every named probe field must be non-null,
+while zero and false remain valid. FaceCheck uses this to distinguish an account response from
+HTML or incomplete JSON. An inconclusive response returns 502 before any credential write, including
+on reconnect. Providers without this option retain their existing probe rules.
+
 ## Instagram grant methods (2026-09-01)
 
 Instagram is one provider with two explicit protocol profiles. The default `instagram-login`

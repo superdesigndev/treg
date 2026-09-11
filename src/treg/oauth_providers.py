@@ -111,6 +111,9 @@ class OAuthProvider:
     # The INVERSE: reject if this JSON field is present/truthy — for providers that answer 200 with an
     # error object on a bad key (Serpstat's JSON-RPC `error`).
     token_reject_field: str = ""
+    # Non-null fields required in a successful probe; zero and false remain valid values.
+    # Empty preserves status-only probes for providers that do not need this check.
+    token_required_fields: tuple[str, ...] = ()
     # POST-style verify probe, for providers whose key-check needs a request body (Serpstat's JSON-RPC
     # limits call). `probe_method` defaults to GET; `probe_json` is sent as the JSON body when set.
     probe_method: str = "GET"
@@ -1272,6 +1275,28 @@ SUMBLE = OAuthProvider(
     probe_path="/technologies/find", probe_method="POST",
     probe_json={"query": "treg-nonexistent-probe-20260909"},
     # Live 2026-09-09: bogus Bearer 401; valid key 200 with credits_used=0.
+)
+
+FACECHECK = OAuthProvider(
+    service="facecheck", display_name="FaceCheck.ID", auth_kind="key",
+    token_label="API token", token_placeholder="your FaceCheck API token",
+    token_header="Authorization", token_format="{secret}",
+    setup_url="https://facecheck.id/en/Face-Search/API",
+    setup_action_label="Get your FaceCheck API token",
+    setup_steps=("Create an API account or sign in to FaceCheck.",
+                 "Copy your API token and add search credits for full searches."),
+    setup_note="Use your own FaceCheck account. Full searches cost 3 credits; demo searches cover only 100,000 faces. Upload a photo, then submit and check the search through the API. Automatic waiting is not supported.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Search public webpages by face and return source links and match scores.",
+    base_url="https://facecheck.id", docs_url="https://facecheck.id/en/Face-Search/API",
+    examples=({"method": "POST", "path": "api/info",
+               "note": "Read remaining search credits and engine status. No request parameters."},),
+    # Connection-only POST probe: probe_path would also create a GET-only tool health check.
+    probe_url="https://facecheck.id/api/info", probe_method="POST", probe_json={},
+    # Live 2026-09-11: a bogus token returns HTTP 200 with error="Invalid API token! ...".
+    token_reject_field="error",
+    token_required_fields=("remaining_credits", "has_credits_to_search", "is_online"),
 )
 
 QUICKENRICH = OAuthProvider(
@@ -2813,7 +2838,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        APOLLO, PDL, AKTA, HUNTER, SUMBLE, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
+        APOLLO, PDL, AKTA, HUNTER, SUMBLE, FACECHECK, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers

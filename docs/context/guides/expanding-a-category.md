@@ -41,6 +41,11 @@ Contact Finder probe. All six data tools and five lookup utilities were live che
 subscription capacity uses API balance data and is separate from platform list pricing.
 Tests extend the existing auth, capacity and marketplace files. See [catalog](../architecture/catalog.md).
 
+FaceCheck follows the pasted-token path with raw `Authorization` injection. Its POST account probe
+rejects a bad token through the JSON `error` field even when HTTP is 200. The catalog is explicitly
+own-key only; native POST polling does not fit the shared async descriptor. Positive live checks
+remain unverified. See [FaceCheck](../architecture/facecheck.md).
+
 ## The two kinds of provider
 - **API-key** (`auth_kind="key"`) — the user pastes a key; self-serve; **the fast path** (research → implement
   → live-test in one session). This is the workhorse and where almost all growth happens.
@@ -90,6 +95,7 @@ Tests extend the existing auth, capacity and marketplace files. See [catalog](..
 | 200 on a bad key; a truthy field = valid | `token_verify_field` | Slack `ok`, Apollo `is_logged_in` |
 | 200 on a bad key; a field == a value = valid | `token_ok_field` + `token_ok_value` | Majestic `Code=="OK"` |
 | 200 on a bad key; an error object present = invalid | `token_reject_field` | Serpstat `error` |
+| Successful probe fields can be zero or false | `token_required_fields` requires non-null fields; combine with the bad-key error check | FaceCheck account fields; incomplete responses return 502 without saving the token |
 | 200 on a bad key; an `ERROR …` text body | handled automatically (text-error guard) | Semrush |
 | No free probe; valid key 400s on empty body, invalid 401s | `probe_reject_statuses=(401,403)` | Coresignal |
 | The provider's OWN "test my auth" endpoint answers 200 with prose for a bad key | probe a DATA endpoint instead | Tiingo `/api/test` (2026-08-14; `/tiingo/daily/aapl` 403s cleanly) |

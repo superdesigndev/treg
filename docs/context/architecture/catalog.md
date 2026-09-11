@@ -119,6 +119,15 @@ eligibility and compact displays. Runtime charging evaluates the first matching 
 values plus catalog defaults and freezes that settlement basis. Terminal usage or the recorded table
 evidence feeds the shared money settlement function; provider variation stays declarative in YAML.
 
+## FaceCheck own-key face search (2026-09-11)
+
+`facecheck.yaml` lists upload, search/status, input-image removal and account info from the native
+OpenAPI. Every operation is explicitly platform-blocked and uncached. POST/body polling and
+multipart search mutation cannot use the current shared-account ownership/async contract, so this
+addition supplies no platform billing or automatic waiting. See [FaceCheck](facecheck.md) for the
+call sequence, price uncertainty and the distinction between live bogus-token rejection and
+synthetic positive-path tests.
+
 ## QuickEnrich enrichment (2026-09-08)
 
 `quickenrich.yaml` exposes email and phone finding, reverse email, people at a domain,

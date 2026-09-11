@@ -617,6 +617,14 @@ async def connect_with_pasted_secret(
             "invalid_token", f"{provider.display_name} rejected that token ({why})"
         )
 
+    if any(payload.get(field) is None for field in provider.token_required_fields):
+        # An HTML maintenance page or incomplete JSON is not evidence of a valid key.
+        # Do not echo the body or replace an existing credential on this inconclusive response.
+        raise ConnectError(
+            "provider_unreachable",
+            f"could not validate {provider.display_name}: incomplete verification response; try again later",
+        )
+
     async with session_maker() as db:
         secret = (await db.execute(
             select(Secret).where(Secret.org_id == org_id, Secret.provider == provider.service)
