@@ -25,6 +25,7 @@ sources:
   - tests/test_ssrf_public_addresses.py
   - tests/test_call_application_contract.py
   - tests/test_call_cancellation.py
+  - tests/test_call_response_limits.py
   - tests/test_error_capture.py
   - tests/test_marketplace_call.py
   - tests/test_oauth_billed.py
@@ -493,6 +494,26 @@ can observe a changed status. Successful and failed polls retain diagnostic audi
 `kind=async_poll` and zero charged cost; `/calls` excludes them before pagination. The original
 submission shows the shared finalizer's settlement state and result in Activity. Terminal evidence
 is archived under that submission's call id, not the poll's id.
+
+## Complete downloads and bounded response evidence
+
+`MarketplaceCall.streamable_free_result` identifies platform fetch utilities with an explicit free
+price, zero estimate, a required fetch ownership rule, and no async submission, owned poll or produced
+resource evidence. Only successful GET responses bypass `_buffer_response`; the normal ownership
+check still runs before relay. Their existing zero-amount reserve/settle gates stay in place, while
+the full upstream stream and headers (including Range metadata) pass to the router's close-once
+lifecycle. The original generation task is not observed or finalized by the download. Audit byte
+size is unknown, not a fabricated zero. No body is archived or retained for idempotent replay:
+these free reads release the claim, so a retry fetches the provider again.
+
+Other responses needing settlement or ownership evidence have a hard 8 MiB complete-body budget.
+`_buffer_response` raises `GatewayFailed(response_buffer_limit)` on the first overflowing chunk,
+before any success headers, and closes the upstream in `finally` on EOF, exception or cancellation.
+The application releases the hold/claim and returns 502 with zero cost; no partial response reaches
+settlement, archive or replay. This is an explicit size limitation, not support for arbitrarily large
+metered JSON. The fault is attributed to treg's buffer limit, not to the provider. Own-key streams
+remain outside this limit. `tests/test_call_response_limits.py` exercises both real HTTP hops,
+CLI output, boundaries, Range, disconnects, settlement evidence, archive and replay behavior.
 
 
 ## HarvestAPI integration

@@ -39,6 +39,8 @@ limits: "monthly credit pool; 429 once exhausted"
 pricing_url: https://hunter.io/pricing  # Finding an email costs 1 credit; verifying costs 0.5. Annual billing ~30% cheaper.; free tier: 50 credits/month
 endpoints:
   - id: hunter.people.email.find
+    cache:
+      ignore_paths: ["data.verification.date"]
     domain: contacts
     capability: people.email.find
     platform: people
@@ -105,6 +107,8 @@ endpoints:
     docs_url: https://hunter.io/api-documentation/v2#email-verifier
 
   - id: hunter.companies.emails
+    cache:
+      ignore_paths: ["data.emails[*].verification.date"]
     domain: contacts
     capability: people.search
     platform: people

@@ -25,7 +25,7 @@ from ...models import Org
 from ...timeutil import utcnow_naive as _utcnow_naive
 from .idempotency import _release_idempotent_claim
 from .resolve import MarketplaceCall, _usd_to_micro
-from .types import UpstreamResponse
+from .types import GatewayFailed, UpstreamResponse
 
 
 # 4xx statuses that mean "the provider did not serve this, and it is NOT the caller's input" — our
@@ -63,7 +63,7 @@ def _platform_billable(status_code: int, cost_type: str) -> bool:
     return False
 
 
-_PLATFORM_BODY_MAX = 8 * 1024 * 1024  # buffer ceiling for a metered response (API JSON, not downloads)
+_PLATFORM_BODY_MAX = 8 * 1024 * 1024  # complete response evidence ceiling; free final downloads stream
 def _brightdata_record_count(body: bytes) -> int | None:
     """How many RECORDS a Bright Data Web Scraper response delivered, or None for "settle at the
     estimate". Bright Data bills $1.50/1000 records *delivered* and reports no charge field, so the
@@ -78,9 +78,8 @@ def _brightdata_record_count(body: bytes) -> int | None:
         HERE; the job's records bill when the snapshot is downloaded (its catalog entry is priced
         per_result for exactly that reason);
       - format=ndjson → one JSON object per line; format=csv → header line + one line per record.
-    A body that STARTS like JSON but does not parse is treated as truncated (the metered buffer
-    caps at _PLATFORM_BODY_MAX and drops the tail) → None, settle at the estimate, never a
-    line-count guess over a partial payload. Any other unrecognised shape → None for the same
+    A body that STARTS like JSON but does not parse is invalid or incomplete evidence:
+    return None and settle at the estimate, never a line-count guess over a partial payload. Any other unrecognised shape → None for the same
     reason: when we cannot count, the estimate is the honest number."""
     if body[:2] == b"\x1f\x8b":  # compress=true gzips the download — we can't count, estimate wins
         return None
@@ -97,7 +96,7 @@ def _brightdata_record_count(body: bytes) -> int | None:
             return len(lines)
         except ValueError:
             pass
-        if text[0] in "[{":  # JSON that broke mid-stream: the 8MB buffer truncated it
+        if text[0] in "[{":  # Invalid JSON must never be guessed as CSV
             return None
         return len(lines) - 1 if len(lines) > 1 else None  # csv: header + rows
     if isinstance(doc, list):
@@ -423,21 +422,26 @@ def _dig(doc, dotted: str):
 
 
 async def _buffer_response(response: UpstreamResponse) -> tuple[UpstreamResponse, bytes]:
-    """Drain a relayed streaming response into memory and return an equivalent plain Response.
+    """Read complete settlement evidence before sending headers; never return a prefix.
 
-    Metered calls give up streaming on purpose: settling needs the provider's own reported cost (which
-    lives in the body) and the telemetry row wants the response size, and neither can be known while
-    the bytes are still in flight. These are JSON API answers — the same payloads the catalog stores as
-    examples — so the memory cost is a few KB, and buffering happens BEFORE anything is sent to the
-    caller, which is what lets a mid-stream upstream failure still become a clean 502 + release."""
+    Oversized evidence is a gateway failure, so the caller's hold and idempotency claim
+    are released instead of charging from partial evidence or storing a corrupt success.
+    """
     chunks, size = [], 0
-    async for chunk in response.body_stream:
-        raw = chunk if isinstance(chunk, bytes) else str(chunk).encode("utf-8", "replace")
-        size += len(raw)
-        if size <= _PLATFORM_BODY_MAX:
+    try:
+        async for chunk in response.body_stream:
+            raw = chunk if isinstance(chunk, bytes) else str(chunk).encode("utf-8", "replace")
+            size += len(raw)
+            if size > _PLATFORM_BODY_MAX:
+                raise GatewayFailed(
+                    "response_buffer_limit", status_code=502,
+                    detail={"error": "response_buffer_limit",
+                            "message": "upstream response exceeds treg's 8 MiB settlement buffer; "
+                                       "no response was delivered and this call was not charged"})
             chunks.append(raw)
-    body = b"".join(chunks)
-    await response.close()
+        body = b"".join(chunks)
+    finally:
+        await response.close()
 
     async def buffered_body():
         yield body

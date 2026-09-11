@@ -3,6 +3,7 @@ title: Archive - versioned history and cache admission
 status: building
 sources:
   - src/treg/archive.py
+  - src/treg/catalog/hunter.yaml
   - src/treg/domain/catalog/results.py
   - src/treg/alembic/versions/0031_archive_result_admission.py
   - tests/test_cache_result_admission.py
@@ -193,8 +194,12 @@ dry run by default, `--apply` to write, `--render` for the prod allowlist dance.
 `domain.catalog.results.classify` inspects the already-buffered provider bytes without rewriting
 any response. `has_result_rules` enables result-aware behavior only for endpoints with a
 verified adapter and a nonempty hit/miss expression. Those endpoints reuse `Adapter.is_miss`.
-Three endpoints additionally validate result fields: `hunter.companies.emails`,
-`leadmagic.x.employee-finder`, and `seranking.google.keywords.volume`. Results are `found`,
+Strict result validators cover `hunter.companies.emails`, `leadmagic.x.employee-finder`,
+`seranking.google.keywords.volume`, `leadsforge.people.email.find`, `hunter.people.email.find`,
+and `findymail.search.name`. The last two require a shaped email string inside `data` or `contact`;
+an explicit null email is empty, and Findymail also accepts an explicit null contact as empty.
+Missing fields, empty strings and malformed addresses are unknown. Leadsforge additionally
+requires its successful status as described below. Results are `found`,
 `empty`, `error`, or `unknown`, with bounded reason codes. Hunter needs actual email values;
 LeadMagic needs person identity fields, not an email address; SE Ranking needs boolean
 `is_data_found` and a valid nonnegative volume for found rows. Zero volume is useful data. A
@@ -219,7 +224,9 @@ The pointer is owned by the archive writer and key ownership is checked on reads
 never deleted, so no cyclic foreign key is introduced.
 
 For endpoints with enabled hit/miss rules, only found-to-found observations can count stable.
-The default compares exact raw-byte hashes; declared `cache.ignore_paths` can relax only found-to-found equality.
+The default compares JSON with sorted object keys and compact whitespace; arrays, types and values
+remain significant. Declared `cache.ignore_paths` additionally excludes specific fields. Non-JSON
+or unavailable/ambiguous bodies fall back to exact raw-byte hashes.
 Found-to-empty counts one change and invalidates serving; repeated empty results neither grow
 nor shrink TTL. Empty-to-found counts a change and restores eligibility. Errors and unknowns add
 history under the existing capture policy but do not replace decisive evidence or update learning.
@@ -242,8 +249,9 @@ until a stable refetch resets it. The lookup prefers the learned timer (`ttl_s >
 fixed phase-1 guesses.
 
 **Comparison.** Result admission selects the decisive baseline and controls which transitions
-train TTL. Identical raw hashes count stable; differing hashes count changed unless an explicit
-`cache.ignore_paths` list makes the JSON comparison equal. The default list is empty. The legacy
+train TTL. Identical raw hashes count stable; differing hashes can still count stable when default
+JSON normalization, optionally excluding `cache.ignore_paths`, makes the comparison equal. The
+legacy
 field-noise heuristic remains removed; observation reporting never determines TTL.
 
 ## The refresh worker (PR 5)
@@ -299,7 +307,8 @@ endpoint below it; an endpoint's own `cache:` overrides. `catalog_store` carries
 into `provider_meta["cache"]` (dict, not stringified) and stamps the effective value onto each
 normalized endpoint (`entry["cache"]`, absent ⇒ None ⇒ forbidden). The provenance form is
 `{mode, license_quote, source_url, checked}` plus optional `ignore_paths` and `max_age_s` — a vendor-imposed refresh
-ceiling the learner (PR 5) must treat as a hard cap. `tests/test_archive.py` validates every
+ceiling the learner (PR 5) must treat as a hard cap. A comparison-only mapping containing
+`ignore_paths` need not declare a license mode; it retains the configured default retention policy. `tests/test_archive.py` validates every
 declared field in the shipped catalog: a judged entry must carry its quote, source and date.
 
 First judged set (checked 2026-08-27): **coingecko** `transient` with `max_age_s: 86400` — their
@@ -357,14 +366,16 @@ enable. Rollback in production is a dashboard env edit, no deploy.
 ## Conservative comparison and controlled serving (2026-09-08)
 
 The comparison setting and helper are removed. Old `TREG_ARCHIVE_COMPARISON_MODE` environment
-values are ignored, including `legacy_noise`; existing events and admin props still report the
-default `strict` mode. Endpoint declarations can now relax found-to-found comparison using
-`cache.ignore_paths`; `archive_change_observed.masked_by_ignore` reports actual rescued decisions.
+values are ignored, including `legacy_noise`. Events and admin props now report `json`: object
+order and whitespace are ignored by default. Endpoint declarations can further relax comparison
+using `cache.ignore_paths`; `archive_change_observed.masked_by_ignore` reports byte changes
+rescued by either normalization or declared field exclusions. An empty changed-path list with
+this flag indicates representation-only changes.
 
 TTL learning and lookup retain the original behavior: stable observations grow the timer by
 1.5, changed observations halve it, and TTL_NEVER remains respected. The fixed capability timer
 is only the initial/fallback value. Switching comparison mode does not reset existing timers,
-volatile paths or cumulative counters; strict observations continue updating the existing state.
+volatile paths or cumulative counters; new observations continue updating the existing state.
 There is no separate fixed-TTL mode or learning-version migration. Old stable/changed counters
 remain lifetime mixed-policy statistics, not a clean measurement of strict comparison.
 `/admin/archive` exposes that caveat plus comparison mode, adaptive TTL policy, endpoint
@@ -415,12 +426,17 @@ produce hypothetical hit counts or fresh-answer comparisons.
    keep-all decision (2026-08-29): unjudged providers' bodies ARE kept as short-lived cache, and
    the env flips it back to `forbidden` without a deploy. A JUDGED forbidden (a licence that was
    read and says no — Finnhub) is always respected, and a missing entry is never stored.
-3. **Tier.** Only METERED PLATFORM calls are recorded. Those responses are already fully buffered
+3. **Tier.** Only fully buffered METERED PLATFORM calls are recorded. Those responses are already fully buffered
    for the settle (`_buffer_response` needs the provider's reported cost), so recording adds no
    latency and no new data path. Own-key and own-tool calls stream and are never touched — that
    is the privacy line, enforced at write time, not filtered at read time.
 
 Gates 1+2 are `archive.policy(entry)`; gate 3 is the hook site's own context.
+
+Successful free final fetches that qualify for `MarketplaceCall.streamable_free_result` bypass both
+lookup and recording even though their zero-amount money lifecycle remains metered. They have no
+buffered body, so no empty or partial body/hash is recorded. Other calls exceeding the settlement
+buffer's 8 MiB limit fail before recording and cannot populate a cache or idempotent success.
 
 ## The cache key
 
@@ -713,44 +729,42 @@ ORDER BY totals.changes DESC, path_ratio DESC, per_path.path
 ```
 
 
-## Declared ignore comparison
+## JSON comparison and declared ignore paths
 
-`cache.ignore_paths` is an optional list in the same catalog block as `max_age_s`, empty by default.
-No endpoint has a list in this delivery. Only human-reviewed declarations can enable it; there is
-no automatic learning of ignore paths and `ArchiveKey.volatile_paths` remains unused.
+Every retained caller/refresh response uses `_ignored_matches`, even with no `cache.ignore_paths`.
+`_normalized_hash` parses a private JSON copy, deletes only declared paths, then hashes JSON with
+sorted object keys and compact separators. Array order, length, types and unignored values remain
+significant. Duplicate object keys, numbers whose parsing would lose precision, invalid JSON and
+unavailable bodies fall back to raw byte hashes. The original bytes, content hash, deduplication,
+history and served response never change.
 
-`_normalized_hash` parses a private JSON copy, deletes the declared paths, then hashes JSON with
-sorted object keys and compact separators. Array order, length and all unignored values remain
-significant; ignoring `items[*].request_id` preserves array elements, while `items[*]` deliberately
-removes all elements. Missing paths and type mismatches are no-ops. Normalization also disregards
-whitespace and object-key order whenever a nonempty list is declared. Non-JSON or unreadable
-baselines fall back to the original byte hashes. Ignore matching has no six-level observation
-limit. It never uses reported/truncated paths to make a decision.
+`cache.ignore_paths` is optional and empty by default; only explicit declarations exclude fields.
+Hunter declares `data.verification.date` for `hunter.people.email.find` and
+`data.emails[*].verification.date` for `hunter.companies.emails`. Date-only changes no longer shrink
+TTL, but mailbox values, scores, verification statuses and found/empty transitions remain significant.
+Other pilot endpoints declare no ignored fields, including Findymail's `contact.id`.
+A comparison-only mapping does not override retention policy or assert vendor licensing permission.
+There is no automatic field selection; `ArchiveKey.volatile_paths` remains unused.
 
-`_ignored_matches` preloads at most the latest and decisive snapshot bodies via `archive_bodies`
-in the background recorder, before the DB write stage. Pointer sessions close before object I/O.
-This optional pre-read holds the shared archive semaphore and has its own three-second budget,
-leaving the DB stage's 30 seconds intact. Hash-only baselines and unstored new bodies are skipped.
-It returns matching snapshot IDs only. `_store_locked` still locks and selects the actual baseline;
-if another recording advances it beyond those IDs, that recording conservatively uses raw hashes.
-No cross-process lock is held during object I/O, and no retry/reconciliation write is introduced.
-`ignore_body_unavailable` and `ignore_comparison_failed` process counters expose read failures.
+Path segments can begin with digits, and `[*]` selects array elements. Missing paths are no-ops.
+Deleting `items[*].request_id` keeps all elements; deleting `items[*]` deletes the array contents.
+Comparison has no six-level reporting limit and never uses reported/truncated paths as policy.
 
-The only relaxed decision is stable/changed TTL learning, including its existing counters and
-TTL_NEVER recovery. Found/empty transitions, hit/miss classification, decisive evidence, admission,
-raw body storage, `content_hash`, deduplication and response bytes are untouched. A cache hit still
-returns exactly the retained answer; the learned expiration can change only for an opted-in endpoint.
-Read/analysis failures preserve strict comparison. No schema migration, new DB write, serving
-allowlist change, production configuration, field selection UI or automated ignore proposal ships.
+`_ignored_matches` preloads at most the latest and decisive snapshot bodies before the DB write.
+It skips body reads for identical raw hashes. Pointer sessions close before object I/O. The pre-read
+uses the shared archive semaphore and a three-second budget, separate from the write deadline.
+Only matched snapshot IDs are passed to `_store_locked`; a concurrently changed baseline falls
+back to raw hashes without holding a row lock across I/O or adding a reconciliation write.
+`ignore_body_unavailable` and `ignore_comparison_failed` retain their diagnostic names for both
+default JSON comparison and explicit field exclusions. Reporting can be disabled independently;
+TTL comparison remains active.
 
-`changed_paths` and `masked_by_ignore` describe the same pair: the new body and the baseline
-used for its stable/changed TTL decision. Result-aware endpoints use the decisive found/empty
-snapshot, skipping intervening unknown/error evidence; legacy endpoints use the previous snapshot.
-Observations without a learning decision (including repeated empty results) emit no change event.
-The baseline ID is captured during recording; its pointer and bytes are read afterward under the
-existing session discipline, without adding DB writes.
-
-Ignore-path segments may begin with digits, e.g. `2fa_enabled` or `data.123status`.
+`changed_paths` and `masked_by_ignore` describe the baseline actually used for learning. The latter
+now covers default normalization as well as declared paths. Result-aware endpoints use their
+last decisive found/empty snapshot across unknown/error responses; legacy endpoints use the latest.
+Repeated empty results do not learn or emit change events. Ignore rules never relax admission,
+mask found/empty transitions or alter cache billing. Existing TTLs/counters are not backfilled by
+deployment; production operator caps bound served age independently of historical learned TTL.
 
 
 ## Leadsforge email cache pilot

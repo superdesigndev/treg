@@ -246,7 +246,7 @@ An authorized platform poll with an explicit `free` price and zero estimate is
 `_platform_settle`, including their spend checks, stale-hold sweep, auto-top-up scheduling and all
 new poll Hold/LedgerEntry/TagSpend writes. Ordinary authorization, usage limits and provider rate smoothing
 still apply. Its response reports `X-Treg-Cost-Micro: 0`; the original submission's hold remains
-owned by the original task and may close on this poll's terminal evidence. This exception does not cover fetch utilities, BYOK,
+owned by the original task and may close on this poll's terminal evidence. This no-new-hold exception does not cover fetch utilities, BYOK,
 billed OAuth, or a zero estimate on a paid endpoint.
 A 2xx that is not an accepted submission (not JSON, fails the endpoint's `expect` rule, or carries
 no task id / an off-allow-list poll URL: `application.call.service._submission_rejected`) never
@@ -900,6 +900,19 @@ values into the top-up ledger metadata and `topup_completed`, under the existing
 guard; webhook order and sequential redelivery do not change attribution or duplicate events.
 Missing/legacy attribution is `unknown`. No query inputs, URLs, API keys or provider results are
 copied into this metadata. Amounts, reservations, settlement and payment authorization are unchanged.
+
+## Response evidence size and free final downloads
+
+Settlement evidence must be complete. The call application's 8 MiB buffer raises a typed 502 on
+overflow and closes upstream; the failed call releases its reservation and idempotency claim.
+Partial JSON must not silently fall back to an estimate or be settled as a success. The original
+async submission's hold remains independent of a failing free status poll.
+
+An authorized, explicitly free final result GET with no body evidence consumers streams without
+buffering (`MarketplaceCall.streamable_free_result`). It retains the existing zero-amount
+reserve/settle gates and settles with an explicit zero override before returning the stream. It
+does not observe the original generation task or persist a response for idempotent replay; the
+label is released and retrying performs another free read. MIME type never decides billability.
 
 
 ## HarvestAPI integration

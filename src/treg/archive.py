@@ -535,7 +535,7 @@ async def _store(
         cache = (catalog_store.load().by_id.get(endpoint_id) or {}).get("cache")
         ignore_paths = cache.get("ignore_paths", []) if isinstance(cache, dict) else []
         ignored_matches = set()
-        if ignore_paths and plan.storage is not None and origin in ("caller", "refresh"):
+        if plan.storage is not None and origin in ("caller", "refresh"):
             async with _get_sem():
                 ignored_matches = await _ignored_matches(kh, body, ignore_paths)
 
@@ -582,9 +582,32 @@ def _change_json(body: bytes):
 
 
 def _normalized_hash(body: bytes, paths: list[str]) -> str | None:
-    """Delete only declared paths in a parsed copy; raw bytes and their identity never change."""
+    """Canonical JSON equality with optional field exclusions; keep raw identity unchanged.
+
+    Ambiguous objects and numbers that Python would round fall back to exact bytes.
+    """
+    from decimal import Decimal
+
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON key")
+            result[key] = value
+        return result
+
+    def exact_float(text):
+        value = float(text)
+        if Decimal(str(value)) != Decimal(text):
+            raise ValueError("lossy JSON number")
+        return value
+
+    def invalid_constant(_value):
+        raise ValueError("non-JSON numeric constant")
+
     try:
-        value = _change_json(body)
+        value = json.loads(body, object_pairs_hook=unique_object, parse_float=exact_float,
+                           parse_constant=invalid_constant)
 
         def remove(node, parts):
             part, *rest = parts
@@ -658,8 +681,10 @@ async def _ignored_matches(key_hash: str, body: bytes, paths: list[str]) -> set[
                 rows = (await s.execute(select(ArchiveSnapshot).where(
                     ArchiveSnapshot.key_id == key.id, ArchiveSnapshot.id.in_(ids))
                     .options(*archive_bodies.read_options("observation")))).scalars().all()
+                raw_hash = content_hash(body)
+                matches.update(row.id for row in rows if row.content_hash == raw_hash)
                 pointers = [(row.id, await archive_bodies.pointer(s, row, "observation"))
-                            for row in rows if _has_change_body(row)]
+                            for row in rows if row.content_hash != raw_hash and _has_change_body(row)]
             for snapshot_id, pointer in pointers:
                 previous = await archive_bodies.read(pointer, "observation")
                 if previous is None:

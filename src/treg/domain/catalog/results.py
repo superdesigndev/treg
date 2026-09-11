@@ -8,6 +8,8 @@ from typing import Literal
 
 STRICT_ENDPOINTS = frozenset({
     "leadsforge.people.email.find",
+    "hunter.people.email.find",
+    "findymail.search.name",
     "hunter.companies.emails",
     "leadmagic.x.employee-finder",
     "seranking.google.keywords.volume",
@@ -26,6 +28,10 @@ class Result:
 
 def _text(value) -> bool:
     return isinstance(value, str) and bool(value.strip())
+
+
+def _email(value) -> bool:
+    return isinstance(value, str) and bool(re.fullmatch(r"[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+", value))
 
 
 def has_result_rules(endpoint_id: str) -> bool:
@@ -63,8 +69,21 @@ def classify(endpoint_id: str, status: int, body: bytes) -> Result:
         status, email = doc.get("status"), doc.get("email")
         if status == "not_found" and email is None:
             return Result("empty", "no_email")
-        if (status == "succeeded" and isinstance(email, str)
-                and re.fullmatch(r"[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+", email)):
+        if status == "succeeded" and _email(email):
+            return Result("found", "email")
+        return Result("unknown", "invalid_shape")
+    if endpoint_id in ("hunter.people.email.find", "findymail.search.name"):
+        field = "data" if endpoint_id == "hunter.people.email.find" else "contact"
+        if not isinstance(doc, dict) or field not in doc:
+            return Result("unknown", "invalid_shape")
+        person = doc[field]
+        if field == "contact" and person is None:
+            return Result("empty", "no_email")
+        if not isinstance(person, dict) or "email" not in person:
+            return Result("unknown", "invalid_shape")
+        if person["email"] is None:
+            return Result("empty", "no_email")
+        if _email(person["email"]):
             return Result("found", "email")
         return Result("unknown", "invalid_shape")
     if endpoint_id == "seranking.google.keywords.volume":
