@@ -2,10 +2,12 @@
 from dataclasses import dataclass
 import json
 import math
+import re
 from typing import Literal
 
 
 STRICT_ENDPOINTS = frozenset({
+    "leadsforge.people.email.find",
     "hunter.companies.emails",
     "leadmagic.x.employee-finder",
     "seranking.google.keywords.volume",
@@ -55,6 +57,16 @@ def classify(endpoint_id: str, status: int, body: bytes) -> Result:
         except Exception:  # a predicate failure is not evidence of a business change
             return Result("unknown", "predicate_error")
         return Result("empty", "adapter_miss") if miss else Result("found", "adapter_hit")
+    if endpoint_id == "leadsforge.people.email.find":
+        if not isinstance(doc, dict):
+            return Result("unknown", "invalid_shape")
+        status, email = doc.get("status"), doc.get("email")
+        if status == "not_found" and email is None:
+            return Result("empty", "no_email")
+        if (status == "succeeded" and isinstance(email, str)
+                and re.fullmatch(r"[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+", email)):
+            return Result("found", "email")
+        return Result("unknown", "invalid_shape")
     if endpoint_id == "seranking.google.keywords.volume":
         if not isinstance(doc, list):
             return Result("unknown", "invalid_shape")

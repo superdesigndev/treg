@@ -427,6 +427,7 @@ async def admin_archive(
               "ttl_policy": "adaptive",
               "serve_endpoints": sorted(archive_mod.serve_endpoints()),
               "serve_percent": get_settings().archive_serve_percent,
+              "serve_max_age_s": get_settings().archive_serve_max_age_s,
               # Cumulative counters include observations from older comparison policies.
               "change_statistics_scope": "lifetime_mixed_comparison_modes",
             "worker_on": archive_mod.worker_enabled(),

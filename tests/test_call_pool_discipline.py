@@ -245,7 +245,7 @@ async def test_a_settle_that_loses_the_pool_once_retries_and_still_charges(
     clients: AsyncClient, platform_on, monkeypatch,
 ):
     """A settle that gives up forfeits real revenue (the hold is reaped in the org's favour), so a
-    transient pool wait gets exactly one retry — and nothing else does."""
+    transient pool wait gets exactly one retry (as does a PostgreSQL deadlock)."""
     original = ledger.settle_in_transaction
     calls = 0
 
@@ -289,3 +289,50 @@ async def test_auth_releases_a_single_slot_pool_before_an_application_session(
     finally:
         session_maker.kw["bind"] = original_bind
         await limited_engine.dispose()
+
+
+@pytest.mark.parametrize('sqlstate,failures,attempts', [('40P01', 1, 2), ('40P01', 2, 2),
+                                                     ('P0001', 1, 1)])
+async def test_wrapped_deadlock_retry_preserves_response_and_transaction(
+    clients, platform_on, monkeypatch, caplog, sqlstate, failures, attempts,
+):
+    """Inject after staged money writes to verify rollback and a fresh transaction on retry.
+
+    PostgreSQL raises the real driver exception with RAISE SQLSTATE; SQLite uses its observed
+    SQLAlchemy/asyncpg wrapper shape. Neither injection claims to reproduce a lock cycle.
+    An unrelated DB error with 'deadlock detected' in its message must not be retried.
+    """
+    from sqlalchemy import text
+    from sqlalchemy.exc import DBAPIError
+    from sqlalchemy.dialects.postgresql.asyncpg import AsyncAdapt_asyncpg_dbapi
+    from treg.models import LedgerEntry
+
+    original = ledger.settle_in_transaction
+    sessions = []
+    async def interrupted(db, *args, **kwargs):
+        sessions.append(db)
+        charged = await original(db, *args, **kwargs)
+        if len(sessions) <= failures:
+            if db.bind.dialect.name == 'postgresql':
+                await db.execute(text("DO $$ BEGIN RAISE EXCEPTION USING ERRCODE = '" + sqlstate
+                                      + "', MESSAGE = 'deadlock detected injection'; END $$"))
+            error = AsyncAdapt_asyncpg_dbapi.Error('deadlock detected injection')
+            error.sqlstate = sqlstate
+            raise DBAPIError(None, None, error)
+        return charged
+    monkeypatch.setattr(ledger, 'settle_in_transaction', interrupted)
+    org_id = (await clients.get('/orgs')).json()[0]['org_id']
+    before = (await clients.get(f'/orgs/{org_id}/balance')).json()['balance_micro']
+    response = await clients.get(f'/call/{EP}?aweme_id=7')
+    assert response.status_code == 200
+    assert len(sessions) == attempts and len({id(s) for s in sessions}) == attempts
+    succeeded = sqlstate == '40P01' and failures == 1
+    assert response.headers['X-Treg-Cost-Micro'] == str(EP_MICRO if succeeded else 0)
+    async with session_maker() as db:
+        holds = (await db.execute(select(Hold).where(Hold.org_id == org_id))).scalars().all()
+        entries = (await db.execute(select(LedgerEntry).where(
+            LedgerEntry.org_id == org_id, LedgerEntry.kind == 'settle'))).scalars().all()
+        assert len(holds) == (0 if succeeded else 1)
+        assert len(entries) == (1 if succeeded else 0)
+        assert await ledger.balance_of(db, org_id) == before - EP_MICRO
+    assert ('settle/release failed' in caplog.text) == (not succeeded)

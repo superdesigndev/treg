@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from collections.abc import Callable
 
 from sqlalchemy import update
-from sqlalchemy.exc import TimeoutError as PoolTimeoutError
+from sqlalchemy.exc import DBAPIError, TimeoutError as PoolTimeoutError
 
 from ... import adsconv
 from ...domain.capacity import marks as capacity_marks
@@ -560,10 +560,14 @@ async def _platform_settle(
     try:
         try:
             charged = await _close()
-        except PoolTimeoutError:
-            # No pool slot within `pool_timeout`: a transient wait, not a broken ledger. A settle that
-            # gives up here forfeits the charge (the hold is reaped in the org's favour) — real revenue,
-            # so one short retry is worth it. Anything else falls straight through to the log.
+        except (PoolTimeoutError, DBAPIError) as exc:
+            # asyncpg deadlocks arrive as SQLAlchemy DBAPIError with SQLSTATE on its orig wrapper.
+            # Retry only 40P01, never an error-message match or an arbitrary database failure.
+            if isinstance(exc, DBAPIError) and getattr(exc.orig, "sqlstate", None) != "40P01":
+                raise
+            # _close has exited its session, rolling back all staged money/overflow writes.
+            # One fresh transaction gets the same bounded retry as a pool timeout; another failure
+            # goes to the log and leaves the hold for the reaper. No upstream call is repeated.
             await asyncio.sleep(0.5)
             charged = await _close()
     except Exception as exc:  # noqa: BLE001 — loudly, but never into the caller's response

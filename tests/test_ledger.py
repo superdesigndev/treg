@@ -903,3 +903,53 @@ async def test_demo_orgs_get_no_promo_credit(c: AsyncClient):
         from treg.application.signup import _grant_signup_promo
         await _grant_signup_promo(db, await db.get(Org, org_id), user_id=-1)
         assert await ledger.balance_of(db, org_id) == 0
+
+
+async def test_concurrent_settles_lock_by_id_but_consume_by_business_priority(c, monkeypatch):
+    """Check both emitted PostgreSQL SQL and consumption, on two sessions for one org.
+
+    SQLite ignores FOR UPDATE: there this verifies the SQL contract and accounting only.
+    The serial PostgreSQL job additionally exercises actual concurrent row locking.
+    This does not force the old planner to choose opposite scan orders.
+    """
+    from datetime import timedelta
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.sql import Select
+
+    monkeypatch.setattr(get_settings(), 'platform_margin', 0)
+    async with session_maker() as db:
+        org = Org(name='Lock ordering', slug='lock-ordering', balance_micro=3000)
+        db.add(org)
+        await db.flush()
+        org_id = org.id
+        now = ledger._now()
+        for block_id, kind, age in [('a-new', 'purchased', 0), ('b-old', 'purchased', 1),
+                                    ('z-promo', 'promotional', 0)]:
+            db.add(CreditBlock(id=block_id, org_id=org_id, kind=kind, amount_micro=1000,
+                               remaining_micro=1000, created_at=now - timedelta(days=age)))
+        await db.commit()
+        for call_id in ('ordered-one', 'ordered-two'):
+            await ledger.reserve(db, org_id, 'test.operation', 1000, call_id=call_id)
+
+    statements = []
+    execute = AsyncSession.execute
+    async def checked(self, statement, *args, **kwargs):
+        if isinstance(statement, Select) and statement._for_update_arg is not None:
+            sql = str(statement.compile(dialect=postgresql.dialect()))
+            if 'FROM creditblock' in sql:
+                statements.append(sql)
+        return await execute(self, statement, *args, **kwargs)
+    monkeypatch.setattr(AsyncSession, 'execute', checked)
+    ready = asyncio.Barrier(2)
+    async def settle(call_id):
+        async with session_maker() as db:
+            await ready.wait()
+            return await ledger.settle(db, call_id)
+    assert await asyncio.gather(settle('ordered-one'), settle('ordered-two')) == [1000, 1000]
+    assert len(statements) == 2
+    assert all('ORDER BY creditblock.id FOR UPDATE' in sql for sql in statements)
+    async with session_maker() as db:
+        blocks = await ledger.blocks_of(db, org_id)
+        assert {b.id: b.remaining_micro for b in blocks} == {'a-new': 1000, 'b-old': 0, 'z-promo': 0}
+    assert await _assert_invariant(org_id) == 1000

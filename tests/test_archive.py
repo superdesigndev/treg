@@ -1313,6 +1313,45 @@ async def test_strict_comparison_preserves_existing_ttl(clients, serve, monkeypa
         assert props["cache_window_s"] == timer
 
 
+@pytest.mark.parametrize("learned,cap,wanted,age,window,outcome", [
+    (86400, 3600, None, 1800, 3600, "hit"),
+    (86400, 3600, None, 7200, 3600, "stale"),
+    (1800, 3600, None, 900, 1800, "hit"),
+    (30 * 86400, None, None, 15 * 86400, 30 * 86400, "hit"),
+    (86400, 3600, 600, 900, 600, "stale"),
+    (86400, 3600, 7200, 1800, 3600, "hit"),
+    (600, 3600, 1800, 900, 600, "stale"),
+])
+async def test_serve_caps_learned_ttl_only_by_declared_and_caller_limits(
+    clients, serve, monkeypatch, learned, cap, wanted, age, window, outcome,
+):
+    from datetime import timedelta
+    entry = catalog_store.load().by_id[EP]
+    monkeypatch.setitem(entry, "cache", {"mode": "transient", "max_age_s": cap})
+    await clients.get(f"/call/{EP}?aweme_id=7")
+    await archive.drain()
+    async with session_maker() as session:
+        key = (await session.execute(select(ArchiveKey))).scalars().one()
+        snap = (await session.execute(select(ArchiveSnapshot))).scalars().one()
+        key.ttl_s = learned
+        snap.fetched_at -= timedelta(seconds=age)
+        session.add(key)
+        session.add(snap)
+        await session.commit()
+    events = []
+    monkeypatch.setattr(call_service.analytics, "capture",
+                        lambda who, event, props, **kw: events.append((event, props)))
+    headers = {} if wanted is None else {"X-Treg-Max-Age": str(wanted)}
+    response = await clients.get(f"/call/{EP}?aweme_id=7", headers=headers)
+    assert response.status_code == 200
+    assert (response.headers.get("x-treg-cache") == "hit") == (outcome == "hit")
+    props = [p for e, p in events if e == "tool_called"][-1]
+    assert props["cache_outcome"] == outcome
+    assert props["cache_window_s"] == window
+    if cap is None:
+        assert learned > archive.ttl_for(entry)
+
+
 @pytest.mark.parametrize("old,new,paths", [
     ({"items": [{"id": 1}, {"id": 2}]}, {"items": [{"id": 3}, {"id": 4}]}, ["items[*].id"]),
     ({"a": 1}, {"b": 2}, ["a", "b"]),

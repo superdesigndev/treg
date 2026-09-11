@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, PositiveInt, field_validator
 from urllib.parse import urlsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -329,6 +329,8 @@ class Settings(BaseSettings):
     archive_serve_endpoints: str = ""
     # Stable team/endpoint cohorts; 0 disables serving, 100 includes every team.
     archive_serve_percent: int = 0
+    # Operator freshness ceilings by exact endpoint ID; independent of vendor declarations.
+    archive_serve_max_age_s: dict[str, PositiveInt] = Field(default_factory=dict)
     # Bodies above this size are hash-counted but never stored (skipped whole, not truncated):
     # the archive is for API JSON answers, not downloads. Statistics still record size_bytes.
     archive_max_body_bytes: int = 2_000_000

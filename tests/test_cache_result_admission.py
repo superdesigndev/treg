@@ -331,9 +331,78 @@ async def test_ignore_cannot_mask_result_transitions_and_uses_decisive_baseline(
     k = await _key()
     assert (k.stable_seen, k.change_seen, k.result_state) == (1, 1, 'empty')
     observed = [p for name, p in events if name == 'archive_change_observed']
-    assert [p['masked_by_ignore'] for p in observed] == [False, True, False]
+    # Unknown evidence does not drive learning or produce a comparison event. The rescued
+    # found comparison must describe the decisive found body, not the intervening empty object.
+    assert [p['masked_by_ignore'] for p in observed] == [True, False]
+    assert observed[0]['changed_paths'] == ['data.emails[*].value']
+    assert observed[0]['path_count'] == 1
+    assert observed[0]['sole_path'] == 'data.emails[*].value'
+    assert observed[1]['changed_paths'] == ['data.emails[*]', 'meta.results']
     await _call(clients, monkeypatch, EMPTY)
     assert (await _key()).change_seen == 1
     response = await _call(clients, monkeypatch, changed)
     assert response.content == changed and 'x-treg-cache' not in response.headers
     assert (await _key()).change_seen == 2
+
+
+@pytest.mark.parametrize("raw", [
+    b'{"status":"succeeded","email":""}',
+    b'{"status":"failed","email":"person@example.com"}',
+    b'{"status":"succeeded","email":123}',
+    b'{"status":"succeeded","email":"not-an-email"}',
+    b'{"status":"not_found"}',
+])
+async def test_leadsforge_invalid_results_never_serve(clients, monkeypatch, raw):
+    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'leadsforge')
+    monkeypatch.setenv('TREG_PLATFORM_KEY_LEADSFORGE', 'test-key')
+    get_settings.cache_clear()
+    settings = get_settings()
+    monkeypatch.setattr(settings, 'archive_mode', 'serve')
+    monkeypatch.setattr(settings, 'archive_serve_endpoints', 'leadsforge.people.email.find')
+    monkeypatch.setattr(settings, 'archive_serve_percent', 100)
+    try:
+        monkeypatch.setattr(service, 'relay', _fake_relay(200, raw))
+        for _ in range(2):
+            r = await clients.post('/call/leadsforge.people.email.find', json={'personID':'synthetic-person'})
+            await archive.drain()
+            assert r.status_code == 200 and r.content == raw
+            assert r.headers.get('x-treg-cache') != 'hit'
+    finally:
+        get_settings.cache_clear()
+
+
+async def test_operator_cap_bounds_existing_ttl_and_preserves_bypass(clients, cache_on, monkeypatch):
+    from datetime import timedelta
+    settings = get_settings()
+    monkeypatch.setattr(settings, 'archive_serve_max_age_s', {EP: 86400})
+    await _call(clients, monkeypatch, FOUND)
+    async with session_maker() as s:
+        k = (await s.execute(select(ArchiveKey))).scalar_one()
+        k.ttl_s = 30 * 86400
+        snap = await s.get(ArchiveSnapshot, k.result_snapshot_id)
+        snap.fetched_at -= timedelta(hours=23)
+        s.add(k)
+        s.add(snap)
+        await s.commit()
+    assert (await _call(clients, monkeypatch, EMPTY)).headers['x-treg-cache'] == 'hit'
+    async with session_maker() as s:
+        snap = (await s.execute(select(ArchiveSnapshot))).scalar_one()
+        snap.fetched_at -= timedelta(hours=2)
+        s.add(snap)
+        await s.commit()
+    fresh = await _call(clients, monkeypatch, FOUND)
+    assert 'x-treg-cache' not in fresh.headers
+    bypass = await _call(clients, monkeypatch, EMPTY, live=True)
+    assert bypass.content == EMPTY and 'x-treg-cache' not in bypass.headers
+
+
+@pytest.mark.parametrize('body,state', [
+    ({'status':'succeeded','email':'person@example.com'}, 'found'),
+    ({'status':'not_found'}, 'empty'),
+    ({'status':'not_found','email':'person@example.com'}, 'unknown'),
+    ({'email':'person@example.com'}, 'unknown'),
+    ({'status':'succeeded','email':' person@example.com'}, 'unknown'),
+])
+def test_leadsforge_result_contract(body, state):
+    from treg.domain.catalog.results import classify
+    assert classify('leadsforge.people.email.find', 200, json.dumps(body).encode()).state == state
