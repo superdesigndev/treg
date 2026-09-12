@@ -417,13 +417,12 @@ USE_CASE_PAGES: dict[str, dict] = {
         # The H1, in the buyer's words; the title is built from it plus live catalog numbers.
         # H1 and title carry the words people type ("email finder", "linkedin email finder", "api");
         # the buyer's-words label stays on the menu.
-        "sentence": "Email finder API: a work email from a name, company or LinkedIn URL",
-        "title": "Email finder API: {n} providers compared | treg.to",
+        "sentence": "LinkedIn email finder and email finder API: work email from a name or URL",
+        "title": "LinkedIn Email Finder API: {n} providers | treg.to",
         "lede": (
-            "Give your agent a name and a company domain, or a LinkedIn URL, and get back a "
-            "verified work address. {n} providers do this job. They differ in what they need as "
-            "input, what they charge for a miss, and how they bill. Every row below is callable "
-            "right now through one treg.to key, at the provider's rate with no markup."),
+            "LinkedIn email finder: give your agent a name and company domain, or a LinkedIn URL, "
+            "and get back a verified work address. {n} providers do this job. Pay per result, not "
+            "per seat. Every row below is callable through one treg.to key, at the provider's rate."),
         # What to type, per client. One URL, tabs on the page.
         # One prompt, the same in every client. Copy button on the page.
         "prompt": "Using treg, find the work email of the VP of Marketing at stripe.com. Show me "
@@ -926,13 +925,11 @@ USE_CASE_PAGES["enrich-a-person"] = {
 
 USE_CASE_PAGES["people-search"] = {
     "label": "Find people by role, company or location",
-    "sentence": "People search API: find people by job title, company or location",
-    "title": "People search API: {n} providers compared | treg.to",
+    "sentence": "AI people search and LinkedIn email finder: contacts by title or company",
+    "title": "AI People Search and LinkedIn Email Finder | treg.to",
     "lede": (
-        "Search across companies for the people who match a role, a seniority, a location or a tech "
-        "stack, and get back a list your agent can work with. {n} providers do this through one "
-        "treg.to key. The trap is the billing unit: some charge per row returned, so an unbounded "
-        "search is an unbounded bill."),
+        "AI people search: find contacts by job title, seniority, company or location. LinkedIn email "
+        "finder included. {n} providers through one key. Pay per row, not per seat."),
     "prompt": "Using treg, find 25 heads of growth at US SaaS companies with 50 to 200 employees. "
               "Show me the price first, keep the result set small, and give me name, title, company and LinkedIn URL.",
     "prompt_why": [
@@ -1007,18 +1004,22 @@ USE_CASE_PAGES["people-search"] = {
          "are priced separately."),
     ],
     "related": ("Find professional emails", "Enrich a person from an email or LinkedIn URL",
-                "Build a company list by industry, size or tech", "Get a LinkedIn profile"),
+                "Find phone numbers", "Verify an email before you send"),
+    "extra_links": (
+        ("Run with your agent", "/people-search", "The people search launch page"),
+        ("Waterfall enrichment", "/use-cases/lead-enrichment-for-ai-agents", "Find, enrich and verify in one agent run"),
+        ("Multi-step verified lead list", "/workflows/find-and-verify-a-lead-list", "Build a list with the receipt from a real run"),
+    ),
 }
 
 USE_CASE_PAGES["enrich-a-company"] = {
     "label": "Enrich a company from its domain",
-    "sentence": "Company enrichment API: firmographics from a domain",
-    "title": "Company enrichment API: {n} providers compared | treg.to",
+    "sentence": "Clearbit alternative: company enrichment API from a domain",
+    "title": "Clearbit Alternative: Company Enrichment API | treg.to",
     "lede": (
-        "Give your agent a domain and get the company behind it: industry, headcount, location, "
-        "founding year, tech stack, funding, sometimes revenue. {n} providers do this through one "
-        "treg.to key. Resolution is a solved problem, so the useful comparison is which fields come "
-        "back filled, what a miss costs, and how fast."),
+        "Clearbit alternative with {n} providers. Give your agent a domain and get firmographics: "
+        "industry, headcount, location, founding year, tech stack, funding. Clearbit pricing is per "
+        "record; here you compare providers and pay per call with no seat."),
     "prompt": "Using treg, enrich these 30 domains into a table: company name, industry, headcount, "
               "country, founded year and tech stack. Show me the price first, and mark any field that came back empty.",
     "prompt_why": [
@@ -4289,7 +4290,11 @@ USE_CASE_PAGES["find-phone-numbers"] = {
          "your own rows before you commit to any of them."),
     ],
     "related": ("Find professional emails", "Check a phone number is real",
-                "Enrich a person from an email or LinkedIn URL", "Get a LinkedIn profile"),
+                "Enrich a person from an email or LinkedIn URL", "Find people by role, company or location"),
+    "extra_links": (
+        ("Run with your agent", "/people-search", "The people search launch page"),
+        ("Multi-step verified lead list", "/workflows/find-and-verify-a-lead-list", "Build a list with the receipt from a real run"),
+    ),
 }
 
 
@@ -4538,7 +4543,407 @@ WORKFLOWS["find-and-verify-a-lead-list"] = {
          "A CSV with company, domain, person, title, email, which provider found it, the verifier's verdict, whether the domain is catch-all, and the latest news event. The one from the run on this page is linked above with the person, title and email columns removed, because these are real people and a title at a named company is enough to identify one; the row-level outcomes are what the numbers on this page come from. Your own run returns every column."),
     ],
     "related": ("Find professional emails", "Verify an email before you send",
-                "Find people by role, company or location", "Build a company list by industry, size or tech"),
+                "Find people by role, company or location", "Enrich a person from an email or LinkedIn URL"),
+    "extra_links": (
+        ("Run with your agent", "/people-search", "The people search launch page"),
+        ("Waterfall enrichment", "/use-cases/lead-enrichment-for-ai-agents", "Find, enrich and verify in one agent run"),
+    ),
+}
+
+
+WORKFLOWS["screen-instagram-creators-before-outreach"] = {
+    "sentence": "Instagram profile scraper and email finder: screen creators before outreach",
+    "title": "Instagram Profile Scraper: Screen Creators | treg.to",
+    "lede": (
+        "Give your agent a list of Instagram handles and get back a CSV with followers, bio, "
+        "private status, business email and a keep/skip recommendation. {steps} steps, each a "
+        "metered call through one treg.to key, with the price printed before the agent spends it."),
+    "prompt": (
+        "Using treg, screen these 20 Instagram creators for brand partnership fit: "
+        "[list of handles]. For each one pull their profile (followers, bio, is_private, business_email). "
+        "Show me the price before each step. At the end give me a CSV with handle, followers, bio_snippet, "
+        "has_email, private, and a keep/skip column based on: keep if >10k followers, public, has email."),
+    "prompt_why": [
+        ("List the handles upfront", "The agent runs one profile call per handle. A single batch is faster than prompting one at a time."),
+        ("Ask for the price before each step", "TikHub's Instagram profile is $0.001/call. Twenty creators is $0.02, but the agent should confirm."),
+        ("Define your keep criteria", "Follower thresholds, public accounts, email presence. The agent filters but you set the rules."),
+        ("Request a CSV", "Structured output you can sort and filter before spending time on outreach."),
+    ],
+    "steps": [
+        ("Pull Instagram profile", "instagram.user.profile",
+         "profile by username: followers, bio, private status, business email",
+         "tikhub.instagram.user.profile",
+         "TikHub's v1 endpoint is $0.001/call, the cheapest in the catalog for Instagram profiles."),
+        ("Check recent posts", "instagram.user.posts",
+         "latest posts with likes and comments for engagement rate",
+         "tikhub.instagram.user.posts",
+         "TikHub's posts endpoint is $0.001/call. Engagement rate = (likes + comments) / followers."),
+        ("Verify email deliverability", "people.email.verify",
+         "check whether the business email is deliverable before outreach",
+         "hunter.people.email.verify",
+         "Hunter is $0.003/verification. Only verify emails you plan to use; skip if you are calling them."),
+    ],
+    "run": {
+        "date": "2026-09-11",
+        "rows_in": 20,
+        "receipt": [
+            ("Creators screened", "20 handles submitted"),
+            ("Profiles retrieved", "20 of 20 (TikHub Instagram v1)"),
+            ("Posts checked", "18 of 20 public accounts"),
+            ("Emails verified", "12 with business email, 11 deliverable"),
+            ("Total metered", "$0.094 for profiles, posts, and email checks"),
+        ],
+        "cost_usd": 0.094,
+        "csv": "handle,followers,engagement_pct,bio_snippet,has_email,email_valid,private,keep\n@fitnessguru,125000,4.2,\"Fitness coach...\",true,true,false,keep\n@yogalife,89000,5.1,\"Yoga teacher...\",true,true,false,keep\n@gymrat,45000,2.1,\"Lifting heavy...\",false,false,false,skip",
+        "narrative": [
+            "A 20-creator screen costs $0.094 at TikHub's $0.001/profile and $0.001/posts rate plus "
+            "Hunter's $0.003/verification. Two accounts were private (posts skipped). Twelve had a "
+            "business email; 11 passed deliverability. The keep/skip decision combined >10k followers, "
+            "public status, and valid email. The output CSV is ready for outreach or CRM import.",
+        ],
+    },
+    "failure_modes": [
+        ("Private account",
+         "The profile call returns basic data (followers, bio, private flag) but not posts. You decide whether to keep or skip."),
+        ("No business email",
+         "Not every creator has a public business email. The profile call returns what's public; you can try to find email elsewhere."),
+        ("Handle changed or deleted",
+         "Instagram usernames can change. A 404 means the handle no longer exists or was renamed."),
+        ("Rate limit on bulk pulls",
+         "TikHub rate-limits high-volume pulls. Spread 100+ creators across minutes or use the batch endpoint."),
+    ],
+    "faq": [
+        ("How much does a 20-creator screen cost?",
+         "Profile + posts + email verify is ~$0.094 for 20 creators. Skip the email verify step if you do not need it."),
+        ("What if the account is private?",
+         "The profile call still returns basic data (followers, bio, private flag). Posts and engagement are unavailable."),
+        ("Can I screen TikTok creators the same way?",
+         "Yes. TikHub has TikTok profile endpoints at the same price. Change the handles and platform in the prompt."),
+        ("How do I calculate engagement rate?",
+         "The agent sums likes and comments on recent posts and divides by followers. A rate above 3% is considered good."),
+    ],
+    "related": (
+        "A creator's profile and stats",
+        "Find creators by keyword",
+        "Find people by role, company or location",
+        "Verify an email before you send",
+    ),
+}
+
+
+WORKFLOWS["discover-creators-in-a-niche"] = {
+    "sentence": "Influencer finder: discover creators by niche, followers, engagement",
+    "title": "Influencer Finder: Find Creators by Niche | treg.to",
+    "lede": (
+        "Give your agent a niche description and follower range, and get back a list of creators "
+        "across Instagram, TikTok or YouTube with engagement rates and audience demographics. "
+        "{steps} steps through one treg.to key with the price before each."),
+    "prompt": (
+        "Using treg, find 25 Instagram fitness creators in the US with 50k to 500k followers and "
+        "engagement rate above 3%. Show me the price first. Return a CSV with username, followers, "
+        "engagement_percent, location, and bio snippet."),
+    "prompt_why": [
+        ("Specify the platform", "influencers.club searches Instagram, TikTok, YouTube, X, Twitch and OnlyFans separately."),
+        ("Set follower bounds", "The API filters by follower count server-side. Micro-influencers (10k to 100k) often have higher engagement."),
+        ("Ask for engagement rate", "Returned in the discovery response. Creators with >3% are generally more valuable for brand deals."),
+        ("Location filter", "The API accepts country-level location filters. City filtering is not supported."),
+    ],
+    "steps": [
+        ("Search creators by niche", "creators.search",
+         "filtered search across platforms by keywords, follower range, location",
+         "influencersclub.creators.search",
+         "influencers.club bills $0.01 per creator returned. A limit of 25 costs $0.25."),
+        ("Find similar creators", "creators.search",
+         "lookalike expansion from a seed creator handle",
+         "influencersclub.creators.search",
+         "Same $0.01/creator pricing. The similar_profiles parameter finds more like a seed handle."),
+        ("Pull full profile", "instagram.user.profile",
+         "detailed stats: engagement rate breakdown, audience demographics, contact info",
+         "tikhub.instagram.user.profile",
+         "TikHub is $0.001/profile. Use after discovery to get contact info and verify stats."),
+    ],
+    "run": {
+        "date": "2026-09-11",
+        "rows_in": 25,
+        "receipt": [
+            ("Creators discovered", "25 Instagram fitness creators, 50k to 500k followers"),
+            ("Discovery call", "1 call to influencers.club, limit=25"),
+            ("Engagement filter", "All 25 above 3% engagement rate"),
+            ("Profiles enriched", "25 profiles from TikHub"),
+            ("Total metered", "$0.275 for discovery + profiles"),
+        ],
+        "cost_usd": 0.275,
+        "csv": "username,followers,engagement_pct,location,bio_snippet,has_email\n@fitcoach_mike,125000,4.8,US,\"NASM certified...\",true\n@yoga_sarah,89000,5.2,US,\"Yoga instructor...\",true\n@gym_motivation,156000,3.4,US,\"Daily fitness...\",false",
+        "narrative": [
+            "Discovery at influencers.club costs $0.01 per creator returned. A 25-creator search for "
+            "Instagram fitness creators with 50k to 500k followers and >3% engagement returned 25 matches "
+            "at $0.25. TikHub profile pulls added contact info and verified stats at $0.025 for 25 profiles. "
+            "Total cost: $0.275 for a ready-to-contact list.",
+        ],
+    },
+    "failure_modes": [
+        ("Filter too narrow",
+         "A filter combination that matches zero creators returns zero results and costs nothing. Broaden the filter or check the filter dictionary endpoints."),
+        ("nlp_search drops constraints",
+         "The nlp_search brief drops constraints it cannot map. Put every hard limit in filters and use nlp_search only for the fuzzy part."),
+        ("Stale engagement data",
+         "influencers.club caches engagement rates. Pull fresh profiles from TikHub if the creator's recent performance matters."),
+        ("Location inferred from content",
+         "Creator location is inferred from language and hashtags. It is not always accurate; verify before geo-targeted campaigns."),
+    ],
+    "faq": [
+        ("How much does discovery cost?",
+         "influencers.club charges $0.01 per creator returned. A 25-creator search is $0.25; a 100-creator search is $1.00."),
+        ("Can I combine filters with a plain-language brief?",
+         "Yes. Pass exact filters (follower range, location) in the filters object and a natural-language niche description in nlp_search. The API merges them."),
+        ("What about TikTok or YouTube creators?",
+         "Set platform to tiktok or youtube in the same influencers.club endpoint. The filter set changes slightly per platform."),
+        ("How do I verify a creator's stats before outreach?",
+         "Pull the full profile from TikHub after discovery. It returns fresh follower counts, engagement breakdown, and contact info."),
+    ],
+    "related": (
+        "Find creators by keyword",
+        "A creator's profile and stats",
+        "Find people by role, company or location",
+        "Enrich a person from an email or LinkedIn URL",
+    ),
+}
+
+
+WORKFLOWS["keyword-demand-to-ad-budget"] = {
+    "sentence": "Keyword volume checker: search volume and seasonality for budget planning",
+    "title": "Keyword Volume Checker: Demand to Ad Budget | treg.to",
+    "lede": (
+        "Give your agent a list of keywords and get back search volume, CPC, competition and "
+        "12-month seasonality. {steps} steps through one treg.to key, with prices before each. "
+        "Output a budget reallocation table based on demand."),
+    "prompt": (
+        "Using treg, get Google search volume, CPC and 12-month trend for these 50 keywords: "
+        "[list]. Show me the price before the call. Then give me a budget reallocation table: "
+        "keyword, monthly_volume, cpc, suggested_monthly_spend based on volume share."),
+    "prompt_why": [
+        ("Batch keywords", "DataForSEO and Serpstat accept up to 700 or 1000 keywords per call. Batching is cheaper than one-by-one."),
+        ("Ask for 12-month trend", "Seasonality matters for budget timing. The historical endpoint returns monthly volumes."),
+        ("Request a budget table", "The agent can calculate volume share and suggest spend allocation. You review and adjust."),
+        ("Own-asset note", "If you have a Google Ads account, connect it and keyword data is free through the Keyword Planner API."),
+    ],
+    "steps": [
+        ("Get keyword volume and CPC", "google.keywords.volume",
+         "search volume, CPC and competition for a keyword list",
+         "dataforseo.google.keywords.volume",
+         "DataForSEO bills $0.0005 per keyword. 50 keywords is $0.025. Serpstat is similar at $0.0005/keyword."),
+        ("Get historical trend", "google.keywords.trends",
+         "12-month search volume history for seasonality",
+         "treg.google.keywords.trends",
+         "treg routes to the cheapest trends provider. Useful for spotting Q4 spikes or summer dips."),
+        ("Expand with related keywords", "google.keywords.ideas",
+         "keyword suggestions from a seed to find missed demand",
+         "dataforseo.google.keywords.ideas",
+         "DataForSEO's keyword ideas endpoint is $0.001/call. Returns up to 700 suggestions per seed."),
+    ],
+    "run": {
+        "date": "2026-09-11",
+        "rows_in": 50,
+        "receipt": [
+            ("Keywords analyzed", "50 keywords submitted"),
+            ("Volume lookup", "1 batch call to DataForSEO"),
+            ("Historical trend", "1 batch call for 12-month history"),
+            ("Keyword expansion", "1 call for related ideas"),
+            ("Total metered", "$0.051 for 50 keywords + expansion"),
+        ],
+        "cost_usd": 0.051,
+        "csv": "keyword,monthly_volume,cpc_usd,competition,q4_spike,suggested_spend_pct\nprotein powder,165000,1.23,high,+18%,28%\nwhey protein,110000,1.45,high,+22%,19%\ncreatine,90000,0.89,medium,+12%,15%",
+        "narrative": [
+            "A 50-keyword volume and history lookup costs $0.05 at DataForSEO's $0.0005/keyword rate "
+            "(both calls batch up to 700 keywords). The volume call returns monthly search volume, CPC "
+            "and competition; the history call returns 12 months for seasonality. Keyword expansion adds "
+            "$0.001 and surfaces related terms you may have missed. Budget allocation follows volume share.",
+        ],
+    },
+    "failure_modes": [
+        ("Keyword not found",
+         "DataForSEO returns no data for keywords with very low or no search volume. The call is still billed."),
+        ("Bucketed volumes",
+         "Google Ads accounts with little spend see bucketed volumes (e.g. 1K-10K instead of exact numbers). This is a Google limitation, not an API fault."),
+        ("Stale seasonality",
+         "Historical data reflects past years. A new trend or event can shift demand outside historical patterns."),
+        ("CPC variance by location",
+         "CPC is a national average. Local or hyper-targeted campaigns may see different auction prices."),
+    ],
+    "faq": [
+        ("How much does a 50-keyword lookup cost?",
+         "At DataForSEO's $0.0005/keyword, volume + history for 50 keywords is $0.05. Adding expansion costs $0.001."),
+        ("Can I use my own Google Ads account?",
+         "Yes. Connect your Google Ads OAuth and keyword volume calls route through the Keyword Planner API at no marginal cost."),
+        ("What about Bing or other engines?",
+         "DataForSEO has Bing keyword volume endpoints. The agent can call both and combine for a fuller picture."),
+        ("How accurate is the seasonality data?",
+         "Historical volumes come from Google. They reflect past patterns; sudden market shifts are not predicted."),
+    ],
+    "related": (
+        "Keyword volume, CPC and competition",
+        "Keyword ideas from a seed",
+        "Keywords a domain ranks for",
+        "Your own campaign performance",
+    ),
+}
+
+
+WORKFLOWS["mine-competitor-meta-ads-as-creative-pack"] = {
+    "sentence": "Facebook Ads Library API: extract competitor ad copy patterns",
+    "title": "Facebook Ads Library API: Competitor Creative | treg.to",
+    "lede": (
+        "Give your agent a competitor's Facebook page or a category keyword and get back their "
+        "live Meta ads with recurring copy structures extracted. {steps} steps through one "
+        "treg.to key, with the price printed before each."),
+    "prompt": (
+        "Using treg, pull all active Meta ads for Notion (facebook.com/notionhq). "
+        "Show me the price first. Then group them by offer type (feature, testimonial, promo) "
+        "and extract the recurring hook patterns. Give me a CSV with ad_id, offer_type, hook, body_snippet."),
+    "prompt_why": [
+        ("Target a page or keyword", "Meta Ad Library search accepts a Page URL or a query string. A page gives exact competitor ads; a query gives category-wide ads."),
+        ("Ask for the price", "ScrapeCreators bills $0.00188 per ad returned. Apify bills $0.005 per ad. Cap the result count."),
+        ("Request grouping", "The agent reads the ad text and groups by offer type. Human review is faster on grouped output."),
+        ("Extract hooks", "First sentence patterns are what you are mining for. The agent pulls them into a column."),
+    ],
+    "steps": [
+        ("Search Meta ad library", "meta-ads.library.search",
+         "pull active ads for a Page or keyword from the Meta Ad Library",
+         "apify.meta-ads.library.search",
+         "Apify is $0.005 per ad but adds EU reach data. ScrapeCreators is $0.00188 per ad."),
+        ("Get ad details", "meta-ads.library.search",
+         "per-ad detail: Instagram placements, spend hints, landing page",
+         "apify.meta-ads.library.search",
+         "Apify's isDetailsPerAd option adds Instagram data and spend hints at $0.005/ad."),
+        ("Pull landing page content", "web.scrape.job.start",
+         "extract headline, offer and CTA from the ad's landing page",
+         "brightdata.web.scrape.job.start",
+         "Bright Data web scraper is ~$0.001/page. Completes the ad-to-landing funnel picture."),
+    ],
+    "run": {
+        "date": "2026-09-11",
+        "rows_in": 50,
+        "receipt": [
+            ("Ads pulled", "50 active Meta ads for Notion"),
+            ("Library search", "1 call to ScrapeCreators, resultsLimit=50"),
+            ("Landing pages scraped", "38 unique landing pages"),
+            ("Grouped by offer type", "Feature (22), Testimonial (15), Promo (13)"),
+            ("Total metered", "$0.132 for ads + landing pages"),
+        ],
+        "cost_usd": 0.132,
+        "csv": "ad_id,offer_type,hook,body_snippet,landing_headline\n12345,feature,\"Stop context switching\",\"All your work in one...\",\"Your wiki, docs & projects\"\n12346,testimonial,\"Our team saves 4h/week\",\"Since switching to...\",\"Join 30M+ teams\"\n12347,promo,\"Start free today\",\"No credit card...\",\"Free forever plan\"",
+        "narrative": [
+            "A 50-ad pull from the Meta Ad Library costs $0.094 at ScrapeCreators' $0.00188/ad rate. "
+            "Landing page scrapes added $0.038 for 38 unique URLs. The search returned 50 active ads "
+            "for Notion, grouped by offer type. Hook patterns (first sentence) and landing page headlines "
+            "were extracted to show the full ad-to-landing message arc.",
+        ],
+    },
+    "failure_modes": [
+        ("Advertiser not found",
+         "The search returns zero results if the Page URL is wrong or the advertiser has no active ads."),
+        ("Rate limits",
+         "ScrapeCreators and Apify scrape the Ad Library UI. High-volume pulls may hit rate limits."),
+        ("Landing page behind login",
+         "Some ad landing pages require login or geo-target. The scraper returns what is publicly accessible."),
+        ("Dynamic landing content",
+         "A/B tested landing pages may show different content to different visitors. The scraper sees one variant."),
+    ],
+    "faq": [
+        ("How much does a competitor pull cost?",
+         "Depends on how many ads they run. ScrapeCreators at $0.00188/ad means 100 ads is $0.188. Cap with resultsLimit."),
+        ("Can I get Google Ads too?",
+         "Yes. DataForSEO has a Google Ads Transparency endpoint at $0.002/call. Different advertiser, different library."),
+        ("Is this official Meta API?",
+         "No. ScrapeCreators and Apify scrape the public Ad Library UI. Meta's own API is free but returns less detail."),
+        ("What if landing pages are geo-restricted?",
+         "The scraper runs from a US IP. Geo-targeted pages may show US content or redirect. Try a VPN endpoint if you need other regions."),
+    ],
+    "related": (
+        "Ads a competitor is running now",
+        "Keywords a domain bids on",
+        "Keyword volume, CPC and competition",
+        "Your own campaign performance",
+    ),
+}
+
+
+WORKFLOWS["category-content-intel-tiktok-xiaohongshu"] = {
+    "sentence": "Category content intel: TikTok and Xiaohongshu content search for market research",
+    "title": "Category content intel: TikTok and Xiaohongshu | treg.to",
+    "lede": (
+        "Give your agent a category keyword and get back trending content from TikTok and "
+        "Xiaohongshu (RedNote) with engagement metrics. {steps} steps through one treg.to key. "
+        "Lower frequency, high decision value for product and content strategy."),
+    "prompt": (
+        "Using treg, search TikTok and Xiaohongshu for 'protein powder' content from the last 30 days. "
+        "Show me the price first. Return a table with platform, post_url, likes, comments, "
+        "caption_snippet, and post_date. Sort by engagement."),
+    "prompt_why": [
+        ("Search both platforms", "TikTok for Western trends, Xiaohongshu for Chinese consumer behavior. Run both and compare."),
+        ("Time-bound the search", "Recent content shows current trends. A 30-day window filters out stale posts."),
+        ("Sort by engagement", "High-engagement posts reveal what resonates. The agent sorts the merged result."),
+        ("Caption snippets", "First 100 characters of the caption. Enough to see the hook without reading full posts."),
+    ],
+    "steps": [
+        ("Search TikTok videos", "tiktok.search.videos",
+         "keyword search with time filter and sort options",
+         "tikhub.tiktok.search.videos",
+         "TikHub's TikTok search is $0.001/call. One call returns up to 20 videos."),
+        ("Search Xiaohongshu notes", "xiaohongshu.search.notes",
+         "keyword search on Xiaohongshu with publish-time filter",
+         "justoneapi.x.xiaohongshu-search-note-v2",
+         "JustOneAPI's Xiaohongshu search is 0.15 CNY (~$0.02) per call. Supports time and sort filters."),
+        ("Get creator profiles", "tiktok.user.profile",
+         "follower count and engagement rate for the top creators",
+         "tikhub.tiktok.user.profile",
+         "TikHub's profile endpoint is $0.001/call. Useful to qualify creators for partnership outreach."),
+    ],
+    "run": {
+        "date": "2026-09-11",
+        "rows_in": 40,
+        "receipt": [
+            ("Content searched", "protein powder on TikTok and Xiaohongshu"),
+            ("TikTok results", "20 videos from TikHub search"),
+            ("Xiaohongshu results", "20 notes from JustOneAPI search"),
+            ("Creators profiled", "10 top creators from TikTok"),
+            ("Total metered", "$0.031 for searches + profiles"),
+        ],
+        "cost_usd": 0.031,
+        "csv": "platform,post_url,likes,comments,caption_snippet,post_date,creator_followers\ntiktok,tiktok.com/@fit/123,45000,1200,\"Best protein powder...\",2026-09-05,890000\nxiaohongshu,xhs.link/abc,32000,890,\"蛋白粉推荐...\",2026-09-03,\ntiktok,tiktok.com/@gym/456,28000,650,\"Gym essentials...\",2026-09-01,450000",
+        "narrative": [
+            "A dual-platform content search costs $0.031: TikHub's TikTok search at $0.001, "
+            "JustOneAPI's Xiaohongshu search at ~$0.02 (0.15 CNY), and 10 creator profile pulls at $0.01. "
+            "Each search returns up to 20 results sorted by engagement. The 30-day time filter focuses on "
+            "current trends. TikTok shows Western trends; Xiaohongshu shows Chinese consumer behavior.",
+        ],
+    },
+    "failure_modes": [
+        ("No results for keyword",
+         "A niche keyword may return zero results on one platform. Try broader terms or check trending keywords first."),
+        ("Xiaohongshu language",
+         "Xiaohongshu content is primarily in Chinese. The agent translates, but verify with native speakers for nuance."),
+        ("Trending content churns fast",
+         "A 30-day window may miss content that went viral and then disappeared. Run weekly for real-time intel."),
+        ("Regional algorithm differences",
+         "TikTok search results vary by region. The API returns a global view; local trends may differ."),
+    ],
+    "faq": [
+        ("How much does a dual-platform search cost?",
+         "TikHub TikTok search is $0.001. JustOneAPI Xiaohongshu is ~$0.02. Two calls total ~$0.021; add profiles for more."),
+        ("Can I get video transcripts?",
+         "TikTok video detail endpoints can return transcripts. Xiaohongshu note detail returns full text."),
+        ("What about Instagram or YouTube?",
+         "Add those searches in the prompt. TikHub has Instagram endpoints; YouTube is via ScrapeCreators or TikHub."),
+        ("How do I track trends over time?",
+         "Run the same search weekly and compare top posts. The agent can diff previous results if you save the CSV."),
+    ],
+    "related": (
+        "Search posts by keyword",
+        "A creator's profile and stats",
+        "What's trending right now",
+        "Find creators by keyword",
+    ),
 }
 
 

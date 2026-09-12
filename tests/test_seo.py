@@ -408,8 +408,9 @@ HUBS = ('href="/use-cases"', 'href="/workflows"', 'href="/agents"')
 
 
 async def test_every_surface_links_the_three_hubs(clients: AsyncClient):
+    # grok-bot redirects to /grokbot, use claude-code instead
     for path in ("/", "/catalog", "/tools/hunter", "/use-cases/verify-an-email",
-                 "/workflows/find-and-verify-a-lead-list", "/agents/grok-bot"):
+                 "/workflows/find-and-verify-a-lead-list", "/agents/claude-code"):
         html = (await clients.get(path)).text
         for hub in HUBS:
             assert hub in html, f"{path} does not link {hub}"
@@ -467,8 +468,20 @@ async def test_indexnow_key_is_served_from_the_root(clients: AsyncClient):
 
 
 async def test_agent_pages_name_the_workflows(clients: AsyncClient):
-    html = (await clients.get("/agents/grok-bot")).text
+    # Use claude-code instead of grok-bot (grok-bot 301s to /grokbot)
+    html = (await clients.get("/agents/claude-code")).text
     assert 'id="workflows"' in html
     assert 'href="/workflows/find-and-verify-a-lead-list"' in html
-    md = (await clients.get("/agents/grok-bot.md")).text
+    md = (await clients.get("/agents/claude-code.md")).text
     assert "/workflows/find-and-verify-a-lead-list" in md
+
+
+async def test_grok_bot_redirects_to_grokbot(clients: AsyncClient):
+    """/agents/grok-bot and /agents/grok-bot.md 301 to /grokbot: the launch page is the
+    primary destination for "Grok Bot" clicks."""
+    r = await clients.get("/agents/grok-bot", follow_redirects=False)
+    assert r.status_code == 301
+    assert r.headers["location"] == "/grokbot"
+    r = await clients.get("/agents/grok-bot.md", follow_redirects=False)
+    assert r.status_code == 301
+    assert r.headers["location"] == "/grokbot"

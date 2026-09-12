@@ -653,8 +653,11 @@ async def agents_hub():
         if head == defn and len(defn) > 140:  # a future definition without the clause still fits
             head = defn[:140].rsplit(" ", 1)[0]
         return head.rstrip(".") + "."
+    def _agent_href(slug: str) -> str:
+        # grok-bot links to the launch page at /grokbot
+        return "/grokbot" if slug == "grok-bot" else f"/agents/{slug}"
     cards = "".join(
-        f'<a class="pcard" href="/agents/{slug}"><h3>{_esc_html(spec["name"])}</h3>'
+        f'<a class="pcard" href="{_agent_href(slug)}"><h3>{_esc_html(spec["name"])}</h3>'
         f'<p>{_esc_html(_blurb(spec["definition"].format(n=n, p=p)))}</p>'
         f'<div class="meta">{n} tools &middot; {p} platforms</div></a>'
         for slug, spec in agent_pages.AGENTS.items())
@@ -690,6 +693,10 @@ async def agent_page(request: Request, agent: str):
     `/agents/<agent>.md` is the same page as Markdown, for agents and answer engines."""
     as_md = request.url.path.endswith(".md")
     raw = agent[:-3] if agent.endswith(".md") else agent
+    # grok-bot redirects to the launch page at /grokbot: the launch page is what people expect
+    # when they click "Grok Bot", and the /agents/grok-bot URL was never the primary destination.
+    if raw.lower() == "grok-bot":
+        return RedirectResponse("/grokbot", status_code=301)
     # Resolve to the dict's OWN key, never the request's bytes: `agent` is interpolated into the
     # canonical, the rel=alternate href and the JSON-LD breadcrumb below, and a path parameter
     # must not reach those unescaped (CodeQL py/reflective-xss). The lookup is case-insensitive,
@@ -1414,7 +1421,13 @@ async def use_case_job_page(request: Request, job: str,
         return (f'<a class="card" href="{href}"><h4>{_esc_html(lbl)}</h4>'
                 f'<p>Another job in {_esc_html((owner or cat_label).lower())}.</p></a>')
 
+    def _extra_link_card(lbl: str, href: str, desc: str) -> str:
+        return (f'<a class="card" href="{_esc_html(href)}"><h4>{_esc_html(lbl)}</h4>'
+                f'<p>{_esc_html(desc)}</p></a>')
+
     related = "".join(_related_card(lbl) for lbl in spec.get("related", ()))
+    related += "".join(_extra_link_card(lbl, href, desc)
+                       for lbl, href, desc in spec.get("extra_links", ()))
     faq_html = "".join(f'<h3>{_esc_html(q)}</h3><p>{_esc_html(a)}</p>' for q, a in spec["faq"])
 
     # The "instead of" anchor: what the same job costs on subscriptions from the providers on this
@@ -1776,7 +1789,14 @@ async def workflow_page(request: Request, slug: str,
         href, owner = _related_link(lbl, agent_slug)
         return (f'<a class="card" href="{href}"><h4>{_esc_html(lbl)}</h4>'
                 f'<p>One step of this workflow, on its own{(", in " + _esc_html(owner.lower())) if owner else ""}.</p></a>')
+
+    def _extra_link_card(lbl: str, href: str, desc: str) -> str:
+        return (f'<a class="card" href="{_esc_html(href)}"><h4>{_esc_html(lbl)}</h4>'
+                f'<p>{_esc_html(desc)}</p></a>')
+
     related = "".join(_related_card(lbl) for lbl in spec.get("related", ()))
+    related += "".join(_extra_link_card(lbl, href, desc)
+                       for lbl, href, desc in spec.get("extra_links", ()))
 
     body = (
         '<div class="hero"><div class="wrap">'
@@ -2783,6 +2803,8 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/tutorial", "tutorial.html", "0.8"),
     ("/docs", "", "0.7"),
     ("/resources", "resources.html", "0.8"),
+    ("/blog", "", "0.7"),
+    ("/blog/people-search-bench", "", "0.6"),
     ("/vendor-listing", "vendor-listing.md", "0.5"),
     ("/support", "support.html", "0.4"),
     ("/connectors/claude", "claude-connector.html", "0.6"),
@@ -2854,6 +2876,8 @@ async def sitemap_xml():
         copy_day = _iso_day(Path(agent_pages.__file__).stat().st_mtime)
         add("/agents", copy_day, "0.8")
         for slug in agent_pages.AGENTS:
+            if slug == "grok-bot":
+                continue  # redirects to /grokbot; list only the canonical
             add(f"/agents/{slug}", copy_day, "0.8")
         add("/use-cases", copy_day, "0.8")
         for j in agent_pages.USE_CASE_PAGES:
@@ -3173,6 +3197,140 @@ async def people_search_page():
     if not page.exists():
         raise HTTPException(status_code=404, detail="people-search.html not bundled")
     return FileResponse(page, headers={"Cache-Control": "no-cache"})
+
+
+# The launch pages grouped into a thin index. Routes stay where they are; this is a directory, not
+# a move. The list is hand-maintained because each launch has its own framing and the order is
+# chronological (newest first), not alphabetical.
+_BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
+    # (slug, title, date, one-line blurb)
+    ("/gpt6", "GPT-6 and treg.to", "2026-09",
+     "Codex demo: one prompt, the market read, and the catalog of tools it called."),
+    ("/fable", "Claude Fable 5.1 + treg.to", "2026-08",
+     "Run your GTM from the terminal: one prompt, four agents, four results."),
+    ("/grokbot", "Grok Bot for Outreach", "2026-07",
+     "A scroll animatic of Grok Bot working a lead list through treg.to."),
+    ("/people-search", "People Search Launch", "2026-07",
+     "Give your agent 1B+ contacts. The destination the launch film points at."),
+]
+
+# Identity/receipt posts: thin announcements that live under /blog/. These are not launches (which
+# have their own top-level routes), but they sit prominently on the /blog index above launches.
+_BLOG_POSTS: list[tuple[str, str, str, str]] = [
+    # (slug under /blog/, title, date, one-line blurb)
+    ("people-search-bench", "#1 on People Search Bench", "2026-09",
+     "treg.to scores 80.0% on recruiting, 78.2% on B2B prospecting. 119 real tasks, same agent."),
+]
+
+
+@app.get("/blog", include_in_schema=False)
+async def blog_index():
+    """Thin index of launch pages and notes. The launches stay at their existing routes; this page
+    links to them without moving files or creating /blog/grokbot clones. Indexed, canonical, in
+    the sitemap. Blog posts (identity/receipt announcements) sit above launches."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+
+    # Blog posts (identity/receipt announcements) come first, prominently
+    post_cards = "".join(
+        f'<a class="pcard" href="/blog/{_esc_html(slug)}">'
+        f'<h3>{_esc_html(title)}</h3>'
+        f'<p>{_esc_html(blurb)}</p>'
+        f'<div class="meta">{_esc_html(date)}</div></a>'
+        for slug, title, date, blurb in _BLOG_POSTS
+    )
+
+    launch_cards = "".join(
+        f'<a class="pcard" href="{_esc_html(slug)}">'
+        f'<h3>{_esc_html(title)}</h3>'
+        f'<p>{_esc_html(blurb)}</p>'
+        f'<div class="meta">{_esc_html(date)}</div></a>'
+        for slug, title, date, blurb in _BLOG_LAUNCHES
+    )
+
+    body = (
+        '<main class="wrap"><div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/blog">Blog</a></div>'
+        '<h1>Launches and Notes</h1>'
+        '<p class="lede">Product launches, partner posts and notes from the treg.to team. '
+        'Each launch page shows a real run with the catalog and the bill.</p>'
+        '</div>'
+        + (f'<section class="cat"><h2>Posts</h2><div class="grid">{post_cards}</div></section>'
+           if _BLOG_POSTS else '')
+        + '<section class="cat"><h2>Launches</h2>'
+        f'<div class="grid">{launch_cards}</div></section>'
+        '</main>'
+    )
+
+    ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"}]}]
+
+    return _page("Launches and Notes | treg.to",
+                 "Product launches, partner posts and notes from the treg.to team. "
+                 "Each launch page shows a real run with the catalog and the bill.",
+                 "/blog", body, ld)
+
+
+@app.get("/blog/people-search-bench", include_in_schema=False)
+async def blog_people_search_bench():
+    """Identity/receipt post: treg.to is #1 on People Search Bench by LessieAI. Links to /grokbot#bench
+    for the interactive chart. Numbers from the benchmark: 119 real tasks, % answered correctly."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+
+    # The benchmark numbers (from /grokbot#bench and the LessieAI chart)
+    scores = [
+        ("Recruiting", "80.0%"),
+        ("B2B prospecting", "78.2%"),
+        ("Deterministic", "76.3%"),
+        ("Influencer", "62.9%"),
+    ]
+    score_rows = "".join(
+        f'<tr><td>{_esc_html(cat)}</td><td style="text-align:right;font-weight:600">{_esc_html(pct)}</td></tr>'
+        for cat, pct in scores
+    )
+
+    body = (
+        '<main class="wrap" style="max-width:680px">'
+        '<div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/blog">Blog</a> / '
+        '<a href="/blog/people-search-bench">#1 on People Search Bench</a></div>'
+        '<h1>#1 on People Search Bench</h1>'
+        '<p class="lede">treg.to scores highest on People Search Bench by LessieAI: '
+        '119 real tasks, same agent, with and without the plugin.</p>'
+        '</div>'
+        '<section class="cat">'
+        '<p>People Search Bench tests whether an agent can answer real recruiting, B2B prospecting, '
+        'deterministic lookup and influencer discovery questions. The benchmark runs the same agent '
+        'with and without the treg.to plugin, measuring % answered correctly across 119 tasks.</p>'
+        '<table style="width:100%;margin:24px 0;border-collapse:collapse">'
+        '<thead><tr style="border-bottom:1px solid var(--border)">'
+        '<th style="text-align:left;padding:8px 0">Category</th>'
+        '<th style="text-align:right;padding:8px 0">treg.to score</th>'
+        '</tr></thead>'
+        f'<tbody style="font-size:1.1em">{score_rows}</tbody>'
+        '</table>'
+        '<p style="color:var(--muted);font-size:0.9em">Source: People Search Bench by LessieAI, 119 real tasks, '
+        '% answered correctly. Same agent, with and without the plugin.</p>'
+        '<p style="margin-top:24px"><a href="/grokbot#bench" style="font-weight:600">'
+        'See the interactive chart on the Grok Bot launch page &rarr;</a></p>'
+        '</section>'
+        '</main>'
+    )
+
+    ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
+        {"@type": "ListItem", "position": 3, "name": "#1 on People Search Bench",
+         "item": base + "/blog/people-search-bench"}]}]
+
+    return _page("#1 on People Search Bench | treg.to",
+                 "treg.to scores 80.0% on recruiting, 78.2% on B2B prospecting on People Search Bench "
+                 "by LessieAI. 119 real tasks, same agent with and without the plugin.",
+                 "/blog/people-search-bench", body, ld)
 
 
 @app.get("/resources", include_in_schema=False)
