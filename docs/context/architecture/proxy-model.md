@@ -193,7 +193,14 @@ escape. This prevents an already encoded Search Console property id such as
 `sc-domain%3Aexample.com` becoming double-encoded as `%253A`. Raw `@` remains literal because it is
 a legal path-segment character. This also supports email-path APIs such as Tomba's verifier, which
 rejects `%40` before decoding. Slashes, query/fragment delimiters and invalid percent signs remain
-escaped; URL-passthrough bytes are unchanged. A `retired`/`broken` tombstone is
+escaped; URL-passthrough bytes are unchanged. Before building that URL, an optional catalog `host`
+on a provider that opted in to `catalog_targets` must resolve through
+`OAuthProvider.profile_for_catalog_host` to an exact approved HTTPS base URL. Providers without
+that opt-in keep resolving catalog paths against their primary base URL.
+The approved root keeps its path prefix when `_marketplace_upstream` appends the endpoint path, and
+the selected provider profile supplies the correct credential binding. An unapproved or malformed
+target fails as a treg-owned 502 before reserve and relay; catalog data cannot redirect an injected
+credential to a host of its choice. A `retired`/`broken` tombstone is
 instead refused with 410, its `status_note`, and its optional `superseded_by`, before credentials are
 selected or the relay can run; the refusal is audited as `refused_by=retired`. This ordering is
 deliberate: an org's own tool named exactly like the old catalog id already resolved above and is not

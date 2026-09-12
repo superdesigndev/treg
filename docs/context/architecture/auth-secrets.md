@@ -208,6 +208,12 @@ module symbols:
   their display label, connect description, and their own configured state. The dashboard and CLI
   consume this metadata instead of mapping provider or method ids themselves. A multi-method
   provider's top-level `configured` value is true when any declared method is configured.
+- `CatalogTarget` and `profile_for_catalog_host()` let a provider opt in to binding a catalog
+  endpoint's optional `host` to an exact provider-approved HTTPS base URL. A target may override
+  the provider's token placement and
+  format, as Diffbot Web Search does for Bearer auth. Catalog data cannot add credential destinations;
+  opted-in provider's resolution rejects an unapproved host before any secret reaches relay or
+  money is reserved. Providers without targets retain their prior primary-base behavior.
 - `consent_notice` — one line the dashboard shows **before** the consent popup opens, for a provider
   whose consent screen names something the user has not seen on treg. Only the Meta family carries one:
   the shared Meta app is registered as **Crewlet**, a sibling product of the same company (Superdesign

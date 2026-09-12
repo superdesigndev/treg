@@ -8,17 +8,14 @@
 # on 2026-07-31) the crawl job list. The remaining 4 Crawl/Bulk-job endpoints are `untestable`
 # because each needs a job that does not exist yet and creating one starts a real billed crawl —
 # NOT because of a plan gate, see the CORRECTION below.
-# Neither catalog_verify.py nor catalog_verify_extended.py
-# understands this file's `host:` field — both always call `prov.base_url` (kg.diffbot.com), which
-# is the WRONG host for every entry below — so verification here was done with direct calls
-# against each entry's documented host and the results stamped by hand; re-verifying through
-# either script as-is will 404 against the KG host and must not be read as these routes breaking.
+# Catalog calls resolve this file's `host:` only through Diffbot's explicit `catalog_targets`
+# allow-list in oauth_providers.py. Verification scripts still need to use the same target selection
+# before they can replay these entries safely; a catalog row cannot introduce a credential host.
 #
 # Two auth surprises found only by calling, not documented anywhere:
 #   - diffbot.x.web-search (llm.diffbot.com) rejects `?token=` and requires an
-#     `Authorization: Bearer <token>` HEADER instead — the opposite of every other route in this
-#     provider. treg's registry configures diffbot with token_location=query for the whole
-#     provider, so the auto-provisioned tool CANNOT call this endpoint as-is; noted on the entry.
+#     `Authorization: Bearer <token>` HEADER instead. The approved llm.diffbot.com target overrides
+#     Diffbot's normal query-token injection for this endpoint without changing its other hosts.
 #   - diffbot.x.nl-process (nl.diffbot.com) does accept `?token=` as documented; an initial attempt
 #     that put the token in the JSON body instead (matching a plausible reading of the docs) 401'd.
 #   - diffbot.x.extract-product's first probe target (a Micro Center SKU from the docs' own
@@ -32,7 +29,8 @@
 #     discussion, job, list, event), the Crawl API, the Bulk Extract API, and /v4/account.
 #   - llm.diffbot.com         — Web Search API.
 #   - nl.diffbot.com          — Natural Language API (POST-only, JSON body).
-# Auth on every route below is the same `?token=` query parameter used on the KG host.
+# Auth is the same `?token=` query parameter used on the KG host except for Web Search, whose
+# approved target overrides injection to `Authorization: Bearer`.
 #
 # Billing: Diffbot's published credit table (diffbot.com/pricing) prices a single Extract API
 # page fetch at 1 credit (2 credits if `useProxy=default` routes it through Diffbot's datacenter
@@ -580,7 +578,7 @@ endpoints:
         text: {type: string, required: true, note: "the search query"}
         size: {type: integer, required: false, note: "number of results to return", example: 10}
         maxTokens: {type: integer, required: false, note: "caps the search response to this token budget; highlight chunks are reduced equitably"}
-      note: "different HOST than base_url — llm.diffbot.com, not kg.diffbot.com or api.diffbot.com. AUTH DIFFERS FROM EVERY OTHER DIFFBOT ROUTE: this one 401s on ?token= and requires an `Authorization: Bearer <token>` HEADER instead — confirmed live 2026-07-28. treg's registry has diffbot configured token_location=query provider-wide, so the auto-provisioned tool cannot reach this endpoint until that is special-cased"
+      note: "different HOST than base_url: llm.diffbot.com, not kg.diffbot.com or api.diffbot.com. AUTH DIFFERS FROM EVERY OTHER DIFFBOT ROUTE: this one 401s on ?token= and requires an `Authorization: Bearer <token>` HEADER instead, confirmed live 2026-07-28. The approved catalog target applies that header profile without changing Diffbot's other routes"
     test_request:
       queryParams: {text: "knowledge graph AI", size: 3}
     verified: 2026-07-28

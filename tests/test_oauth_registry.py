@@ -7,6 +7,7 @@ only the scopes the chosen capability actually needs.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -301,3 +302,31 @@ def test_a_notice_provider_always_reaches_a_pre_consent_modal():
             )
         else:
             assert len(p.capabilities) >= 2, p.service
+
+
+def test_catalog_targets_are_exact_provider_approved_https_roots():
+    from treg import oauth_providers as P
+
+    extract = P.DIFFBOT.profile_for_catalog_host("api.diffbot.com")
+    assert extract.base_url == "https://api.diffbot.com"
+    assert extract.token_location == "query" and extract.token_param == "token"
+
+    search = P.DIFFBOT.profile_for_catalog_host("llm.diffbot.com")
+    assert search.base_url == "https://llm.diffbot.com"
+    assert search.token_location == "header"
+    assert search.token_header == "Authorization" and search.token_format == "Bearer {secret}"
+
+    natural_language = P.DIFFBOT.profile_for_catalog_host("nl.diffbot.com")
+    assert natural_language.base_url == "https://nl.diffbot.com"
+    assert natural_language.token_location == "query" and natural_language.token_param == "token"
+
+    unsafe = replace(
+        P.DIFFBOT,
+        catalog_targets=(P.CatalogTarget(
+            host="api.diffbot.com", base_url="https://credentials.example/v3",
+        ),),
+    )
+    with pytest.raises(ValueError, match="safe HTTPS base URL"):
+        unsafe.profile_for_catalog_host("api.diffbot.com")
+    with pytest.raises(ValueError, match="not uniquely approved"):
+        P.DIFFBOT.profile_for_catalog_host("credentials.example")

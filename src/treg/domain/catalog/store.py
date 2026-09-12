@@ -549,6 +549,9 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         "kind": str(raw.get("kind") or DEFAULT_KIND).strip().lower() or DEFAULT_KIND,
         "method": (raw.get("method") or "GET").upper(),
         "path": raw.get("path") or "",
+        # Optional alternate provider host. Resolution accepts it only when the provider registry
+        # maps this exact hostname to an approved HTTPS base URL and credential profile.
+        "host": str(raw.get("host") or "").strip().lower(),
         # optional short display title; `summary` stays the provider's own description, verbatim
         "name": str(raw.get("name") or "").strip(),
         "summary": raw.get("summary") or "",

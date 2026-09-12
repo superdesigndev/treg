@@ -73,6 +73,16 @@ def minimax_platform_on(monkeypatch):
     get_settings.cache_clear()
 
 
+@pytest.fixture
+def diffbot_platform_on(monkeypatch):
+    """Enable Diffbot tier 4 without exposing or calling a real provider credential."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_DIFFBOT", "PLATFORM-DIFFBOT-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "diffbot")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 async def _balance(clients: AsyncClient) -> int:
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     return (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"]
@@ -240,6 +250,115 @@ async def test_deny_rules_cover_marketplace_calls(clients: AsyncClient):
 
 
 # ---- tier 4: treg's own key, billed to the org balance ------------------------------------------
+@pytest.mark.parametrize(("endpoint", "params", "target", "charge_micro"), [
+    (
+        "diffbot.x.extract-article",
+        {"url": "https://news.example/article"},
+        ("api.diffbot.com", "/v3/article"),
+        1_196,
+    ),
+    (
+        "diffbot.x.extract-event",
+        {"url": "https://events.example/conference"},
+        ("api.diffbot.com", "/v3/event"),
+        1_196,
+    ),
+    (
+        "diffbot.companies.enrich",
+        {"type": "Organization", "url": "https://company.example"},
+        ("kg.diffbot.com", "/kg/v3/enhance"),
+        29_900,
+    ),
+])
+async def test_diffbot_shared_key_uses_each_catalog_endpoint_host(
+    clients: AsyncClient, diffbot_platform_on, endpoint, params, target, charge_micro,
+):
+    """Exercise extraction and KG through the full host-sensitive HTTP call path."""
+    outbound: list[tuple[str, str]] = []
+
+    def upstream(request: httpx.Request) -> httpx.Response:
+        assert request.url.params.get("token") == "PLATFORM-DIFFBOT-KEY"
+        assert request.headers.get("authorization") is None
+        outbound.append((request.url.host, request.url.path))
+        status = 200 if outbound[-1] == target else 404
+        return httpx.Response(
+            status,
+            stream=httpx.ByteStream(b'{"objects":[{"name":"Synthetic example"}]}'),
+            headers={"content-type": "application/json"},
+        )
+
+    await A.app.state.http.aclose()
+    A.app.state.http = AsyncClient(transport=httpx.MockTransport(upstream))
+    before = await _balance(clients)
+
+    response = await clients.get(f"/call/{endpoint}", params=params)
+
+    assert response.status_code == 200, response.text
+    assert outbound == [target]
+    assert await _balance(clients) == before - charge_micro
+
+
+async def test_diffbot_own_key_uses_web_search_bearer_profile_without_metering(
+    clients: AsyncClient, diffbot_platform_on,
+):
+    await clients.post("/secrets", json={"name": "diffbot", "value": "OWN-DIFFBOT-KEY"})
+    outbound: list[tuple[str, str, str | None, str | None]] = []
+
+    def upstream(request: httpx.Request) -> httpx.Response:
+        outbound.append((
+            request.url.host,
+            request.url.path,
+            request.headers.get("authorization"),
+            request.url.params.get("token"),
+        ))
+        return httpx.Response(
+            200,
+            stream=httpx.ByteStream(b'{"data":[]}'),
+            headers={"content-type": "application/json"},
+        )
+
+    await A.app.state.http.aclose()
+    A.app.state.http = AsyncClient(transport=httpx.MockTransport(upstream))
+    before = await _balance(clients)
+
+    response = await clients.get(
+        "/call/diffbot.x.web-search", params={"text": "synthetic example"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert outbound == [(
+        "llm.diffbot.com", "/api/v1/web_search/", "Bearer OWN-DIFFBOT-KEY", None,
+    )]
+    assert await _balance(clients) == before
+
+
+async def test_diffbot_unapproved_catalog_host_fails_before_relay_or_reserve(
+    clients: AsyncClient, diffbot_platform_on, monkeypatch,
+):
+    endpoint = catalog_store.load().by_id["diffbot.x.extract-article"]
+    monkeypatch.setitem(endpoint, "host", "credentials.example")
+    called = False
+
+    def upstream(request: httpx.Request) -> httpx.Response:
+        nonlocal called
+        called = True
+        return httpx.Response(500)
+
+    await A.app.state.http.aclose()
+    A.app.state.http = AsyncClient(transport=httpx.MockTransport(upstream))
+    before = await _balance(clients)
+
+    response = await clients.get(
+        "/call/diffbot.x.extract-article",
+        params={"url": "https://news.example/article"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"].startswith("diffbot.x.extract-article declares")
+    assert called is False
+    assert await _balance(clients) == before
+
+
 async def test_tier4_relays_with_the_platform_key_and_charges_the_balance(clients: AsyncClient, platform_on):
     """The keyless first call: no credential in the org, and the endpoint is served anyway — on treg's
     key, with the estimate taken out of the $1 promo balance."""
@@ -2044,7 +2163,8 @@ async def test_trykitt_platform_rejects_non_realtime_before_upstream(clients,mon
         pytest.fail('must reject before relay')
     monkeypatch.setattr(call_service,'relay',fail)
     body={'email':'a@example.com'}
-    if realtime is not None: body['realtime']=realtime
+    if realtime is not None:
+        body['realtime'] = realtime
     before=await _balance(clients)
     r=await clients.post('/call/'+'trykitt.people.email.verify',json=body)
     assert r.status_code==400,r.text

@@ -16,7 +16,8 @@ the user, and it asks for authority the capability doesn't need.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from urllib.parse import urlsplit
 
 from .config import platform_setting_name, get_settings
 from .domain.connections import authorization as connection_authorization
@@ -24,6 +25,22 @@ from .domain.connections import authorization as connection_authorization
 
 # Compatibility name for callers that still import provider definitions from this legacy module.
 OAuthAuthorizationMethod = connection_authorization.AuthorizationMethod
+
+
+@dataclass(frozen=True)
+class CatalogTarget:
+    """An additional approved upstream root for this provider's catalog endpoints.
+
+    Catalog YAML may select one by exact hostname, but cannot introduce a new credential target.
+    Empty auth fields inherit the provider's normal injection profile.
+    """
+
+    host: str
+    base_url: str
+    token_location: str = ""
+    token_header: str = ""
+    token_param: str = ""
+    token_format: str = ""
 
 
 @dataclass(frozen=True)
@@ -88,6 +105,10 @@ class OAuthProvider:
     # perfectly well-scoped token.
     token_scopes_header: str = ""
     base_url: str = ""  # upstream API root, so a successful connect can auto-provision the tool
+    # A provider's catalog can span additional API roots. These roots are executable policy, not
+    # catalog data: a YAML `host` only selects an exact entry from this allow-list, so a catalog
+    # edit cannot redirect an injected team or platform credential to an arbitrary host.
+    catalog_targets: tuple[CatalogTarget, ...] = ()
     # Copy-paste sample calls stamped onto the provisioned tool's `examples`, surfaced by
     # `tool ls`. The single most useful thing to carry here is the API VERSION: Google's REST APIs
     # version the URL path (v25/...) and a wrong guess returns an HTML 404, not a hint — agents
@@ -363,6 +384,23 @@ class OAuthProvider:
 
     def profile_for_authorization(self, method: str) -> "OAuthProvider":
         return connection_authorization.provider_profile(self, method)
+
+    def profile_for_catalog_host(self, host: str) -> "OAuthProvider":
+        """Select an explicitly approved catalog target and its credential injection profile."""
+        wanted = str(host or "").strip().lower()
+        matches = [target for target in self.catalog_targets if target.host == wanted]
+        if len(matches) != 1:
+            raise ValueError(f"catalog host {wanted!r} is not uniquely approved for {self.service}")
+        target = matches[0]
+        parsed = urlsplit(target.base_url)
+        if (parsed.scheme != "https" or parsed.netloc != wanted or parsed.hostname != wanted
+                or parsed.username or parsed.password or parsed.query or parsed.fragment):
+            raise ValueError(f"catalog target for {wanted!r} is not a safe HTTPS base URL")
+        overrides = {"base_url": target.base_url}
+        for field in ("token_location", "token_header", "token_param", "token_format"):
+            if value := getattr(target, field):
+                overrides[field] = value
+        return replace(self, **overrides)
 
     def authorization_method_name(self, stored: str) -> str:
         return connection_authorization.method_name(self, stored)
@@ -1792,7 +1830,7 @@ DIFFBOT = OAuthProvider(
     auth_kind="key",
     token_label="API token",
     token_placeholder="your Diffbot token",
-    token_location="query",  # token is a query param on every call
+    token_location="query",  # normal Diffbot calls use ?token=; Web Search overrides this below
     token_param="token",
     token_format="{secret}",
     setup_url="https://app.diffbot.com/get-started/",
@@ -1806,6 +1844,14 @@ DIFFBOT = OAuthProvider(
     # Enhance/enrich + DQL live on the KG host; the free account probe lives on the api host, so verify
     # off-host. The provisioned tool points at the KG host (the enrichment value).
     base_url="https://kg.diffbot.com/kg/v3",
+    catalog_targets=(
+        CatalogTarget(host="api.diffbot.com", base_url="https://api.diffbot.com"),
+        CatalogTarget(
+            host="llm.diffbot.com", base_url="https://llm.diffbot.com",
+            token_location="header", token_header="Authorization", token_format="Bearer {secret}",
+        ),
+        CatalogTarget(host="nl.diffbot.com", base_url="https://nl.diffbot.com"),
+    ),
     docs_url="https://docs.diffbot.com/reference/authentication",
     probe_url="https://api.diffbot.com/v4/account",  # token injected as ?token=…
 )

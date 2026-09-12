@@ -85,6 +85,8 @@ sources:
   - src/treg/catalog/oceanio.yaml
   - src/treg/catalog/akta.extended.yaml
   - src/treg/catalog/dataforseo.extended.yaml
+  - src/treg/catalog/diffbot.yaml
+  - src/treg/catalog/diffbot.extended.yaml
   - src/treg/catalog/tikhub.extended.yaml
   - src/treg/catalog/examples/minimax.video-gen.result.retrieve.json
   - src/treg/catalog/examples/minimax.video-gen.from_image.json
@@ -683,13 +685,19 @@ Rules:
   state, which every other check happily passed. A never-verified entry straight out of ingest has
   neither a request nor a state key and is left alone.
 - Ids are unique across the WHOLE catalog, both tiers, all providers.
-- Two optional fields exist only in this tier, both added for the first-party OAuth providers:
-  - `host: <fqdn>` — this route is NOT on the provider's `base_url`, and its `path` is relative to
-    the named host instead. Google splits one product across sibling `*.googleapis.com` services
-    (GA4 reporting vs GA4 admin; six separate My Business services) while an `OAuthProvider` names
-    one host. The same OAuth token calls them all, so the endpoints are real and worth listing —
-    but the auto-provisioned tool is bound to `base_url`, so calling one needs a second tool bound
-    to that host. Absence of `host` means "callable through the provisioned tool".
+- Two optional fields exist only in this tier, both added for providers with split surfaces:
+  - `host: <fqdn>` describes an additional API root for an endpoint whose `path` is not relative to
+    the provider's primary `base_url`. It becomes executable only when the provider explicitly opts
+    in with `OAuthProvider.catalog_targets`; otherwise historical host metadata remains inert and
+    calling still uses the provider's primary profile. The catalog cannot authorize a host by itself.
+    `OAuthProvider.catalog_targets` must map the exact hostname to a safe HTTPS base URL and any
+    credential-profile override. `profile_for_catalog_host` rejects missing, duplicate, malformed,
+    credential-bearing, port-bearing, query-bearing, and fragment-bearing targets before reserve or
+    relay. The endpoint path is joined after the approved base URL's existing prefix, so primary KG
+    paths and alternate Extract paths do not duplicate or erase version prefixes. Diffbot uses this
+    for its KG, Extract, Web Search, and Natural Language host families; Web Search's target also
+    changes query-token injection to its documented Bearer header. Absence of `host` retains the
+    primary provider profile and `base_url`.
   - `scope_gap: <one line>` — the credential treg's OAuth app obtains CANNOT call this, and this is
     the scope that is missing. These are listed rather than dropped on purpose: the set of gaps is
     the answer to "which scopes should we add to the registered app", and it is only visible if the
