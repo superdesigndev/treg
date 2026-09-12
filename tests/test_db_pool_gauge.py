@@ -1,6 +1,6 @@
 """The pool gauge is the reading behind `TREG_DB_POOL_OVERRIDES`: per-minute peak checked-out
 connections per pool, next to capacity. Sizing by arithmetic got both minor pools wrong once each
-(ops/deploy.md § Three pools); this is what settles the number."""
+(ops/deploy.md § Database pools); this is what settles the number."""
 import asyncio
 
 import pytest

@@ -203,7 +203,8 @@ team already received. Failure evidence (`error_*`) is untouched and still admin
 Rows older than the migration have no link and cannot get an exact one (the key needs the query
 and body the audit row never kept); `scripts/backfill_call_archive_links.py` links them best-
 effort — same endpoint, same byte size, fetch within ±10 s, unambiguous in both directions —
-dry run by default, `--apply` to write, `--render` for the prod allowlist dance.
+dry run by default and requires `--apply` to write. Deployment-specific execution belongs in the
+operator runbook.
 
 ## Result admission
 
@@ -377,7 +378,8 @@ would have it stored — judge `cache` per provider with that in mind.
 `TREG_ARCHIVE_MODE` (config `archive_mode`, default `off`) → `archive.mode()`:
 `off` | `shadow` (record + learn, serve nothing — phase 0) | `serve` (shadow + answer eligible
 fresh hits — phase 1+). Any unrecognized value degrades to `off`: a typo must disable, never
-enable. Rollback in production is a dashboard env edit, no deploy.
+enable. Rollback is an environment-setting change through the deployment's normal configuration
+process.
 
 ## Conservative comparison and controlled serving (2026-09-08)
 
@@ -550,19 +552,18 @@ loop-bound-semaphore pattern (four until 2026-09-07; every slot is paid per uvic
 again per rolling-deploy instance, and a recording is one INSERT of a body already in memory).
 Before it, a burst could put up to 512 concurrent short sessions in front of the API's 15-slot pool
 (SToneX's pool-pressure report); those writes now land on the BACKGROUND pool instead
-(`ops/deploy.md` § Three pools), so the semaphore is the inner bound rather than the only one.
+(`ops/deploy.md` § Database pools), so the semaphore is the inner bound rather than the only one.
 Queued recordings wait inside their fire-and-forget task, so the caller is unaffected; the 30s
 bound covers wait+write, so a stuck queue still sheds rather than wedges. Throttled, not shed: the
 burst test proves all 12 concurrent recordings land while peak DB concurrency stays ≤2.
 
-**Memory bound (2026-09-07 OOM fix).** Each pending task holds its `body` bytes in a closure — up to
-`_MAX_PENDING` (512) tasks × `archive_max_body_bytes` (2 MB) = 1 GB worst case. After #363 reduced
-concurrent writes from 4 to 2, backlog built faster under heavy traffic and the 2026-09-07T00:43:06Z
-OOM killed production at 4 GB. `_MAX_PENDING_BYTES` (256 MiB) caps body bytes in DB
+**Memory bound.** Each pending task holds its `body` bytes in a closure, so task count alone is not a
+sufficient memory bound. `_MAX_PENDING_BYTES` (256 MiB) caps body bytes in DB
 pending work: `record()` sheds when EITHER the task count OR the bytes threshold is exceeded. The
 done callback releases bytes when a task completes, keeping the budget accurate. The independent
 R2 queue adds 128 MiB by default, for a combined 384 MiB body budget before SDK, compression
-and terminal-evidence overhead.
+and terminal-evidence overhead. Production incident evidence and deployment sizing are maintained in
+the private operator runbook.
 
 The semaphore is process-local; the recorder also supports deployment with multiple processes. An exact in-process key
 lock is acquired before the semaphore, so duplicate recordings queue without consuming both

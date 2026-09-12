@@ -73,8 +73,8 @@ Honesty is part of the model. Two items are deliberately deferred:
 
 1. **Server runs do not yet have filesystem/network isolation.** The resource limits above cap denial of
    service, but a full jail (a locked-down user + egress allow-list, like the local sandbox) requires a
-   container deployment and is planned. On the reference deployment there is no on-disk secret file to
-   read (the encryption key is an environment variable), and only allow-listed CLIs may run.
+   container deployment and is planned. In the supported hosted configuration the encryption key is
+   an environment variable rather than an on-disk secret file, and only allow-listed CLIs may run.
 2. **The CLI-login handshake is in-process.** The short-lived pairing state for `treg login` lives in the
    server process (it self-heals on retry and carries no rate-limit value). Running more than one server
    instance requires sticky routing for that one flow, or moving it to shared storage.

@@ -295,7 +295,8 @@ uv run python -m treg keygen   # print a fresh Fernet key for TREG_SECRET_KEY
 > database drivers, and encryption. `pip install tools-registry` alone gives just the `treg` command for
 > talking to an existing registry.
 
-The team instance is hosted on **Render** (web service + Postgres) at `treg.to`.
+The official hosted service is available at `treg.to`. Its production topology and live settings are
+maintained in the private [operator runbook](https://github.com/superdesigndev/treg-internal/blob/main/docs/production/deploy.md).
 
 ## Configuration
 
@@ -312,7 +313,7 @@ Environment variables (prefix `TREG_`, read from `.env`):
 | `TREG_GOOGLE_CLIENT_ID` / `_SECRET`       | *(empty)*                       | Google OAuth sign-in (redirect `<public_url>/auth/google/callback`); empty hides the button                                                                                |
 | `TREG_INSTAGRAM_CLIENT_ID` / `_SECRET`    | *(empty)*                       | Instagram App ID and secret for direct Instagram Login (redirect `<public_url>/oauth/callback`)                                                                           |
 | `TREG_META_CLIENT_ID` / `_SECRET`         | *(empty)*                       | Meta app credentials for Facebook Pages, Meta Ads, and optional Instagram `page-tools`                                                                                     |
-| `TREG_OAUTH_REVIEW_PENDING`               | `instagram-login,page-messages` | Registry review keys awaiting production access. Remove `page-messages` after Page messaging approval; set empty after direct Instagram approval.                         |
+| `TREG_OAUTH_REVIEW_PENDING`               | `instagram-login,page-messages` | Comma-separated registry review keys whose capabilities must remain gated; hosted review state is maintained privately.                                                   |
 | `TREG_RESEND_API_KEY` / `TREG_EMAIL_FROM` | *(empty)*                       | transactional email via Resend (OTP codes + invites); From must be a Resend-verified sender                                                                                |
 | `TREG_BLOCKED_EMAIL_DOMAINS`              | *(empty)*                       | comma-separated email domains refused at every sign-up/sign-in door and at team creation (subdomains included, case-insensitive). Empty blocks nothing — no list ships in the code |
 | `TREG_ADMIN_TOKEN`                        | *(empty)*                       | cross-tenant **super-admin** bearer; authorizes every `/admin/*` endpoint. Empty disables the env path (only `is_superadmin` users reach `/admin`). Keep it long + secret. |

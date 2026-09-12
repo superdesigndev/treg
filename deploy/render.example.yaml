@@ -1,0 +1,45 @@
+# Generic Render Blueprint for a self-hosted registry.
+#
+# Copy this file into your own deployment repository and adjust names, region,
+# plans and environment variables. The treg.to production topology and settings
+# are intentionally maintained in the private treg-internal repository:
+# https://github.com/superdesigndev/treg-internal/blob/main/docs/production/deploy.md
+
+databases:
+  - name: registry-db
+    databaseName: registry
+    region: oregon
+    plan: basic-256mb
+
+services:
+  - type: web
+    name: registry
+    runtime: python
+    region: oregon
+    plan: starter
+    branch: main
+    buildCommand: pip install ".[server]"
+    preDeployCommand: python -m treg upgrade
+    startCommand: python -m treg
+    healthCheckPath: /meta
+    envVars:
+      - key: TREG_DATABASE_URL
+        fromDatabase:
+          name: registry-db
+          property: connectionString
+      - key: TREG_PUBLIC_URL
+        value: https://registry.example.com
+      - key: TREG_EMAIL_DEV_MODE
+        value: "false"
+      - key: TREG_SECRET_KEY
+        sync: false
+      - key: TREG_SESSION_SECRET
+        sync: false
+      - key: TREG_GITHUB_CLIENT_ID
+        sync: false
+      - key: TREG_GITHUB_CLIENT_SECRET
+        sync: false
+      - key: TREG_RESEND_API_KEY
+        sync: false
+      - key: TREG_EMAIL_FROM
+        value: registry <no-reply@registry.example.com>
