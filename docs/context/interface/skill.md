@@ -94,6 +94,14 @@ The Claude variant sits at the **repo root**, not under `plugin/`, because that 
 simultaneously what Claude Code's loader auto-discovers, what `npx skills add` resolves, and what
 `clawhub skill publish` takes. See [docs/CLAUDE-PLUGIN.md](../../CLAUDE-PLUGIN.md) for the
 per-registry submission runbook.
+
+`mcp_install._write_json_agent` merges Cursor and opencode entries without disturbing unrelated
+configuration, then atomically replaces the config from a random same-directory temporary file.
+That temporary file is created through `tempfile.mkstemp` before any token bytes are written and is
+set to mode `0600` through its open fd on POSIX regardless of umask; failures remove it and leave
+the original config intact. Windows relies on the config directory's inherited ACL rather than
+claiming POSIX mode semantics.
+
 ## Feedback
 
 The consumer skill also names feedback as a loading trigger and links to `{BASE}/feedback.md`.
