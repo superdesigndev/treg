@@ -40,6 +40,18 @@ def enrichment_on(monkeypatch, platform_on):
     get_settings.cache_clear()
 
 
+@pytest.fixture
+def enrichment_with_quickenrich_on(monkeypatch, platform_on):
+    """Like enrichment_on but includes QuickEnrich - the cheapest provider for phone/email lookups."""
+    for p in ("HUNTER", "TOMBA", "LEADMAGIC", "LEADSFORGE", "FINDYMAIL", "AVIATO", "FIBER_AI", "QUICKENRICH"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_TOMBA_SECRET", "PLATFORM-TOMBA-SECRET")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "hunter,tomba,leadmagic,leadsforge,findymail,aviato,fiber-ai,quickenrich")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 def _relay_by_provider(answers: dict[str, list[tuple[int, dict]]], seen: list):
     """A fake upstream keyed by the vendor host: each provider answers its scripted list in order."""
     async def _relay(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False):
@@ -1179,6 +1191,67 @@ async def test_lusha_is_the_last_rung_of_the_phone_waterfall_and_settles_on_its_
     assert r.status_code == 200 and r.headers["X-Treg-Route-Outcome"] == "miss" and r.json()["output"]["phone"] is None, r.text
     assert before - await _balance(clients) == int(1 * rate * 1_000_000 + 0.5)
     get_settings.cache_clear()
+
+
+async def test_quickenrich_is_cheapest_phone_provider_and_respects_max_cost(clients: AsyncClient, enrichment_with_quickenrich_on, monkeypatch):
+    """QuickEnrich is the cheapest phone provider (~$0.0048) and must be considered when max-cost is
+    set above its price. Regression for feedback #136/#128: customers got 402s because the router
+    was treating a more expensive provider as cheapest when QuickEnrich was not in PLATFORM_PROVIDERS."""
+    routed = "treg.people.phone.find"
+    plan = (await clients.get(f"/catalog/endpoints/{routed}")).json()["routing"]["plan"]
+    prices = [(c["endpoint_id"], c["usd"]) for c in plan]
+    quickenrich_entry = next((p for p in prices if "quickenrich" in p[0]), None)
+    assert quickenrich_entry is not None, f"QuickEnrich must be in the phone waterfall: {prices}"
+    assert quickenrich_entry[1] == min(p[1] for p in prices if p[1]), f"QuickEnrich must be the cheapest: {prices}"
+
+    seen = []
+    hit = {'success': True, 'data': {'employee_phone': '+15550100100', 'employee_phone_type': 'mobile'},
+           'meta': {'credits_used': 1}}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({'quickenrich': [(200, hit)]}, seen))
+
+    before = await _balance(clients)
+    # max_cost=$0.01 is above QuickEnrich (~$0.0048) but below every other provider
+    r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/example"},
+                           headers={"X-Treg-Route-Max-Cost": "0.01"})
+    assert r.status_code == 200, f"Should succeed with QuickEnrich: {r.text}"
+    assert r.json()["_treg"]["served_by"] == "quickenrich.people.phone.find"
+    assert r.json()["output"]["phone"] == "+15550100100"
+    assert [p for p, *_ in seen] == ["quickenrich"], "Only QuickEnrich should be called"
+    charged = before - await _balance(clients)
+    assert charged == 4834, f"QuickEnrich should charge 1 credit = $0.004834 = 4834 micro: got {charged}"
+
+
+async def test_max_cost_below_cheapest_refuses_before_any_call_for_phone(clients: AsyncClient, enrichment_with_quickenrich_on, monkeypatch):
+    """When max-cost is below even the cheapest provider (QuickEnrich), the call is refused with
+    route_max_cost error before any provider is asked, naming the cheapest candidate."""
+    routed = "treg.people.phone.find"
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({}, seen))
+    r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/example"},
+                           headers={"X-Treg-Route-Max-Cost": "0.001"})  # $0.001 < QuickEnrich's $0.0048
+    assert r.status_code == 402, r.text
+    d = r.json()["detail"]
+    assert d["error"] == "route_max_cost"
+    assert "quickenrich" in d["message"], f"Error should name QuickEnrich as cheapest: {d['message']}"
+    assert seen == [], "No provider should be called when max-cost is below the cheapest"
+
+
+async def test_capped_signal_when_max_cost_truncates_waterfall(clients: AsyncClient, enrichment_with_quickenrich_on, monkeypatch):
+    """Feedback #131: When max-cost stops the waterfall early, the result should indicate that more
+    expensive providers were skipped (capped=true). This lets callers distinguish an exhaustive miss
+    from one truncated by budget - they can raise their ceiling if they need to try all providers."""
+    routed = "treg.people.phone.find"
+    miss = {'success': False, 'message': 'No data found for this profile'}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({'quickenrich': [(200, miss)]}, []))
+    r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/example"},
+                           headers={"X-Treg-Route-Max-Cost": "0.01"})  # ~$0.01 allows QuickEnrich only
+    assert r.status_code == 200, r.text
+    treg = r.json()["_treg"]
+    assert treg["outcome"] == "miss"
+    assert treg.get("capped") is True, f"Expected capped=true when waterfall truncated: {treg}"
+    assert r.headers.get("X-Treg-Route-Capped") == "true", "Expected X-Treg-Route-Capped header"
+    skipped = [t for t in treg["tried"] if t["outcome"] == "skipped" and "would exceed" in t.get("detail", "")]
+    assert skipped, f"Expected some providers skipped due to cost: {treg['tried']}"
 
 
 async def test_strict_filters_refuses_a_looser_answer_instead_of_billing_it(clients: AsyncClient, enrichment_on, monkeypatch):
