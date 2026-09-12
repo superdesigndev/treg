@@ -1316,6 +1316,16 @@ async def _resolve_marketplace_call(
         _preflight_authorization(ep, chosen_secret, chosen_method, authorization)
         provider = provider.profile_for_authorization(chosen_method)
 
+    endpoint_host = str(ep.get("host") or "").strip().lower()
+    if endpoint_host and provider.catalog_targets:
+        try:
+            provider = provider.profile_for_catalog_host(endpoint_host)
+        except ValueError as exc:
+            raise ResolutionFailed(
+                "injection_failed", status_code=502,
+                detail=f"{ep['id']} declares an upstream host that is not approved for {service}",
+            ) from exc
+
     upstream, consumed = _marketplace_upstream(ep, provider, query, chosen_method)
     body = await read_body() if has_body else b""
     phash = _params_hash(ep["id"], query.multi_items(), body)

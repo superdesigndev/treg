@@ -864,6 +864,15 @@ def main(argv: list[str]) -> int:
                 fail(errors, where, f"bad scope '{ep.get('scope')}'")
             if ep.get("method") not in METHODS:
                 fail(errors, where, f"bad method '{ep.get('method')}'")
+            host = ep.get("host")
+            if host is not None:
+                if not isinstance(host, str) or not HOST.fullmatch(host):
+                    fail(errors, where, "host must be one DNS hostname without a scheme, port, or path")
+                elif (provider_config := REGISTRY.get(service)) and provider_config.catalog_targets:
+                    try:
+                        provider_config.profile_for_catalog_host(host)
+                    except ValueError:
+                        fail(errors, where, f"host '{host}' is not an approved catalog target for '{service}'")
             check_status_marker(ep, where, endpoint_status, errors)
             inp = ep.get("input") or {}
             if "platform_request" in ep:
