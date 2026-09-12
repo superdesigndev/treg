@@ -198,7 +198,11 @@ async def prepare(body: bytes, content_hash: str, *, mode: str, observation: Sto
             inflight.pop(content_hash, None)
             flight.set_result(reason)
             observation.props["archive_body_upload_ms"] = round(observation.props["archive_body_upload_ms"], 3)
-    return WritePlan(mode) if reason is None else WritePlan("db" if mode == "both" else None, reason=reason)
+    # The write mode selects the normal destination, not the failure policy. Once an eligible
+    # body cannot be published to R2, retain it in DB so the snapshot remains readable. This is
+    # deliberately rare and keeps R2-only operation from turning a transient store fault into
+    # permanent body loss.
+    return WritePlan(mode) if reason is None else WritePlan("db", reason=reason)
 
 
 def submit(factory, body_len: int, observation: StorageReport, *, content_hash: str) -> str | None:

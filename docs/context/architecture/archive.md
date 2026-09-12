@@ -90,16 +90,17 @@ All switches are settings, with environment prefix `TREG_`:
 
 `both` first uploads, then enters the existing per-key lock / DB semaphore and transaction to
 store the DB body and publish the R2 location. No PUT occurs under a row lock or with a checked-out
-DB connection. On upload failure, `both` retains the DB copy with location `db`; `r2` publishes
-a hash-only snapshot with no body location. A successful upload followed by a failed DB transaction can leave an unreferenced
+DB connection. On upload failure, both R2 write modes retain an eligible DB copy with location
+`db`; the write setting chooses the normal destination, while DB remains the rare failure path.
+A successful upload followed by a failed DB transaction can leave an unreferenced
 content-addressed object; no pointer names a failed upload. Existing policy and size gates apply
 before uploading. Hash-only history stays in DB when bytes are ineligible.
 
 R2 has independent `ARCHIVE_R2_UPLOAD_CONCURRENCY` (8), `ARCHIVE_R2_MAX_PENDING` (256), and
 `ARCHIVE_R2_MAX_PENDING_BYTES` (128 MiB) budgets. A leader holds one upload slot for
 its bounded attempt sequence, including retry jitter; duplicate waiters hold no upload slot. The DB stage keeps its original two slots and 30-second deadline. Upload admission
-failure falls back to the separately bounded DB queue: `both` retains DB bytes, while `r2`
-retains only hash/history/statistics if DB admission succeeds.
+failure falls back to the separately bounded DB queue in both R2 write modes. Bodies rejected by
+policy or size remain hash-only; a later DB queue rejection remains an observable dropped recording.
 `ARCHIVE_R2_TIMEOUT_S` (10 seconds) bounds the complete PUT/retry sequence after upload-slot
 admission, including retry jitter. Upload-slot waiting is outside that timeout and is measured
 separately as `queue_wait_ms`. No extra timeout layer is introduced.
@@ -144,10 +145,11 @@ reads use these logs because they have no `tool_called`. Existing per-path proce
 additional bounded per-path/reason counters distinguish the failure classes.
 
 DB fallback requires a snapshot that still has DB bytes or a DB carrier, normally written during
-`db` or `both`. New `r2`-only writes have no DB copy: an R2 read failure becomes a cache miss and
-calls upstream for lookup; history returns `stored=false` with no response body, and terminal
-views have no archived terminal body. An old `both` snapshot can still fall back after the global
-write switch changes. A failed read does not mean the object was never archived or has been deleted.
+`db`, `both`, or a failed R2-only upload. Successful `r2` writes have no DB copy: an R2 read failure
+becomes a cache miss and calls upstream for lookup; history returns `stored=false` with no response
+body, and terminal views have no archived terminal body. An old `both` snapshot or an R2 upload's
+DB fallback can still serve after the global write switch changes. A failed read does not mean the
+object was never archived or has been deleted.
 Read timeout and fallback observability must precede `r2-first`, so the entire double-write window
 has visible fallback rates. Observing those rates is a prerequisite for closing the double-write
 window and switching new writes to `r2`.
@@ -156,7 +158,7 @@ window and switching new writes to `r2`.
 latency cannot delay it. The separate `archive_body_stored` completion event carries `call_ref`,
 `storage`, `upload_status`, `upload_ms`, `queue_wait_ms`, `dropped` and `drop_reason`. Join by
 `call_ref`. A failed R2 upload followed by a committed DB copy is not dropped. R2-only upload
-failure still records a hash-only snapshot and statistics. These remain best-effort background
+failure follows that same DB fallback for eligible bytes. These remain best-effort background
 writes: a killed process can lose completion events, but cannot withhold the calling event.
 The same completion event measures archive stages, including elapsed work on timeout or cancellation:
 
@@ -610,7 +612,7 @@ a stability comparison. Subsequent observations learn normally. This conservativ
 learning interval avoids object I/O inside a write session or an extra speculative GET per write.
 
 `WritePlan` is the single body-retention decision passed into the DB writer. DB retention is
-inferred from its storage location; failed R2-only uploads become hash-only plans. Each started
+inferred from its storage location; failed eligible R2-only uploads become `db` plans. Each started
 recording emits its completion report from one `finally` block, while queue callbacks release
 budgets and report cancellation of tasks that never started. `tool_called` remains independent.
 The object-store lifespan chooses a real or injected context once and always resets the seam.
@@ -646,8 +648,9 @@ Residual `rate_limited`/`upstream_error` failures get one retry on nonterminal u
 1.0-1.5 seconds of jitter before retry. This clears the one-write-per-second same-key window and
 shares the existing transfer deadline rather than restarting it. Exhaustion keeps `storage=db`
 in `both` mode with `upload_status=failed` and the classified `drop_reason`; the DB copy is not
-reported as dropped. R2-only mode retains its existing hash-only fallback. No SDK retries are
-enabled, no new DB writes/columns/tables are added, and no production setting is changed.
+reported as dropped. R2-only mode now uses the same DB fallback for eligible bytes. No SDK retries
+are enabled, no extra DB transaction or new column/table is added, and no production setting is
+changed.
 
 ### Timing and queue interpretation
 
