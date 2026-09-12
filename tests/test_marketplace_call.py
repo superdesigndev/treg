@@ -491,6 +491,45 @@ def test_body_limit_reads_camel_case_and_nested_pagination_keys():
     # lusha decision-makers: `contactsLimit` caps contacts PER COMPANY and is the whole bill (1 credit
     # each) — without it the route answered 44 rows for microsoft.com, $5.49 in one call (2026-09-02)
     assert call_resolution._body_limit(json.dumps({"companies": [{"domain": "microsoft.com"}], "contactsLimit": 5}).encode()) == 5
+    # lusha people.enrich: `contacts` array must count (feedback #133, org 13545) — without this,
+    # a single-contact lookup fell back to the 20-row default and reserved $4.992 for a $0.2496 call (20x)
+    assert call_resolution._body_limit(json.dumps({"contacts": [{"firstName": "Jane", "lastName": "Doe", "companyDomain": "lusha.com"}], "reveal": ["emails"]}).encode()) == 1
+    assert call_resolution._body_limit(json.dumps({"contacts": [{"firstName": "A"}, {"firstName": "B"}], "reveal": ["emails"]}).encode()) == 2
+
+
+def test_body_limit_counts_lusha_companies_array():
+    """lusha.companies.enrich takes a `companies` array. Without counting it, a single-company lookup
+    estimated at 20 results (the default) instead of 1 — a 20x pricing mismatch."""
+    assert call_resolution._body_limit(json.dumps({"companies": [{"domain": "lusha.com"}]}).encode()) == 1
+    assert call_resolution._body_limit(json.dumps({"companies": [{"domain": "a.com"}, {"domain": "b.com"}, {"domain": "c.com"}]}).encode()) == 3
+
+
+def test_hunter_domain_search_estimate_uses_credit_rounding():
+    """Hunter bills 1 search credit per 10 emails RETURNED, rounded UP — the catalog's `per: 10` prices
+    at $0.00245/record, but Hunter actually charges whole credits. Feedback #116 (org 12770): catalog
+    showed ~$0.00245 but billed ~$0.0245 (10x) because the estimate used linear per-record math
+    while settle used rounded-up credits. The estimate must round up to whole credits too.
+
+    With limit=1: linear estimate was $0.00245, but settle = ceil(1/10) = 1 credit = $0.0245."""
+    credit_micro = 24_500  # $0.0245/credit (fx.yaml, Starter $49/mo / 2,000 credits)
+    # The estimate must round up to whole credits, same as settle does
+    cost = {"type": "per_result", "usd": 0.00245}  # per-record price from cost_view
+    # Default limit (10 for Hunter) → 1 credit
+    est, unit = call_resolution._marketplace_pricing("hunter", "hunter.companies.emails", cost, {}, b"")
+    assert est == credit_micro, f"default limit (10) should reserve 1 whole credit: {est}"
+    assert unit == credit_micro, "unit should be 1 credit"
+    # limit=1 → still 1 credit (rounded up)
+    est_1, _ = call_resolution._marketplace_pricing("hunter", "hunter.companies.emails", cost, {"limit": "1"}, b"")
+    assert est_1 == credit_micro, f"limit=1 should still reserve 1 whole credit (ceil(1/10)=1): {est_1}"
+    # limit=10 → 1 credit
+    est_10, _ = call_resolution._marketplace_pricing("hunter", "hunter.companies.emails", cost, {"limit": "10"}, b"")
+    assert est_10 == credit_micro, f"limit=10 should reserve 1 credit: {est_10}"
+    # limit=11 → 2 credits (rounded up)
+    est_11, _ = call_resolution._marketplace_pricing("hunter", "hunter.companies.emails", cost, {"limit": "11"}, b"")
+    assert est_11 == 2 * credit_micro, f"limit=11 should reserve 2 credits (ceil(11/10)=2): {est_11}"
+    # limit=100 (max) → 10 credits
+    est_100, _ = call_resolution._marketplace_pricing("hunter", "hunter.companies.emails", cost, {"limit": "100"}, b"")
+    assert est_100 == 10 * credit_micro, f"limit=100 should reserve 10 credits: {est_100}"
 
 
 async def test_provider_5xx_releases_the_hold(clients: AsyncClient, platform_on, monkeypatch):
