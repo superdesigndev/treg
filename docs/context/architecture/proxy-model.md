@@ -187,7 +187,10 @@ catalog fall-through and is attached only if the marketplace credential ladder a
 near-id matching remains provider-local and takes precedence for genuine misspellings.
 
 If both shapes miss with 404, a dotted target gets one final lookup in the endpoint catalog. A live
-row enters `_resolve_marketplace_call` and its credential ladder. `_marketplace_upstream` fills catalog
+row enters `_resolve_marketplace_call` and its credential ladder. `_marketplace_upstream` joins
+`provider.base_url` + path unless the catalog row carries `host`, in which case the origin is
+`https://{host}` and the provider base path is ignored (Diffbot Extract vs the KG `/kg/v3`
+prefix; see catalog.md `host:` vs `extra_tools`). It fills catalog
 path placeholders by percent-encoding raw values, but preserves a value containing a valid `%HH`
 escape. This prevents an already encoded Search Console property id such as
 `sc-domain%3Aexample.com` becoming double-encoded as `%253A`. Raw `@` remains literal because it is

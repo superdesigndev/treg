@@ -4,6 +4,15 @@ from scripts import catalog_validate as validator
 from treg.domain.catalog import store as catalog_store
 
 
+def test_endpoint_host_must_be_a_hostname():
+    """host: is a hostname, not a URL. Same contract as store._normalize_host."""
+    assert validator.HOST.fullmatch("api.diffbot.com")
+    assert validator.HOST.fullmatch("analyticsadmin.googleapis.com")
+    for bad in ("https://api.diffbot.com", "api.diffbot.com/v3",
+                "https://api.diffbot.com/v3/event", "api.diffbot.com:443"):
+        assert not validator.HOST.fullmatch(bad)
+
+
 def test_cost_modifiers_accept_only_supported_declarative_credit_rules():
     base = {
         "type": "per_success", "value": 5, "currency": "credit", "per": 1,

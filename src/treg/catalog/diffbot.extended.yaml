@@ -8,8 +8,8 @@
 # on 2026-07-31) the crawl job list. The remaining 4 Crawl/Bulk-job endpoints are `untestable`
 # because each needs a job that does not exist yet and creating one starts a real billed crawl —
 # NOT because of a plan gate, see the CORRECTION below.
-# Neither catalog_verify.py nor catalog_verify_extended.py
-# understands this file's `host:` field — both always call `prov.base_url` (kg.diffbot.com), which
+# Call resolution honors `host:` (`https://{host}` + path, not provider.base_url). Verify
+# scripts still ignore it and always call `prov.base_url` (kg.diffbot.com), which
 # is the WRONG host for every entry below — so verification here was done with direct calls
 # against each entry's documented host and the results stamped by hand; re-verifying through
 # either script as-is will 404 against the KG host and must not be read as these routes breaking.

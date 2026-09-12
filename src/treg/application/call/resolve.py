@@ -910,7 +910,14 @@ def _marketplace_upstream(
             "catalog_parameter_invalid", status_code=400, detail=(
                 f"{ep['id']} requires --query "
                 + " --query ".join(f"{k}=<value>" for k in required)))
-    return provider.base_url.rstrip("/") + "/" + path.lstrip("/"), consumed
+    host = (ep.get("host") or "").strip()
+    if host:
+        # Same credential, different netloc. Path is relative to https://{host}, not to
+        # provider.base_url (whose path may be a different API family, e.g. /kg/v3).
+        origin = f"https://{host}"
+    else:
+        origin = provider.base_url.rstrip("/")
+    return origin + "/" + path.lstrip("/"), consumed
 
 
 class _DuplicateJsonKey(ValueError):

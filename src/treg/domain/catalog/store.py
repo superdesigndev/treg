@@ -521,6 +521,31 @@ def _effective_cost(raw: dict):
 
 
 _IGNORE_PATH = re.compile(r"(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\[\*\])(?:\[\*\])*(?:\.[A-Za-z0-9_][A-Za-z0-9_-]*(?:\[\*\])*)*")
+# Hostname only: no scheme, path, port, userinfo, query or fragment. Same pattern as
+# scripts/catalog_validate.py HOST (async poll allow-list).
+_ENDPOINT_HOST = re.compile(
+    r"(?=.{1,253}\Z)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)"
+    r"(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*"
+)
+
+
+def _normalize_host(raw: dict) -> str:
+    """Optional per-endpoint hostname. Same credential, different netloc — not extra_tools."""
+    value = raw.get("host")
+    if value is None or value == "":
+        return ""
+    if not isinstance(value, str):
+        raise ValueError(f"{raw.get('id')}: host must be a hostname")
+    host = value.strip()
+    if not host:
+        return ""
+    if "://" in host or "/" in host or "?" in host or "#" in host or "@" in host:
+        raise ValueError(
+            f"{raw.get('id')}: host must be a hostname (no scheme or path), got {value!r}")
+    if not _ENDPOINT_HOST.fullmatch(host):
+        raise ValueError(
+            f"{raw.get('id')}: host must be a hostname (no scheme or path), got {value!r}")
+    return host
 
 
 def _validate_cache(cache) -> None:
@@ -549,6 +574,12 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         "kind": str(raw.get("kind") or DEFAULT_KIND).strip().lower() or DEFAULT_KIND,
         "method": (raw.get("method") or "GET").upper(),
         "path": raw.get("path") or "",
+        # Optional hostname when this route is not on provider.base_url. Call resolution
+        # builds https://{host} + path and must not prepend the provider base path
+        # (Diffbot Extract on api.diffbot.com vs KG on kg.diffbot.com/kg/v3). Empty
+        # means today's join: provider.base_url + path. Not extra_tools — that
+        # provisions a second Tool row for host-scoped named/URL-passthrough resolution.
+        "host": _normalize_host(raw),
         # optional short display title; `summary` stays the provider's own description, verbatim
         "name": str(raw.get("name") or "").strip(),
         "summary": raw.get("summary") or "",
@@ -643,6 +674,7 @@ def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None) -
         "summary": ep["summary"],
         "method": ep["method"],
         "path": ep["path"],
+        **({"host": ep["host"]} if ep.get("host") else {}),
         "scope": ep["scope"],
         "tier": ep["tier"],
         # data | action | account | utility — the front-end hides account/utility behind an expander

@@ -685,11 +685,17 @@ Rules:
 - Ids are unique across the WHOLE catalog, both tiers, all providers.
 - Two optional fields exist only in this tier, both added for the first-party OAuth providers:
   - `host: <fqdn>` — this route is NOT on the provider's `base_url`, and its `path` is relative to
-    the named host instead. Google splits one product across sibling `*.googleapis.com` services
-    (GA4 reporting vs GA4 admin; six separate My Business services) while an `OAuthProvider` names
-    one host. The same OAuth token calls them all, so the endpoints are real and worth listing —
-    but the auto-provisioned tool is bound to `base_url`, so calling one needs a second tool bound
-    to that host. Absence of `host` means "callable through the provisioned tool".
+    the named host instead. `_normalize` keeps the hostname (scheme/path rejected).
+    `_marketplace_upstream` then builds `https://{host}` + path and does not prepend
+    `provider.base_url`'s path (Diffbot's KG base is `https://kg.diffbot.com/kg/v3`; Extract
+    lives on `api.diffbot.com/v3/...`). Absence of `host` means join onto `provider.base_url`
+    (callable through the provisioned tool).
+    `host:` is not `extra_tools`. `host:` rewrites one catalog-id call's netloc while the
+    same credential is injected. `extra_tools` (for example GA's `google-analytics-admin`)
+    creates a second Tool row so URL-passthrough and named `/call/<tool>/...` resolution can
+    find that host. A provider that needs both (GA Admin listed in the catalog AND callable
+    as a named tool) keeps both. Diffbot Extract needs only `host:` — do not add extra_tools
+    for it.
   - `scope_gap: <one line>` — the credential treg's OAuth app obtains CANNOT call this, and this is
     the scope that is missing. These are listed rather than dropped on purpose: the set of gaps is
     the answer to "which scopes should we add to the registered app", and it is only visible if the

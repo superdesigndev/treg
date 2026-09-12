@@ -846,6 +846,10 @@ def main(argv: list[str]) -> int:
                 fail(errors, where, f"platform '{plat}' not in capabilities.yaml platforms")
             if cap and plat and cap.split(".")[0] != plat:
                 fail(errors, where, f"platform '{plat}' != capability's first segment '{cap.split('.')[0]}'")
+            host = ep.get("host")
+            if host is not None and host != "":
+                if not isinstance(host, str) or not HOST.fullmatch(host):
+                    fail(errors, where, "host must be a hostname (no scheme or path)")
             # `domain` is optional — the loader derives one from the capability id or the path when
             # it is absent. Declaring one overrides that, so it has to be the same SHAPE the derived
             # ones are: one lowercase word, or the platform page grows a section of one.

@@ -214,6 +214,59 @@ def test_path_placeholders_fill_from_query_and_are_consumed():
     assert exc.value.status_code == 400 and "siteUrl" in exc.value.detail
 
 
+def test_diffbot_extract_endpoints_use_api_host_not_kg_base():
+    """host: on Diffbot extract rows is the Extract API, not the KG base_url path.
+
+    Feedback #178: live calls joined provider.base_url (https://kg.diffbot.com/kg/v3)
+    onto /v3/event and hit https://kg.diffbot.com/kg/v3/v3/event (nginx 404, $0).
+    """
+    cat = catalog_store.load()
+    for eid, path in (
+        ("diffbot.x.extract-event", "/v3/event"),
+        ("diffbot.x.extract-article", "/v3/article"),
+    ):
+        ep = cat.by_id[eid]
+        assert ep.get("host") == "api.diffbot.com"
+        url, consumed = call_resolution._marketplace_upstream(
+            ep, oauth_providers.DIFFBOT, {"url": "https://example.com/event"})
+        assert url == f"https://api.diffbot.com{path}"
+        assert "/kg/v3/" not in url
+        assert "/v3/v3/" not in url
+        assert consumed == set()
+
+
+def test_marketplace_upstream_without_host_keeps_provider_base_url():
+    """A host-less catalog row still joins onto provider.base_url, including its path."""
+    ep = catalog_store.load().by_id["diffbot.companies.enrich"]
+    assert not ep.get("host")
+    url, _ = call_resolution._marketplace_upstream(
+        ep, oauth_providers.DIFFBOT,
+        {"type": "Organization", "url": "https://www.diffbot.com"})
+    assert url == "https://kg.diffbot.com/kg/v3/enhance"
+
+
+def test_catalog_host_overrides_origin_without_provider_base_path():
+    """GA Admin catalog-id calls go to analyticsadmin, not the Data API base_url."""
+    ep = catalog_store.load().by_id[
+        "google-analytics.x.analyticsadmin-accountsummaries-list"]
+    assert ep.get("host") == "analyticsadmin.googleapis.com"
+    url, _ = call_resolution._marketplace_upstream(
+        ep, oauth_providers.GOOGLE_ANALYTICS, {})
+    assert url == "https://analyticsadmin.googleapis.com/v1beta/accountSummaries"
+    assert "analyticsdata.googleapis.com" not in url
+
+
+def test_normalize_keeps_hostname_and_rejects_urls(tmp_path):
+    raw = {"id": "demo.x.extract", "path": "/v3/event", "host": "api.diffbot.com",
+           "summary": "x"}
+    ep = catalog_store._normalize(raw, "demo", tmp_path)
+    assert ep["host"] == "api.diffbot.com"
+    for bad in ("https://api.diffbot.com", "api.diffbot.com/v3",
+                "https://api.diffbot.com/v3/event", "api.diffbot.com:443"):
+        with pytest.raises(ValueError, match="hostname"):
+            catalog_store._normalize({**raw, "host": bad}, "demo", tmp_path)
+
+
 def test_gtm_catalog_builds_hierarchy_from_atomic_ids_without_encoded_slashes():
     ep = catalog_store.load().by_id["google-tag-manager.workspaces"]
     url, consumed = call_resolution._marketplace_upstream(
