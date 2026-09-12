@@ -7211,12 +7211,12 @@ endpoints:
       item_types:
         type: array
         required: false
-        note: 'types of items returned optional field to speed up the execution of the request, specify one item at a time; possible values: "google_trends_graph", "google_trends_map", "google_trends_topics_list","google_trends_queries_list" default value: "google_trends_graph" Note: to obtain google_trends_topics'
+        note: 'possible values: "google_trends_graph" (default), "google_trends_map", "google_trends_topics_list", "google_trends_queries_list". IMPORTANT: google_trends_topics_list and google_trends_queries_list require exactly 1 keyword — if you pass multiple keywords with these item_types, the API returns error 40501 (Invalid Field).'
       tag:
         type: string
         required: false
         note: user-defined task identifier optional field the character limit is 255 you can use this parameter to identify the task and match it with the result you will find the specified tag value in the data object of the response
-    note: the POST body is an ARRAY of task objects with these fields — one object per task
+    note: POST body is an array with exactly 1 task object (Live endpoints do not support multi-task arrays)
   test_request:
     body:
     - location_name: United States
@@ -7226,7 +7226,6 @@ endpoints:
       category_code: 3
       keywords:
       - rugby
-      - cricket
     bodyType: json
   expect:
     json_path: tasks.0.status_code
