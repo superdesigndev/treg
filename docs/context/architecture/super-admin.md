@@ -31,7 +31,7 @@ transitional `api.py` re-export retired with the rest of the stage-3 compatibili
 
 **On the admin pool.** The gate takes `Depends(get_admin_session)`, and so does every `/admin/*`
 handler it guards — 3 connections, no overflow, separate from the API's
-(`ops/deploy.md` § Three pools). It must be the SAME dependency callable on both: FastAPI caches
+(`ops/deploy.md` § Database pools). It must be the SAME dependency callable on both: FastAPI caches
 dependencies per request by identity, so a gate on `get_session` would put admin traffic back on the
 API pool through the back door. Staff pages are therefore bounded by construction — a panel that
 polls itself into saturation costs admins their own 503s, not the product's.

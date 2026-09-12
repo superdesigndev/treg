@@ -533,8 +533,8 @@ async def _resolve_org(client: httpx.AsyncClient) -> tuple[int | None, str | Non
 async def _whose_grant(client: httpx.AsyncClient, slug: str | None, *, oauth: bool) -> dict:
     """`{team, team_name, identity, hint}` — enough for a human to spot the WRONG team.
 
-    A slug on its own cannot be sanity-checked. `superdesign-7` looks like a plausible team to an
-    agent and to the person reading over its shoulder, and neither of them can tell it apart from
+    A slug on its own can look plausible to an agent and to the person reading over its shoulder,
+    and neither of them can tell it apart from
     the team they meant; the first signal that anything was wrong was money missing from a balance
     nobody had opened. The display name and the account the grant belongs to are what make the
     mismatch legible — most of the time it is the OTHER half that differs, an OAuth consent given by
@@ -1354,7 +1354,7 @@ def _allowed_hosts() -> list[str]:
     public = urlsplit(get_settings().public_url).netloc
     if public:
         hosts += [public, public.split(":")[0]]
-    # Every name the reference deployment has ever answered to, SYMMETRICALLY — a .mcp.json
+    # Every name the hosted service has answered to, symmetrically. A .mcp.json
     # pointed at either domain keeps working whichever one public_url currently names, which is
     # what makes an env-var rollback lossless (a treg.to config must survive a revert too).
     hosts += list(PUBLIC_HOST_ALIASES)

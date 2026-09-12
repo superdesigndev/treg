@@ -397,8 +397,8 @@ maybe_overflow` runs a **child cycle** after the primary's settle released its h
 
 1. Route from the in-process route view (`domain.capacity.routes_view`, Orthogonal first), skipping
    an aggregator marked unhealthy (`overflow:<name>` in the capacity view) or without a key; budget
-   check against `OverflowSpend` (`overflow_daily_budget_usd` per aggregator per day; $20 in code,
-   production's value lives in the private Blueprint) on a short session.
+   check against `OverflowSpend` (`overflow_daily_budget_usd` per aggregator per day) on a short
+   session. A deployment's live value belongs in its private operational configuration.
 2. **Child hold**, own id `{call_ref}:overflow`, through the ordinary `_platform_reserve` (tag
    budgets, daily cap, trial allowance apply; an empty balance is the normal 402). Never the parent's
    id: release-by-id is a conditional claim and `_finish_cancelled_call` releases both ids exactly once.

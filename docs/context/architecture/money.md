@@ -733,7 +733,7 @@ Why a counter and not an index: until 2026-09-06 the check was that journal aggr
 org that writes a large share of the platform's day its rows sit on nearly every heap page of the
 day, so no index makes the aggregate cheaper than reading the day - measured 395k buffer touches
 per call, 56-171 s once those pages were cold, holding an api-pool slot throughout. That was the
-API-pool saturation (see [deploy](../ops/deploy.md) § Three pools).
+API-pool saturation (see [deploy](../ops/deploy.md) § Database pools).
 
 ## Referrals
 
@@ -817,9 +817,9 @@ The overflow child (`application.call.overflow`) is an ordinary metered cycle on
 and `cost_source: "aggregator"` + `served_via` in the ledger `meta`, so `reconcile` needs no join.
 `OverflowSpend` (per aggregator per UTC day) is updated inside that same settle transaction; it is
 accounting for the per-aggregator daily budget, not a balance. That budget is
-`TREG_OVERFLOW_DAILY_BUDGET_USD`: the code and the public Blueprint default to $20, and production
-runs at $500 set by the private Blueprint in treg-internal (the value is owned there; this repo's
-`render.yaml` is not what production reads). Shadow mode places no hold and charges nothing.
+`TREG_OVERFLOW_DAILY_BUDGET_USD`: the code default is $20 per aggregator. A deployment may set a
+different value in its private operational configuration. Shadow mode places no hold and charges
+nothing.
 
 **The relay price is disclosed wherever a price is read.** `/call/` says `X-Treg-Served-Via:
 overflow:<aggregator>` with `X-Treg-Cost-Micro` the child's charge; the MCP `call` result (both

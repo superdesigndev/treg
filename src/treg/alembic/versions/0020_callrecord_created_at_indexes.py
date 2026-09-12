@@ -6,17 +6,9 @@ Revises: 0019
 Create Date: 2026-09-06
 
 Every question asked of `callrecord` is "… since <time>", and no index carried `created_at`. The
-planner therefore chose an index for the OTHER column and filtered the date in memory, reading an
-endpoint's or an org's entire history to answer a 30-day question. Measured on prod 2026-09-06 at
-2.94M rows / 1.68 GB:
-
-    ix_callrecord_endpoint_id_id   570,130 scans   1,603,968,175 tuples read
-    ix_callrecord_org_id            70,003 scans     295,077,614 tuples read
-    callrecord (sequential)          80,932 scans  27,063,404,479 tuples read
-
-The first is the catalog observation refresh (`domain/catalog/stats.py`, WINDOW_DAYS = 30), the
-second the per-member daily counts (`routers/orgs.py`). Both become tight range scans with these
-pairs.
+planner therefore chose an index for the other column and filtered the date in memory, reading an
+endpoint's or an org's entire history to answer a bounded time-window question. The catalog
+observation refresh and per-member daily counts both become tight range scans with these pairs.
 
 This is the fix for the API-pool saturation, not a pool size: the three pools bulkhead CONNECTIONS,
 not the single database's CPU, so a scan of this table makes every ordinary 3 ms request query queue

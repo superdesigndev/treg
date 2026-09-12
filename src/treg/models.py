@@ -258,13 +258,8 @@ class CallRecord(SQLModel, table=True):
                       Index("ix_callrecord_endpoint_id_id", "endpoint_id", "id"),
                       # EVERY question asked of this table is "… since <time>", and until now no
                       # index carried `created_at`, so the planner picked an index for the other
-                      # column and filtered the date in memory — reading the endpoint's or the
-                      # org's WHOLE history to answer a 30-day question. Measured on prod
-                      # 2026-09-06 at 2.94M rows / 1.68 GB: `ix_callrecord_endpoint_id_id` had
-                      # read 1.60 BILLION tuples across 570k scans (the catalog observation
-                      # refresh, `domain/catalog/stats.py`, WINDOW_DAYS=30), `ix_callrecord_org_id`
-                      # 295M across 70k (the per-member daily counts in `routers/orgs.py`), and
-                      # the table had taken 80,932 sequential scans for 27 BILLION tuples.
+                      # column and filtered the date in memory, reading an endpoint's or an org's
+                      # whole history to answer a bounded time-window question.
                       #
                       # That load is why the API pool saturates: the three pools bulkhead
                       # CONNECTIONS, not the one database's CPU, so a scan of this table makes

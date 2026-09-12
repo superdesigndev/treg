@@ -473,7 +473,7 @@ async def catalog_page(slug: str):
 # --------------------------------------------------------------------------- /agents/<agent>
 
 def _hosted() -> bool:
-    """True on the reference deployment only. The agent pages describe treg.to's own listings (the
+    """True on the hosted service only. The agent pages describe treg.to's own listings (the
     ChatGPT Connector, the OAuth connector, the free grant), none of which is true of a self-hosted
     registry, so off these hosts the pages do not exist rather than lie."""
     host = (urlsplit(get_settings().public_url).hostname or "").lower()

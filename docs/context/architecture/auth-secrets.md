@@ -314,8 +314,8 @@ module symbols:
   this. No commit changed, no test failed (nothing in the suite makes a live call), and the two failure
   modes read differently: a version that **never existed** returns an HTML 404, a **sunset** one returns
   a JSON 400 `UNSUPPORTED_VERSION`. `POST /health/run` would surface it on the day it breaks — it probes
-  every credential through the same versioned `probe_path` — but nothing schedules it; `render.yaml`
-  carries only Render's own `healthCheckPath: /meta`. Bump the version in all four places together:
+  every credential through the same versioned `probe_path`, but nothing schedules it by default.
+  Operators may add a health worker to their own deployment. Bump the version in all four places together:
   `oauth_providers.GOOGLE_ADS`, `catalog/google-ads.yaml`, `catalog/google-ads.extended.yaml`, and
   `scripts/catalog_ingest.py:GADS_VERSION`.
 

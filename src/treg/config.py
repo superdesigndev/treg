@@ -10,11 +10,11 @@ from urllib.parse import urlsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Every hostname the reference deployment has EVER answered to. treg moved
+# Every hostname the hosted service has answered to. treg moved
 # treg.superdesign.dev → treg.to (2026-08); installed CLIs, skill.md files, .mcp.json configs and
 # MCP OAuth grants exist against BOTH names, so both stay valid everywhere a host or audience is
-# recognized — mcp.py's transport allow-lists, mcp_oauth's token audiences, api.py's login-callback
-# anchoring — REGARDLESS of which one `public_url` currently points at. That symmetry is what makes
+# recognized by mcp.py's transport allow-lists, mcp_oauth's token audiences and api.py's login callback,
+# regardless of which one `public_url` currently points at. That symmetry is what makes
 # a TREG_PUBLIC_URL revert a complete rollback: grants and logins minted on either name survive the
 # flip in either direction. Self-hosters are unaffected: these only ADD accepted names, and none of
 # them resolve to a self-hosted deployment.
@@ -61,9 +61,9 @@ class Settings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def _async_pg_driver(cls, v: str) -> str:
-        # Render's `fromDatabase` (render.yaml) injects a bare `postgres://`/`postgresql://` URL, but
+        # Some hosts inject a bare `postgres://`/`postgresql://` URL, but
         # our async engine (create_async_engine) needs the asyncpg driver. Rewrite the scheme so the
-        # Blueprint can auto-wire the DB with no manual URL editing. No-op for sqlite / already-drivered URLs.
+        # a deployment can auto-wire the DB with no manual URL editing. No-op for sqlite / already-drivered URLs.
         if v.startswith("postgres://"):
             v = "postgresql://" + v[len("postgres://") :]
         if v.startswith("postgresql://"):

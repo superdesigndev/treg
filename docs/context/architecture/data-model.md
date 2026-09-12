@@ -183,17 +183,16 @@ uses this metadata, never the encrypted token's shape.
   Poll rows remain available by call reference and in admin diagnostics, but `/calls` excludes
   them before pagination. No migration or historical reclassification is required.
 
-  **Its indexes are the platform's throughput.** It is the largest table (2.94M rows / 1.68 GB on
-  prod 2026-09-06) and every question asked of it is "… since <time>", so a `created_at` that no
+  **Its indexes are the platform's throughput.** It is the largest table and every time-window
+  question needs a compatible `created_at` index. Without one,
   index carried meant the planner chose an index for the other column and filtered the date in
-  memory - reading an endpoint's or an org's WHOLE history to answer a 30-day one. Revision 0020
-  adds `(endpoint_id, created_at)` for the catalog observation refresh (`domain/catalog/stats.py`,
-  which had read 1.60 BILLION tuples across 570k scans) and `(org_id, created_at)` for the
-  per-member daily counts (`routers/orgs.py`, 295M across 70k); 0016 already pairs
+  memory, reading an endpoint's or an org's whole history to answer a bounded one. Revision 0020
+  adds `(endpoint_id, created_at)` for the catalog observation refresh and `(org_id, created_at)`
+  for the per-member daily counts; 0016 already pairs
   `(endpoint_id, id)` for the newest-N feed and 0012 a partial index on `cached`. The cost of
   getting this wrong is not a slow page: all three connection pools share one Postgres, so a scan
   here queues every other query and the API pool empties into `503 treg_saturated` - see
-  [deploy](../ops/deploy.md) § Three pools. The table has no retention sweep yet, so it only grows.
+  [deploy](../ops/deploy.md) § Database pools. The table has no retention sweep yet, so it only grows.
 
   **`LedgerEntry` is the other one, and it was the larger.** It is append-only and never pruned
   (4.38M rows / 2.3 GB on prod 2026-09-06, ~400k rows a day), and `ledger.spent_today` - the
@@ -337,7 +336,7 @@ The API builds a single-binding tool from flat fields via `_flat_binding()`; inj
 Three async SQLAlchemy engines against one database, declared by `POOL_SPECS` and exposed as
 `session_maker` (api), `admin_session_maker` (`/admin/*`) and `background_session_maker` (audit,
 archive writes, the ads worker) - a bulkhead, so no class of work can exhaust another's slots; sizes,
-statement timeouts and the reasoning are in [deploy](../ops/deploy.md) § Three pools. On SQLite all
+statement timeouts and the reasoning are in [deploy](../ops/deploy.md) § Database pools. On SQLite all
 three alias one engine. The post-relay bookkeeping steps of `/call/` use `session_maker`; the request
 session is committed before the relay so none of them ever waits on it, see
 [proxy-model](proxy-model.md) § Connection discipline. The public

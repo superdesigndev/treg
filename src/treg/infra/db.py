@@ -106,12 +106,9 @@ if _overrides := get_settings().db_pool_overrides:
 def connection_budget(workers: int | None = None) -> dict[str, int]:
     """How many connections these specs can open, at the three scopes that matter.
 
-    Every number in `POOL_SPECS` is PER PROCESS, and the reference deployment runs TWO: Render sets
-    `WEB_CONCURRENCY=2` on the 2c-4g plan and uvicorn honors it (`Started server process` twice in
-    the boot log). A rolling deploy then runs two instances for a minute. So the ceiling the specs
-    must clear is `per_process × workers × 2` against Postgres's `max_connections` (103 on the
-    1c-2g plan) - the arithmetic that, taken per instance, let the 2026-09-04 defaults (31) open
-    124 connections at every deploy until the dashboard override cut them to 21 (84).
+    Every number in `POOL_SPECS` is per process. Uvicorn may run multiple workers, and a rolling
+    deployment may briefly run two instances. Operators must compare
+    `per_process * workers * 2` with their database's `max_connections` and leave headroom.
     """
     per_process = sum(spec["pool_size"] + spec["max_overflow"] for spec in POOL_SPECS.values())
     if workers is None:
@@ -126,7 +123,7 @@ def connection_budget(workers: int | None = None) -> dict[str, int]:
 _budget = connection_budget()
 logging.getLogger("treg").info(
     "db pools per process: api %d+%d, admin %d+%d, background %d+%d = %d; x%d workers = %d per "
-    "instance, %d at a rolling deploy (Postgres max_connections on the reference plan: 103)",
+    "instance, %d at a rolling deploy; compare with the deployment database connection ceiling",
     POOL_SPECS["api"]["pool_size"], POOL_SPECS["api"]["max_overflow"],
     POOL_SPECS["admin"]["pool_size"], POOL_SPECS["admin"]["max_overflow"],
     POOL_SPECS["background"]["pool_size"], POOL_SPECS["background"]["max_overflow"],

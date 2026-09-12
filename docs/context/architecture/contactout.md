@@ -31,9 +31,9 @@ related:
 `token` header and verifies via free `GET /v1/stats`, requiring both HTTP success and
 `status_code: 200`. A zero allowance does not invalidate a credential. The existing credential
 ladder makes an org's tool/key win over the platform key and bypass treg billing and capacity checks.
-`Settings.platform_key_contactout` reads `TREG_PLATFORM_KEY_CONTACTOUT`; `render.yaml` declares
-the server slot and forwards it to the worker. The existing platform provider allow-list still
-controls serving. No credential is committed or copied into a platform Secret row.
+`Settings.platform_key_contactout` reads `TREG_PLATFORM_KEY_CONTACTOUT`. A deployment supplies the
+secret to the server and capacity worker. The existing platform provider allow-list still controls
+serving. No credential is committed or copied into a platform Secret row.
 
 ## Surface and selectors
 
