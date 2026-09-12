@@ -21,8 +21,10 @@ source:
 #
 #  1. JSON-RPC, NOT REST — ONE PATH FOR EVERYTHING. Every call is `POST /` against base_url
 #     (https://api.serpstat.com/v4) with a body of {"id": "1", "method": "<Procedure.method>",
-#     "params": {…}}. So every entry below shares the SAME path and differs only in `body.method`.
-#     The `method` string is the operation; getting it wrong is the only way to call the wrong report.
+#     "params": {…}}. `id` is required by Serpstat's JSON-RPC envelope (any string; echoed back);
+#     omitting it fails the call. Every entry below shares the SAME path and differs only in
+#     `body.method`. The `method` string is the operation; getting it wrong is the only way to
+#     call the wrong report.
 #  2. The token rides as `?token=…` and is INJECTED by treg — never list it as user input.
 #  3. HTTP 200 IS NOT SUCCESS. A bad token, an exhausted limit and a malformed params object all
 #     answer HTTP 200 with an `error` object in the envelope instead of `result`. treg's registry
@@ -68,7 +70,7 @@ endpoints:
       body:
         method: {type: string, required: true, note: "the JSON-RPC operation — this literal string selects the report", example: "SerpstatDomainProcedure.getDomainsInfo"}
         params: {type: object, required: true, note: "see the fields below; they go INSIDE params, not at the top level"}
-        id: {type: string, required: false, note: "JSON-RPC correlation id echoed back in the response; any string", example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.domains": {type: "array[string]", required: true, note: "1 to 10 bare domains", example: ["serpstat.com"]}
         "params.se": {type: string, required: true, note: "search database, e.g. g_us, g_uk, g_de, bing_us", example: "g_us"}
         "params.filters": {type: object, required: false, note: "optional narrowing: traff / traff_from / traff_to (estimated traffic) and visible / visible_from / visible_to (visibility score)"}
@@ -99,7 +101,7 @@ endpoints:
       body:
         method: {type: string, required: true, example: "SerpstatDomainProcedure.getDomainKeywords"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.domain": {type: string, required: true, note: "bare domain, no scheme", example: "serpstat.com"}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.withSubdomains": {type: boolean, required: false, note: "include subdomains in the result"}
@@ -138,7 +140,7 @@ endpoints:
       body:
         method: {type: string, required: true, note: "SerpstatDomainProcedure.getCompetitors is the DEPRECATED spelling of this report — use the Page form below", example: "SerpstatDomainProcedure.getOrganicCompetitorsPage"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.domain": {type: string, required: true, note: "bare domain, no scheme", example: "serpstat.com"}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.size": {type: integer, required: false, note: "COST DIAL — competitors to return, 1 to 100, default 20", example: 10}
@@ -171,7 +173,7 @@ endpoints:
       body:
         method: {type: string, required: true, example: "SerpstatKeywordProcedure.getKeywordsInfo"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.keywords": {type: "array[string]", required: true, note: "1 to 1,000 keywords", example: ["seo"]}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.withIntents": {type: boolean, required: false, note: "attach the search intent of each keyword"}
@@ -204,7 +206,7 @@ endpoints:
       body:
         method: {type: string, required: true, example: "SerpstatKeywordProcedure.getRelatedKeywords"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.keyword": {type: string, required: true, note: "the seed keyword", example: "seo"}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.withIntents": {type: boolean, required: false, note: "default false"}
@@ -242,7 +244,7 @@ endpoints:
       body:
         method: {type: string, required: true, example: "SerpstatKeywordProcedure.getKeywordTop"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.keyword": {type: string, required: true, note: "the keyword whose SERP you want", example: "seo"}
         "params.se": {type: string, required: true, note: "search database", example: "g_us"}
         "params.size": {type: integer, required: false, note: "COST DIAL — rows to return, max 1,000", example: 10}
@@ -283,7 +285,7 @@ endpoints:
       body:
         method: {type: string, required: true, example: "SerpstatBacklinksProcedure.getSummaryV2"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.query": {type: string, required: true, note: "the domain to summarise", example: "serpstat.com"}
         "params.searchType": {type: string, required: false, note: "domain (default) | domain_with_subdomains", example: "domain"}
       note: "the V2 spelling is the current one — `getSummary` (no V2) is DEPRECATED and returns a different shape. Returns link counts, referring domain/IP/subnet counts, the domain authority indicator and link-type breakdown as a single OBJECT under `result.data`, not an array."
@@ -313,7 +315,7 @@ endpoints:
       body:
         method: {type: string, required: true, example: "SerpstatBacklinksProcedure.getNewBacklinks"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.query": {type: string, required: true, note: "the target — a domain or URL, matching searchType", example: "serpstat.com"}
         "params.searchType": {type: string, required: false, note: "url | domain (default) | part_url | domain_with_subdomains", example: "domain"}
         "params.page": {type: integer, required: false, note: "1-based; default 1"}
@@ -352,7 +354,7 @@ endpoints:
       body:
         method: {type: string, required: true, example: "SerpstatBacklinksProcedure.getRefDomains"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.query": {type: string, required: true, note: "the target domain", example: "serpstat.com"}
         "params.searchType": {type: string, required: false, note: "domain (default) | domain_with_subdomains — narrower than the backlink list, which also accepts url and part_url", example: "domain"}
         "params.page": {type: integer, required: false, note: "1-based; default 1"}
@@ -387,7 +389,7 @@ endpoints:
       body:
         method: {type: string, required: true, example: "SerpstatBacklinksProcedure.getAnchors"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.query": {type: string, required: true, note: "the target", example: "serpstat.com"}
         "params.searchType": {type: string, required: true, note: "url | domain | part_url | domain_with_subdomains — REQUIRED here, unlike the sibling backlink methods where it defaults", example: "domain"}
         "params.anchor": {type: string, required: false, note: "only anchors containing this text"}
@@ -424,7 +426,7 @@ endpoints:
       body:
         method: {type: string, required: true, example: "SerpstatBacklinksProcedure.getTopPages"}
         params: {type: object, required: true}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
         "params.query": {type: string, required: true, note: "the target domain", example: "serpstat.com"}
         "params.searchType": {type: string, required: false, note: "domain (default) | domain_with_subdomains", example: "domain"}
         "params.page": {type: integer, required: false, note: "1-based; default 1"}
@@ -461,7 +463,7 @@ endpoints:
       body:
         method: {type: string, required: true, example: "SerpstatLimitsProcedure.getStats"}
         params: {type: object, required: true, note: "takes no fields — send an empty object {}"}
-        id: {type: string, required: false, example: "1"}
+        id: {type: string, required: true, note: "required by Serpstat's JSON-RPC envelope; any string, echoed back in the response", example: "1"}
       note: |
         Takes no parameters but `params` must still be present as `{}`. This is the right call to
         make BEFORE any large `size` sweep, since every list method in this file is metered per row.

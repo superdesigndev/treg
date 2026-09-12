@@ -11,6 +11,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
+import shlex
 
 from httpx import AsyncClient
 
@@ -614,6 +615,27 @@ async def test_eligibility_rides_on_the_served_row(clients: AsyncClient):
 async def test_unknown_endpoint_is_404(clients: AsyncClient):
     r = await clients.get("/catalog/endpoints/tikhub.tiktok.nope")
     assert r.status_code == 404 and "tikhub.tiktok.nope" in r.text
+
+
+def test_serpstat_jsonrpc_id_is_required_in_call_template():
+    """Serpstat rejects a JSON-RPC body without top-level `id`. `call_template` only
+    includes required body fields via `_required_examples`, so `id` must be required
+    on every Serpstat endpoint that declares it."""
+    cat = cs.load()
+    serpstat = [ep for ep in cat.endpoints if ep["provider"] == "serpstat"]
+    assert len(serpstat) >= 12, "every curated Serpstat endpoint is in play"
+    for ep in serpstat:
+        field = ((ep.get("input") or {}).get("body") or {}).get("id")
+        assert isinstance(field, dict), ep["id"]
+        assert field.get("required") is True, ep["id"]
+        assert field.get("example") == "1", ep["id"]
+
+    tmpl = cs.call_template(cat.by_id["serpstat.web.backlinks.summary"])
+    assert tmpl.startswith("treg call serpstat.web.backlinks.summary --method POST")
+    argv = shlex.split(tmpl)
+    data = json.loads(argv[argv.index("--data") + 1])
+    assert data["id"] == "1"
+    assert data["method"] == "SerpstatBacklinksProcedure.getSummaryV2"
 
 
 def test_call_template_falls_back_to_documented_examples(tmp_path):
