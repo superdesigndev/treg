@@ -1,0 +1,21 @@
+{
+  "id": "hckrk4hzrsrmr0d0f53b7va444",
+  "model": "google/imagen-3-fast",
+  "version": "hidden",
+  "input": {
+    "prompt": "A small red kite above a calm beach."
+  },
+  "logs": "",
+  "output": null,
+  "data_removed": false,
+  "error": null,
+  "source": "api",
+  "status": "starting",
+  "created_at": "2026-09-07T00:30:42.118Z",
+  "urls": {
+    "cancel": "https://api.replicate.com/v1/predictions/hckrk4hzrsrmr0d0f53b7va444/cancel",
+    "get": "https://api.replicate.com/v1/predictions/hckrk4hzrsrmr0d0f53b7va444",
+    "stream": "https://stream.replicate.com/v1/files/jbxs-7dvtm5vtxrd4jc7bvn5moahhvnsge37uvpvy3dttq7cxec2wlpba",
+    "web": "https://replicate.com/p/hckrk4hzrsrmr0d0f53b7va444"
+  }
+}

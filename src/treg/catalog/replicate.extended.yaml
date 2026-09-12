@@ -87,10 +87,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.06
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/black-forest-labs/flux-1.1-pro-ultra
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists black-forest-labs/flux-1.1-pro-ultra at $0.06 per output image.
   docs_url: https://replicate.com/black-forest-labs/flux-1.1-pro-ultra
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.black-forest-labs-flux-1-1-pro-ultra.json
+  observed_time: 0.13
 - id: replicate.x.black-forest-labs-flux-2-flex
   tier: extended
   platform: image-gen
@@ -514,10 +525,36 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    table:
+    - when:
+        body.input.num_outputs: 1
+      value: 0.032
+    - when:
+        body.input.num_outputs: 2
+      value: 0.064
+    - when:
+        body.input.num_outputs: 3
+      value: 0.096
+    - when:
+        body.input.num_outputs: 4
+      value: 0.128
+    fallback:
+      value: 0.128
+      note: 4 outputs at the dearest published rate ($0.032 per output image) is the explicit request maximum.
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/black-forest-labs/flux-dev-lora
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists black-forest-labs/flux-dev-lora at $0.032 per output image.
   docs_url: https://replicate.com/black-forest-labs/flux-dev-lora
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.black-forest-labs-flux-dev-lora.json
+  observed_time: 0.68
 - id: replicate.x.black-forest-labs-flux-dev
   tier: extended
   platform: image-gen
@@ -604,10 +641,36 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    table:
+    - when:
+        body.input.num_outputs: 1
+      value: 0.025
+    - when:
+        body.input.num_outputs: 2
+      value: 0.05
+    - when:
+        body.input.num_outputs: 3
+      value: 0.075
+    - when:
+        body.input.num_outputs: 4
+      value: 0.1
+    fallback:
+      value: 0.1
+      note: 4 outputs at the dearest published rate ($0.025 per output image) is the explicit request maximum.
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/black-forest-labs/flux-dev
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists black-forest-labs/flux-dev at $0.025 per output image.
   docs_url: https://replicate.com/black-forest-labs/flux-dev
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.black-forest-labs-flux-dev.json
+  observed_time: 0.17
 - id: replicate.x.black-forest-labs-flux-kontext-max
   tier: extended
   platform: image-gen
@@ -657,10 +720,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.08
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/black-forest-labs/flux-kontext-max
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists black-forest-labs/flux-kontext-max at $0.08 per output image.
   docs_url: https://replicate.com/black-forest-labs/flux-kontext-max
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.black-forest-labs-flux-kontext-max.json
+  observed_time: 0.05
 - id: replicate.x.black-forest-labs-flux-kontext-pro
   tier: extended
   platform: image-gen
@@ -710,10 +784,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.04
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/black-forest-labs/flux-kontext-pro
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists black-forest-labs/flux-kontext-pro at $0.04 per output image.
   docs_url: https://replicate.com/black-forest-labs/flux-kontext-pro
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.black-forest-labs-flux-kontext-pro.json
+  observed_time: 0.05
 - id: replicate.x.black-forest-labs-flux-pro
   tier: extended
   platform: image-gen
@@ -803,10 +888,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.055
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/black-forest-labs/flux-pro
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists black-forest-labs/flux-pro at $0.055 per output image.
   docs_url: https://replicate.com/black-forest-labs/flux-pro
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.black-forest-labs-flux-pro.json
+  observed_time: 0.23
 - id: replicate.x.bria-fibo
   tier: extended
   platform: image-gen
@@ -855,10 +951,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.04
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/bria/fibo
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists bria/fibo at $0.04 per output image.
   docs_url: https://replicate.com/bria/fibo
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.bria-fibo.json
+  observed_time: 0.3
 - id: replicate.x.bria-image-3-2
   tier: extended
   platform: image-gen
@@ -908,10 +1015,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.04
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/bria/image-3.2
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists bria/image-3.2 at $0.04 per output image.
   docs_url: https://replicate.com/bria/image-3.2
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.bria-image-3-2.json
+  observed_time: 0.27
 - id: replicate.x.bytedance-seedream-3
   tier: extended
   platform: image-gen
@@ -966,10 +1084,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.03
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/bytedance/seedream-3
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists bytedance/seedream-3 at $0.03 per output image.
   docs_url: https://replicate.com/bytedance/seedream-3
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.bytedance-seedream-3.json
+  observed_time: 0.27
 - id: replicate.x.bytedance-seedream-4-5
   tier: extended
   platform: image-gen
@@ -1034,10 +1163,31 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    table:
+    - when:
+        body.input.sequential_image_generation: disabled
+      value: 0.04
+    - when:
+        body.input.sequential_image_generation: auto
+      value: 0.04
+      times: body.input.max_images
+    fallback:
+      value: 0.6
+      note: 15 outputs at the dearest published rate ($0.04 per output image) is the explicit request maximum.
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/bytedance/seedream-4.5
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists bytedance/seedream-4.5 at $0.04 per output image.
   docs_url: https://replicate.com/bytedance/seedream-4.5
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.bytedance-seedream-4-5.json
+  observed_time: 0.08
 - id: replicate.x.bytedance-seedream-4
   tier: extended
   platform: image-gen
@@ -1102,10 +1252,31 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    table:
+    - when:
+        body.input.sequential_image_generation: disabled
+      value: 0.03
+    - when:
+        body.input.sequential_image_generation: auto
+      value: 0.03
+      times: body.input.max_images
+    fallback:
+      value: 0.45
+      note: 15 outputs at the dearest published rate ($0.03 per output image) is the explicit request maximum.
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/bytedance/seedream-4
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists bytedance/seedream-4 at $0.03 per output image.
   docs_url: https://replicate.com/bytedance/seedream-4
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.bytedance-seedream-4.json
+  observed_time: 0.06
 - id: replicate.x.bytedance-seedream-5-lite
   tier: extended
   platform: image-gen
@@ -1155,10 +1326,31 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    table:
+    - when:
+        body.input.sequential_image_generation: disabled
+      value: 0.035
+    - when:
+        body.input.sequential_image_generation: auto
+      value: 0.035
+      times: body.input.max_images
+    fallback:
+      value: 0.525
+      note: 15 outputs at the dearest published rate ($0.035 per output image) is the explicit request maximum.
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/bytedance/seedream-5-lite
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists bytedance/seedream-5-lite at $0.035 per output image.
   docs_url: https://replicate.com/bytedance/seedream-5-lite
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.bytedance-seedream-5-lite.json
+  observed_time: 0.05
 - id: replicate.x.google-imagen-3-fast
   tier: extended
   platform: image-gen
@@ -1192,10 +1384,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.025
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/google/imagen-3-fast
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists google/imagen-3-fast at $0.025 per output image.
   docs_url: https://replicate.com/google/imagen-3-fast
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.google-imagen-3-fast.json
+  observed_time: 0.2
 - id: replicate.x.google-imagen-3
   tier: extended
   platform: image-gen
@@ -1229,10 +1432,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.05
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/google/imagen-3
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists google/imagen-3 at $0.05 per output image.
   docs_url: https://replicate.com/google/imagen-3
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.google-imagen-3.json
+  observed_time: 0.14
 - id: replicate.x.google-imagen-4-fast
   tier: extended
   platform: image-gen
@@ -1266,10 +1480,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.02
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/google/imagen-4-fast
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists google/imagen-4-fast at $0.02 per output image.
   docs_url: https://replicate.com/google/imagen-4-fast
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.google-imagen-4-fast.json
+  observed_time: 0.11
 - id: replicate.x.google-imagen-4-ultra
   tier: extended
   platform: image-gen
@@ -1307,10 +1532,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.06
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/google/imagen-4-ultra
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists google/imagen-4-ultra at $0.06 per output image.
   docs_url: https://replicate.com/google/imagen-4-ultra
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.google-imagen-4-ultra.json
+  observed_time: 0.05
 - id: replicate.x.google-imagen-4
   tier: extended
   platform: image-gen
@@ -1348,10 +1584,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.04
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/google/imagen-4
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists google/imagen-4 at $0.04 per output image.
   docs_url: https://replicate.com/google/imagen-4
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.google-imagen-4.json
+  observed_time: 0.11
 - id: replicate.x.google-nano-banana-2
   tier: extended
   platform: image-gen
@@ -1400,10 +1647,33 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    table:
+    - when:
+        body.input.resolution: 1K
+      value: 0.067
+    - when:
+        body.input.resolution: 2K
+      value: 0.101
+    - when:
+        body.input.resolution: 4K
+      value: 0.151
+    fallback:
+      value: 0.151
+      note: the dearest published rate (1K $0.067 per output image, 2K $0.101 per output image, 4K $0.151 per output image) is the explicit request maximum.
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/google/nano-banana-2
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists google/nano-banana-2 at 1K $0.067 per output image, 2K $0.101 per output image, 4K $0.151 per output image.
   docs_url: https://replicate.com/google/nano-banana-2
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.google-nano-banana-2.json
+  observed_time: 0.07
 - id: replicate.x.google-nano-banana-pro
   tier: extended
   platform: image-gen
@@ -1451,10 +1721,36 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    table:
+    - when:
+        body.input.resolution: 1K
+      value: 0.15
+    - when:
+        body.input.resolution: 2K
+      value: 0.15
+    - when:
+        body.input.resolution: 4K
+      value: 0.3
+    - when:
+        body.input.resolution: fallback
+      value: 0.035
+    fallback:
+      value: 0.3
+      note: the dearest published rate (1K $0.15 per output image, 2K $0.15 per output image, 4K $0.30 per output image, fallback $0.035 per output image) is the explicit request maximum.
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/google/nano-banana-pro
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists google/nano-banana-pro at 1K $0.15 per output image, 2K $0.15 per output image, 4K $0.30 per output image, fallback $0.035 per output image.
   docs_url: https://replicate.com/google/nano-banana-pro
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.google-nano-banana-pro.json
+  observed_time: 0.06
 - id: replicate.x.google-nano-banana
   tier: extended
   platform: image-gen
@@ -1489,10 +1785,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.039
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/google/nano-banana
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists google/nano-banana at $0.039 per output image.
   docs_url: https://replicate.com/google/nano-banana
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.google-nano-banana.json
+  observed_time: 0.04
 - id: replicate.x.ideogram-ai-ideogram-v2-turbo
   tier: extended
   platform: image-gen
@@ -1547,10 +1854,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.05
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/ideogram-ai/ideogram-v2-turbo
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists ideogram-ai/ideogram-v2-turbo at $0.05 per output image.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v2-turbo
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.ideogram-ai-ideogram-v2-turbo.json
+  observed_time: 0.05
 - id: replicate.x.ideogram-ai-ideogram-v2
   tier: extended
   platform: image-gen
@@ -1605,10 +1923,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.08
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/ideogram-ai/ideogram-v2
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists ideogram-ai/ideogram-v2 at $0.08 per output image.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v2
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.ideogram-ai-ideogram-v2.json
+  observed_time: 0.12
 - id: replicate.x.ideogram-ai-ideogram-v2a-turbo
   tier: extended
   platform: image-gen
@@ -1651,10 +1980,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.025
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/ideogram-ai/ideogram-v2a-turbo
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists ideogram-ai/ideogram-v2a-turbo at $0.025 per output image.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v2a-turbo
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.ideogram-ai-ideogram-v2a-turbo.json
+  observed_time: 0.28
 - id: replicate.x.ideogram-ai-ideogram-v2a
   tier: extended
   platform: image-gen
@@ -1697,10 +2037,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.04
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/ideogram-ai/ideogram-v2a
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists ideogram-ai/ideogram-v2a at $0.04 per output image.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v2a
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.ideogram-ai-ideogram-v2a.json
+  observed_time: 0.11
 - id: replicate.x.ideogram-ai-ideogram-v3-balanced
   tier: extended
   platform: image-gen
@@ -1759,10 +2110,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.06
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/ideogram-ai/ideogram-v3-balanced
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists ideogram-ai/ideogram-v3-balanced at $0.06 per output image.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v3-balanced
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.ideogram-ai-ideogram-v3-balanced.json
+  observed_time: 0.3
 - id: replicate.x.ideogram-ai-ideogram-v3-quality
   tier: extended
   platform: image-gen
@@ -1821,10 +2183,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.09
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/ideogram-ai/ideogram-v3-quality
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists ideogram-ai/ideogram-v3-quality at $0.09 per output image.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v3-quality
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.ideogram-ai-ideogram-v3-quality.json
+  observed_time: 0.19
 - id: replicate.x.ideogram-ai-ideogram-v3-turbo
   tier: extended
   platform: image-gen
@@ -1883,10 +2256,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.03
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/ideogram-ai/ideogram-v3-turbo
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists ideogram-ai/ideogram-v3-turbo at $0.03 per output image.
   docs_url: https://replicate.com/ideogram-ai/ideogram-v3-turbo
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.ideogram-ai-ideogram-v3-turbo.json
+  observed_time: 0.06
 - id: replicate.x.leonardoai-lucid-origin
   tier: extended
   platform: image-gen
@@ -1936,10 +2320,32 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    table:
+    - when:
+        body.input.generation_mode: standard
+      value: 0.0167
+      times: body.input.num_images
+    - when:
+        body.input.generation_mode: ultra
+      value: 0.0765
+      times: body.input.num_images
+    fallback:
+      value: 0.612
+      note: 8 outputs at the dearest published rate (standard $0.0167 per output image, ultra $0.0765 per output image) is the explicit request maximum.
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/leonardoai/lucid-origin
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists leonardoai/lucid-origin at standard $0.0167 per output image, ultra $0.0765 per output image.
   docs_url: https://replicate.com/leonardoai/lucid-origin
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.leonardoai-lucid-origin.json
+  observed_time: 0.05
 - id: replicate.x.luma-photon-flash
   tier: extended
   platform: image-gen
@@ -2007,10 +2413,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.01
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/luma/photon-flash
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists luma/photon-flash at $0.01 per output image.
   docs_url: https://replicate.com/luma/photon-flash
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.luma-photon-flash.json
+  observed_time: 0.12
 - id: replicate.x.luma-photon
   tier: extended
   platform: image-gen
@@ -2066,10 +2483,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.03
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/luma/photon
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists luma/photon at $0.03 per output image.
   docs_url: https://replicate.com/luma/photon
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.luma-photon.json
+  observed_time: 0.29
 - id: replicate.x.minimax-image-01
   tier: extended
   platform: image-gen
@@ -2111,10 +2539,51 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    table:
+    - when:
+        body.input.number_of_images: 1
+      value: 0.01
+    - when:
+        body.input.number_of_images: 2
+      value: 0.02
+    - when:
+        body.input.number_of_images: 3
+      value: 0.03
+    - when:
+        body.input.number_of_images: 4
+      value: 0.04
+    - when:
+        body.input.number_of_images: 5
+      value: 0.05
+    - when:
+        body.input.number_of_images: 6
+      value: 0.06
+    - when:
+        body.input.number_of_images: 7
+      value: 0.07
+    - when:
+        body.input.number_of_images: 8
+      value: 0.08
+    - when:
+        body.input.number_of_images: 9
+      value: 0.09
+    fallback:
+      value: 0.09
+      note: 9 outputs at the dearest published rate ($0.01 per output image) is the explicit request maximum.
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/minimax/image-01
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists minimax/image-01 at $0.01 per output image.
   docs_url: https://replicate.com/minimax/image-01
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.minimax-image-01.json
+  observed_time: 0.13
 - id: replicate.x.openai-gpt-image-1-5
   tier: extended
   platform: image-gen
@@ -2186,10 +2655,40 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    table:
+    - when:
+        body.input.quality: auto
+      value: 0.136
+      times: body.input.number_of_images
+    - when:
+        body.input.quality: low
+      value: 0.013
+      times: body.input.number_of_images
+    - when:
+        body.input.quality: medium
+      value: 0.05
+      times: body.input.number_of_images
+    - when:
+        body.input.quality: high
+      value: 0.136
+      times: body.input.number_of_images
+    fallback:
+      value: 1.36
+      note: 10 outputs at the dearest published rate (auto $0.136 per output image, low $0.013 per output image, medium $0.05 per output image, high $0.136 per output image) is the explicit request maximum.
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/openai/gpt-image-1.5
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists openai/gpt-image-1.5 at auto $0.136 per output image, low $0.013 per output image, medium $0.05 per output image, high $0.136 per output image.
   docs_url: https://replicate.com/openai/gpt-image-1.5
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.openai-gpt-image-1-5.json
+  observed_time: 0.05
 - id: replicate.x.openai-gpt-image-2
   tier: extended
   platform: image-gen
@@ -2260,10 +2759,40 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    table:
+    - when:
+        body.input.quality: auto
+      value: 0.128
+      times: body.input.number_of_images
+    - when:
+        body.input.quality: low
+      value: 0.012
+      times: body.input.number_of_images
+    - when:
+        body.input.quality: medium
+      value: 0.047
+      times: body.input.number_of_images
+    - when:
+        body.input.quality: high
+      value: 0.128
+      times: body.input.number_of_images
+    fallback:
+      value: 1.28
+      note: 10 outputs at the dearest published rate (auto $0.128 per output image, low $0.012 per output image, medium $0.047 per output image, high $0.128 per output image) is the explicit request maximum.
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/openai/gpt-image-2
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists openai/gpt-image-2 at auto $0.128 per output image, low $0.012 per output image, medium $0.047 per output image, high $0.128 per output image.
   docs_url: https://replicate.com/openai/gpt-image-2
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.openai-gpt-image-2.json
+  observed_time: 0.04
 - id: replicate.x.prunaai-flux-fast
   tier: extended
   platform: image-gen
@@ -2324,10 +2853,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.005
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/prunaai/flux-fast
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists prunaai/flux-fast at $5 per thousand output images.
   docs_url: https://replicate.com/prunaai/flux-fast
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.prunaai-flux-fast.json
+  observed_time: 0.44
 - id: replicate.x.prunaai-hidream-l1-fast
   tier: extended
   platform: image-gen
@@ -2388,10 +2928,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.005
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/prunaai/hidream-l1-fast
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists prunaai/hidream-l1-fast at $5 per thousand output images.
   docs_url: https://replicate.com/prunaai/hidream-l1-fast
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.prunaai-hidream-l1-fast.json
+  observed_time: 0.31
 - id: replicate.x.prunaai-p-image-lora
   tier: extended
   platform: image-gen
@@ -2458,10 +3009,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.005
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/prunaai/p-image-lora
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists prunaai/p-image-lora at $5 per thousand output images.
   docs_url: https://replicate.com/prunaai/p-image-lora
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.prunaai-p-image-lora.json
+  observed_time: 0.31
 - id: replicate.x.prunaai-p-image
   tier: extended
   platform: image-gen
@@ -2528,10 +3090,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.005
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/prunaai/p-image
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists prunaai/p-image at $5 per thousand output images.
   docs_url: https://replicate.com/prunaai/p-image
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.prunaai-p-image.json
+  observed_time: 0.08
 - id: replicate.x.prunaai-wan-2-2-image
   tier: extended
   platform: image-gen
@@ -2581,10 +3154,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.02
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/prunaai/wan-2.2-image
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists prunaai/wan-2.2-image at $0.02 per output image.
   docs_url: https://replicate.com/prunaai/wan-2.2-image
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.prunaai-wan-2-2-image.json
+  observed_time: 0.29
 - id: replicate.x.prunaai-z-image-turbo
   tier: extended
   platform: image-gen
@@ -2750,10 +3334,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.25
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/quiverai/arrow-1.1-max
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists quiverai/arrow-1.1-max at $0.25 per output image.
   docs_url: https://replicate.com/quiverai/arrow-1.1-max
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.quiverai-arrow-1-1-max.json
+  observed_time: 0.27
 - id: replicate.x.quiverai-arrow-1-1
   tier: extended
   platform: image-gen
@@ -2806,10 +3401,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.2
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/quiverai/arrow-1.1
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists quiverai/arrow-1.1 at $0.20 per output image.
   docs_url: https://replicate.com/quiverai/arrow-1.1
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.quiverai-arrow-1-1.json
+  observed_time: 0.27
 - id: replicate.x.qwen-qwen-image
   tier: extended
   platform: image-gen
@@ -2920,10 +3526,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.025
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/qwen/qwen-image
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists qwen/qwen-image at $0.025 per output image.
   docs_url: https://replicate.com/qwen/qwen-image
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.qwen-qwen-image.json
+  observed_time: 0.12
 - id: replicate.x.recraft-ai-recraft-v3-svg
   tier: extended
   platform: image-gen
@@ -2957,10 +3574,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.08
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/recraft-ai/recraft-v3-svg
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists recraft-ai/recraft-v3-svg at $0.08 per output image.
   docs_url: https://replicate.com/recraft-ai/recraft-v3-svg
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.recraft-ai-recraft-v3-svg.json
+  observed_time: 0.12
 - id: replicate.x.recraft-ai-recraft-v3
   tier: extended
   platform: image-gen
@@ -2994,10 +3622,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.04
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/recraft-ai/recraft-v3
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists recraft-ai/recraft-v3 at $0.04 per output image.
   docs_url: https://replicate.com/recraft-ai/recraft-v3
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.recraft-ai-recraft-v3.json
+  observed_time: 0.06
 - id: replicate.x.recraft-ai-recraft-v4-pro-svg
   tier: extended
   platform: image-gen
@@ -3027,10 +3666,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.3
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/recraft-ai/recraft-v4-pro-svg
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists recraft-ai/recraft-v4-pro-svg at $0.30 per output image.
   docs_url: https://replicate.com/recraft-ai/recraft-v4-pro-svg
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.recraft-ai-recraft-v4-pro-svg.json
+  observed_time: 0.28
 - id: replicate.x.recraft-ai-recraft-v4-pro
   tier: extended
   platform: image-gen
@@ -3060,10 +3710,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.25
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/recraft-ai/recraft-v4-pro
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists recraft-ai/recraft-v4-pro at $0.25 per output image.
   docs_url: https://replicate.com/recraft-ai/recraft-v4-pro
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.recraft-ai-recraft-v4-pro.json
+  observed_time: 0.31
 - id: replicate.x.recraft-ai-recraft-v4-styles-pro-svg
   tier: extended
   platform: image-gen
@@ -3106,9 +3767,13 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.12
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/recraft-ai/recraft-v4-styles-pro-svg
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists recraft-ai/recraft-v4-styles-pro-svg at $0.12 per output image.
   docs_url: https://replicate.com/recraft-ai/recraft-v4-styles-pro-svg
 - id: replicate.x.recraft-ai-recraft-v4-svg
   tier: extended
@@ -3139,10 +3804,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.08
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/recraft-ai/recraft-v4-svg
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists recraft-ai/recraft-v4-svg at $0.08 per output image.
   docs_url: https://replicate.com/recraft-ai/recraft-v4-svg
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.recraft-ai-recraft-v4-svg.json
+  observed_time: 0.06
 - id: replicate.x.sourceful-riverflow-2-0-pro
   tier: extended
   platform: image-gen
@@ -3273,10 +3949,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.04
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/stability-ai/stable-diffusion-3.5-large-turbo
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists stability-ai/stable-diffusion-3.5-large-turbo at $0.04 per output image.
   docs_url: https://replicate.com/stability-ai/stable-diffusion-3.5-large-turbo
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.stability-ai-stable-diffusion-3-5-large-turbo.json
+  observed_time: 0.13
 - id: replicate.x.stability-ai-stable-diffusion-3-5-large
   tier: extended
   platform: image-gen
@@ -3332,10 +4019,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.065
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/stability-ai/stable-diffusion-3.5-large
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists stability-ai/stable-diffusion-3.5-large at $0.065 per output image.
   docs_url: https://replicate.com/stability-ai/stable-diffusion-3.5-large
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.stability-ai-stable-diffusion-3-5-large.json
+  observed_time: 0.12
 - id: replicate.x.stability-ai-stable-diffusion-3-5-medium
   tier: extended
   platform: image-gen
@@ -3391,10 +4089,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.035
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/stability-ai/stable-diffusion-3.5-medium
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists stability-ai/stable-diffusion-3.5-medium at $0.035 per output image.
   docs_url: https://replicate.com/stability-ai/stable-diffusion-3.5-medium
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.stability-ai-stable-diffusion-3-5-medium.json
+  observed_time: 0.28
 - id: replicate.x.tencent-hunyuan-image-3
   tier: extended
   platform: image-gen
@@ -3445,10 +4154,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.08
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/tencent/hunyuan-image-3
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists tencent/hunyuan-image-3 at $0.08 per output image.
   docs_url: https://replicate.com/tencent/hunyuan-image-3
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.tencent-hunyuan-image-3.json
+  observed_time: 0.49
 - id: replicate.x.wan-video-wan-2-7-image-pro
   tier: extended
   platform: image-gen
@@ -3500,10 +4220,36 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    table:
+    - when:
+        body.input.num_outputs: 1
+      value: 0.03
+    - when:
+        body.input.num_outputs: 2
+      value: 0.06
+    - when:
+        body.input.num_outputs: 3
+      value: 0.09
+    - when:
+        body.input.num_outputs: 4
+      value: 0.12
+    fallback:
+      value: 0.12
+      note: 4 outputs at the dearest published rate ($0.03 per output image) is the explicit request maximum.
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/wan-video/wan-2.7-image-pro
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists wan-video/wan-2.7-image-pro at $0.03 per output image.
   docs_url: https://replicate.com/wan-video/wan-2.7-image-pro
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.wan-video-wan-2-7-image-pro.json
+  observed_time: 0.05
 - id: replicate.x.wan-video-wan-2-7-image
   tier: extended
   platform: image-gen
@@ -3555,10 +4301,36 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    table:
+    - when:
+        body.input.num_outputs: 1
+      value: 0.03
+    - when:
+        body.input.num_outputs: 2
+      value: 0.06
+    - when:
+        body.input.num_outputs: 3
+      value: 0.09
+    - when:
+        body.input.num_outputs: 4
+      value: 0.12
+    fallback:
+      value: 0.12
+      note: 4 outputs at the dearest published rate ($0.03 per output image) is the explicit request maximum.
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/wan-video/wan-2.7-image
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists wan-video/wan-2.7-image at $0.03 per output image.
   docs_url: https://replicate.com/wan-video/wan-2.7-image
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.wan-video-wan-2-7-image.json
+  observed_time: 0.07
 - id: replicate.x.xai-grok-imagine-image
   tier: extended
   platform: image-gen
@@ -3588,10 +4360,21 @@ endpoints:
     bodyType: json
   cost:
     type: per_success
-    value: null
-    confidence: unknown
-    note: Replicate does not expose this model's price in the collection API; the generated row is BYOK-only.
+    value: 0.02
+    currency: USD
+    source: docs
+    source_url: https://replicate.com/xai/grok-imagine-image
+    checked: '2026-09-07'
+    confidence: documented
+    note: Replicate's model page lists xai/grok-imagine-image at $0.02 per output image.
   docs_url: https://replicate.com/xai/grok-imagine-image
+  test_request:
+    body:
+      input:
+        prompt: A small red kite above a calm beach.
+  verified: '2026-09-07'
+  example_response: examples/replicate.x.xai-grok-imagine-image.json
+  observed_time: 0.05
 - id: replicate.x.alibaba-happyhorse-1-0
   tier: extended
   platform: video-gen

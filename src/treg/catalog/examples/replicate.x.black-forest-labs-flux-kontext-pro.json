@@ -1,0 +1,21 @@
+{
+  "id": "0bw1h8t345rmw0d0f539sphygr",
+  "model": "black-forest-labs/flux-kontext-pro",
+  "version": "hidden",
+  "input": {
+    "prompt": "A small red kite above a calm beach."
+  },
+  "logs": "",
+  "output": null,
+  "data_removed": false,
+  "error": null,
+  "source": "api",
+  "status": "starting",
+  "created_at": "2026-09-07T00:30:42.977Z",
+  "urls": {
+    "cancel": "https://api.replicate.com/v1/predictions/0bw1h8t345rmw0d0f539sphygr/cancel",
+    "get": "https://api.replicate.com/v1/predictions/0bw1h8t345rmw0d0f539sphygr",
+    "stream": "https://stream.replicate.com/v1/files/jbxs-qq33flriuokpqanyh37djyhwlgzp5iz2s6mu2cdcsjl4cglbt6gq",
+    "web": "https://replicate.com/p/0bw1h8t345rmw0d0f539sphygr"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "j00wegj0k5rmy0d0f5397c8c3w",
+  "model": "ideogram-ai/ideogram-v2a-turbo",
+  "version": "hidden",
+  "input": {
+    "prompt": "A small red kite above a calm beach."
+  },
+  "logs": "",
+  "output": null,
+  "data_removed": false,
+  "error": null,
+  "source": "api",
+  "status": "starting",
+  "created_at": "2026-09-07T00:30:42.329Z",
+  "urls": {
+    "cancel": "https://api.replicate.com/v1/predictions/j00wegj0k5rmy0d0f5397c8c3w/cancel",
+    "get": "https://api.replicate.com/v1/predictions/j00wegj0k5rmy0d0f5397c8c3w",
+    "stream": "https://stream.replicate.com/v1/files/jbxs-25bvh4ph7iwqrubz2fklpgzg63idr4uuccmkjviprse3ovf3bwra",
+    "web": "https://replicate.com/p/j00wegj0k5rmy0d0f5397c8c3w"
+  }
+}

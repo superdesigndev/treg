@@ -151,6 +151,17 @@ def cost_of(ep: dict) -> float:
         listed = 0.0
     if listed:
         return listed
+    # A price TABLE has no top-level value - its validated ceiling lives in fallback.value
+    # (replicate's per-image tables, priced by catalog_replicate_prices.py). Reading it as $0
+    # would make --budget inert for exactly the rows that bill the most per call.
+    fallback = c.get("fallback")
+    if isinstance(fallback, dict):
+        try:
+            ceiling = float(fallback.get("value") or 0.0)
+        except (TypeError, ValueError):
+            ceiling = 0.0
+        if ceiling:
+            return ceiling
     observed = ep.get("observed_cost")
     return float(observed) if isinstance(observed, (int, float)) else 0.0
 

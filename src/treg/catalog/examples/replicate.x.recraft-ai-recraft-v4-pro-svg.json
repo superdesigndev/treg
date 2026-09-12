@@ -1,0 +1,21 @@
+{
+  "id": "pzk7gt2jndrmy0d0f53bpj70b8",
+  "model": "recraft-ai/recraft-v4-pro-svg",
+  "version": "hidden",
+  "input": {
+    "prompt": "A small red kite above a calm beach."
+  },
+  "logs": "",
+  "output": null,
+  "data_removed": false,
+  "error": null,
+  "source": "api",
+  "status": "starting",
+  "created_at": "2026-09-07T00:30:46.955Z",
+  "urls": {
+    "cancel": "https://api.replicate.com/v1/predictions/pzk7gt2jndrmy0d0f53bpj70b8/cancel",
+    "get": "https://api.replicate.com/v1/predictions/pzk7gt2jndrmy0d0f53bpj70b8",
+    "stream": "https://stream.replicate.com/v1/files/jbxs-zjdwrm2a3e5tzpm3ne5zt7inhko7wjie76bsmjfawxj2n3yyogkq",
+    "web": "https://replicate.com/p/pzk7gt2jndrmy0d0f53bpj70b8"
+  }
+}

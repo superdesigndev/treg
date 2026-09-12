@@ -1,0 +1,21 @@
+{
+  "id": "m8y8x4agmxrmr0d0f53bp7vphc",
+  "model": "quiverai/arrow-1.1",
+  "version": "hidden",
+  "input": {
+    "prompt": "A small red kite above a calm beach."
+  },
+  "logs": "",
+  "output": null,
+  "data_removed": false,
+  "error": null,
+  "source": "api",
+  "status": "starting",
+  "created_at": "2026-09-07T00:30:46.439Z",
+  "urls": {
+    "cancel": "https://api.replicate.com/v1/predictions/m8y8x4agmxrmr0d0f53bp7vphc/cancel",
+    "get": "https://api.replicate.com/v1/predictions/m8y8x4agmxrmr0d0f53bp7vphc",
+    "stream": "https://stream.replicate.com/v1/files/jbxs-qsn3szfepjvamt4bb7nwljrfm5lcgntv3mgkyhgzyophxcs2sm4a",
+    "web": "https://replicate.com/p/m8y8x4agmxrmr0d0f53bp7vphc"
+  }
+}

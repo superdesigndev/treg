@@ -1,0 +1,21 @@
+{
+  "id": "ahpwr01z31rne0d0f53a5s1et0",
+  "model": "prunaai/wan-2.2-image",
+  "version": "hidden",
+  "input": {
+    "prompt": "A small red kite above a calm beach."
+  },
+  "logs": "",
+  "output": null,
+  "data_removed": false,
+  "error": null,
+  "source": "api",
+  "status": "starting",
+  "created_at": "2026-09-07T00:30:41.944Z",
+  "urls": {
+    "cancel": "https://api.replicate.com/v1/predictions/ahpwr01z31rne0d0f53a5s1et0/cancel",
+    "get": "https://api.replicate.com/v1/predictions/ahpwr01z31rne0d0f53a5s1et0",
+    "stream": "https://stream.replicate.com/v1/files/iovw-hvnhaq2lphl62yv6roqmvixrnuaqbgxky5p7ae3ac733ctfppavq",
+    "web": "https://replicate.com/p/ahpwr01z31rne0d0f53a5s1et0"
+  }
+}

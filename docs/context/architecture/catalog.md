@@ -37,7 +37,9 @@ sources:
   - .github/workflows/catalog-drift.yml
   - scripts/catalog_drift.py
   - scripts/catalog_ingest.py
+  - scripts/catalog_replicate_prices.py
   - scripts/catalog_validate.py
+  - scripts/catalog_verify_extended.py
   - src/treg/catalog/aliases.yaml
   - src/treg/catalog/fx.yaml
   - src/treg/catalog/aviato.yaml
@@ -334,6 +336,8 @@ scripts/
   catalog_verify_extended.py  # the same for the extended tier, in bulk, under a spend cap
   catalog_ingest.py           # bulk-generates the extended tier from provider specs
   catalog_cost_provenance.py  # backfills cost units + provenance; re-run after any re-ingest
+  catalog_replicate_prices.py # prices replicate.extended.yaml image rows from the model pages'
+                              # embedded billingConfig rate card; re-run after any re-ingest
 src/treg/routers/catalog.py    # open Catalog JSON routes, attached in legacy registration order
 ```
 
@@ -597,6 +601,23 @@ Replicate ingest joins the official text-to-image, text-to-video, and image-to-v
 each generated row takes its request fields from `latest_version.openapi_schema`. Its generated
 prices are explicitly unknown, while the curated core rows carry per-model page provenance. Both
 ingesters sort their inputs and produce byte-identical output when upstream data is unchanged.
+`scripts/catalog_replicate_prices.py` is the re-runnable pricing pass over those unknown rows: each
+official model's public page embeds the provider's own structured rate card (a `billingConfig` JSON
+blob, cross-checked 2026-09-06 against the human-transcribed core flux-schnell price), and the
+script rewrites a row's cost block with `documented` provenance when every price is per-unit on
+`image_output_count`. It emits the curated flux-schnell table + fallback-ceiling shape: string-
+equals criteria tiers become `when` rows (the card's tier vocabulary maps to input fields through
+the script's explicit `CRITERIA_FIELDS` table, per the X_RATES lesson), a bounded integer output
+count field (`OUTPUT_COUNT_FIELDS`) becomes an enumerated 1..max table or a per-row `times`, and
+seedream's `sequential_image_generation` + `max_images` pair becomes a gated `times` row. Anything
+it cannot read unambiguously - megapixel metering (an input image's megapixels defeat any bounded
+`times`, same reason OpenRouter's megapixel SKUs stay BYOK), `unspecified_billing_metric`, unknown
+criteria titles or count fields - is skipped and stays unknown/BYOK-only, because a misread price
+bills real money. Run it after any replicate re-ingest, like `catalog_cost_provenance.py`. Its
+`--test-requests` flag also writes a minimal prompt-only `test_request` onto priced rows as the
+first half of a `catalog_verify_extended.py` run (whose `cost_of` budgets a table row at its
+fallback ceiling); the validator rightly refuses an unverified `test_request`, so the two halves
+are run back-to-back and committed together.
 
 Utility capability names still describe the utility's actual job. OpenRouter model discovery uses
 the file-local proposed `video-gen.models.list`; OpenRouter and MiniMax content retrieval use the
