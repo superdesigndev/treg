@@ -10,7 +10,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,400..700&family=Geist+Pixel&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
 <!-- Vue is vendored and served from this origin, never a CDN: an unpkg.com that a visitor's network
      cannot reach used to leave the whole signed-in dashboard blank (issue #137). Version lives in
      the filename — bump it here and in src/treg/web/vendor/ together. -->
@@ -1042,9 +1042,11 @@ a:hover{text-decoration-color:var(--muted)}
 .hl-comment,.s-cmt{color:var(--sx-cmt);font-style:italic}
 .hl-punct,.hl-env{color:var(--sx-punct)}
 </style>
+<link rel="stylesheet" href="/media/redesign/dashboard.css">
 </head>
 <body>
 <div id="app" v-cloak>
+<div :class="{redesign:authed && !publicCatalog}">
   <!-- LANDING (logged-out) -->
   <div v-if="!authed && !publicCatalog" class="lp">
     <!-- SHARE-LINK GATE: a /app/skills|tools/<name> deep link while logged out gets a focused
@@ -1127,24 +1129,11 @@ a:hover{text-decoration-color:var(--muted)}
         <button class="btn primary sm" @click="openSignin()">Start free</button>
       </nav>
     </div>
-    <div class="top" role="banner" v-else>
-      <button class="mob-menu" @click="mobileNav=!mobileNav" aria-label="Toggle navigation" :aria-expanded="mobileNav">☰</button>
-      <div class="brand">▚ treg</div>
-      <div class="search"><span class="muted">/</span><input ref="search" v-model="q" :placeholder="view==='connections'?'search the catalog…':'search tools…'" aria-label="Search"/></div>
-      <div class="spacer"></div>
-    </div>
-
-    <!-- Mobile sidebar backdrop -->
-    <div class="mob-backdrop" :class="{'mob-open':mobileNav}" @click="mobileNav=false"></div>
-    <div class="layout" :class="{solo:publicCatalog}">
-      <nav class="side" :class="{'mob-open':mobileNav}" v-if="!publicCatalog">
-        <!-- Mobile close button (hidden on desktop) -->
-        <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:8px">
-          <button class="mob-close" @click="mobileNav=false" aria-label="Close navigation">✕</button>
-        </div>
-        <!-- ORG (top): name → settings · ▾ → switch -->
+    <header class="rd-top" v-else>
+      <div class="rd-identity">
+        <a class="rd-brand" href="#start" @click.prevent="go('start')" aria-label="treg home"><img src="/media/redesign/treg-mark.png" alt=""><span>treg</span></a>
         <div class="orgblock" v-if="authed">
-          <div class="orgmain" ref="orgmain" @click="toggleOrgMenu" role="button" tabindex="0" @keydown.enter="toggleOrgMenu" aria-haspopup="true" :aria-expanded="orgMenu" aria-label="Teams">
+          <div class="orgmain" ref="orgmain" @click="toggleOrgMenu" role="button" tabindex="0" @keydown.enter="toggleOrgMenu" @keydown.space.prevent="toggleOrgMenu" aria-haspopup="true" :aria-expanded="orgMenu" aria-label="Teams">
             <span class="role" :class="activeRole">{{activeRole}}</span>
             <b class="orgname">{{activeName}}</b>
             <span class="orgcaret">▾</span>
@@ -1162,57 +1151,45 @@ a:hover{text-decoration-color:var(--muted)}
               <button v-else class="orgrow-btn" @click.stop="addOrg=true; orgMenu=false">Token</button>
             </div>
             <div class="orgrow-sep"></div>
-            <div class="row" v-if="sessionMode" @click="newOrg=true; newOrgName=''; orgMenu=false"><span>＋ New team</span></div>
-            <div class="row" v-if="sessionMode" @click="showJoin=true; joinCode=''; joinErr=''; orgMenu=false"><span>⤷ Join by code</span></div>
-            <div class="row" v-if="!sessionMode" @click="addOrg=true; orgMenu=false"><span>＋ add org (paste token)</span></div>
+            <button type="button" class="row" v-if="sessionMode" @click="newOrg=true; newOrgName=''; orgMenu=false"><span>＋ New team</span></button>
+            <button type="button" class="row" v-if="sessionMode" @click="showJoin=true; joinCode=''; joinErr=''; orgMenu=false"><span>⤷ Join by code</span></button>
+            <button type="button" class="row" v-if="!sessionMode" @click="addOrg=true; orgMenu=false"><span>＋ Add team with token</span></button>
           </div>
         </div>
 
-        <!-- NAV (middle) -->
-        <div class="side-nav">
-          <button v-if="authed" class="nav" :class="{active:view==='start'}" @click="go('start')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>Getting started</button>
-          <button v-if="canRegister || publicCatalog" class="nav" :class="{active:view==='connections'}" @click="go('connections')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>Catalog</button>
-          <button v-if="authed" class="nav" :class="{active:view==='tools'||view==='secrets'}" @click="go('tools')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Your vault</button>
-          <button v-if="authed" class="nav" :class="{active:view==='activity'}" @click="go('activity')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>Activity</button>
-          <button v-if="authed" class="nav" :class="{active:view==='orgs'}" @click="go('orgs')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Team</button>
-          <button v-if="authed" class="nav" :class="{active:view==='referrals'}" @click="go('referrals')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>Refer a friend</button>
-          <a v-if="authed" class="nav" href="/enrich-arena" target="_blank" rel="noopener" aria-label="Arena (opens in a new tab)" style="gap:6px;text-decoration:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 17.5 3 3L21 17l-3-3M3 3l1.5 5.5L17 21l4-4L8.5 4.5ZM13 19l6-6M16 5l4-2-1 5-4 4M3 21l6-6M3 17l4 4"/></svg>Arena<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-left:auto"><path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg></a>
-          <div v-if="isAdmin"><div class="grp">Platform</div><button class="nav" :class="{active:view==='admin'}" @click="go('admin')" style="gap:6px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Admin</button></div>
-          <div class="grp" style="margin-top:auto">Help</div>
-          <a class="nav" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener" style="gap:6px;text-decoration:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56 0-.27-.01-1.17-.02-2.12-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.76 1.18 1.76 1.18 1.03 1.75 2.69 1.25 3.34.95.1-.74.4-1.25.72-1.54-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.18-3.09-.12-.29-.51-1.46.11-3.05 0 0 .96-.31 3.15 1.18a10.9 10.9 0 0 1 5.74 0c2.19-1.49 3.15-1.18 3.15-1.18.62 1.59.23 2.76.11 3.05.73.81 1.18 1.83 1.18 3.09 0 4.41-2.69 5.38-5.25 5.67.41.35.77 1.04.77 2.1 0 1.52-.01 2.74-.01 3.11 0 .3.2.66.8.55A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>Open source</a>
-          <a class="nav" href="https://discord.gg/6mQYYfFMAn" target="_blank" rel="noopener" style="gap:6px;text-decoration:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.32 4.37a19.8 19.8 0 0 0-4.89-1.52.07.07 0 0 0-.08.04c-.21.38-.44.87-.6 1.25a18.3 18.3 0 0 0-5.49 0 12.6 12.6 0 0 0-.61-1.25.08.08 0 0 0-.08-.04 19.7 19.7 0 0 0-4.88 1.52.07.07 0 0 0-.03.03C.53 9.05-.32 13.58.1 18.06c0 .02.01.04.03.05a19.9 19.9 0 0 0 6 3.03.08.08 0 0 0 .08-.03c.46-.63.87-1.3 1.22-2a.08.08 0 0 0-.04-.11 13.1 13.1 0 0 1-1.87-.89.08.08 0 0 1-.01-.13c.13-.09.25-.19.37-.29a.07.07 0 0 1 .08-.01c3.93 1.79 8.18 1.79 12.06 0a.07.07 0 0 1 .08.01c.12.1.24.2.37.29a.08.08 0 0 1-.01.13c-.6.35-1.22.64-1.87.89a.08.08 0 0 0-.04.11c.36.7.77 1.36 1.22 2a.08.08 0 0 0 .08.03 19.8 19.8 0 0 0 6.02-3.03.08.08 0 0 0 .03-.05c.5-5.18-.84-9.67-3.55-13.66a.06.06 0 0 0-.03-.03zM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42s.96-2.42 2.16-2.42c1.21 0 2.18 1.1 2.16 2.42 0 1.34-.96 2.42-2.16 2.42zm7.97 0c-1.18 0-2.16-1.08-2.16-2.42s.96-2.42 2.16-2.42c1.21 0 2.18 1.1 2.16 2.42 0 1.34-.95 2.42-2.16 2.42z"/></svg>Discord community</a>
-          <a class="nav" href="https://x.com/treg_ai" target="_blank" rel="noopener" style="gap:6px;text-decoration:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>Follow on X</a>
-        </div>
 
-        <!-- Prepaid balance (admins; /billing is admin-gated) — pinned above the account block.
-             Click-through = Team → Billing. -->
-        <div v-if="billing" @click="orgTab='billing'; go('orgs')" title="Prepaid balance — click to manage billing"
-             style="margin:8px 10px 6px;padding:7px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);cursor:pointer">
-          <span style="font-size:11px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase">Balance</span>
-          <span style="font-family:var(--mono);font-weight:700;color:var(--accent)">{{money(billing.balance_micro)}}</span>
-        </div>
-        <!-- Second door into Referrals, right under the balance: this is where someone is already
-             thinking about what treg costs them, which is the moment the offer actually lands. -->
-        <div v-if="billing" style="margin:0 10px 6px;text-align:center">
-          <a href="#referrals" @click.prevent="go('referrals')" class="sub"
-             style="font-size:11px;text-decoration:none">Refer a friend — get {{money(ref.terms.referrer_micro||5000000)}}</a>
-        </div>
-        <!-- PUBLIC (bottom): a signed-out catalog visitor gets the way in, where a member's
-             account block would be. The catalog is readable without an account; calling is not. -->
-        <div v-if="!authed" class="side-acct" style="gap:8px">
-          <button class="btn primary sm" style="flex:1" @click="openSignin()">Start free</button>
-          <button class="iconbtn" @click="toggleTheme" :aria-label="theme==='dark'?'Switch to light theme':'Switch to dark theme'" title="Theme">{{theme==='dark'?'◐':'◑'}}</button>
-        </div>
-        <!-- ACCOUNT (bottom) -->
-        <div v-else class="side-acct">
-          <div class="ava" :title="me">{{initials}}</div>
-          <div class="acct-you" :title="me">{{me}}</div>
-          <button class="iconbtn" @click="toggleTheme" :aria-label="theme==='dark'?'Switch to light theme':'Switch to dark theme'" title="Theme">{{theme==='dark'?'◐':'◑'}}</button>
-          <button class="iconbtn" @click="logout" aria-label="Sign out" title="Sign out">⏻</button>
-        </div>
-      </nav>
 
+      </div>
+      <nav class="rd-navs" aria-label="Primary navigation"><button v-if="authed" class="rd-nav" :class="{active:view==='start'}" :aria-current="(view==='start')?'page':null" @click="go('start')"><img src="/media/redesign/nav-getting-started.svg" alt="">Getting started</button>
+<button v-if="canRegister" class="rd-nav" :class="{active:view==='connections'}" :aria-current="(view==='connections')?'page':null" @click="go('connections')"><img src="/media/redesign/nav-catalog.svg" alt="">Catalog</button>
+<button v-if="authed" class="rd-nav" :class="{active:view==='tools'||view==='secrets'}" :aria-current="(view==='tools'||view==='secrets')?'page':null" @click="go('tools')"><img src="/media/redesign/nav-vault.svg" alt="">Your own tools</button>
+<button v-if="authed" class="rd-nav" :class="{active:view==='activity'}" :aria-current="(view==='activity')?'page':null" @click="go('activity')"><img src="/media/redesign/nav-activity.svg" alt="">Activity</button>
+<button v-if="authed" class="rd-nav" :class="{active:view==='orgs'}" :aria-current="(view==='orgs')?'page':null" @click="go('orgs')"><img src="/media/redesign/nav-team.svg" alt="">Team</button>
+<a v-if="authed" class="rd-nav" href="/enrich-arena" target="_blank" rel="noopener" aria-label="Arena (opens in a new tab)" style="text-decoration:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14.5 17.5 3 3L21 17l-3-3M3 3l1.5 5.5L17 21l4-4L8.5 4.5ZM13 19l6-6M16 5l4-2-1 5-4 4M3 21l6-6M3 17l4 4"/></svg>Arena<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="margin-left:auto"><path d="M15 3h6v6M10 14 21 3M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg></a></nav>
+      <div class="rd-account">
+        <div class="rd-social"><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener" aria-label="GitHub"><img src="/media/redesign/social-github.svg" alt=""></a><a href="https://discord.gg/6mQYYfFMAn" target="_blank" rel="noopener" aria-label="Discord"><img src="/media/redesign/social-discord.svg" alt=""></a></div>
+        <button v-if="billing" class="rd-balance" @click="orgTab='billing'; go('orgs')"><span>Balance</span><b>{{money(billing.balance_micro)}}</b></button>
+        <details class="rd-account-menu" ref="accountMenu">
+          <summary :aria-label="'Account: '+me"><span class="rd-avatar">{{initials}}</span></summary>
+          <div class="rd-account-panel">
+            <p class="rd-email">{{me}}</p>
+            <button @click="toggleTheme">{{theme==='dark'?'Light appearance':'Dark appearance'}}</button>
+            <button v-if="billing" @click="orgTab='billing'; go('orgs'); $refs.accountMenu.open=false">Billing</button>
+            <button v-if="isAdmin" @click="go('admin'); $refs.accountMenu.open=false">Admin</button>
+            <a href="/tutorial">Tutorial</a>
+            <a href="https://x.com/treg_ai" target="_blank" rel="noopener">Follow on X</a>
+            <button @click="logout">Sign out</button>
+          </div>
+        </details>
+      </div>
+    </header>
+    <img v-if="authed && !publicCatalog && view==='start'" class="rd-background" src="/media/redesign/ascii-background.jpg" alt="" aria-hidden="true">
+    <a v-if="authed && !publicCatalog" class="rd-referral" href="#referrals" @click.prevent="go('referrals')" :aria-current="view==='referrals'?'page':null"><span aria-hidden="true">↗</span> Refer a friend</a>
+    <div v-if="startCopyError" class="rd-copy-error" role="alert">{{startCopyError}}<br><button class="btn sm" @click="startCopyError=''">Dismiss</button></div>
+    <span class="rd-sr-only" role="status">{{startCopied ? 'Copied to clipboard' : ''}}</span>
+    <div class="layout" :class="{solo:publicCatalog}">
       <main id="maincontent" tabindex="-1">
+        <div v-if="!publicCatalog && (view==='tools'||view==='connections')" class="rd-view-search search"><img src="/media/redesign/search.svg" alt=""><input ref="search" v-model="q" :placeholder="view==='connections'?'Search the catalog…':'Search your own tools…'" aria-label="Search"></div>
         <div v-if="err" class="banner">{{err}}</div>
         <div v-if="pendingInvites.length" class="banner" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span>You've been invited:</span>
@@ -2022,7 +1999,7 @@ a:hover{text-decoration-color:var(--muted)}
         <template v-if="view==='orgs'">
           <div class="tut-head">
             <div><h1>Team: {{activeName}}<span v-if="isPersonal(activeOrg)" class="chip" style="margin-left:8px;vertical-align:middle">personal</span></h1>
-              <p class="sub" style="margin:0">You are <b>{{activeRole}}</b> here. <span class="muted">Switch, create or join a team from the picker at the top of the sidebar.</span></p></div>
+              <p class="sub" style="margin:0">You are <b>{{activeRole}}</b> here. <span class="muted">Switch, create or join a team from the picker at the top of the page.</span></p></div>
           </div>
           <!-- settings for the ACTIVE team (switching lives in the sidebar) -->
           <div v-if="activeOrg" style="margin-top:20px">
@@ -2524,7 +2501,7 @@ a:hover{text-decoration-color:var(--muted)}
               </div>
             </div>
             </template>
-            <p v-else class="sub" style="margin-top:14px;font-size:12px">A personal team cannot be left or deleted. Create or join other teams from the picker at the top of the sidebar.</p>
+            <p v-else class="sub" style="margin-top:14px;font-size:12px">A personal team cannot be left or deleted. Create or join other teams from the picker at the top of the page.</p>
             </template>
           </div>
         </template>
@@ -2664,61 +2641,60 @@ a:hover{text-decoration-color:var(--muted)}
 
         <!-- GETTING STARTED -->
         <template v-if="view==='start'">
-          <div style="max-width:760px;margin:0 auto">
-          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
-            <h1 style="margin:0">Getting started</h1>
-          </div>
-
-          <!-- ① Set up your <agent> — the setup line + your API key, combined -->
-          <div class="start-card" style="margin-top:14px">
-            <div class="start-hd">
-              <span class="start-num">1</span>
-              <b style="font-size:16px">Set up your</b>
-              <div style="position:relative">
-                <button type="button" class="agent-card" style="padding:8px 12px;gap:8px" @click="startAgentOpen=!startAgentOpen">
-                  <img v-if="welcomeAgent.icon" :src="agentIcon(welcomeAgent.icon)" alt="" onerror="this.style.visibility='hidden'"/><span v-else style="font-size:14px;width:20px;text-align:center;flex:none">✳</span>
-                  <span>{{welcomeAgent.name}}</span><span style="color:var(--muted);font-size:11px">▾</span>
-                </button>
-                <div v-if="startAgentOpen" class="agent-menu">
-                  <button v-for="a in welcomeAgents.concat(welcomeMoreAgents)" :key="a.id" type="button" class="agent-card" :class="{on:welcome.agent===a.id}" @click="welcome.agent=a.id; startAgentOpen=false">
-                    <img v-if="a.icon" :src="agentIcon(a.icon)" alt="" onerror="this.style.visibility='hidden'"/><span v-else style="font-size:14px;width:20px;text-align:center;flex:none">✳</span><span>{{a.name}}</span>
-                  </button>
+          <div class="rd-start">
+            <div class="rd-welcome">
+              <div class="rd-welcome-title"><span><img src="/media/redesign/welcome-mark.svg" alt=""></span><h1>Welcome! Getting started</h1></div>
+              <button v-if="canRegister" class="rd-search" @click="go('connections'); $nextTick(()=>$refs.search?.focus())"><img src="/media/redesign/search.svg" alt="">Search tools…</button>
+            </div>
+            <div class="start-card rd-setup">
+              <div class="rd-setup-side">
+                <div class="start-hd">
+                  <span class="start-num">1</span><b>Set up your</b>
+                  <div class="rd-agent-picker" @keydown.esc.stop="startAgentOpen=false; $refs.startAgentTrigger.focus()" @focusout="!$event.currentTarget.contains($event.relatedTarget) && (startAgentOpen=false)">
+                    <button ref="startAgentTrigger" type="button" class="agent-card" :aria-expanded="startAgentOpen" aria-controls="rd-agent-options" @click="startAgentOpen=!startAgentOpen">
+                      <img v-if="welcomeAgent.icon" :src="welcome.agent==='openclaw'?'/media/redesign/openclaw.svg':agentIcon(welcomeAgent.icon)" alt=""><span>{{welcomeAgent.name}}</span><span aria-hidden="true">▾</span>
+                    </button>
+                    <div v-if="startAgentOpen" id="rd-agent-options" class="agent-menu">
+                      <button v-for="a in welcomeAgents.concat(welcomeMoreAgents)" :key="a.id" type="button" class="agent-card" :class="{on:welcome.agent===a.id}" :aria-pressed="welcome.agent===a.id" @click="welcome.agent=a.id; startAgentOpen=false; $refs.startAgentTrigger.focus()"><img v-if="a.icon" :src="a.id==='openclaw'?'/media/redesign/openclaw.svg':agentIcon(a.icon)" alt=""><span>{{a.name}}</span></button>
+                    </div>
+                  </div>
                 </div>
+                <img v-if="welcome.agent==='openclaw'" class="rd-agent-preview" src="/media/redesign/openclaw-preview.png" alt="OpenClaw">
+                <div v-else class="rd-agent-preview rd-agent-fallback"><img v-if="welcomeAgent.icon" :src="agentIcon(welcomeAgent.icon)" alt=""><span>{{welcomeAgent.name}}</span></div>
+              </div>
+              <div class="start-bd rd-setup-body">
+                <p class="rd-agent-context">Setting up treg for <b>{{welcomeAgent.name}}</b></p>
+                <template v-if="welcomeAgent.plugin"><p>First, install the treg plugin:</p><a class="btn" :href="welcomeAgent.plugin" target="_blank" rel="noopener" @click="track('onboarding_plugin_install_clicked',{agent:welcome.agent,from:'start'})">Install plugin in {{welcomeAgent.name}} ↗</a></template>
+                <section class="rd-setup-panel">
+                  <p class="rd-panel-label">{{welcomeAgent.plugin ? "Then, in your Bot's chat, send:" : "In your agent's chat, send:"}}</p>
+                  <div class="lc-codewrap"><button class="lc-cp" @click="copyStart(welcomeSetupCmd,'gsc')">{{startCopied==='gsc'?'Copied':'Copy'}}</button><pre>{{welcomeSetupCmd}}</pre></div>
+                </section>
+                <section v-if="myToken" class="rd-setup-panel">
+                  <p class="rd-panel-label">Your API key</p>
+                  <p class="rd-token-help">Setup signs your agent in automatically. If it asks for a key, use this one (header <code>X-Treg-Token</code>).</p>
+                  <div class="lc-codewrap rd-token-code"><div class="rd-token-actions"><button class="rd-token-toggle" @click="startTokenShow=!startTokenShow" :aria-label="startTokenShow?'Hide key':'Show key'"><img :src="'/media/redesign/'+(startTokenShow?'eye-open':'eye-closed')+'.svg'" alt=""></button><button class="lc-cp" @click="copyStart(myToken,'gsk')">{{startCopied==='gsk'?'Copied':'Copy'}}</button></div><pre>{{startTokenShow ? myToken : (myToken.slice(0,14)+'••••••••••••••••')}}</pre></div>
+                </section>
+
               </div>
             </div>
-            <div class="start-bd">
-              <p class="sub" style="display:flex;align-items:center;gap:8px;margin:0 0 14px"><img v-if="welcomeAgent.icon" :src="agentIcon(welcomeAgent.icon)" alt="" style="width:17px;height:17px" onerror="this.style.visibility='hidden'"/>Setting up treg for <b style="color:var(--ink)">{{welcomeAgent.name}}</b></p>
-              <template v-if="welcomeAgent.plugin">
-                <p style="font-family:var(--sans);font-size:14px;margin:0 0 10px">First, install the treg plugin:</p>
-                <a class="btn" :href="welcomeAgent.plugin" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;margin-bottom:16px" @click="track('onboarding_plugin_install_clicked',{agent:welcome.agent,from:'start'})"><img :src="agentIcon(welcomeAgent.icon)" alt="" style="width:16px;height:16px"/>Install plugin in {{welcomeAgent.name}} ↗</a>
-              </template>
-              <p style="font-family:var(--sans);font-size:14px;margin:0 0 10px">{{welcomeAgent.plugin ? "Then, in your Bot's chat, send:" : "In your agent's chat, send:"}}</p>
-              <div class="lc-codewrap"><button class="lc-cp" @click="copyStart(welcomeSetupCmd,'gsc')">{{startCopied==='gsc'?'✓ copied':'copy'}}</button><pre>{{welcomeSetupCmd}}</pre></div>
-              <template v-if="myToken">
-                <div class="lbl" style="margin-top:22px">Your API key</div>
-                <p class="sub" style="margin:6px 0 10px">Already created. Setup signs your agent in automatically — but if it ever asks for a key, give it this one (header <span class="mono">X-Treg-Token</span>).</p>
-                <div class="lc-codewrap"><button class="lc-cp" @click="copyStart(myToken,'gsk')">{{startCopied==='gsk'?'✓ copied':'copy'}}</button><pre>{{startTokenShow ? myToken : (myToken.slice(0,14)+'••••••••••••••••')}}</pre></div>
-                <a href="#" class="sub" style="font-size:12px;display:inline-block;margin-top:6px" @click.prevent="startTokenShow=!startTokenShow">{{startTokenShow?'Hide':'Show'}} key</a>
-              </template>
-            </div>
-          </div>
 
           <!-- ② Try it out -->
-          <div class="start-card" style="margin-top:22px">
+          <div class="start-card rd-try">
             <div class="start-hd"><span class="start-num">2</span><b style="font-size:16px">Try it out</b></div>
             <div class="start-bd">
-              <p class="sub" style="margin:0 0 14px">treg is ready with your agent. Copy any example below and send it to your agent.</p>
+              <p class="rd-try-intro">Copy an example below and send it to your agent.</p>
               <div class="try-grid">
-                <button v-for="ex in tryExamples" :key="ex.k" type="button" class="try-card" @click="track('tryit_prompt_copied',{key:ex.k,cat:ex.cat,from:'getting_started'}); copyStart(ex.prompt,'try-'+ex.k)">
-                  <span class="try-cat"><span style="display:inline-flex;align-items:center;gap:7px"><img class="try-ico" :src="'/logos/platforms/'+ex.logo+'.svg'" alt=""/><img v-if="ex.avatar" class="try-ico avatar" :src="ex.avatar" alt=""/>{{ex.cat}}</span><span class="try-copy" :class="{done:startCopied==='try-'+ex.k}">{{startCopied==='try-'+ex.k ? '✓ copied' : '⧉ copy'}}</span></span>
-                  <span class="try-txt">{{ex.prompt}}</span>
+                <button v-for="ex in tryExamples" :key="ex.k" type="button" class="try-card" :class="'rd-task-'+ex.k" @click="track('tryit_prompt_copied',{key:ex.k,cat:ex.cat,from:'getting_started'}); copyStart(ex.prompt,'try-'+ex.k)">
+                  <img class="rd-task-image" :src="'/media/redesign/try-'+({trend:'trending',enr:'contact',serp:'keyword',soc:'linkedin'}[ex.k])+'-bg.png'" alt=""><span class="rd-task-overlay">
+                  <span class="try-cat"><span style="display:inline-flex;align-items:center;gap:7px"><img class="try-ico" :src="'/media/redesign/try-'+({trend:'tiktok',enr:'people',serp:'google',soc:'linkedin'}[ex.k])+'.svg'" alt=""/>{{ex.cat}}</span><span class="try-copy" :class="{done:startCopied==='try-'+ex.k}">{{startCopied==='try-'+ex.k ? '✓ copied' : '⧉ copy'}}</span></span>
+                  <span class="try-txt">{{ex.prompt}}</span></span>
                 </button>
               </div>
               <div class="oauth-div"><span>also connect OAuth to unlock new agent capabilities</span></div>
               <div v-for="g in tryOauth" :key="g.label" style="margin-top:14px">
                 <div class="oauth-grp">{{g.label}}</div>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-                  <button v-for="p in g.items" :key="p.s" type="button" class="prov-chip" @click="track('tryit_oauth_clicked',{service:p.s,group:g.label,from:'getting_started'}); openProvider(p.s)"><img :src="'/logos/'+p.s+'.svg'" alt=""/>{{p.n}}</button>
+                  <button v-for="p in g.items" :key="p.s" type="button" class="prov-chip" @click="track('tryit_oauth_clicked',{service:p.s,group:g.label,from:'getting_started'}); openProvider(p.s)"><img :src="'/media/redesign/oauth-'+({'google-business-profile':'business-profile','google-search-console':'search-console'}[p.s]||p.s)+'.svg'" alt=""/>{{p.n}}</button>
                   <span v-if="g.soon.length" class="soon-note" :data-tip="g.soon.map(p=>p.n).join(', ')">{{g.soon.length}} coming soon</span>
                 </div>
               </div>
@@ -2729,7 +2705,7 @@ a:hover{text-decoration-color:var(--muted)}
                new user walks; these two are optional and belong to different people (a vendor with an
                API to list, a platform embedding treg). Numbering them implied everyone had three
                things to do. Tabs, because nobody needs both. -->
-          <div style="margin-top:34px;border-top:1px solid var(--line);padding-top:22px">
+          <div class="rd-build">
             <h2 style="margin:0 0 4px;font-size:17px">Build on treg</h2>
             <p class="sub" style="margin:0 0 12px">Optional, for two other kinds of user. Each is a skill file — paste the line into your coding agent, in your own repo, and it implements the rest.</p>
             <div class="seg">
@@ -2737,7 +2713,7 @@ a:hover{text-decoration-color:var(--muted)}
               <button :class="{on:buildTab==='platform'}" @click="buildTab='platform'">Integrate into your platform</button>
             </div>
 
-            <div v-show="buildTab==='vendor'" style="max-width:720px">
+            <div v-show="buildTab==='vendor'" class="rd-build-panel">
               <p class="sub">Put your API in front of every treg agent. Your agent reads the guide, writes the catalog entry for your endpoints and prices, and opens the PR.</p>
               <div class="lc-codewrap" style="margin-top:8px">
                 <button class="lc-cp" @click="copyStart('Read '+proxy+'/vendor-listing.md and add our API to the treg catalog, then open a PR.','vend')">{{startCopied==='vend'?'✓ copied':'copy'}}</button>
@@ -2746,7 +2722,7 @@ treg catalog, then open a PR.</pre>
               </div>
             </div>
 
-            <div v-show="buildTab==='platform'" style="max-width:720px">
+            <div v-show="buildTab==='platform'" class="rd-build-panel">
               <p class="sub">Give <i>your</i> users 2,800+ tools without owning the keys — and bill each of your customers for what they used. Covers the call methods (HTTP, MCP, CLI), per-customer tagging, spend limits and invoicing.</p>
               <div class="lc-codewrap" style="margin-top:8px">
                 <button class="lc-cp" @click="copyStart('Read '+proxy+'/integrate.md and integrate treg into our product, including per-customer usage tracking and billing.','intg')">{{startCopied==='intg'?'✓ copied':'copy'}}</button>
@@ -2761,7 +2737,7 @@ product, including per-customer usage tracking and billing.</pre>
             <summary class="sub" style="cursor:pointer;margin-bottom:0">Prefer the terminal? Manual CLI setup &amp; sharing your team's keys →</summary>
             <div class="seg" style="margin-top:14px">
             <button :class="{on:startTab==='access'}" @click="startTab='access'">Access 2000+ treg tools</button>
-            <button :class="{on:startTab==='setup'}" @click="startTab='setup'">Setup your team's skills &amp; env vault</button>
+            <button :class="{on:startTab==='setup'}" @click="startTab='setup'">Set up your own tools</button>
           </div>
 
           <!-- TAB · Access the catalog — agent instruction first, then the manual CLI walkthrough -->
@@ -3780,6 +3756,7 @@ treg login</pre></div>
     </div>
   </div>
 </div>
+</div>
 
 <script>
 const { createApp } = Vue;
@@ -3892,7 +3869,7 @@ createApp({
       exPath:'<PATH>', exMethod:'GET',
       tryTool:null, tryMethod:'GET', tryPath:'', tryBody:'', trying:false, tryResp:null, tryStatus:0, tryMs:0,
       useMode:'call', runArgsStr:'', running:false, runOut:null,
-      startCopied:'', startTab:'access', startAgentOpen:false, startTokenShow:false, mdMenu:false, llmsCopied:false, myToken:null, _myTokenOrg:null, tokenCopied:false,
+      startCopyError:'', startCopied:'', startTab:'access', startAgentOpen:false, startTokenShow:false, mdMenu:false, llmsCopied:false, myToken:null, _myTokenOrg:null, tokenCopied:false,
       agentGuide:null, agentGuideCopied:false, agentRowCopied:null,
       vendorAsk:false, vendorCopied:false,
       reqAsk:false, reqDone:false, reqBusy:false, reqErr:'', reqForm:{capability:'', note:'', contact:''},
@@ -5181,7 +5158,17 @@ createApp({
       if(!this.connected(o.slug)){ this.addOrg=true; return; }
       this.cfg.active=o.slug; this.save(); this.loadAll(); this.intercomUpdate(); },
     welcomeTryProvider(service,group){this.track('tryit_oauth_clicked',{service,group,from:'onboarding'});this.welcome.on=false;this.openProvider(service);},
-    copyStart(text, tag){ navigator.clipboard.writeText(text).then(()=>{ this.startCopied=tag; setTimeout(()=>{ if(this.startCopied===tag) this.startCopied=''; },1400); }).catch(()=>{}); },
+    async copyStart(text, tag){
+      this.startCopyError=''; this.startCopied='';
+      try {
+        await navigator.clipboard.writeText(text);
+        this.startCopied=tag;
+        setTimeout(()=>{ if(this.startCopied===tag) this.startCopied=''; },1400);
+      } catch(_) {
+        this.startCopyError='Could not copy. Select the text and copy it manually. For an API key, choose Show key first.';
+      }
+    },
+
     // ---- connections (registry OAuth) ----
     async loadConnections(){
       this.connErr='';
@@ -5422,7 +5409,10 @@ createApp({
       // push history so browser Back navigates BETWEEN views instead of leaving the app; the '/app'
       // pathname also walks back from a /app/skills/<x> detail URL so reload doesn't reopen the detail
       if(!fromPop) history.pushState({view:v}, '',
-        this.publicCatalog && v==='connections' ? '/catalog' : '/app#'+v); },
+        this.publicCatalog && v==='connections' ? '/catalog' : '/app#'+v);
+      if(!fromPop) window.scrollTo(0,0);
+      this.startAgentOpen=false; this.orgMenu=false;
+      if(this.$refs.accountMenu) this.$refs.accountMenu.open=false; },
     // ---- detail pages (shareable deep links) ----
     routeFromPath(path){ const m=/^\/app\/(skills|tools)\/(.+)$/.exec(path||'');
       return m ? {kind:m[1]==='skills'?'skill':'tool', name:decodeURIComponent(m[2])} : null; },
@@ -6078,12 +6068,14 @@ createApp({
     document.addEventListener('click', ()=>{ if(this.mdMenu) this.mdMenu=false; });  // outside-click closes the copy-markdown menu
     document.addEventListener('keydown', e=>{
       // Escape closes any open modal/drawer (a universal expectation the modals didn't honour)
-      if(e.key==='Escape'){ this.closeOverlays(); return; }
+      if(e.key==='Escape'){ const orgWasOpen=this.orgMenu; this.closeOverlays(); if(orgWasOpen) this.$refs.orgmain?.focus(); if(this.startAgentOpen){ this.startAgentOpen=false; this.$refs.startAgentTrigger?.focus(); } else if(this.$refs.accountMenu?.open){ this.$refs.accountMenu.open=false; this.$refs.accountMenu.querySelector('summary').focus(); } return; }
       // "/" focuses the search box (the "/" glyph in the box advertised a shortcut that didn't exist)
       const t=e.target, typing = t && (t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.tagName==='SELECT'||t.isContentEditable);
       if(e.key==='/' && !typing && this.authed && (this.view==='tools'||this.view==='connections')){ e.preventDefault(); this.$refs.search && this.$refs.search.focus(); }
     });
     document.addEventListener('click', e=>{  // the org dropdown didn't close on an outside click
+      if(this.$refs.accountMenu && !e.target.closest('.rd-account-menu')) this.$refs.accountMenu.open=false;
+      if(this.startAgentOpen && !e.target.closest('.rd-agent-picker')) this.startAgentOpen=false;
       if(this.orgMenu && !e.target.closest('.orgblock') && !e.target.closest('.dropdown')) this.orgMenu=false;
     });
     // the fixed-position dropdown must follow its trigger when anything scrolls or resizes

@@ -1,9 +1,11 @@
 ---
-title: The web dashboard (Ledger, served from FastAPI)
+title: The web dashboard (served from FastAPI)
 status: shipped
 sources:
   - src/treg/web/sitetrack.js
   - src/treg/web/index.html
+  - src/treg/web/media/redesign/dashboard.css
+  - src/treg/web/media/redesign/SOURCES.md
   - src/treg/web/agent-setup.js
   - src/treg/web/vendor/README.md
   - src/treg/web/vendor/vue-3.5.41.global.prod.js
@@ -54,8 +56,8 @@ connection as working and no direct tool exists.
 
 A single-file Vue 3 dashboard in `src/treg/web/index.html`, served **same-origin** by the API
 (`GET /app` → `FileResponse`, `dashboard()` in `routers.web`, via `_WEB_DIR`). Same origin = no CORS and it
-ships with the server (Render/Fly). Design language: **Ledger** (warm charcoal + clay accent,
-mono-forward, dark default + light toggle) — see `docs/style-board.html` / `docs/DASHBOARD-PLAN.md`.
+ships with the server (Render/Fly). The authenticated redesign follows the root `design.md`; older Ledger references in
+`docs/style-board.html` / `docs/DASHBOARD-PLAN.md` describe the previous visual system.
 
 ### Vue is vendored, not fetched from a CDN
 There is no bundler, so Vue arrives as a plain `<script src>` — but from **`/vendor/`**, served off
@@ -92,12 +94,11 @@ that redirect can drop the query string. No Google tag, first-party cookie only;
 [ads-conversions](../architecture/ads-conversions.md).
 
 ## Shell & design system (2026 rework)
-The design tokens are now **shared across every served page** (`index.html`, `tutorial.html`,
-`tour/index.html`): **system mono** (`ui-monospace, "SF Mono", …` — `IBM Plex Mono` was never actually
-loaded, so this makes rendering consistent for everyone), `--r:14 / --rb:9`, a `14px` base, and one
-shared `.btn` / `.iconbtn` height so controls align. The logged-out SPA keeps the hero, key-leak
-explanation, footer CTA, and sign-in modal, but its anonymous sandbox studio has been removed. The
-backend sandbox routes remain temporarily for a later cleanup (see [landing-sandbox](landing-sandbox.md)).
+The authenticated dashboard uses the redesigned shell documented below. The tutorial, tour,
+public catalog and logged-out surfaces retain their existing tokens and layout. The logged-out
+SPA keeps the hero, key-leak explanation, footer CTA and sign-in modal; its anonymous sandbox studio
+has been removed. Backend sandbox routes remain temporarily for a later cleanup (see
+[landing-sandbox](landing-sandbox.md)).
 
 An OAuth authorization that needs sign-in redirects to `/?signin=oauth`. The dashboard reads this as
 a UI cue, removes it from the visible URL, and opens the same modal with generic connection copy. It
@@ -111,22 +112,34 @@ long enough for attribution, strips it with the other one-shot parameters via `h
 and opens the sign-in modal. It never calls `sbxInit` or `POST /demo/sandbox`. A plain logged-out
 `/app` visit still redirects to `/`.
 
-The **authed** shell is sidebar-first. The **top bar** is just brand + search. The **left sidebar**
-stacks: (top) an **org block** — role + team name — that on click opens a switcher **dropdown** where
-each team carries its own **⚙ Settings** (`orgSettings` → switch into it, then open its settings) and
-**Switch** (`switchTo`) button (long names truncate, actions pinned right; the click-outside handler
-keys on `.orgblock`); (middle) the nav — Tools · **Secrets** (member+) · **Marketplace** (member+, the
-OAuth-connect view — `go('connections')`) · Activity · **Usage** (admin/owner) · Team · Getting
-started · Admin, then a Help group of two external links (**Open source** (the GitHub repo) ·
-**Discord community**) —
-the Tutorial nav entry was removed 2026-08-12 in their favor; the `help` view itself survives and
-is still reachable (welcome flow, in-app links); (bottom)
-the **account** block — avatar · email · theme · sign out. The old top-bar org dropdown and top-right
-account controls are gone.
+The authenticated shell uses the top navigation from the designer's Figma `12:596` reference.
+The left side holds the treg mark and the existing team switcher; the middle exposes Getting started,
+Catalog (member+), **Your own tools**, Activity and Team; the right side holds community links,
+the admin-gated balance and an account disclosure with appearance, billing, Admin (when authorized),
+help and sign-out. **Refer a friend** is a persistent bottom-right link, available to every signed-in
+user. On narrow screens navigation scrolls in a second row; team switching and own-tools access
+remain available. The public catalog and logged-out landing retain their separate shells.
+
+The authenticated wrapper's `.redesign` class scopes `media/redesign/dashboard.css`, served through
+the existing `/media` mount. It uses Google Sans Flex for interface text, Geist Pixel for page titles,
+and DM Mono for commands and balances, with light and dark semantic colors. Getting started uses
+an approximately 1080px centered column, a split agent-preview/setup card, image-backed prompt cards,
+and the existing optional Build on treg and manual setup flows. On mobile the setup card and prompt
+grid stack. Images are copied from the pinned designer repository; provenance is in
+`media/redesign/SOURCES.md`. This first implementation uses static posters instead of autoplay video.
+Existing agent selection, token masking/copying, OAuth entry points and all backend data remain wired.
+Copy failures, including unavailable clipboard APIs, surface a dismissible message, and the agent picker/account disclosure close on Escape
+or outside interaction. The search entry on Getting started navigates to Catalog and focuses the
+existing search field. Team settings and switching retain the existing `orgSettings` / `switchTo`
+behavior, including fixed-position dropdown placement via `placeOrgMenu`. The team picker supports
+Enter and Space; Escape restores focus to its trigger. Direct `go` navigation returns to the top of
+the destination; Back/Forward leaves scroll restoration to the browser. Category/team tabs and wide
+tables scroll locally on small screens, and the onboarding OAuth divider wraps instead of widening
+the page.
 
 ## Standalone Enrich Arena
 
-Signed-in users have an **Arena** sidebar link immediately after **Refer a friend**. It opens
+Signed-in users have an **Arena** top-navigation link immediately after **Team**. It opens
 `/enrich-arena` in a new tab, with an external-link icon aligned to the right. The link is also
 available in the mobile navigation drawer.
 

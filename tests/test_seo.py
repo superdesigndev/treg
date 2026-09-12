@@ -342,8 +342,12 @@ def test_public_catalog_drops_the_workspace_chrome():
     tool search and the member nav are furniture for a job they have not started."""
     spa = _spa()
     assert '<div class="pubnav" v-if="publicCatalog">' in spa      # marketing nav instead
-    assert '<div class="top" role="banner" v-else>' in spa          # app bar only for members
-    assert '<nav class="side"' in spa and 'v-if="!publicCatalog">' in spa  # no sidebar in public mode
+    member_header = '<header class="rd-top" v-else>'
+    assert member_header in spa                                  # app bar only for members
+    header = spa.split(member_header, 1)[1].split('</header>', 1)[0]
+    assert 'class="orgblock"' in header and 'class="rd-navs"' in header
+    assert 'v-if="!publicCatalog && (view===\'tools\'||view===\'connections\')"' in spa
+    assert 'v-if="authed && !publicCatalog" class="rd-referral"' in spa
     assert '.layout.solo{grid-template-columns:minmax(0,1fr)}' in spa   # main spans the full width
 
 
