@@ -1,0 +1,73 @@
+{
+ "output": {
+  "found": true,
+  "data": {
+   "items": [
+    {
+     "applicants": 200,
+     "applyUrl": "https://job-boards.greenhouse.io/sidecarhealth/jobs/6121520004?gh_src=un0etjsy4us",
+     "benefits": [],
+     "company": {
+      "linkedinUrl": "https://www.linkedin.com/company/sidecarhealth",
+      "logo": "https://media.licdn.com/dms/image/v2/D560BAQGFjkvU0MswKA/company-logo_400_400/B56Z5RHZhHG0AU-/0/1779477354779/sidecarhealth_logo?e=1790812800&v=beta&t=LP9LdxJ3iTWp8wociLdxlSNjgg5ke8SMvpJ0ZehfEz4",
+      "name": "Sidecar Health",
+      "universalName": "sidecarhealth"
+     },
+     "createdUtc": 1789081241,
+     "descriptionText": "Sidecar Health is redefining health insurance. Our mission is to make excellent healthcare affordable and attainable for everyone. We know that to accomplish this lofty mission, we need driven people who will make things happen.\n\nThe passionate people who make up Sidecar Health’s team come from all over, with backgrounds as tech leaders, policy makers, healthcare professionals, and beyond. And they all have one thing in common—the desire to fix a broken system and make it more personalized, affordable, and transparent.\n\nIf you want to use your talents to transform healthcare in the United States, come join us!\n\nMust reside in California for consideration**\n\nAbout The Role\n\nWe're hiring two Senior Software Engineers to join our Member Experience engineering team — the team that builds the products our members use every day to find care, understand their benefits, submit claims, and manage their health plans.\n\nThis is a high-impact individual contributor role where you'll own the full product experience, from the APIs that power our platform to the interfaces our members interact with. You'll work directly with product and design to ship features that make healthcare more accessible, and you'll use AI tools as a core part of how you build. If you move fast, care deeply about craft, and want your work to matter, this is the role for you.\n\nWhat You'll Do\n\nBuild and ship full-stack features end-to-end across our member-facing web applicationsWork primarily in TypeScript — it's our language of choice across the stackShip confidently through our GitHub Actions CI/CD pipelines and deploy web applications on Vercel, owning your changes from pull request to productionDesign scalable systems and make deliberate architectural tradeoffs between performance, maintainability, and speed to shipBuild AI-powered member experiences — integrating LLM APIs and working with agent harnesses and frameworks (e.g., Eve, Strands) where they add real valueWrite clean, well-tested, production-grade code with a high bar for qualityPartner with product, design, and stakeholders across the business to translate requirements into great softwareContribute to engineering standards through code reviews, technical discussion, and better defaults\n\nWhat You'll Bring\n\n5+ years of professional software engineering experience with full-stack ownership of production systemsDeep TypeScript expertise, with strong React and Next.js experience building modern, responsive web applicationsComfort owning deployments end-to-end — experience with platforms like Vercel and CI/CD pipelines like GitHub ActionsHabitual, fluent use of AI tools (Claude, Cursor, etc.) as part of your daily workflowExperience building with LLMs — API integrations, agentic workflows, or frameworks/harnesses such as Eve or Strands — or a strong drive to get there quicklySolid fundamentals in system design, testing, debugging, and code reviewBachelor's degree in Computer Science or equivalent practical experienceNice to Have (Not Required) React Native experience for our mobile surfaces Familiarity with Java — we have some legacy Java services you may occasionally touch, but no Java expertise is needed for this role Experience with AWS\n\nWhat You'll Get\n\nCompetitive salary, bonus opportunity, and equity package Comprehensive Medical, Dental, and Vision benefitsA 401k retirement planPaid vacation and company holidaysOpportunity to make an impact at a rapidly growing mission-driven company transforming healthcare in the U.S.\n\nIn taking a market-based approach to compensation, base pay may vary depending on location. Additionally, base pay may vary considerably depending on job-related skills and experience. The current expected salary range for this position is: $160,000 - $175,000. \n\nSidecar Health is an Equal Opportunity employer committed to building a diverse team. We do not discriminate on the basis of race, religion, color, national origin, gender, sexual orientation, age, marital status, veteran status or disability status.",
+     "easyApplyUrl": "",
+     "employmentType": "full_time",
+     "experienceLevel": "",
+     "id": "4444757190",
+     "industries": [
+      "Insurance"
+     ],
+     "location": "United States",
+     "salary": {
+      "max": 0,
+      "min": 0,
+      "text": ""
+     },
+     "title": "Senior Software Engineer, Full Stack (Member Experience)",
+     "url": "https://www.linkedin.com/jobs/view/4444757190/",
+     "workplaceType": "remote"
+    },
+    {
+     "applicants": 25,
+     "applyUrl": "https://www.shopify.com/careers/senior-infrastructure-engineer-streaming-compute_eab3b5a7-3e5b-4716-b0de-95dd472753f4?utm_source=linkedin",
+     "benefits": [],
+     "company": {
+      "linkedinUrl": "https://www.linkedin.com/company/shopify",
+      "logo": "https://media.licdn.com/dms/image/v2/D560BAQG_KjTcNcrLVw/company-logo_400_400/B56ZZolTV.HUAk-/0/1745511331439/shopify_logo?e=1790812800&v=beta&t=hAFi3agr2RsMo62LcpRVSWYROe11POU_TkKc43xg2bg",
+      "name": "Shopify",
+      "universalName": "shopify"
+     },
+     "createdUtc": 1789082744,
+     "descriptionText": "About The Role\n\nAbout the role\n\nThe Streaming Compute team owns the platform that powers large-scale data processing at Shopify with Apache Flink. We provide the infrastructure and tooling that lets teams across the company build, deploy, and operate streaming and batch data pipelines reliably and efficiently. Our platform powers business critical use cases, such as recommendations, catalog, as well as analytics workloads.\n\nOur work spans the end to end ecosystem: making pipeline development fast and self-serve, improving performance and stability of the underlying compute engine, and keeping the platform cost-efficient as it scales. In this role, you'll work on distributed systems and developer experience, making powerful data processing simple and dependable for every engineer at Shopify.\n\nThis role combines development and operations. You'll build and run the systems you work on; lead complex features to production, work directly with users, strengthen the resiliency of the systems you own, work with vendor and open source teams. You’ll navigate ambiguous technical problems together with the team: prototyping solutions, taking calculated risks, and building momentum when the path forward isn't fully clear.\n\nWhat You'll Do\n\nChampion and contribute to projects across the full platform stack. This includes enhancing developer tooling, scaling infrastructure, building control planes, and contributing to the Flink open source ecosystem.Ship high-quality code and raise the team’s technical bar.Collaborate extensively with platform users to ensure their success, as well as contributing to the roadmap of the team.Join the 24/7 on-call rotation the resiliency of our platform\n\n\nWhat you'll bring (we don’t expect you to have done all of this):\n\nReflexively use AI to accelerate and improve your daily work.Prior experience working with Apache Flink and/or a track record of contributing to its open source projects in the domain is a major plus.Familiarity with Kubernetes and distributed systems.Have demonstrated experience in Java, Rust, Go, and/or ruby.Have familiarity, as a user or maintainer, with data intensive systems, such as Kafka, Iceberg, and/or BigQuery.\n\n\nAt Shopify, we pride ourselves on moving quickly—not just in shipping, but in our hiring process as well. If you're ready to apply, please be prepared to interview with us within the week. Our goal is to complete the entire interview loop within 30 days. You will be expected to complete a live pair programming session, come prepared with your own IDE.\n\nAbout Shopify\n\nOpportunity is not evenly distributed. Shopify puts independence within reach for anyone with a dream to start a business. We propel entrepreneurs and enterprises to scale the heights of their potential. Since 2006, we’ve grown to over 8,300 employees and generated over $1 trillion in sales for millions of merchants in 175 countries.\n\nThis is life-defining work that directly impacts people’s lives as much as it transforms your own. This is putting the power of the few in the hands of the many, is a future with more voices rather than fewer, and is creating more choices instead of an elite option.\n\nAbout You\n\nMoving at our pace brings a lot of change, complexity, and ambiguity—and a little bit of chaos. Shopifolk thrive on that and are comfortable being uncomfortable. That means Shopify is not the right place for everyone.\n\nBefore you apply, consider if you can:\n\nCare deeply about what you do and about making commerce better for everyoneExcel by seeking professional and personal hypergrowthKeep up with an unrelenting pace (the week, not the quarter)Be resilient and resourceful in face of ambiguity and thrive on (rather than endure) changeBring critical thought and opinionPut AI agents and tools to work on the tasks they're built for, and focus on the work only humans can doEmbrace differences and disagreement to get shit done and move forwardWork digital-first for your daily work\n\n\nWe may use AI-enabled tools to screen, select, and assess applications. All AI outputs are reviewed and validated by our recruitment team.",
+     "easyApplyUrl": "",
+     "employmentType": "full_time",
+     "experienceLevel": "Mid-Senior level",
+     "id": "4464815312",
+     "industries": [
+      "Software Development"
+     ],
+     "location": "NAMER",
+     "salary": {
+      "max": 0,
+      "min": 0,
+      "text": ""
+     },
+     "title": "Senior Infrastructure Engineer - Streaming Compute (Americas)",
+     "url": "https://www.linkedin.com/jobs/view/4464815312/",
+     "workplaceType": "remote"
+    }
+   ]
+  }
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0044,
+ "items": 3,
+ "replayed": false,
+ "hint": "large_result: this response is ~14 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+ "resultId": "37ca93b5-d221-445e-bc8d-6ed39e77de51"
+}

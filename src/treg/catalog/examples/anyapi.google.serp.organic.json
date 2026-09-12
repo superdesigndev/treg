@@ -1,0 +1,22 @@
+{
+ "output": {
+  "data": {
+   "nextCursor": "WybU7TWoVEOkEfCb2awSH_r1S2j8HsUGK2JKq2EXocuHxMJizglGgA6mDCZcR1yJMoBBZ_MnLmkiqIesd5PpgaPS4FZNXuxLp-ZRvw1kY6igdJMEHsrEspibnnXNfnWVDBcpueIpAXV9NH8",
+   "query": "best coffee maker",
+   "results": [
+    {
+     "link": "https://coffeekev.com/best-coffee-maker/",
+     "position": 1,
+     "snippet": "Manual Espresso Machine: Winner (Under $150) De'Longhi Stilosa EC-230 De'Longhi to beat under $150. Manual Espresso Machine: Winner Under $300. ...",
+     "title": "Best Coffee Maker: Manual Espresso, Automatic, Drip, Pods"
+    }
+   ]
+  },
+  "found": true
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0009,
+ "items": 1,
+ "replayed": false,
+ "resultId": "1f0b14d1-b682-4c73-af27-9dfd16d2f0ea"
+}

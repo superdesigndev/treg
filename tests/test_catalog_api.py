@@ -273,14 +273,19 @@ async def test_search_finds_the_job_across_providers_best_first(clients: AsyncCl
     rows = body["results"]
     assert body["count"] == len(rows) <= body["total"]
 
-    top = [e["id"] for e in rows[:4]]
+    top = [e["id"] for e in rows[:5]]
     assert top[0] == "treg.tiktok.video.comments", "the routed endpoint for the job comes first"
     assert set(top[1:]) == {
+        "anyapi.tiktok.video.comments",
         "justoneapi.tiktok.video.comments",
         "tikhub.tiktok.video.comments",
         "scrapecreators.tiktok.video.comments",
     }
-    assert all(e["tier"] == "core" and e["verified"] for e in rows[1:4])
+    # anyapi is the fourth seller of this job and ranks on price like the rest; it carries no
+    # `verified` stamp yet because a vendor never stamps its own rows — the maintainers' own
+    # verification run adds it, and this line goes back to a plain `all(...)` when it does.
+    assert all(e["tier"] == "core" for e in rows[1:5])
+    assert all(e["verified"] for e in rows[1:5] if not e["id"].startswith("anyapi."))
     # rank is total and stable: score desc, then core before extended WITHIN a score tie — tier
     # never outranks relevance, so a strong extended match may sit above a weak core one
     # …except that a capability with a routed row is shown as a GROUP (parent first, then its

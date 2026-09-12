@@ -1,0 +1,34 @@
+{
+ "output": {
+  "found": true,
+  "data": {
+   "items": [
+    {
+     "firstName": "Alec",
+     "handle": "alecpeterson",
+     "image": "https://media.licdn.com/dms/image/v2/D5603AQH8l9asLWzsBw/profile-displayphoto-crop_800_800/B56ZqUQDWwHAAI-/0/1763423830899?e=1790812800&v=beta&t=2lFDWo7yN3tmFG7vdrD9DABal0KXzgOjZYUCQ-NxH60",
+     "jobTitle": "AWS, Stripe",
+     "lastName": "Peterson",
+     "location": "Seattle, Washington, United States",
+     "name": "Alec Peterson",
+     "url": "https://linkedin.com/in/alecpeterson"
+    },
+    {
+     "firstName": "Sharadh",
+     "handle": "sharadhk",
+     "image": "https://media.licdn.com/dms/image/v2/C5603AQHV7p2Y-ZMAkg/profile-displayphoto-shrink_800_800/profile-displayphoto-shrink_800_800/0/1516782943661?e=1790812800&v=beta&t=oyrM9dea81PmUvrNdWqJG7P9ZERXKt_P1PG6qzEr5Yw",
+     "jobTitle": "Engineering Manager at Stripe",
+     "lastName": "Krishnamurthy",
+     "location": "Fremont, California, United States",
+     "name": "Sharadh Krishnamurthy",
+     "url": "https://linkedin.com/in/sharadhk"
+    }
+   ]
+  }
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.033,
+ "items": 3,
+ "replayed": false,
+ "resultId": "729da885-c731-4c7d-8771-a77453359240"
+}

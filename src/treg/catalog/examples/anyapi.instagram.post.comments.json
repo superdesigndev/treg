@@ -1,0 +1,34 @@
+{
+ "output": {
+  "data": {
+   "comments": [
+    {
+     "author": "rubens1975_",
+     "avatarUrl": "https://scontent-phl2-1.cdninstagram.com/v/t51.82787-19/752952187_18614553679018284_992225851145836784_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=111&ccb=7-5&_nc_sid=f7ccc5&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy41NDIuQzMifQ%3D%3D&_nc_ohc=N7G8UczfggIQ7kNvwGMe4Lv&_nc_oc=Adr78O4b12lmq_7E-TlQDU0BTdZtGLaT6BR-XMz0hTcRTvUPSvMRQm8JW6I_t9TAzYQ&_nc_zt=24&_nc_ht=scontent-phl2-1.cdninstagram.com&_nc_gid=eQpeo5BqehArS_kIeafUUQ&_nc_ss=7f689&oh=00_AQIDZ51cjVcPv41VR7i7pu-r7HQTg3FFOzdc-kcabKVvqg&oe=6AA92745",
+     "createdUtc": 1775756088,
+     "id": "18066264752338681",
+     "likes": 0,
+     "text": "E joga lixo na rua",
+     "verified": false
+    },
+    {
+     "author": "clerouak66",
+     "avatarUrl": "https://scontent-phl2-1.cdninstagram.com/v/t51.2885-19/472643005_1159140318890442_4657304045473698858_n.jpg?stp=dst-jpg_s150x150_tt6&_nc_cat=109&ccb=7-5&_nc_sid=f7ccc5&efg=eyJ2ZW5jb2RlX3RhZyI6InByb2ZpbGVfcGljLnd3dy45NzIuQzMifQ%3D%3D&_nc_ohc=Vom-JUuZ-DYQ7kNvwHLKmNm&_nc_oc=Ado4uisZKoqijouPnLSHdiHxYmkp-aPecVCxtPEHeOJuLEqXCM5u8OSIoaXg8wwHmsc&_nc_zt=24&_nc_ht=scontent-phl2-1.cdninstagram.com&_nc_ss=7f689&oh=00_AQJZMkueJ5ifjlVHXRMFxRrc2WiB_99NMkiY4c_IK0WNLQ&oe=6AA90F02",
+     "createdUtc": 1775622550,
+     "id": "18007543739853361",
+     "likes": 0,
+     "text": "Fazer o que na Lua, Lulu,? milhões que poderia ser usado na humanidade, na fome , na natureza, só por Xapiri mesmo 😮",
+     "verified": false
+    }
+   ],
+   "nextCursor": "LrpuiQKb-3xigqsvtS9qQlwoUFyriTfqCNSXx2v0qOufEpwme1rfQmplaXtiKRDqw5j4V8CeLx6BnKf391ATenWFTYiQWB9b-dAn5dhNPtIVaizrEEDs3EjrBnUWpYDt6bpkrYMbUVpBuOc9UnJmNVNawkIRnCDyUJjODsh3WrwlGXZtdJAF-J3Dy_YAFpbY_D7TuBdNK-gCtmVIFj4cTeq2r73tCyulfhGEhesQRpk4DGbF6azVKZD1-l5qd2t7fj5TEaZo1vUd-v7WkDr_LdGJOSJ-"
+  },
+  "found": true
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0012,
+ "items": 15,
+ "replayed": false,
+ "hint": "large_result: this response is ~11 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+ "resultId": "682bf940-8398-4c49-9190-39377aba1ee1"
+}

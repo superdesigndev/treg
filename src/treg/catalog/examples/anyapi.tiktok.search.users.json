@@ -1,0 +1,29 @@
+{
+ "output": {
+  "data": {
+   "nextCursor": "fJAYV9O6AFuv8q5_WZK26hSlDs6u8WCXOeAkpEDO0SahNyjecXwquN_7KCGFDEk3OA0Vmf0HCV8ohiRLlcmWmGy-01IpOjQ2wswjHeBQHPGQPPxtXvhTvCzM2wCn9pBslga3Oqy5W6Or7jtmIfdgmymyljrOj8gOMQ",
+   "users": [
+    {
+     "followers": 88,
+     "following": 3,
+     "handle": ".chef.official",
+     "nickname": "Chef Official",
+     "userId": "7674230330799080470"
+    },
+    {
+     "followers": 924,
+     "following": 732,
+     "handle": "chef290494",
+     "nickname": "Chef 🧑🏿‍🍳 🇨🇲",
+     "userId": "7396708309141013537"
+    }
+   ]
+  },
+  "found": true
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0012,
+ "items": 10,
+ "replayed": false,
+ "resultId": "c2d9e39b-8e86-495f-9508-14d17ae40dfd"
+}

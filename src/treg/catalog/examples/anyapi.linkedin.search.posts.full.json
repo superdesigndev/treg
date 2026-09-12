@@ -1,0 +1,73 @@
+{
+ "output": {
+  "data": {
+   "posts": [
+    {
+     "attachmentImage": "https://media.licdn.com/dms/image/v2/D5624AQGT7KQxMe_onw/live-thumbnail-low/B56aCNjNtjGgBY-/0/1789081247523",
+     "attachmentType": "video",
+     "attachmentUrl": "https://dms.licdn.com/playlist/vid/v2/D5624AQGT7KQxMe_onw/live-mp4-inhouse-analysis/B56aCNjNtjGgBQ-/0/1789083515624",
+     "author": {
+      "headline": "Award-Winning Note Investor, Entrepreneur, and Podcast Host. I have a passion for helping people to grow their investments and influence with distressed real estate deals. 20-plus years as a real estate investor.",
+      "id": "ACoAAALMVPUBqpfVrMq9uIBAVbX8uvI2M-d5P8A",
+      "image": "https://media.licdn.com/dms/image/v2/D5603AQF9tzYMJM2R4A/profile-displayphoto-crop_800_800/B56Zvwm5_0HMAI-/0/1769268300277",
+      "name": "Scott Carson",
+      "profileUrl": "https://www.linkedin.com/in/1scottcarson",
+      "publicIdentifier": "1scottcarson",
+      "type": "person"
+     },
+     "createdUtc": 1789064122,
+     "engagement": {
+      "breakdown": [],
+      "comments": 2,
+      "reactions": 0,
+      "reposts": 0
+     },
+     "id": "7503878805489594368",
+     "pollOptions": [],
+     "text": "Would You Trust AI to Service Your Mortgage Notes? Pros, Cons, & Pitfalls\n\nhttp://WeCloseNotes.com\n\nCan artificial intelligence really replace human loan servicers when a mortgage goes into default, or is handing your note portfolio over to an algorithm a recipe for disaster? Welcome back to The Note Closers Show! \n\nIn this episode, Scott Carson evaluates the state of 100% AI-driven loan servicing following a 30-minute demonstration with a leading fintech servicing provider. While AI excels at streamlining automated tasks for performing paper—such as generating monthly billing statements, updating payment methods, sending automated text pings, and onboarding loan documents—it falls short when managing non-performing mortgages.",
+     "url": "https://www.linkedin.com/posts/1scottcarson_would-you-trust-ai-to-service-your-mortgage-activity-7503878805489594368-8mPC"
+    },
+    {
+     "attachmentDescription": "September 10, 2026by, Jamie ThornberryIntroduction: The Central Confusion and the Crisis of AuthorityWhen an educational establishment penalizes the u",
+     "attachmentImage": "https://media.licdn.com/dms/image/v2/D5612AQGVKk4pPAFK-g/article-cover_image-shrink_720_1280/B56aCLn8ZlIIAU-/0/1789048899495",
+     "attachmentSubtitle": "Jamie V. Thornberry",
+     "attachmentTitle": "The Administrative Panic: Artificial Intelligence and the Decay of Academic Authority",
+     "attachmentType": "article",
+     "attachmentUrl": "https://www.linkedin.com/pulse/administrative-panic-artificial-intelligence-decay-thornberry-vspic",
+     "author": {
+      "headline": "Helping organizations and individuals teach and apply the Biblical worldview effectively | Addiction Recovery Mentor | Helping People Find Freedom in truth | Love–Life–Light Publishing",
+      "id": "ACoAAD--0m4BluxUj1rvm-2ZxIOUjADYM50AKeU",
+      "image": "https://media.licdn.com/dms/image/v2/D4E03AQEhB8ERAKl-7g/profile-displayphoto-crop_800_800/B4EZ4fhbTGGYAI-/0/1778645318089",
+      "name": "Jamie V. Thornberry",
+      "profileUrl": "https://www.linkedin.com/in/jamie-v-thornberry",
+      "publicIdentifier": "jamie-v-thornberry",
+      "type": "person"
+     },
+     "createdUtc": 1789048989,
+     "engagement": {
+      "breakdown": [
+       {
+        "count": 1,
+        "type": "LIKE"
+       }
+      ],
+      "comments": 1,
+      "reactions": 1,
+      "reposts": 0
+     },
+     "id": "7503815333997252608",
+     "pollOptions": [],
+     "text": "Perhaps the university is not actually afraid that AI will replace human intelligence. Perhaps it is afraid that AI has exposed how little of what the institution calls \"intellectual work\" actually requires human judgment.",
+     "url": "https://www.linkedin.com/posts/jamie-v-thornberry_perhaps-the-university-is-not-actually-afraid-activity-7503815333997252608-YPoz"
+    }
+   ]
+  },
+  "found": true
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.005,
+ "items": 10,
+ "replayed": false,
+ "hint": "large_result: this response is ~18 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+ "resultId": "6ff6dcd7-17d1-4cb9-a9da-2b723bd9b255"
+}

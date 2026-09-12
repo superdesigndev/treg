@@ -1256,6 +1256,41 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+ANYAPI = OAuthProvider(
+    service="anyapi",
+    display_name="AnyAPI",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your AnyAPI key",
+    # AnyAPI accepts the key as `X-API-Key` or `Authorization: Bearer`. Use the header form so the
+    # key never lands in a URL; the query-param form does not exist here at all.
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://getanyapi.com/dashboard",
+    setup_action_label="Get your AnyAPI key",
+    setup_steps=(
+        "Sign in at getanyapi.com/dashboard and open API keys.",
+        "Copy your key (it starts with aa_live_).",
+        "No card is needed to start: POST https://api.getanyapi.com/agent/signup returns a "
+        "free trial key with starter credit and no account at all.",
+    ),
+    setup_note=(
+        "One USD wallet, pay per request, no subscription. Every run reports its exact charge as "
+        "`costUsd`; a request that no source could serve is not charged. `GET /v1/balance` is free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary=(
+        "Normalized social, search, maps, commerce and web-scrape data across 362 endpoints, "
+        "priced per request in USD with automatic failover between sources."
+    ),
+    base_url="https://api.getanyapi.com",
+    docs_url="https://getanyapi.com/docs",
+    probe_path="/v1/balance",  # free — reads the wallet, runs nothing and charges nothing
+)
+
 SUMBLE = OAuthProvider(
     service="sumble", display_name="Sumble", auth_kind="key",
     token_label="API key", token_placeholder="your Sumble API key",
@@ -2813,7 +2848,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        APOLLO, PDL, AKTA, HUNTER, SUMBLE, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers

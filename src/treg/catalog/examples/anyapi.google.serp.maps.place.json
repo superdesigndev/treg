@@ -1,0 +1,29 @@
+{
+ "output": {
+  "found": true,
+  "data": {
+   "items": [
+    {
+     "address": "Blue Bottle Coffee, 1 Ferry Building #7, San Francisco, CA 94111",
+     "category": "Coffee shop",
+     "image": "https://lh3.googleusercontent.com/gps-cs-s/AHRPTWnw3swtmzxEelxS-0JwqjcL1lhRFngJ1S7BdcJojzot9NjFTDiOEN2eY45sBPxCMDWgcpW6hJiZmTLhPeBWNLMCz27KAnpN2EH8dSIIIJwR2-K5zqWJvjusPwwULWssikSA_8DOTA=w203-h105-k-no",
+     "latitude": 37.7961181,
+     "longitude": -122.3939851,
+     "name": "Blue Bottle Coffee",
+     "permanentlyClosed": false,
+     "phone": "+15106613510",
+     "placeId": "ChIJWTGPjmaAhYAR6c9cUJ1axtM",
+     "rating": 4.2,
+     "reviewsCount": 934,
+     "url": "https://www.google.com/maps/place/data=!3m1!4b1!4m2!3m1!1s0x808580668e8f3159:0xd3c65a9d505ccfe9",
+     "website": "https://bluebottlecoffee.com/us/eng/northern-california-cafes"
+    }
+   ]
+  }
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.00175,
+ "items": 1,
+ "replayed": false,
+ "resultId": "dd2ce11a-3782-401b-8ee1-45c684b14b8e"
+}

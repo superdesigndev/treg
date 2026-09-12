@@ -1,0 +1,29 @@
+{
+ "output": {
+  "found": true,
+  "data": {
+   "items": [
+    {
+     "address": "Epoch Coffee, 221 W N Loop Blvd, Austin, TX 78751",
+     "category": "Coffee shop",
+     "image": "https://lh3.googleusercontent.com/gps-cs-s/AHRPTWmor7DRW2yDXwDpOuFDJKMLYNHiMiJowLm3MEcQJfBnVx9LqCQm52LkgJnT7PKDneGl5-Xlx0kt-uBBz9XSQ4OBldcbg9HyZt3DMhCW4gkDrT_YZPmWGijWL5VSrN1GWs2TRzM=w203-h114-k-no",
+     "latitude": 30.318603699999997,
+     "longitude": -97.72454019999999,
+     "name": "Epoch Coffee",
+     "permanentlyClosed": false,
+     "phone": "+15124543762",
+     "placeId": "ChIJG-gJw2vKRIYROWi2uwOp8QE",
+     "rating": 4.5,
+     "reviewCount": 2523,
+     "url": "https://www.google.com/maps/place/data=!3m1!4b1!4m2!3m1!1s0x8644ca6bc309e81b:0x1f1a903bbb66839",
+     "website": "http://www.epochcoffee.com/"
+    }
+   ]
+  }
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.00175,
+ "items": 1,
+ "replayed": false,
+ "resultId": "63a3c979-01b5-4d20-a707-536395f71a44"
+}

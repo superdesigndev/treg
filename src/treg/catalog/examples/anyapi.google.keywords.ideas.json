@@ -1,0 +1,21 @@
+{
+ "output": {
+  "found": true,
+  "data": {
+   "query": "best coff",
+   "suggestions": [
+    {
+     "value": "best coffee near me"
+    },
+    {
+     "value": "best coffee maker"
+    }
+   ]
+  }
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.00099,
+ "items": 10,
+ "replayed": false,
+ "resultId": "6c469d02-28ca-47cb-8a29-0cfa7de06d8e"
+}

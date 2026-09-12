@@ -1,0 +1,24 @@
+{
+ "output": {
+  "found": true,
+  "data": {
+   "avatarUrl": "https://p16-common-sign.tiktokcdn-us.com/tos-alisg-avt-0068/smgf5f369c884044a8df770614bbfd64717~tplv-tiktokx-cropcenter:100:100.jpeg?dr=9640&refresh_token=33ecdb6a&x-expires=1789257600&x-signature=ta4QmmhAl4mAe9R%2BRiYR%2BmSav6w%3D&t=4d5b0474&ps=13740610&shp=a5d48078&shcp=81f88b70&idc=useast5",
+   "bio": "Bringing a little more wonder into the world, 15 seconds at a time",
+   "displayName": "Zach King",
+   "externalUrl": "https://youtu.be/ulVscDewRPI?si=-65KnrnwSiGHDeT2",
+   "followers": 86877351,
+   "following": 182,
+   "handle": "zachking",
+   "likes": 1296785407,
+   "secUid": "MS4wLjABAAAANnzJ9pdfxtlf3m5Ku_M-rCXVitJC13w4GavqyUD3RE8h1cZ-7O9FT-uQ9rCJjU_E",
+   "userId": "68616495085350913",
+   "verified": true,
+   "videos": 615
+  }
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0005,
+ "items": 0,
+ "replayed": false,
+ "resultId": "a30e4452-59cc-49dd-9b5c-9e0c3bf596e6"
+}

@@ -1,0 +1,37 @@
+{
+ "output": {
+  "data": {
+   "nextCursor": "7TPGa_JHe-YUEw3ZklvPwNGWkdmnxWp_WV_WE8M1MlNsc-_jfyaqIu4cSiMRbnm1R5NH_lmVZiojfhGu1xskHlZFG_Trce8IrVOBth1uJEhOTWw9I5dGg5DQNpBG-kfjrQ3uA5YuvBKyUjGPpc11z_nMMFMWU20uJZRe",
+   "videos": [
+    {
+     "author": "cookingwithcarter",
+     "caption": "The most refreshing Greek Salad 🥗 #fyp #fun #salad #Summer ",
+     "comments": 8533,
+     "createdUtc": 1782490096,
+     "id": "7655736626265459990",
+     "likes": 548236,
+     "region": "US",
+     "shares": 74752,
+     "views": 4372910
+    },
+    {
+     "author": "the.cozy.kitchen79",
+     "caption": "#cook #cooking #EasyRecipe #Recipe #food ",
+     "comments": 417,
+     "createdUtc": 1788018189,
+     "id": "7679479593312603406",
+     "likes": 14074,
+     "region": "US",
+     "shares": 7161,
+     "views": 891493
+    }
+   ]
+  },
+  "found": true
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0012,
+ "items": 10,
+ "replayed": false,
+ "resultId": "3664a826-3d28-4d16-a03c-ce210e1715bb"
+}

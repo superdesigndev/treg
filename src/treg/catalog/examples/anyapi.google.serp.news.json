@@ -1,0 +1,28 @@
+{
+ "output": {
+  "found": true,
+  "data": {
+   "items": [
+    {
+     "createdUtc": 1789059279,
+     "snippet": "",
+     "source": "The New York Times",
+     "title": "The Mathematician Crushed Between OpenAI and Anthropic Over a Math Problem",
+     "url": "https://www.nytimes.com/2026/09/10/science/tristan-buckmaster-openai-math-navier-stokes.html"
+    },
+    {
+     "createdUtc": 1789001679,
+     "snippet": "",
+     "source": "CNBC",
+     "title": "OpenAI claims to have solved the 90-year-old Navier-Stokes math problem in 88 hours",
+     "url": "https://www.cnbc.com/2026/09/09/openai-navier-stokes-math-problem-solved.html"
+    }
+   ]
+  }
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.00099,
+ "items": 23,
+ "replayed": false,
+ "resultId": "07800354-c15f-4991-85e1-f17cbe7c83f1"
+}

@@ -1,0 +1,21 @@
+{
+ "output": {
+  "found": true,
+  "data": {
+   "avatarUrl": "https://pbs.twimg.com/profile_images/1321163587679784960/0ZxKlEKB_normal.jpg",
+   "bio": "Making the seemingly impossible, possible. ✨",
+   "displayName": "NASA",
+   "followers": 92389757,
+   "following": 117,
+   "handle": "NASA",
+   "tweets": 74285,
+   "verified": true,
+   "website": "https://www.nasa.gov/"
+  }
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.00022,
+ "items": 0,
+ "replayed": false,
+ "resultId": "d11b6a71-41b9-45c0-9c58-53e76f06a4a7"
+}

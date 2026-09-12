@@ -1,0 +1,26 @@
+{
+ "output": {
+  "found": true,
+  "data": {
+   "avatarUrl": "https://media.licdn.com/dms/image/v2/C5603AQHHUuOSlRVA1w/profile-displayphoto-shrink_800_800/profile-displayphoto-shrink_800_800/0/1579726625483?e=1790812800&v=beta&t=KuYRYfAd_jTeQccU-_jIq8wLjFW_BJPtJVOo1_bUQuk",
+   "emails": [
+    {
+     "deliverable": true,
+     "email": "snadella@microsoft.com",
+     "qualityScore": 80,
+     "status": "valid",
+     "validEmailServer": true
+    }
+   ],
+   "firstName": "Satya",
+   "headline": "Chairman and CEO at Microsoft",
+   "lastName": "Nadella",
+   "linkedinUrl": "https://www.linkedin.com/in/satyanadella"
+  }
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.011,
+ "items": 1,
+ "replayed": false,
+ "resultId": "eaafea54-b8c5-4d95-a052-50cbc07bb4a5"
+}

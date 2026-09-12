@@ -1,0 +1,34 @@
+{
+ "output": {
+  "data": {
+   "items": [
+    {
+     "company": "General Motors",
+     "companyUrl": "https://www.linkedin.com/company/general-motors",
+     "createdUtc": 1787356800,
+     "id": "4419969671",
+     "location": "Warren, MI",
+     "logoUrl": "https://media.licdn.com/dms/image/v2/D4E0BAQEfAZWzerj03w/company-logo_100_100/B4EZdkPGXYGcAQ-/0/1749733370529/general_motors_logo?e=2147483647&v=beta&t=ycfbgxUnJw_BkI-JSrXwekaeYZ6rWNAlvxirgJ7o00Q",
+     "title": "Senior Software Engineer – Go (Golang)",
+     "url": "https://www.linkedin.com/jobs/view/senior-software-engineer-%E2%80%93-go-golang-at-general-motors-4419969671"
+    },
+    {
+     "company": "Amazon Web Services (AWS)",
+     "companyUrl": "https://www.linkedin.com/company/amazon-web-services",
+     "createdUtc": 1788912000,
+     "id": "4455931376",
+     "location": "Seattle, WA",
+     "logoUrl": "https://media.licdn.com/dms/image/v2/D4E0BAQFqdm1TZ-RZKQ/company-logo_100_100/B4EZgOay6gHEAY-/0/1752588562343/amazon_web_services_logo?e=2147483647&v=beta&t=813v--p_AS7bme1J7PlAyB2BEU4-c9ba9AUzyuGb5Wg",
+     "title": "Software Development Engineer, AWS IAM Distributed Database System",
+     "url": "https://www.linkedin.com/jobs/view/software-development-engineer-aws-iam-distributed-database-system-at-amazon-web-services-aws-4455931376"
+    }
+   ]
+  },
+  "found": true
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0005,
+ "items": 3,
+ "replayed": false,
+ "resultId": "cd810f01-8d26-47bc-9708-8ff70b171922"
+}

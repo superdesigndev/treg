@@ -1,0 +1,48 @@
+{
+ "output": {
+  "data": {
+   "nextCursor": "jQ6goKMjRQ200O2x3vLhP8_9NemXvD6I-5I5pHKXMKkU4IDhKH7EVPVXLh0Ios0PZk8P7us-bmjFg2Fj-T2x6lh75phO0mQrz4JRUlwUjTcRLW5lmhjURdiOoUMyMbNzrn2z5TeYDt74M5xUvZUVgD4Cbra8r4XC-bjXDSsKs6E7RuStUHvsIn_P5rh-1NR64bD_JiMAeC9oxvtT4UOu9oXM9PI26KFa-3ivC8xsMNMkLz6OW55htM-F4_ATLe3YTjo21tz_B-5yO3Kmr3Hbdapa-3wDNwvPTFFf2QBDawCQsAXGtyqhXrp4ov_bNc7iZSc8Ak8KRcDloek1gJALPEGQfGwv-w78R1CIbJVLuq5bfW29WdYHrlwtf9j_0ah5x9w0izYeXigNpj4EvZb4lVFrrsX-lJw5rEnpUi2EXYXfYUjmIXxnqZ40qeUK561Cg45XL4DpNMTFT6sK1LynQ6oAy0wf31TxGPaHk5JkVBXXT4juATAXo-gldbC_RZV7CueVG7rLXJZDDLJFybwrGTRIs_nM-Vy-k0tHmR4NHxfAbX-pdE0_pIX18rSo6NcnOPLOnI6ndY4SzVFreD6jH96OiA5qkU4QehBnjQ_bYMaMGkmPP3zaM86ygf3DY5_TfBatMPlTRj2lt4Z05r4ccSjErcGogrRIZhh9pTHoyFYuRhLTBGzW7d56PgyBbaGMiqiKAP3LwQQ6ZYHLRu9xibFGrYvb1UlyGzqqohTSA8w2VaJHMd1WkLe7bSgKh425CaNUYVDkZs0Ykgc63aZIM0510dD2_PxNY9a_SN6wmf04i8COLFruKTyvclqEQeOWFb0-_7TkDQbT82APNQUtXaxYgT_E5Po-Wt2N59iK0TUyaDfvRcWeHPUk_TkWSD39NI02MzVuxMEU0UOjoRQ03VRGv7PR3HwXR7QGefLQW17MUqku-mxNzen32nCe-EpmvPtGvhPW5Srjsv7nFMWFSnHwN0eOIhVTLXE_v--ZrTTwhaXdesH1tSHYZ3AXAhSFoTaWSWOVUoRlQ6HGXNnJIJGLOOUuFx0BVSfVDnnxoIXnBhg3GiOQ-CnbNyuZiUE85qMCGSYLuH9WuqgIGOGei0O21DT6J6hHsaCPcldKchJb8MCVitwXNCfWWEUqp3chZwQ4dpbzUbfy",
+   "tweets": [
+    {
+     "bookmarks": 0,
+     "createdUtc": 1789084632,
+     "id": "2098199139909570951",
+     "isPinned": false,
+     "isReply": true,
+     "lang": "en",
+     "likes": 4,
+     "media": [],
+     "quotes": 0,
+     "replies": 1,
+     "retweets": 0,
+     "text": "@rchodava Yes so that's all going away I think",
+     "url": "https://x.com/i/web/status/2098199139909570951",
+     "views": 752
+    },
+    {
+     "bookmarks": 1,
+     "createdUtc": 1789081947,
+     "id": "2098187880317210935",
+     "isPinned": false,
+     "isReply": true,
+     "lang": "en",
+     "likes": 15,
+     "media": [],
+     "quotes": 1,
+     "replies": 2,
+     "retweets": 0,
+     "text": "@renatomoraesp Literally all the normies around me tell ChatGPT and Claude what to do all day",
+     "url": "https://x.com/i/web/status/2098187880317210935",
+     "views": 1513
+    }
+   ]
+  },
+  "found": true
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0005,
+ "items": 20,
+ "replayed": false,
+ "hint": "large_result: this response is ~9 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+ "resultId": "faba7c8b-509e-43c7-a219-2990b5b7d6e5"
+}

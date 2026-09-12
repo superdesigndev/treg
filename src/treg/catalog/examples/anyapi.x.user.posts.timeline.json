@@ -1,0 +1,53 @@
+{
+ "output": {
+  "data": {
+   "nextCursor": "kQm4sBfRxr7PHPmDm0idtPBb7bOkpLFmVY1BMXJIO9RX3hMThMGpzaB2n8yMqq0Ca1WbUxP9RivntnGZ09TZ1-ynLYE16VxXA2c-ZdiqUNDICczpprfJ6NUf1JYiHBKwKg3YTX8vMvLsy7c3T7vmM5lJfxhcGrynvyDJOGHbB3D0DrPODQxspEvxbPb7m2kyy1y2ThjSdZLxfzmp9GuciXI-7Wf8GcTRJsnqB7zICtgSfc5131OmfHbvlX897C7lgGkuBHKClwG7qJrcie0oRw79w2vKvG-FF6NFlgMx8_8f4AAbzT_5viWO9zvXZNLQ8JrSDcTJ-j7I9Aj1Xs-k38-HiBQBJbvgRMMxHsu52oPgjXn8EJBw7GElCWoOmDh-lQz823iWX0E0v2ynr-Oj8GHZH98uMDFVs8XC7fE4Wk5xgI1JSebFx7emz7SDY-kMb2elnb4hW_KRUt5zi1wCbdIQUzLLMwTevr7nYv6n76XZJMMVPVHXqtGrNC_OhiPQ7IFlqbZ0ottynl0-236GBgXHJyhN_jlHjMFf-oqssbWOwNVpEd5VXZhh2RtEDvidZ_tf9mJR3ieooWxoM96EEGSJwg6mxZlUipVTYNuMo6G588OP1qk__z72M7JjE7kn-tkL_SG0x3tWsPUHBOQ",
+   "tweets": [
+    {
+     "bookmarks": 325,
+     "createdUtc": 1789080517,
+     "id": "2098181881023844392",
+     "isPinned": false,
+     "lang": "en",
+     "likes": 684,
+     "media": [
+      {
+       "height": 400,
+       "type": "photo",
+       "url": "https://pbs.twimg.com/media/HR49TG2XgAASJ9A.jpg",
+       "width": 640
+      }
+     ],
+     "quotes": 14,
+     "replies": 44,
+     "retweets": 29,
+     "text": "I am so confused why people don't understand this, I keep getting these replies\n\nDon't you get it?\n\nNormies don't vibe code, they just ask something like \"do my bookkeeping\" or \"file my tax\" or \"organize a movie night and send invites\" or \"generate a flyer for movie night\" or \"edit my video\"\n\nThey don't ever see code, vibe code, or do anything with code, their AI chat app just does it for them\n\nMost of the software layer has already disappeared or will completely disappear for normies\n\nJust like building personal homepages permanently disappeared for normies when Facebook launched ~2005\n\nA lot like this picture where functions of individual devices all got replaced with a single device\n\nSame happening with apps now",
+     "url": "https://x.com/i/web/status/2098181881023844392",
+     "views": 91130
+    },
+    {
+     "bookmarks": 114,
+     "createdUtc": 1789072133,
+     "id": "2098146714330820771",
+     "isPinned": false,
+     "lang": "en",
+     "likes": 338,
+     "media": [],
+     "quotes": 10,
+     "replies": 39,
+     "retweets": 4,
+     "text": "The point is that it catches attention (and makes money) and it's controversial as you can see from the 100+ replies in the post below (which catches even more attention)\n\nYou have to become a master of getting attention in this time\n\nNow that building anything has become quite trivial, catching attention is now the most important skill I think\n\nHe's creative, the opposite of boring, thinks out of the box, isn't scared of controversy and ships fast and so he has the perfect skillset right now\n\nAll the attention for these projects also funnel back to him (as followers) and his projects (like TrustMRR) which help to increase revenue later\n\n10/10",
+     "url": "https://x.com/i/web/status/2098146714330820771",
+     "views": 46003
+    }
+   ]
+  },
+  "found": true
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0005,
+ "items": 19,
+ "replayed": false,
+ "hint": "large_result: this response is ~10 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+ "resultId": "56fbf19e-8f6f-4c78-9d4a-cb38bd7369b0"
+}

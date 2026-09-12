@@ -1,0 +1,41 @@
+{
+ "output": {
+  "found": true,
+  "data": {
+   "reels": [
+    {
+     "caption": "Travel 101 for everyone who wants to see the world but think they can’t.\n\nBecause travel was never just for people with unlimited time and money. It's for those who have a plan. \n\nHere are 9 tips that actually work. which one are you implementing first? 👇🏾🤍",
+     "comments": 54,
+     "createdUtc": 1777486906,
+     "durationSeconds": 0,
+     "likes": 1705,
+     "paidPartnership": false,
+     "shortcode": "DXua74TEZou",
+     "thumbnail": "https://scontent-iad6-1.cdninstagram.com/v/t51.82787-15/700069864_18591258193021268_4493512203454627248_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=100&ig_cache_key=Mzg4NjE2MTk5MjU3NTE5NTY5NDE4NTkxMjU4MTkwMDIxMjY4.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjEwODAuc2RyLnZpZGVvX2RlZmF1bHRfY292ZXJfZnJhbWUuQzMifQ%3D%3D&_nc_ohc=9qq5nFu307EQ7kNvwG6eVTM&_nc_oc=AdpQHEGZCB4guW1pLHl-tRZmgcw9nSH9UGSc3aXvnX_Vr_ut7A8zk9Ycpfm2oBW3GVc&_nc_zt=23&_nc_ht=scontent-iad6-1.cdninstagram.com&_nc_gid=QBHy4t908hv99j8kls-R1g&_nc_ss=7f689&oh=00_AQKOT5D9w7Z1unedyiqaZiOWN0YBZjpN32j4_sGU84BZIg&oe=6AA93342",
+     "url": "https://www.instagram.com/reel/DXua74TEZou/",
+     "username": "theufuoma",
+     "verified": true
+    },
+    {
+     "caption": "‼️ 5 Travel Warnings 2026 Travel Tips. If you’re traveling in 2026 here are 5 things people are getting wrong that’s costing them hundreds of dollars and my travel therapy travel tips so you can save money, time, and stress when traveling in 2026 and beyond! ✈️\n\nI’m an Emmy award winning creator and host of TRAVEL THERAPY TV & author of  the TRAVEL THERAPY book & TRAVEL THERAPY TRIPS website here sharing my insider travel tips and travel hacks after traveling to more than 68+ countries.\n\nThis travel video covers & travel tips cover:\n\n✅ REAL ID new $45 Fee\n✅ Carry-On Bag Changes\n✅ Flight refunds \n✅ Airline Gate Times \n✅ Luggage Requirements \n✅ Warning Carry-On Bag Advertisements & Luggage Tips \n\n5 Travel tips for 2026 you need to know before going to the airport ❤️✈️ \n#Travel #travelgram #luggage #traveltips #traveltherapy",
+     "comments": 63,
+     "createdUtc": 1768920877,
+     "durationSeconds": 0,
+     "likes": 3862,
+     "paidPartnership": false,
+     "shortcode": "DTvIrVyDN7z",
+     "thumbnail": "https://scontent-lga3-1.cdninstagram.com/v/t51.71878-15/617696404_806616252431966_8812137004153380626_n.jpg?stp=dst-jpg_e15_tt6&_nc_cat=103&ig_cache_key=MzgxNDMwNTU3MjEwMzk3MDU0NzE3OTA4ODM1MzI1MzE1NDAz.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNMSVBTLnhwaWRzLjY0MC5zZHIudmlkZW9fbmZyYW1lX2NvdmVyX2ZyYW1lLkMzIn0%3D&_nc_ohc=N4cZQXxeCs0Q7kNvwHChDrV&_nc_oc=Adqtrwv8ohXeA3F4aFqYAUpMTZI_3TeC35WrCFSJJ5HELNGvimG8bVB4G9xQ04fDSqI&_nc_zt=23&_nc_ht=scontent-lga3-1.cdninstagram.com&_nc_gid=YWTRQ3tZCRPJQoUPcKyVcQ&_nc_ss=7f689&oh=00_AQLnC9RLzp9F8FhHny7UCFBvqpnxMLTa68RWXh6zTg9QTQ&oe=6AA918FD",
+     "url": "https://www.instagram.com/reel/DTvIrVyDN7z/",
+     "username": "traveltherapy",
+     "verified": false
+    }
+   ]
+  }
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0012,
+ "items": 10,
+ "replayed": false,
+ "hint": "large_result: this response is ~15 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+ "resultId": "f0a46133-0f89-4aa0-8fd5-7dbe1d2eaea4"
+}

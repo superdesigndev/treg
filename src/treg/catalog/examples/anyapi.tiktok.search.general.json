@@ -1,0 +1,38 @@
+{
+ "output": {
+  "data": {
+   "items": [
+    {
+     "author": "noahjaywood",
+     "caption": "@yrfavyapper I GOT YOU 🙏🏽😭 #barney #funny #stitch ",
+     "comments": 3326,
+     "contentType": "video",
+     "id": "7683939758208208142",
+     "likes": 327061,
+     "shares": 18918,
+     "url": "https://www.tiktok.com/@noahjaywood/video/7683939758208208142",
+     "views": 1757887
+    },
+    {
+     "author": "rfng03",
+     "caption": "This anime has no business being this stupid… but why am I laughing so hard? 😭 #AnimeFunny #AnimeTok #ComedyAnime #AnimeClips #MemeAnime ",
+     "comments": 120,
+     "contentType": "video",
+     "id": "7680122379187670286",
+     "likes": 11469,
+     "shares": 480,
+     "url": "https://www.tiktok.com/@rfng03/video/7680122379187670286",
+     "views": 186525
+    }
+   ],
+   "nextCursor": "XMW3GNy70da9aGQL6a14hDD2gsMKhJ66oWuqsm6OjSP8nPNyubFEeHlFmx3JqOTprTspH7ZtZQ4AsWorDballUI4IP76HMhDFWVVNgHKIlOZ5QdmorbZglSEguVYLVAs5XYwsLWmXOmQzFrkrq4HId_l2KyxGf8"
+  },
+  "found": true
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0012,
+ "items": 31,
+ "replayed": false,
+ "hint": "large_result: this response is ~9 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+ "resultId": "8cf695f3-1f18-4f5f-84a0-48002da76853"
+}

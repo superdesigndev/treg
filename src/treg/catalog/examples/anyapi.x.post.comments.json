@@ -1,0 +1,43 @@
+{
+ "output": {
+  "found": true,
+  "data": {
+   "items": [
+    {
+     "authorHandle": "thisisdemilade",
+     "authorName": "Demi Abatan",
+     "createdUtc": 1788259181,
+     "id": "2094736947130298379",
+     "likeCount": 5,
+     "media": [],
+     "quoteCount": 0,
+     "replyCount": 0,
+     "repostCount": 0,
+     "text": "@jack So this is the first tweet ever made on this app",
+     "url": "https://x.com/i/web/status/2094736947130298379",
+     "viewCount": 2171
+    },
+    {
+     "authorHandle": "jabirbuilds",
+     "authorName": "Jabir",
+     "createdUtc": 1787704058,
+     "id": "2092408595631497350",
+     "likeCount": 0,
+     "media": [],
+     "quoteCount": 0,
+     "replyCount": 1,
+     "repostCount": 0,
+     "text": "@jack @grok how many views does this have",
+     "url": "https://x.com/i/web/status/2092408595631497350",
+     "viewCount": 624
+    }
+   ]
+  }
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0005,
+ "items": 36,
+ "replayed": false,
+ "hint": "large_result: this response is ~12 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+ "resultId": "0daf4911-06d6-43dd-b758-9c9e4d764a3f"
+}

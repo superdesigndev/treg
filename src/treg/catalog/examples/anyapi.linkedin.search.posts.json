@@ -1,0 +1,38 @@
+{
+ "output": {
+  "data": {
+   "nextCursor": null,
+   "posts": [
+    {
+     "authorName": "Amy Thibodeau",
+     "authorUrl": "https://ca.linkedin.com/in/amythibodeau",
+     "avatarUrl": "https://media.licdn.com/dms/image/v2/D5603AQEh1nQahUEaWA/profile-displayphoto-shrink_200_200/B56ZSKjw61HsAc-/0/1737491419117?e=2147483647&v=beta&t=qWQrRn0Fza9fwi5MTxa67XmyzjTrlFiSTENr66Fkrp4",
+     "commentCount": 6,
+     "createdUtc": 1788984728,
+     "id": "7503545803974537216",
+     "reactionCount": 77,
+     "text": "🚀🚀🚀 We're hiring a critical role for Gusto: Head of Product, Core Experiences. 🚀🚀🚀\n\nCoreX is where we build our AI Assistant Gus and our AI platform, mobile, reporting, comms system, and builder enablement. This is a VP-level people leadership role AND we're looking for a builder—someone who wants to be in the product and close to the work. Everyone here, including me, is in the code, talking to customers, making things, and helping teams advance ambitious plans.\n\nWe're on a 🚀rocket ship🚀 and this is an incredible time to join Gusto! If this sounds like you, or someone you know, send me or my recruiting partner Paul West a DM and we'll send you more details.\n\nVideo with more details below.",
+     "url": "https://www.linkedin.com/posts/amythibodeau_were-hiring-a-critical-role-for-activity-7503545803974537216-IxRS"
+    },
+    {
+     "authorName": "Ryan Clark",
+     "authorUrl": "https://www.linkedin.com/in/ryandustinclark",
+     "avatarUrl": "",
+     "commentCount": 7,
+     "createdUtc": 1789073156,
+     "id": "7503916695074332672",
+     "reactionCount": 51,
+     "text": "30 days in. Already all in 🧃\nI recently joined Juicebox as a Sales Manager. Here's my early read:\nThe growth? Undeniable.\nThe people? Genuinely exceptional.\nThe culture? Not a buzzword - lived daily.\nThe opportunity? Massive.\n\nWe're helping you find the 'needle in the haystack' candidate, faster than ever before.\n\nI'm stoked to help build the sales process and structure, alongside Simran Duggal + Finn Malloy, that scales this thing - and honestly, the runway feels endless.\nI'm hiring AEs, and there's a stack of open roles - come drink some juice!\n\nhttps://lnkd.in/g8rYX5s4",
+     "url": "https://www.linkedin.com/posts/ryandustinclark_build-the-future-of-hiring-at-juicebox-activity-7503916695074332672-U2fp"
+    }
+   ]
+  },
+  "found": true
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0012,
+ "items": 0,
+ "replayed": false,
+ "hint": "large_result: this response is ~9 KB. To keep future runs from flooding your context, re-run with `fields` (keep only the keys you need), `max_items` (cap rows), `summary=true` (outline only), or `jq` for arbitrary reshaping (e.g. `jq=.data.markdown[:2000]`) — these trim the response only, never the charge.",
+ "resultId": "07cf0d10-3190-4803-b06b-271a376dcfca"
+}

@@ -1,0 +1,48 @@
+{
+ "output": {
+  "found": true,
+  "data": {
+   "items": [
+    {
+     "author": "AYUSH THAKUR",
+     "createdUtc": 1789061431,
+     "isLocalGuide": false,
+     "likes": 0,
+     "origin": "Google",
+     "ownerResponse": "",
+     "ownerResponseAt": "",
+     "placeId": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+     "publishedAgo": "7 hours ago",
+     "rating": 5,
+     "reviewId": "Ci9DQUlRQUNvZENodHljRjlvT25FMGFYbHBOQzFVYzBoMGMxVkljMlZSTWtaWlQzYxAB",
+     "reviewerId": "109110877935999381265",
+     "reviewerReviewsCount": 0,
+     "text": "Dining at Spice Garden was an exceptional experience! The authentic flavors in each dish were cooked to absolute perfection. The staff was incredibly welcoming and attentive throughout our meal, and the warm, serene ambience made our dinner truly memorable. I highly recommend Spice Garden to anyone seeking exquisite dining!",
+     "url": "https://www.google.com/maps/reviews/data=!4m8!14m7!1m6!2m5!1sCi9DQUlRQUNvZENodHljRjlvT25FMGFYbHBOQzFVYzBoMGMxVkljMlZSTWtaWlQzYxAB!2m1!1s0x0:0x8eaddfcd1b32ca52!3m1!1s2@1:CAIQACodChtycF9oOnE0aXlpNC1Uc0h0c1VIc2VRMkZZT3c%7C%7C?hl=en"
+    },
+    {
+     "author": "sachin birajdar",
+     "createdUtc": 1789052756,
+     "isLocalGuide": false,
+     "likes": 0,
+     "origin": "Google",
+     "ownerResponse": "",
+     "ownerResponseAt": "",
+     "placeId": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+     "publishedAgo": "9 hours ago",
+     "rating": 5,
+     "reviewId": "Ci9DQUlRQUNvZENodHljRjlvT2xsS1dTMTVWbkJHZEVGblFWcFRPVU5MYWtoRWJtYxAB",
+     "reviewerId": "116903748206185827934",
+     "reviewerReviewsCount": 0,
+     "text": "",
+     "url": "https://www.google.com/maps/reviews/data=!4m8!14m7!1m6!2m5!1sCi9DQUlRQUNvZENodHljRjlvT2xsS1dTMTVWbkJHZEVGblFWcFRPVU5MYWtoRWJtYxAB!2m1!1s0x0:0x8eaddfcd1b32ca52!3m1!1s2@1:CAIQACodChtycF9oOllKWS15VnBGdEFnQVpTOUNLakhEbmc%7C%7C?hl=en"
+    }
+   ]
+  }
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.00138,
+ "items": 3,
+ "replayed": false,
+ "resultId": "3035b749-860f-41a5-a96d-ac729926282b"
+}

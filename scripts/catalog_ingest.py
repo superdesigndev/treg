@@ -157,11 +157,17 @@ def core_routes(provider: str) -> set[tuple[str, str]]:
     }
 
 
-def carry_verification(provider: str, endpoints: list[dict], *, carry_capability: bool = True) -> int:
+def carry_verification(provider: str, endpoints: list[dict], *, carry_capability: bool = True,
+                       carry_input: bool = True) -> int:
     """Re-attach reviewed fields from the extended file being replaced.
 
     Those fields are the only ones NOT derived from upstream: verification stamps are the result
-    of an actual paid call made by scripts/catalog_verify_extended.py. `name` (the short display
+    of an actual paid call made by scripts/catalog_verify_extended.py.
+
+    `carry_input=False` for a provider that publishes a machine-readable request schema. Carrying
+    `input` freezes a generated row's parameters at the revision that first created it, and no
+    later re-ingest can refresh them: 36 AnyAPI rows lost `cursor` that way and could not be
+    paginated from the catalog, while sibling rows generated later carried it. `name` (the short display
     title) and `kind` (data | action | account | utility - a reviewed judgement the ingest cannot
     re-derive) are carried on the same guard. A provider may also carry reviewed `capability`
     mappings; AIGC coverage ingesters disable that option because comparison membership belongs
@@ -197,9 +203,11 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
             "verified", "example_response", "unverified", "name", "kind", "platform_blocked",
             # Meta publishes no machine-readable request schema or grant matrix. These contracts
             # are reviewed against its HTML docs and must survive the next deterministic ingest.
-            "input", "authorization_method", "authorization_methods", "authorization_paths",
+            "authorization_method", "authorization_methods", "authorization_paths",
             "required_scopes", "required_resource", "token_type",
         ]
+        if carry_input:
+            carried_fields.append("input")
         if carry_capability:
             carried_fields.append("capability")
         for field in carried_fields:
@@ -217,8 +225,9 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
 
 
 def write_extended(provider: str, source: dict, endpoints: list[dict], notes: list[str],
-                   *, carry_capability: bool = True) -> Path:
-    carried = carry_verification(provider, endpoints, carry_capability=carry_capability)
+                   *, carry_capability: bool = True, carry_input: bool = True) -> Path:
+    carried = carry_verification(provider, endpoints, carry_capability=carry_capability,
+                                 carry_input=carry_input)
     if carried:
         print(f"  carried {carried} verification stamp(s) forward", file=sys.stderr)
     endpoints = sorted(endpoints, key=lambda e: (e["platform"], e["path"], e["method"]))
@@ -1232,7 +1241,366 @@ def ingest_replicate(refresh: bool) -> tuple[Path, dict]:
     return out, {"models": len(endpoints)}
 
 
+
+# ---------------------------------------------------------------------------------------------
+# anyapi
+
+# AnyAPI's SKU prefix -> treg platform slug. Absent = the prefix is already a platform slug.
+# The left-hand side is the first dotted segment of an AnyAPI SKU id (`twitter.profile`).
+ANYAPI_PLATFORM = {
+    "twitter": "x",
+    "rednote": "xiaohongshu",
+    "appstore": "app-store",
+    "playstore": "google-play",
+    "maps": "google",
+    "tiktok_shop": "tiktok-shop",
+    "google_ads": "google-ads",
+    "google_shopping": "google",
+    "google_finance": "stocks",
+    "yahoo_finance": "stocks",
+    "coinmarketcap": "crypto",
+    "dexscreener": "crypto",
+    "web": "web",
+    # AI answer engines already have a shelf.
+    "chatgpt": "ai-search", "gemini": "ai-search", "perplexity": "ai-search",
+    # people/company enrichment shelves
+    "company": "companies", "person": "people", "social": "people",
+}
+
+# Excluded from the listing by AnyAPI. Mostly an explicit id list, because the excluded set does
+# not line up with SKU prefixes; three families do, and are excluded by prefix.
+#
+# `seo.`, `ahrefs.` and `semrush.` are AnyAPI's resale of SEO tooling - keyword volume,
+# ranked keywords, domain overviews, backlinks. Every shelf they would land on in this repo
+# (google.keywords.*, google.domain.*, web.backlinks.*) is already held by the primary vendor
+# of that data, dataforseo, semrush, seranking, serpstat, spyfu and ahrefs among them, so a
+# reseller row there adds a dearer copy of a price a buyer can already compare. AnyAPI does
+# not list them.
+ANYAPI_EXCLUDE_PREFIX = ("apollo.", "seo.", "ahrefs.", "semrush.")
+ANYAPI_EXCLUDE = frozenset({
+    "company_enrichment.lusha", "company_enrichment.crustdata_v3", "company_enrichment.prospeo",
+    "company_enrichment.peopledatalabs", "company_search.ai_ark", "company_search.crustdata_v3",
+    "company_search.quickenrich", "company_search.prospeo", "company_search.fullenrich",
+    "company_search.peopledatalabs", "company_search.theirstack", "email_finding.dropleads",
+    "email_finding.hunter_count", "email.verify", "email.find", "email_finding.icypeas",
+    "email_finding.zerobounce", "email_finding.quickenrich", "email_finding.hunter_domain",
+    "email_verification.allegrow", "email_verification.bounceban", "email_verification.icypeas",
+    "email_finding.zerobounce_domain", "email_verification.zerobounce_activity",
+    "email_verification.zerobounce", "job_search.theirstack", "mobile_phone.leadmagic",
+    "people_search.crustdata_v3", "people_search.ai_ark", "mobile_phone.ai_ark",
+    "people_search.fullenrich", "people_search.peopledatalabs", "people_search.quickenrich",
+    "people_search.lusha", "people_search.prospeo", "people_search.quickenrich_company",
+    "person_enrichment.fullenrich_bulk", "person_enrichment.aviato",
+    "person_enrichment.bettercontact", "person_enrichment.lusha",
+    "person_enrichment.fullenrich_reverse_email", "person_enrichment.prospeo",
+    "person_enrichment.peopledatalabs", "person_enrichment.quickenrich",
+    "technographics.theirstack",
+})
+
+# Two SKUs held back because neither of their sources answers today (checked 2026-09-09):
+# socialcrawl returns HTTP 503 "instagram is temporarily unavailable" and scraper.tech returns
+# not-found on the canonical example. Listing them would put two endpoints that return nothing on
+# a public shelf and fail our own verify pass. This is about whether an answer comes back, not
+# about price: their $0.018 ceiling against a $0.0015 catalogued price is an ordinary spread and
+# is perfectly listable. Re-ingest them once either source serves the canonical example again.
+#
+# This set previously also held `twitter.followers` and `twitter.following` for a price reason:
+# each paired a flat single-page source with a bulk source priced per row whose input maximum made
+# the same endpoint legitimately charge up to $16.50, so no single scalar could describe the row.
+# AnyAPI deleted those bulk sources on 2026-09-09. Both now publish one source at $0.00075 with a
+# $0.00075 ceiling - price and ceiling are the same number - so the reserve can never fall short
+# and they are listed again.
+ANYAPI_EXCLUDE_DEAD = frozenset({
+    "instagram.followers", "instagram.following",
+})
+
+# PLATFORMS THE EXTENDED TIER LISTS. Every other platform's rows are dropped.
+#
+# The line is a measured break in AnyAPI's own 60-day production request volume, not a chosen
+# threshold: tiktok-shop, the last platform kept, took 5,121 requests, and the next platform down
+# (hackernews) took 1,567 - a 3.3x step. The 106 rows below that break carry 6,275 requests
+# BETWEEN THEM, and several took none at all: alibaba 13, douyin 97, zhihu 38. Listing an endpoint
+# nobody calls costs a reader attention and costs us a verify pass, so the tail is not listed.
+#
+# The first six are the same platforms anyapi.yaml curates in core; the last four are the next
+# busiest. Re-measure and re-run if the traffic shape changes.
+ANYAPI_KEEP_PLATFORMS = frozenset({
+    "tiktok", "linkedin", "facebook", "google", "x", "instagram",
+    "reddit", "youtube", "web", "tiktok-shop",
+})
+
+# Routing controls, not data inputs: they change which source serves and what it costs, never the
+# shape of the answer. Carrying them into every one of 300+ entries would bury the real parameters.
+ANYAPI_SKIP_PARAMS = {"preferLatencyUnderMs", "requireCursor", "requireSinglePage"}
+
+ANYAPI_RATE_CARD = "https://api.getanyapi.com/v1/apis?limit=1000"
+ANYAPI_OPENAPI = "https://api.getanyapi.com/openapi.json"
+# Bumped by hand when the rate card is re-read, so a re-run with no price change is byte-identical.
+ANYAPI_CHECKED = "2026-09-11"
+
+# What AnyAPI actually billed, per SKU, over the trailing 60 days: a hand-exported snapshot of the
+# vendor's own request ledger (calls, p50, p90, max USD), the same arrangement as
+# scripts/data/justoneapi_prices.json. It needs the vendor's production database, so it cannot be
+# fetched here; re-export it and re-run to refresh. Only SKUs with at least 5 charged calls in the
+# window are in it - the rest fall back to the live rate card. See _anyapi_cost.
+ANYAPI_MEASURED_FILE = Path(__file__).parent / "data" / "anyapi_measured_charges.json"
+_ANYAPI_MEASURED: dict[str, dict] | None = None
+
+# CORE-TIER SHELF ROWS WHOSE SOURCES CHARGE DIFFERENT PRICES FOR THE SAME RESULT COUNT.
+#
+# For these the p90 measures lane spread, not work done, so it is not the price a buyer will pay.
+# maps.search, measured per source over the same 60 days: scrapertech $0.00175 flat (312 calls),
+# serper $0.00297 flat (743 calls), apify $0.06005 median (485 calls) - and all three average
+# 11-12 items per response. The p90 of the blend is $0.07734, which is only ever paid when the
+# dearest source serves; the cheapest source serves the same query for $0.00175. Listing $0.07734
+# on the price-sorted google.serp.maps shelf misrepresents the endpoint by a factor of 44.
+#
+# So these rows list the CHEAPEST ADVERTISED price instead - `pricing.from.maxUsd`, the cheapest
+# source's price at the input maximum - and keep `source: rate_card_api`, because that is what the
+# number now is. They UNDER-reserve by design: a rescue on a dearer source settles above the
+# listing, which domain/money/settlement.py:133-134 accepts and reports in reconcile, and
+# `reported_charge` (`costUsd`) is what actually settles either way.
+#
+# This applies ONLY to core rows on the comparison shelf. Extended rows are not shelf-ranked, so a
+# lower number there would be a smaller reserve with no upside. It also does NOT apply to a
+# single-source per-result row like linkedin.company_employees or linkedin.jobs, where the price at
+# the input maximum is HIGHER than the measured p90 and switching would raise the shelf price.
+ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE = {
+    "maps.search",
+    "maps.place",
+    "maps.reviews",
+    "twitter.profile",
+    "twitter.replies",
+}
+
+
+def _anyapi_measured() -> dict[str, dict]:
+    global _ANYAPI_MEASURED
+    if _ANYAPI_MEASURED is None:
+        _ANYAPI_MEASURED = (json.loads(ANYAPI_MEASURED_FILE.read_text()).get("skus", {})
+                            if ANYAPI_MEASURED_FILE.is_file() else {})
+    return _ANYAPI_MEASURED
+
+
+def _anyapi_measured_window() -> tuple[str, int]:
+    """The ledger export's own window, which is NOT the rate-card read date.
+
+    ANYAPI_CHECKED moves whenever the rate card is re-read; the measured window only moves when
+    the ledger is re-exported. Reusing one date for both made a re-read silently restate every
+    measured price as covering days it never saw.
+    """
+    blob = json.loads(ANYAPI_MEASURED_FILE.read_text()) if ANYAPI_MEASURED_FILE.is_file() else {}
+    return blob.get("as_of", ANYAPI_CHECKED), blob.get("window_days", 60)
+
+
+def _anyapi_input(schema: dict, example: dict) -> dict:
+    """AnyAPI publishes one strict JSON Schema per SKU; carry it across verbatim minus the
+    routing controls, so a generated `test_request` is built from the vendor's own examples."""
+    required = set(schema.get("required") or [])
+    body = {}
+    for name, spec in (schema.get("properties") or {}).items():
+        if name in ANYAPI_SKIP_PARAMS or not isinstance(spec, dict):
+            continue
+        field = {"type": spec.get("type", "string"), "required": name in required}
+        note = clean(str(spec.get("description") or ""))
+        if note:
+            field["note"] = note[:300]
+        for src, dst in (("default", "default"), ("minimum", "min"), ("maximum", "max"),
+                         ("enum", "enum")):
+            if src in spec:
+                field[dst] = spec[src]
+        if name in example:
+            field["example"] = example[name]
+        body[name] = field
+    return {"body": body, "bodyType": "json"}
+
+
+def _anyapi_cost(api: dict) -> dict:
+    """What a caller really pays for one request: the p90 of AnyAPI's own measured charges.
+
+    `cost.value` is the 90th percentile of every charge AnyAPI billed for this SKU over the
+    trailing 60 days (ANYAPI_MEASURED_FILE), so the shelf price is what nine calls in ten settle at
+    or below. That replaces the rate card's `pricing.from.maxUsd` - the CHEAPEST source's price at
+    the input maximum - which is wrong in both directions wherever the ledger can check it: it
+    reads far LOW on a multi-source SKU whose cheap source rarely wins (ebay.search lists $0.0005
+    against a $0.03795 median real charge), far HIGH on a per-result SKU nobody calls at the input
+    maximum (instagram.hashtag_analytics lists $0.0385 against a $0.00297 p90), and it drifts every
+    time a source is quarantined and `pricing.from` recomputes. `maxUsd` is still the fallback for
+    a SKU with fewer than 5 charged calls in the window, where there is nothing to measure,
+    and for the named ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE, where the p90 measures
+    which source won rather than how much work the call did.
+
+    A p90 is deliberately NOT a ceiling. About one call in ten settles above the reserve, which
+    domain/money/settlement.py already designs for: the charge may exceed the reserve, the ledger
+    takes the difference from the balance, and the next reserve is the gate. Measured across the
+    same 60 days under the OLD, much-worse prices, that overrun was $18.66 on $695.05 settled -
+    2.7%. The listing prices for the buyer comparing shelves, not for the reserve.
+
+    A measured price is clamped to `failoverMaxUsd` at BOTH ends. The floor is _anyapi_flat_floor
+    below. The ceiling is the dearest source's price at the input maximum, so no request can settle
+    above it: a p90 that lands higher is quoting a source AnyAPI has since withdrawn, and the row
+    would otherwise say "$0.0036 ... up to a $0.0012 ceiling" in one sentence. That was 21 of the
+    201 rows in an earlier revision of this branch, the worst at 3x its own ceiling.
+
+    `source: observed` is this catalog's own word for a price seen being billed rather than read
+    off a page (domain/catalog/store.COST_SOURCES); the rate-card fallback keeps `rate_card_api`.
+    `reported_charge` stays on every row either way: `costUsd` is the only number that knows which
+    source served and how many rows came back, and it is what settles.
+    """
+    measured = (None if api["id"] in ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE
+                else _anyapi_measured().get(api["id"]))
+    price = measured["p90_usd"] if measured else api["pricing"]["from"]["maxUsd"]
+    if measured:
+        price = max(price, _anyapi_flat_floor(api))
+        price = min(price, api["pricing"].get("failoverMaxUsd") or price)
+    return {
+        "type": "per_success",
+        "value": price,
+        "currency": "USD",
+        "unit": "call",
+        "reported_charge": {"path": "costUsd", "unit": "usd"},
+        "source": "observed" if measured else "rate_card_api",
+        "source_url": f"https://api.getanyapi.com/v1/apis/{api['id']}",
+        "checked": ANYAPI_CHECKED,
+        "confidence": "verified",
+    }
+
+
+def _anyapi_flat_floor(api: dict) -> float:
+    """Today's true per-call floor for a FLAT-priced SKU, or 0 when there is no such floor.
+
+    A measured p90 is a statistic over the trailing 60 days, so it can sit BELOW the price the
+    catalog charges today: when a source is retired or quarantined, `pricing.from` recomputes
+    upward and every historical charge was cheaper than anything now on offer. Measured against
+    the live rate card, that is 13 rows, all at exactly 1.20x - one supplier's $0.001 lane went
+    away and $0.0012 is now the cheapest anyone can pay (tiktok.profile, and the weibo, zhihu and
+    douyin families). A ledger run caught it on tiktok.profile: claimed $0.001, metered $0.0012.
+
+    Only `model: flat` qualifies. On a per-result SKU `pricing.from.maxUsd` is the price at the
+    INPUT MAXIMUM rather than a floor - instagram.hashtag_analytics advertises $0.0385 against a
+    $0.00297 p90 - so clamping to it there would reinstate exactly the overstatement the measured
+    prices exist to remove.
+    """
+    pricing = (api.get("pricing") or {}).get("from") or {}
+    return pricing.get("maxUsd", 0.0) if pricing.get("model") == "flat" else 0.0
+
+def anyapi_price_basis(sku: str, api: dict | None = None) -> str:
+    """One sentence naming where this row's price came from, for the row's own `note`.
+
+    Core rows are hand-curated but priced by the same rule, so this is shared rather than copied.
+    Pass `api` (the rate-card row) to have a clamped price say so: a p90 is a statistic over a
+    trailing window, and a row whose note claims a $0.002 median while charging $0.0012 reads as a
+    contradiction rather than as the correction it is.
+    """
+    if sku in ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE:
+        return ("Price is the cheapest source's advertised price, because the sources that "
+                "serve this endpoint charge very different amounts for the same number of "
+                "results; a rescue on a dearer source settles above it.")
+    as_of, days = _anyapi_measured_window()
+    m = _anyapi_measured().get(sku)
+    if m:
+        basis = (f"Price is the p90 of what AnyAPI really charged for this endpoint over the {days} "
+                 f"days to {as_of} ({m['calls']} charged calls, ${m['p50_usd']:g} median), not "
+                 "a list price; roughly one call in ten settles above it.")
+        return basis + (_anyapi_clamp_clause(m["p90_usd"], api) if api else "")
+    return (f"Too few charged calls in the {days} days to {as_of} to measure, so the price is "
+            "the live rate card's cheapest source at the input maximum.")
+
+
+def _anyapi_clamp_clause(p90: float, api: dict) -> str:
+    """The sentence a clamped measured price owes the reader, or nothing when it was not clamped."""
+    ceiling = (api.get("pricing") or {}).get("failoverMaxUsd")
+    floor = _anyapi_flat_floor(api)
+    if ceiling and p90 > ceiling:
+        return (f" That p90 is capped here at ${ceiling:g}, the dearest price any source can charge "
+                "for this request today: the dearer source it measured has since been withdrawn, so "
+                "no call can settle at the p90 any more.")
+    if floor > p90:
+        return (f" That p90 is raised here to ${floor:g}, today's cheapest advertised price, because "
+                "the cheaper source it measured has since been withdrawn.")
+    return ""
+
+
+def ingest_anyapi(refresh: bool = False):
+    """Every AnyAPI SKU on a kept platform, except those curated in core and those AnyAPI excludes.
+
+    Two sources, both the vendor's own: the OpenAPI document for request shapes (public, no key)
+    and the rate card for prices (needs any AnyAPI key in `ANYAPI_API_KEY` — `POST
+    https://api.getanyapi.com/agent/signup` mints a free one with no account).
+    """
+    key = os.environ.get("ANYAPI_API_KEY", "")
+    if not key:
+        raise SystemExit("anyapi: set ANYAPI_API_KEY (POST /agent/signup returns a free one)")
+    spec = json.loads(fetch(ANYAPI_OPENAPI, "anyapi_openapi.json", refresh=refresh))
+    catalog = json.loads(fetch(ANYAPI_RATE_CARD, "anyapi_rate_card.json", refresh=refresh,
+                               headers={"X-API-Key": key}))["apis"]
+    skip = core_routes("anyapi")
+    endpoints, unknown_platform = [], set()
+    for api in sorted(catalog, key=lambda a: a["id"]):
+        sku = api["id"]
+        if (sku in ANYAPI_EXCLUDE or sku in ANYAPI_EXCLUDE_DEAD
+                or sku.startswith(ANYAPI_EXCLUDE_PREFIX)):
+            continue
+        path = api["path"]
+        if (api["method"].upper(), path) in skip:
+            continue
+        op = ((spec.get("paths") or {}).get(path) or {}).get(api["method"].lower())
+        if not op:
+            continue
+        content = (op.get("requestBody") or {}).get("content", {}).get("application/json", {})
+        example = content.get("example") or {}
+        prefix = sku.split(".")[0]
+        platform = ANYAPI_PLATFORM.get(prefix, prefix)
+        if platform not in ANYAPI_KEEP_PLATFORMS:
+            continue
+        ep = {
+            "id": f"anyapi.{sku}",
+            "tier": "extended",
+            "platform": platform,
+            "domain": sku.split(".", 1)[1].split("_")[0],
+            "method": api["method"].upper(),
+            "path": path,
+            "name": clean(api["name"])[:60],
+            "summary": clean(api["description"])[:400],
+            "input": _anyapi_input(content.get("schema") or {}, example),
+            "cost": _anyapi_cost(api),
+            # One public page per SKU: live price, source routing and measured 30-day uptime.
+            "docs_url": ("https://getanyapi.com/api/"
+                         f"{prefix.replace('_', '-')}/{sku.split('.', 1)[1].replace('_', '-')}"),
+        }
+        # No `test_request` here: a freshly ingested entry has never been called, and the vendor's
+        # own example values already ride on each input field for the verify pass to build one from.
+        lanes = len(api.get("lanes") or [])
+        ceiling = api["pricing"]["failoverMaxUsd"]
+        ep["note"] = (
+            f"AnyAPI slug `{sku}`. {anyapi_price_basis(sku, api)} "
+            f"{lanes} source{'s' if lanes != 1 else ''} can serve it; the "
+            f"cheapest serves first and a failed attempt is retried on the next, up to a "
+            f"${ceiling:g} ceiling per request. `costUsd` on the response is the exact charge, "
+            f"which is what reported_charge settles. Send `max_cost_usd` to refuse any source "
+            f"dearer than a price you name."
+        )
+        endpoints.append(ep)
+        unknown_platform.add(platform)
+    source = {"method": "openapi + provider rate card", "ingested": ANYAPI_CHECKED,
+              "spec_urls": [ANYAPI_OPENAPI, ANYAPI_RATE_CARD]}
+    out = write_extended("anyapi", source, endpoints, [
+        "Every SKU AnyAPI publishes on its ten busiest platforms, minus the routes curated in",
+        "anyapi.yaml and the SKUs AnyAPI excludes from this listing (ANYAPI_KEEP_PLATFORMS and",
+        "ANYAPI_EXCLUDE in scripts/catalog_ingest.py).",
+        "Prices are MEASURED: cost.value is the p90 of what AnyAPI actually billed for that SKU",
+        "over the 60 days to the ingest date (scripts/data/anyapi_measured_charges.json), so it is",
+        "what nine calls in ten settle at or below rather than the cheapest source's list price. A",
+        "SKU with too few charged calls to measure keeps the rate card's cheapest-source price and",
+        "says so in its note (cost.source: rate_card_api vs observed). One call in ten settles",
+        "ABOVE the reserve by design; every response reports its exact charge as costUsd, which is",
+        "what reported_charge settles on.",
+    ], carry_capability=True, carry_input=False)
+    return out, {"endpoints": len(endpoints)}
+
+
 INGESTERS = {
+    "anyapi": ingest_anyapi,
     "tikhub": ingest_tikhub,
     "dataforseo": ingest_dataforseo,
     "justoneapi": ingest_justoneapi,

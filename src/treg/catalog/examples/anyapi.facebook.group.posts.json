@@ -1,0 +1,37 @@
+{
+ "output": {
+  "data": {
+   "nextCursor": "Jg64hwMT2HWqekxl_o4jMT7wSkbiHW6LCo2Pm1IJs1lorrep26aEyrhG6pYGmqLmNzBjLFPXiqqvNhhY6icRq1ipWQZ5ESo443Kcr_MkfnCYVW1GgloiibxzUaCVzN8eXWlE7F5k1hjBg_hZpQCcr5w3nFVO6VxqWGRiXZ9PKzuDivk0HcDKRLtzSVDLbZz-x_2THX7vphE8Be8t9U0_icjRau9a_TIFLySt1nKUWJhvYXqbMzs5i5Tn7m2tedN_GNSJOsdloZ3gHCK5XzBdIa2EdjR-msMQSLcsJo8Pd9D_paMxAx4GP8VXVeLpAUXwNXZfK6sSGsKoErLOM8SQpb0c-pdKtBuObNQ3JVpspIBcZkpHDrAO",
+   "posts": [
+    {
+     "authorId": "pfbid02zBEXUMGmwtFJFCELo7o2vi1JCKuEDzEwasHPk3pQx3yxm2acMuiuDXY4DJefdnQsl",
+     "authorName": "Greg Marshall",
+     "commentCount": 0,
+     "id": "3779242402240603",
+     "permalink": "",
+     "publishTime": 1788537056,
+     "reactionCount": 26,
+     "text": "There's a new \"Attack of the Killer Dad Jokes\" brewin' for today...",
+     "url": "https://www.facebook.com/groups/1270525996445602/permalink/3779242402240603/"
+    },
+    {
+     "authorId": "pfbid033ej6kGkxndhyCCjDs1FjowZkJrzoaWnfBEjvxzetEuF3AZMkEd83ymkTtRvAfExxl",
+     "authorName": "Ginger Brown",
+     "commentCount": 3,
+     "id": "3776374409194069",
+     "permalink": "",
+     "publishTime": 1788314102,
+     "reactionCount": 32,
+     "text": "",
+     "url": "https://www.facebook.com/groups/1270525996445602/permalink/3776374409194069/"
+    }
+   ]
+  },
+  "found": true
+ },
+ "provider": "AnyAPI",
+ "costUsd": 0.0012,
+ "items": 4,
+ "replayed": false,
+ "resultId": "b8403511-24f0-4784-8d1d-06e41dce29cd"
+}
