@@ -354,6 +354,18 @@ class Settings(BaseSettings):
     # surface before its production Inspector and custom-connector gates have passed.
     claude_connector_enabled: bool = False
 
+    # ---- MCP stream limits (mcp_limits.py) — prevent OOM from long-lived connections ------------
+    # Max concurrent MCP connections per instance. At ~10 MiB worst-case per connection (large SSE
+    # buffers), 200 connections = 2 GiB on a 4 GiB instance with ~1 GiB baseline.
+    mcp_max_connections: int = 200
+    # Max concurrent MCP connections per org, to ensure fair sharing across teams.
+    mcp_max_connections_per_org: int = 20
+    # Max lifetime for any MCP connection. Long-lived SSE streams (Cursor, claude-code) accumulate
+    # memory; this forces reconnection. Clients should handle reconnection gracefully.
+    mcp_max_lifetime_s: float = 1800.0  # 30 minutes
+    # Idle timeout — close connections with no activity. Activity = any receive or send.
+    mcp_idle_timeout_s: float = 300.0   # 5 minutes
+
     # Browser-only OAuth/MCP test harness. It handles real grants and therefore belongs on local
     # and staging deployments, not on the public product surface. Explicitly enable it where an
     # engineer is testing the protocol end to end.

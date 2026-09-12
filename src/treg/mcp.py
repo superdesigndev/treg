@@ -1638,10 +1638,20 @@ def build_mcp_app(*, server: MCPServer | None = None, resource_version: str = "v
     #
     # NoTransformResponses is outermost so the auth wrapper's own 401 challenges carry the header
     # too; gzip sits between so challenges and answers alike are origin-encoded.
+    #
+    # MCPStreamLimitsMiddleware is INNERMOST (closest to the transport) so it tracks only actual
+    # MCP request handling time, not middleware overhead. It enforces:
+    # - Per-instance and per-org concurrent connection limits (reject when at capacity)
+    # - Max connection lifetime (force reconnection after N minutes)
+    # - Idle timeout (close connections with no activity)
+    # - Prompt cleanup on client disconnect
+    # This prevents the OOM pattern where long-lived SSE streams accumulate memory.
     from starlette.middleware.gzip import GZipMiddleware
+    from .mcp_limits import wrap_mcp_app
 
+    limited = wrap_mcp_app(transport)
     return NoTransformResponses(GZipMiddleware(RequireAuthForProtectedTools(
-                                                   transport, resource_version=resource_version),
+                                                   limited, resource_version=resource_version),
                                                minimum_size=1024))
 
 
