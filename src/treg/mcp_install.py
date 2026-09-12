@@ -24,10 +24,12 @@ carries that row — see docs/DSH-PLUGIN.md.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 HOME = Path.home()
@@ -86,6 +88,8 @@ def _write_json_agent(meta: dict, name: str, url: str, token: str) -> tuple[str,
     """Merge one server entry into an agent's JSON config, preserving everything else. Returns
     (status, detail). Idempotent: re-running overwrites just our entry."""
     path: Path = meta["path"]()
+    fd: int | None = None
+    tmp_path: Path | None = None
     try:
         data = json.loads(path.read_text()) if path.exists() else {}
         if not isinstance(data, dict):
@@ -96,13 +100,35 @@ def _write_json_agent(meta: dict, name: str, url: str, token: str) -> tuple[str,
             servers = {}
         servers[name] = meta["entry"](url, token)
         data[root] = servers
-        path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(path.name + ".tmp")
-        tmp.write_text(json.dumps(data, indent=2) + "\n")
-        os.replace(tmp, path)
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        # The config contains a bearer token. mkstemp creates a random, exclusive same-directory
+        # file; fchmod makes it 0600 on POSIX even under a maximally restrictive umask, before any
+        # token bytes are written. Keeping it beside the destination preserves os.replace's atomic
+        # same-filesystem guarantee and avoids the fixed `.tmp` name's symlink and concurrent-writer
+        # hazards. Windows has no POSIX mode guarantee; its ACL is inherited from the config directory.
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+        tmp_path = Path(tmp_name)
+        if os.name != "nt":
+            os.fchmod(fd, 0o600)
+        handle = os.fdopen(fd, "w", encoding="utf-8")
+        fd = None
+        with handle:
+            json.dump(data, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_path, path)
+        tmp_path = None
         return "ok", str(path)
     except Exception as exc:  # noqa: BLE001 — report, never crash the whole install
         return "error", f"{path}: {exc}"
+    finally:
+        if fd is not None:
+            with contextlib.suppress(OSError):
+                os.close(fd)
+        if tmp_path is not None:
+            with contextlib.suppress(OSError):
+                tmp_path.unlink(missing_ok=True)
 
 
 def _write_claude(name: str, url: str, token: str) -> tuple[str, str]:

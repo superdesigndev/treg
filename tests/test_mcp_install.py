@@ -7,8 +7,24 @@ writes and the user-global scope — a project-scoped MCP entry is a per-repo su
 from __future__ import annotations
 
 import json
+import os
+import stat
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+
+import pytest
 
 from treg import mcp_install
+
+
+@contextmanager
+def _umask(mask):
+    old = os.umask(mask)
+    try:
+        yield
+    finally:
+        os.umask(old)
 
 
 def test_json_agents_write_user_global_header_config(tmp_path, monkeypatch):
@@ -40,6 +56,190 @@ def test_json_agents_write_user_global_header_config(tmp_path, monkeypatch):
     mcp_install.install_mcp(base_url="https://treg.to", token="TESTKEY", only=["cursor"])
     again = json.loads((cur / "mcp.json").read_text())
     assert list(again["mcpServers"].keys()) == ["other", "treg"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows ACLs are not POSIX mode bits")
+@pytest.mark.parametrize(("existing_mode", "mask"), [
+    (None, 0o022),
+    (0o644, 0o022),
+    (0o600, 0o022),
+    (0o644, 0o077),
+    (0o600, 0o777),
+])
+def test_json_agent_config_is_0600_for_new_and_existing_files(
+        tmp_path, existing_mode, mask):
+    target = tmp_path / "opencode.json"
+    if existing_mode is not None:
+        target.write_text(json.dumps({"mcp": {"other": {"url": "https://other.example"}}}))
+        target.chmod(existing_mode)
+    meta = {
+        "path": lambda: target,
+        "root": "mcp",
+        "entry": lambda url, token: {"url": url, "token": token},
+    }
+
+    with _umask(mask):
+        status, _ = mcp_install._write_json_agent(
+            meta, "treg", "https://treg.example/mcp/", "synthetic-token")
+
+    assert status == "ok"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    if existing_mode is not None:
+        assert json.loads(target.read_text())["mcp"]["other"] == {
+            "url": "https://other.example"
+        }
+
+
+@pytest.mark.skipif(os.name == "nt", reason="symlink behavior differs on Windows")
+def test_json_agent_ignores_the_old_fixed_tmp_symlink(tmp_path):
+    target = tmp_path / "opencode.json"
+    victim = tmp_path / "victim.json"
+    victim.write_text("do not overwrite")
+    old_tmp = tmp_path / "opencode.json.tmp"
+    old_tmp.symlink_to(victim)
+    meta = {
+        "path": lambda: target,
+        "root": "mcp",
+        "entry": lambda url, token: {"url": url, "token": token},
+    }
+
+    status, _ = mcp_install._write_json_agent(
+        meta, "treg", "https://treg.example/mcp/", "synthetic-token")
+
+    assert status == "ok"
+    assert old_tmp.is_symlink()
+    assert victim.read_text() == "do not overwrite"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows ACLs are not POSIX mode bits")
+def test_json_agent_creates_private_config_directory(tmp_path):
+    target = tmp_path / "agent" / "opencode.json"
+    meta = {
+        "path": lambda: target,
+        "root": "mcp",
+        "entry": lambda url, token: {"url": url, "token": token},
+    }
+
+    with _umask(0o000):
+        status, _ = mcp_install._write_json_agent(
+            meta, "treg", "https://treg.example/mcp/", "synthetic-token")
+
+    assert status == "ok"
+    assert stat.S_IMODE(target.parent.stat().st_mode) == 0o700
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+
+
+def test_json_agent_failure_cleans_temp_and_preserves_original(tmp_path, monkeypatch):
+    target = tmp_path / "opencode.json"
+    original = json.dumps({"mcp": {"other": {"url": "https://other.example"}}})
+    target.write_text(original)
+    meta = {
+        "path": lambda: target,
+        "root": "mcp",
+        "entry": lambda url, token: {"url": url, "token": token},
+    }
+
+    def fail_replace(*_):
+        raise OSError("synthetic replace failure")
+
+    monkeypatch.setattr(mcp_install.os, "replace", fail_replace)
+
+    status, detail = mcp_install._write_json_agent(
+        meta, "treg", "https://treg.example/mcp/", "never-print-this-token")
+
+    assert status == "error"
+    assert "never-print-this-token" not in detail
+    assert target.read_text() == original
+    assert list(tmp_path.glob(".opencode.json.*.tmp")) == []
+
+
+def test_json_agent_concurrent_writers_use_distinct_tempfiles(tmp_path, monkeypatch):
+    target = tmp_path / "opencode.json"
+    target.write_text(json.dumps({"mcp": {"other": {"url": "https://other.example"}}}))
+    meta = {
+        "path": lambda: target,
+        "root": "mcp",
+        "entry": lambda url, token: {"url": url, "token": token},
+    }
+    real_mkstemp = mcp_install.tempfile.mkstemp
+    barrier = threading.Barrier(2)
+    temp_names = []
+
+    def synchronized_mkstemp(*args, **kwargs):
+        opened = real_mkstemp(*args, **kwargs)
+        temp_names.append(opened[1])
+        barrier.wait(timeout=5)
+        return opened
+
+    monkeypatch.setattr(mcp_install.tempfile, "mkstemp", synchronized_mkstemp)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(
+            lambda token: mcp_install._write_json_agent(
+                meta, "treg", "https://treg.example/mcp/", token),
+            ["synthetic-token-one", "synthetic-token-two"],
+        ))
+
+    assert [status for status, _ in results] == ["ok", "ok"]
+    assert len(set(temp_names)) == 2
+    assert json.loads(target.read_text())["mcp"]["other"] == {
+        "url": "https://other.example"
+    }
+    assert list(tmp_path.glob(".opencode.json.*.tmp")) == []
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows ACLs are not POSIX mode bits")
+def test_actual_mcp_install_cli_writes_restricted_config(tmp_path, monkeypatch):
+    """Exercise parsing, token validation, agent detection and the end-user install command."""
+    import httpx
+
+    from treg import cli, cli_analytics
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def get(self, path):
+            assert path == "/auth/me"
+            return httpx.Response(200, json={"email": "synthetic@example.test"},
+                                  request=httpx.Request("GET", "https://treg.example/auth/me"))
+
+    def fail_external_command(*args, **kwargs):
+        raise AssertionError("the isolated CLI test must not run an external command")
+
+    config = tmp_path / "treg-config.json"
+    config.write_text(json.dumps({
+        "base_url": "https://treg.example",
+        "token": "synthetic-cli-token",
+    }))
+    opencode_dir = tmp_path / ".config" / "opencode"
+    opencode_dir.mkdir(parents=True)
+    target = opencode_dir / "opencode.json"
+    target.write_text(json.dumps({"mcp": {"other": {"url": "https://other.example"}}}))
+    target.chmod(0o600)
+    monkeypatch.setattr(cli, "CONFIG_PATH", config)
+    monkeypatch.setattr(cli, "_client", lambda cfg, **kwargs: FakeClient())
+    monkeypatch.setattr(cli_analytics, "track_command", lambda **kwargs: None)
+    monkeypatch.setattr(mcp_install, "HOME", tmp_path)
+    monkeypatch.setattr(mcp_install, "MCP_AGENTS", {
+        "opencode": mcp_install.MCP_AGENTS["opencode"],
+    })
+    monkeypatch.setattr(mcp_install, "MANUAL_AGENTS", {})
+    monkeypatch.setattr(mcp_install.subprocess, "run", fail_external_command)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / ".config"))
+    monkeypatch.delenv("TREG_TOKEN", raising=False)
+    monkeypatch.delenv("TREG_URL", raising=False)
+
+    with _umask(0o022):
+        cli.main(["mcp", "install"])
+
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    written = json.loads(target.read_text())
+    assert written["mcp"]["other"] == {"url": "https://other.example"}
+    assert written["mcp"]["treg"]["headers"]["Authorization"] == \
+        "Bearer synthetic-cli-token"
 
 
 def test_uninstalled_agents_are_skipped_not_written(tmp_path, monkeypatch):
