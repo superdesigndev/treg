@@ -90,10 +90,11 @@ async def test_runs_and_calls_share_one_gate(clients: AsyncClient):
     assert src.count("await _enforce_daily_cap(caller, db)") == 2  # local-run grant + server run
     await _mk_echo_tool(clients)
     org_id = await _set_cap(2)
-    await _set_counter(org_id, "tim@superdesign.dev", 2, date.today())  # two prior events today
+    today = _utcnow_naive().date()
+    await _set_counter(org_id, "tim@superdesign.dev", 2, today)  # two prior events today
     blocked = await clients.get("/call/echo/anything")
     assert blocked.status_code == 429 and "2/2" in blocked.json()["detail"]
-    assert await _counter(org_id, "tim@superdesign.dev") == (2, date.today())  # refused = not counted
+    assert await _counter(org_id, "tim@superdesign.dev") == (2, today)  # refused = not counted
 
 
 async def test_cap_is_per_member_not_global(clients: AsyncClient):
@@ -113,9 +114,10 @@ async def test_cap_is_per_member_not_global(clients: AsyncClient):
 async def test_yesterdays_usage_does_not_count_today(clients: AsyncClient):
     await _mk_echo_tool(clients)
     org_id = await _set_cap(1)
-    await _set_counter(org_id, "tim@superdesign.dev", 1, date.today() - timedelta(days=1))  # yesterday's
+    today = _utcnow_naive().date()
+    await _set_counter(org_id, "tim@superdesign.dev", 1, today - timedelta(days=1))  # yesterday's
     assert (await clients.get("/call/echo/anything")).status_code == 200  # a new day starts from 0
-    assert await _counter(org_id, "tim@superdesign.dev") == (1, date.today())  # ...and this was its first
+    assert await _counter(org_id, "tim@superdesign.dev") == (1, today)  # ...and this was its first
     assert (await clients.get("/call/echo/anything")).status_code == 429
 
 
@@ -131,7 +133,7 @@ async def test_setting_a_cap_seeds_the_counter_from_todays_journal(clients: Asyn
     uid = [x["user_id"] for x in (await clients.get(f"/orgs/{org_id}/members")).json()
            if x["email"] == "tim@superdesign.dev"][0]
     assert (await clients.patch(f"/orgs/{org_id}/members/{uid}/cap", json={"daily_call_cap": 5})).status_code == 200
-    assert await _counter(org_id, "tim@superdesign.dev") == (4, date.today())
+    assert await _counter(org_id, "tim@superdesign.dev") == (4, _utcnow_naive().date())
     assert (await clients.get("/call/echo/anything")).status_code == 200  # 5th
     assert (await clients.get("/call/echo/anything")).status_code == 429  # 6th
 
@@ -144,7 +146,8 @@ async def test_counter_agrees_with_the_journal_after_real_calls(clients: AsyncCl
     await audit.drain()
     async with session_maker() as s:
         journal = await count_today(s, org_id, "tim@superdesign.dev")
-    assert await _counter(org_id, "tim@superdesign.dev") == (journal, date.today()) == (4, date.today())
+    today = _utcnow_naive().date()
+    assert await _counter(org_id, "tim@superdesign.dev") == (journal, today) == (4, today)
 
 
 async def _get_org_id(email: str = "tim@superdesign.dev") -> int:

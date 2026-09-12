@@ -158,6 +158,22 @@ latency cannot delay it. The separate `archive_body_stored` completion event car
 `call_ref`. A failed R2 upload followed by a committed DB copy is not dropped. R2-only upload
 failure still records a hash-only snapshot and statistics. These remain best-effort background
 writes: a killed process can lose completion events, but cannot withhold the calling event.
+The same completion event measures archive stages, including elapsed work on timeout or cancellation:
+
+| Fields (milliseconds) | Scope |
+| --- | --- |
+| `compare_sem_wait_ms`, `compare_ms` | Precomparison slot wait, then pointer queries/reads and any JSON normalization. Both precede the DB write deadline. |
+| `record_key_wait_ms`, `record_sem_wait_ms` | Same-key lock wait, then write-slot wait, inside the DB write deadline. |
+| `record_db_ms` | Wall time while holding the write slot: pool checkout, body packing, SQL/commit, and integrity retries/backoff. This is not pure SQL time. |
+| `observe_sem_wait_ms`, `observe_ms` | Optional post-commit change-report slot wait and work, outside the DB write deadline. |
+
+Unentered phases are `null`. `failure_phase` names the measured phase interrupted by an escaping
+exception (including cancellation); it is `null` when none was interrupted, including a queue
+rejection before recording starts. Internally handled comparison failures still fall back to raw
+hashes and use the existing counters. A post-commit observation cancellation does not mean the
+snapshot was lost: `storage`/`dropped` continue to describe the committed write. Timings add no
+DB writes or per-call events and do not change deadlines, the two archive slots, or pool sizes.
+
 Stats count snapshots with recoverable bodies in DB or R2, including deduplicated versions;
 `kept_bytes` is logical retained response bytes, not PostgreSQL physical table size.
 
@@ -751,8 +767,11 @@ Deleting `items[*].request_id` keeps all elements; deleting `items[*]` deletes t
 Comparison has no six-level reporting limit and never uses reported/truncated paths as policy.
 
 `_ignored_matches` preloads at most the latest and decisive snapshot bodies before the DB write.
-It skips body reads for identical raw hashes. Pointer sessions close before object I/O. The pre-read
-uses the shared archive semaphore and a three-second budget, separate from the write deadline.
+It checks the key and raw hashes first, skipping new-response JSON normalization unless a differing
+candidate has a readable body pointer. New keys and raw-identical baselines therefore need no
+normalization; identical raw hashes also skip body reads. Pointer sessions close before JSON
+normalization or object I/O. The pre-read uses the shared archive semaphore and a three-second
+budget, separate from the write deadline.
 Only matched snapshot IDs are passed to `_store_locked`; a concurrently changed baseline falls
 back to raw hashes without holding a row lock across I/O or adding a reconciliation write.
 `ignore_body_unavailable` and `ignore_comparison_failed` retain their diagnostic names for both
