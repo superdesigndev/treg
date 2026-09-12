@@ -77,6 +77,9 @@ sources:
   - src/treg/catalog/google-tag-manager.extended.yaml
   - src/treg/catalog/instagram.yaml
   - src/treg/catalog/instagram.extended.yaml
+  - src/treg/catalog/diffbot.extended.yaml
+  - src/treg/catalog/google-analytics.extended.yaml
+  - src/treg/catalog/google-business-profile.extended.yaml
   - src/treg/catalog/justoneapi.extended.yaml
   - src/treg/catalog/minimax.yaml
   - src/treg/catalog/apify.yaml
