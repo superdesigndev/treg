@@ -7,6 +7,23 @@ catalog of external endpoints plus its own team's tools without ever holding an 
 load-bearing mechanic is a proxy that makes the caller's **real upstream request**, injects the
 credential server-side and relays the answer verbatim. We never model an upstream API.
 
+## Paired treg.to checkout
+
+For work on the hosted treg.to service, clone the public `treg` repository and private
+`treg-internal` repository as siblings with those exact directory names. When `../treg-internal`
+exists, treat both repositories as one operational workspace:
+
+- `treg` owns public product code, portable behavior and self-hosting documentation.
+- `treg-internal` owns live production configuration, operational runbooks, incident evidence and
+  private admin tools.
+- Read both repositories before changing production behavior, but never copy credentials, live
+  environment exports, customer data or raw logs between them.
+- Commit and open PRs separately. State the merge order whenever one PR links to or depends on the
+  other.
+
+Do not clone `treg-internal` inside this repository and do not make it a Git submodule. Start agents
+from the repository that owns the task; the sibling path supplies the other half of treg.to context.
+
 ## Non-negotiables
 
 Everything else in this file is guidance; these are the contract, and they win over any other passage.
