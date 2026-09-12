@@ -1007,7 +1007,12 @@ USE_CASE_PAGES["people-search"] = {
          "are priced separately."),
     ],
     "related": ("Find professional emails", "Enrich a person from an email or LinkedIn URL",
-                "Build a company list by industry, size or tech", "Get a LinkedIn profile"),
+                "Find phone numbers", "Verify an email before you send"),
+    "extra_links": (
+        ("Run with your agent", "/people-search", "The people search launch page"),
+        ("Waterfall enrichment", "/use-cases/lead-enrichment-for-ai-agents", "Find, enrich and verify in one agent run"),
+        ("Multi-step verified lead list", "/workflows/find-and-verify-a-lead-list", "Build a list with the receipt from a real run"),
+    ),
 }
 
 USE_CASE_PAGES["enrich-a-company"] = {
@@ -4289,7 +4294,11 @@ USE_CASE_PAGES["find-phone-numbers"] = {
          "your own rows before you commit to any of them."),
     ],
     "related": ("Find professional emails", "Check a phone number is real",
-                "Enrich a person from an email or LinkedIn URL", "Get a LinkedIn profile"),
+                "Enrich a person from an email or LinkedIn URL", "Find people by role, company or location"),
+    "extra_links": (
+        ("Run with your agent", "/people-search", "The people search launch page"),
+        ("Multi-step verified lead list", "/workflows/find-and-verify-a-lead-list", "Build a list with the receipt from a real run"),
+    ),
 }
 
 
@@ -4538,7 +4547,11 @@ WORKFLOWS["find-and-verify-a-lead-list"] = {
          "A CSV with company, domain, person, title, email, which provider found it, the verifier's verdict, whether the domain is catch-all, and the latest news event. The one from the run on this page is linked above with the person, title and email columns removed, because these are real people and a title at a named company is enough to identify one; the row-level outcomes are what the numbers on this page come from. Your own run returns every column."),
     ],
     "related": ("Find professional emails", "Verify an email before you send",
-                "Find people by role, company or location", "Build a company list by industry, size or tech"),
+                "Find people by role, company or location", "Enrich a person from an email or LinkedIn URL"),
+    "extra_links": (
+        ("Run with your agent", "/people-search", "The people search launch page"),
+        ("Waterfall enrichment", "/use-cases/lead-enrichment-for-ai-agents", "Find, enrich and verify in one agent run"),
+    ),
 }
 
 
