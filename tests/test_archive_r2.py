@@ -137,8 +137,8 @@ async def test_call_reports_where_archive_db_deadline_expires(clients, r2, monke
         assert report['record_sem_wait_ms'] is None
 
 
-@pytest.mark.parametrize('mode,expected_rows', [('both', 1), ('r2', 1)])
-async def test_upload_failure_never_publishes_r2_pointer(clients, r2, monkeypatch, mode, expected_rows):
+@pytest.mark.parametrize('mode', ['both', 'r2'])
+async def test_upload_failure_falls_back_to_db_without_r2_pointer(clients, r2, monkeypatch, mode):
     monkeypatch.setattr(get_settings(), 'archive_body_write', mode)
     r2.fail_puts = 100
     events = []
@@ -147,12 +147,36 @@ async def test_upload_failure_never_publishes_r2_pointer(clients, r2, monkeypatc
     assert response.content == RAW and response.status_code == 200
     await archive.drain()
     rows = await snapshots()
-    assert len(rows) == expected_rows and all(row.body_storage == ('db' if mode == 'both' else None) for row in rows)
+    assert len(rows) == 1 and rows[0].body_storage == 'db'
+    assert archive._unpack(rows[0].body, rows[0].enc) == RAW
+    assert not r2.objects
     props = [p for name, p in events if name == 'archive_body_stored']
     assert len(props) == 1
     assert props[0]['drop_reason'] == 'store_error'
     assert props[0]['upload_status'] == 'failed'
-    assert props[0]['dropped'] is (mode == 'r2')
+    assert props[0]['storage'] == 'db'
+    assert props[0]['dropped'] is False
+
+
+async def test_r2_only_upload_admission_failure_falls_back_to_db(clients, r2, monkeypatch):
+    monkeypatch.setattr(get_settings(), 'archive_body_write', 'r2')
+    monkeypatch.setattr(get_settings(), 'archive_r2_max_pending', 0)
+    events = []
+    monkeypatch.setattr(service.analytics, 'capture',
+                        lambda who, name, props, **kw: events.append((name, props)))
+
+    response = await clients.get(URL)
+    assert response.content == RAW and response.status_code == 200
+    await archive.drain()
+
+    rows = await snapshots()
+    assert len(rows) == 1 and rows[0].body_storage == 'db'
+    assert archive._unpack(rows[0].body, rows[0].enc) == RAW
+    assert r2.put_calls == 0 and not r2.objects
+    report = next(p for name, p in events if name == 'archive_body_stored')
+    assert report['upload_status'] == 'dropped'
+    assert report['drop_reason'] == 'upload_queue_full'
+    assert report['storage'] == 'db' and report['dropped'] is False
 
 
 async def test_r2_queue_has_independent_concurrency_and_sheds_observably(clients, r2, monkeypatch):
@@ -293,7 +317,10 @@ async def test_checksum_mismatch_is_not_published(clients, r2, monkeypatch):
     monkeypatch.setattr(get_settings(), 'archive_body_write', 'r2')
     await clients.get(URL)
     await archive.drain()
-    assert (await snapshots())[0].body_storage is None
+    row = (await snapshots())[0]
+    assert row.body_storage == 'db'
+    assert archive._unpack(row.body, row.enc) == RAW
+    assert not r2.objects
 
 
 @pytest.mark.parametrize('path', ['/calls', '/calls/{ref}'])
@@ -871,7 +898,9 @@ async def test_transient_put_retry_and_db_fallback(clients, r2, monkeypatch, sta
     assert report['dropped'] is False
 
 
-async def test_retry_jitter_stays_inside_existing_upload_budget(clients, r2, monkeypatch):
+@pytest.mark.parametrize('mode', ['both', 'r2'])
+async def test_retry_jitter_stays_inside_existing_upload_budget(clients, r2, monkeypatch, mode):
+    monkeypatch.setattr(get_settings(), 'archive_body_write', mode)
     monkeypatch.setattr(get_settings(), 'archive_r2_timeout_s', 0.02)
     r2.put_failures = [429]
     events = []

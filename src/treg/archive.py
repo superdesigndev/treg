@@ -327,9 +327,11 @@ def record(
         if rejection is None:
             return kh, ch
         if rejection != "duplicate":
-            plan = archive_bodies.WritePlan("db" if plan.keep_db else None, reason=rejection)
+            # An eligible body rejected by the R2 admission bounds still needs a durable home.
+            # Both and R2-only modes use the separately bounded DB queue as their fallback.
+            plan = archive_bodies.WritePlan("db", reason=rejection)
         # Duplicates use the existing bounded DB queue and still join prepare's shared upload.
-        # Both mode preserves the DB copy when admission of a distinct upload is rejected.
+        # A distinct rejected upload preserves its body in DB in either R2 write mode.
 
     body_len = len(body)
     # Shed on EITHER count OR bytes — whichever bound bites first. The bytes bound prevents OOM
