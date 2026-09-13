@@ -64,7 +64,7 @@ endpoints:
 
   # --- AI answer engines ----------------------------------------------------------------------
   - id: cloro.ai-search.chatgpt.scrape
-    domain: answers
+    domain: chatgpt
     capability: ai-search.chatgpt.scrape
     platform: ai-search
     scope: any_account
@@ -106,7 +106,7 @@ endpoints:
     docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-chatgpt
 
   - id: cloro.ai-search.copilot.scrape
-    domain: answers
+    domain: copilot
     capability: ai-search.copilot.scrape
     platform: ai-search
     scope: any_account
@@ -146,7 +146,7 @@ endpoints:
     docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-copilot
 
   - id: cloro.ai-search.perplexity.answer
-    domain: answers
+    domain: perplexity
     capability: ai-search.perplexity.answer
     platform: ai-search
     scope: any_account
@@ -186,7 +186,7 @@ endpoints:
     docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-perplexity
 
   - id: cloro.ai-search.gemini.scrape
-    domain: answers
+    domain: gemini
     capability: ai-search.gemini.scrape
     platform: ai-search
     scope: any_account
