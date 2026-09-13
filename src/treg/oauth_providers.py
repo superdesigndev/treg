@@ -2852,6 +2852,37 @@ PINTEREST_ADS = OAuthProvider(
     probe_path="/user_account",  # cheap token check once configured; auto-provisions a Bearer tool
 )
 
+CSUITEFINDER = OAuthProvider(
+    service="csuitefinder",
+    display_name="CSuiteFinder",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your CSuiteFinder API key (csf_live_…)",
+    # The key rides in an Authorization: Bearer header (X-API-Key is also accepted). Use the
+    # header so the secret never lands in a logged URL.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://csuitefinder.com/",
+    setup_action_label="Get your CSuiteFinder API key",
+    setup_steps=(
+        "POST your email to https://csuitefinder.com/csuitefinder/register",
+        "Copy the api_key from the response — it is shown once and cannot be recovered.",
+    ),
+    setup_note=(
+        "Registering is self-serve and grants 400 trial tokens ($1). Only /email/find spends "
+        "tokens (1 per address resolved); the other data routes are included but still need a "
+        "positive balance. The balance check is free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Resolve a name and company domain to a work email, then verify, enrich and identify it.",
+    base_url="https://csuitefinder.com/csuitefinder",
+    docs_url="https://csuitefinder.com/",
+    probe_path="/billing/balance",  # free — spends no tokens; a bad key gets 401
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -2867,7 +2898,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, TOMBA, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB,
+        INFLUENCERSCLUB, CSUITEFINDER,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
