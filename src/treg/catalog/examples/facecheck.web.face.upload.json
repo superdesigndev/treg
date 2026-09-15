@@ -1,0 +1,21 @@
+{
+  "id_search": "EXAMPLE_SEARCH_ID",
+  "message": "1 file uploaded.",
+  "progress": null,
+  "error": null,
+  "code": null,
+  "output": null,
+  "input": [
+    {
+      "base64": "data:image/webp;base64,UklGRlooAABXRUJQ\u2026(thumbnail truncated)",
+      "id_pic": "EXAMPLE_PIC_ID",
+      "url_source": null,
+      "svg_anim": null
+    }
+  ],
+  "facemon_status": null,
+  "facemon_last_scann": null,
+  "was_updated": false,
+  "hasEmptyImages": false,
+  "new_seen_count": 0
+}

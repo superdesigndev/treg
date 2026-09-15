@@ -1,0 +1,14 @@
+{
+  "id_search": null,
+  "message": null,
+  "progress": null,
+  "error": null,
+  "code": "DELETED",
+  "output": null,
+  "input": null,
+  "facemon_status": null,
+  "facemon_last_scann": null,
+  "was_updated": false,
+  "hasEmptyImages": false,
+  "new_seen_count": 0
+}

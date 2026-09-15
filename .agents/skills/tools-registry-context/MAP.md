@@ -170,6 +170,10 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/catalog/examples/crustdata.people.autocomplete.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/crustdata.people.enrich.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/crustdata.people.search.json` | architecture/catalog.md |
+| `src/treg/catalog/examples/facecheck.account.usage.json` | architecture/facecheck.md |
+| `src/treg/catalog/examples/facecheck.web.face.image.delete.json` | architecture/facecheck.md |
+| `src/treg/catalog/examples/facecheck.web.face.search.json` | architecture/facecheck.md |
+| `src/treg/catalog/examples/facecheck.web.face.upload.json` | architecture/facecheck.md |
 | `src/treg/catalog/examples/financialdatasets.company.facts.ciks.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/financialdatasets.company.facts.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/financialdatasets.company.facts.tickers.json` | architecture/catalog.md |
@@ -269,6 +273,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/catalog/examples/tomba.people.email.verify.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/trykitt.people.email.find.json` | architecture/catalog.md |
 | `src/treg/catalog/examples/trykitt.people.email.verify.json` | architecture/catalog.md |
+| `src/treg/catalog/facecheck.yaml` | architecture/facecheck.md |
 | `src/treg/catalog/financialdatasets.yaml` | architecture/catalog.md |
 | `src/treg/catalog/fx.yaml` | architecture/catalog.md |
 | `src/treg/catalog/google-search-console.extended.yaml` | architecture/catalog.md |
@@ -434,6 +439,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/web/logos/branddev.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/companyenrich.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/contactout.svg` | architecture/contactout.md |
+| `src/treg/web/logos/facecheck.svg` | architecture/facecheck.md |
 | `src/treg/web/logos/findymail.svg` | interface/enrich-arena.md |
 | `src/treg/web/logos/harvestapi.svg` | architecture/harvestapi.md |
 | `src/treg/web/logos/hunter.svg` | interface/enrich-arena.md |
@@ -500,6 +506,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_dataforseo_constraints.py` | architecture/catalog.md |
 | `tests/test_enrich_arena.py` | interface/enrich-arena.md |
 | `tests/test_error_capture.py` | architecture/proxy-model.md |
+| `tests/test_facecheck.py` | architecture/facecheck.md |
 | `tests/test_feedback.py` | architecture/feedback.md |
 | `tests/test_feedback_handling_schema.py` | architecture/feedback.md |
 | `tests/test_financialdatasets.py` | architecture/auth-secrets.md, architecture/catalog.md, ops/capacity.md |
@@ -542,6 +549,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/composition.md` | `bootstrap.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `connect.py`, `mcp_oauth.py`, `session.py`, `admin.py`, `auth.py`, `billing.py`, `call.py`, `connections.py`, `onboard.py`, `orgs.py`, `resources.py`, `referrals.py`, `web.py`, `dump_surface.py`, `test_app_roles.py` |
 | `architecture/contactout.md` | `contactout.yaml`, `adapters.yaml`, `contactout.people.email.verify.json`, `test_routing.py`, `contactout.companies.search.json`, `contactout.companies.enrich.json`, `resolve.py`, `contactout.py`, `contactout.svg`, `test_marketplace_call.py`, `test_key_providers.py`, `test_capacity_collectors.py`, `test_catalog_validate.py`, `test_capacity_overflow.py`, `contactout_overflow_verify.py`, `contactout.json` |
 | `architecture/data-model.md` | `alembic.ini`, `env.py`, `0001_baseline_current_schema.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0005_capacity_policy_snapshot.py`, `0006_overflow_route.py`, `0007_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `0009_callrecord_hit.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `0020_callrecord_created_at_indexes.py`, `0021_ledgerentry_org_created_at_index.py`, `0022_org_spent_today_counter.py`, `0023_callrecord_org_user_created_at_index.py`, `0024_membership_calls_today_counter.py`, `0027_enrich_arena.py`, `0028_arena_insights.py`, `0029_arena_verification_snapshot.py`, `0011_callrecord_archive_link.py`, `0015_idempotentcall_membership_cascade.py`, `0034_managed_api_keys.py`, `0035_default_key_generation.py`, `0036_activity_key_indexes.py`, `maintenance.py`, `sitetrack.js`, `models.py`, `0031_archive_result_admission.py`, `0032_archive_body_storage.py`, `0033_signup_promo_eligibility.py`, `timeutil.py`, `db.py`, `referrals.py`, `audit.py`, `analytics.py`, `bootstrap_handlers.py`, `ratestore.py`, `auth.py`, `test_postgres_reset.py`, `test_alembic_expand_safety.py`, `test_api_keys.py` |
+| `architecture/facecheck.md` | `facecheck.yaml`, `facecheck.account.usage.json`, `facecheck.web.face.image.delete.json`, `facecheck.web.face.search.json`, `facecheck.web.face.upload.json`, `facecheck.svg`, `test_facecheck.py` |
 | `architecture/feedback.md` | `feedback_contract.py`, `__init__.py`, `reports.py`, `reviews.py`, `hints.py`, `config.py`, `call.py`, `invite.py`, `kv.py`, `feedback.py`, `feedback.py`, `0025_feedback.py`, `0026_callreview.py`, `0030_feedback_handling.py`, `test_feedback_handling_schema.py`, `feedback.md`, `test_feedback.py`, `test_reviews.py`, `test_hints.py`, `test_kv.py` |
 | `architecture/harvestapi.md` | `contracts.py`, `harvestapi.yaml`, `harvestapi.svg`, `oauth_providers.py`, `config.py`, `store.py`, `resolve.py`, `collectors.py`, `policy.py`, `adapters.yaml`, `catalog_validate.py`, `test_harvestapi.py`, `harvestapi.linkedin.ads.get.json`, `harvestapi.linkedin.ads.search.json`, `harvestapi.linkedin.comment.reactions.json`, `harvestapi.linkedin.company.posts.json`, `harvestapi.linkedin.company.profile.json`, `harvestapi.linkedin.company.search.json`, `harvestapi.linkedin.geo.search.json`, `harvestapi.linkedin.group.get.json`, `harvestapi.linkedin.group.search.json`, `harvestapi.linkedin.job.get.json`, `harvestapi.linkedin.leads.search.json`, `harvestapi.linkedin.post.comment_replies.json`, `harvestapi.linkedin.post.comments.json`, `harvestapi.linkedin.post.get.json`, `harvestapi.linkedin.post.reactions.json`, `harvestapi.linkedin.post.search.json`, `harvestapi.linkedin.profile.search.json`, `harvestapi.linkedin.search.jobs.json`, `harvestapi.linkedin.service.search.json`, `harvestapi.linkedin.user.comments.json`, `harvestapi.linkedin.user.posts.json`, `harvestapi.linkedin.user.profile.email.json`, `harvestapi.linkedin.user.profile.json`, `harvestapi.linkedin.user.profile.main.json`, `harvestapi.linkedin.user.reactions.json` |
 | `architecture/import-boundaries.md` | `pyproject.toml`, `ci.yml`, `__init__.py`, `__init__.py`, `access.py`, `authorize.py`, `idempotency.py`, `overflow.py`, `route.py`, `__init__.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `client_identity.py`, `__init__.py`, `__init__.py`, `access.py`, `budgets.py`, `publicdemo.py`, `teams.py`, `usage.py`, `__init__.py`, `__init__.py`, `authorization.py`, `oauth_flow.py`, `refresh.py`, `__init__.py`, `__init__.py`, `__init__.py`, `__init__.py`, `__init__.py`, `injectors.py`, `relay.py`, `__init__.py`, `limiter.py`, `test_call_architecture.py`, `test_import_lightness.py` |
