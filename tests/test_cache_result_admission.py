@@ -76,7 +76,9 @@ async def test_positive_cache_preserves_bytes_billing_and_history(clients, cache
     async with session_maker() as s:
         records = (await s.execute(select(CallRecord))).scalars().all()
         assert len(records) == 2
-        assert records[0].cost_charged_micro == records[1].cost_charged_micro
+        # The hit is this team's second call on the question: the repeat price.
+        live, hit = sorted((r.cost_charged_micro for r in records), reverse=True)
+        assert live > 0 and hit == live * 10 // 100
 
 
 

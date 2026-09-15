@@ -329,10 +329,17 @@ class Settings(BaseSettings):
     archive_r2_read_timeout_s: float = Field(default=2.0, gt=0, le=120)
     archive_r2_terminal_attempts: int = Field(default=3, ge=1, le=5)
 
-    # Exact endpoint IDs, comma-separated. Empty means no serving, even in serve mode.
-    archive_serve_endpoints: str = ""
+    # Comma-separated: exact endpoint IDs, "capability:<prefix>" families (capability:people.),
+    # or "*" for every endpoint the policy allows (the default since the founder's 2026-09-14
+    # serve-everything decision; production rolls families in through treg-internal). Empty
+    # means no serving, even in serve mode - the rollback lever.
+    archive_serve_endpoints: str = "*"
     # Stable team/endpoint cohorts; 0 disables serving, 100 includes every team.
-    archive_serve_percent: int = 0
+    archive_serve_percent: int = 100
+    # What a metered REPEAT hit costs, as a percentage of the live price: a team's first call on a
+    # question pays full price whether the vendor or the archive answered it; from its second call
+    # on, a hit pays this share. 100 restores "a hit bills exactly like a live call".
+    archive_hit_repeat_price_percent: int = Field(default=10, ge=0, le=100)
     # Operator freshness ceilings by exact endpoint ID; independent of vendor declarations.
     archive_serve_max_age_s: dict[str, PositiveInt] = Field(default_factory=dict)
     # Bodies above this size are hash-counted but never stored (skipped whole, not truncated):

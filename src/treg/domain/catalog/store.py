@@ -367,7 +367,7 @@ def _parse(directory: Path) -> Catalog:
         # The provider's cache policy (docs/context/architecture/archive.md): one licence judgment
         # at the file header covers every endpoint below it; an endpoint's own `cache:` overrides.
         # Kept as the dict/provenance form, not stringified — archive.policy reads `mode` from it.
-        _validate_cache(doc.get("cache"))
+        _validate_cache(doc.get("cache"), header=True)
         if doc.get("cache") and not meta.get("cache"):
             meta["cache"] = doc["cache"]
         for raw in doc.get("endpoints") or []:
@@ -573,8 +573,21 @@ def _effective_cost(raw: dict):
 _IGNORE_PATH = re.compile(r"(?:[A-Za-z0-9_][A-Za-z0-9_-]*|\[\*\])(?:\[\*\])*(?:\.[A-Za-z0-9_][A-Za-z0-9_-]*(?:\[\*\])*)*")
 
 
-def _validate_cache(cache) -> None:
-    if not isinstance(cache, dict) or "ignore_paths" not in cache:
+def _validate_cache(cache, *, header: bool = False, scope: str = "") -> None:
+    if not isinstance(cache, dict):
+        return
+    if "sharing" in cache:
+        # Whose question an answer is (docs/context/architecture/archive.md, "Sharing") is an
+        # ENDPOINT judgment: a provider's licence permitting storage says nothing about whether
+        # the answer depends on who asked, so a header may not declare it for every endpoint
+        # below, and an `own_account` answer is about the credential's account by definition.
+        if header:
+            raise ValueError("cache.sharing is declared per endpoint, never on a provider header")
+        if cache["sharing"] != "public":
+            raise ValueError("cache.sharing accepts only 'public' (org and connection are the defaults)")
+        if scope == "own_account":
+            raise ValueError("cache.sharing: public is impossible on an own_account endpoint")
+    if "ignore_paths" not in cache:
         return
     paths = cache["ignore_paths"]
     if (not isinstance(paths, list) or
@@ -583,7 +596,7 @@ def _validate_cache(cache) -> None:
 
 
 def _normalize(raw: dict, provider: str, directory: Path) -> dict:
-    _validate_cache(raw.get("cache"))
+    _validate_cache(raw.get("cache"), scope=str(raw.get("scope") or ""))
     capability = raw.get("capability") or ""
     platform = raw.get("platform") or (capability.split(".")[0] if capability else "other")
     verified = raw.get("verified")

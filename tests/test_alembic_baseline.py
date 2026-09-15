@@ -19,9 +19,21 @@ from treg.maintenance import _alembic_config
 from treg.models import ApiKey, Membership, Org, User
 
 
+def _drop_present(connection) -> None:
+    # Drop what is ACTUALLY in the database, not only the tables the models know: a serial run
+    # reuses one sqlite file, and a table left behind by another branch or by the private admin
+    # app (apikey, apikeyevent) is invisible to `metadata.drop_all` and then shows up in the
+    # autogenerate diff as drift this repo cannot fix. Plain DROPs by name, not reflection: a
+    # leftover may hold a foreign key to a table an earlier partial drop already removed.
+    from sqlalchemy import inspect
+    cascade = " CASCADE" if connection.dialect.name == "postgresql" else ""
+    for name in inspect(connection).get_table_names():
+        connection.execute(text(f'DROP TABLE IF EXISTS "{name}"{cascade}'))
+
+
 async def _drop_everything() -> None:
     async with db._engine.begin() as connection:
-        await connection.run_sync(SQLModel.metadata.drop_all)
+        await connection.run_sync(_drop_present)
         await connection.execute(text("DROP TABLE IF EXISTS alembic_version"))
 
 

@@ -107,13 +107,20 @@ agents then built against a constitution that was wrong.
   code (routes, login, OAuth consent, Stripe top-up), reads only membership, deny rules,
   credentials, catalog prices and balances, and writes only what `tests/test_call_architecture.py`
   allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
-  markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot). Extend the
+  markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
+  archive-question marks). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **Signup credit.** Once per new verified user, enforced by a user-level atomic claim committed
   with the grant. Team deletion never restores eligibility; legacy registration is not email proof.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
   only in `infra/stripe.py`, orchestration in `application/billing.py`, and `reconcile.py` is
   read-only. See `docs/context/architecture/money.md`.
+- **The archive serves every tier, keyed by whose question it is.** Own-credential answers are
+  recorded (bounded read, never a prefix) under an org-scoped key, or a connection-scoped key on
+  an `own_account` endpoint, and reach other teams only where the endpoint itself declares
+  `cache.sharing: public`; a provider's storage licence never decides that. A hit on an own key
+  is free; a metered hit settles through the same hold, at `archive_hit_repeat_price_percent`
+  once the team has paid for that question. See `docs/context/architecture/archive.md`.
 
 ### Security guards that look redundant on purpose
 

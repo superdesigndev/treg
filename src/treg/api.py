@@ -766,8 +766,9 @@ async def get_call_result(
            "stored": False, "note": None, "request": None, "response": None}
     if not row.archive_key_hash or not row.archive_content_hash:
         if row.credential_tier != "platform":
-            out["note"] = ("not stored: calls on your own key or your own tools are relayed "
-                           "without being kept")
+            out["note"] = ("not stored: calls on your own tools are relayed without being kept, "
+                           "and an own-key answer is kept only when it fit the archive's size "
+                           "cap while recording was on")
         elif not (200 <= row.status_code < 300):
             out["note"] = "not stored: the call failed, so there is no answer on file"
         else:

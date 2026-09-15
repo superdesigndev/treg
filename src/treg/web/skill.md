@@ -94,6 +94,11 @@ Notes:
   per thing asked about, one unit per target. Failed calls (4xx/5xx relayed from the provider)
   are free; empty results mean whatever the provider means by them — treg relays, it does not
   normalise.
+- A call may be answered from treg's archive of the exact same question while that answer is
+  fresh: verbatim provider bytes, `X-Treg-Cache: hit`, `X-Treg-Fetched-At`, `X-Treg-Age`. Your
+  team's first call on a question costs full price either way; from your second call on, a hit
+  costs 10%, and a hit on your own key is free. `Cache-Control: no-cache` forces a live call;
+  `X-Treg-Max-Age: <seconds>` accepts only a younger answer.
 - HTTP **503** `provider_capacity_unavailable` = treg's own account for that provider is out
   (not your balance; nothing charged). Body has `resets_at` and `alternatives` (same capability,
   other providers) — choose one, or use your own key. treg never switches providers for you.

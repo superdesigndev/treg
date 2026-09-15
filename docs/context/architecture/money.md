@@ -529,6 +529,20 @@ SQLSTATE injection tests recovery, not the production planner's original deadloc
 
 The request session must be committed before relay so settlement cannot wait on a connection held by that same request. See [connection discipline](proxy-model.md#connection-discipline-a-call-in-flight-holds-no-db-connection).
 
+## Pricing a cached hit
+
+A hit from the archive is settled through the same hold as a live call; the settle is the only
+place that knows the amount, and the amount differs in exactly one case. Per team and per
+question (`ArchiveKeyOrg`, one row per org and archive key hash, written inside the settle
+transaction): a team's first billed call on a question pays full price whether the vendor or the
+archive answered; from that team's second call on, a hit settles at
+`archive_hit_repeat_price_percent` (default 10) of the live amount — applied to the RAW amount by
+floor division, then the margin as usual. Another team's first hit on the same question is full
+price. The settle entry's meta says `cached: true` and `cache_price_percent`; `X-Treg-Cost-Micro`
+reports what was actually charged. Own-key hits are never metered (non-negotiable 1) and so never
+priced or marked. No new ledger entry kind: the hold is settled for less and the remainder
+released, like any settle below its reserve. Detail in [archive](archive.md#pricing-a-hit-2026-09-14).
+
 ## Shared-plan pricing: flat-fee providers, and the rate treg sets
 
 A flat-fee provider (a monthly subscription with a rate limit or unlimited calls) has no per-call

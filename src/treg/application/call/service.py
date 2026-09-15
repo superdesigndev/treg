@@ -61,6 +61,7 @@ from .settle import (
     _note_capacity_signal,
     _peek_stream_head,
     _platform_settle,
+    _read_whole_if_small,
     _record_first_call,
 )
 from .types import (
@@ -117,6 +118,24 @@ def _served_response(served: dict, body: bytes) -> UpstreamResponse:
     ]
     return UpstreamResponse(status=served["status_code"], raw_headers=tuple(headers),
                             body_stream=_body(), close=_close)
+
+
+def _echoes_own_credential(tool, secrets, body: bytes) -> bool:
+    """True when a team's OWN credential appears in the answer (a vendor that quotes the key back,
+    a token in a profile response): such an answer must never enter the archive, where it could
+    be served to another team. Fails CLOSED when the credentials cannot be rendered."""
+    renderings = _safe_secret_renderings(tool, secrets)
+    if renderings is None:
+        return True
+    return any(r and r.encode("utf-8", "replace") in body for r in renderings)
+
+
+def _identity_encoded(response: UpstreamResponse) -> bool:
+    """Stored bytes must be the answer, not a compressed transport of it: a served hit carries no
+    Content-Encoding. The relay asks for identity; this refuses to record if a vendor ignored it."""
+    enc = next((v.decode("latin-1").strip().lower() for k, v in response.raw_headers
+                if k.lower() == b"content-encoding"), "")
+    return enc in ("", "identity")
 
 
 async def execute_call(context: CallContext, upstream_client: httpx.AsyncClient) -> UpstreamResponse:
@@ -377,6 +396,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
     drop_params: set[str] = set()
     streaming_free_result = False
     served_hit = False  # a cached hit — set where the archive answers instead of the vendor
+    served_repeat = False  # …and this team had already paid for the question: the repeat price
     # The archive identities of this call's answer (question key + exact bytes), set where the
     # archive records or serves; kept on the audit row so `/calls/{id}/result` can find it.
     archive_key_hash: str | None = None
@@ -536,9 +556,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             small_declared_body = 0 <= int(content_length) <= _ERROR_CALLER_BODY_MAX
         except ValueError:
             small_declared_body = False
+    caller_body_read = False
     if request.has_body and ((mk is not None and mk.metered) or small_declared_body):
         try:
             caller_body = await _await_before_reserve(request.body(), request, call_ref)
+            caller_body_read = True
         except Exception:  # noqa: BLE001 — a caller that hung up must not become a 500 here
             caller_body = b""
 
@@ -855,9 +877,31 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             # run below unchanged — a cached hit is billed exactly like the live call it stands in
             # for, tagged `cached`; the founder's deferred pricing decision attaches to that tag.
             served = None
+            # An own-key catalog call (tier 1/2, never metered) takes part in the archive too:
+            # it may be answered from a stored answer (free — the team's key is never billed)
+            # and its own answer is recorded for the team, provided the question is fully
+            # known (a streamed caller body was never read and cannot key).
+            own_key_cacheable = (
+                mk is not None and not mk.metered and mk.tier in ("tool", "credential")
+                and not mk.free_owned_poll and (caller_body_read or not request.has_body))
+            own_key_archivable = (
+                own_key_cacheable and archive.recording()
+                and archive.storable(catalog_store.load().by_id.get(mk.endpoint_id)))
+            # Whose question this is (archive.sharing): the org's own credential - an API key or
+            # an OAuth token, metered or not - confines the answer to the org, or to the
+            # connection on an `own_account` endpoint, by keying it. The tags are the scopes this
+            # caller may READ, most specific first; the first is where its answer is recorded.
+            own_credential = mk is not None and mk.tier in ("tool", "credential")
+            cache_scopes = archive.scope_tags(
+                archive.sharing(catalog_store.load().by_id.get(mk.endpoint_id) if mk else None,
+                                own_credential=own_credential),
+                caller.org_id, secrets) if mk is not None else [""]
+            if mk is not None:
+                cache_diagnostics["cache_sharing"] = archive.sharing(
+                    catalog_store.load().by_id.get(mk.endpoint_id), own_credential=own_credential)
             # A probe must reach the vendor: an archived answer proves nothing about capacity.
-            if (mk is not None and mk.metered and not mk.streamable_free_result
-                    and mk.probe_lock_id is None and archive.serving()):
+            if (mk is not None and mk.probe_lock_id is None and archive.serving()
+                    and ((mk.metered and not mk.streamable_free_result) or own_key_cacheable)):
                 lookup_started = time.monotonic()
                 try:
                     served = await archive.lookup(
@@ -866,7 +910,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                                             list(request.query_params.multi_items()),
                                             drop_params or set()),
                         caller_body=caller_body, request_headers=request.headers,
-                        cohort=str(audit_org_id), diagnostics=cache_diagnostics)
+                        cohort=str(audit_org_id), diagnostics=cache_diagnostics,
+                        org_id=caller.org_id, price_repeat=mk.metered, scopes=cache_scopes)
                 except Exception:  # noqa: BLE001 — lookup swallows internally; this catches even a
                     served = None  # fault in its own plumbing. Cache trouble must cost a vendor
                     #              call, never a 500.
@@ -877,6 +922,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             if served is not None:
                 body = served["body"]
                 served_hit = True
+                served_repeat = bool(served.get("repeat_for_org"))
+                cache_diagnostics["cache_price"] = (
+                    "free" if not mk.metered else "repeat" if served_repeat else "full")
                 request.context.cached = served_hit
                 archive_key_hash, archive_content_hash = served["key_hash"], served["content_hash"]
                 response = _served_response(served, body)
@@ -885,7 +933,10 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     upstream_request,
                     upstream_url, tool, secrets, upstream_client,
                     drop_params=drop_params or None,
-                    force_identity=mk is not None and (mk.metered or mk.free_owned_poll),
+                    # Identity encoding wherever the body will be READ: the settle's cost
+                    # evidence, and the archive's recording of an own-key answer.
+                    force_identity=mk is not None and (
+                        mk.metered or mk.free_owned_poll or own_key_archivable),
                 )
             streaming_free_result = (mk is not None and mk.streamable_free_result
                                      and request.method == "GET" and 200 <= response.status < 300)
@@ -926,7 +977,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 # in memory here for the settle, so observing it costs nothing on-request. Metered
                 # 2xx only — gate 3 of eligibility is exactly 'this fact, at this line'. Off unless
                 # TREG_ARCHIVE_MODE says otherwise; record() is fire-and-forget and never raises.
-                if mk.metered and archive.recording() and 200 <= response.status < 300:
+                # `own_credential` here means billed OAuth: the org's token, treg's bill.
+                if (mk.metered and archive.recording() and 200 <= response.status < 300
+                        and not (own_credential and _echoes_own_credential(tool, secrets, body))):
                     _ct = next((v.decode("latin-1") for k, v in response.raw_headers
                                 if k.lower() == b"content-type"), "")
                     body_observation = archive.archive_bodies.StorageReport(
@@ -940,7 +993,33 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                         caller_body=caller_body,
                         headers={k: request.headers.get(k, "") for k in ("accept", "accept-language")},
                         status_code=response.status, media_type=_ct, body=body,
-                        observation=body_observation)
+                        observation=body_observation,
+                        origin_org_id=caller.org_id if own_credential else None,
+                        scope=cache_scopes[0])
+            elif (served is None and own_key_archivable and 200 <= response.status < 300
+                  and _identity_encoded(response)):
+                # An own-key answer: read whole when it fits the archive's cap (bounded, before
+                # headers go out), else stream it untouched and record nothing. The team is the
+                # snapshot's origin — the archive decides who else it may serve.
+                response, whole = await _read_whole_if_small(
+                    response, get_settings().archive_max_body_bytes)
+                if whole is not None and not _echoes_own_credential(tool, secrets, whole):
+                    body = whole
+                    _ct = next((v.decode("latin-1") for k, v in response.raw_headers
+                                if k.lower() == b"content-type"), "")
+                    body_observation = archive.archive_bodies.StorageReport(
+                        call_ref=call_ref, emit=lambda props: analytics.capture(
+                            audit_email, "archive_body_stored", props, groups={"team": audit_slug}))
+                    archive_key_hash, archive_content_hash = archive.record(
+                        method=request.method, endpoint_id=mk.endpoint_id, provider=mk.provider,
+                        url=archive.key_url(upstream_url,
+                                            list(request.query_params.multi_items()),
+                                            drop_params or set()),
+                        caller_body=caller_body,
+                        headers={k: request.headers.get(k, "") for k in ("accept", "accept-language")},
+                        status_code=response.status, media_type=_ct, body=body,
+                        observation=body_observation, origin_org_id=caller.org_id,
+                        scope=cache_scopes[0])
             elif response.status >= 400:
                 # Preserve streaming for own-key and own-tool calls while retaining only the small
                 # diagnostic head. The replacement response replays every consumed byte verbatim.
@@ -1057,6 +1136,17 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 charged, observed = await _platform_settle(
                     mk, response.status, body, headers=httpx.Headers(response.raw_headers),
                     observed_override=0 if streaming_free_result else None,
+                    # The archived question this charge is for (live or hit), so the settle can
+                    # mark the team as having paid for it; and whether this hit is a repeat. Only
+                    # for a question that CAN be served: `record()` hands back a hash for every
+                    # metered 2xx (the phase-0 statistics count actions and forbidden providers
+                    # too), and a mark for an answer that can never be a hit is a wasted write on
+                    # the money path.
+                    archive_use=((caller.org_id, archive_key_hash)
+                                 if archive_key_hash and 200 <= response.status < 300
+                                 and archive.storable(catalog_store.load().by_id.get(mk.endpoint_id))
+                                 else None),
+                    cached_hit=served_hit, cached_repeat=served_repeat,
                     # `provider_failed_`, not `call_failed_`: the latter is the branch above, where treg
                     # never got an answer (timeout, SSRF refusal, a failed oauth refresh). Both release a
                     # 502 the same way, so a shared prefix would make the two indistinguishable in the

@@ -6,13 +6,22 @@ results preserve the previous decisive observation without renewing its freshnes
 without verified hit/miss rules retain the original cache and learning behavior. Response
 history and byte deduplication remain independent of result usefulness.
 
-Recording observes already-buffered metered platform calls under the catalog retention policy.
-Own-key and own-tool streams are untouched. Async terminal JSON is mandatory settlement evidence,
-not cache evidence. This module never changes balances or the upstream response.
+Recording observes every catalog answer the retention policy allows: metered platform calls
+(already buffered for the settle) and own-key calls whose body fits the archive's size cap (read
+before relaying; larger own-key answers stream untouched and are not recorded). Storage and
+SHARING are separate dimensions: the licence decides whether bytes are kept, `sharing()` decides
+whose question it is - platform-key answers are public, an own-credential answer is the org's
+(or the connection's, on an `own_account` endpoint) and lives under its own scoped cache key,
+crossing teams only where the endpoint itself declares `cache.sharing: public`. Own-tool calls
+(no catalog entry) are never touched. Async terminal JSON is
+mandatory settlement evidence, not cache evidence. This module never changes balances or the
+upstream response; the one pricing fact it supplies is whether a metered hit is a REPEAT for the
+calling team (`ArchiveKeyOrg`), which the settle prices at `archive_hit_repeat_price_percent`.
 
 Modes: off disables recording and serving; shadow records and learns; serve additionally permits
-fresh eligible answers behind the endpoint allowlist and team cohort gate. Background recording
-is bounded and best-effort. Cache hits do not create new observations or learning evidence.
+fresh eligible answers behind the endpoint allowlist ("*" = every endpoint, the default) and
+team cohort gate. Background recording is bounded and best-effort. Cache hits do not create new
+observations or learning evidence.
 """
 
 from __future__ import annotations
@@ -48,13 +57,35 @@ def serving() -> bool:
 
 
 
+SERVE_ALL = "*"
+CAPABILITY_PREFIX = "capability:"
+
+
 def serve_endpoints() -> set[str]:
+    """The serving allowlist, comma-separated: exact endpoint ids, `capability:<prefix>` entries
+    (every endpoint whose capability starts with the prefix — a whole family such as
+    `capability:people.`), or `*` for every endpoint the policy allows. Empty means nothing
+    serves even in serve mode (the operator's rollback lever)."""
     return {value.strip() for value in get_settings().archive_serve_endpoints.split(",")
             if value.strip()}
 
 
-def rollout_reason(endpoint_id: str, cohort: str) -> str:
-    if endpoint_id not in serve_endpoints():
+def serve_ids_only() -> bool:
+    """True when the allowlist can be applied as a SQL `IN` on endpoint ids (no `*`, no
+    capability entries) — the refresh worker's query shortcut."""
+    return not any(v == SERVE_ALL or v.startswith(CAPABILITY_PREFIX) for v in serve_endpoints())
+
+
+def endpoint_served(endpoint_id: str, capability: str = "") -> bool:
+    allowed = serve_endpoints()
+    if SERVE_ALL in allowed or endpoint_id in allowed:
+        return True
+    return any(v.startswith(CAPABILITY_PREFIX) and capability.startswith(v[len(CAPABILITY_PREFIX):])
+               and len(v) > len(CAPABILITY_PREFIX) for v in allowed)
+
+
+def rollout_reason(endpoint_id: str, cohort: str, capability: str = "") -> str:
+    if not endpoint_served(endpoint_id, capability):
         return "endpoint_disabled"
     percent = get_settings().archive_serve_percent
     if not 0 < percent <= 100:
@@ -75,19 +106,29 @@ CACHE_TRANSIENT = "transient"   # short-lived cache only; old versions are pruna
 CACHE_ARCHIVE = "archive"       # keep versions long-term (public-domain and license-cleared)
 
 _STORABLE = (CACHE_TRANSIENT, CACHE_ARCHIVE)
+# Only a DATA read (the catalog's default kind) is ever cached. An `action` changes the world;
+# a `utility` is a task-status poll or a model list, where a stored "running" would break every
+# poller; an `account` answers about the caller's own account (balance, quota, own profile),
+# which is stale the moment it is spent. A missing `kind` is a data read (store.DEFAULT_KIND).
+_CACHEABLE_KINDS = ("data",)
+
+
+def cacheable_kind(entry: dict[str, Any]) -> bool:
+    return str(entry.get("kind") or "data").strip().lower() in _CACHEABLE_KINDS
 
 
 def policy(entry: dict[str, Any] | None) -> str:
     """Gates 1+2 for one catalog entry, returning the effective cache policy.
 
     `entry` is the endpoint's catalog mapping (the same dict the resolver already holds). Two
-    branches are non-negotiable whatever the default says: a missing entry or an ACTION is never
+    branches are non-negotiable whatever the default says: a missing entry or anything but a
+    DATA read (an action, a utility poll, an account query — `_CACHEABLE_KINDS`) is never
     stored, and a JUDGED forbidden (a licence that was read and says no) is always respected.
     An UNJUDGED entry takes `archive_default_policy` — "transient" since the founder's 2026-08-29
     keep-all decision, flippable back to "forbidden" by env without a deploy."""
     if not entry:
         return CACHE_FORBIDDEN
-    if entry.get("kind") == "action":  # gate 1 — never store an action's answer
+    if not cacheable_kind(entry):  # gate 1 — only a data read's answer is ever stored
         return CACHE_FORBIDDEN
     declared = entry.get("cache")
     if isinstance(declared, dict):  # provenance form: {mode, license_quote, source_url, checked}
@@ -105,6 +146,53 @@ def storable(entry: dict[str, Any] | None) -> bool:
 
 
 # ---------------------------------------------------------------------------------------------
+# Sharing: whose question is it? (orthogonal to the licence, which says whether bytes are kept)
+
+SHARING_PUBLIC = "public"          # the same answer for everyone: treg's platform key asked
+SHARING_ORG = "org"                # an org's own credential asked a question anyone could ask
+SHARING_CONNECTION = "connection"  # the answer IS about the credential's account
+
+
+def declared_sharing(entry: dict[str, Any] | None) -> str | None:
+    """`cache.sharing` as written on the ENDPOINT (the store refuses it on a provider header):
+    the one way an own-credential answer may be served to other teams."""
+    declared = (entry or {}).get("cache")
+    if isinstance(declared, dict) and declared.get("sharing") == SHARING_PUBLIC:
+        return SHARING_PUBLIC
+    return None
+
+
+def sharing(entry: dict[str, Any] | None, *, own_credential: bool) -> str:
+    """How far an answer to this entry may travel, given who asked.
+
+    A platform-key answer is public: treg asked, and one team's fetch may warm another's hit.
+    With the ORG's OWN credential (an API key or an OAuth token, metered or not): on an
+    `own_account` endpoint the answer is about that credential's account and is scoped to the
+    CONNECTION (org + the bound secrets) - two Google accounts in one team never see each
+    other's sites; on an `any_account` endpoint it is a question anyone could ask, scoped to the
+    ORG by default and public only where the endpoint declares `cache.sharing: public`.
+    "The vendor allows storage" never implies "the answer does not depend on who asked"."""
+    if not own_credential:
+        return SHARING_PUBLIC
+    if (entry or {}).get("scope") == "own_account":
+        return SHARING_CONNECTION
+    return declared_sharing(entry) or SHARING_ORG
+
+
+def scope_tags(share: str, org_id: int | None, secret_ids) -> list[str]:
+    """The cache-key scopes a caller consults, most specific first: a connection-scoped caller
+    sees only its connection's history; an org-scoped caller its org's, then the public answer
+    (a platform-key fetch may serve an own-key caller); a public caller only the public one.
+    The first tag is where this caller's own answer is recorded."""
+    if share == SHARING_CONNECTION:
+        ids = "+".join(sorted(str(i) for i in (secret_ids or ())))
+        return [f"conn:{org_id}:{ids}"]
+    if share == SHARING_ORG:
+        return [f"org:{org_id}", ""]
+    return [""]
+
+
+# ---------------------------------------------------------------------------------------------
 # The cache key
 
 
@@ -115,8 +203,14 @@ def cache_key(
     upstream_url: str,
     body: bytes | None = None,
     headers: dict[str, str] | None = None,
+    scope: str = "",
 ) -> str:
     """One deterministic key per logical request: sha256 over the canonical request shape.
+
+    `scope` (see `scope_tags`) folds WHOSE question it is into the key when the answer is not
+    public: an org's or a connection's history lives under its own key, so it can never be
+    served to anyone else, and its timer learns from its own answers only. Public keys ("")
+    hash exactly as before this field existed.
 
     Canonical means: uppercased method, the catalog endpoint id (so a provider's URL reshuffle
     starts a fresh history instead of poisoning the old one), the URL with its query pairs
@@ -145,6 +239,7 @@ def cache_key(
             "q": pairs,
             "b": _body_digest(body),
             "h": kept_headers,
+            **({"s": scope} if scope else {}),
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -303,10 +398,14 @@ def record(
     body: bytes,
     origin: str = "caller",
     observation: archive_bodies.StorageReport | None = None,
+    origin_org_id: int | None = None,
+    scope: str = "",
 ) -> tuple[str, str]:
-    """Schedule one observation of a metered platform answer. Returns immediately; the write runs
+    """Schedule one observation of a catalog answer. Returns immediately; the write runs
     off-request on its own session. Call sites gate on `recording()` and 2xx — this function
-    trusts them and never raises.
+    trusts them and never raises. `origin_org_id` names the team whose OWN credential fetched
+    the answer (None on treg's platform key) - provenance; `scope` (the first of the caller's
+    `scope_tags`) is what actually confines the answer, by keying it.
 
     Returns `(key_hash, content_hash)` — the identities of the question and of this exact
     answer. They are what the audit row keeps so a call can later be joined back to its stored
@@ -314,7 +413,7 @@ def record(
     ONCE (the store reuses them) and are true whether or not the write lands: a shed recording
     still names the answer the caller received."""
     global _pending_bytes
-    kh = cache_key(method, endpoint_id, url, caller_body, headers)
+    kh = cache_key(method, endpoint_id, url, caller_body, headers, scope=scope)
     ch = content_hash(body)
     observation = observation or archive_bodies.StorageReport()
     plan = _write_plan(endpoint_id, body, origin)
@@ -323,7 +422,8 @@ def record(
             method=method, endpoint_id=endpoint_id, provider=provider, url=url,
             caller_body=caller_body, headers=headers, status_code=status_code,
             media_type=media_type, body=body, origin=origin, key_hash=kh, body_hash=ch,
-            observation=observation, plan=plan), len(body), observation, content_hash=ch)
+            observation=observation, plan=plan, origin_org_id=origin_org_id, scope=scope),
+            len(body), observation, content_hash=ch)
         if rejection is None:
             return kh, ch
         if rejection != "duplicate":
@@ -345,7 +445,7 @@ def record(
         method=method, endpoint_id=endpoint_id, provider=provider, url=url,
         caller_body=caller_body, headers=headers, status_code=status_code,
         media_type=media_type, body=body, origin=origin, key_hash=kh, body_hash=ch,
-        observation=observation, plan=plan))
+        observation=observation, plan=plan, origin_org_id=origin_org_id, scope=scope))
     _pending.add(task)
     # Release bytes AND task when done. NOT redundant with drain()'s own removal: on a running
     # server drain() never fires, and this callback is the only exit from `_pending` — without it
@@ -500,6 +600,8 @@ async def _store(
     body_hash: str | None = None,
     observation: archive_bodies.StorageReport | None = None,
     plan: archive_bodies.WritePlan | None = None,
+    origin_org_id: int | None = None,
+    scope: str = "",
 ) -> None:
     """One recording: upsert the key, append a version, keep the change statistics honest.
 
@@ -515,7 +617,7 @@ async def _store(
     observation = observation or archive_bodies.StorageReport()
     stored, reason = None, "record_failed"
     try:
-        kh = key_hash or cache_key(method, endpoint_id, url, caller_body, headers)
+        kh = key_hash or cache_key(method, endpoint_id, url, caller_body, headers, scope=scope)
         ch = body_hash or content_hash(body)
         plan = plan or _write_plan(endpoint_id, body, origin)
         if plan.storage in ("both", "r2"):
@@ -559,7 +661,8 @@ async def _store(
                                 method=method, endpoint_id=endpoint_id, provider=provider, url=url,
                                 caller_body=caller_body, headers=headers, status_code=status_code,
                                 media_type=media_type, body=body, origin=origin,
-                                key_hash=kh, body_hash=ch, plan=plan, ignored_matches=ignored_matches)
+                                key_hash=kh, body_hash=ch, plan=plan, ignored_matches=ignored_matches,
+                                origin_org_id=origin_org_id, scope=scope)
                             stored, reason = plan.storage, plan.reason
                             break
                         except IntegrityError:
@@ -829,6 +932,8 @@ async def _store_locked(
     body_hash: str | None = None,
     plan: archive_bodies.WritePlan,
     ignored_matches: set[int] | None = None,
+    origin_org_id: int | None = None,
+    scope: str = "",
 ) -> tuple[int, bool] | None:
     from sqlalchemy import select
     from sqlalchemy.exc import IntegrityError
@@ -844,7 +949,7 @@ async def _store_locked(
     pol = policy(entry)
     # `record()` hands both hashes in, computed once on the call path; the fallback keeps
     # `_store` callable on its own (tests).
-    kh = key_hash or cache_key(method, endpoint_id, url, caller_body, headers)
+    kh = key_hash or cache_key(method, endpoint_id, url, caller_body, headers, scope=scope)
     ch = body_hash or content_hash(body)
     now = _utcnow()
 
@@ -862,7 +967,11 @@ async def _store_locked(
                              last_requested_at=now if origin == "caller" else None,
                              ttl_s=ttl_for(entry),
                              req_method=method.upper(), req_url=url,
-                             req_body=caller_body or None, req_headers=kept)
+                             req_body=caller_body or None, req_headers=kept,
+                             # "org" | "conn" for a private key; NULL = public (and every
+                             # key from before the column). The refresh worker skips private
+                             # keys: treg's platform key cannot re-ask a private question.
+                             scope=scope.split(":", 1)[0] if scope else None)
             s.add(key)
             try:
                 await s.commit()
@@ -888,7 +997,8 @@ async def _store_locked(
             key_id=key.id, version=1 if newest is None else newest.version + 1,
             status_code=status_code, media_type=media_type, content_hash=ch,
             body=stored, enc=enc, size_bytes=len(body),
-            fetched_at=now, origin=origin, body_storage=plan.storage)
+            fetched_at=now, origin=origin, body_storage=plan.storage,
+            origin_org_id=origin_org_id)
         # Byte deduplication is independent of usefulness, including empty history.
         if newest is not None and newest.content_hash == ch:
             carrier = newest.body_of or (newest.id if newest.body is not None else None)
@@ -1135,6 +1245,25 @@ _TTL_DEFAULTS: tuple[tuple[str, int], ...] = (
     ("seo.", 86400),              # backlink/rank profiles: days
 )
 DEFAULT_TTL_S = 3600
+# A capability SEGMENT that names moving data caps the window HARD — the default, a learned
+# timer, and serving alike — because the learner cannot tell "stable over the weekend" from
+# "stable": a live quote or a trending list that was flat across refetches must still not be
+# served hours later. Exact segments, then segment prefixes (`hot_search`, `trending`, `trends`).
+_TTL_VOLATILE_SEGMENTS: dict[str, int] = {
+    "live": 60, "lives": 60, "realtime": 60, "quote": 60, "quotes": 60, "price": 300,
+}
+_TTL_VOLATILE_SEGMENT_PREFIXES: tuple[tuple[str, int], ...] = (("hot", 300), ("trend", 300))
+
+
+def volatile_max_age_s(entry: dict[str, Any] | None) -> int | None:
+    """The hard ceiling for a capability that names moving data, else None."""
+    capability = str((entry or {}).get("capability") or "").lower()
+    caps = []
+    for segment in capability.split("."):
+        if segment in _TTL_VOLATILE_SEGMENTS:
+            caps.append(_TTL_VOLATILE_SEGMENTS[segment])
+        caps.extend(s for prefix, s in _TTL_VOLATILE_SEGMENT_PREFIXES if segment.startswith(prefix))
+    return min(caps) if caps else None
 
 
 def declared_max_age_s(entry: dict[str, Any] | None) -> int | None:
@@ -1159,9 +1288,9 @@ def ttl_for(entry: dict[str, Any] | None) -> int:
     for prefix, seconds in _TTL_DEFAULTS:
         if capability.startswith(prefix) and len(prefix) > best:
             best, ttl = len(prefix), seconds
-    cap = declared_max_age_s(entry)
-    if cap is not None:
-        ttl = min(ttl, cap)
+    for ceiling in (declared_max_age_s(entry), volatile_max_age_s(entry)):
+        if ceiling is not None:
+            ttl = min(ttl, ceiling)
     return ttl
 
 
@@ -1195,13 +1324,20 @@ async def lookup(
     request_headers,
     cohort: str = "",
     diagnostics: dict | None = None,
+    org_id: int | None = None,
+    price_repeat: bool = False,
+    scopes: list[str] | None = None,
 ) -> dict[str, Any] | None:
     """A fresh stored answer for this exact question, or None (= make the live call).
 
     None on every uncertain branch: serving off, caller veto, unjudged/forbidden policy, no
-    snapshot, stale snapshot, bytes not on file. The age check runs against the newest snapshot's
-    own fetch time, and the window is min(endpoint TTL, caller X-Treg-Max-Age). Returns the
-    verbatim stored bytes plus what the hook needs for headers: fetched_at and age_s."""
+    snapshot, stale snapshot, bytes not on file. `scopes` (see `scope_tags`, default public
+    only) are the cache-key scopes this caller may read, tried in order; a private scope can
+    only ever hold answers its own org or connection fetched. The age check runs against the
+    newest snapshot's own fetch time, and the window is min(endpoint TTL, caller X-Treg-Max-Age).
+    Returns the verbatim stored bytes plus what the hook needs for headers: fetched_at and age_s
+    - and, when `price_repeat` (a metered caller), `repeat_for_org`: whether `org_id` has already
+    paid for this question, which the settle turns into the repeat price."""
     def miss(reason: str):
         if diagnostics is not None:
             diagnostics["cache_outcome"] = reason
@@ -1212,84 +1348,139 @@ async def lookup(
             return miss("mode_disabled")
         if caller_forces_live(request_headers):
             return miss("caller_bypass")
-        selection = rollout_reason(endpoint_id, cohort)
+        from .domain.catalog import store as catalog_store
+        from .domain.catalog.results import has_result_rules
+
+        entry = catalog_store.load().by_id.get(endpoint_id)
+        selection = rollout_reason(endpoint_id, cohort, str((entry or {}).get("capability") or ""))
         if selection != "selected":
             return miss(selection)
-        from sqlalchemy import select
-
-        from .domain.catalog import store as catalog_store
-        from .domain.catalog.results import classify, has_result_rules
-        # The API pool, deliberately: a lookup runs INSIDE a caller's /call/. Every other session in
-        # this module is a write nobody awaits and goes to the background pool; this one is on the
-        # hot path and must not queue behind them.
-        from .infra.db import session_maker
-        from .models import ArchiveKey, ArchiveSnapshot
-
         result_aware = has_result_rules(endpoint_id)
-        entry = catalog_store.load().by_id.get(endpoint_id)
         if not storable(entry):
             return miss("policy_excluded")
         wanted = caller_max_age_s(request_headers)
-
-        kh = cache_key(method, endpoint_id, url, caller_body, {
-            k: request_headers.get(k, "") for k in ("accept", "accept-language")})
-        async with session_maker() as s:
-            key = (await s.execute(
-                select(ArchiveKey).where(ArchiveKey.key_hash == kh))).scalars().one_or_none()
-            if key is None:
-                return miss("key_missing")
-            if key.ttl_s == TTL_NEVER:
-                return miss("ttl_disabled")
-            window = key.ttl_s if key.ttl_s > 0 else ttl_for(entry)
-            cap = declared_max_age_s(entry)
-            if cap is not None:
-                window = min(window, cap)
-            operator_cap = get_settings().archive_serve_max_age_s.get(endpoint_id)
-            if operator_cap is not None:
-                window = min(window, operator_cap)
-            if wanted is not None:
-                window = min(window, wanted)
-            if window <= 0:
-                return miss("ttl_disabled")
-            newest = (await s.execute(
-                select(ArchiveSnapshot).options(*archive_bodies.read_options("lookup")).where(ArchiveSnapshot.key_id == key.id)
-                .order_by(ArchiveSnapshot.version.desc()).limit(1))).scalars().first()
-            # Older writers can still append during a rolling deploy. A version they wrote
-            # invalidates our saved decision; classify that newest body as legacy evidence.
-            assessed = (result_aware and newest is not None and key.result_state is not None
-                        and key.result_observed_version == newest.version)
-            if assessed:
-                if key.result_state != "found":
-                    return miss("result_" + key.result_state)
-                newest = await s.get(ArchiveSnapshot, key.result_snapshot_id, options=archive_bodies.read_options("lookup"))
-                if newest is not None and newest.key_id != key.id:
-                    return miss("snapshot_unavailable")
-            if newest is None or not (200 <= newest.status_code < 300):
-                return miss("snapshot_unavailable")
-            age_s = int((_utcnow() - newest.fetched_at).total_seconds())
-            if diagnostics is not None:
-                diagnostics.update(cache_age_s=age_s, cache_window_s=window)
-            if age_s < 0 or age_s > window:
-                return miss("stale")
-            pointer = await archive_bodies.pointer(s, newest, "lookup")
-        body = await archive_bodies.read(pointer, "lookup", diagnostics=diagnostics)
-        if body is None:
-            return miss("body_missing")
-        if result_aware:
-            result = classify(endpoint_id, newest.status_code, body)
-            if result.state != "found":
-                return miss("result_" + result.state)
-        if diagnostics is not None:
-            diagnostics["cache_outcome"] = "hit"
-        _touch(kh)
-        return {"body": body, "media_type": newest.media_type,
-                "status_code": newest.status_code, "fetched_at": newest.fetched_at,
-                "age_s": age_s,
-                # Identities of the served answer, for the audit row's call→archive link.
-                "key_hash": kh, "content_hash": newest.content_hash, "version": newest.version}
+        keyed_headers = {k: request_headers.get(k, "") for k in ("accept", "accept-language")}
+        outcome = None
+        for scope in (scopes or [""]):
+            kh = cache_key(method, endpoint_id, url, caller_body, keyed_headers, scope=scope)
+            outcome = await _lookup_key(
+                kh, entry=entry, endpoint_id=endpoint_id, result_aware=result_aware,
+                wanted=wanted, org_id=org_id, price_repeat=price_repeat, diagnostics=diagnostics)
+            if isinstance(outcome, dict):
+                if diagnostics is not None:
+                    diagnostics["cache_outcome"] = "hit"
+                    diagnostics["cache_scope"] = scope.split(":", 1)[0] if scope else "public"
+                _touch(kh)
+                return outcome
+        return miss(outcome or "key_missing")
     except Exception:  # noqa: BLE001 — a lookup fault must degrade to a live call, never a 500
         _log.warning("archive lookup failed for %s - serving live", endpoint_id, exc_info=True)
         return miss("lookup_error")
+
+
+async def _lookup_key(kh: str, *, entry, endpoint_id: str, result_aware: bool,
+                      wanted: int | None, org_id: int | None, price_repeat: bool,
+                      diagnostics: dict | None) -> dict[str, Any] | str:
+    """One scope's attempt: the served answer, or the miss reason."""
+    from sqlalchemy import select
+
+    from .domain.catalog.results import classify
+    # The API pool, deliberately: a lookup runs INSIDE a caller's /call/. Every other session in
+    # this module is a write nobody awaits and goes to the background pool; this one is on the
+    # hot path and must not queue behind them.
+    from .infra.db import session_maker
+    from .models import ArchiveKey, ArchiveKeyOrg, ArchiveSnapshot
+
+    def miss(reason: str) -> str:
+        return reason
+
+    async with session_maker() as s:
+        key = (await s.execute(
+            select(ArchiveKey).where(ArchiveKey.key_hash == kh))).scalars().one_or_none()
+        if key is None:
+            return miss("key_missing")
+        if key.ttl_s == TTL_NEVER:
+            return miss("ttl_disabled")
+        window = key.ttl_s if key.ttl_s > 0 else ttl_for(entry)
+        for ceiling in (declared_max_age_s(entry), volatile_max_age_s(entry),
+                        get_settings().archive_serve_max_age_s.get(endpoint_id), wanted):
+            if ceiling is not None:
+                window = min(window, ceiling)
+        if window <= 0:
+            return miss("ttl_disabled")
+        newest = (await s.execute(
+            select(ArchiveSnapshot).options(*archive_bodies.read_options("lookup")).where(ArchiveSnapshot.key_id == key.id)
+            .order_by(ArchiveSnapshot.version.desc()).limit(1))).scalars().first()
+        # Older writers can still append during a rolling deploy. A version they wrote
+        # invalidates our saved decision; classify that newest body as legacy evidence.
+        assessed = (result_aware and newest is not None and key.result_state is not None
+                    and key.result_observed_version == newest.version)
+        if assessed:
+            if key.result_state != "found":
+                return miss("result_" + key.result_state)
+            newest = await s.get(ArchiveSnapshot, key.result_snapshot_id, options=archive_bodies.read_options("lookup"))
+            if newest is not None and newest.key_id != key.id:
+                return miss("snapshot_unavailable")
+        if newest is None or not (200 <= newest.status_code < 300):
+            return miss("snapshot_unavailable")
+        age_s = int((_utcnow() - newest.fetched_at).total_seconds())
+        if diagnostics is not None:
+            diagnostics.update(cache_age_s=age_s, cache_window_s=window)
+        if age_s < 0 or age_s > window:
+            return miss("stale")
+        pointer = await archive_bodies.pointer(s, newest, "lookup")
+        repeat = False
+        if price_repeat and org_id is not None:
+            repeat = (await s.execute(
+                select(ArchiveKeyOrg.id).where(ArchiveKeyOrg.org_id == org_id,
+                                               ArchiveKeyOrg.key_hash == kh)
+                .limit(1))).first() is not None
+    body = await archive_bodies.read(pointer, "lookup", diagnostics=diagnostics)
+    if body is None:
+        return miss("body_missing")
+    if result_aware:
+        result = classify(endpoint_id, newest.status_code, body)
+        if result.state != "found":
+            return miss("result_" + result.state)
+    return {"body": body, "media_type": newest.media_type,
+            "status_code": newest.status_code, "fetched_at": newest.fetched_at,
+            "age_s": age_s, "repeat_for_org": repeat,
+            # Identities of the served answer, for the audit row's call→archive link.
+            "key_hash": kh, "content_hash": newest.content_hash, "version": newest.version}
+
+
+async def note_org_use_in_transaction(db, org_id: int, key_hash: str) -> None:
+    """Remember that `org_id` has now paid for the question `key_hash` - staged in the CALLER's
+    transaction (the metered settle's), so the row lands with the charge or not at all. First
+    write inserts; a later one bumps the counter. Two first calls racing on the same (org, key)
+    are confined to a savepoint: the loser updates instead of failing the settle. An
+    IntegrityError that is NOT that race (nothing to update afterwards) is re-raised: a mark
+    must never be lost silently."""
+    from sqlalchemy import select, update
+    from sqlalchemy.exc import IntegrityError
+
+    from .models import ArchiveKeyOrg
+
+    now = _utcnow()
+    existing = (await db.execute(
+        select(ArchiveKeyOrg.id).where(ArchiveKeyOrg.org_id == org_id,
+                                       ArchiveKeyOrg.key_hash == key_hash).limit(1))).first()
+    lost_race: IntegrityError | None = None
+    if existing is None:
+        try:
+            async with db.begin_nested():
+                db.add(ArchiveKeyOrg(org_id=org_id, key_hash=key_hash,
+                                     first_call_at=now, last_call_at=now, calls=1))
+                await db.flush()
+            return
+        except IntegrityError as exc:
+            lost_race = exc  # presumably the other first call won; count this one below
+    bumped = await db.execute(
+        update(ArchiveKeyOrg)
+        .where(ArchiveKeyOrg.org_id == org_id, ArchiveKeyOrg.key_hash == key_hash)
+        .values(calls=ArchiveKeyOrg.calls + 1, last_call_at=now))
+    if bumped.rowcount == 0 and lost_race is not None:
+        raise lost_race  # not the race after all: no row to count, so the failure is real
 
 
 def _touch(key_hash: str) -> None:
@@ -1396,7 +1587,8 @@ async def refresh_once(client) -> int:
     async with background_session_maker() as s:
         candidates = (await s.execute(
             select(ArchiveKey)
-            .where(ArchiveKey.endpoint_id.in_(serve_endpoints()), ArchiveKey.ttl_s > 0,
+            .where(*([ArchiveKey.endpoint_id.in_(serve_endpoints())] if serve_ids_only() else []),
+                   ArchiveKey.ttl_s > 0,
                    ArchiveKey.req_url != "",
                    ArchiveKey.last_requested_at.is_not(None))
             .order_by(ArchiveKey.fetched_at))).scalars().all()
@@ -1422,10 +1614,15 @@ async def refresh_once(client) -> int:
         entry = cat.by_id.get(key.endpoint_id)
         if not storable(entry):
             continue  # judgment changed since recording — never refresh what may not be kept
+        if not endpoint_served(key.endpoint_id, str((entry or {}).get("capability") or "")):
+            continue  # a family/`*` allowlist is applied here, not in the query
+        if key.scope:
+            continue  # an org's or a connection's question: treg's key cannot re-ask it
         window = key.ttl_s if key.ttl_s > 0 else ttl_for(entry)
-        operator_cap = get_settings().archive_serve_max_age_s.get(key.endpoint_id)
-        if operator_cap is not None:
-            window = min(window, operator_cap)
+        for ceiling in (get_settings().archive_serve_max_age_s.get(key.endpoint_id),
+                        volatile_max_age_s(entry)):
+            if ceiling is not None:
+                window = min(window, ceiling)
         age = (now - key.fetched_at).total_seconds()
         demanded = key.last_requested_at is not None and key.last_requested_at > key.fetched_at
         if age < window * _DUE_SHARE or not demanded:

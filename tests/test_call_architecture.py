@@ -62,6 +62,12 @@ _DATAPLANE_DERIVED_WRITES = {
         (overflow._finish_budget, "overflow_spend_ledger.add_in_transaction"),
         (overflow._preserve_unknown_budget, "overflow_spend_ledger.add_in_transaction"),
     ),
+    # The repeat-hit price needs to know whether a team has paid for a question before: the
+    # metered settle marks (org, key) in the SAME transaction as the charge, so the mark lands
+    # with the money or not at all.
+    "archive_org_use_in_settle": (
+        (settle._platform_settle, "archive.note_org_use_in_transaction"),
+    ),
     "overflow_budget_reservation": (
         (overflow._maybe_overflow_attempt, "overflow_spend_ledger.reserve_in_transaction"),
         (overflow._release_budget, "overflow_spend_ledger.release_reservation_in_transaction"),
@@ -88,6 +94,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "lazy_stale_hold_reap",
     "capacity_exhausted_mark",
     "overflow_spend_in_settle",
+    "archive_org_use_in_settle",
     "overflow_budget_reservation",
     "async_result_ownership",
     "async_resource_ownership",
@@ -104,7 +111,7 @@ _DERIVED_WRITE_FILES = {
     _SRC / "application" / "call" / "reserve.py": {"billing.maybe_schedule_autotopup"},
     _SRC / "application" / "call" / "settle.py": {
         "adsconv.queue", "capacity_marks.strike", "capacity_marks.clear",
-        "overflow_spend_ledger.add_in_transaction",
+        "overflow_spend_ledger.add_in_transaction", "archive.note_org_use_in_transaction",
     },
     _SRC / "application" / "call" / "overflow.py": {
         "capacity_marks.strike", "overflow_spend_ledger.add_in_transaction",
@@ -140,6 +147,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/settle.py", "_note_capacity_recovery", "capacity_marks.clear"),
     ("application/call/settle.py", "_platform_settle", "overflow_spend_ledger.add_in_transaction"),
     ("application/call/settle.py", "_close", "overflow_spend_ledger.add_in_transaction"),
+    ("application/call/settle.py", "_platform_settle", "archive.note_org_use_in_transaction"),
+    ("application/call/settle.py", "_close", "archive.note_org_use_in_transaction"),
     ("application/call/overflow.py", "_maybe_overflow_attempt", "capacity_marks.strike"),
     ("application/call/overflow.py", "_record_shadow", "overflow_spend_ledger.add_in_transaction"),
     ("application/call/overflow.py", "_finish_budget", "overflow_spend_ledger.add_in_transaction"),

@@ -59,10 +59,14 @@ metadata; the resolver and relay contain no provider-specific anonymous path rul
 
 Cache experiment metadata is attached to the existing `tool_called` event by the call-service
 capture funnel: outcome/reason, comparison and TTL policy, rollout percentage, lookup duration,
-and candidate age/window. It contains no response/request content or cache key. The stable
-team/endpoint rollout runs before archive DB lookup; unselected calls retain the normal relay
-and money path. See [archive](archive.md#conservative-comparison-and-controlled-serving-2026-09-08)
-for controls and metric denominators. This does not remove authorization/reserve/settle DB work.
+and candidate age/window, plus `cache_price` (`full` | `repeat` | `free`) on a hit. It contains
+no response/request content or cache key. The stable team/endpoint rollout runs before archive
+DB lookup (open to every endpoint and team by default since 2026-09-14); unselected calls retain
+the normal relay and money path. Own-key catalog calls take part too: a storable own-key 2xx is
+read whole when it fits the archive's cap and is asked for identity encoding, otherwise it
+streams untouched; own-tool calls never touch the archive. See
+[archive](archive.md#own-key-answers-2026-09-14) and its pricing section for controls and metric
+denominators. This does not remove authorization/reserve/settle DB work.
 
 ## The faithful-relay contract
 `relay()` alters **only three things**; everything else is verbatim (method, path, all query params

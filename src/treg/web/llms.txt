@@ -291,8 +291,13 @@ Money notes for agents:
   routed calls it also bounds the whole waterfall (default $1 there).
 - A failed call (HTTP 4xx/5xx from the provider) is relayed unchanged and charged nothing; the
   CLI prints one stderr line with the status, whose answer it is, and the call id — and on a metered
-  success, `treg: charged $<usd> · call id <id>` (stdout is always the exact body). Nothing is
-  served from cache on `/call/`; the only stored answer you can get back is an idempotency replay
+  success, `treg: charged $<usd> · call id <id>` (stdout is always the exact body). A `/call/`
+  may be answered from treg's archive of earlier answers to the exact same question while that
+  answer is still fresh: the body is the provider's verbatim bytes, the response says
+  `X-Treg-Cache: hit` with `X-Treg-Fetched-At` and `X-Treg-Age`. Your team's first call on a
+  question costs full price either way; from your second call on, a hit costs 10% - and a hit on
+  your own key is free. Send `Cache-Control: no-cache` to force a live call, or `X-Treg-Max-Age:
+  <seconds>` to accept only a younger answer. An idempotency replay is different
   (`X-Treg-Idempotent-Replay: true`). Empty results are the provider's own semantics — treg does
   not normalise "no data" vs "no coverage" vs "unsupported target".
 - Out of balance → HTTP **402** with a machine-actionable body: `balance_micro`,
