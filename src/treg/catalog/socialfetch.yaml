@@ -1,0 +1,265 @@
+provider: socialfetch
+source:
+  docs: https://www.socialfetch.dev/docs
+  openapi: https://api.socialfetch.dev/openapi.json
+  curated: '2026-09-15'
+limits: "credits are the paid-route limit; no enforced RPS cap. Free /v1/whoami and /v1/balance may 429."
+pricing_url: https://www.socialfetch.dev/pricing
+
+# Core 14: free account probes plus the cheapest overlapping social jobs already on TikHub /
+# ScrapeCreators / first-party X+YouTube. Full OpenAPI surface is 220 paths — see the listing PR
+# for the catalogued/excluded map. Most lookups are 1 credit on HTTP 200 (including not_found).
+# Optional hostMedia / downloadMedia riders are documented on those routes; test_requests omit them.
+
+endpoints:
+  - id: socialfetch.account.identity
+    kind: account
+    capability: account.identity
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/whoami
+    name: "Whoami"
+    summary: "Get the authenticated API account for this session."
+    input:
+      queryParams: {}
+    test_request:
+      queryParams: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: 'https://www.socialfetch.dev/pricing', checked: '2026-09-15', confidence: documented, note: 'live 2026-09-15: HTTP 200, meta.creditsCharged=0'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/whoami
+
+  - id: socialfetch.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/balance
+    name: "Get account balance"
+    summary: "Get remaining credit balance before running large batches of metered tools."
+    input:
+      queryParams: {}
+    test_request:
+      queryParams: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: 'https://www.socialfetch.dev/pricing', checked: '2026-09-15', confidence: documented, note: 'live 2026-09-15: HTTP 200, meta.creditsCharged=0'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/balance
+
+  - id: socialfetch.tiktok.user.profile
+    capability: tiktok.user.profile
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/tiktok/profiles/{handle}
+    name: "Get TikTok profile"
+    summary: "Get a TikTok profile by handle."
+    input:
+      pathParams:
+        handle: {type: string, required: true, note: "TikTok handle, with or without a leading @", example: "tiktok"}
+    test_request:
+      pathParams: {handle: "tiktok"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.socialfetch.dev/openapi.json', checked: '2026-09-15', confidence: documented, note: 'x-socialfetch-pricing baseCredits=1; live 2026-09-15 HTTP 200 lookupStatus=found, meta.creditsCharged=1'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/tiktok/profiles/handle
+
+  - id: socialfetch.tiktok.user.videos
+    capability: tiktok.user.videos
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/tiktok/profiles/{handle}/videos
+    name: "List TikTok profile videos"
+    summary: "List videos from a TikTok profile by handle."
+    input:
+      pathParams:
+        handle: {type: string, required: true, note: "TikTok handle whose videos should be listed", example: "tiktok"}
+      queryParams:
+        sortBy: {type: string, required: false, note: "latest | popular"}
+        cursor: {type: string, required: false}
+        userId: {type: string, required: false, note: "optional TikTok user id to speed up the request"}
+        hostMedia: {type: boolean, required: false, note: "+2 credits per hosted asset (up to 24, 49 credits max)"}
+    test_request:
+      pathParams: {handle: "tiktok"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.socialfetch.dev/openapi.json', checked: '2026-09-15', confidence: documented, note: 'base 1 credit without hostMedia; live 2026-09-15 HTTP 200, meta.creditsCharged=1'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/tiktok/profiles/handle/videos
+
+  - id: socialfetch.tiktok.video.detail
+    capability: tiktok.video.detail
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/tiktok/videos
+    name: "Get TikTok video"
+    summary: "Get a single TikTok video by URL."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "Link to the video or photo post", example: "https://www.tiktok.com/@tiktok/video/7680721699171601694"}
+        region: {type: string, required: false, note: "Optional ISO 3166-1 country code"}
+        trim: {type: boolean, required: false}
+        downloadMedia: {type: boolean, required: false, note: "adds 10 credits on success"}
+        getTranscript: {type: boolean, required: false}
+    test_request:
+      queryParams: {url: "https://www.tiktok.com/@tiktok/video/7680721699171601694"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.socialfetch.dev/openapi.json', checked: '2026-09-15', confidence: documented, note: 'base 1 credit without downloadMedia; live 2026-09-15 HTTP 200 lookupStatus=found, meta.creditsCharged=1'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/tiktok/videos
+
+  - id: socialfetch.tiktok.video.comments
+    capability: tiktok.video.comments
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/tiktok/videos/comments
+    name: "List TikTok video comments"
+    summary: "List comments on a TikTok video by URL."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "Link to the TikTok video", example: "https://www.tiktok.com/@tiktok/video/7680721699171601694"}
+        cursor: {type: string, required: false}
+    test_request:
+      queryParams: {url: "https://www.tiktok.com/@tiktok/video/7680721699171601694"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.socialfetch.dev/openapi.json', checked: '2026-09-15', confidence: documented, note: 'live 2026-09-15 HTTP 200 lookupStatus=found, meta.creditsCharged=1'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/tiktok/videos/comments
+
+  - id: socialfetch.tiktok.search.videos
+    capability: tiktok.search.videos
+    platform: tiktok
+    scope: any_account
+    method: GET
+    path: /v1/tiktok/search
+    name: "Search TikTok videos"
+    summary: "Search TikTok videos by free-text keyword (not hashtag — use tiktok.search.hashtag.list for that)."
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "coffee"}
+        datePosted: {type: string, required: false, note: "yesterday | this-week | this-month | last-3-months | last-6-months | all-time"}
+    test_request:
+      queryParams: {query: "coffee"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.socialfetch.dev/openapi.json', checked: '2026-09-15', confidence: documented, note: 'live 2026-09-15 HTTP 200, meta.creditsCharged=1'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/tiktok/search
+
+  - id: socialfetch.instagram.user.profile
+    capability: instagram.user.profile
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /v1/instagram/profiles/{handle}
+    name: "Get Instagram profile"
+    summary: "Get a full Instagram profile by handle (bio, counts, and related fields)."
+    input:
+      pathParams:
+        handle: {type: string, required: true, note: "handle, @handle, or profile URL", example: "instagram"}
+    test_request:
+      pathParams: {handle: "instagram"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.socialfetch.dev/openapi.json', checked: '2026-09-15', confidence: documented, note: 'live 2026-09-15 HTTP 200 lookupStatus=found, meta.creditsCharged=1'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/instagram/profiles/handle
+
+  - id: socialfetch.instagram.user.posts
+    capability: instagram.user.posts
+    platform: instagram
+    scope: any_account
+    method: GET
+    path: /v1/instagram/profiles/{handle}/posts
+    name: "List Instagram profile posts"
+    summary: "List posts from an Instagram profile by handle."
+    input:
+      pathParams:
+        handle: {type: string, required: true, example: "instagram"}
+      queryParams:
+        cursor: {type: string, required: false}
+        hostMedia: {type: boolean, required: false, note: "+2 credits per hosted asset (up to 24, 49 credits max)"}
+    test_request:
+      pathParams: {handle: "instagram"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.socialfetch.dev/openapi.json', checked: '2026-09-15', confidence: documented, note: 'base 1 credit without hostMedia; live 2026-09-15 HTTP 200 lookupStatus=found, meta.creditsCharged=1'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/instagram/profiles/handle/posts
+
+  - id: socialfetch.youtube.channel.profile
+    capability: youtube.channel.profile
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/channel
+    name: "Get YouTube channel"
+    summary: "Get YouTube channel details by channel id, handle, or URL."
+    input:
+      queryParams:
+        channelId: {type: string, required: false}
+        handle: {type: string, required: false, note: "include the leading @ (bare 'YouTube' 502'd on 2026-09-15)", example: "@YouTube"}
+        url: {type: string, required: false}
+      note: "one of channelId | handle | url"
+    test_request:
+      queryParams: {handle: "@YouTube"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.socialfetch.dev/openapi.json', checked: '2026-09-15', confidence: documented, note: 'live 2026-09-15 HTTP 200 lookupStatus=found, meta.creditsCharged=1 with handle=@YouTube'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/youtube/channel
+
+  - id: socialfetch.youtube.video.detail
+    capability: youtube.video.detail
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/videos
+    name: "Get YouTube video"
+    summary: "Get a single YouTube video by URL."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "YouTube watch or Shorts URL", example: "https://www.youtube.com/watch?v=jNQXAC9IVRw"}
+        language: {type: string, required: false}
+    test_request:
+      queryParams: {url: "https://www.youtube.com/watch?v=jNQXAC9IVRw"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.socialfetch.dev/openapi.json', checked: '2026-09-15', confidence: documented, note: 'live 2026-09-15 HTTP 200 lookupStatus=found, meta.creditsCharged=1'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/youtube/videos
+
+  - id: socialfetch.youtube.search.videos
+    capability: youtube.search.videos
+    platform: youtube
+    scope: any_account
+    method: GET
+    path: /v1/youtube/search
+    name: "Search YouTube"
+    summary: "Search YouTube videos, channels, and playlists by free-text keyword (not hashtag — use youtube.search.hashtag.list for that)."
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "coffee"}
+    test_request:
+      queryParams: {query: "coffee"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.socialfetch.dev/openapi.json', checked: '2026-09-15', confidence: documented, note: 'live 2026-09-15 HTTP 200, meta.creditsCharged=1'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/youtube/search
+
+  - id: socialfetch.x.user.profile
+    capability: x.user.profile
+    platform: x
+    scope: any_account
+    method: GET
+    path: /v1/twitter/profiles/{handle}
+    name: "Get Twitter profile"
+    summary: "Get an X (Twitter) profile by handle or numeric user id."
+    input:
+      pathParams:
+        handle: {type: string, required: true, note: "handle without @, or a numeric user id", example: "NASA"}
+      queryParams:
+        by: {type: string, required: false, note: "id | handle; defaults to id when the path is all digits", example: "handle"}
+    test_request:
+      pathParams: {handle: "NASA"}
+      queryParams: {by: "handle"}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.socialfetch.dev/openapi.json', checked: '2026-09-15', confidence: documented, note: 'live 2026-09-15 HTTP 200 lookupStatus=found, meta.creditsCharged=1'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/twitter/profiles/handle
+
+  - id: socialfetch.x.user.posts
+    capability: x.user.posts
+    platform: x
+    scope: any_account
+    method: GET
+    path: /v1/twitter/profiles/{handle}/tweets
+    name: "List Twitter profile tweets"
+    summary: "List tweets from an X profile by handle or numeric user id."
+    input:
+      pathParams:
+        handle: {type: string, required: true, example: "NASA"}
+      queryParams:
+        by: {type: string, required: false, example: "handle"}
+        limit: {type: integer, required: false, note: "1–100, best-effort", example: 5}
+        cursor: {type: string, required: false}
+        includeReplies: {type: boolean, required: false}
+        includePinned: {type: boolean, required: false}
+    test_request:
+      pathParams: {handle: "NASA"}
+      queryParams: {by: "handle", limit: 5}
+    cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://api.socialfetch.dev/openapi.json', checked: '2026-09-15', confidence: documented, note: 'live 2026-09-15 HTTP 200 lookupStatus=found, meta.creditsCharged=1'}
+    docs_url: https://www.socialfetch.dev/docs/api/v1/twitter/profiles/handle/tweets

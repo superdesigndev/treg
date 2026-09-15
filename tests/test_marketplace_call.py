@@ -1196,6 +1196,21 @@ def test_reapi_and_piapi_catalogs_are_platform_priced():
     assert cat.cost_view(cat.by_id["piapi.video-gen.seedance-2-5.less-restriction"]["cost"], "piapi")["usd_min"] == 0.825
 
 
+def test_socialfetch_catalog_is_platform_priced():
+    """Social Fetch prices in credits with an fx.yaml rate. Own-account free probes stay off tier 4."""
+    cat = A.catalog_store.load()
+    rows = cat.for_provider("socialfetch")
+    assert len(rows) == 14
+    own = [ep for ep in rows if ep.get("scope") == "own_account"]
+    assert {ep["id"] for ep in own} == {
+        "socialfetch.account.usage",
+        "socialfetch.account.identity",
+    }
+    served = [ep for ep in rows if ep.get("scope") != "own_account"]
+    assert all(cat.platform_eligible(ep) for ep in served)
+    assert cat.cost_view(cat.by_id["socialfetch.tiktok.user.profile"]["cost"], "socialfetch")["usd"] == 0.00188
+
+
 def test_cloro_catalog_is_platform_priced():
     """cloro prices in credits with a fx.yaml rate, so every curated route converts and is
     eligible — except the own-account balance read, which tier 4 never serves."""
