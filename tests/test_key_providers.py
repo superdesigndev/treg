@@ -24,7 +24,7 @@ def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,
     not shown as 'not configured' the way an unset OAuth provider is."""
     for svc in ("apollo", "pdl", "akta", "hunter", "sumble", "harvestapi", "quickenrich", "contactout", "millionverifier", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush",
-                "justoneapi", "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
+                "justoneapi", "scrapecreators", "socialfetch", "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
                 "cloro",
                 "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
                 "companyenrich", "oceanio", "tomba", "predictleads", "findymail", "branddev",

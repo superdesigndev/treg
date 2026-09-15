@@ -1697,6 +1697,33 @@ SCRAPECREATORS = OAuthProvider(
     token_verify_field="creditCount",
 )
 
+SOCIALFETCH = OAuthProvider(
+    service="socialfetch",
+    display_name="Social Fetch",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Social Fetch API key (sfk_…)",
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://app.socialfetch.dev/api-keys",
+    setup_action_label="Get your Social Fetch API key",
+    setup_steps=(
+        "Sign in at app.socialfetch.dev and open API keys.",
+        "Create a key (sfk_…) and copy it.",
+    ),
+    setup_note="Most lookups cost 1 credit on HTTP 200, including lookupStatus not_found. Validation errors and 503 lookup_failed do not debit. GET /v1/whoami and GET /v1/balance are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Read public profiles, posts, search and transcripts across TikTok, Instagram, YouTube, X and 20+ other platforms through one API.",
+    base_url="https://api.socialfetch.dev",
+    docs_url="https://www.socialfetch.dev/docs",
+    # Free identity check. Live 2026-09-15: garbage key HTTP 401
+    # {"error":{"code":"unauthorized","message":"Invalid API key."}}; valid key HTTP 200, creditsCharged=0.
+    probe_path="/v1/whoami",
+)
+
 # ---- SEO API-key providers -------------------------------------------------------------------
 
 DATAFORSEO = OAuthProvider(
@@ -2969,7 +2996,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         APOLLO, PDL, AKTA, HUNTER, SUMBLE, HARVESTAPI, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
         REAPI, PIAPI,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
-        SCRAPECREATORS,
+        SCRAPECREATORS, SOCIALFETCH,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, CLORO,
         # more Enrichment API-key providers

@@ -170,6 +170,7 @@ class Settings(BaseSettings):
     platform_key_tikhub: str = ""
     platform_key_dataforseo: str = ""
     platform_key_scrapecreators: str = ""
+    platform_key_socialfetch: str = ""  # x-api-key (sfk_…); PAYG credits, most lookups 1 credit
     platform_key_brightdata: str = ""
     platform_key_justoneapi: str = ""
     platform_key_serpapi: str = ""
