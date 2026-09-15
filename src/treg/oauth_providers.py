@@ -1563,6 +1563,31 @@ PIAPI = OAuthProvider(
     probe_path="/account/info",  # free; a bad key answers 401 {"message":"Failed to verify api key"}
 )
 
+KREA = OAuthProvider(
+    service="krea",
+    display_name="Krea",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Krea API key",
+    # Authorization: Bearer <key> is the only documented scheme (token_header/token_format defaults).
+    setup_url="https://www.krea.ai/settings/api-tokens",
+    setup_action_label="Get your Krea API key",
+    setup_steps=(
+        "Sign in to Krea, pick the workspace in the top-left toggle, and open Settings → API tokens.",
+        "Click New Token, name it, and copy it (it is shown once). Only workspace owners and admins can create one.",
+        "Top up the workspace API balance at krea.ai/app/api before the first generation.",
+    ),
+    setup_note="Generations bill the workspace's prepaid USD API balance per completed job; failed and cancelled jobs are free. The job-list probe is free.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Generate images and videos with Krea 2, Flux, Nano Banana Pro, Seedance 2.5, Veo 3.1, Wan 3.0 and MiniMax models through one async job API.",
+    base_url="https://api.krea.ai",
+    docs_url="https://www.krea.ai/docs/developers/introduction",
+    # Free; a bad key answers 401 {"message":"Unauthorized"} (observed live 2026-09-15).
+    probe_path="/jobs?limit=1",
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -3000,7 +3025,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
         APOLLO, PDL, AKTA, HUNTER, SUMBLE, HARVESTAPI, DROPLEADS, QUICKENRICH, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
-        REAPI, PIAPI,
+        REAPI, PIAPI, KREA,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers

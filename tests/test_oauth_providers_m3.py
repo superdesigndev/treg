@@ -54,7 +54,7 @@ def test_every_provider_is_registered():
         "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
         "companyenrich", "oceanio", "tomba", "predictleads", "findymail", "branddev",
         "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato",
-        "spyfu", "apify", "meta-ad-library", "serpapi",
+        "spyfu", "apify", "meta-ad-library", "serpapi", "krea",
         "coingecko", "polygon", "finnhub", "twelvedata", "fmp", "eodhd", "marketstack", "tiingo",
         "financialdatasets",
         "microsoft-ads", "snapchat-ads", "tiktok-ads", "pinterest-ads",

@@ -31,7 +31,7 @@ def test_key_providers_are_offerable_without_deployment_credentials():
                 "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato",
                 "spyfu", "apify", "meta-ad-library", "serpapi",
                 "coingecko", "polygon", "finnhub", "twelvedata", "fmp", "eodhd", "marketstack",
-                "tiingo", "financialdatasets"):
+                "tiingo", "financialdatasets", "krea"):
         p = P.get(svc)
         assert p is not None, svc
         assert p.auth_kind == "key", svc

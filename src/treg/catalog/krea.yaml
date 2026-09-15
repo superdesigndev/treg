@@ -1,0 +1,482 @@
+provider: krea
+source:
+  docs: https://www.krea.ai/docs/developers/introduction
+  openapi: https://api.krea.ai/openapi.json
+  curated: 2026-09-15
+pricing_url: https://www.krea.ai/features/api
+limits: "Generation is asynchronous: every POST /generate/* answers at once with a job_id; poll GET /jobs/{id} every 5 seconds (images finish in seconds, videos in 1-5 minutes). Concurrency and backlog scale with the workspace plan tier; jobs above the concurrency limit queue in a backlog instead of being refused. Only completed jobs bill. Failed and cancelled jobs are free. When the prepaid API balance is empty new requests answer HTTP 402. Every per-request price sits in the OpenAPI document under x-krea-pricing (the machine-readable rate card). Image inputs accept a public URL, a base64 data URI, or a Krea asset URL."
+proposed_capabilities:
+  # Per-model join keys, following the model-wall convention in minimax.yaml: one row per model,
+  # merging with other routes to the same model when those are curated.
+  image-gen.krea-2-turbo.generate: "Generate a Krea 2 Turbo image from a text prompt"
+  image-gen.krea-2-large.generate: "Generate a Krea 2 Large image from a text prompt"
+  image-gen.flux-dev.from_text: "Generate a FLUX.1 [dev] image from a text prompt"
+  image-gen.flux-kontext-dev.edit: "Edit an image with a prompt using FLUX.1 Kontext [dev]"
+  video-gen.h3-max-turbo.generate: "Generate a MiniMax H3 Max Turbo video from a text prompt, optionally from a start image"
+  # Shared per-model keys already proposed by other provider files (reapi, piapi, openrouter,
+  # replicate, minimax); re-declared here so the join resolves until they land in capabilities.yaml.
+  image-gen.gemini-3-pro-image.generate: "Gemini 3 Pro Image"
+  video-gen.seedance-2-5.generate: "Seedance 2.5"
+  video-gen.veo-3-1-fast.generate: "Generate a Veo 3.1 Fast video from text, optionally from a starting image"
+  video-gen.wan-3-0.from_text: "Generate a Wan 3.0 video from a text prompt"
+  video-gen.hailuo.from_text: "Generate a Hailuo video from a text prompt"
+async:
+  id_from: job_id
+  poll:
+    endpoint: krea.jobs.get
+    param: {in: pathParams, name: id}
+  status:
+    path: status
+    success: [completed]
+    failure: [failed, cancelled]
+  result:
+    path: result.urls
+  interval: 5
+endpoints:
+  - id: krea.jobs.get
+    kind: utility
+    capability: video-gen.task.status
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /jobs/{id}
+    name: "Check a Krea job"
+    summary: "Read a generation job's status (backlogged, queued, scheduled, processing, sampling, intermediate-complete, completed, failed, cancelled), its output URLs on success, and its error on failure."
+    resource_ownership:
+      requires: {kind: "poll:krea.jobs.get", param: id}
+    async: false
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "1296e8a1-2502-4b66-8a2e-542bde1d0891"}
+    test_request: {pathParams: {id: "1296e8a1-2502-4b66-8a2e-542bde1d0891"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Job status reads are free."}
+    docs_url: https://www.krea.ai/docs/api-reference/general/get-a-job-by-id
+
+  - id: krea.image-gen.krea-2-turbo
+    capability: image-gen.krea-2-turbo.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /generate/image/krea/krea-2/medium-turbo
+    name: "Krea: Krea 2 Turbo"
+    summary: "Fastest medium quality Krea 2 model. Best for low-cost iteration on expressive illustrations and style-driven concepts."
+    input:
+      body:
+        prompt: {type: string, required: true, example: "A paper boat drifts across a quiet pond at sunrise, risograph poster."}
+        aspect_ratio: {type: string, required: true, enum: ["1:1", "4:3", "3:2", "16:9", "2.35:1", "4:5", "2:3", "9:16"], example: "1:1"}
+        resolution: {type: string, required: true, enum: ["1K"], example: "1K"}
+        creativity: {type: string, required: false, default: low, enum: [raw, low, medium, high], example: low, note: "Prompt expansion mode. raw disables it."}
+        seed: {type: number, required: false, example: 42}
+        intensity: {type: integer, required: false, default: 0, min: -100, max: 100, note: "Krea 2 style slider; 0 is neutral."}
+        complexity: {type: integer, required: false, default: 0, min: -100, max: 100, note: "Krea 2 composition-density slider; 0 is neutral."}
+        movement: {type: integer, required: false, default: 0, min: -100, max: 100, note: "Krea 2 motion slider; 0 is neutral."}
+      bodyType: json
+    test_request:
+      body: {prompt: "A paper boat drifts across a quiet pond at sunrise, risograph poster.", aspect_ratio: "1:1", resolution: "1K", creativity: low}
+    cost:
+      type: per_success
+      value: 0.015
+      currency: USD
+      source: rate_card_api
+      source_url: https://api.krea.ai/openapi.json
+      checked: 2026-09-15
+      confidence: documented
+      note: "Text-to-image tier. The rate card bills $0.0175 with image style references and $0.02 with a moodboard; those inputs are not exposed on this row, so every call settles at the text-to-image price."
+    docs_url: https://www.krea.ai/docs/api-reference/krea/krea-2-turbo
+
+  - id: krea.image-gen.krea-2-large
+    capability: image-gen.krea-2-large.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /generate/image/krea/krea-2/large
+    name: "Krea: Krea 2 Large"
+    summary: "Krea's flagship foundation image model. Best for expressive photorealism with full control over style and composition."
+    input:
+      body:
+        prompt: {type: string, required: true, example: "Portrait of a lighthouse keeper at dusk, 35mm film photograph."}
+        aspect_ratio: {type: string, required: true, enum: ["1:1", "4:3", "3:2", "16:9", "2.35:1", "4:5", "2:3", "9:16"], example: "3:2"}
+        resolution: {type: string, required: true, enum: ["1K"], example: "1K"}
+        creativity: {type: string, required: false, default: low, enum: [raw, low, medium, high], example: low, note: "Prompt expansion mode. raw disables it."}
+        seed: {type: number, required: false, example: 42}
+        intensity: {type: integer, required: false, default: 0, min: -100, max: 100, note: "Krea 2 style slider; 0 is neutral."}
+        complexity: {type: integer, required: false, default: 0, min: -100, max: 100, note: "Krea 2 composition-density slider; 0 is neutral."}
+        movement: {type: integer, required: false, default: 0, min: -100, max: 100, note: "Krea 2 motion slider; 0 is neutral."}
+      bodyType: json
+    test_request:
+      body: {prompt: "Portrait of a lighthouse keeper at dusk, 35mm film photograph.", aspect_ratio: "1:1", resolution: "1K", creativity: low}
+    cost:
+      type: per_success
+      value: 0.06
+      currency: USD
+      source: rate_card_api
+      source_url: https://api.krea.ai/openapi.json
+      checked: 2026-09-15
+      confidence: documented
+      note: "Text-to-image tier. The rate card bills $0.065 with image style references and $0.07 with a moodboard; those inputs are not exposed on this row, so every call settles at the text-to-image price."
+    docs_url: https://www.krea.ai/docs/api-reference/krea/krea-2-large
+
+  - id: krea.image-gen.flux-1-dev
+    capability: image-gen.flux-dev.from_text
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /generate/image/bfl/flux-1-dev
+    name: "Black Forest Labs: FLUX.1 [dev]"
+    summary: "Fast, cheap text-to-image. The cheapest image route on Krea."
+    input:
+      body:
+        prompt: {type: string, required: true, example: "A small red kite above a calm beach.", note: "Up to 1,800 characters."}
+        width: {type: number, required: false, default: 1024, min: 512, max: 2368, example: 1024}
+        height: {type: number, required: false, default: 1024, min: 512, max: 2368, example: 1024}
+        steps: {type: integer, required: false, default: 25, min: 1, max: 100, example: 25}
+        guidance_scale: {type: number, required: false, default: 3, min: 0, max: 24, example: 3}
+        seed: {type: number, required: false, example: 42}
+      bodyType: json
+    test_request:
+      body: {prompt: "A small red kite above a calm beach.", width: 1024, height: 1024, steps: 25}
+    cost:
+      type: per_success
+      value: 0.007
+      currency: USD
+      source: rate_card_api
+      source_url: https://api.krea.ai/openapi.json
+      checked: 2026-09-15
+      confidence: documented
+      note: "The rate card lists a flat $0.007 per completed request. OBSERVED 2026-09-15: the meter billed $0.003169 for the default 1024x1024, 25-step request (4.225 s of GPU time), below the card. This route meters GPU time on the account we tested; $0.007 is the card price and the safe reserve, and the observed charge is the floor for the default request. Image-to-image (image_url) and LoRA styles are not exposed on this row."
+    docs_url: https://www.krea.ai/docs/api-reference/image/flux
+
+  - id: krea.image-gen.flux-kontext-dev
+    capability: image-gen.flux-kontext-dev.edit
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /generate/image/bfl/flux-1-kontext-dev
+    name: "Black Forest Labs: FLUX.1 Kontext [dev] (image editing)"
+    summary: "Edit an existing image with a natural-language instruction while keeping the rest of the frame."
+    input:
+      body:
+        prompt: {type: string, required: true, example: "Make it a snowy winter scene."}
+        image_url: {type: string, required: true, example: "https://gen.krea.ai/images/0424f602-2999-4d0c-a46e-39cbf0ef384b.png", note: "The image to edit: a public URL, a base64 data URI, or a Krea asset URL."}
+        width: {type: number, required: false, default: 1024, min: 512, max: 8192, example: 1024}
+        height: {type: number, required: false, default: 1024, min: 512, max: 8192, example: 1024}
+        steps: {type: integer, required: false, default: 28, min: 1, max: 100, example: 28}
+        guidance_scale: {type: number, required: false, default: 3, min: 0, max: 24, example: 3}
+        strength: {type: number, required: false, default: 1, min: 0, max: 1, example: 1, note: "Denoising strength. 0 keeps the input image, 1 fully replaces it."}
+        seed: {type: number, required: false, example: 42}
+      bodyType: json
+    test_request:
+      body: {prompt: "Make it a snowy winter scene.", image_url: "https://gen.krea.ai/images/0424f602-2999-4d0c-a46e-39cbf0ef384b.png", width: 1024, height: 1024}
+    cost:
+      type: per_success
+      value: 0.021
+      currency: USD
+      source: rate_card_api
+      source_url: https://api.krea.ai/openapi.json
+      checked: 2026-09-15
+      confidence: documented
+      note: "Flat $0.021 per completed request."
+    docs_url: https://www.krea.ai/docs/api-reference/image/flux-kontext
+
+  - id: krea.image-gen.nano-banana-pro
+    capability: image-gen.gemini-3-pro-image.generate
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /generate/image/google/nano-banana-pro
+    name: "Google: Nano Banana Pro (Gemini 3 Pro Image)"
+    summary: "Professional-grade image generation and editing with up to 4K output, precise text rendering, and up to 14 reference images."
+    input:
+      body:
+        prompt: {type: string, required: true, example: "A clean editorial illustration of a paper airplane.", note: "At least 3 characters."}
+        aspect_ratio: {type: string, required: false, enum: ["21:9", "1:1", "4:3", "3:2", "2:3", "5:4", "4:5", "3:4", "16:9", "9:16"], example: "1:1"}
+        resolution: {type: string, required: false, default: 1K, enum: [1K, 2K, 4K], example: 1K, note: "4K doubles the price."}
+        image_urls: {type: array, required: false, note: "Reference or source images to edit: public URLs, base64 data URIs, or Krea asset URLs. Up to 14. They do not change the price."}
+      bodyType: json
+    test_request:
+      body: {prompt: "A clean editorial illustration of a paper airplane.", aspect_ratio: "1:1", resolution: 1K}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.resolution: 1K}, value: 0.15}
+        - {when: {body.resolution: 2K}, value: 0.15}
+        - {when: {body.resolution: 4K}, value: 0.30}
+      fallback: {value: 0.30, note: "4K is the highest listed resolution."}
+      currency: USD
+      settle: table
+      source: rate_card_api
+      source_url: https://api.krea.ai/openapi.json
+      checked: 2026-09-15
+      confidence: documented
+    docs_url: https://www.krea.ai/docs/api-reference/image/nano-banana-pro
+
+  - id: krea.video-gen.seedance-2-5
+    capability: video-gen.seedance-2-5.generate
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /generate/video/bytedance/seedance-2-5
+    name: "ByteDance: Seedance 2.5"
+    summary: "Flagship video model: 4-30 second clips up to 1080p with native audio, from a prompt with optional start/end frames and reference images."
+    async:
+      id_from: job_id
+      poll:
+        endpoint: krea.jobs.get
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        success: [completed]
+        failure: [failed, cancelled]
+      result:
+        path: result.urls
+      interval: 10
+    input:
+      body:
+        prompt: {type: string, required: true, example: "A paper boat drifts across a quiet pond at sunrise."}
+        duration: {type: number, required: false, default: 5, min: 4, max: 30, example: 4, note: "Seconds. Price is linear in duration."}
+        resolution: {type: string, required: false, default: 720p, enum: [480p, 720p, 1080p], example: 480p}
+        aspect_ratio: {type: string, required: false, default: "16:9", enum: ["16:9", "4:3", "1:1", "3:4", "9:16", "21:9"], example: "16:9"}
+        generate_audio: {type: boolean, required: false, default: false, note: "Native audio. Does not change the price."}
+        start_image: {type: string, required: false, note: "First frame: a public URL, a base64 data URI, or a Krea asset URL."}
+        end_image: {type: string, required: false, note: "Last frame."}
+        reference_images: {type: array, required: false, note: "Up to 9 reference images. They do not change the price."}
+        seed: {type: integer, required: false}
+        enhance_prompt: {type: boolean, required: false, default: false, note: "Rewrite the prompt with Krea prompt enhancement first."}
+      bodyType: json
+    test_request:
+      body: {prompt: "A paper boat drifts across a quiet pond at sunrise.", duration: 4, resolution: 480p, aspect_ratio: "16:9", generate_audio: false}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.resolution: 480p}, value: 0.1078, times: body.duration}
+        - {when: {body.resolution: 720p}, value: 0.2427, times: body.duration}
+        - {when: {body.resolution: 1080p}, value: 0.4299, times: body.duration}
+      fallback: {value: 12.897, note: "A 30-second 1080p clip is the most expensive combination on this row."}
+      currency: USD
+      settle: table
+      source: rate_card_api
+      source_url: https://api.krea.ai/openapi.json
+      checked: 2026-09-15
+      confidence: documented
+      note: "Per-second rates without a video reference ($0.1078/s at 480p, $0.2427/s at 720p, $0.4299/s at 1080p). The rate card bills a lower per-second rate when reference_videos are passed ($0.0645, $0.1452, $0.2572); that input is not exposed on this row."
+    docs_url: https://www.krea.ai/docs/api-reference/video/seedance-25*
+
+  - id: krea.video-gen.veo-3-1-fast
+    capability: video-gen.veo-3-1-fast.generate
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /generate/video/google/veo-3.1-fast
+    name: "Google: Veo 3.1 Fast"
+    summary: "Faster, affordable Veo 3.1 with optional native audio: 4, 6 or 8 second clips at 720p, 1080p or 4K, from a prompt with optional start/end frames."
+    async:
+      id_from: job_id
+      poll:
+        endpoint: krea.jobs.get
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        success: [completed]
+        failure: [failed, cancelled]
+      result:
+        path: result.urls
+      interval: 10
+    input:
+      body:
+        prompt: {type: string, required: true, example: "A desert oasis at golden hour, slow drone pass."}
+        duration: {type: number, required: false, default: 8, enum: [4, 6, 8], example: 4}
+        resolution: {type: string, required: false, default: 720p, enum: [720p, 1080p, 4K], example: 720p}
+        generate_audio: {type: boolean, required: false, default: false, example: false}
+        aspect_ratio: {type: string, required: false, default: "16:9", enum: ["16:9", "9:16"], example: "16:9"}
+        start_image: {type: string, required: false, note: "First frame: a public URL, a base64 data URI, or a Krea asset URL."}
+        end_image: {type: string, required: false, note: "Last frame."}
+        reference_images: {type: array, required: false, note: "Reference images. They do not change the price."}
+      bodyType: json
+    test_request:
+      body: {prompt: "A desert oasis at golden hour, slow drone pass.", duration: 4, resolution: 720p, generate_audio: false, aspect_ratio: "16:9"}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.resolution: 720p, body.generate_audio: false, body.duration: 4}, value: 0.336}
+        - {when: {body.resolution: 720p, body.generate_audio: false, body.duration: 6}, value: 0.504}
+        - {when: {body.resolution: 720p, body.generate_audio: false, body.duration: 8}, value: 0.672}
+        - {when: {body.resolution: 720p, body.generate_audio: true, body.duration: 4}, value: 0.42}
+        - {when: {body.resolution: 720p, body.generate_audio: true, body.duration: 6}, value: 0.63}
+        - {when: {body.resolution: 720p, body.generate_audio: true, body.duration: 8}, value: 0.84}
+        - {when: {body.resolution: 1080p, body.generate_audio: false, body.duration: 4}, value: 0.42}
+        - {when: {body.resolution: 1080p, body.generate_audio: false, body.duration: 6}, value: 0.63}
+        - {when: {body.resolution: 1080p, body.generate_audio: false, body.duration: 8}, value: 0.84}
+        - {when: {body.resolution: 1080p, body.generate_audio: true, body.duration: 4}, value: 0.504}
+        - {when: {body.resolution: 1080p, body.generate_audio: true, body.duration: 6}, value: 0.756}
+        - {when: {body.resolution: 1080p, body.generate_audio: true, body.duration: 8}, value: 1.008}
+        - {when: {body.resolution: 4K, body.generate_audio: false, body.duration: 4}, value: 1.05}
+        - {when: {body.resolution: 4K, body.generate_audio: false, body.duration: 6}, value: 1.575}
+        - {when: {body.resolution: 4K, body.generate_audio: false, body.duration: 8}, value: 2.10}
+        - {when: {body.resolution: 4K, body.generate_audio: true, body.duration: 4}, value: 1.26}
+        - {when: {body.resolution: 4K, body.generate_audio: true, body.duration: 6}, value: 1.89}
+        - {when: {body.resolution: 4K, body.generate_audio: true, body.duration: 8}, value: 2.52}
+      fallback: {value: 2.52, note: "An 8-second 4K clip with audio is the most expensive combination."}
+      currency: USD
+      settle: table
+      source: rate_card_api
+      source_url: https://api.krea.ai/openapi.json
+      checked: 2026-09-15
+      confidence: documented
+    docs_url: https://www.krea.ai/docs/api-reference/video/veo-31-fast
+
+  - id: krea.video-gen.wan-3-0
+    capability: video-gen.wan-3-0.from_text
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /generate/video/alibaba/wan-3.0
+    name: "Alibaba: Wan 3.0"
+    summary: "2-30 second clips with native audio, from a prompt with optional start/end frames and reference images."
+    async:
+      id_from: job_id
+      poll:
+        endpoint: krea.jobs.get
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        success: [completed]
+        failure: [failed, cancelled]
+      result:
+        path: result.urls
+      interval: 10
+    input:
+      body:
+        prompt: {type: string, required: true, example: "A paper boat drifts across a quiet pond at sunrise."}
+        duration: {type: integer, required: false, default: 5, min: 2, max: 30, example: 2, note: "Seconds. Price is linear in duration."}
+        resolution: {type: string, required: false, default: 720p, enum: [480p, 720p, 1080p], example: 480p}
+        aspect_ratio: {type: string, required: false, default: adaptive, enum: [adaptive, "16:9", "4:3", "1:1", "3:4", "9:16"], example: "16:9"}
+        generate_audio: {type: boolean, required: false, default: true, note: "Native audio. Does not change the price."}
+        enable_prompt_expansion: {type: boolean, required: false, default: true}
+        start_image: {type: string, required: false, note: "First frame: a public URL, a base64 data URI, or a Krea asset URL."}
+        end_image: {type: string, required: false, note: "Last frame."}
+        reference_images: {type: array, required: false, note: "Reference images. They do not change the price."}
+        seed: {type: integer, required: false, min: 0, max: 2147483647}
+      bodyType: json
+    test_request:
+      body: {prompt: "A paper boat drifts across a quiet pond at sunrise.", duration: 2, resolution: 480p, aspect_ratio: "16:9"}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.resolution: 480p}, value: 0.075, times: body.duration}
+        - {when: {body.resolution: 720p}, value: 0.15, times: body.duration}
+        - {when: {body.resolution: 1080p}, value: 0.30, times: body.duration}
+      fallback: {value: 9.00, note: "A 30-second 1080p clip is the most expensive combination."}
+      currency: USD
+      settle: table
+      source: rate_card_api
+      source_url: https://api.krea.ai/openapi.json
+      checked: 2026-09-15
+      confidence: documented
+      note: "Per-second rates: $0.075/s at 480p, $0.15/s at 720p, $0.30/s at 1080p. reference_videos and reference_audios are accepted upstream but not exposed on this row."
+    docs_url: https://www.krea.ai/docs/api-reference/video/wan-30
+
+  - id: krea.video-gen.hailuo-2-3
+    capability: video-gen.hailuo.from_text
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /generate/video/minimax/hailuo-2.3
+    name: "MiniMax: Hailuo 2.3"
+    summary: "6 or 10 second clips at 768p or 1080p with dynamic motion, from a prompt with optional start/end frames."
+    async:
+      id_from: job_id
+      poll:
+        endpoint: krea.jobs.get
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        success: [completed]
+        failure: [failed, cancelled]
+      result:
+        path: result.urls
+      interval: 10
+    input:
+      body:
+        prompt: {type: string, required: true, example: "A paper boat drifts across a quiet pond at sunrise."}
+        duration: {type: number, required: false, default: 6, enum: [6, 10], example: 6}
+        resolution: {type: string, required: false, default: 768p, enum: [768p, 1080p], example: 768p}
+        expand_prompt: {type: boolean, required: false, default: true}
+        start_image: {type: string, required: false, note: "First frame: a public URL, a base64 data URI, or a Krea asset URL."}
+        end_image: {type: string, required: false, note: "Last frame."}
+      bodyType: json
+    test_request:
+      body: {prompt: "A paper boat drifts across a quiet pond at sunrise.", duration: 6, resolution: 768p}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.resolution: 768p, body.duration: 6}, value: 0.294}
+        - {when: {body.resolution: 768p, body.duration: 10}, value: 0.588}
+        - {when: {body.resolution: 1080p, body.duration: 6}, value: 0.5145}
+        - {when: {body.resolution: 1080p, body.duration: 10}, value: 0.5145}
+      fallback: {value: 0.588, note: "A 10-second 768p clip is the most expensive combination."}
+      currency: USD
+      settle: table
+      source: rate_card_api
+      source_url: https://api.krea.ai/openapi.json
+      checked: 2026-09-15
+      confidence: documented
+    docs_url: https://www.krea.ai/docs/api-reference/video/hailuo-23
+
+  - id: krea.video-gen.h3-max-turbo
+    capability: video-gen.h3-max-turbo.generate
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /generate/video/minimax/h3-max-turbo
+    name: "MiniMax: H3 Max Turbo"
+    summary: "The cheapest video route on Krea: 5-15 second clips at 480p, 768p or native 1080p, from a prompt with optional start/end frames."
+    async:
+      id_from: job_id
+      poll:
+        endpoint: krea.jobs.get
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        success: [completed]
+        failure: [failed, cancelled]
+      result:
+        path: result.urls
+      interval: 10
+    input:
+      body:
+        prompt: {type: string, required: true, example: "A paper boat drifts across a quiet pond at sunrise."}
+        duration: {type: integer, required: false, default: 5, min: 5, max: 15, example: 5, note: "Seconds. Price is linear in duration."}
+        resolution: {type: string, required: false, default: 768p, enum: [480p, 768p, 1080p], example: 480p}
+        aspect_ratio: {type: string, required: false, default: "16:9", enum: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"], example: "16:9"}
+        prompt_expansion_mode: {type: string, required: false, default: balanced, enum: [balanced, quality]}
+        start_image: {type: string, required: false, note: "First frame: a public URL, a base64 data URI, or a Krea asset URL."}
+        end_image: {type: string, required: false, note: "Last frame."}
+        seed: {type: integer, required: false, min: 0, max: 2147483647}
+      bodyType: json
+    test_request:
+      body: {prompt: "A paper boat drifts across a quiet pond at sunrise.", duration: 5, resolution: 480p, aspect_ratio: "16:9"}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.resolution: 480p}, value: 0.00625, times: body.duration}
+        - {when: {body.resolution: 768p}, value: 0.01, times: body.duration}
+        - {when: {body.resolution: 1080p}, value: 0.02, times: body.duration}
+      fallback: {value: 0.30, note: "A 15-second 1080p clip is the most expensive combination."}
+      currency: USD
+      settle: table
+      source: rate_card_api
+      source_url: https://api.krea.ai/openapi.json
+      checked: 2026-09-15
+      confidence: documented
+      note: "Per-second rates: $0.00625/s at 480p, $0.01/s at 768p, $0.02/s at 1080p. A 5-second 480p clip is $0.03125."
+    docs_url: https://www.krea.ai/docs/api-reference/video/minimax-h3-max-turbo
