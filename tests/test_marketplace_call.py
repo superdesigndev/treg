@@ -1208,6 +1208,16 @@ def test_exa_catalog_is_platform_priced():
     assert all(cat.cost_view(ep["cost"], "exa")["usd"] > 0 for ep in rows)
 
 
+def test_krea_catalog_is_platform_priced():
+    """Krea's rate card prices every generation in dollars per completed job, so every curated
+    row converts natively; the free job poll is eligible as a free route."""
+    cat = A.catalog_store.load()
+    rows = cat.for_provider("krea")
+    assert len(rows) == 11
+    ineligible = [ep["id"] for ep in rows if not cat.platform_eligible(ep)]
+    assert not ineligible, ineligible
+
+
 def test_reapi_and_piapi_catalogs_are_platform_priced():
     """Both AIGC resellers price in dollars per second or per image, so every generation row
     converts natively; the free poll utilities are eligible as free routes."""

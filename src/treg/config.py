@@ -225,6 +225,7 @@ class Settings(BaseSettings):
     platform_key_replicate: str = ""  # Bearer token for official asynchronous models
     platform_key_reapi: str = ""      # Bearer key; prepaid credits at $0.001, Seedance 2.5 + image models
     platform_key_piapi: str = ""      # X-API-Key; prepaid USD balance, Seedance 2.5 less-restriction + image models
+    platform_key_krea: str = ""       # Bearer key; prepaid USD API balance billed per completed job (Krea 2, Flux, Nano Banana Pro, Seedance 2.5, Veo 3.1 Fast, Wan 3.0, MiniMax)
     # Overflow aggregators (docs/PROVIDER-CAPACITY-PLAN.md §4.3): treg-owned accounts that serve the
     # SAME vendor endpoint when our direct account is out. Env only, never a Secret row, never logged.
     # Not platform_key_* on purpose: they are a credential RUNG (platform-overflow), not a provider.

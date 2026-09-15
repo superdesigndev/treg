@@ -56,6 +56,11 @@ _TABLE: list[tuple[str, int, str, str]] = [
     # reAPI: an empty prepaid balance is a 402 {"error": {"code": 30001, "message": "Insufficient
     # credits. Required: 13856", ...}} (observed 2026-09-14 with a request larger than the balance).
     ("reapi", 402, r"insufficient credits", "balance"),
+    # Krea: an empty prepaid API balance is a 402 {"message": "Your API balance is separate from your
+    # workspace compute balance. Please top up your API balance to continue using the API."}
+    # (https://www.krea.ai/docs/developers/api-keys-and-billing, 2026-09-15 — documented, not forced:
+    # the listing account was funded). In-flight jobs still finish; only new requests are refused.
+    ("krea", 402, r"top up your API balance", "balance"),
     ("trykitt", 418, r"temporarily throttled", "burst"),
     ("trykitt", 402, r"insufficient (?:credits?|funds|balance)|out of credits", "balance"),
     # This API uses 402 for both funds and rate limits. The first matching row wins.

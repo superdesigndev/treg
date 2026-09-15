@@ -877,12 +877,19 @@ async def test_ai_generation_pages_keep_comparisons_curated_and_coverage_in_mode
     rows = video["domains"][0]["rows"]
     # reAPI and PiAPI share per-model join keys on purpose, so the same model over two routes is
     # the one merged row the wall is built for (a real comparison of price and filter policy).
-    shared = {"video-gen.seedance-2-5.generate", "video-gen.seedance-2-5-unrestricted.generate"}
+    # Krea (the model host) joins Seedance 2.5 as a fourth route and pairs with Replicate on
+    # Veo 3.1 Fast, OpenRouter on Wan 3.0 and MiniMax on Hailuo, so those rows compare too.
+    shared = {"video-gen.seedance-2-5.generate", "video-gen.seedance-2-5-unrestricted.generate",
+              "video-gen.veo-3-1-fast.generate", "video-gen.wan-3-0.from_text",
+              "video-gen.hailuo.from_text"}
     assert {row["capability"] for row in rows if row["kind"] != "single"} == shared
     providers = {row["capability"]: {e["provider"] for e in row["endpoints"]} for row in rows}
     # the official OpenRouter route joins the default-filter row; only the resellers relax the filter
-    assert providers["video-gen.seedance-2-5.generate"] == {"reapi", "piapi", "openrouter"}
+    assert providers["video-gen.seedance-2-5.generate"] == {"reapi", "piapi", "openrouter", "krea"}
     assert providers["video-gen.seedance-2-5-unrestricted.generate"] == {"reapi", "piapi"}
+    assert providers["video-gen.veo-3-1-fast.generate"] == {"replicate", "krea"}
+    assert providers["video-gen.wan-3-0.from_text"] == {"openrouter", "krea"}
+    assert providers["video-gen.hailuo.from_text"] == {"minimax", "krea"}
     caps = {row["capability"] for row in rows}
     assert "video-gen.from_text" not in caps and "video-gen.from_image" not in caps
     ids = {endpoint["id"] for row in rows for endpoint in row["endpoints"]}
@@ -890,7 +897,8 @@ async def test_ai_generation_pages_keep_comparisons_curated_and_coverage_in_mode
             "openrouter.video-gen.wan-3-0.from_text",
             "replicate.video-gen.seedance-1-lite",
             "reapi.video-gen.seedance-2-5.unrestricted",
-            "piapi.video-gen.seedance-2-5.less-restriction"} <= ids
+            "piapi.video-gen.seedance-2-5.less-restriction",
+            "krea.video-gen.h3-max-turbo"} <= ids
 
     image = (await clients.get("/catalog/platforms/image-gen")).json()
     assert {section["domain"] for section in image["domains"]} == {"models"}
@@ -898,13 +906,17 @@ async def test_ai_generation_pages_keep_comparisons_curated_and_coverage_in_mode
     shared_images = {"image-gen.gpt-image-2-5.generate", "image-gen.gpt-image-2.generate",
                      "image-gen.gemini-3-pro-image.generate"}
     assert {row["capability"] for row in image_rows if row["kind"] != "single"} == shared_images
-    # every image model row compares the two resellers with Replicate's official model
-    assert all({e["provider"] for e in row["endpoints"]} == {"reapi", "piapi", "replicate"}
-               for row in image_rows if row["capability"] in shared_images)
+    # every image model row compares the two resellers with Replicate's official model; Krea
+    # hosts Nano Banana Pro too, so it joins the Gemini 3 Pro Image row
+    image_providers = {row["capability"]: {e["provider"] for e in row["endpoints"]} for row in image_rows}
+    assert image_providers["image-gen.gpt-image-2-5.generate"] == {"reapi", "piapi", "replicate"}
+    assert image_providers["image-gen.gpt-image-2.generate"] == {"reapi", "piapi", "replicate"}
+    assert image_providers["image-gen.gemini-3-pro-image.generate"] == {"reapi", "piapi", "replicate", "krea"}
     assert "image-gen.from_text" not in {row["capability"] for row in image_rows}
     image_ids = {endpoint["id"] for row in image_rows for endpoint in row["endpoints"]}
     assert {"minimax.image-gen.from_text", "replicate.image-gen.flux-schnell",
-            "reapi.image-gen.gemini-3-pro-image", "piapi.image-gen.gpt-image-2-5"} <= image_ids
+            "reapi.image-gen.gemini-3-pro-image", "piapi.image-gen.gpt-image-2-5",
+            "krea.image-gen.krea-2-turbo", "krea.image-gen.flux-1-dev"} <= image_ids
 
 
 def test_a_missing_catalog_directory_is_an_empty_catalog_not_a_crash(tmp_path):
