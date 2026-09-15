@@ -454,10 +454,15 @@ async def test_compare_titles_carry_the_cheapest_price(clients: AsyncClient):
     assert "$" in title and len(title) <= 65, title
 
 
-async def test_provider_title_leads_with_pricing(clients: AsyncClient):
+async def test_provider_title_matches_h1(clients: AsyncClient):
+    """Title matches H1: `{H1} | treg.to`, respecting _TITLE_MAX truncation."""
     html = (await clients.get("/tools/hunter")).text
     title = re.search(r"<title>(.*?)</title>", html, re.S).group(1)
-    assert title.startswith("Hunter API pricing") and "$" in title, title
+    h1 = re.search(r"<h1>(.*?)</h1>", html, re.S).group(1)
+    assert title.startswith("Hunter:"), title
+    assert title.endswith(" | treg.to"), title
+    title_h1_part = title.rsplit(" | treg.to", 1)[0]
+    assert title_h1_part == h1 or h1.startswith(title_h1_part), (title, h1)
     assert len(title) <= 65, title
 
 

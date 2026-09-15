@@ -2353,28 +2353,25 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         desc = (f"Use {display} from Claude Code, ChatGPT or any MCP agent: {len(eps)} tools "
                 "through one treg.to token. Calls on your own connection are never metered.")
     else:
-        # The title leads with the pricing intent: Search Console shows "{provider} api pricing" is
-        # what reaches these pages ("linkedin api pricing", "1688 api pricing" — the site's one
-        # non-brand click), and the number is the part no vendor page prints.
-        # `cheapest` already names its unit ("$0.00245/result"), so the title does not say "per
-        # call" beside it — a per-result price is not a per-call one.
+        # Title matches H1: `{Provider}: {n} tools from {price}`.
         # `cheapest` carries its own billing unit ("$0.00245/result", "$0.0089/call"), so the copy
         # never says "per call" next to it: a per-result or per-success rate is not a per-call one.
-        title = (f"{display} API pricing: from {cheapest}, no signup | treg.to" if cheapest
-                 else f"{display} API pricing, no signup | treg.to")
+        title = (f"{display}: {len(eps)} tools from {cheapest} | treg.to" if cheapest
+                 else f"{display}: {len(eps)} tools | treg.to")
         if len(title) > _TITLE_MAX:
-            title = (f"{display} API pricing: from {cheapest} | treg.to" if cheapest
-                     else f"{display} API pricing | treg.to")
+            title = (f"{display}: from {cheapest} | treg.to" if cheapest
+                     else f"{display}: {len(eps)} tools | treg.to")
         desc = (f"{display} API pricing at the provider's own rate, with no {display} signup: {len(eps)} tools "
                 f"{'from ' + cheapest + ' ' if cheapest else ''}through one treg.to key or MCP server"
                 f"{', ' + measured if measured else ''}. Use it from Claude Code, ChatGPT or any agent.")
 
     if mixed:
-        title = f"{display} API pricing: {cheapest}, platform + BYOK | treg.to"
+        # Title matches H1: `{Provider}: {n} tools, platform or your own key`.
+        title = f"{display}: {len(eps)} tools, platform or your own key | treg.to"
         if len(title) > _TITLE_MAX:
-            title = f"{display} API pricing: {cheapest} | treg.to"
+            title = f"{display}: {len(eps)} tools, platform + BYOK | treg.to"
         if len(title) > _TITLE_MAX:
-            title = f"{display} API pricing: platform + BYOK | treg.to"
+            title = f"{display}: platform + BYOK | treg.to"
         desc = (f"{display} on treg: {len(platform_eps)} tools with platform or your own key, "
                 f"{byok_only} BYOK only. Compare access, billing units and live verification for every tool.")
     if oauth_metered:
