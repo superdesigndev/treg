@@ -740,6 +740,9 @@ pricing", "1688 api pricing"), not "api for agents". So:
   falls back to `{Provider} API pricing: from $X | treg.to` past 65 characters; own-account
   providers get `{Provider}: connect your own account | treg.to`). **Title and H1 now match**:
   metered H1 is `{Provider}: {n} tools from {price}`, own-account H1 is `{Provider}: connect your own account`.
+  **MCP-intent own-account providers** (`_MCP_INTENT_PROVIDERS`: google-search-console, google-analytics,
+  semrush) lead with MCP instead: `{Provider} MCP: connect your own account | treg.to` for Title and H1,
+  and the meta description names MCP plus connect-own-account plus treg.to as one MCP for the catalog.
   The kicker carries the measured line (calls observed, ok rate weighted by DECIDED calls, median p50)
   read through `_observed_or_empty`. Descriptions go through `_serp_desc` (sentence-fit under
   Google's cut), and the HowTo's steps mirror the visible setup section in order — the one-line

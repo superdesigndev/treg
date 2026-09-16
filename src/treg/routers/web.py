@@ -1949,6 +1949,10 @@ _AGENTS = [("ChatGPT", "openai.png"), ("Claude", "claude-color.png"),
 
 _AGENT_CDN = "https://unpkg.com/@lobehub/icons-static-png@latest/light/"
 
+# Own-account providers where GSC shows strong "{provider} mcp" impressions with near-zero clicks.
+# Their titles/H1s lead with MCP intent instead of the generic "connect your own account" pattern.
+_MCP_INTENT_PROVIDERS = {"google-search-console", "google-analytics", "semrush"}
+
 
 def _agent_ptiles() -> str:
     return "".join(
@@ -2094,12 +2098,17 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
               else f"{len(eps)} tools · from {_esc_html(cheapest)} · $0.000 markup")
     if measured:
         kicker += f" · {_esc_html(measured)}"
-    lede = (f"{_esc_html(blurb)} Connect your own {esc_d} account once and your agent uses it "
+    mcp_intent = svc in _MCP_INTENT_PROVIDERS
+    lede = (f"{_esc_html(blurb)} One MCP server for the whole catalog. Connect your own {esc_d} "
+            "account once and your agent uses it from then on. Calls on your own connection are never metered."
+            if is_oauth and mcp_intent else
+            f"{_esc_html(blurb)} Connect your own {esc_d} account once and your agent uses it "
             "from then on, through one treg.to token. Calls on your own connection are never metered."
             if is_oauth else
             f"{_esc_html(blurb)} {len(eps)} tools for your agent through one treg.to key, priced "
             f"at the provider's own rate{' from ' + _esc_html(cheapest) if cheapest else ''}, with no {esc_d} signup.")
-    h1_text = (f"{esc_d}: connect your own account" if is_oauth
+    h1_text = (f"{esc_d} MCP: connect your own account" if is_oauth and mcp_intent
+               else f"{esc_d}: connect your own account" if is_oauth
                else (f"{esc_d}: {len(eps)} tools from {_esc_html(cheapest)}" if cheapest
                      else f"{esc_d}: {len(eps)} tools"))
     if mixed:
@@ -2349,9 +2358,14 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
     body = _TOOLS_CSS + hero + flow + setup + tryit + why + tools_sec + used_sec + alt_sec + faq + copy_js
 
     if is_oauth:
-        title = f"{display}: connect your own account | treg.to"
-        desc = (f"Use {display} from Claude Code, ChatGPT or any MCP agent: {len(eps)} tools "
-                "through one treg.to token. Calls on your own connection are never metered.")
+        if mcp_intent:
+            title = f"{display} MCP: connect your own account | treg.to"
+            desc = (f"{display} MCP server: connect your own account and call {len(eps)} tools "
+                    "through treg.to, one MCP for the whole catalog. Never metered on your connection.")
+        else:
+            title = f"{display}: connect your own account | treg.to"
+            desc = (f"Use {display} from Claude Code, ChatGPT or any MCP agent: {len(eps)} tools "
+                    "through one treg.to token. Calls on your own connection are never metered.")
     else:
         # The title leads with the pricing intent: Search Console shows "{provider} api pricing" is
         # what reaches these pages ("linkedin api pricing", "1688 api pricing" — the site's one
