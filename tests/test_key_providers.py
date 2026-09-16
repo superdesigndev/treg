@@ -164,6 +164,9 @@ def test_aigc_token_providers_are_offerable_without_deployment_credentials():
     assert P.get("reapi").probe_path == "/tasks/probe"
     assert P.get("reapi").probe_reject_statuses == (401, 403)
     assert P.get("piapi").auth_kind == "key" and P.get("piapi").token_header == "X-API-Key"
+    assert P.get("muapi").auth_kind == "key" and P.get("muapi").token_header == "x-api-key"
+    assert P.get("muapi").probe_path == "/api/v1/account/balance"
+    assert P.get("muapi").probe_reject_statuses == (403,)
 
 
 # ---- connect-by-key ----------------------------------------------------------------------

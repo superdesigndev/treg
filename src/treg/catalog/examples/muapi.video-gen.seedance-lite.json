@@ -1,0 +1,10 @@
+{
+  "request_id": "215332d3-3647-470f-ba12-4fc3bbfa2ac9",
+  "status": "processing",
+  "cost": {
+    "amount_usd": 0.0,
+    "amount_credits": 0,
+    "bonus_credits_used": 0,
+    "refunded": false
+  }
+}
