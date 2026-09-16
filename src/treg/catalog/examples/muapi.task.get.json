@@ -1,0 +1,16 @@
+{
+  "id": "2212f267-f808-42af-b6bc-92a8a636150f",
+  "status": "completed",
+  "images": [
+    "https://d3adwkbyhxyrtq.cloudfront.net/muapi/homepage/flux-schnell.avif"
+  ],
+  "outputs": [
+    "https://d3adwkbyhxyrtq.cloudfront.net/muapi/homepage/flux-schnell.avif"
+  ],
+  "cost": {
+    "amount_usd": 0.0,
+    "amount_credits": 0,
+    "bonus_credits_used": 0,
+    "refunded": false
+  }
+}

@@ -877,12 +877,15 @@ async def test_ai_generation_pages_keep_comparisons_curated_and_coverage_in_mode
     rows = video["domains"][0]["rows"]
     # reAPI and PiAPI share per-model join keys on purpose, so the same model over two routes is
     # the one merged row the wall is built for (a real comparison of price and filter policy).
-    shared = {"video-gen.seedance-2-5.generate", "video-gen.seedance-2-5-unrestricted.generate"}
+    # Muapi also relays the same underlying Seedance 1 Lite model as Replicate, joining that row too.
+    shared = {"video-gen.seedance-2-5.generate", "video-gen.seedance-2-5-unrestricted.generate",
+              "video-gen.seedance-1-lite.from_text"}
     assert {row["capability"] for row in rows if row["kind"] != "single"} == shared
     providers = {row["capability"]: {e["provider"] for e in row["endpoints"]} for row in rows}
     # the official OpenRouter route joins the default-filter row; only the resellers relax the filter
     assert providers["video-gen.seedance-2-5.generate"] == {"reapi", "piapi", "openrouter"}
     assert providers["video-gen.seedance-2-5-unrestricted.generate"] == {"reapi", "piapi"}
+    assert providers["video-gen.seedance-1-lite.from_text"] == {"replicate", "muapi"}
     caps = {row["capability"] for row in rows}
     assert "video-gen.from_text" not in caps and "video-gen.from_image" not in caps
     ids = {endpoint["id"] for row in rows for endpoint in row["endpoints"]}
@@ -896,11 +899,14 @@ async def test_ai_generation_pages_keep_comparisons_curated_and_coverage_in_mode
     assert {section["domain"] for section in image["domains"]} == {"models"}
     image_rows = [row for section in image["domains"] for row in section["rows"]]
     shared_images = {"image-gen.gpt-image-2-5.generate", "image-gen.gpt-image-2.generate",
-                     "image-gen.gemini-3-pro-image.generate"}
+                     "image-gen.gemini-3-pro-image.generate", "image-gen.flux-schnell.from_text"}
     assert {row["capability"] for row in image_rows if row["kind"] != "single"} == shared_images
-    # every image model row compares the two resellers with Replicate's official model
-    assert all({e["provider"] for e in row["endpoints"]} == {"reapi", "piapi", "replicate"}
-               for row in image_rows if row["capability"] in shared_images)
+    image_providers = {row["capability"]: {e["provider"] for e in row["endpoints"]} for row in image_rows}
+    # every reAPI/PiAPI image model row compares the two resellers with Replicate's official model;
+    # Flux Schnell instead compares Replicate's official route with Muapi's own relay.
+    assert all(image_providers[cap] == {"reapi", "piapi", "replicate"}
+               for cap in shared_images - {"image-gen.flux-schnell.from_text"})
+    assert image_providers["image-gen.flux-schnell.from_text"] == {"replicate", "muapi"}
     assert "image-gen.from_text" not in {row["capability"] for row in image_rows}
     image_ids = {endpoint["id"] for row in image_rows for endpoint in row["endpoints"]}
     assert {"minimax.image-gen.from_text", "replicate.image-gen.flux-schnell",

@@ -1582,6 +1582,33 @@ PIAPI = OAuthProvider(
     probe_path="/account/info",  # free; a bad key answers 401 {"message":"Failed to verify api key"}
 )
 
+MUAPI = OAuthProvider(
+    service="muapi",
+    display_name="Muapi",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Muapi API key",
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://muapi.ai/access-keys",
+    setup_action_label="Get your Muapi API key",
+    setup_steps=(
+        "Sign in to muapi.ai and open Access Keys.",
+        "Create a key and copy it.",
+    ),
+    setup_note="Generations are billed per call; the account-balance probe is free.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Generate images, video and audio through one unified API wrapping 500+ third-party models (FLUX, Seedance, and more).",
+    base_url="https://api.muapi.ai",
+    docs_url="https://muapi.ai/docs",
+    # Free; a bad key answers 403 {"detail":"Not authorized: missing or invalid credentials",
+    # "error":{"code":"FORBIDDEN", ...}} (live 2026-09-16). A valid key returns the account balance.
+    probe_path="/api/v1/account/balance",
+    probe_reject_statuses=(403,),
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -3019,7 +3046,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
         APOLLO, PDL, AKTA, HUNTER, SUMBLE, HARVESTAPI, DROPLEADS, QUICKENRICH, PROSPEO, TRYKITT, CONTACTOUT, MILLIONVERIFIER, CRUNCHBASE, MINIMAX, OPENROUTER, REPLICATE,
-        REAPI, PIAPI,
+        REAPI, PIAPI, MUAPI,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers

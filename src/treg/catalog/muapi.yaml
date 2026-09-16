@@ -1,0 +1,118 @@
+provider: muapi
+source:
+  docs: https://muapi.ai/docs
+  curated: 2026-09-16
+pricing_url: https://muapi.ai/pricing
+limits: "Generation is asynchronous: POST to a model's endpoint answers with `request_id` + `status: processing`; poll GET /api/v1/predictions/{request_id}/result until `status` is `completed` or `failed`. Output URLs are CloudFront-hosted; download promptly. Muapi wraps 500+ third-party models behind one API — the underlying provider is never named in responses."
+proposed_capabilities:
+  # Shared with replicate.yaml: the same underlying model (Black Forest Labs FLUX Schnell,
+  # ByteDance Seedance 1 Lite) reached through a different relay merges onto one model-wall row.
+  image-gen.flux-schnell.from_text: "Generate images with FLUX Schnell"
+  video-gen.seedance-1-lite.from_text: "Generate a Seedance 1 Lite video from text or an image"
+async:
+  id_from: request_id
+  poll:
+    endpoint: muapi.task.get
+    param: {in: pathParams, name: request_id}
+  status:
+    path: status
+    success: [completed]
+    failure: [failed, cancelled]
+  result:
+    path: outputs
+  interval: 3
+endpoints:
+  - id: muapi.task.get
+    kind: utility
+    capability: video-gen.task.status
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /api/v1/predictions/{request_id}/result
+    name: "Check a Muapi prediction"
+    summary: "Read a prediction's status (processing, completed, failed, cancelled) and its output URLs."
+    resource_ownership:
+      requires: {kind: "poll:muapi.task.get", param: request_id}
+    async: false
+    input:
+      pathParams:
+        request_id: {type: string, required: true, example: "2212f267-f808-42af-b6bc-92a8a636150f"}
+    test_request: {pathParams: {request_id: "2212f267-f808-42af-b6bc-92a8a636150f"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Prediction status checks are free."}
+    verified: 2026-09-16
+    example_response: examples/muapi.task.get.json
+    docs_url: https://muapi.ai/docs
+
+  - id: muapi.image-gen.flux-schnell
+    capability: image-gen.flux-schnell.from_text
+    platform: image-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /api/v1/flux-schnell-image
+    name: "Black Forest Labs: FLUX Schnell"
+    summary: "Generate up to four images quickly from a text prompt with FLUX Schnell."
+    input:
+      body:
+        prompt: {type: string, required: true, example: "A cozy mountain cabin surrounded by pine trees during snowfall."}
+        width: {type: integer, required: false, default: 1024, min: 128, max: 2048, step: 64, example: 1024}
+        height: {type: integer, required: false, default: 1024, min: 128, max: 2048, step: 64, example: 1024}
+        num_images: {type: integer, required: false, default: 1, min: 1, max: 4, example: 1}
+      bodyType: json
+    test_request:
+      body: {prompt: "A cozy mountain cabin surrounded by pine trees during snowfall.", width: 1024, height: 1024, num_images: 1}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.num_images: 1}, value: 0.003}
+        - {when: {body.num_images: 2}, value: 0.006}
+        - {when: {body.num_images: 3}, value: 0.009}
+        - {when: {body.num_images: 4}, value: 0.012}
+      fallback: {value: 0.012, note: "Four images at $0.003 each is the request maximum."}
+      currency: USD
+      settle: table
+      source: docs
+      source_url: https://muapi.ai/pricing
+      checked: 2026-09-16
+      confidence: documented
+      note: "$0.003 per image, billed per output. A sandbox key (0-cost) live-verified the request/response shape on 2026-09-16."
+    verified: 2026-09-16
+    example_response: examples/muapi.image-gen.flux-schnell.json
+    docs_url: https://muapi.ai/docs
+
+  - id: muapi.video-gen.seedance-lite
+    capability: video-gen.seedance-1-lite.from_text
+    platform: video-gen
+    domain: models
+    scope: any_account
+    method: POST
+    path: /api/v1/seedance-lite-t2v
+    name: "ByteDance: Seedance 1 Lite (text-to-video)"
+    summary: "Generate a Seedance 1 Lite video from a text prompt, 3-12 seconds, at 480p/720p/1080p."
+    input:
+      body:
+        prompt: {type: string, required: true, example: "Generate subtle zoom-in and wind effect to a portrait of a smiling child in a meadow."}
+        aspect_ratio: {type: string, required: false, default: "16:9", enum: ["16:9", "9:16", "1:1", "4:3", "3:4", "9:21"], example: "16:9"}
+        resolution: {type: string, required: false, default: 480p, enum: [480p, 720p, 1080p], example: 480p}
+        duration: {type: integer, required: false, default: 5, min: 3, max: 12, example: 5}
+        camera_fixed: {type: boolean, required: false, default: false, example: false}
+      bodyType: json
+    test_request:
+      body: {prompt: "Generate subtle zoom-in and wind effect to a portrait of a smiling child in a meadow.", aspect_ratio: "16:9", resolution: 480p, duration: 5, camera_fixed: false}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.resolution: 480p}, value: 0.02, times: body.duration}
+        - {when: {body.resolution: 720p}, value: 0.036, times: body.duration}
+        - {when: {body.resolution: 1080p}, value: 0.10, times: body.duration}
+      fallback: {value: 1.21, note: "Twelve seconds of 1080p output at the documented per-second rate ($1.20), rounded up a cent to clear float comparison."}
+      currency: USD
+      settle: table
+      source: docs
+      source_url: https://muapi.ai/pricing
+      checked: 2026-09-16
+      confidence: documented
+      note: "Billed per second of output at the resolution's rate (480p $0.10, 720p $0.18, 1080p $0.50 per 5s, i.e. /5 for the per-second rate above). A sandbox key (0-cost) live-verified the request/response shape on 2026-09-16."
+    verified: 2026-09-16
+    example_response: examples/muapi.video-gen.seedance-lite.json
+    docs_url: https://muapi.ai/docs
