@@ -573,9 +573,9 @@ def openrouter_platform(monkeypatch):
 
 @pytest.fixture
 def legacy_async_platform(monkeypatch):
-    for provider in ("apify", "brightdata", "companyenrich", "oceanio"):
+    for provider in ("apify", "brightdata", "companyenrich", "oceanio", "dataforseo"):
         monkeypatch.setenv(f"TREG_PLATFORM_KEY_{provider.upper()}", "test-platform-token")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apify,brightdata,companyenrich,oceanio")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apify,brightdata,companyenrich,oceanio,dataforseo")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -810,6 +810,103 @@ async def test_legacy_byok_async_utility_remains_unrestricted(
     monkeypatch.setattr(call_service, "relay", fake_relay)
     response = await clients.get("/call/apify.web.scrape.job.status?run_id=arbitrary")
     assert response.status_code == 200
+
+
+async def test_dataforseo_review_batch_can_fetch_each_result_without_another_charge(
+    clients: AsyncClient, monkeypatch, legacy_async_platform,
+):
+    """Submission pays once; every returned id is owned, including non-first batch entries."""
+    ids = ["review-task-one", "review-task-two", "review-task-three"]
+    created = {"status_code": 20000, "cost": 0.009, "tasks": [
+        {"id": task_id, "status_code": 20100, "cost": 0.003, "result": None}
+        for task_id in ids
+    ]}
+    relayed = []
+
+    async def fake_submit(request, url, *args, **kwargs):
+        relayed.append(url)
+        return _response(200, created)
+
+    monkeypatch.setattr(call_service, "relay", fake_submit)
+    submitted = await clients.post(
+        "/call/dataforseo.x.business-data-google-reviews-task-post",
+        json=[{"keyword": "Example business", "language_code": "en",
+               "location_code": 2840, "depth": 20, "priority": 2} for _ in ids],
+    )
+    assert submitted.status_code == 200
+    assert submitted.json() == created
+    assert submitted.headers["X-Treg-Cost-Micro"] == "9000"
+
+    # Keep provider-native pending, successful and failed responses intact; none bills again.
+    for task_id, status in zip(ids, [40602, 20000, 40400]):
+        result = {"status_code": 20000, "cost": 0, "tasks": [
+            {"id": task_id, "status_code": status, "result": [] if status == 20000 else None}
+        ]}
+
+        async def fake_get(request, url, *args, **kwargs):
+            relayed.append(url)
+            return _response(200, result)
+
+        monkeypatch.setattr(call_service, "relay", fake_get)
+        response = await clients.get(
+            "/call/dataforseo.x.business-data-google-reviews-task-get", params={"id": task_id},
+        )
+        assert response.status_code == 200
+        assert response.json() == result
+        assert response.headers["X-Treg-Cost-Micro"] == "0"
+        assert relayed[-1] == f"https://api.dataforseo.com/v3/business_data/google/reviews/task_get/{task_id}"
+
+    async with session_maker() as db:
+        records = (await db.execute(select(AsyncResourceRecord).where(
+            AsyncResourceRecord.provider == "dataforseo"))).scalars().all()
+    assert {row.resource_id for row in records} == set(ids)
+    assert {row.source_call_id for row in records} == {submitted.headers["X-Treg-Call-Id"]}
+
+    async def must_not_relay(*args, **kwargs):
+        raise AssertionError("unowned review task reached the shared provider account")
+
+    monkeypatch.setattr(call_service, "relay", must_not_relay)
+    endpoint = "/call/dataforseo.x.business-data-google-reviews-task-get"
+    unknown = await clients.get(endpoint, params={"id": "unknown-task"})
+    assert unknown.status_code == 403
+    other = await clients.post("/users", json={"email": "review-stranger@example.com"})
+    denied = await clients.get(endpoint, params={"id": ids[1]},
+                               headers={"X-Treg-Token": other.json()["token"]})
+    assert denied.status_code == 403
+    assert denied.json()["detail"]["error"] == "async_resource_not_owned"
+    ambiguous = await clients.get(endpoint, params=[("id", ids[0]), ("id", ids[1])])
+    assert ambiguous.status_code == 400
+
+
+async def test_dataforseo_review_fetch_byok_does_not_require_platform_submission(
+    clients: AsyncClient, monkeypatch, legacy_async_platform,
+):
+    await clients.post("/secrets", json={"name": "dataforseo", "value": "own-login:own-password"})
+
+    async def fake_get(*args, **kwargs):
+        return _response(200, {"tasks": [{"id": "own-account-task", "result": []}]})
+
+    monkeypatch.setattr(call_service, "relay", fake_get)
+    result = await clients.get(
+        "/call/dataforseo.x.business-data-google-reviews-task-get?id=own-account-task")
+    assert result.status_code == 200
+    assert "X-Treg-Cost-Micro" not in result.headers  # Own-key calls are unmetered.
+    async with session_maker() as db:
+        assert (await db.execute(select(Hold))).scalars().all() == []
+
+
+@pytest.mark.parametrize(("document", "path", "expected"), [
+    ({"data": {"id": "single"}}, "data.id", ["single"]),
+    ({"tasks": [{"id": "one"}, {"id": "two"}]}, "tasks.*.id", ["one", "two"]),
+    ({"tasks": [{"id": "one"}, {"id": "two"}]}, "tasks.1.id", ["two"]),
+    ({"tasks": [{"id": "one"}]}, "tasks.5.id", []),
+    ({"tasks": [{"id": None}, {}, {"id": ""}, {"id": False}, {"id": {}},
+               {"id": []}, {"id": 12}]}, "tasks.*.id", [12]),
+    ({"tasks": None}, "tasks.*.id", []),
+    ({"tasks": {"id": "not-an-array"}}, "tasks.*.id", []),
+])
+def test_resource_paths_extract_only_scalar_ids(document, path, expected):
+    assert task_app._resource_values(document, path) == expected
 
 
 async def _submit_minimax(clients: AsyncClient, monkeypatch, task_id: str) -> str:

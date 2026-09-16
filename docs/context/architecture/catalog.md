@@ -786,8 +786,22 @@ ids, CompanyEnrich bulk job ids and LeadsForge enrichment/followers job ids with
 billing behavior. Ownership is only as trustworthy as the producer's answer: a provider that dedupes
 on `Idempotency-Key` would hand one org another's job under a shared label, which is why the relay
 re-scopes that header per org on treg's key ([proxy-model](proxy-model.md)). The validator requires
-declared parameters and exact non-empty `{kind, path}` / `{kind, param}` shapes. BYOK does not use
-this metadata because the provider account itself belongs to the caller.
+declared parameters and exact non-empty `{kind, path}` / `{kind, param}` shapes. Producer paths
+support numeric array indexes and `*` array expansion (for example `tasks.*.id`); only non-empty
+strings and integer ids are recorded, never nulls, booleans or container values. Scalar async and
+billing paths do not accept wildcards. BYOK does not use this metadata because the provider account
+itself belongs to the caller.
+
+The Google reviews pair is hand-curated together in `dataforseo.yaml`, retaining the existing
+`dataforseo.x.business-data-google-reviews-task-post` id so the ingester excludes its route.
+Submission records every returned task id under
+`fetch:dataforseo.x.business-data-google-reviews-task-get`. The matching GET utility accepts `id`
+and retrieves that team's results for free within the provider's 30-day retention. Both endpoints
+forbid cache reuse. Submission keeps its existing response-time billing; it has no terminal-settlement
+descriptor or `--await` support. Its input note tells agents to fetch each id and retry pending
+results without resubmitting. Tasks predating recorded ownership remain refused on the shared key;
+this change does not infer ownership from an id supplied by a caller or backfill historical jobs.
+
 Formal descriptors also materialize their poll/fetch ids under endpoint-namespaced resource kinds;
 their utility rows declare matching `requires` rules. The frozen `AsyncTaskRecord` remains the
 compatibility authority for tasks created before the resource table existed, while the explicit

@@ -81,6 +81,8 @@ ENDPOINT_STATUSES = {"retired", "broken"}
 QUERY_ARRAY_ENCODINGS = {"json", "comma", "repeated"}
 ASYNC_PARAM_LOCATIONS = {"pathParams", "queryParams"}
 JSON_PATH = re.compile(r"(?:[A-Za-z_][A-Za-z0-9_-]*|[0-9]+)(?:\.(?:[A-Za-z_][A-Za-z0-9_-]*|[0-9]+))*")
+# Only ownership producers are plural; async status/result and billing paths stay scalar.
+RESOURCE_PATH = re.compile(r"(?:[A-Za-z_][A-Za-z0-9_-]*|[0-9]+|\*)(?:\.(?:[A-Za-z_][A-Za-z0-9_-]*|[0-9]+|\*))*")
 # Only the unit real traffic has settled (OpenRouter's `usage.cost` in dollars). A token unit
 # returns with the first metered token-priced listing, together with its fx rule and a live test.
 USAGE_UNITS = {"usd"}
@@ -541,7 +543,7 @@ def check_resource_ownership(rule: object, where: str, input_schema: object,
                 if (not isinstance(item, dict) or set(item) != {"kind", "path"}
                         or not isinstance(item.get("kind"), str) or not item["kind"].strip()
                         or not isinstance(item.get("path"), str)
-                        or not JSON_PATH.fullmatch(item["path"])):
+                        or not RESOURCE_PATH.fullmatch(item["path"])):
                     fail(errors, where, "each resource_ownership.produces item needs exactly kind and JSON path")
 
 

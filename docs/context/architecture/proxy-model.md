@@ -510,6 +510,10 @@ Legacy async pairs use catalog `resource_ownership` metadata and `AsyncResourceR
 check without changing their existing settlement behavior. Formal submissions mirror their
 poll/fetch ids into that table too, so removing a live descriptor reference cannot make its utility
 fail open; pre-migration pending rows still authorize through their frozen descriptor.
+`remember_platform_resources` expands array paths such as `tasks.*.id` through `_resource_values`,
+so a batch of DataForSEO Google review submissions authorizes every returned task, not only the
+first. The review GET route is an authorized free fetch and relays pending, ready and failed
+provider responses unchanged; it does not defer or repeat the submission's charge.
 Extended task consumers whose producer provenance is not modeled are catalogued as BYOK-only via
 `platform_blocked`, rather than accepting an unverifiable task id on the shared account.
 Unknown and cross-org ids receive the same 403 without contacting the provider. Fetch-mode result ids
