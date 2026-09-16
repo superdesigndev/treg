@@ -264,6 +264,13 @@ treg org access <member> --tools a,b          # per-member tool access (admin+)
 protocol, discovery, auth, CLI, skills. One fetch teaches an agent the whole registry.
 - **The dashboard** at [treg.to](https://treg.to) — full CRUD, a guided
 tutorial (Help → Tutorial), and copyable setup instructions for your agents.
+- **Measured, not claimed.** The routed endpoints are benchmarked on public, dated cohorts with every raw response
+downloadable: contact and company enrichment (17 providers, receipts per call) on
+[enrichmentapiguide.com](https://enrichmentapiguide.com/choose/contact-enrichment-api), SEO data routes (50 queries, 12 routes,
+SERP completeness, keyword coverage, latency and cost) on [seodatabench.com](https://seodatabench.com/benchmarks/seo-api-latency),
+and ad-library routes (10 advertisers, 10 routes across Meta, Google, TikTok and LinkedIn) on
+[adapiguide.com](https://adapiguide.com/choose/ad-library-api). These sites are published by the Treg team and say so on every page;
+the point is that the numbers can be re-run.
 - **The API** — everything the CLI does is plain HTTP; interactive OpenAPI docs live at `/docs`.
 The proxy endpoint is `/call/{...}`; all endpoints take the `X-Treg-Token` header.
 
