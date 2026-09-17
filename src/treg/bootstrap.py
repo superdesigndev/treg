@@ -145,6 +145,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/resources', ('GET',), 'resources_page'),
     ('/blog', ('GET',), 'blog_index'),
     ('/blog/people-search-bench', ('GET',), 'blog_people_search_bench'),
+    ('/blog/work-email-finding-bench', ('GET',), 'blog_work_email_finding_bench'),
     ('/grokbot', ('GET',), 'grokbot_page'),
     ('/fable', ('GET',), 'fable_page'),
     ('/astra', ('GET',), 'astra_page'),

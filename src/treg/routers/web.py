@@ -2804,6 +2804,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/docs", "", "0.7"),
     ("/resources", "resources.html", "0.8"),
     ("/blog", "", "0.7"),
+    ("/blog/work-email-finding-bench", "", "0.6"),
     ("/blog/people-search-bench", "", "0.6"),
     ("/vendor-listing", "vendor-listing.md", "0.5"),
     ("/support", "support.html", "0.4"),
@@ -3240,6 +3241,8 @@ _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
 # have their own top-level routes), but they sit prominently on the /blog index above launches.
 _BLOG_POSTS: list[tuple[str, str, str, str]] = [
     # (slug under /blog/, title, date, one-line blurb)
+    ("work-email-finding-bench", "Work Email Finding: a 292 Person Receipt", "2026-09-16",
+     "Quality tie across vendors. Cost is the gap: $0.0056 vs $0.0395 per correct."),
     ("people-search-bench", "#1 on People Search Bench", "2026-09-14",
      "treg.to scores 80.0% on recruiting, 78.2% on B2B prospecting. 119 real tasks, same agent."),
 ]
@@ -3353,6 +3356,152 @@ async def blog_people_search_bench():
                  "treg.to scores 80.0% on recruiting, 78.2% on B2B prospecting on People Search Bench "
                  "by LessieAI. 119 real tasks, same agent with and without the plugin.",
                  "/blog/people-search-bench", body, ld)
+
+
+@app.get("/blog/work-email-finding-bench", include_in_schema=False)
+async def blog_work_email_finding_bench():
+    """Receipt post: work-email finding across vendors on a 292-person list with published answers.
+    Measured 2026-09-16. Quality is a tie; cost is the gap."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+
+    body = (
+        '<main class="wrap" style="max-width:780px">'
+        '<div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/blog">Blog</a> / '
+        '<a href="/blog/work-email-finding-bench">Work Email Finding</a></div>'
+        '<h1>Work Email Finding: a 292 Person Receipt</h1>'
+        '<p class="lede">Measured 2026-09-16. Quality is a tie across vendors. Cost is the gap.</p>'
+        '</div>'
+        '<section class="cat">'
+        '<p>We ran a 292-person list (88 orgs, 16 industries, name + domain only) through five '
+        'aggregators and compared the returned emails against each org&#x27;s published team-page address. '
+        'Every person had a public team-page email, so find rates are inflated vs. a cold list; '
+        'cost per row and exact-match rate are the clean comparisons.</p>'
+        '<h2 style="margin-top:32px;font-size:1.1em">The run</h2>'
+        '<p><code>treg.people.email.find</code> routed across catalog providers that answered '
+        '(QuickEnrich ~61%, Kitt ~36%, plus Tomba, DropLeads, Hunter, Findymail). The other columns '
+        'represent alternative aggregators, not the underlying providers.</p>'
+        '<div style="overflow-x:auto">'
+        '<table style="width:100%;margin:24px 0;border-collapse:collapse;font-size:0.95em">'
+        '<thead><tr style="border-bottom:1px solid var(--border)">'
+        '<th style="text-align:left;padding:8px 0"></th>'
+        '<th style="text-align:right;padding:8px 12px">treg</th>'
+        '<th style="text-align:right;padding:8px 12px">Clay</th>'
+        '<th style="text-align:right;padding:8px 12px">Monid</th>'
+        '<th style="text-align:right;padding:8px 12px">Freckle</th>'
+        '<th style="text-align:right;padding:8px 12px">Deepline</th>'
+        '</tr></thead>'
+        '<tbody>'
+        '<tr><td style="padding:6px 0">Found</td>'
+        '<td style="text-align:right;padding:6px 12px">289</td>'
+        '<td style="text-align:right;padding:6px 12px">280</td>'
+        '<td style="text-align:right;padding:6px 12px">250</td>'
+        '<td style="text-align:right;padding:6px 12px">281</td>'
+        '<td style="text-align:right;padding:6px 12px">266</td></tr>'
+        '<tr><td style="padding:6px 0">Exact match</td>'
+        '<td style="text-align:right;padding:6px 12px">264</td>'
+        '<td style="text-align:right;padding:6px 12px">262</td>'
+        '<td style="text-align:right;padding:6px 12px">233</td>'
+        '<td style="text-align:right;padding:6px 12px">263</td>'
+        '<td style="text-align:right;padding:6px 12px">253</td></tr>'
+        '<tr><td style="padding:6px 0">Success (exact/292)</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">90.4%</td>'
+        '<td style="text-align:right;padding:6px 12px">89.7%</td>'
+        '<td style="text-align:right;padding:6px 12px">79.8%</td>'
+        '<td style="text-align:right;padding:6px 12px">90.1%</td>'
+        '<td style="text-align:right;padding:6px 12px">86.6%</td></tr>'
+        '<tr><td style="padding:6px 0">Precision (exact/found)</td>'
+        '<td style="text-align:right;padding:6px 12px">91.3%</td>'
+        '<td style="text-align:right;padding:6px 12px">93.6%</td>'
+        '<td style="text-align:right;padding:6px 12px">93.2%</td>'
+        '<td style="text-align:right;padding:6px 12px">93.6%</td>'
+        '<td style="text-align:right;padding:6px 12px">95.1%</td></tr>'
+        '<tr><td style="padding:6px 0">Off-domain</td>'
+        '<td style="text-align:right;padding:6px 12px">5</td>'
+        '<td style="text-align:right;padding:6px 12px">4</td>'
+        '<td style="text-align:right;padding:6px 12px">0</td>'
+        '<td style="text-align:right;padding:6px 12px">4</td>'
+        '<td style="text-align:right;padding:6px 12px">0</td></tr>'
+        '<tr style="border-top:1px solid var(--border)"><td style="padding:6px 0">Cost (finding only)</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">$1.49</td>'
+        '<td style="text-align:right;padding:6px 12px">$10.34</td>'
+        '<td style="text-align:right;padding:6px 12px">$5.98</td>'
+        '<td style="text-align:right;padding:6px 12px">$11.22</td>'
+        '<td style="text-align:right;padding:6px 12px">$23.38</td></tr>'
+        '<tr><td style="padding:6px 0">Per row</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">$0.0051</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0354</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0205</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0384</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0801</td></tr>'
+        '<tr><td style="padding:6px 0">Per correct</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">$0.0056</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0395</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0257</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0427</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0924</td></tr>'
+        '<tr><td style="padding:6px 0">Hit latency (median)</td>'
+        '<td style="text-align:right;padding:6px 12px">0.44s</td>'
+        '<td style="text-align:right;padding:6px 12px">11.2s</td>'
+        '<td style="text-align:right;padding:6px 12px">2.0s</td>'
+        '<td style="text-align:right;padding:6px 12px">65s</td>'
+        '<td style="text-align:right;padding:6px 12px;color:var(--muted)">batch</td></tr>'
+        '</tbody>'
+        '</table>'
+        '</div>'
+        '<p style="color:var(--muted);font-size:0.85em;margin-top:8px">'
+        'Monid = Hunter only. Freckle = LeadMagic&rarr;Findymail. Deepline = ZeroBounce-first play. '
+        'Clay dollars are at Clay&#x27;s Launch data-credit list price ($0.05/credit on 2026-09-16).</p>'
+        '<h2 style="margin-top:32px;font-size:1.1em">What the numbers say</h2>'
+        '<ul style="margin:16px 0;padding-left:24px">'
+        '<li style="margin:8px 0"><strong>Quality is a tie.</strong> treg, Clay and Freckle land at '
+        '262, 262 and 263 exact matches; the difference is noise.</li>'
+        '<li style="margin:8px 0"><strong>Different-from-published is mostly not invalid.</strong> '
+        'Many returned addresses are valid aliases. Exact-match is a floor, not a ceiling.</li>'
+        '<li style="margin:8px 0"><strong>Cost is structural.</strong> Credit-based waterfalls run '
+        '7x to 16x treg per correct row. Deepline is an outlier because ZeroBounce fires on every '
+        'pattern guess.</li>'
+        '<li style="margin:8px 0"><strong>Latency only matters for per-call paths.</strong> '
+        'treg (0.44s) and Monid (2.0s) are per-call; do not rank batch tools on speed.</li>'
+        '<li style="margin:8px 0"><strong>Aggregator columns are routes, not products.</strong> '
+        'Each column represents how that aggregator dispatched the query to its underlying providers.</li>'
+        '</ul>'
+        '<h2 style="margin-top:32px;font-size:1.1em">When to choose Clay</h2>'
+        '<p>Choose Clay when you want a visual table, the broader Clay ecosystem for GTM orchestration, '
+        'or a seat that already includes enrichment inside a bigger workflow. Spreadsheet-native teams '
+        'may prefer the Clay UI over API calls.</p>'
+        '<p>Choose treg.to when you want a metered catalog call with a known provider price and a dated '
+        'receipt. See <a href="/pricing">how billing works</a>.</p>'
+        '<h2 style="margin-top:32px;font-size:1.1em">Disclosures</h2>'
+        '<ul style="margin:16px 0;padding-left:24px;color:var(--muted);font-size:0.9em">'
+        '<li style="margin:6px 0"><strong>List bias:</strong> every person had a published team-page '
+        'email, so find rates are inflated vs. a cold list.</li>'
+        '<li style="margin:6px 0"><strong>MillionVerifier re-verify:</strong> we re-verified addresses '
+        'with MillionVerifier after Kitt ran out of credits. MV served 0 cache hits. Kitt is also in '
+        'the treg catalog, so its hits are not independent for the treg column.</li>'
+        '<li style="margin:6px 0"><strong>treg bug:</strong> 3 rows returned HTTP 502 (route_failed) '
+        'and were scored as misses. $0 charged for those rows.</li>'
+        '</ul>'
+        '<p style="margin-top:24px">Related: '
+        '<a href="/people-search">People Search</a>, '
+        '<a href="/workflows/find-and-verify-a-lead-list">Build a Verified Lead List</a>, '
+        '<a href="/use-cases/lead-enrichment-for-ai-agents">Waterfall Enrichment</a>.</p>'
+        '</section>'
+        '</main>'
+    )
+
+    ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
+        {"@type": "ListItem", "position": 3, "name": "Work Email Finding",
+         "item": base + "/blog/work-email-finding-bench"}]}]
+
+    return _page("Work Email Finding: 292 Person Bench | treg.to",
+                 "Quality tie across vendors, cost is the gap. Measured 2026-09-16: "
+                 "treg $0.0056/correct vs Clay $0.0395/correct on 292 people.",
+                 "/blog/work-email-finding-bench", body, ld)
 
 
 @app.get("/resources", include_in_schema=False)
