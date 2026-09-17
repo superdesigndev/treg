@@ -2421,6 +2421,13 @@ _PV_CSS = """<style>
 .pv-why{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:14px 0}
 .pv-why div{background:#fff;border:1px solid var(--line,#e6e6df);border-radius:12px;padding:14px 16px;font-size:13.5px;color:#4a4a46}
 .pv-why b{display:block;margin-bottom:5px;color:#191917;font-size:14px}
+.pv-receipts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:18px 0}
+.pv-receipt{background:#fff;border:1px solid var(--line,#e6e6df);border-radius:12px;padding:16px 18px}
+.pv-receipt h4{margin:0 0 8px;font-size:14px;color:#191917}
+.pv-receipt .date{font-size:12px;color:var(--muted,#6b6b66);margin-bottom:10px}
+.pv-receipt ul{margin:0;padding:0 0 0 16px;font-size:13px;color:#4a4a46;line-height:1.6}
+.pv-receipt .total{margin-top:10px;font-weight:600;color:#191917;font-size:13.5px}
+.pv-receipt a{color:inherit;text-decoration:underline;text-underline-offset:2px}
 </style>"""
 
 
@@ -2449,6 +2456,14 @@ async def pricing_page():
          "Anything that is yours: calls on your team's own provider keys (your key always wins), "
          "your team's own registered tools and skills, and your own connected accounts (Google "
          "Analytics, Search Console, Google Ads, Business Profile and the rest)."),
+        ("What is the difference between call cost and usable-result cost?",
+         "A raw API call is one charge at the provider's rate. A usable result (like a verified "
+         "deliverable lead) often takes multiple calls and filters out misses, so the per-result "
+         "cost is higher. The receipts above show both: the total metered and the per-usable-row cost."),
+        ("Are own-key calls billed?",
+         "No. Register your team's provider key and treg.to uses it instead of the shared key. "
+         "Those calls are never metered. The receipts still show the shared-key rate for comparison, "
+         "as in the Meta Ad Library example where the team's own Apify key made the Meta calls free."),
         ("What happens when the balance runs out?",
          "Metered calls stop with a clear error until you top up. Calls on your own keys and your "
          "own tools are unaffected."),
@@ -2481,6 +2496,49 @@ async def pricing_page():
             "connected accounts are yours; calls on them are never metered.</div>"
             "<div><b>Runs dry, fails loud</b>When the balance is empty, metered calls stop with a "
             "clear error until you top up. Your own-key calls keep working.</div></div>"
+            "<h2>Understanding costs</h2>"
+            "<p>Every workflow receipt on this site comes from a real run, not a rate card. "
+            "Four patterns that show what genuinely costs.</p>"
+            '<div class="pv-why">'
+            "<div><b>Billing unit</b>Metered per catalog call (or per success where the provider "
+            "bills that way) at the provider's own rate, no markup. Prepaid balance, $1.00 free to start.</div>"
+            "<div><b>Call cost vs usable-result cost</b>A raw API call is one charge; a deliverable "
+            "row can cost more when multi-step work filters out misses. The receipts below show both.</div>"
+            "<div><b>Misses</b>Invalid, empty, or catch-all outcomes. On per-success tools, a miss "
+            "settles at $0.00. On per-call tools, every call costs regardless of what comes back.</div>"
+            "<div><b>BYOK (bring your own key)</b>Register your team's provider key and treg.to uses "
+            "it instead. Calls on your own key are never metered. Receipts still show the shared-key "
+            "rate for comparison.</div></div>"
+            "<h2>Receipts from real runs</h2>"
+            "<p>These figures are what the ledger settled, not rate-card estimates.</p>"
+            '<div class="pv-receipts">'
+            '<div class="pv-receipt"><h4>Enrichment: verified lead list</h4>'
+            '<div class="date">2026-08-26 · <a href="/workflows/find-and-verify-a-lead-list">workflow</a></div>'
+            "<ul><li>50 companies in, 27 verified deliverable leads out</li>"
+            "<li>$3.62 total metered ($0.13 per deliverable lead)</li>"
+            "<li>Miss handling: Hunter and LeadMagic's role finder settled 23 calls at $0.00 "
+            "(per-success, no hit); Findymail and Tomba billed all calls at list rate</li></ul>"
+            '<div class="total">Multi-step cost: $0.07 per row, $0.13 per usable lead</div></div>'
+            '<div class="pv-receipt"><h4>SEO: keyword demand</h4>'
+            '<div class="date">2026-09-14 · <a href="/workflows/keyword-demand-to-ad-budget">workflow</a></div>'
+            "<ul><li>50 keywords expanded, volume and trend priced</li>"
+            "<li>$0.11 total: $0.018 ideas, $0.09 volume (batch), $0.0012 trend</li>"
+            "<li>Volume call billed per request, not per keyword (50 keywords cost one fee)</li></ul>"
+            '<div class="total">Three calls, $0.11</div></div>'
+            '<div class="pv-receipt"><h4>Ad library: Meta and Google ads</h4>'
+            '<div class="date">2026-09-14 · <a href="/workflows/mine-competitor-meta-ads-as-creative-pack">workflow</a></div>'
+            "<ul><li>20 Meta ads and 17 Google ads pulled for Notion</li>"
+            "<li>Meta calls ran on team's own Apify key (not metered)</li>"
+            "<li>Google call metered: $0.015 on treg.to's shared key</li>"
+            "<li>Shared-key rate for Meta if needed: $0.105 for probe and 20 ads</li></ul>"
+            '<div class="total">BYOK in action: own key $0, shared key $0.12</div></div>'
+            '<div class="pv-receipt"><h4>Creator discovery: Instagram</h4>'
+            '<div class="date">2026-09-14 · <a href="/workflows/discover-creators-in-a-niche">workflow</a></div>'
+            "<ul><li>25 fitness creators discovered, profiles and posts pulled</li>"
+            "<li>$0.20 total: $0.15 discovery, $0.025 profiles, $0.024 posts</li>"
+            "<li>Discovery billed per creator returned; a zero-match page costs nothing</li></ul>"
+            '<div class="total">Per-creator cost: $0.008</div></div>'
+            "</div>"
             "<h2>Example rates, by platform</h2>"
             "<p>Rendered from the live catalog; every tool page carries its own rate.</p>"
             f"<ul>{lis}</ul>"
