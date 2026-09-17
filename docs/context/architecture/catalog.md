@@ -175,6 +175,7 @@ sources:
   - tests/test_aigc_pr_b.py
   - tests/test_catalog_api.py
   - tests/test_catalog_validate.py
+  - scripts/catalog_verify.py
 related:
   - architecture/money.md
   - architecture/proxy-model.md
@@ -288,6 +289,16 @@ The computed cost view uses a `cost.table` fallback as its scalar validated uppe
 eligibility and compact displays. Runtime charging evaluates the first matching row against request
 values plus catalog defaults and freezes that settlement basis. Terminal usage or the recorded table
 evidence feeds the shared money settlement function; provider variation stays declarative in YAML.
+
+## FaceCheck own-key face search (2026-09-11)
+
+`facecheck.yaml` lists upload, search/status, input-image removal and account info from the native
+OpenAPI. Every operation is explicitly platform-blocked and uncached. POST/body polling and
+multipart search mutation cannot use the current shared-account ownership/async contract, so this
+addition supplies no platform billing or automatic waiting. All four operations were live-verified
+with a real own-key account on 2026-09-15. See [FaceCheck](facecheck.md) for the
+call sequence, observed billing (one full search = 3 credits; upload, demo search, polls and
+deletion free) and the bogus-token rejection path.
 
 ## QuickEnrich enrichment (2026-09-08)
 
@@ -670,6 +681,20 @@ endpoints:
     example_response: examples/tikhub.tiktok.user.profile.json   # written by catalog_verify.py
     docs_url: https://docs.tikhub.io/…
 ```
+
+### File upload templates and verification prerequisites
+
+`call_template` recognizes `format: binary` on body fields (including array items) and emits CLI
+`--upload` arguments for multipart files and accompanying required fields. File paths remain
+`@/path/to/file` placeholders for the caller to replace; they are never JSON body values. This is
+shared catalog presentation behavior, not a provider-specific relay rewrite. Generated GET commands
+omit request bodies, including multipart files, because clients and proxies may discard them.
+
+An operation that needs a fresh upload, task ID or destructive setup must not use a placeholder
+`test_request` to qualify for `verified`. Keep manual evidence in the provider's context fragment
+and scrubbed examples; omit the automated stamp until a replayable request exists.
+`catalog_verify.py` prints SKIP for absent/empty test requests, including in single-endpoint runs.
+FaceCheck's upload/search/delete follow this rule; its account-info probe remains replayable.
 
 ### Async descriptors
 

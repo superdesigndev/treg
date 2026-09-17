@@ -13,6 +13,7 @@ import json
 import re
 import shlex
 
+import pytest
 from httpx import AsyncClient
 
 from treg.domain.catalog import store as cs
@@ -703,6 +704,30 @@ def test_serpstat_jsonrpc_id_is_required_in_call_template():
     data = json.loads(argv[argv.index("--data") + 1])
     assert data["id"] == "1"
     assert data["method"] == "SerpstatBacklinksProcedure.getSummaryV2"
+
+
+@pytest.mark.parametrize("file_spec", [
+    {"type": "string", "format": "binary"},
+    {"type": "array", "items": {"type": "string", "format": "binary"}},
+])
+@pytest.mark.parametrize("method", ["POST", "GET"])
+def test_file_templates_keep_required_form_fields_and_quote_values(file_spec, method):
+    import shlex
+
+    endpoint = {
+        "id": "example.upload", "method": method,
+        "input": {"body": {
+            "file": {**file_spec, "required": True},
+            "caption": {"type": "string", "required": True, "example": "a 'quoted' caption"},
+            "enabled": {"type": "boolean", "required": True, "example": False},
+            "optional_file": {**file_spec, "required": False},
+        }},
+    }
+    argv = shlex.split(cs.call_template(endpoint))
+    assert "--data" not in argv
+    uploads = [argv[i + 1] for i, arg in enumerate(argv) if arg == "--upload"]
+    assert uploads == (["file=@/path/to/file", "caption=a 'quoted' caption", "enabled=false"]
+                       if method == "POST" else [])
 
 
 def test_call_template_falls_back_to_documented_examples(tmp_path):

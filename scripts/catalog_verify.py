@@ -137,6 +137,7 @@ def main() -> int:
                 continue
             treq = ep.get("test_request")
             if not treq:
+                print(f"SKIP {eid} — no replayable test_request; prepare required inputs and verify manually")
                 continue  # extended entries without one were never callable; nothing to replay
             path = ep["path"]
             for k, v in (treq.get("pathParams") or {}).items():

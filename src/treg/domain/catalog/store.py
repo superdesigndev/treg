@@ -1271,8 +1271,8 @@ def _required_examples(params, authorization_method: str = "") -> dict:
 def call_template(ep: dict) -> str:
     """A paste-ready `treg call …` line for this endpoint.
 
-    Values come from `test_request` first — that request was actually run against the live API on the
-    verification date, so the line is known-good rather than merely well-shaped.
+    Values come from `test_request` first, then required input examples. File paths and missing
+    examples remain explicit placeholders: the caller must supply their own input before running.
 
     The target is the ENDPOINT ID, not `<provider> <path>`: the id form works with no registered
     tool (the server walks the marketplace credential ladder), and path `{placeholders}` ride as
@@ -1310,10 +1310,22 @@ def call_template(ep: dict) -> str:
     # arguments but still requires a JSON body — and dropping `--data '{}'` from the line hands the
     # reader a command that differs from the one that was tested, on handlers that reject an empty
     # body outright.
-    # treg can faithfully relay a caller-supplied GET body, but generated shell commands never add
-    # one: too many clients/proxies silently discard it. The stored test request can still preserve
-    # the provider's unusual verification contract without printing a misleading paste-ready line.
-    if body is not None and ep["method"] != "GET":
+    body_specs = inp.get("body") or {}
+    def binary(spec):
+        return isinstance(spec, dict) and (
+            spec.get("format") == "binary"
+            or (isinstance(spec.get("items"), dict) and spec["items"].get("format") == "binary")
+        )
+
+    if ep["method"] != "GET" and isinstance(body_specs, dict) and any(binary(spec) for spec in body_specs.values()):
+        # CLI --upload owns multipart encoding and its boundary; never JSON-encode file parts.
+        for name, value in (body or {}).items():
+            values = ["@/path/to/file"] if binary(body_specs.get(name)) else (
+                value if isinstance(value, list) else [value])
+            for item in values:
+                parts += ["--upload", shlex.quote(f"{name}={wire_value(item)}")]
+    # Generated commands omit GET bodies because clients/proxies may discard them.
+    elif body is not None and ep["method"] != "GET":
         parts += ["--data", shlex.quote(json.dumps(
             body, separators=(",", ":"), ensure_ascii=False))]
     return " ".join(parts)

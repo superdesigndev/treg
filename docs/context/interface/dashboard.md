@@ -16,6 +16,7 @@ sources:
   - src/treg/domain/identity/session.py
   - src/treg/routers/api_keys.py
   - tests/test_api_keys.py
+  - tests/test_catalog_upload_browser.py
 related:
   - interface/api.md
   - interface/landing-sandbox.md
@@ -26,6 +27,11 @@ related:
 ---
 
 # Web dashboard (Phase 1)
+
+File-upload endpoints (binary body fields, including arrays) use a CLI-upload panel in the Try
+drawer. It displays the server-generated `call_template` and tells callers to replace the local
+file path. The JSON-only Agent/API/Manual recipes are hidden for those endpoints, and `runEpTry`
+refuses to send a JSON request even if invoked directly. Other endpoints retain the existing tabs.
 
 ## Team API Keys
 

@@ -1,0 +1,69 @@
+{
+  "id_search": "EXAMPLE_SEARCH_ID",
+  "message": "Search Completed",
+  "progress": 100,
+  "error": null,
+  "code": null,
+  "output": {
+    "items": [
+      {
+        "guid": "example0000000000000000000000000guid0",
+        "score": 100,
+        "group": 1,
+        "base64": "data:image/webp;base64,UklGRlI\u2026(thumbnail truncated)",
+        "url": "https://example.org/page-about-the-person",
+        "index": 0,
+        "indexDB": 400000000,
+        "seen": null
+      },
+      {
+        "guid": "example0000000000000000000000000guid1",
+        "score": 100,
+        "group": 1,
+        "base64": "data:image/webp;base64,UklGRlI\u2026(thumbnail truncated)",
+        "url": "https://example.net/another-public-mention",
+        "index": 0,
+        "indexDB": 400000001,
+        "seen": null
+      }
+    ],
+    "TookSeconds": 6.1616532,
+    "TookSecondsDownload": 3.978567,
+    "TookSecondsQueue": 6.3991489,
+    "SearchedFaces": 1474093912,
+    "FreeRam": 258.28549575805664,
+    "demo": false,
+    "face_per_sec": 239236754,
+    "Performance": "Searched 1,474,093,912 faces, Search 6.2 sec 239,236,754 faces/sec, Download 4.0 sec, Time in Q 6.4 sec, FREE RAM 258.3 GB",
+    "max_score": 100,
+    "images_in_bundle": 9,
+    "scaned_till_index": 1474093912,
+    "type": "PAID",
+    "HasItems": true,
+    "time": 1789464345,
+    "query_hash": "EXAMPLEHASH01",
+    "flags": [
+      {
+        "type": "SCAMALERT",
+        "text": "Scam Alert!"
+      },
+      {
+        "type": "MANY",
+        "text": "Many Accounts <span style=\"white-space:normal\"> (11&nbsp;Facebook, 6&nbsp;Twitter, 4&nbsp;Linkedin)</span>"
+      }
+    ],
+    "id_search": "EXAMPLE_SEARCH_ID"
+  },
+  "input": [
+    {
+      "base64": "data:image/webp;base64,UklGRl\u2026(thumbnail truncated)",
+      "id_pic": "EXAMPLE_PIC_ID",
+      "url_source": null,
+      "svg_anim": null
+    }
+  ],
+  "facemon_status": null,
+  "facemon_last_scann": null,
+  "new_seen_count": 0,
+  "new_from": null
+}

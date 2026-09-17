@@ -3802,7 +3802,7 @@ product, including per-customer usage tracking and billing.</pre>
             </select>
           </div>
 
-          <div class="seg" style="margin-bottom:16px">
+          <div v-if="!epTryRequiresUpload" class="seg" style="margin-bottom:16px">
             <button :class="{on:epTryTab==='agent'}" @click="epTryTab='agent'">AI Agent</button>
             <button :class="{on:epTryTab==='cli'}" @click="epTryTab='cli'">CLI</button>
             <button :class="{on:epTryTab==='api'}" @click="epTryTab='api'">API</button>
@@ -3810,7 +3810,14 @@ product, including per-customer usage tracking and billing.</pre>
           </div>
 
           <!-- AI AGENT — one-line setup (token embedded here only), then the prompt to run this endpoint -->
-          <template v-if="epTryTab==='agent'">
+          <template v-if="epTryRequiresUpload">
+            <div class="lbl">Upload a local file with the CLI</div>
+            <p class="sub">This endpoint needs a file upload. Replace <code>/path/to/file</code> with your file path, then run this command in a signed-in treg CLI. This form cannot send files.</p>
+            <div class="lc-codewrap"><button class="lc-cp" @click="copyStart(epTry.call_template,'ep-upload')">{{startCopied==='ep-upload'?'✓ copied':'copy'}}</button><pre style="padding-top:40px;white-space:pre-wrap;word-break:break-all">{{epTry.call_template}}</pre></div>
+            <p class="sub" v-if="epTry.input && epTry.input.note">{{epTry.input.note}}</p>
+            <button v-if="epTryAccess && epTryAccess.tier==='none' && mkKnown(epTry.provider)" class="btn sm" @click="goByok(epTry.provider)">Connect your own key</button>
+          </template>
+          <template v-else-if="epTryTab==='agent'">
             <div class="lbl">1 · Set up with your agent</div>
             <p class="sub" style="margin:4px 0 8px">One line — the agent reads llms.txt, installs the CLI and signs in as you. Token &amp; team are baked in.</p>
             <div class="lc-codewrap"><button class="lc-cp" @click="copyStart(epTrySetupLine,'ep-setup')">{{startCopied==='ep-setup'?'✓ copied':'copy'}}</button><pre style="white-space:pre-wrap;word-break:break-all">{{epTrySetupLine}}</pre></div>
@@ -4384,6 +4391,8 @@ createApp({
     epTryQuery(){ return this.epTryVisibleParams.filter(p=>p.value!=='' && p.value!=null)
       .map(p=>encodeURIComponent(p.name)+'='+encodeURIComponent(p.value)).join('&'); },
     epTryShellBody(){ return "'"+String(this.epTryBody).replace(/'/g,"'\"'\"'")+"'"; },
+    epTryRequiresUpload(){ return Object.values(this.epTry?.input?.body||{}).some(p=>
+      p && (p.format==='binary'||p.items?.format==='binary')); },
     epTryCliCall(){ if(!this.epTry) return '';
       const args=this.epTryVisibleParams.filter(p=>p.value!=='' && p.value!=null)
         .map(p=>`--query ${p.name}=${/\s/.test(String(p.value))?JSON.stringify(String(p.value)):p.value}`).join(' ');
@@ -6255,6 +6264,7 @@ createApp({
       }).catch(()=>{});
     },
     async runEpTry(){
+      if(this.epTryRequiresUpload){ this.epTryResp='Use the CLI upload command and supply a local file.'; return; }
       const e=this.epTry; if(!e) return; this.epTryBusy=true; const t0=performance.now();
       try{
         const qs=this.epTryVisibleParams.filter(p=>String(p.value)!=='').map(p=>encodeURIComponent(p.name)+'='+encodeURIComponent(p.value)).join('&');
