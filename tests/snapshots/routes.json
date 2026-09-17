@@ -814,6 +814,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "blog_work_email_finding_bench",
+    "path": "/blog/work-email-finding-bench"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "resources_page",
     "path": "/resources"
   },

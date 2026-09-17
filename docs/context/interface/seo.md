@@ -92,7 +92,7 @@ server-side first-touch attribution across signup, first successful call and top
 | `/people-search` + `/grokbot` + `/fable` + `/ugc` | The launch-campaign landings, bundled files served by their own routes (`FileResponse`, no-cache). All are first-class pages: canonical, OG tags, listed in `_SITEMAP_PAGES` at 0.8 — `/people-search` is "Claude for people search" (the enrichment launch film's destination), `/grokbot` the "Grok Bot for Outreach" animatic plus the six-bot treg team gallery (ICP Map Coach, Lookalike Scout, Rival Watch Desk, SERP Watch Team, Creator Shortlist Crew, and GTM Expert, each linked directly to its `x.ai/bot/…` page). Its nav, hero and closing CTAs remain the pair **"Setup treg"**, primary — signed in it goes to `/app`, signed out it opens the page's own sign-in modal in place (the `/people-search` pattern; the `href` `/app?ref=grokbot` is only the no-JS fallback) and stashes `treg-ref=grokbot` so the first-run welcome preselects Grok Bot, and **"Install plugin"** → the x.ai plugin page, secondary. `/fable` (file `fable-gtm.html`) is the Claude Fable 5.1 launch: one terminal session that reads the market, plans, spawns four agents and shows one result window at a time. `/ugc` (file `ugc.html`) is the AI UGC workflow article as a page: an arcads-style hero of generated clips, then the five steps told as one pinned Claude Code session on the left that crossfades between steps while the artifacts scroll on the right (trend grid, a five-model character board with real-image showcases, Seedance talking heads, the demo, hook variants and the bill), then pricing against subscription tools and the catalog grid. Its asset paths are **relative** (`media/…`, `logos/…`) so the same file previews from `file://`; that only holds while the routes stay slashless. All are registered in `bootstrap.py`'s route-ownership manifest like every other route. |
 | `/catalog` | The dashboard SPA, in public mode — the marketplace's Catalog view on an indexable URL. |
 | `/catalog/<slug>` | The same SPA, on the platform view for one shelf. |
-| `/tools/<service>` | The catalog sliced by **vendor**, fully server-rendered (`_page`, no SPA): one public page per provider. Titles lead with API pricing; mixed-access heroes show the full inventory with platform/BYOK counts. Own-account providers get `{Provider}: connect your own account`. The page shows logo, category, blurb from the oauth-provider registry, setup/MCP instructions, all tools for inventories of up to 50, otherwise up to 8 tools per platform (with a catalog link for larger sets), why-treg cards, alternatives, and a metered-vs-own-account FAQ. JSON-LD: BreadcrumbList (with `treg.to` not bare `treg`), ItemList, FAQPage, HowTo. Tool counts and prices are live from `catalog_store`, never hardcoded. No em-dashes in page copy. There is no provider index page: /providers earned no searches and the provider links live in /catalog's prerender instead. `/tools/<service>` is safe from shadowing the API (the API's GETs are `/tools` and `/tools/by-name/…`). A signed-out `GET /app/marketplace/<service>` 302s to `/tools/<service>`. `tests/test_provider_pages.py` pins the route shape. |
+| `/tools/<service>` | The catalog sliced by **vendor**, fully server-rendered (`_page`, no SPA): one public page per provider. Title matches H1 (metered: `{Provider}: {n} tools from {price}`, mixed: `{Provider}: {n} tools, platform or your own key`, own-account: `{Provider}: connect your own account`); mixed-access heroes show the full inventory with platform/BYOK counts. The page shows logo, category, blurb from the oauth-provider registry, setup/MCP instructions, all tools for inventories of up to 50, otherwise up to 8 tools per platform (with a catalog link for larger sets), why-treg cards, alternatives, and a metered-vs-own-account FAQ. JSON-LD: BreadcrumbList (with `treg.to` not bare `treg`), ItemList, FAQPage, HowTo. Tool counts and prices are live from `catalog_store`, never hardcoded. No em-dashes in page copy. There is no provider index page: /providers earned no searches and the provider links live in /catalog's prerender instead. `/tools/<service>` is safe from shadowing the API (the API's GETs are `/tools` and `/tools/by-name/…`). A signed-out `GET /app/marketplace/<service>` 302s to `/tools/<service>`. `tests/test_provider_pages.py` pins the route shape. |
 | `/docs` | Server-rendered API reference built from `app.openapi()`. |
 | `/docs/api` | FastAPI's Swagger UI, moved here and `Disallow`ed. ReDoc is off. |
 | `/media/og.png` | The 1200×630 social card, served by the pre-existing `/media` mount. |
@@ -731,23 +731,29 @@ What links what now, and where it is generated:
 Both reverse indexes are derived from the same tables the pages render from, so a new job or
 workflow is cross-linked the moment it is routed, and nothing is listed by hand.
 
-### Titles: the pricing intent
+### Titles: Title matches H1
 
-The non-brand queries that reach the site are "{provider} api pricing" phrasings ("linkedin api
-pricing", "1688 api pricing"), not "api for agents". So:
+`/tools/<provider>` titles match their H1s:
 
-- `/tools/<provider>` titles lead with it: `{Provider} API pricing: from $0.00245/result, no signup | treg.to`
-  (the price label carries its own billing unit, so the copy never says "per call" beside it;
-  falls back to `{Provider} API pricing: from $X | treg.to` past 65 characters; own-account
-  providers get `{Provider}: connect your own account | treg.to`). **Title and H1 now match**:
-  metered H1 is `{Provider}: {n} tools from {price}`, own-account H1 is `{Provider}: connect your own account`.
-  The kicker carries the measured line (calls observed, ok rate weighted by DECIDED calls, median p50)
-  read through `_observed_or_empty`. Descriptions go through `_serp_desc` (sentence-fit under
-  Google's cut), and the HowTo's steps mirror the visible setup section in order — the one-line
-  install first, direct MCP second — because schema describing a different flow than the page
-  shows is the mismatch Google treats as a violation. The setup line on these pages is the
-  canonical `set up treg — {base}/llms.txt` (the em-dash is the documented exception, and a
-  colon variant that shipped briefly forked the product's one paste-line).
+- Metered: `{Provider}: {n} tools from {price} | treg.to` (falls back to `{Provider}: from {price} | treg.to`
+  or `{Provider}: {n} tools | treg.to` past 65 characters)
+- Mixed (platform + BYOK): `{Provider}: {n} tools, platform or your own key | treg.to` (falls back to
+  `{Provider}: {n} tools, platform + BYOK | treg.to` or `{Provider}: platform + BYOK | treg.to` past 65 characters)
+- Own-account: `{Provider}: connect your own account | treg.to`
+- **MCP-intent own-account providers** (`_MCP_INTENT_PROVIDERS`: google-search-console, google-analytics,
+  semrush) lead with MCP instead: `{Provider} MCP: connect your own account | treg.to` for Title and H1,
+  and the meta description names MCP plus connect-own-account plus treg.to as one MCP for the catalog.
+  The MCP-intent titles win over the generic own-account title pattern for these three providers.
+
+The price label carries its own billing unit ("$0.00245/result", "$0.0089/call"), so the copy
+never says "per call" beside it: a per-result or per-success rate is not a per-call one.
+The kicker carries the measured line (calls observed, ok rate weighted by DECIDED calls, median p50)
+read through `_observed_or_empty`. Descriptions go through `_serp_desc` (sentence-fit under
+Google's cut) and may still mention pricing intent. The HowTo's steps mirror the visible setup section
+in order — the one-line install first, direct MCP second — because schema describing a different
+flow than the page shows is the mismatch Google treats as a violation. The setup line on these
+pages is the canonical `set up treg - {base}/llms.txt` (the em-dash is the documented exception,
+and a colon variant that shipped briefly forked the product's one paste-line).
 - compare-form job titles get `, from $X` appended when the hand-written title carries no price and
   the result stays within `_TITLE_MAX` (65); " compared" is dropped to make room.
 

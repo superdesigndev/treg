@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import re
 
+import pytest
 from httpx import AsyncClient
 
 from treg.routers import web as web_routes
@@ -121,3 +122,24 @@ async def test_unmetered_oauth_access_uses_account_language(clients, monkeypatch
         assert 'This is an own-account connection' in html
     finally:
         get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("service,display", [
+    ("google-search-console", "Google Search Console"),
+    ("google-analytics", "Google Analytics"),
+    ("semrush", "Semrush"),
+])
+async def test_mcp_intent_providers_lead_with_mcp(clients: AsyncClient, service: str, display: str):
+    """Own-account providers in _MCP_INTENT_PROVIDERS lead with MCP in Title and H1.
+
+    GSC shows strong "{provider} mcp" impressions with near-zero clicks on these pages when
+    their titles said only "connect your own account". This test pins the MCP-leading format.
+    """
+    html = (await clients.get(f"/tools/{service}")).text
+    title = re.search(r"<title>(.*?)</title>", html, re.S).group(1)
+    h1 = re.search(r"<h1>(.*?)</h1>", html, re.S).group(1)
+    desc = re.search(r'<meta name="description" content="(.*?)"', html, re.S).group(1)
+    assert title == f"{display} MCP: connect your own account | treg.to", title
+    assert h1 == f"{display} MCP: connect your own account", h1
+    assert "MCP" in desc, f"meta description should mention MCP: {desc}"
+    assert "treg.to" in desc, f"meta description should mention treg.to: {desc}"
