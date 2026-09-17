@@ -218,6 +218,10 @@ contract:
 - `TREG_PLATFORM_DAILY_CAP_USD` is the default per-UTC-day shared-provider spend limit for a team
   that has not set its own; 0 (the default) is no limit. A team's own setting wins in either
   direction.
+- `TREG_FREE_ALLOWANCE_PER_TEAM_DAY` is the default per-team, per-UTC-day call allowance on a
+  `type: free` catalog endpoint served on treg's key, for free endpoints whose cost block declares
+  no `calls_per_team_day` of its own; a paid endpoint has an allowance only when it declares one.
+  0 = no default. Fail-closed. See `architecture/money.md` § The endpoint allowance.
 - `TREG_OAUTH_BILLED_PROVIDERS` names OAuth providers whose upstream bill lands on the registry
   operator. Own-app connections are never metered by this switch.
 - `TREG_ROUTED_DISCOVERY` controls whether discovery leads callers to routed capability tools. It

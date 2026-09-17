@@ -123,6 +123,12 @@ Treg collects stats for visibility, without automatic purchases or pool-based bl
 and support for 15-minute polling remain pending; the existing sweep cadence is unchanged.
 The technical behavior at zero credits is not assumed from the managed top-up arrangement.
 
+The five `type: free` routes (people count, the three availability checks and email verification)
+carry `calls_per_team_day` in the catalog. They spend no credits, so nothing in the money path
+paces them, and ContactOut rate-limits the shared key well below what one batch client can send;
+once it does, the capacity breaker holds the route for every team. The allowance refuses the one
+team first, before the vendor sees the burst (architecture/money.md § The endpoint allowance).
+
 ## Live evidence — 2026-09-08
 
 Against `https://api.contactout.com/`, using the private root-env platform credential:

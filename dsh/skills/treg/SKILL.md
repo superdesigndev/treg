@@ -159,6 +159,9 @@ Notes:
     so you can build its request. Say which one you switched to.
   - **Never retry a 4xx elsewhere.** A 4xx is usually your parameters; fixing them is the fix, and
     retrying burns the team's money on N providers for one mistake.
+  - **A `429 endpoint_allowance_reached` is your team's daily allowance on that endpoint** (every
+    $0 endpoint has one; `catalog_get` shows `calls_per_team_day`), not the provider. It resets at 00:00 UTC (`resets_at`); switch capability or connect your own key.
+    Retrying it gets the same answer.
   - treg does **not** choose or fail over **between providers** for you. That is deliberate: only
     you know which inputs you hold, and treg relays rather than rewrites your request. If treg's
     own account for a provider is out it may serve the **same endpoint** through a treg-owned relay

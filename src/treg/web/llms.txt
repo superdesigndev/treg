@@ -189,6 +189,12 @@ provenance says whose price it is.
 An endpoint treg has no published price for is **refused**, not served free — you are told to
 connect your own key instead.
 
+**Every $0 endpoint on treg's key, and any endpoint that declares one, carries a per-team daily
+allowance** — `catalog_get` shows it as `calls_per_team_day` beside the price. Past it the call is
+refused before the provider sees it:
+`429 {error: "endpoint_allowance_reached", allowance_per_day, used_today, resets_at, message}`. It
+resets at 00:00 UTC; your own key for the provider is never subject to it. Do not retry against it.
+
 **Market data** (crypto + stocks) — three ways in, by provider:
 - **coingecko** (11 endpoints) and **marketstack** (7): on treg's key, billed per call like the rest
   of the catalog ($0.00029 and $0.000999).

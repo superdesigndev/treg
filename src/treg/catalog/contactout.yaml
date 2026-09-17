@@ -102,6 +102,7 @@ endpoints:
     currency: USD
     per: 1
     unit: call
+    calls_per_team_day: 1000
     note: Use the documented filters. recently_changed_jobs cannot combine with years_in_current_role.
       match_experience cannot combine with current_titles_only or company_filter.
       See docs for accepted industry, seniority and size values. Free; paid ContactOut
@@ -131,6 +132,7 @@ endpoints:
     currency: USD
     per: 1
     unit: call
+    calls_per_team_day: 1000
     note: Availability only; no contact reveal. Free; paid ContactOut account required.
   docs_url: https://api.contactout.com/
   untestable: Requires a person lookup or returns named individuals; no automated
@@ -154,6 +156,7 @@ endpoints:
     currency: USD
     per: 1
     unit: call
+    calls_per_team_day: 1000
     note: Availability only; no contact reveal. Free; paid ContactOut account required.
   docs_url: https://api.contactout.com/
   untestable: Requires a person lookup or returns named individuals; no automated
@@ -177,6 +180,7 @@ endpoints:
     currency: USD
     per: 1
     unit: call
+    calls_per_team_day: 1000
     note: Availability only; no contact reveal. Free; paid ContactOut account required.
   docs_url: https://api.contactout.com/
   untestable: Requires a person lookup or returns named individuals; no automated
@@ -207,6 +211,7 @@ endpoints:
     currency: USD
     per: 1
     unit: call
+    calls_per_team_day: 1000
     note: 'Free under current commercial terms: verifier credits are not charged.
       Recheck this rate if ContactOut starts metering verification.'
   verified: 2026-09-09

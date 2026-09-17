@@ -401,6 +401,7 @@ endpoints:
       value: 0
       currency: USD
       unit: call
+      calls_per_team_day: 20000
       source: observed
       source_url: https://tomba.io/pricing
       checked: '2026-08-20'

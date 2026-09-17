@@ -367,6 +367,10 @@ uses this metadata, never the encrypted token's shape.
 - **`OverflowSpend`** - per aggregator per UTC day: calls, the aggregator's charge, the delta against
   treg's direct price. Written inside the overflow child's settle transaction (and by the shadow probe);
   the $20/day budget reads it. Alembic `0007`. Not a balance.
+- **`EndpointAllowance`** - per team, per allowance-bearing endpoint (every `type: free` one, and
+  any that declares `calls_per_team_day`), per UTC day: calls admitted on treg's key. One conditional upsert in the reservation transaction is both the gate and the count
+  (`domain.governance.allowance`); a refused call writes nothing. Alembic `0040`. Not a balance. See
+  `architecture/money.md` § The endpoint allowance.
 
 `CallReview` (revision 0026) stores one private usefulness rating per unique call reference.
 It has endpoint/time and tenant indexes and is deleted with its team via `ORG_SCOPED_MODELS`.

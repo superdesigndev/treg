@@ -111,7 +111,7 @@ agents then built against a constitution that was wrong.
   credentials, catalog prices and balances, and writes only what `tests/test_call_architecture.py`
   allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
-  archive-question marks). Extend the
+  endpoint allowance slot, the per-team archive-question marks). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **Signup credit.** Once per new verified user, enforced by a user-level atomic claim committed
   with the grant. Team deletion never restores eligibility; legacy registration is not email proof.

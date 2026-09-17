@@ -1439,6 +1439,28 @@ class OverflowRoute(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=_now)
 
 
+class EndpointAllowance(SQLModel, table=True):
+    """One team's admitted calls to one catalog endpoint on treg's key for one UTC day: the
+    counter behind `cost.calls_per_team_day` and the $0 default (`domain.governance.allowance`).
+    Written by
+    ONE conditional upsert in the reservation transaction (allowlist entry
+    `endpoint_allowance_slot`) so the gate and the count are the same statement, exactly
+    like `Membership.calls_today` and `OverflowSpend`. Counted from here and not from `callrecord`
+    because audit rows are shed under load, which is precisely when a burst must be counted.
+    `used` is "admitted today": a refused call writes nothing, so a client hammering the gate
+    reads exactly the allowance, not a runaway figure. Not money: balances move only through
+    domain/money.
+    """
+
+    __table_args__ = (Index("ix_endpointallowance_day", "day"),)  # the window prune
+
+    org_id: int = Field(primary_key=True)
+    endpoint_id: str = Field(primary_key=True)
+    day: str = Field(primary_key=True)  # YYYY-MM-DD, UTC
+    used: int = Field(default=0)
+    updated_at: datetime = Field(default_factory=_now)
+
+
 class OverflowSpend(SQLModel, table=True):
     """Per-aggregator, per-UTC-day overflow accounting: what the aggregator charged treg
     (`cost_micro`) and the delta against what the caller would have paid direct (`delta_micro`,

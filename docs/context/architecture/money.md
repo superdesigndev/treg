@@ -20,6 +20,8 @@ sources:
   - src/treg/alembic/versions/0019_async_poll_failures.py
   - src/treg/application/referrals.py
   - src/treg/domain/governance/budgets.py
+  - src/treg/domain/governance/allowance.py
+  - src/treg/alembic/versions/0040_endpoint_allowance.py
   - src/treg/infra/__init__.py
   - src/treg/infra/stripe.py
   - src/treg/reconcile.py
@@ -459,6 +461,10 @@ An endpoint whose price is unknown never reaches this path at all: `catalog_stor
 requires `cost_view(...)["usd"] is not None`, so "we don't know" is refused rather than served free -
 see [catalog](catalog.md).
 
+An endpoint whose price is **zero** reaches this path and passes every money gate trivially: the hold
+is 0 and the cap adds 0. Its brake is the per-team daily allowance (§ The endpoint allowance
+below).
+
 ## Checking the work (`reconcile.py`)
 
 Read-only, query-time, no scheduler. Three questions, each needing its own source of truth:
@@ -624,6 +630,44 @@ free search-count and filter-discovery tools do not consume the allowance. Its o
 database credits have no published USD replacement price, so $0 describes treg's limited trial, not
 a vendor credit valuation. The separately priced Live Leads wallet is not substituted for that
 missing database-credit price.
+
+### The endpoint allowance: every other $0 on treg's key, and any route that declares one
+
+A trial pool is a whole provider priced at $0. Most zeros in the catalog are single routes on a paid
+provider (an availability check, a count, a discovery search that reveals nothing) served on the same
+platform key as the paid routes beside them. The same logic applies: at $0 no money gate says no,
+and one looping client can spend the vendor's per-key quota for every team, after which its retries
+land on the capacity breaker for as long as the vendor holds the key. So every `type: free` cost
+block served on treg's key carries a per-team, per-UTC-day allowance: its own
+`calls_per_team_day` (catalog.md § Cost), else `Settings.free_allowance_per_team_day`, else none
+when that default is 0. `cost_view` attaches the effective figure to the zero as
+`calls_per_team_day`, for the same reason the trial field exists: a bare $0.00 reads as unlimited.
+
+The mechanism is not about zeros; the default is. Any cost block may declare `calls_per_team_day`,
+and the gate treats a paid route exactly the same way. The case for one is a vendor whose per-key
+daily quota is small enough that one team's paid traffic would exhaust it for every other team:
+money bounds what that team spends, not what the shared pool has left. A paid route without a
+figure has no allowance; its brakes are the hold, the balance and the daily cap. In practice the
+field is expected to live on free routes.
+
+`_enforce_endpoint_allowance` (`application.call.reserve`) takes the slot inside the reservation
+transaction with one conditional upsert of the `EndpointAllowance` row (`domain.governance.allowance`,
+revision 0040): the WHERE is the check and the SET is the count, the `money.reserve` idiom, so
+concurrent calls cannot overshoot and a refused call writes nothing. It differs from the trial pool
+in two deliberate ways. It counts **admitted attempts**, failures included, because the vendor's own
+limits count attempts and the shared key is what is being protected. And it counts from its own row,
+never from `callrecord`: audit rows are shed under load, which is exactly when a burst must be
+counted. The refusal is `429 endpoint_allowance_reached` (`provider`, `endpoint_id`, `allowance_per_day`,
+`used_today`, `resets_at`, a connect-your-own-key message), audited `refused_by=cap` like every
+other product refusal, so a client retrying against it is not a platform failure. Fail-closed:
+a slot that cannot be taken is `429 endpoint_allowance_unavailable`. A team's own key never meets the
+gate (non-negotiable 1); a billed OAuth call spends the org's own connection and skips it; a free poll
+of the org's own async job and an authorized free final fetch read nothing shared and skip it.
+
+The $0 default is sized above every free endpoint's legitimate team-day; the handful of discovery
+and count routes whose real use runs higher carry explicit figures in their YAML. A new heavy user
+of a free route therefore gets one clear 429 rather than a locked provider for everyone, and the fix
+is a number in a cost block, reviewed against the vendor's plan.
 
 ## Idempotency and retries
 

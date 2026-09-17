@@ -103,7 +103,7 @@ endpoints:
         page: {type: integer, required: false, note: "1-based; max 500 pages", example: 1}
         per_page: {type: integer, required: false, note: "max 100", example: 1}
       note: "query-string params on a POST, with arrays in field[]=value form. RETURNS NO EMAILS OR PHONE NUMBERS AT ALL — that is why it is free. Pipe the person ids into apollo.people.enrich to get contact data, which is where the credits go. Result set is capped at 50,000 records"
-    cost: {type: free, value: 0, currency: USD, unit: call, note: 'documented free — 0 credits, because no contact data is returned. Counts against the plan''s request limits only'}
+    cost: {type: free, value: 0, currency: USD, unit: call, calls_per_team_day: 100000, note: 'documented free — 0 credits, because no contact data is returned. Counts against the plan''s request limits only'}
     docs_url: https://docs.apollo.io/reference/people-api-search
 
   - id: apollo.companies.enrich

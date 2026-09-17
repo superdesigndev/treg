@@ -270,6 +270,16 @@ class Settings(BaseSettings):
     # teams mid-workload (thousands of refused calls against a funded balance) and never on abuse;
     # the prepaid balance and the auto-top-up monthly cap already bound what a team can spend.
     platform_daily_cap_usd: float = 0.0
+    # DEFAULT per-team, per-UTC-day call allowance on a $0 catalog endpoint served on treg's key,
+    # for an endpoint whose cost block declares no `calls_per_team_day` of its own. Money brakes
+    # nothing at $0 (the hold is 0, the daily cap adds 0), so without this one looping client can
+    # spend the shared vendor key's whole quota and every other team's access with it, and its
+    # retries then land on the capacity breaker for as long as the vendor holds the key. The
+    # endpoints whose legitimate use runs above this carry explicit figures in their YAML; the
+    # default is set above every other endpoint's observed team-day. 0 = no default (an
+    # endpoint's own figure still applies). Enforced FAIL-CLOSED like the trial pools: the quota
+    # being protected is shared, and serving blind is how it dies for everyone.
+    free_allowance_per_team_day: int = 5000
     # OAuth providers whose UPSTREAM bill lands on treg's developer app rather than the connected
     # user (X moved to pay-per-use in Feb 2026: the app owner is billed per resource read / per post
     # written, whoever's token made the call). Calls through a registry connect of a provider named

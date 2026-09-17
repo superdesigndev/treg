@@ -84,6 +84,11 @@ _DATAPLANE_DERIVED_WRITES = {
         (authorize.authorize_call, "usage_policy.enforce_daily_cap"),
         (usage_policy.enforce_daily_cap, "take_daily_slot"),
     ),
+    # A $0 endpoint on treg's key has no money brake, so the reservation takes the team's daily
+    # slot for that endpoint with one conditional upsert (revision 0040) in the same transaction.
+    "endpoint_allowance_slot": (
+        (reserve._enforce_endpoint_allowance, "allowance_policy.take_endpoint_allowance_slot"),
+    ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
     "archive_body_object",
@@ -99,6 +104,7 @@ _EXPECTED_DATAPLANE_WRITES = frozenset({
     "async_result_ownership",
     "async_resource_ownership",
     "member_daily_cap_slot",
+    "endpoint_allowance_slot",
 })
 _DERIVED_WRITE_FILES = {
     _SRC / "archive.py": {"archive_bodies.prepare"},
@@ -108,7 +114,9 @@ _DERIVED_WRITE_FILES = {
         "publicdemo_policy.enforce_public_demo_ip_cap", "usage_policy.enforce_daily_cap",
     },
     _SRC / "domain" / "governance" / "usage.py": {"take_daily_slot"},
-    _SRC / "application" / "call" / "reserve.py": {"billing.maybe_schedule_autotopup"},
+    _SRC / "application" / "call" / "reserve.py": {
+        "billing.maybe_schedule_autotopup", "allowance_policy.take_endpoint_allowance_slot",
+    },
     _SRC / "application" / "call" / "settle.py": {
         "adsconv.queue", "capacity_marks.strike", "capacity_marks.clear",
         "overflow_spend_ledger.add_in_transaction", "archive.note_org_use_in_transaction",
@@ -142,6 +150,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("domain/governance/usage.py", "enforce_daily_cap", "take_daily_slot"),
     ("application/call/reserve.py", "_platform_reserve",
      "billing.maybe_schedule_autotopup"),
+    ("application/call/reserve.py", "_enforce_endpoint_allowance",
+     "allowance_policy.take_endpoint_allowance_slot"),
     ("application/call/settle.py", "_record_first_call", "adsconv.queue"),
     ("application/call/settle.py", "_note_capacity_signal", "capacity_marks.strike"),
     ("application/call/settle.py", "_note_capacity_recovery", "capacity_marks.clear"),

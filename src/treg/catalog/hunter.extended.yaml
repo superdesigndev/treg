@@ -54,6 +54,7 @@ endpoints:
     value: 0
     currency: USD
     unit: call
+    calls_per_team_day: 25000
     note: Discover does not consume search or verification credits
   docs_url: https://hunter.io/api-documentation/v2#discover
   verified: '2026-07-28'
@@ -215,6 +216,7 @@ endpoints:
     value: 0
     currency: USD
     unit: call
+    calls_per_team_day: 300000
     note: does not consume credits
   docs_url: https://hunter.io/api-documentation/v2#domain-finder
   verified: '2026-07-28'

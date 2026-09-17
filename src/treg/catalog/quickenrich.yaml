@@ -313,6 +313,7 @@ endpoints:
     currency: USD
     per: 1
     unit: call
+    calls_per_team_day: 100000
     source: docs
     source_url: https://app.quickenrich.io/docs
     checked: '2026-09-08'

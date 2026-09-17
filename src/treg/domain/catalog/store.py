@@ -182,7 +182,29 @@ class Catalog:
         # say how much of it a team gets — a bare $0.00 would read as unlimited.
         if provider in self.trial_pools and usd == 0:
             out["trial_calls_per_team_day"] = self.trial_pools[provider]
+        # Same reasoning for any other per-team daily allowance on treg's key: it travels with the
+        # price (the endpoint's own figure; for a $0 price, else the deployment default).
+        elif (allowance := self.endpoint_allowance(cost)) is not None:
+            out["calls_per_team_day"] = allowance
         return out
+
+    @staticmethod
+    def endpoint_allowance(cost: dict | None) -> int | None:
+        """Calls per team per UTC day this cost block admits on treg's key, or None when no
+        allowance applies. An endpoint's own `calls_per_team_day` applies to any price; the
+        deployment default (`Settings.free_allowance_per_team_day`, 0 = none) only to a $0 one,
+        because a paid price is its own brake. The reservation gate reads this
+        (`application.call.reserve._enforce_endpoint_allowance`)."""
+        if not isinstance(cost, dict):
+            return None
+        own = cost.get("calls_per_team_day")
+        if type(own) is int and own > 0:
+            return own
+        if cost.get("type") != "free":
+            return None
+        from ...config import get_settings  # local, like `routed_discovery` below: the CLI loads this module
+        default = int(get_settings().free_allowance_per_team_day or 0)
+        return default if default > 0 else None
 
     def advertised_usd(self, cost: dict | None) -> float | None:
         """Dollar figure catalog_search / catalog_get should quote for one typical paid call.

@@ -1007,6 +1007,7 @@ cost:
   checked: 2026-07-28     # when the PRICE was confirmed — not when the route was called
   confidence: documented  # verified | documented | inferred | unknown
   note: "…"               # free text: the half of the charge the schema cannot hold, caveats, traps
+  calls_per_team_day: 1000  # optional: calls per team per UTC day on treg's key (any price)
 ```
 
 For finite AIGC matrices, linear rates, and usage-settled generation, `value` is replaced by an
@@ -1096,6 +1097,17 @@ is the congestion control (`_enforce_trial_allowance`, per team per UTC day, suc
 calls with a non-free catalog cost only, fail-closed). Free endpoints, failed calls and BYOK calls
 do not consume it. `cost_view` attaches the allowance to every $0 it serves, because a bare $0.00
 reads as unlimited. The validator refuses a non-zero "trial" and a zero with no allowance.
+
+Any cost block served on treg's key may carry the same kind of brake at the endpoint:
+`calls_per_team_day`, a positive integer, calls per team per UTC day. Every other **`type: free`**
+block gets one whether it declares it or not, from the deployment default
+(`Settings.free_allowance_per_team_day`), because at $0 nothing else brakes; a paid block has an
+allowance only when it declares one, and is expected to declare one only where a vendor's per-key
+daily quota is small enough for one team to spend for everyone. The validator refuses a figure below
+1. `cost_view` attaches the effective figure to the price as `calls_per_team_day` (never beside a
+trial pool's own field). The gate and its refusal: architecture/money.md § The endpoint allowance. A
+figure is set from the route's observed legitimate use and the vendor's plan, never from the
+vendor's per-key limit alone: the allowance is per team, the vendor's limit is shared by every team.
 
 Each `credit_rates_usd` / `unit_rates_usd` entry carries `usd` plus the `basis`/`source`/`checked` that justify it —
 the cheapest PUBLICLY listed tier (plan price ÷ credits included), so the served figure is an upper

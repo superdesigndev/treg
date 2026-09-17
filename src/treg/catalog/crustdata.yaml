@@ -98,7 +98,7 @@ endpoints:
       body: {domains: ["stripe.com"]}
     verified: '2026-08-24'
     example_response: examples/crustdata.companies.identify.json
-    cost: {type: free, value: 0, currency: USD, per: 1, unit: call}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, calls_per_team_day: 50000}
     docs_url: https://docs.crustdata.com/company-docs/identify/introduction
 
   - id: crustdata.companies.enrich

@@ -154,6 +154,18 @@ path lets one call a minute through as a probe and lifts on its 2xx, so the `mes
 in a minute may succeed; a lock from the sweep lasts until `resets_at`. Not the pool-saturation 503
 (`treg_saturated`), which is a different exit. See `architecture/proxy-model.md` § Platform capacity.
 
+## `429 endpoint_allowance_reached` - an endpoint's per-team daily allowance on treg's key
+
+A catalog endpoint served on treg's key that carries an allowance (every `type: free` endpoint,
+and any paid one whose cost block declares `calls_per_team_day`) admits that many calls per team
+per UTC day; `catalog_get` shows the figure beside the price. The call past it is refused **before
+any hold or vendor contact** with `{"detail": {"error": "endpoint_allowance_reached", "provider",
+"endpoint_id", "allowance_per_day", "used_today", "resets_at", "message"}}`, no `X-Treg-Cost-Micro`,
+`refused_by="cap"` on the audit row. Admitted attempts count, successes and failures alike. The
+team's own key for the provider never meets this gate. `429 endpoint_allowance_unavailable` (a string
+detail) is the fail-closed answer when the slot cannot be taken; retry shortly. See
+`architecture/money.md` § The endpoint allowance.
+
 ## `X-Treg-Served-Via` - this answer came through an overflow relay
 
 `GET/PATCH /orgs/{id}/settings` carries `platform_overflow` (default `true`); `false` opts the team out -

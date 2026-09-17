@@ -647,6 +647,13 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
         fail(errors, where, "cost.currency 'unit' needs cost.unit to name the provider's meter "
                             "(fx.yaml unit_rates_usd is keyed by it)")
 
+    # A per-team daily allowance on treg's key, for any price: a $0 route (where money brakes
+    # nothing; `Settings.free_allowance_per_team_day` applies when absent) or a paid route on a
+    # vendor whose per-key daily quota one team could otherwise spend for everyone.
+    allowance = cost.get("calls_per_team_day")
+    if allowance is not None and (type(allowance) is not int or allowance < 1):
+        fail(errors, where, "cost.calls_per_team_day must be a positive integer "
+                            "(calls per team per UTC day on treg's key)")
     if cost.get("type") == "free":
         wrong = {k: cost.get(k) for k, want in CANONICAL_FREE.items() if cost.get(k) != want}
         if wrong or (per not in (None, 1)):

@@ -1,7 +1,7 @@
 """Reservation and spend-cap helpers for metered calls."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ from ...caller_metadata import TAG_DEFAULT
 from ...config import get_settings
 from ...domain import money as ledger
 from ...domain.catalog import store as catalog_store
+from ...domain.governance import allowance as allowance_policy
 from ...domain.governance import budgets as budget_policy
 from ...domain.governance.usage import _day_start_utc
 from ...domain.identity.access import Caller
@@ -74,6 +75,58 @@ async def _enforce_trial_allowance(caller: Caller, provider: str, endpoint_id: s
                         f"own {provider} key for unmetered calls at your plan's limits: "
                         "treg connections connect"),
         })
+
+
+async def _enforce_endpoint_allowance(caller: Caller, mk: MarketplaceCall, db: AsyncSession) -> None:
+    """Per-team, per-UTC-day call allowance on a catalog endpoint served on treg's key
+    (`cost.calls_per_team_day` on any price; for a $0 price, else
+    `Settings.free_allowance_per_team_day`).
+
+    Every other brake in this file is money, and at $0 money brakes nothing: the hold is 0 and the
+    daily cap adds 0. One looping client can therefore spend the shared vendor key's whole quota,
+    and every other team's access with it, before anything here says no. The allowance is that no.
+    A paid route can declare one too, for a vendor whose per-key daily quota is small enough that
+    one team's spend would exhaust it for everyone; money bounds that team, not the pool. It counts
+    ADMITTED calls, successes and failures alike, because the vendor's own limits count attempts;
+    it is taken in the reservation transaction with one conditional upsert
+    (`governance.allowance`), so a refused call writes nothing and concurrent calls cannot
+    overshoot. Own-key calls never reach this gate; a billed OAuth call spends the org's own
+    connection, not a shared key; a free poll of the org's own async job reads nothing shared.
+
+    FAIL-CLOSED like the trial allowance: the quota being protected is shared, and serving blind
+    when the count cannot be taken is how the pool dies for everyone."""
+    if mk.billed_oauth or mk.free_owned_poll or mk.streamable_free_result:
+        return
+    catalog = catalog_store.load()
+    cap = catalog.endpoint_allowance((catalog.by_id.get(mk.endpoint_id) or {}).get("cost"))
+    if cap is None:
+        return
+    try:
+        admitted = await allowance_policy.take_endpoint_allowance_slot(
+            db, caller.org_id, mk.endpoint_id, cap)
+    except Exception as exc:  # noqa: BLE001 — cannot count ⇒ do not spend the shared key
+        logging.getLogger("treg.ledger").warning(
+            "free-allowance slot failed for org %s / %s: %s", caller.org_id, mk.endpoint_id, exc)
+        raise ReservationFailed("endpoint_allowance_unavailable", status_code=429, detail=(
+            f"cannot verify today's {mk.endpoint_id} usage right now — retry shortly, or use "
+            f"your own key: treg connections connect --provider {mk.provider}"))
+    if admitted is not None:
+        return
+    try:
+        used = await allowance_policy.used_today(db, caller.org_id, mk.endpoint_id)
+    except Exception:  # noqa: BLE001 — the refusal stands; the figure is decoration
+        used = cap
+    tomorrow = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+        hour=0, minute=0, second=0, microsecond=0)
+    raise ReservationFailed("endpoint_allowance_reached", status_code=429, detail={
+        "error": "endpoint_allowance_reached", "provider": mk.provider, "endpoint_id": mk.endpoint_id,
+        "allowance_per_day": cap, "used_today": int(used),
+        "resets_at": tomorrow.isoformat().replace("+00:00", "Z"),
+        "message": (f"this team has used its daily allowance for {mk.endpoint_id} on treg's key "
+                    f"({used}/{cap} calls today). It resets at 00:00 UTC — or connect your own "
+                    f"{mk.provider} key for calls at your plan's limits: "
+                    f"treg connections connect --provider {mk.provider}"),
+    })
 
 
 async def _enforce_platform_daily_cap(caller: Caller, add_micro: int, db: AsyncSession) -> None:
@@ -240,6 +293,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
             await _enforce_tag_budgets(caller, meta, db, add_micro=mk.estimate_micro)
             await _enforce_platform_daily_cap(caller, mk.estimate_micro, db)
             await _enforce_trial_allowance(caller, mk.provider, mk.endpoint_id, db)
+            await _enforce_endpoint_allowance(caller, mk, db)
             try:
                 mk.call_id = await ledger.reserve_in_transaction(
                     db, caller.org_id, mk.endpoint_id, mk.estimate_micro,
