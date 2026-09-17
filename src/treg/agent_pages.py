@@ -1833,13 +1833,11 @@ USE_CASE_PAGES["your-own-campaign-performance"] = {
 
 USE_CASE_PAGES["amazon-product-detail-by-asin"] = {
     "label": "Amazon product detail by ASIN",
-    "sentence": "Amazon product API: any product's detail by ASIN",
-    "title": "Amazon product API: {n} providers from {cheapest} | treg.to",
+    "sentence": "Pull any Amazon product by ASIN",
+    "title": "Amazon Product by ASIN: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent an ASIN and get the listing back as data: title, current price, images, "
-        "specifications and the review summary. {n} providers do this through one treg.to key, from "
-        "{cheapest} a product, with no Amazon programme to be approved for first. That last part is "
-        "most of the reason this job has a price at all."),
+        "Get the price, title, images, specs and reviews for any ASIN. {n} providers through one "
+        "treg.to key, from {cheapest} per lookup. No Amazon affiliate account required."),
     "prompt": "Using treg, get the Amazon product detail for ASIN B08N5WRWNW on amazon.com. Show me "
               "the price first, then give me the title, current price, rating and review count.",
     "prompt_why": [
@@ -2745,14 +2743,11 @@ AGENTS["grok-bot"] = {
 
 USE_CASE_PAGES["tiktok-shop-products-and-reviews"] = {
     "label": "TikTok Shop products and reviews",
-    "sentence": "TikTok Shop API: search products by keyword and read a product's reviews, without a seller account",
-    "title": "TikTok Shop API: {n} providers compared, from {cheapest} | treg.to",
+    "sentence": "Search TikTok Shop products and reviews",
+    "title": "TikTok Shop Search: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent a keyword and a region and get TikTok Shop's product results back as "
-        "rows: title, price, seller and product id, then the reviews on any of them by id or URL. "
-        "{n} providers read the public storefront through one treg.to key, from {cheapest} a call, "
-        "at the provider's own rate with no markup. None of them is the seller-side Partner API, "
-        "so there is no shop, no sandbox and no app review to get through first."),
+        "Search products by keyword, pull reviews by product. {n} providers through one treg.to "
+        "key, from {cheapest} per call. No TikTok seller account needed."),
     "prompt": "Using treg, search TikTok Shop US for \"matcha whisk\", show me the price per call "
               "first, then give me the top 20 products by sales with seller, price and rating, and "
               "pull the last 50 reviews on the best seller.",
