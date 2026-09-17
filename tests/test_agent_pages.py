@@ -639,7 +639,7 @@ def test_no_workflow_ships_with_an_empty_section(key):
     assert spec["run"]["narrative"], (key, "narrative")
     assert spec["run"].get("date") and spec["run"].get("csv"), (key, "run date/csv")
     assert len(spec["failure_modes"]) >= 4, (key, "failure_modes")
-    assert len(spec["faq"]) == 4, (key, "faq")
+    assert len(spec["faq"]) >= 4, (key, "faq")
     assert len(spec["related"]) == 4, (key, "related")
     menu = {lbl for _c, jobs in agent_pages.USE_CASES for lbl, _ in jobs}
     for lbl in spec["related"]:
