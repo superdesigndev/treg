@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Claude for People Search — 1B+ Contacts for Your Agent | treg</title>
-<meta name="description" content="Give Claude Code, Codex or any agent 1B+ contacts across 60 providers. Verified work emails from $0.0089, misses free, 0% markup. #1 on the People Search Bench.">
+<title>AI People Search and Lead Enrichment for Agents | treg.to</title>
+<meta name="description" content="AI people search and lead enrichment for agents: find contacts, get verified work emails from $0.0089, misses free. 51-lead receipt: 28 usable, $0.44 total, 19 misses free.">
 <link rel="canonical" href="https://treg.to/people-search"/>
-<meta property="og:title" content="Claude for People Search — 1B+ Contacts for Your Agent | treg"/>
-<meta property="og:description" content="Give Claude Code, Codex or any agent 1B+ contacts across 60 providers. Verified work emails from $0.0089, misses free, 0% markup. #1 on the People Search Bench."/>
+<meta property="og:title" content="AI People Search and Lead Enrichment for Agents | treg.to"/>
+<meta property="og:description" content="AI people search and lead enrichment for agents: find contacts, get verified work emails from $0.0089, misses free. 51-lead receipt: 28 usable, $0.44 total, 19 misses free."/>
 <meta property="og:url" content="https://treg.to/people-search"/>
 <meta property="og:type" content="website"/>
 <meta name="twitter:card" content="summary_large_image"/>
@@ -30,7 +30,7 @@
     --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   }
   * { box-sizing: border-box; }
-  #bench, #pricing, #tools, #usecases { scroll-margin-top: 70px; }
+  #bench, #pricing, #tools, #usecases, #receipt { scroll-margin-top: 70px; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
     font-family: var(--text); font-size: 16px; line-height: 1.55;
@@ -462,7 +462,7 @@
 <header class="hero">
   <h1 id="heroA"><span class="hw ag-line"><span class="ag" id="agWrap"><img id="agLogo" src="media/people-search/claude-code.png" alt=""><span id="agName">Claude</span></span> for</span><br><span class="hw hl">people search.</span></h1>
   <h1 id="heroB" hidden><span class="hw">Run GTM</span> <span class="hw">from your</span><br><span class="hw"><span class="hero-agents"><img src="media/people-search/claude-code.png" alt="Claude Code"><img src="media/people-search/codex.png" alt="Codex"><img src="media/people-search/openclaw.png" alt="OpenClaw"><img src="media/people-search/hermes.png" alt="Hermes"></span></span> <span class="hw hl">terminal.</span></h1>
-  <p class="sub">One skill gives your agent <strong>1B+ contacts</strong> across Apollo, Hunter, Tomba, People&nbsp;Data&nbsp;Labs — 60 providers behind one token. It finds the companies, the people, and their <strong>verified work emails</strong>. You pay per answer.</p>
+  <p class="sub">One skill gives your agent <strong>1B+ contacts</strong> across Apollo, Hunter, Tomba, People&nbsp;Data&nbsp;Labs — 60 providers behind one token. It finds the companies, the people, and their <strong>verified work emails</strong>. You pay per answer, misses are free. <a href="#receipt" style="color:var(--green);text-decoration:underline;text-underline-offset:3px">51-lead receipt: $0.44 total, 28 usable</a></p>
   <div class="ctas">
     <a class="pill dark" href="/app?ref=people-search" id="ctaHero">Setup treg</a>
     <a class="pill" href="#pricing">Pricing: pay per lead</a>
@@ -509,6 +509,60 @@
   <div class="demo-cap">the launch film, live — every call metered, misses free</div>
 </div>
 
+
+<section class="section" id="receipt" style="padding-top:70px;padding-bottom:70px">
+  <h2>Real run receipt.<br><span class="hl2">51 leads, $0.44 total.</span></h2>
+  <p class="lede">From a real workflow run: find post-Series-A AI-infra companies, get the head of platform, verify their work email. Misses cost nothing.</p>
+  <div style="max-width:800px;margin:0 auto">
+    <table class="receipt-table" style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(20,18,12,.05),0 4px 14px -6px rgba(20,18,12,.08)">
+      <thead>
+        <tr style="background:#F8F7F5;font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#8A8885">
+          <th style="text-align:left;padding:12px 16px;font-weight:500">Metric</th>
+          <th style="text-align:right;padding:12px 16px;font-weight:500">Count</th>
+          <th style="text-align:right;padding:12px 16px;font-weight:500">Cost</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #F0EFEB">
+          <td style="padding:12px 16px;font-weight:500">Leads attempted</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono)">51</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono);color:var(--muted)">-</td>
+        </tr>
+        <tr style="border-bottom:1px solid #F0EFEB">
+          <td style="padding:12px 16px;font-weight:500;color:var(--green)">Usable results <span style="font-weight:400;color:var(--muted)">(verified valid)</span></td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono);color:var(--green);font-weight:500">28</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono)">$0.44</td>
+        </tr>
+        <tr style="border-bottom:1px solid #F0EFEB">
+          <td style="padding:12px 16px">Invalid emails <span style="color:var(--muted)">(billed, not usable)</span></td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono)">4</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono);color:var(--muted)">incl.</td>
+        </tr>
+        <tr style="border-bottom:1px solid #F0EFEB">
+          <td style="padding:12px 16px">Misses <span style="color:var(--muted)">(no email found)</span></td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono)">19</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono);color:var(--green);font-weight:500">$0.00</td>
+        </tr>
+        <tr>
+          <td style="padding:12px 16px;font-weight:600">Cost per usable result</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono)">-</td>
+          <td style="padding:12px 16px;text-align:right;font-family:var(--mono);font-weight:600;color:var(--green)">$0.016</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="margin-top:16px;display:flex;gap:20px;flex-wrap:wrap;justify-content:center">
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)">
+        <img src="media/people-search/tomba.png" alt="Tomba" style="width:20px;height:20px;border-radius:5px">
+        <span><b style="color:var(--ink)">Tomba</b> 22 calls @ $0.0089</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)">
+        <img src="media/people-search/hunter.png" alt="Hunter" style="width:20px;height:20px;border-radius:5px">
+        <span><b style="color:var(--ink)">Hunter</b> 10 calls @ $0.0245</span>
+      </div>
+    </div>
+  </div>
+  <p class="fineprint">Source: <a href="/workflows/find-and-verify-a-lead-list">find-and-verify-a-lead-list</a> workflow run, Aug 2026. Prices from <a href="/catalog">catalog</a> at run time. <a href="https://github.com/superdesigndev/treg/blob/main/src/treg/workflow_runs/find-and-verify-a-lead-list.csv">CSV on GitHub</a>.</p>
+</section>
 
 <section class="section" id="usecases">
   <h2>One skill.<br><span class="hl2">Every enrichment job.</span></h2>
