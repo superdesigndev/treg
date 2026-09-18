@@ -293,6 +293,9 @@ operator runbook.
 `domain.catalog.results.classify` inspects the already-buffered provider bytes without rewriting
 any response. `has_result_rules` enables result-aware behavior only for endpoints with a
 verified adapter and a nonempty hit/miss expression. Those endpoints reuse `Adapter.is_miss`.
+An adapter verifies only against a contract, so a capability that must never be routed can still
+opt in through a `routed: false` contract (catalog.md, Routing); the influencers.club enrich
+tiers are the first.
 Strict result validators cover `hunter.companies.emails`, `leadmagic.x.employee-finder`,
 `seranking.google.keywords.volume`, `leadsforge.people.email.find`, `hunter.people.email.find`,
 and `findymail.search.name`. The last two require a shaped email string inside `data` or `contact`;

@@ -41,6 +41,7 @@ sources:
   - src/treg/catalog/examples/financialdatasets.prices.tickers.json
   - tests/test_financialdatasets.py
   - src/treg/catalog/quickenrich.yaml
+  - src/treg/catalog/influencersclub.yaml
   - src/treg/catalog/quickenrich.extended.yaml
   - src/treg/catalog/examples/quickenrich.companies.search.json
   - src/treg/catalog/examples/quickenrich.people.email.find.json
@@ -188,6 +189,30 @@ LimaData adds all 24 Basic v2 operations. Fifteen fixed, synchronous operations 
 key; variable, 404-billed, and account-scoped batch operations require a team's own key. Six
 fixture-verified adapters join existing routing and Enrich Arena contracts. See
 [LimaData](limadata.md) for the full boundary and live evidence.
+
+## influencers.club creator enrichment: cache result admission (2026-09-18)
+
+The four `influencersclub.creators.enrich.*` tiers (raw, profile, analytics, full) gain verified
+adapters so `results.has_result_rules` is true for them: the archive can now tell a found creator
+from an empty answer and serve only the former, once an operator allowlists the ids. Nothing else
+changes: no routed row, no new tool, `/call/` relays exactly as before.
+
+- **Contracts `creators.profile` and `creators.analytics` are `routed: false`** — the first use
+  of that flag (see Routing). The raw / profile / full tiers share one capability because they
+  are one provider at three depths and three prices, and a generated `treg.creators.profile` row
+  would have offered them as "best of 3 providers" and picked the cheapest tier every time.
+  Identity is `{handle, platform}`; the required output is the platform block.
+- **A hit is a platform block under `result`.** The vendor keys the block by the platform asked
+  for, so `miss` is a `coalesce` over every platform it enriches. Evidence from the first month
+  on the shared key: every 2xx (about 2,700 across the tiers) carried a block; the smallest
+  bodies were 398 to 1,053 bytes; the one thin `full` body on file was a known creator with
+  `email: null` beside its `twitter` block, which the rule counts as found. An unknown creator is
+  HTTP 400 and never reaches the archive. A 2xx error envelope classifies as `error`.
+- **`enrich.email` stays without an adapter**: its input is a real person's address, so no fixture
+  can be captured under the scrub policy, and an unverified adapter is the same as none.
+- **Comparison declarations**: `credits_cost` and `trial_searches_left` (the tier price and, on a
+  trial key, the searches left) on the four tiers; `credits_cost` and `result.picture` on
+  `enrich.email`, whose only observed changes were that rotating CDN URL.
 
 ## BounceBan email verification (2026-09-16)
 
@@ -2025,7 +2050,11 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   and agent-guessed `info@` addresses that one verify call each would have caught. The
   `hunter.companies.emails` catalog summary carries the same warning for direct `/call/` users,
   whose body is relayed verbatim. A suggestion only: treg never chains the verify call, which
-  would double every hit's price and change what the find bills.
+  would double every hit's price and change what the find bills. `routed: false` declares an
+  admission-only contract: its adapters verify like any other (which is what the archive's
+  `has_result_rules` reads), but no `treg.<capability>` row is ever generated from it. For
+  capabilities whose "children" are one provider's price tiers, which are not a choice treg
+  should make.
 - **Adapters** — `adapters.yaml`, one per endpoint: `accepts` (identity variants), `in` (contract
   field → `queryParams.x` / `body.x`), `const` (fixed provider params), `out` (core field →
   expression over the body), `miss`. The expression language (`domain/catalog/routing/paths.py`)
@@ -2049,7 +2078,7 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   A failing adapter is not a candidate; the endpoint is still callable via `/call/` exactly as
   before. `tests/test_routing.py` pins that every shipped adapter passes.
 - **The generated row** — `routing/synthetic.py`: every capability with ≥ 2 verified children gets
-  `treg.<capability>` (`provider: treg`, `kind: routed`, `POST /<capability>`, `input` = the
+  `treg.<capability>` (`store.load` skips a `routed: false` contract) (`provider: treg`, `kind: routed`, `POST /<capability>`, `input` = the
   contract, `cost` = the children's range, `routed_children`). Never hand-written; not in any
   provider file.
   `catalog_get` on it returns the contract and the ranked **plan** (the quote) —
@@ -2263,9 +2292,11 @@ brackets are deliberately not addressable in this first grammar. Missing paths a
 
 `archive._normalized_hash` removes only these paths from a parsed copy for TTL equality. It never
 changes archived or served data, raw hashes, deduplication or hit/miss classification. Without a
-nonempty list, exact byte comparison remains authoritative. No shipped endpoint has an ignore
-list; use the bounded `archive_change_observed` reports and HogQL in [archive](archive.md) as
-human review input, then add a justified declaration in a separate PR.
+nonempty list, exact byte comparison remains authoritative. Shipped declarations are justified
+where they are made (the provider sections above, e.g. Hunter's verification dates, QuickEnrich's
+`meta`, influencers.club's meter fields and rotating picture URL); use the bounded
+`archive_change_observed` reports and HogQL in [archive](archive.md) as human review input, then
+add a justified declaration in a separate PR.
 
 
 ## Security

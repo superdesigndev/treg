@@ -1094,3 +1094,30 @@ contracts:
       count: {type: int}
     miss: "videos == []"
     idempotent: true
+
+  # ---- influencers.club creator enrichment: ADMISSION ONLY (2026-09-18) ---------------------
+  # `routed: false`: these contracts exist so the archive can tell a found creator from an empty
+  # answer (results.has_result_rules needs a verified adapter, and an adapter verifies only
+  # against a contract). The raw / profile / full tiers are ONE provider at three depths and
+  # prices, not three providers, so no `treg.creators.profile` row is generated from them.
+  creators.profile:
+    summary: "A creator's profile by social handle — influencers.club raw/profile/full tiers; cache result admission only, never routed"
+    identity:
+      - {handle: str, platform: str}
+    filters: {}
+    output:
+      profile: {type: dict, required: true, note: "the platform block (`result.<platform>`) — a creator the provider knows"}
+    miss: "profile == null"
+    idempotent: true
+    routed: false
+
+  creators.analytics:
+    summary: "A creator's performance analytics by social handle — influencers.club analytics tier; cache result admission only, never routed"
+    identity:
+      - {handle: str, platform: str}
+    filters: {}
+    output:
+      analytics: {type: dict, required: true, note: "the platform block (`result.<platform>`) — a creator the provider knows"}
+    miss: "analytics == null"
+    idempotent: true
+    routed: false

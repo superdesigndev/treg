@@ -32,6 +32,11 @@ class Contract:
     # suggestion only: treg never chains the verify call itself, which would double every hit's
     # price and change what the find bills for.
     advice_unverified: str = ""
+    # False = the contract exists so the archive can judge found/empty (`results.has_result_rules`
+    # needs a verified adapter, and an adapter verifies only against a contract); no
+    # `treg.<capability>` row is ever generated from it, however many children verify. Used where
+    # the "children" are one provider's price tiers, which are not a choice treg should make.
+    routed: bool = True
 
     @property
     def required_output(self) -> tuple[str, ...]:
@@ -121,7 +126,8 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             output={k: (v if isinstance(v, dict) else {"type": str(v)}) for k, v in (c.get("output") or {}).items()},
             miss=str(c.get("miss") or ""), idempotent=bool(c.get("idempotent", True)),
             default_max_cost_usd=(float(c["default_max_cost_usd"]) if c.get("default_max_cost_usd") is not None else None),
-            advice_unverified=str(c.get("advice_unverified") or ""))
+            advice_unverified=str(c.get("advice_unverified") or ""),
+            routed=bool(c.get("routed", True)))
     return out
 
 

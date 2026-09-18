@@ -445,6 +445,8 @@ def _parse(directory: Path) -> Catalog:
                   provider_meta=provider_meta, aliases=aliases, contracts=contracts, adapters=adapters)
     from .routing.synthetic import routed_endpoint
     for cap, contract in contracts.items():
+        if not contract.routed:  # admission-only contract: never a treg.<capability> row
+            continue
         row = routed_endpoint(contract, cat.for_capability(cap), adapters, cat.cost_view)
         if row is not None and row["id"] not in by_id:
             by_id[row["id"]] = row

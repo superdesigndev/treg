@@ -307,7 +307,9 @@ async def test_unverified_hit_miss_does_not_enable_new_policy(clients, cache_on,
     assert all(p['cache_result_policy'] == 'legacy' and p['cache_admission'] == 'not_applicable' for p in props)
 
 
-@pytest.mark.parametrize('ep', ['hunter.companies.enrich', 'tikhub.tiktok.video.comments'])
+@pytest.mark.parametrize('ep', ['hunter.companies.enrich', 'tikhub.tiktok.video.comments',
+                                'influencersclub.creators.enrich.raw', 'influencersclub.creators.enrich.profile',
+                                'influencersclub.creators.enrich.analytics', 'influencersclub.creators.enrich.full'])
 def test_verified_adapter_positive_fixture_is_admissible(ep):
     from pathlib import Path
     from treg.domain.catalog.results import classify, has_result_rules
@@ -513,3 +515,22 @@ async def test_hunter_declared_date_ignore_preserves_verification_status(clients
 def test_email_pilot_missing_fields(ep, body, state):
     from treg.domain.catalog.results import classify
     assert classify(ep, 200, json.dumps(body).encode()).state == state
+
+
+@pytest.mark.parametrize('ep', ['influencersclub.creators.enrich.raw', 'influencersclub.creators.enrich.profile',
+                                'influencersclub.creators.enrich.analytics', 'influencersclub.creators.enrich.full'])
+@pytest.mark.parametrize('body,state', [
+    # a creator the vendor knows, on a platform other than the fixture's: found
+    (b'{"result": {"email": null, "email_type": null, "twitter": {"username": "x"}}, "credits_cost": 1}', 'found'),
+    # contact fields with no platform block: asked and answered, nothing
+    (b'{"result": {"email": null, "email_type": null}, "credits_cost": 1}', 'empty'),
+    (b'{"result": null, "credits_cost": 0}', 'empty'),
+    # a 200 carrying an error envelope is an error, never a servable answer
+    (b'{"error": "rate limited"}', 'error'),
+])
+def test_influencersclub_tiers_platform_block_decides(ep, body, state):
+    """The four tiers answer `{result: {<platform>: {...}}}`; the platform block, not the contact
+    fields beside it, is what makes a hit (an unknown creator is HTTP 400 and never recorded)."""
+    from treg.domain.catalog.results import classify, has_result_rules
+    assert has_result_rules(ep)
+    assert classify(ep, 200, body).state == state

@@ -207,6 +207,9 @@ endpoints:
 
   # --- enrichment by handle (four depths = four prices) ---------------------------------------------
   - id: influencersclub.creators.enrich.raw
+    cache:
+      # the meter fields: the tier's credit price and, on a trial key, the searches left
+      ignore_paths: ["credits_cost", "trial_searches_left"]
     domain: enrich
     capability: creators.profile
     platform: creators
@@ -238,6 +241,9 @@ endpoints:
     docs_url: https://docs.influencers.club/openapi/enrich-by-handle-raw/public_v1_creators_enrich_handle_raw_create
 
   - id: influencersclub.creators.enrich.profile
+    cache:
+      # the meter fields: the tier's credit price and, on a trial key, the searches left
+      ignore_paths: ["credits_cost", "trial_searches_left"]
     domain: enrich
     capability: creators.profile
     platform: creators
@@ -270,6 +276,9 @@ endpoints:
     docs_url: https://docs.influencers.club/openapi/enrich-by-handle-profile/public_v1_creators_enrich_handle_profile_create
 
   - id: influencersclub.creators.enrich.analytics
+    cache:
+      # the meter fields: the tier's credit price and, on a trial key, the searches left
+      ignore_paths: ["credits_cost", "trial_searches_left"]
     domain: enrich
     capability: creators.analytics
     platform: creators
@@ -302,6 +311,9 @@ endpoints:
     docs_url: https://docs.influencers.club/openapi/enrich-by-handle-analytics/public_v1_creators_enrich_handle_analytics_create
 
   - id: influencersclub.creators.enrich.full
+    cache:
+      # the meter fields: the tier's credit price and, on a trial key, the searches left
+      ignore_paths: ["credits_cost", "trial_searches_left"]
     domain: enrich
     capability: creators.profile
     platform: creators
@@ -336,6 +348,10 @@ endpoints:
     docs_url: https://docs.influencers.club/openapi/enrich-by-handle-full/public_v1_creators_enrich_handle_full_create
 
   - id: influencersclub.creators.enrich.email
+    cache:
+      # `result.picture` is a rotating CDN URL: every change the archive observed on this endpoint
+      # in its first month was that field alone
+      ignore_paths: ["credits_cost", "result.picture"]
     domain: enrich
     capability: creators.enrich.by_email
     platform: creators

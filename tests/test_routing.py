@@ -88,6 +88,21 @@ def test_expression_language():
         P.evaluate("nope(a)", doc)
 
 
+def test_admission_only_contract_verifies_adapters_but_generates_no_routed_row():
+    """`routed: false` (contracts.yaml): the influencers.club raw/profile/full tiers are one provider
+    at three prices, so their contract exists for cache result admission only — the adapters must
+    verify (that is what `has_result_rules` reads), and no `treg.creators.profile` row may appear."""
+    cat = catalog_store.load()
+    for cap in ("creators.profile", "creators.analytics"):
+        assert cat.contracts[cap].routed is False
+        assert "treg." + cap not in cat.by_id
+    assert cat.contracts["people.email.find"].routed is True
+    tiers = ["influencersclub.creators.enrich." + t for t in ("raw", "profile", "full", "analytics")]
+    assert all(cat.adapters[eid].verified and not cat.adapters[eid].verify_note for eid in tiers)
+    # ≥ 2 verified children of one capability would have generated a row on a routed contract
+    assert len([e for e in cat.for_capability("creators.profile") if cat.adapters[e["id"]].verified]) >= 2
+
+
 def test_every_shipped_adapter_round_trips_its_fixture():
     cat = catalog_store.load()
     bad = {eid: a.verify_note for eid, a in cat.adapters.items() if not a.verified}
