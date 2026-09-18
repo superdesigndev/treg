@@ -170,6 +170,14 @@ shared-serving allow-list. Most providers also require a configured platform key
 free endpoint declared `platform_auth: anonymous` needs only the allow-list because treg injects no
 provider credential.
 
+For TubeAlfred, `TREG_PLATFORM_KEY_TUBEALFRED` is a Bearer API key with both `youtube.read` and
+`billing.read`; the latter lets the capacity sweep call the free billing-usage route. Add
+`tubealfred` to `TREG_PLATFORM_PROVIDERS` only when that key is funded and ready to serve shared
+traffic. New Creator subscriptions provide 3,500 credits for $5; existing active subscriptions may
+retain their grandfathered allowance. New accounts receive 50 free credits, and free credits expire
+after 14 days. Standard successful calls consume one credit; non-empty comment and reply pages have
+a 20-credit minimum.
+
 ## Safe local mode
 
 `single_user` and `single_user_token_file` support `curl {BASE}/selfhost.sh | sh`. The default serve

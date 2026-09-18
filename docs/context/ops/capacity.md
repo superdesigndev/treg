@@ -105,6 +105,19 @@ calls to the same provider. The immediate kill switch is removal of `financialda
 `TREG_PLATFORM_PROVIDERS`, which stops anonymous and platform-key offers while leaving team BYOK
 credentials first and usable. A default anonymous-provider throttle is not shipped in this change.
 
+## TubeAlfred credits
+
+`collectors._tubealfred` calls the free `GET /v1/billing/usage` route with the platform Bearer key,
+reads the current credit balance, and includes the reported 30-day credit usage in the snapshot
+note. The platform key must carry `billing.read` as well as `youtube.read`; user-owned keys are not
+part of this sweep. HTTP 402 responses containing `insufficient credits` are classified as balance
+exhaustion by `signatures._TABLE`.
+
+The public replacement rate is the new Creator allowance of $5 for 3,500 credits. Existing active
+subscriptions may retain a grandfathered allowance, but grandfathering does not apply to free
+accounts: new accounts receive 50 free credits, and free credits expire after 14 days. Neither the
+free grant nor grandfathered inventory defines a sustainable replacement rate.
+
 **Problem.** When a registry-owned vendor account runs dry, callers receive an upstream refusal they
 cannot fix themselves. Capacity handling has three layers: **know** the runway, **fund** before it
 dies, and **protect** the call when it dies anyway through refusal before reserve, same-endpoint

@@ -21,7 +21,9 @@ Enrichment again by eight providers in one pass (2026-08-20: companyenrich, ocea
 findymail, branddev, icypeas, leadsforge). This is the repeatable process — follow it whenever a
 category needs more providers. Creator/influencer data (influencers.club, 2026-08-21) was the first
 provider added under the vendor-listing skill end to end: registry + 15-endpoint catalog, every price
-reconciled against the provider's own credit meter.
+reconciled against the provider's own credit meter. TubeAlfred (2026-09-06) followed the external
+vendor path: a near-free public-data probe, a 15-operation YouTube catalog, and a dated per-endpoint
+ledger, with maintainer verification stamps deliberately left out of the vendor's branch.
 
 Provider definitions and setup metadata live in **`oauth_providers.py`** (the `REGISTRY` of
 `OAuthProvider` entries). Reusable authorization and consent rules live in `domain/connections`, and

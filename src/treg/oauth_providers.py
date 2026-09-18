@@ -1819,6 +1819,40 @@ TIKHUB = OAuthProvider(
     probe_path="/api/v1/tikhub/user/get_user_info",  # account info — the natural key check
 )
 
+TUBEALFRED = OAuthProvider(
+    service="tubealfred",
+    display_name="TubeAlfred",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your TubeAlfred API key",
+    # TubeAlfred also accepts X-API-Key; prefer Bearer so the key follows the registry default.
+    setup_url="https://tubealfred.com/app/api-keys",
+    setup_action_label="Get your TubeAlfred API key",
+    setup_steps=(
+        "Sign in to TubeAlfred and open Manage → API Keys.",
+        "Create a key with the YouTube read scope and copy it once.",
+    ),
+    setup_note=(
+        "New accounts receive 50 credits. Free credits expire after 14 days. The credential probe resolves "
+        "one public YouTube URL and costs 1 credit."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary=(
+        "Fetch public YouTube video, transcript, comment, channel, playlist, search, and trending data."
+    ),
+    base_url="https://api.tubealfred.com",
+    docs_url="https://tubealfred.com/docs",
+    # A bogus key returns HTTP 401 with {"message":"Invalid or missing API key."}; a valid key
+    # resolves this URL for 1 credit.
+    probe_path=(
+        "/v1/youtube/utility/resolve?"
+        "url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DdQw4w9WgXcQ"
+    ),
+)
+
 BRIGHTDATA = OAuthProvider(
     service="brightdata",
     display_name="Bright Data",
@@ -3236,7 +3270,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, OPENROUTER,
         REPLICATE,
         REAPI, PIAPI,
-        TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
+        TIKHUB, TUBEALFRED, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, CLORO,

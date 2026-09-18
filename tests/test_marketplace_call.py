@@ -1460,6 +1460,15 @@ def test_exa_catalog_is_platform_priced():
     assert all(cat.cost_view(ep["cost"], "exa")["usd"] > 0 for ep in rows)
 
 
+def test_tubealfred_catalog_is_platform_priced():
+    """The public new-plan credit rate makes every curated TubeAlfred route computable."""
+    cat = A.catalog_store.load()
+    rows = cat.for_provider("tubealfred")
+    assert len(rows) == 15
+    assert all(cat.platform_eligible(ep) for ep in rows)
+    assert all(cat.cost_view(ep["cost"], "tubealfred")["usd"] > 0 for ep in rows)
+
+
 def test_reapi_and_piapi_catalogs_are_platform_priced():
     """Both AIGC resellers price in dollars per second or per image, so every generation row
     converts natively; the free poll utilities are eligible as free routes."""
