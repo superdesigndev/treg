@@ -221,6 +221,10 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
             if prev.get("test_request") is not None:
                 ep["test_request"] = prev["test_request"]
                 ep.pop("untestable", None)
+            # what the verifier measured on that same call; a re-ingest cannot re-derive either
+            for field in ("observed_cost", "observed_time"):
+                if prev.get(field) is not None:
+                    ep[field] = prev[field]
     return kept
 
 
@@ -1331,12 +1335,13 @@ ANYAPI_KEEP_PLATFORMS = frozenset({
 
 # Routing controls, not data inputs: they change which source serves and what it costs, never the
 # shape of the answer. Carrying them into every one of 300+ entries would bury the real parameters.
-ANYAPI_SKIP_PARAMS = {"preferLatencyUnderMs", "requireCursor", "requireSinglePage"}
+ANYAPI_SKIP_PARAMS = {"preferLatencyUnderMs", "requireCursor", "requireSinglePage",
+                      "source", "ignoreSources", "allowFallbacks"}
 
 ANYAPI_RATE_CARD = "https://api.getanyapi.com/v1/apis?limit=1000"
 ANYAPI_OPENAPI = "https://api.getanyapi.com/openapi.json"
 # Bumped by hand when the rate card is re-read, so a re-run with no price change is byte-identical.
-ANYAPI_CHECKED = "2026-09-11"
+ANYAPI_CHECKED = "2026-09-19"
 
 # What AnyAPI actually billed, per SKU, over the trailing 60 days: a hand-exported snapshot of the
 # vendor's own request ledger (calls, p50, p90, max USD), the same arrangement as
@@ -1345,34 +1350,6 @@ ANYAPI_CHECKED = "2026-09-11"
 # window are in it - the rest fall back to the live rate card. See _anyapi_cost.
 ANYAPI_MEASURED_FILE = Path(__file__).parent / "data" / "anyapi_measured_charges.json"
 _ANYAPI_MEASURED: dict[str, dict] | None = None
-
-# CORE-TIER SHELF ROWS WHOSE SOURCES CHARGE DIFFERENT PRICES FOR THE SAME RESULT COUNT.
-#
-# For these the p90 measures lane spread, not work done, so it is not the price a buyer will pay.
-# maps.search, measured per source over the same 60 days: scrapertech $0.00175 flat (312 calls),
-# serper $0.00297 flat (743 calls), apify $0.06005 median (485 calls) - and all three average
-# 11-12 items per response. The p90 of the blend is $0.07734, which is only ever paid when the
-# dearest source serves; the cheapest source serves the same query for $0.00175. Listing $0.07734
-# on the price-sorted google.serp.maps shelf misrepresents the endpoint by a factor of 44.
-#
-# So these rows list the CHEAPEST ADVERTISED price instead - `pricing.from.maxUsd`, the cheapest
-# source's price at the input maximum - and keep `source: rate_card_api`, because that is what the
-# number now is. They UNDER-reserve by design: a rescue on a dearer source settles above the
-# listing, which domain/money/settlement.py:133-134 accepts and reports in reconcile, and
-# `reported_charge` (`costUsd`) is what actually settles either way.
-#
-# This applies ONLY to core rows on the comparison shelf. Extended rows are not shelf-ranked, so a
-# lower number there would be a smaller reserve with no upside. It also does NOT apply to a
-# single-source per-result row like linkedin.company_employees or linkedin.jobs, where the price at
-# the input maximum is HIGHER than the measured p90 and switching would raise the shelf price.
-ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE = {
-    "maps.search",
-    "maps.place",
-    "maps.reviews",
-    "twitter.profile",
-    "twitter.replies",
-}
-
 
 def _anyapi_measured() -> dict[str, dict]:
     global _ANYAPI_MEASURED
@@ -1415,43 +1392,43 @@ def _anyapi_input(schema: dict, example: dict) -> dict:
     return {"body": body, "bodyType": "json"}
 
 
+def _anyapi_is_flat(api: dict) -> bool:
+    return ((api.get("pricing") or {}).get("from") or {}).get("model") == "flat"
+
+
 def _anyapi_cost(api: dict) -> dict:
-    """What a caller really pays for one request: the p90 of AnyAPI's own measured charges.
+    """The price a plain, un-steered call pays today.
 
-    `cost.value` is the 90th percentile of every charge AnyAPI billed for this SKU over the
-    trailing 60 days (ANYAPI_MEASURED_FILE), so the shelf price is what nine calls in ten settle at
-    or below. That replaces the rate card's `pricing.from.maxUsd` - the CHEAPEST source's price at
-    the input maximum - which is wrong in both directions wherever the ledger can check it: it
-    reads far LOW on a multi-source SKU whose cheap source rarely wins (ebay.search lists $0.0005
-    against a $0.03795 median real charge), far HIGH on a per-result SKU nobody calls at the input
-    maximum (instagram.hashtag_analytics lists $0.0385 against a $0.00297 p90), and it drifts every
-    time a source is quarantined and `pricing.from` recomputes. `maxUsd` is still the fallback for
-    a SKU with fewer than 5 charged calls in the window, where there is nothing to measure,
-    and for the named ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE, where the p90 measures
-    which source won rather than how much work the call did.
+    FLAT-priced SKU (one price per request, most of the listing): `pricing.from.maxUsd`, the
+    cheapest source's price, which is the source that serves a call that sends no routing control.
+    A dearer source only serves as a rescue, and `reported_charge` settles that call at its real
+    `costUsd`, above this listing.
 
-    A p90 is deliberately NOT a ceiling. About one call in ten settles above the reserve, which
-    domain/money/settlement.py already designs for: the charge may exceed the reserve, the ledger
-    takes the difference from the balance, and the next reserve is the gate. Measured across the
-    same 60 days under the OLD, much-worse prices, that overrun was $18.66 on $695.05 settled -
-    2.7%. The listing prices for the buyer comparing shelves, not for the reserve.
+    These rows used to list the p90 of AnyAPI's 60-day ledger instead. Measured again on
+    2026-09-19 that statistic was tracking who called, not what a new caller pays: google.search
+    read $0.0009 against a $0.0005 default because one caller's burst overflowed onto the rescue
+    source on a single day (8,106 calls), twitter.trends read $0.00075 against $0.0001 because one
+    customer pins the dearer source, and tiktok.profile read $0.0012 against $0.00045 because the
+    cheap source joined mid-window and 60 days of older charges outvoted it. None of those is a
+    price this catalog's callers will meet: the listing deliberately drops AnyAPI's routing
+    controls (ANYAPI_SKIP_PARAMS), so every call from here is default-routed.
 
-    A measured price is clamped to `failoverMaxUsd` at BOTH ends. The floor is _anyapi_flat_floor
-    below. The ceiling is the dearest source's price at the input maximum, so no request can settle
-    above it: a p90 that lands higher is quoting a source AnyAPI has since withdrawn, and the row
-    would otherwise say "$0.0036 ... up to a $0.0012 ceiling" in one sentence. That was 21 of the
-    201 rows in an earlier revision of this branch, the worst at 3x its own ceiling.
+    PER-RESULT SKU (`model: linear`): the p90 of what AnyAPI's ledger billed over the trailing
+    window (ANYAPI_MEASURED_FILE). There `pricing.from.maxUsd` is the price at the INPUT MAXIMUM,
+    not a floor, and nobody calls at the maximum - instagram.hashtag_analytics advertises $0.0385
+    against a $0.00297 p90 - so the measured charge is the honest number. It is capped at
+    `failoverMaxUsd`, the dearest price any source can charge today: a p90 above that is quoting a
+    source AnyAPI has since withdrawn. A per-result SKU with fewer than 5 charged calls in the
+    window has nothing to measure and falls back to `maxUsd`.
 
     `source: observed` is this catalog's own word for a price seen being billed rather than read
-    off a page (domain/catalog/store.COST_SOURCES); the rate-card fallback keeps `rate_card_api`.
+    off a page (domain/catalog/store.COST_SOURCES); a rate-card price keeps `rate_card_api`.
     `reported_charge` stays on every row either way: `costUsd` is the only number that knows which
     source served and how many rows came back, and it is what settles.
     """
-    measured = (None if api["id"] in ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE
-                else _anyapi_measured().get(api["id"]))
+    measured = None if _anyapi_is_flat(api) else _anyapi_measured().get(api["id"])
     price = measured["p90_usd"] if measured else api["pricing"]["from"]["maxUsd"]
     if measured:
-        price = max(price, _anyapi_flat_floor(api))
         price = min(price, api["pricing"].get("failoverMaxUsd") or price)
     return {
         "type": "per_success",
@@ -1466,59 +1443,29 @@ def _anyapi_cost(api: dict) -> dict:
     }
 
 
-def _anyapi_flat_floor(api: dict) -> float:
-    """Today's true per-call floor for a FLAT-priced SKU, or 0 when there is no such floor.
-
-    A measured p90 is a statistic over the trailing 60 days, so it can sit BELOW the price the
-    catalog charges today: when a source is retired or quarantined, `pricing.from` recomputes
-    upward and every historical charge was cheaper than anything now on offer. Measured against
-    the live rate card, that is 13 rows, all at exactly 1.20x - one supplier's $0.001 lane went
-    away and $0.0012 is now the cheapest anyone can pay (tiktok.profile, and the weibo, zhihu and
-    douyin families). A ledger run caught it on tiktok.profile: claimed $0.001, metered $0.0012.
-
-    Only `model: flat` qualifies. On a per-result SKU `pricing.from.maxUsd` is the price at the
-    INPUT MAXIMUM rather than a floor - instagram.hashtag_analytics advertises $0.0385 against a
-    $0.00297 p90 - so clamping to it there would reinstate exactly the overstatement the measured
-    prices exist to remove.
-    """
-    pricing = (api.get("pricing") or {}).get("from") or {}
-    return pricing.get("maxUsd", 0.0) if pricing.get("model") == "flat" else 0.0
-
-def anyapi_price_basis(sku: str, api: dict | None = None) -> str:
+def anyapi_price_basis(api: dict) -> str:
     """One sentence naming where this row's price came from, for the row's own `note`.
 
     Core rows are hand-curated but priced by the same rule, so this is shared rather than copied.
-    Pass `api` (the rate-card row) to have a clamped price say so: a p90 is a statistic over a
-    trailing window, and a row whose note claims a $0.002 median while charging $0.0012 reads as a
-    contradiction rather than as the correction it is.
     """
-    if sku in ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE:
-        return ("Price is the cheapest source's advertised price, because the sources that "
-                "serve this endpoint charge very different amounts for the same number of "
-                "results; a rescue on a dearer source settles above it.")
+    if _anyapi_is_flat(api):
+        return ("Price is what the cheapest source charges per request, and that source serves "
+                "first; a call rescued by a dearer source settles above it.")
     as_of, days = _anyapi_measured_window()
-    m = _anyapi_measured().get(sku)
+    m = _anyapi_measured().get(api["id"])
     if m:
-        basis = (f"Price is the p90 of what AnyAPI really charged for this endpoint over the {days} "
-                 f"days to {as_of} ({m['calls']} charged calls, ${m['p50_usd']:g} median), not "
-                 "a list price; roughly one call in ten settles above it.")
-        return basis + (_anyapi_clamp_clause(m["p90_usd"], api) if api else "")
-    return (f"Too few charged calls in the {days} days to {as_of} to measure, so the price is "
-            "the live rate card's cheapest source at the input maximum.")
-
-
-def _anyapi_clamp_clause(p90: float, api: dict) -> str:
-    """The sentence a clamped measured price owes the reader, or nothing when it was not clamped."""
-    ceiling = (api.get("pricing") or {}).get("failoverMaxUsd")
-    floor = _anyapi_flat_floor(api)
-    if ceiling and p90 > ceiling:
-        return (f" That p90 is capped here at ${ceiling:g}, the dearest price any source can charge "
-                "for this request today: the dearer source it measured has since been withdrawn, so "
-                "no call can settle at the p90 any more.")
-    if floor > p90:
-        return (f" That p90 is raised here to ${floor:g}, today's cheapest advertised price, because "
-                "the cheaper source it measured has since been withdrawn.")
-    return ""
+        basis = (f"Priced per result, so the price is the p90 of what AnyAPI really charged for this "
+                 f"endpoint over the {days} days to {as_of} ({m['calls']} charged calls, "
+                 f"${m['p50_usd']:g} median), not the list price at the input maximum; roughly one "
+                 "call in ten settles above it.")
+        ceiling = api["pricing"].get("failoverMaxUsd")
+        if ceiling and m["p90_usd"] > ceiling:
+            basis += (f" That p90 is capped here at ${ceiling:g}, the dearest price any source can "
+                      "charge for this request today: the dearer source it measured has since been "
+                      "withdrawn.")
+        return basis
+    return (f"Priced per result, with too few charged calls in the {days} days to {as_of} to "
+            "measure, so the price is the live rate card's cheapest source at the input maximum.")
 
 
 def ingest_anyapi(refresh: bool = False):
@@ -1573,7 +1520,7 @@ def ingest_anyapi(refresh: bool = False):
         lanes = len(api.get("lanes") or [])
         ceiling = api["pricing"]["failoverMaxUsd"]
         ep["note"] = (
-            f"AnyAPI slug `{sku}`. {anyapi_price_basis(sku, api)} "
+            f"AnyAPI slug `{sku}`. {anyapi_price_basis(api)} "
             f"{lanes} source{'s' if lanes != 1 else ''} can serve it; the "
             f"cheapest serves first and a failed attempt is retried on the next, up to a "
             f"${ceiling:g} ceiling per request. `costUsd` on the response is the exact charge, "
@@ -1588,13 +1535,12 @@ def ingest_anyapi(refresh: bool = False):
         "Every SKU AnyAPI publishes on its ten busiest platforms, minus the routes curated in",
         "anyapi.yaml and the SKUs AnyAPI excludes from this listing (ANYAPI_KEEP_PLATFORMS and",
         "ANYAPI_EXCLUDE in scripts/catalog_ingest.py).",
-        "Prices are MEASURED: cost.value is the p90 of what AnyAPI actually billed for that SKU",
-        "over the 60 days to the ingest date (scripts/data/anyapi_measured_charges.json), so it is",
-        "what nine calls in ten settle at or below rather than the cheapest source's list price. A",
-        "SKU with too few charged calls to measure keeps the rate card's cheapest-source price and",
-        "says so in its note (cost.source: rate_card_api vs observed). One call in ten settles",
-        "ABOVE the reserve by design; every response reports its exact charge as costUsd, which is",
-        "what reported_charge settles on.",
+        "A flat-priced SKU lists the cheapest source's per-request price, which is the source that",
+        "serves a default-routed call. A per-result SKU lists the p90 of what AnyAPI actually billed",
+        "over the 60 days to the export date (scripts/data/anyapi_measured_charges.json), because",
+        "its rate-card price is quoted at the input maximum (cost.source: rate_card_api vs",
+        "observed). A rescue on a dearer source settles ABOVE the listing by design; every response",
+        "reports its exact charge as costUsd, which is what reported_charge settles on.",
     ], carry_capability=True, carry_input=False)
     return out, {"endpoints": len(endpoints)}
 
