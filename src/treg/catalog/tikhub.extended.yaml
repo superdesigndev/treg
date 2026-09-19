@@ -20930,7 +20930,7 @@ endpoints:
       sort:
         type: string
         required: false
-        note: '排序方式(仅适用于post/comment/media)/Sort method (only for post/comment/media): RELEVANCE(相关性), HOT(热门), TOP(最受欢迎), NEW(最新), COMMENTS(评论数,仅post)'
+        note: '排序方式(仅适用于post/comment/media)/Sort method (only for post/comment/media): RELEVANCE(相关性), HOT(热门), TOP(最受欢迎), NEW(最新), COMMENTS(评论数,仅post). Prefer RELEVANCE when you want posts matching the query. sort=NEW is chronological newest-first and often returns weakly related or unrelated sitewide posts (not "recent posts about X"). Brand/token queries may also match colloquial substrings under NEW.'
         example: RELEVANCE
       time_range:
         type: string
@@ -20956,6 +20956,7 @@ endpoints:
         required: false
         note: Whether to clean and format the data
         example: false
+    note: 'Prefer sort=RELEVANCE for posts matching the query. sort=NEW is chronological newest-first and often returns weakly related or unrelated sitewide posts — not "recent posts about X". Brand/token queries may also match colloquial substrings under NEW.'
   test_request:
     queryParams:
       query: python programming

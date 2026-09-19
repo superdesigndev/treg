@@ -310,7 +310,17 @@ endpoints:
     input:
       queryParams:
         query: {type: string, required: true, note: "Search query", example: "ai"}
-        sort: {type: string, required: false, note: "Sort by", example: "relevance"}
+        sort:
+          type: string
+          required: false
+          enum: [relevance, new, top, comment_count]
+          note: "Prefer relevance when you want posts matching the query. One of: relevance | new | top | comment_count. sort=new is chronological newest-first and often returns weakly related or unrelated sitewide posts (not \"recent posts about X\"). Brand/token queries may also match colloquial substrings under new. Comment search supports relevance, new, and top; comment_count is for post search only."
+          example: relevance
+        filter: {type: string, required: false, enum: [posts, comments], note: "Search posts or comments. Default posts.", example: "posts"}
+        timeframe: {type: string, required: false, enum: [all, day, week, month, year], note: "Post search timeframe. One of: all | day | week | month | year.", example: "all"}
+        after: {type: string, required: false, note: "Pagination token from the previous response (after) to get the next page"}
+        trim: {type: boolean, required: false, note: "Set to true for a trimmed down version of the response", example: false}
+      note: "Prefer sort=relevance for posts matching the query. sort=new is chronological newest-first and often returns weakly related or unrelated sitewide posts — not \"recent posts about X\". Brand/token queries may also match colloquial substrings under new."
     test_request:
       queryParams: {query: "ai", sort: "relevance"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}

@@ -1846,6 +1846,25 @@ notes that `view_count`, `upload_date`, and `rating` are not accepted.
 unchanged. Enforced by `test_scrapecreators_youtube_search_filter_enums` and
 `test_catalog_get_scrapecreators_youtube_search_filter_enums`.
 
+### ScrapeCreators Reddit search `sort` (and TikHub sibling)
+
+ScrapeCreators' OpenAPI for `GET /v1/reddit/search` restricts `sort` to
+`relevance | new | top | comment_count` (example `relevance`). Feedback #507:
+`scrapecreators.reddit.search.posts` advertised a free-form "Sort by" string,
+so agents sent `sort=new` expecting "recent posts about X" and got newest
+sitewide posts weakly related or unrelated to the query. Sibling feedback #461:
+the same endpoint with `query=Betterment` + `sort=new` matched colloquial
+"better" substrings. Relevance sort matches the query. Catalog-only: `sort`
+now names the OpenAPI enum and warns that `new` is chronological, not
+query-relevant; `input.note` repeats the caveat. Optional OpenAPI fields
+`filter` (`posts|comments`), `timeframe` (`all|day|week|month|year`), `after`,
+and `trim` are documented too. TikHub's
+`tikhub.x.reddit-app-fetch-dynamic-search` keeps provider casing
+`RELEVANCE|HOT|TOP|NEW|COMMENTS` and the same `NEW` caveat. Settlement,
+routing and request shaping are unchanged. Enforced by
+`test_scrapecreators_reddit_search_posts_sort_enum` and
+`test_catalog_get_reddit_keyword_search_sort_new_weak_relevance`.
+
 ### SerpApi Google Trends `data_type` query cardinality
 
 SerpApi's Google Trends engine (`GET /search?engine=google_trends`) accepts five `data_type`

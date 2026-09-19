@@ -1846,6 +1846,81 @@ async def test_catalog_get_scrapecreators_facebook_adlibrary_search_ads_sort_by(
     assert "search" in input_note and "detail" in input_note
 
 
+REDDIT_SEARCH_POSTS_ID = "scrapecreators.reddit.search.posts"
+REDDIT_SEARCH_POSTS_SORT = ["relevance", "new", "top", "comment_count"]
+TIKHUB_REDDIT_SEARCH_ID = "tikhub.x.reddit-app-fetch-dynamic-search"
+
+
+def test_scrapecreators_reddit_search_posts_sort_enum():
+    """Feedback #507 / #461: GET /v1/reddit/search sort=new is chronological, not 'about X'.
+
+    catalog_get used to advertise sort as a free string (example relevance)
+    with note 'Sort by', so agents sent sort=new expecting recent posts about
+    the query and got newest sitewide posts weakly related or unrelated.
+    Sibling #461: query=Betterment + sort=new matched colloquial 'better'.
+    Upstream OpenAPI enum is relevance | new | top | comment_count. Catalog-only:
+    sort names that enum and warns to prefer relevance; input.note repeats the
+    caveat. Settlement is unchanged.
+
+    Ref: https://docs.scrapecreators.com/openapi.json
+    """
+    cat = cs.load()
+    ep = cat.by_id[REDDIT_SEARCH_POSTS_ID]
+    assert ep["path"] == "/v1/reddit/search"
+    field = ep["input"]["queryParams"]["sort"]
+    assert field["enum"] == REDDIT_SEARCH_POSTS_SORT
+    assert field["example"] == "relevance"
+    note = field["note"].lower()
+    assert "relevance" in note
+    assert "new" in note
+    assert "chronological" in note or "newest-first" in note or "newest first" in note
+    assert "weak" in note or "unrelated" in note
+    input_note = ep["input"]["note"].lower()
+    assert "relevance" in input_note
+    assert "new" in input_note
+    assert "chronological" in input_note or "newest" in input_note
+    assert "weak" in input_note or "unrelated" in input_note
+    params = ep["input"]["queryParams"]
+    assert params["filter"]["enum"] == ["posts", "comments"]
+    assert params["timeframe"]["enum"] == ["all", "day", "week", "month", "year"]
+    assert "after" in params
+    assert params["trim"]["type"] == "boolean"
+    assert (ep.get("test_request") or {}).get("queryParams", {}).get("sort") == "relevance"
+    assert ep["cost"]["value"] == 1
+    assert ep["cost"]["currency"] == "credit"
+
+    tikhub = cat.by_id[TIKHUB_REDDIT_SEARCH_ID]
+    tikhub_sort = tikhub["input"]["queryParams"]["sort"]["note"]
+    assert "RELEVANCE" in tikhub_sort and "NEW" in tikhub_sort
+    assert "HOT" in tikhub_sort and "TOP" in tikhub_sort and "COMMENTS" in tikhub_sort
+    tikhub_note = tikhub_sort.lower()
+    assert "chronological" in tikhub_note or "newest" in tikhub_note
+    assert "weak" in tikhub_note or "unrelated" in tikhub_note
+    tikhub_input = tikhub["input"]["note"]
+    assert "RELEVANCE" in tikhub_input and "NEW" in tikhub_input
+
+
+async def test_catalog_get_reddit_keyword_search_sort_new_weak_relevance(
+        clients: AsyncClient):
+    """Feedback #507 / #461: catalog_get must warn that chronological/new is weakly related."""
+    for endpoint_id in (REDDIT_SEARCH_POSTS_ID, TIKHUB_REDDIT_SEARCH_ID):
+        body = (await clients.get(f"/catalog/endpoints/{endpoint_id}")).json()
+        field = body["endpoint"]["input"]["queryParams"]["sort"]
+        note = field["note"].lower()
+        input_note = body["endpoint"]["input"]["note"].lower()
+        blob = f"{note} {input_note}"
+        assert "relevance" in blob
+        assert "chronological" in blob or "newest" in blob
+        assert "weak" in blob or "unrelated" in blob
+        assert "new" in blob
+        if endpoint_id == REDDIT_SEARCH_POSTS_ID:
+            assert field["enum"] == REDDIT_SEARCH_POSTS_SORT
+            assert field["example"] == "relevance"
+        else:
+            raw = field["note"]
+            assert "NEW" in raw and "RELEVANCE" in raw
+
+
 LLM_MENTIONS_HISTORICAL_ID = "dataforseo.x.ai-optimization-llm-mentions-historical-live"
 LLM_MENTIONS_MULTI_TARGET_ID = (
     "dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live"
