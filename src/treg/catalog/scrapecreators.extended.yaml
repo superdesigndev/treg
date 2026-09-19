@@ -5246,13 +5246,14 @@ endpoints:
       url:
         type: string
         required: true
-        note: Tweet URL
+        note: "Video tweet URL — a native video tweet, not an X Article / post whose media is only article-embedded video."
         example: https://x.com/TheoVon/status/1916982720317821050
       cache_max_age:
         type: string
         required: false
         note: 'If we have a response in the cache that is this many days old or newer, return the cached response (0 credits, with "cached": true and a "cached_at" timestamp). Otherwise, scrape a live result (1 credit). [See the Cac...'
         example: 7d
+    note: "This endpoint targets a native video tweet URL. X Articles / posts whose media is only article-embedded video may return HTTP success with transcript: null while still charging the normal per-call credit — treat null as unsupported / no transcript available for that URL shape, not as a successful empty caption. For those posts, call scrapecreators.x.v1-twitter-tweet (tweet detail) first; if it exposes embedded video URLs, decide whether another transcript path applies. Observed; not a documented provider guarantee."
   test_request:
     queryParams:
       url: https://x.com/TheoVon/status/1916982720317821050

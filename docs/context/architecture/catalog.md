@@ -1865,6 +1865,22 @@ routing and request shaping are unchanged. Enforced by
 `test_scrapecreators_reddit_search_posts_sort_enum` and
 `test_catalog_get_reddit_keyword_search_sort_new_weak_relevance`.
 
+### ScrapeCreators X tweet transcript `transcript: null` on Articles
+
+ScrapeCreators' `GET /v1/twitter/tweet/transcript` targets a native video tweet
+URL. Feedback #633: `scrapecreators.x.v1-twitter-tweet-transcript` advertised a
+generic tweet URL, so agents treated HTTP success with `transcript: null` as a
+successful empty caption while still paying the per-call credit. Observed on
+X Articles / posts whose media is only article-embedded video; the sibling
+`scrapecreators.x.v1-twitter-tweet` (tweet detail) can still expose those
+embedded video URLs. Catalog-only: `input.note` names the native-video target,
+treats null as unsupported / no transcript for that URL shape, and points at
+tweet detail. Cause is observation-only — not a documented provider
+guarantee. Settlement, routing and request shaping are unchanged. Related
+TikTok null-transcript tickets stay separate. Enforced by
+`test_scrapecreators_twitter_tweet_transcript_article_null` and
+`test_catalog_get_scrapecreators_twitter_tweet_transcript_article_null`.
+
 ### SerpApi Google Trends `data_type` query cardinality
 
 SerpApi's Google Trends engine (`GET /search?engine=google_trends`) accepts five `data_type`

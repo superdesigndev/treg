@@ -1921,6 +1921,61 @@ async def test_catalog_get_reddit_keyword_search_sort_new_weak_relevance(
             assert "NEW" in raw and "RELEVANCE" in raw
 
 
+TWITTER_TWEET_TRANSCRIPT_ID = "scrapecreators.x.v1-twitter-tweet-transcript"
+TWITTER_TWEET_DETAIL_ID = "scrapecreators.x.v1-twitter-tweet"
+
+
+def test_scrapecreators_twitter_tweet_transcript_article_null():
+    """Feedback #633: native video tweet transcript; Articles may return transcript: null.
+
+    catalog_get used to advertise a tweet URL with no URL-shape caveat, so agents
+    treated HTTP success + transcript: null as a successful empty caption while
+    still paying the per-call credit. Observed on X Articles whose media is only
+    article-embedded video. Catalog-only: input.note names native video tweet
+    URLs, treats null as unsupported / no transcript, and points at tweet detail
+    scrapecreators.x.v1-twitter-tweet for embedded video URLs. Settlement is
+    unchanged.
+
+    Ref: https://docs.scrapecreators.com/openapi.json
+    """
+    cat = cs.load()
+    ep = cat.by_id[TWITTER_TWEET_TRANSCRIPT_ID]
+    assert ep["path"] == "/v1/twitter/tweet/transcript"
+    url_note = ep["input"]["queryParams"]["url"]["note"].lower()
+    assert "video" in url_note
+    assert "article" in url_note
+    input_note = ep["input"]["note"].lower()
+    assert "native" in input_note and "video tweet" in input_note
+    assert "article" in input_note
+    assert "transcript" in input_note and "null" in input_note
+    assert "credit" in input_note
+    assert "unsupported" in input_note
+    assert "no transcript" in input_note
+    assert "empty" in input_note
+    assert TWITTER_TWEET_DETAIL_ID in ep["input"]["note"]
+    assert "embedded video" in input_note
+    assert ep["cost"]["value"] == 1
+    assert ep["cost"]["currency"] == "credit"
+
+
+async def test_catalog_get_scrapecreators_twitter_tweet_transcript_article_null(
+        clients: AsyncClient):
+    """Feedback #633: catalog_get must warn that Article-embedded video can return transcript: null."""
+    body = (await clients.get(
+        f"/catalog/endpoints/{TWITTER_TWEET_TRANSCRIPT_ID}")).json()
+    url_note = body["endpoint"]["input"]["queryParams"]["url"]["note"].lower()
+    assert "video" in url_note
+    assert "article" in url_note
+    input_note = body["endpoint"]["input"]["note"].lower()
+    assert "native" in input_note and "video tweet" in input_note
+    assert "article" in input_note
+    assert "transcript" in input_note and "null" in input_note
+    assert "credit" in input_note
+    assert "unsupported" in input_note
+    assert "no transcript" in input_note
+    assert TWITTER_TWEET_DETAIL_ID in body["endpoint"]["input"]["note"]
+
+
 LLM_MENTIONS_HISTORICAL_ID = "dataforseo.x.ai-optimization-llm-mentions-historical-live"
 LLM_MENTIONS_MULTI_TARGET_ID = (
     "dataforseo.x.ai-optimization-llm-mentions-multi-target-metrics-live"
