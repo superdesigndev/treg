@@ -1787,6 +1787,24 @@ Settlement is unchanged. Enforced by `test_minimax_image_01_platform_request_pin
 `test_catalog_get_minimax_image_01_platform_request`, and
 `test_minimax_image_01_platform_request_accepts_documented_model`.
 
+### Instagram Content Publishing quota
+
+Meta's Content Publishing guide limits an account to 100 API-published posts
+per 24-hour moving period (carousels count as one), enforced on
+`POST /{ig_user_id}/media_publish`. The `content_publishing_limit` reference
+page still samples `config.quota_total: 50` in places; catalog prose follows
+the guide and tells agents to read remaining allowance live. Feedback #430:
+`instagram.instagram.media.container.create`,
+`instagram.instagram.post.publish`, and
+`instagram.x.user-content-publishing-limit` still said 50. Catalog-only: those
+notes now say 100 API-published posts per 24-hour moving period (carousels
+count as one) and keep recommending
+`GET /{ig_user_id}/content_publishing_limit` before a batch. The ingest
+source for the extended limit row (`INSTAGRAM_EDGES` in
+`scripts/catalog_ingest.py`) matches. Settlement, routing and request
+shaping are unchanged. Enforced by
+`test_instagram_publishing_notes_use_current_meta_quota`.
+
 ### ScrapeCreators Instagram reels search `date_posted`
 
 ScrapeCreators' OpenAPI for `GET /v2/instagram/reels/search` restricts `date_posted` to
@@ -1845,6 +1863,21 @@ notes that `view_count`, `upload_date`, and `rating` are not accepted.
 `test_request` / `call_template` still use `sortBy=relevance`. Settlement is
 unchanged. Enforced by `test_scrapecreators_youtube_search_filter_enums` and
 `test_catalog_get_scrapecreators_youtube_search_filter_enums`.
+
+### ScrapeCreators TikTok keyword search queryParams
+
+ScrapeCreators' OpenAPI for `GET /v1/tiktok/search/keyword` accepts `query`
+(required), `date_posted` (`yesterday | this-week | this-month |
+last-3-months | last-6-months | all-time`, example `all-time`), `sort_by`
+(`relevance | most-liked | date-posted`, example `relevance`), `region`
+(proxy placement, not a region filter; 2-letter codes like US, GB, FR),
+`cursor`, and `trim`. Feedback #430: `scrapecreators.tiktok.search.videos`
+advertised only `query` + `date_posted` with no enum. Catalog-only: the
+field list now matches that OpenAPI. Cost, path, capability, adapters,
+settlement and request shaping are unchanged. `test_request` stays
+`query=ai` + `date_posted=all-time`. Enforced by
+`test_scrapecreators_tiktok_search_videos_query_params_match_openapi` and
+`test_catalog_get_scrapecreators_tiktok_search_videos_query_params`.
 
 ### ScrapeCreators Reddit search `sort` (and TikHub sibling)
 
