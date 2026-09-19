@@ -1,5 +1,5 @@
 ---
-title: AnyAPI — per-request USD gateway with measured prices and reported charges
+title: AnyAPI — per-request USD gateway with reported charges
 status: implemented; core tier live-verified 2026-09-19 on a maintainer key
 sources:
   - src/treg/catalog/anyapi.yaml
@@ -17,17 +17,30 @@ sources:
 A vendor-raised listing (PR #398). AnyAPI fronts many upstream sources behind one schema per SKU
 and charges a prepaid USD wallet per request. Two things about it differ from other providers.
 
-## Prices are measured, not listed
+## Prices: list price where it is flat, measured where it is per result
 
-`cost.value` on most rows is the p90 of what AnyAPI's own ledger billed for that SKU over a
-trailing 60-day window, exported by the vendor to `scripts/data/anyapi_measured_charges.json`
-(`source: observed`). Rows with too few charged calls fall back to the live rate card
-(`source: rate_card_api`). Five core rows on comparison shelves list the cheapest source's price
-instead (`ANYAPI_CORE_ROWS_PRICED_AT_CHEAPEST_SOURCE` in `scripts/catalog_ingest.py`). Every row
-sets `cost.reported_charge: {path: costUsd, unit: usd}`, so settlement uses the exact charge in
-the response body; a p90 reserve can settle above itself, which `ledger.settle` handles as an
-overrun. The measured file cannot be refreshed here: it is the vendor's production ledger, so a
-re-ingest only re-reads the rate card until the vendor re-exports it.
+A flat-priced SKU (one price per request, most of the listing) lists `pricing.from.maxUsd`, the
+cheapest source's price (`source: rate_card_api`). That source serves a default-routed call, and
+the listing drops AnyAPI's routing controls (`ANYAPI_SKIP_PARAMS`), so every call from here is
+default-routed. A per-result SKU (`model: linear`) lists the p90 of what AnyAPI's own ledger
+billed over a trailing 60-day window, exported by the vendor to
+`scripts/data/anyapi_measured_charges.json` (`source: observed`), capped at `failoverMaxUsd`;
+its rate card quotes the price at the input maximum, which nobody calls at. `_anyapi_cost` in
+`scripts/catalog_ingest.py` owns the rule and core rows are hand-priced by it.
+
+Flat rows listed the p90 too until 2026-09-19. Re-measured, it tracked who had called rather
+than what the next call pays: one caller's single-day burst onto the rescue source
+(google.search), one customer pinning a dearer source (twitter.trends), and charges older than
+a newly added cheap source (tiktok.profile). Every row sets
+`cost.reported_charge: {path: costUsd, unit: usd}`, so settlement uses the exact charge in the
+response body; a rescue on a dearer source settles above the listing, which `ledger.settle`
+handles as an overrun. The measured file cannot be refreshed here: it is the vendor's
+production ledger, so a re-ingest only re-reads the rate card until the vendor re-exports it.
+`linkedin.search_posts` is hand-set to its cheap source's billed $0.0012: AnyAPI had that source
+paused at the 2026-09-19 read and the card showed only the $0.018 rescue.
+
+109 extended rows carry a reviewed `capability` onto an existing shelf (carried across
+re-ingests); none proposes a new capability.
 
 ## Registry and platform key
 

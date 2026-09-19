@@ -18,7 +18,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 |---|---|---|
 | [Google Ads conversion tracking — capture, outbox, upload](architecture/ads-conversions.md) | shipped | adsconv.py, signup.py, adtrack.js, gtag.js |
 | [AI Ark — bounded synchronous enrichment](architecture/aiark.md) | shipped | aiark.yaml, aiark.companies.search.json, aiark.lists.upsert.json, aiark.people.email.find.json, … |
-| [AnyAPI — per-request USD gateway with measured prices and reported charges](architecture/anyapi.md) | implemented; core tier live-verified 2026-09-19 on a maintainer key | anyapi.yaml, anyapi.extended.yaml, catalog_ingest.py, anyapi_measured_charges.json, … |
+| [AnyAPI — per-request USD gateway with reported charges](architecture/anyapi.md) | implemented; core tier live-verified 2026-09-19 on a maintainer key | anyapi.yaml, anyapi.extended.yaml, catalog_ingest.py, anyapi_measured_charges.json, … |
 | [Archive - versioned history and cache admission](architecture/archive.md) | building | archive.py, hunter.yaml, results.py, 0031_archive_result_admission.py, … |
 | [Auth & secrets — injectors, encryption, OAuth freshness, health](architecture/auth-secrets.md) | shipped | injectors.py, ssrf.py, crypto.py, oauth.py, … |
 | [BounceBan — email verification, billing boundaries and capacity](architecture/bounceban.md) | shipped | bounceban.yaml, bounceban.people.email.verify.json, bounceban.people.email.verify.waterfall.json, bounceban.people.email.verify.status.json, … |
