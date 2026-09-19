@@ -234,8 +234,9 @@ endpoints:
   # that Meta downloads server-side — so anything behind auth, on localhost, or on a signed URL
   # that expires within minutes fails at container creation with an unhelpful error.
   #
-  # Meta caps an account at 50 published posts per rolling 24 hours; the remaining allowance is
-  # readable at GET /{ig_user_id}/content_publishing_limit. Containers expire 24h after creation.
+  # Meta caps an account at 100 API-published posts per 24-hour moving period (carousels count
+  # as one); the remaining allowance is readable at GET /{ig_user_id}/content_publishing_limit
+  # before a batch. Containers expire 24h after creation.
   - id: instagram.instagram.media.container.create
     authorization_method: instagram-login
     authorization_methods: [instagram-login, facebook-page]
@@ -264,7 +265,7 @@ endpoints:
         collaborators: {type: string, required: false, note: "JSON array of @handles invited as collaborators; not allowed on stories"}
         location_id: {type: string, required: false, note: "a Facebook Page id that has a location"}
       note: "step 1 of the publish flow. Needs instagram_content_publish (treg's `post` capability — a `read` connection 403s here) and returns {id: <container id>}. A VIDEO container is not ready when this returns: poll instagram.media.container.status until status_code is FINISHED before publishing, or the publish call fails. Stories have no carousel — publish each story as its own container"
-    cost: {type: free, value: 0, currency: USD, unit: call, note: included with the connected account; Meta caps publishing at 50 posts per rolling 24h per account rather than charging per call}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with the connected account; Meta caps publishing at 100 API-published posts per 24-hour moving period (carousels count as one) rather than charging per call}
     unverified: "write action — part of publishing to a real account; requires a deliberate manual test, never an automated verify run"
     docs_url: https://developers.facebook.com/docs/instagram-platform/content-publishing
 
@@ -311,7 +312,7 @@ endpoints:
         ig_user_id: {type: string, required: true, example: "17841400000000000"}
       queryParams:
         creation_id: {type: string, required: true, note: "the container id from instagram.media.container.create — for a carousel this is the PARENT container, never a child", example: "17890000000000000"}
-      note: "step 3, and the point of no return. Returns {id: <media id>}; the shareable link needs a second call, GET /{media_id}?fields=permalink. A container that was already published, has expired (24h) or errored answers with an error rather than republishing. Meta's 50-posts-per-24h limit is enforced here — read the remaining allowance at GET /{ig_user_id}/content_publishing_limit before a batch"
-    cost: {type: free, value: 0, currency: USD, unit: call, note: included with the connected account; counts against the 50-per-24h publishing quota rather than a per-call price}
+      note: "step 3, and the point of no return. Returns {id: <media id>}; the shareable link needs a second call, GET /{media_id}?fields=permalink. A container that was already published, has expired (24h) or errored answers with an error rather than republishing. Meta's limit of 100 API-published posts per 24-hour moving period (carousels count as one) is enforced here — read the remaining allowance at GET /{ig_user_id}/content_publishing_limit before a batch"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: included with the connected account; counts against the 100 API-published posts per 24-hour moving period (carousels count as one) rather than a per-call price}
     unverified: "write action — this publishes to a real account; requires a deliberate manual test, never an automated verify run"
     docs_url: https://developers.facebook.com/docs/instagram-platform/content-publishing

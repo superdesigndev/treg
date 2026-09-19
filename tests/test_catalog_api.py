@@ -481,6 +481,37 @@ def test_instagram_catalog_paths_do_not_embed_query_strings():
         assert all("?" not in path for path in (ep.get("authorization_paths") or {}).values()), ep["id"]
 
 
+def test_instagram_publishing_notes_use_current_meta_quota():
+    """Feedback #430: Content Publishing guide is 100 API-published posts / 24h, not 50.
+
+    Meta's content_publishing_limit reference still samples quota_total: 50 in
+    places; catalog prose follows the Content Publishing guide and tells agents
+    to read remaining allowance live rather than hard-coding only one number.
+    Settlement is unchanged.
+    """
+    cat = cs.load()
+    create = cat.by_id["instagram.instagram.media.container.create"]
+    publish = cat.by_id["instagram.instagram.post.publish"]
+    limit = cat.by_id["instagram.x.user-content-publishing-limit"]
+    quota_phrase = "100 API-published posts per 24-hour moving period"
+    carousel = "carousels count as one"
+    live_check = "GET /{ig_user_id}/content_publishing_limit"
+    for note in (
+        create["cost"]["note"],
+        publish["input"]["note"],
+        publish["cost"]["note"],
+        limit["summary"],
+    ):
+        assert quota_phrase in note
+        assert carousel in note
+        assert "50" not in note
+        assert "50-posts" not in note
+        assert "50-per-24h" not in note
+    assert live_check in publish["input"]["note"]
+    assert "before a batch" in publish["input"]["note"]
+    assert limit["path"] == "/{ig_user_id}/content_publishing_limit"
+
+
 async def test_retired_rows_leave_discovery_but_keep_an_actionable_direct_lookup(clients: AsyncClient):
     """A cached endpoint id needs its migration story, while a new agent must never discover it."""
     retired = "tikhub.x.linkedin-web-search-jobs"
@@ -1781,6 +1812,63 @@ async def test_catalog_get_scrapecreators_linkedin_search_posts_date_posted(
     assert "last-hour" in note and "last-week" in note
     assert "past-week" in note and "past-day" in note
     assert "not accepted" in note
+
+
+TIKTOK_SEARCH_VIDEOS_ID = "scrapecreators.tiktok.search.videos"
+TIKTOK_SEARCH_VIDEOS_DATE_POSTED = [
+    "yesterday", "this-week", "this-month", "last-3-months", "last-6-months", "all-time",
+]
+TIKTOK_SEARCH_VIDEOS_SORT_BY = ["relevance", "most-liked", "date-posted"]
+
+
+def test_scrapecreators_tiktok_search_videos_query_params_match_openapi():
+    """Feedback #430: GET /v1/tiktok/search/keyword exposes the current OpenAPI params.
+
+    catalog_get used to advertise only query + date_posted (no enum). Upstream
+    OpenAPI also has sort_by, region (proxy placement, not a region filter),
+    cursor, and trim. Settlement, path, capability, and adapters are unchanged.
+
+    Ref: https://docs.scrapecreators.com/openapi.json
+    """
+    cat = cs.load()
+    ep = cat.by_id[TIKTOK_SEARCH_VIDEOS_ID]
+    assert ep["path"] == "/v1/tiktok/search/keyword"
+    params = ep["input"]["queryParams"]
+    assert set(params) == {
+        "query", "date_posted", "sort_by", "region", "cursor", "trim",
+    }
+    assert params["query"]["required"] is True
+    date_posted = params["date_posted"]
+    assert date_posted["required"] is False
+    assert date_posted["enum"] == TIKTOK_SEARCH_VIDEOS_DATE_POSTED
+    assert date_posted["example"] == "all-time"
+    sort_by = params["sort_by"]
+    assert sort_by["required"] is False
+    assert sort_by["enum"] == TIKTOK_SEARCH_VIDEOS_SORT_BY
+    assert sort_by["example"] == "relevance"
+    assert sort_by["note"].lower() == "sort by"
+    region_note = params["region"]["note"].lower()
+    assert "does not filter" in region_note or "doesn't filter" in region_note
+    assert "proxy" in region_note
+    assert params["cursor"]["type"] == "number"
+    assert params["cursor"]["example"] == 10
+    assert "cursor" in params["cursor"]["note"].lower()
+    assert params["trim"]["type"] == "boolean"
+    assert "trim" in params["trim"]["note"].lower()
+    assert ep["cost"]["value"] == 1
+    assert ep["cost"]["currency"] == "credit"
+
+
+async def test_catalog_get_scrapecreators_tiktok_search_videos_query_params(
+        clients: AsyncClient):
+    """Feedback #430: catalog_get must name keyword-search sort/region/cursor/trim."""
+    body = (await clients.get(f"/catalog/endpoints/{TIKTOK_SEARCH_VIDEOS_ID}")).json()
+    params = body["endpoint"]["input"]["queryParams"]
+    assert params["date_posted"]["enum"] == TIKTOK_SEARCH_VIDEOS_DATE_POSTED
+    assert params["sort_by"]["enum"] == TIKTOK_SEARCH_VIDEOS_SORT_BY
+    assert "proxy" in params["region"]["note"].lower()
+    assert params["cursor"]["type"] == "number"
+    assert params["trim"]["type"] == "boolean"
 
 
 FACEBOOK_ADLIBRARY_SEARCH_ADS_ID = "scrapecreators.x.v1-facebook-adlibrary-search-ads"

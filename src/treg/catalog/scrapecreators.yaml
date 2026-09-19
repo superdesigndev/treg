@@ -96,7 +96,11 @@ endpoints:
     input:
       queryParams:
         query: {type: string, required: true, note: "Keyword to search for", example: "ai"}
-        date_posted: {type: string, required: false, note: "Time frame", example: "all-time"}
+        date_posted: {type: string, required: false, enum: [yesterday, this-week, this-month, last-3-months, last-6-months, all-time], note: "Time frame", example: "all-time"}
+        sort_by: {type: string, required: false, enum: [relevance, most-liked, date-posted], note: "Sort by", example: "relevance"}
+        region: {type: string, required: false, note: "Does NOT filter results to that region only — it places the proxy there (use for geo-restricted posts). 2-letter codes like US, GB, FR"}
+        cursor: {type: number, required: false, note: "Pagination cursor from previous response cursor field", example: 10}
+        trim: {type: boolean, required: false, note: "Set to true for a trimmed response"}
     test_request:
       queryParams: {query: "ai", date_posted: "all-time"}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: rate_card_api, source_url: 'https://docs.scrapecreators.com/openapi.json', checked: '2026-07-28', confidence: verified}

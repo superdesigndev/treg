@@ -382,7 +382,7 @@ endpoints:
       ig_user_id: {type: string, required: true, note: "connected Instagram Professional account id", example: "17841400000000000"}
     queryParams:
       fields: {type: string, required: false, example: "quota_usage,config"}
-  summary: How many of the 24-hour posting quota (50 posts) this account has already used
+  summary: How many of the 100 API-published posts per 24-hour moving period (carousels count as one) this account has already used
   scope: own_account
   cost:
     type: free

@@ -2533,7 +2533,7 @@ INSTAGRAM_EDGES: list[tuple[str, str, str, str, str]] = [
     ("user-mentioned-comment", "GET", "/{ig_user_id}/mentioned_comment",
      "A comment that @-mentions this account, with its thread", ""),
     ("user-content-publishing-limit", "GET", "/{ig_user_id}/content_publishing_limit",
-     "How many of the 24-hour posting quota (50 posts) this account has already used", ""),
+     "How many of the 100 API-published posts per 24-hour moving period (carousels count as one) this account has already used", ""),
     ("user-business-discovery", "GET", "/{ig_user_id}",
      "Read ANOTHER public professional account's followers, media count and recent posts", ""),
     ("user-recently-searched-hashtags", "GET", "/{ig_user_id}/recently_searched_hashtags",
