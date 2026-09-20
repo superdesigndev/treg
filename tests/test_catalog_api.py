@@ -2410,6 +2410,77 @@ async def test_catalog_get_tikhub_tiktok_ads_search_ads_period_and_limit(
     assert fields["limit"]["example"] == 20
 
 
+TIKTOK_ADS_TRENDS_HASHTAG_LIST_ID = "tikhub.x.tiktok-ads-get-trends-hashtag-list"
+TIKTOK_ADS_TRENDS_HASHTAG_TIME_RANGE = "7 | 30 | 90"
+
+
+def test_tikhub_tiktok_ads_trends_hashtag_list_limit_is_preview_capped():
+    """Feedback #606: body limit is often ignored; this is a tiny public preview.
+
+    catalog_get used to advertise limit as "Items per page" with example 20,
+    and test_request / call templates use limit 5+. A live paid call requesting
+    30 hashtags (Spain / 7 days) returned only 3 items with data.pagination
+    {hasMore:false, limit:3, page:1, totalCount:3} — the captured
+    example_response already shows that shape. Catalog-only: limit.note and
+    input.note warn that the public trends list is a small preview (~3 items),
+    the requested limit is frequently ignored or capped, and agents must trust
+    data.pagination over the request body. Do not invent a larger national
+    ranking. time_range.note names 7 | 30 | 90 without changing types.
+    Settlement, routing and credentials are unchanged. Sibling #424 (opaque
+    400 validation) stays on its own ticket.
+    """
+    cat = cs.load()
+    ep = cat.by_id[TIKTOK_ADS_TRENDS_HASHTAG_LIST_ID]
+    assert ep["path"] == "/api/v1/tiktok/ads/get_trends_hashtag_list"
+    assert ep["method"] == "POST"
+    body = ep["input"]["body"]
+
+    limit = body["limit"]
+    assert limit["type"] == "integer"
+    assert limit["example"] == 20
+    note = limit["note"].lower()
+    assert "preview" in note
+    assert "~3" in note or "tiny" in note
+    assert "ignored" in note or "capped" in note
+    assert "data.pagination" in note
+    assert "limit" in note and "totalcount" in note and "hasmore" in note
+    assert "national" in note or "ranking" in note
+
+    input_note = ep["input"]["note"].lower()
+    assert "preview" in input_note
+    assert "ranking" in input_note or "dump" in input_note
+    assert "pagination" in input_note
+
+    time_range = body["time_range"]
+    assert time_range["type"] == "integer"
+    assert time_range["example"] == 7
+    assert TIKTOK_ADS_TRENDS_HASHTAG_TIME_RANGE in time_range["note"]
+
+    assert (ep.get("test_request") or {}).get("body", {}).get("limit") == 5
+    assert ep["cost"]["type"] == "per_success"
+    assert ep["cost"]["value"] == 0.001
+    assert ep["cost"]["currency"] == "USD"
+
+
+async def test_catalog_get_tikhub_tiktok_ads_trends_hashtag_list_limit_preview(
+        clients: AsyncClient):
+    """Feedback #606: catalog_get must warn that limit is a preview cap."""
+    body = (await clients.get(
+        f"/catalog/endpoints/{TIKTOK_ADS_TRENDS_HASHTAG_LIST_ID}")).json()
+    fields = body["endpoint"]["input"]["body"]
+    note = fields["limit"]["note"].lower()
+    assert "preview" in note
+    assert "ignored" in note or "capped" in note
+    assert "data.pagination" in note
+    assert "totalcount" in note and "hasmore" in note
+    input_note = body["endpoint"]["input"]["note"].lower()
+    assert "preview" in input_note
+    assert "pagination" in input_note
+    assert TIKTOK_ADS_TRENDS_HASHTAG_TIME_RANGE in fields["time_range"]["note"]
+    assert fields["limit"]["example"] == 20
+    assert fields["time_range"]["example"] == 7
+
+
 YOUTUBE_SEARCH_ID = "scrapecreators.x.v1-youtube-search"
 YOUTUBE_SEARCH_SORTBY = ["relevance", "popular"]
 YOUTUBE_SEARCH_UPLOAD_DATE = ["today", "this_week", "this_month", "this_year"]

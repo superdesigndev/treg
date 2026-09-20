@@ -1958,6 +1958,28 @@ The verified search `test_request` / `call_template` is unchanged. Settlement is
 unchanged. Enforced by `test_serpapi_google_maps_documents_place_id` and
 `test_catalog_get_serpapi_google_maps_place_id`.
 
+### TikHub TikTok Ads trends hashtag list `limit`
+
+TikHub's `POST /api/v1/tiktok/ads/get_trends_hashtag_list` accepts body
+`limit` as a requested page size. Feedback #606:
+`tikhub.x.tiktok-ads-get-trends-hashtag-list` advertised "Items per page"
+with example 20, and `test_request` / call templates use `limit` 5+, so
+agents treated `limit` as a real page size and over-expected a full
+national trends list. A live paid call requesting 30 hashtags for Spain /
+7 days returned only 3 items with `data.pagination`
+`{hasMore:false, limit:3, page:1, totalCount:3}`; the captured
+`example_response` already shows that shape. Catalog-only: `limit.note`
+warns that the public trends list often returns a tiny preview (~3
+items), the requested `limit` is frequently ignored or capped by the
+upstream, and agents must trust `data.pagination.limit` / `totalCount` /
+`hasMore` over the request body; `input.note` states this is a small
+public-preview sample, not a full country ranking dump. `time_range.note`
+names `7 | 30 | 90` without changing types. Cost, path, method,
+settlement, routing and credentials are unchanged. Sibling #424 (opaque
+400 validation) stays on its own ticket. Enforced by
+`test_tikhub_tiktok_ads_trends_hashtag_list_limit_is_preview_capped` and
+`test_catalog_get_tikhub_tiktok_ads_trends_hashtag_list_limit_preview`.
+
 ## Choosing between providers (`domain/catalog/stats.py`)
 
 307 capabilities are served by more than one provider, and prices inside one capability differ by up

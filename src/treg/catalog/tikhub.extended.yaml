@@ -22597,7 +22597,7 @@ endpoints:
       time_range:
         type: integer
         required: false
-        note: 30/90 /Time range in days
+        note: "Time range in days. Allowed values 7 | 30 | 90."
         example: 7
       country_code:
         type: string
@@ -22612,12 +22612,13 @@ endpoints:
       limit:
         type: integer
         required: false
-        note: Items per page
+        note: "Requested page size. TikTok Ads public trends list often returns a tiny preview (~3 items); the requested limit is frequently ignored or capped by the upstream. Always trust data.pagination.limit / totalCount / hasMore over this body field. Do not invent a larger national ranking this route does not provide."
         example: 20
       industry_id:
         type: integer
         required: false
         note: First-level industry ID (optional)
+    note: "Small public-preview trends sample, not a full country ranking dump. Response size follows data.pagination (often ~3 items with hasMore:false), not the requested limit."
   test_request:
     body:
       limit: 5
