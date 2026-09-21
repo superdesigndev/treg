@@ -80,13 +80,21 @@ def _result_id(descriptor: dict, document: object) -> str | None:
     return str(fetch["value"]) if fetch and fetch.get("value") not in (None, "") else None
 
 
-def _dotted(document: object, path: str) -> object:
-    value = document
+def _resource_values(document: object, path: str) -> list[str | int]:
+    """Read opaque ids from a dotted path; `*` expands arrays in batch responses."""
+    values = [document]
     for part in path.split("."):
-        if not isinstance(value, dict) or part not in value:
-            return None
-        value = value[part]
-    return value
+        found = []
+        for value in values:
+            if part == "*" and isinstance(value, list):
+                found.extend(value)
+            elif isinstance(value, dict) and part != "*" and part in value:
+                found.append(value[part])
+            elif isinstance(value, list) and part.isdecimal() and int(part) < len(value):
+                found.append(value[int(part)])
+        values = found
+    # Missing/malformed ids must never become ownership records via str(dict/list/bool).
+    return [value for value in values if type(value) in (str, int) and value != ""]
 
 
 async def _remember_resource(db, row: AsyncTaskRecord, kind: str, resource_id: str) -> None:
@@ -115,7 +123,7 @@ async def remember_platform_resources(
         (str(item.get("kind") or ""), str(value))
         for item in rule.get("produces") or []
         if isinstance(item, dict)
-        and (value := _dotted(document, str(item.get("path") or ""))) not in (None, "")
+        for value in _resource_values(document, str(item.get("path") or ""))
     }
     if not resources:
         return 0

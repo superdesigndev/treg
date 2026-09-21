@@ -361,6 +361,9 @@ Two consequences worth stating plainly:
 - **Shared-provider async objects are org-scoped.** Platform-key poll and result-fetch utility calls
   must resolve their id through an org-owned `AsyncTaskRecord` or `AsyncResourceRecord` before the
   upstream is contacted. BYOK calls keep access to ids in the team's own provider account.
+  Batch producers such as DataForSEO Google reviews record each `tasks.*.id` for the submitting
+  org. Missing, malformed and historical unrecorded ids do not establish ownership; retrieval
+  still refuses unknown and cross-org ids before relay.
 
 ## Signup analytics boundary
 

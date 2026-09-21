@@ -20,7 +20,7 @@ source:
 #     "You can set only one task at a time" and $0 — do not batch domains as multiple tasks.
 #     Multi-target work goes on a bulk_* live route (many targets inside one task), not a
 #     multi-element array. The "up to 100 tasks" batch is Standard /task_post, which this
-#     core file does not list.
+#     core file lists for Google reviews.
 #  2. The HTTP status is 200 even when the call failed. Two status codes matter:
 #       - the envelope `status_code` (20000 = OK)
 #       - the per-task `tasks[0].status_code` (20000 = OK; 40501/40400/... = this task failed)
@@ -66,8 +66,11 @@ source:
 # ============================================================================================
 
 
-limits: "2000 requests/min; Live routes (every core endpoint here): exactly one task per POST — extra tasks return status 40000. Standard /task_post (extended catalog only) batches up to 100."
+limits: "2000 requests/min; Live routes: exactly one task per POST — extra tasks return status 40000. Standard /task_post batches up to 100; Google reviews have a free per-task GET retrieval route."
 pricing_url: https://dataforseo.com/pricing  # A billable 'SERP' is 10 results, not a whole page. Credits never expire; pay-as-you-go after the minimum top-up. Live mode is ~3x Standard.; free tier: 1 USD trial credit on si
+proposed_capabilities:
+  google.reviews.task.start: "Request Google reviews for a business"
+  google.reviews.task.results: "Retrieve Google reviews from a submitted task"
 endpoints:
   # --- Backlinks (the Moz overlap group) --------------------------------------------------------
   # re-run catalog_verify.py once verified
@@ -432,3 +435,147 @@ endpoints:
     verified: 2026-07-28
     example_response: examples/dataforseo.account.usage.json
     docs_url: https://docs.dataforseo.com/v3/appendix/user_data/
+
+  # Curated together so regeneration cannot drop the review submission/retrieval contract.
+  - id: dataforseo.x.business-data-google-reviews-task-post
+    capability: google.reviews.task.start
+    scope: any_account
+    cache: forbidden
+    resource_ownership:
+      produces:
+        - {kind: "fetch:dataforseo.x.business-data-google-reviews-task-get", path: "tasks.*.id"}
+    platform: google
+    method: POST
+    path: /business_data/google/reviews/task_post
+    name: "Google reviews for a business (async task)"
+    summary: Submit Google review jobs, then retrieve each task ID with dataforseo.x.business-data-google-reviews-task-get.
+    docs_url: https://docs.dataforseo.com/v3/business_data/google/reviews/task_post/
+    input:
+      bodyType: json
+      body:
+        keyword:
+          type: string
+          required: false
+          note: keyword required field if you don’t specify cid or place_id the keyword you specify should indicate the name of the local establishment; you can specify up to 700 characters in the keyword filed; all %## will be decoded (plus character ‘+’ will be decoded to a space character) if you need to use the
+          example: hedonism wines
+        cid:
+          type: string
+          required: false
+          note: 'unique, google-defined id of the business entity required field if you don’t specify keyword or place_id example: 194604053573767737 learn more about the identifier in this help center article'
+        place_id:
+          type: string
+          required: false
+          note: 'identifier of the business entity in Google Maps required field if you don’t specify keyword or cid example: GhIJQWDl0CIeQUARxks3icF8U8A learn more about the identifier in this help center article'
+        priority:
+          type: integer
+          required: false
+          note: 'task priority optional field can take the following values: 1 – normal execution priority (set by default) 2 – high execution priority You will be additionally charged for the tasks with high execution priority. The cost can be calculated on the Pricing page.'
+        location_name:
+          type: string
+          required: false
+          note: full name of search engine location required field if you don’t specify location_code or location_coordinate if you use this field, you don’t need to specify location_code or location_coordinate you can receive the list of available locations with location_name by making a separate request to the ht
+          example: London,England,United Kingdom
+        location_code:
+          type: integer
+          required: false
+          note: search engine location code required field if you don’t specify location_name or location_coordinate if you use this field, you don’t need to specify location_name or location_coordinate you can receive the list of available locations with location_code by making a separate request to the https://ap
+        location_coordinate:
+          type: string
+          required: false
+          note: GPS coordinates of a location required field if you don’t specify location_name or location_code if you use this field, you don’t need to specify location_name or location_code location_coordinate parameter should be specified in the “latitude,longitude,radius” format the maximum number of decimal d
+        language_name:
+          type: string
+          required: false
+          note: full name of search engine language required field if you don’t specify language_code if you use this field, you don’t need to specify language_code you can receive the list of available languages with language_name by making a separate request to the https://api.dataforseo.com/v3/business_data/goog
+          example: English
+        language_code:
+          type: string
+          required: false
+          note: search engine language code required field if you don’t specify language_name if you use this field, you don’t need to specify language_name you can receive the list of available languages with their language_code by making a separate request to the https://api.dataforseo.com/v3/business_data/google
+        depth:
+          type: integer
+          required: false
+          note: 'parsing depth optional field number of reviews in SERP we strongly recommend setting the parsing depth in the multiples of ten, because our systems processes ten reviews in a row default value: 10 maximum value: 4490 Your account will be billed per each SERP containing up to 10 results; Setting dept'
+          example: 50
+        sort_by:
+          type: string
+          required: false
+          note: 'results sorting parameters optional field you can use this field to sort the results possible types of sorting: newest – sort by newest first highest_rating – sort by highest rating lowest_rating – sort by lowest rating relevant – sort by relevance default value: relevant'
+          example: highest_rating
+        tag:
+          type: string
+          required: false
+          note: user-defined task identifier optional field the character limit is 255 you can use this parameter to identify the task and match it with the result you will find the specified tag value in the data object of the response
+        postback_url:
+          type: string
+          required: false
+          note: URL for sending task results optional field once the task is completed, we will send a POST request with its results compressed in the gzip format to the postback_url you specified you can use the ‘$id’ string as a $id variable and ‘$tag’ as urlencoded $tag variable. We will set the necessary values
+        pingback_url:
+          type: string
+          required: false
+          note: notification URL of a completed task optional field when a task is completed we will notify you by GET request sent to the URL you have specified you can use the ‘$id’ string as a $id variable and ‘$tag’ as urlencoded $tag variable. We will set the necessary values before sending the request. exampl
+      note: >-
+        The POST body is an ARRAY of up to 100 task objects. Submission is billed here and
+        returns tasks[].id, not reviews. For each returned ID, call
+        dataforseo.x.business-data-google-reviews-task-get with --query id=TASK_ID.
+        Fetching results is free for 30 days. If the task is pending, wait and fetch the same
+        ID again; do not resubmit. Shared-key retrieval requires a task submitted by this
+        team after ownership tracking was enabled. This pair uses manual retrieval, not --await.
+    test_request:
+      body:
+      - location_name: London,England,United Kingdom
+        language_name: English
+        keyword: hedonism wines
+        depth: 50
+        sort_by: highest_rating
+      bodyType: json
+    expect:
+      json_path: tasks.0.status_code
+      equals: 20100
+    verified: '2026-07-28'
+    example_response: examples/dataforseo.x.business-data-google-reviews-task-post.json
+    observed_cost: 0.00375
+    cost:
+      type: per_call
+      value: 0.00375
+      currency: USD
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.dataforseo.com/v3/business_data/google/reviews/task_post/
+      checked: '2026-07-28'
+      confidence: verified
+      note: "Observed submission price for the example request; the provider's response cost determines the charge, which varies with depth, priority and task count."
+
+  - id: dataforseo.x.business-data-google-reviews-task-get
+    capability: google.reviews.task.results
+    kind: utility
+    platform: google
+    scope: any_account
+    method: GET
+    path: /business_data/google/reviews/task_get/{id}
+    name: "Fetch Google reviews by task ID"
+    summary: "Retrieve the Google reviews requested by dataforseo.x.business-data-google-reviews-task-post."
+    cache: forbidden
+    resource_ownership:
+      requires: {kind: "fetch:dataforseo.x.business-data-google-reviews-task-get", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "A tasks[].id returned by this team's review submission", example: "00000000-0000-0000-0000-000000000000"}
+      note: >-
+        Read tasks[].status_code as well as the HTTP status: 20000 means results are ready.
+        Pending tasks must be fetched again later using the same ID. The response is relayed
+        unchanged. Shared-key access requires this team's recorded submission; unknown IDs,
+        another team's IDs and tasks predating ownership tracking are refused. BYOK can read
+        tasks created directly in that provider account. Results are available for 30 days.
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: docs
+      source_url: https://docs.dataforseo.com/v3/business_data/google/reviews/task_get/
+      checked: '2026-09-16'
+      confidence: documented
+      note: "DataForSEO charges only for task submission; result retrieval is free for 30 days."
+    docs_url: https://docs.dataforseo.com/v3/business_data/google/reviews/task_get/

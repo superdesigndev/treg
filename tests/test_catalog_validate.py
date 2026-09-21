@@ -216,7 +216,8 @@ def test_resource_ownership_contract_validates_ids_and_declared_parameters():
     errors: list[str] = []
     validator.check_resource_ownership(
         {"requires": {"kind": "job", "param": "job_id"},
-         "produces": [{"kind": "result", "path": "data.result_id"}]},
+         "produces": [{"kind": "result", "path": "data.result_id"},
+                      {"kind": "task", "path": "tasks.*.id"}]},
         "demo.yaml:status", {"pathParams": {"job_id": {"type": "string"}}}, errors,
     )
     assert errors == []
