@@ -210,6 +210,14 @@ These are admission budgets, not an RSS ceiling: SDK buffers, compression and ma
 evidence require additional memory headroom. Production observations and incident history live in
 the private [database-capacity runbook](https://github.com/superdesigndev/treg-internal/blob/main/docs/production/database-capacity.md).
 
+## Litescrape platform key (2026-09-03)
+
+`TREG_PLATFORM_KEY_LITESCRAPE` is a Bearer API key for the 13 core and 9 extended Litescrape
+routes. Add `litescrape` to `TREG_PLATFORM_PROVIDERS` to enable tier 4. Every successful scraper
+request costs $0.00015 and failures are refunded, so the catalog prices directly in USD and needs
+no `fx.yaml` row. The free `/api/keys/status` probe reports both `remaining_calls` and
+`cents_per_1000_calls`; the capacity sweep uses the same route.
+
 ## Hosted feature switches
 
 Several settings alter optional shared-service behavior without changing the underlying public

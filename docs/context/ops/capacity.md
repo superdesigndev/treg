@@ -200,6 +200,7 @@ documented in [Wiza](../architecture/wiza.md).
   names the 9 providers that publish no free standalone meter so they read as "no API", never as a
   broken key. Scrubby reports `remaining_credits` only on verification responses; collection never
   spends a verification merely to obtain that value.
+  Litescrape's `/api/keys/status` supplies both `remaining_calls` and its live cents-per-1,000 rate.
   `provider_balance()` never raises — a failure is a row. It reads the *setting*, not
   `platform_key_for`: the tier-4 allow-list is a serving kill switch, and a provider just switched
   off is exactly one whose last balance we still want.
@@ -310,6 +311,7 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
   per-minute 429s with Retry-After remain bursts. reAPI's empty prepaid balance is a **402**
   `error.code 30001 "Insufficient credits. Required: N"` (observed 2026-09-14); PiAPI's wallet
   exhaustion is acknowledged unobserved. HTTP 402 still uses the shared balance signature.
+  Litescrape's HTTP 402 `payment_required` envelope is recorded as balance exhaustion.
   Two guards against
   the next such vendor: `unrecorded`,
   a signal kind for a 4xx no row matched whose body still names credits/quota/balance (pattern =

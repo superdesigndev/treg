@@ -1,0 +1,5 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Apple Maps">
+  <rect x="1" y="1" width="22" height="22" rx="5" fill="#F5F5F7" stroke="#D2D2D7"/>
+  <path d="M12 5.5a5 5 0 0 0-5 5c0 3.7 5 8 5 8s5-4.3 5-8a5 5 0 0 0-5-5Z" fill="#1D1D1F"/>
+  <circle cx="12" cy="10.5" r="1.8" fill="#FFFFFF"/>
+</svg>

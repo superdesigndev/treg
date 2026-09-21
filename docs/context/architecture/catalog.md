@@ -82,6 +82,8 @@ sources:
   - src/treg/catalog/cloro.yaml
   - src/treg/catalog/aviato.yaml
   - src/treg/catalog/crustdata.yaml
+  - src/treg/catalog/litescrape.yaml
+  - src/treg/catalog/litescrape.extended.yaml
   - src/treg/catalog/examples/aviato.companies.acquisitions.json
   - src/treg/catalog/examples/aviato.companies.employees.json
   - src/treg/catalog/examples/aviato.companies.enrich.bulk.json
@@ -2555,6 +2557,7 @@ long strings clipped, ~10 KB cap) by the verifier, then human-reviewed for PII b
 |---|---|---|---|
 | dataforseo | google, web | Basic (login:password base64) | SEO: web.backlinks.*, web.url.metrics |
 | exa (2026-08-27) | web, people, companies | `x-api-key` header; dollar-priced, settles from `costDollars.total` | Search: web.search*, web.contents.get, web.similar, web.answer; Enrichment: people.search, companies.search |
+| litescrape (2026-09-03) | google, apple-maps, bing, duckduckgo, yelp, tripadvisor | `Authorization: Bearer`; flat $0.15/1,000 successful calls; `/api/keys/status` is the free balance/rate-card probe | 13 core + 9 generated extended routes for search, maps, shopping, places and reviews; three alpha routes excluded |
 | cloro (2026-09-07) | ai-search, google | `Authorization: Bearer sk_live_…`; credit-priced ($0.0004, Hobby metered rate), settles from `X-Credits-Charged` | AEO: ai-search.chatgpt.scrape, ai-search.copilot.scrape (new), ai-search.perplexity.answer, ai-search.gemini.scrape; SERP: google.serp.organic, google.serp.news, google.serp.ai_mode (overlaps dataforseo/serpapi extended) |
 | moz | web | Basic (AccessID:SecretKey base64), POST JSON API | SEO: web.backlinks.*, web.url.metrics |
 | tikhub | tiktok (+instagram, youtube, x) | Bearer key | Social: tiktok.* |
