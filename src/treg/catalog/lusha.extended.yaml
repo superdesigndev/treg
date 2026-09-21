@@ -237,7 +237,7 @@ endpoints:
 
   - id: lusha.x.decision-makers
     status: retired
-    status_note: "Lusha removed POST /v3/contacts/decision-makers on 2026-08-12 (API changelog 2.9.0) in favour of POST /v3/contacts/buying-group, the only operation that accepts contactsLimit and personas. A legacy handler still answers companies-only bodies on the old path, but it rejects contactsLimit and personas with 400 'property … should not exist', so the per-company spend cap documented here never applied: every call ran uncapped at Lusha's 60-contacts-per-company default, 1 credit per contact. Retired 2026-09-09."
+    status_note: "Lusha removed POST /v3/contacts/decision-makers on 2026-08-12 (API changelog 2.9.0) in favour of POST /v3/contacts/buying-group, the only operation that accepts contactsLimit and personas. A legacy handler still answers companies-only bodies on the old path, but it rejects contactsLimit and personas with 400 'property … should not exist', so the per-company spend cap documented here never applied: every call ran uncapped at Lusha's 60-contacts-per-company default, 1 credit per contact. Retired 2026-09-19."
     superseded_by: lusha.x.buying-group
     domain: contacts
     tier: extended

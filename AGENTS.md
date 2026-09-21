@@ -165,6 +165,15 @@ xdist is pulled via `--with`, not the lockfile — same as CI. The Postgres CI j
   names the fragments it updated.
 - `/mcp/` and `/mcp/v2/` differ on purpose. A change to either or to shared MCP code is reviewed
   against both; do not unify them in passing.
+- **Correcting a catalog row is a data fix, and the row is the whole fix.** When an upstream
+  disagrees with its docs, edit the row's `note` / `enum` / `example` / `test_request` and stop:
+  no test that restates the row or asserts a note's wording, and no per-report section in
+  `docs/context/architecture/catalog.md`, even when `drift.sh` names that fragment. A test is for
+  code behavior or a rule over a whole class of rows. The PR body shows the request and the
+  decisive response fields behind the claim; a claim nobody reproduced is labelled as one.
+- **A change that can spend money waits for a human.** A new or retired endpoint, a `cost` edit, or
+  anything under `src/treg/` outside `catalog/` is never merged unreviewed; a route that was not
+  called live ships `skipped`, never an invented example.
 
 ## When writing user-facing copy
 
