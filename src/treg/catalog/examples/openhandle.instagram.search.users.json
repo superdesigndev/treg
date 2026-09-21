@@ -1,0 +1,22 @@
+{
+  "platform": "instagram",
+  "resource": "profile",
+  "capturedAt": "2026-09-21T13:05:31.727832879Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "25025320",
+      "handle": "instagram",
+      "displayName": "Instagram",
+      "url": "https://www.instagram.com/instagram/",
+      "isPrivate": false,
+      "isVerified": true,
+      "metrics": {
+        "followers": null,
+        "following": null,
+        "posts": null,
+        "arEffects": null
+      }
+    }
+  ]
+}

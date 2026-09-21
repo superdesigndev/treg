@@ -1,0 +1,26 @@
+{
+  "platform": "twitter",
+  "resource": "post",
+  "capturedAt": "2026-09-21T13:05:57.686579331Z",
+  "source": "live",
+  "data": {
+    "id": "1808168603721650364",
+    "createdAt": "2024-07-02T15:59:23Z",
+    "metrics": {
+      "likes": 283179,
+      "comments": 18781,
+      "reposts": 52306,
+      "quotes": 3899,
+      "saves": 6581,
+      "views": 53721323,
+      "viewsState": "EnabledWithCount"
+    },
+    "author": {
+      "id": "44196397",
+      "handle": "elonmusk",
+      "displayName": "Elon Musk",
+      "url": "https://x.com/elonmusk"
+    },
+    "url": "https://x.com/elonmusk/status/1808168603721650364"
+  }
+}

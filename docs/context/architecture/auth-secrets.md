@@ -88,6 +88,10 @@ Tier 4 has explicit platform-key slots for MiniMax, OpenRouter, Replicate, reAPI
 receive them as environment secrets, and the worker constructs the same platform bindings as the call
 path. Key values are never copied into task records, logs or archive evidence.
 
+Openhandle uses `Authorization: Bearer` with a Live API key for public social data.
+Test keys return free synthetic data. The connection probe uses a public Instagram profile with
+`freshness=30d`; a cache miss can cost $0.0025. Creating a key does not activate platform access.
+
 ## Managed treg API keys
 
 Treg API keys authenticate callers; provider secrets authorize upstream services. These stores are

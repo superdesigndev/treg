@@ -1,0 +1,30 @@
+{
+  "platform": "tiktok",
+  "resource": "post",
+  "capturedAt": "2026-09-21T13:05:48.495522402Z",
+  "source": "live",
+  "data": {
+    "id": "7606449212716305678",
+    "type": "video",
+    "createdAt": "2026-02-13T20:28:14Z",
+    "metrics": {
+      "likes": 2108309,
+      "comments": 1066,
+      "views": 33478310,
+      "saves": 91220,
+      "shares": 9888,
+      "downloads": 3737,
+      "reposts": 0,
+      "whatsapp": {
+        "shares": 137
+      }
+    },
+    "author": {
+      "id": "24645153",
+      "handle": "flighthouse",
+      "displayName": "flighthouse",
+      "url": "https://www.tiktok.com/@flighthouse"
+    },
+    "url": "https://www.tiktok.com/@flighthouse/video/7606449212716305678"
+  }
+}

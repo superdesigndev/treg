@@ -43,3 +43,5 @@ services:
         sync: false
       - key: TREG_EMAIL_FROM
         value: registry <no-reply@registry.example.com>
+      - key: TREG_PLATFORM_KEY_OPENHANDLE
+        sync: false

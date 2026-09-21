@@ -2,6 +2,10 @@
 title: Endpoint catalog — what you can DO with a connected key, and which provider should do it
 status: shipped
 sources:
+  - src/treg/catalog/openhandle.yaml
+  - src/treg/catalog/openhandle.extended.yaml
+  - tests/test_openhandle_ingest.py
+  - src/treg/web/logos/openhandle.svg
   - src/treg/catalog/financialdatasets.yaml
   - src/treg/catalog/examples/financialdatasets.company.facts.json
   - src/treg/catalog/examples/financialdatasets.company.facts.ciks.json
@@ -307,6 +311,33 @@ The computed cost view uses a `cost.table` fallback as its scalar validated uppe
 eligibility and compact displays. Runtime charging evaluates the first matching row against request
 values plus catalog defaults and freezes that settlement basis. Terminal usage or the recorded table
 evidence feeds the shared money settlement function; provider variation stays declarative in YAML.
+
+## Openhandle
+
+Openhandle's core tools cover public profiles, posts and search on Instagram, TikTok, X and Reddit.
+`openhandle.extended.yaml` includes every other operation in the public OpenAPI document.
+Run `uv run --frozen python scripts/catalog_ingest.py openhandle --refresh` to regenerate it.
+The generator excludes core routes and refreshes parameter and JSON-body schemas from OpenAPI.
+Public synthetic-fixture discovery and cross-platform URL dispatch appear as utilities on creators.
+`OPENHANDLE_FIXTURES` supplies real public identifiers for verification requests. Missing required
+fixtures leave a route without a test request. Synthetic OpenAPI examples are labeled as Test data.
+
+The catalog uses the documented prepaid entry rate of $0.0025 per answered request. The rate falls
+to $0.002 above 100,000 monthly requests. Cache hits cost less (24h $0.0005, 7d $0.0001, 30d free);
+cache misses fetch and bill Live data. Completed private and not-found results are billable.
+Invalid input, provider failures and rate limits are free. The catalog's scalar price remains the
+entry rate; discounts are not reconciled from the upstream `Openhandle-Cost` header.
+
+The September 21 refresh removes retired routes and stale September 5 response captures.
+All 21 core routes returned nonempty Live data on September 21 with `freshness=live`.
+The two Reddit profile fixtures require `@spez`; bare usernames returned 400 `INVALID_IDENTIFIER`.
+Each success reported `Openhandle-Cost: 0.000`, `Openhandle-List-Price: 0.0025`, and
+`Openhandle-Billing-Disposition: allowance`. Route stamps confirm Live data, not paid billing;
+cost provenance remains documented because the trial allowance covered every successful request.
+The 88 extended routes remain unverified. Examples are abbreviated, retaining one item per list,
+resource identifiers, timestamps, metrics and selected public identities. They omit free text,
+private author identities, contact fields, media and pagination cursors; they are not complete schemas.
+Platform-key settings are present, but activation requires maintainers' verification and allow-list.
 
 ## QuickEnrich enrichment (2026-09-08)
 

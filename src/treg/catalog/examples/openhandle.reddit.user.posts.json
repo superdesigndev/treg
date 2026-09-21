@@ -1,0 +1,26 @@
+{
+  "platform": "reddit",
+  "resource": "post",
+  "capturedAt": "2026-09-21T13:06:35.285407051Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "t3_1vgbkge",
+      "metrics": {
+        "score": 341,
+        "upvoteRatio": 0.83,
+        "comments": 453,
+        "crossposts": 5,
+        "awards": 0,
+        "gilded": 0,
+        "views": null
+      },
+      "createdAt": "2026-08-05T16:03:56Z",
+      "author": {
+        "id": "t2_1w72",
+        "handle": "spez"
+      },
+      "url": "https://www.reddit.com/r/u_spez/comments/1vgbkge/modernizing_reddits_infrastructure_with_you/"
+    }
+  ]
+}

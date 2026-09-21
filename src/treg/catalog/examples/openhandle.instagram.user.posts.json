@@ -1,0 +1,39 @@
+{
+  "platform": "instagram",
+  "resource": "post",
+  "capturedAt": "2026-09-21T13:05:24.330098397Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "3989102446432402227",
+      "code": "DdcI4o0Prsz",
+      "type": "reel",
+      "createdAt": "2026-09-18T19:07:16Z",
+      "metrics": {
+        "likes": 898709,
+        "comments": 11455,
+        "saves": 18196,
+        "reshares": 47888,
+        "reposts": null,
+        "premiumReactions": null,
+        "plays": 82622858,
+        "views": null,
+        "instagram": {
+          "plays": 82622858
+        },
+        "facebook": {
+          "likes": null,
+          "plays": null,
+          "comments": null
+        }
+      },
+      "author": {
+        "id": "25025320",
+        "handle": "instagram",
+        "displayName": "Instagram",
+        "url": "https://www.instagram.com/instagram/"
+      },
+      "url": "https://www.instagram.com/reel/DdcI4o0Prsz/"
+    }
+  ]
+}

@@ -177,6 +177,7 @@ class Settings(BaseSettings):
     # `platform_key_for("tikhub")` → `platform_key_tikhub` → env `TREG_PLATFORM_KEY_TIKHUB`.
     # dataforseo's value is the base64 of "login:password" (HTTP Basic) — the same bytes a pasted
     # secret ends up as; the other two are the raw key.
+    platform_key_openhandle: str = ""  # Bearer Live key; prepaid USD per answered request
     platform_key_tikhub: str = ""
     platform_key_dataforseo: str = ""
     platform_key_scrapecreators: str = ""

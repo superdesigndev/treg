@@ -1,0 +1,23 @@
+{
+  "platform": "reddit",
+  "resource": "profile",
+  "capturedAt": "2026-09-21T13:06:33.126586951Z",
+  "source": "live",
+  "data": {
+    "id": "t2_1w72",
+    "handle": "spez",
+    "displayName": "spez",
+    "url": "https://www.reddit.com/user/spez/",
+    "createdAt": "2005-06-06T04:00:00Z",
+    "metrics": {
+      "followers": 0,
+      "karma": {
+        "posts": 184487,
+        "comments": 756493,
+        "awardee": 0,
+        "awarder": 0,
+        "total": 940980
+      }
+    }
+  }
+}

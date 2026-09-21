@@ -1,0 +1,25 @@
+{
+  "platform": "tiktok",
+  "resource": "post",
+  "capturedAt": "2026-09-21T13:05:45.503968826Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "7682251180616994078",
+      "type": "video",
+      "createdAt": "2026-09-06T02:58:20Z",
+      "metrics": {
+        "likes": 21699,
+        "comments": 52,
+        "views": 1154058,
+        "saves": 1715,
+        "shares": 199,
+        "downloads": 1119,
+        "reposts": 0,
+        "whatsapp": {
+          "shares": 13
+        }
+      }
+    }
+  ]
+}

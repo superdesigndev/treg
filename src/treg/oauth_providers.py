@@ -1830,6 +1830,34 @@ PIAPI = OAuthProvider(
     probe_path="/account/info",  # free; a bad key answers 401 {"message":"Failed to verify api key"}
 )
 
+OPENHANDLE = OAuthProvider(
+    service="openhandle",
+    display_name="Openhandle",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Openhandle Live API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.openhandle.dev",
+    setup_action_label="Get your Openhandle API key",
+    setup_steps=(
+        "Sign in to the Openhandle dashboard and open API keys.",
+        "Create a Live key and copy it.",
+    ),
+    setup_note=(
+        "Live keys return public social data. Test keys return free synthetic data. "
+        "The profile connection check can cost up to $0.0025."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Read public Instagram, TikTok, X and Reddit profiles, posts and search results.",
+    base_url="https://api.openhandle.dev",
+    docs_url="https://openhandle.dev/docs/api-reference",
+    probe_path="/v1/instagram/profiles/@instagram?freshness=30d",
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -3271,7 +3299,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, OPENROUTER,
         REPLICATE,
         REAPI, PIAPI,
-        TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
+        OPENHANDLE, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, CLORO,

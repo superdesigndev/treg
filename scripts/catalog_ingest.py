@@ -218,6 +218,7 @@ def carry_verification(provider: str, endpoints: list[dict], *, carry_capability
             ep["platform"] = prev["platform"]
         if prev.get("verified"):
             kept += 1
+            ep.pop("unverified", None)
             if prev.get("test_request") is not None:
                 ep["test_request"] = prev["test_request"]
                 ep.pop("untestable", None)
@@ -1599,7 +1600,138 @@ def ingest_anyapi(refresh: bool = False):
     return out, {"endpoints": len(endpoints)}
 
 
+# Real public identifiers for the generated Live `test_request`s. The OpenAPI examples are synthetic
+# fixtures that only answer on Test keys, so a request built from them can never verify a Live
+# route. Identifiers point to public profiles and posts; the detail-post authors can differ from
+# the profile fixtures. A route whose required input has no fixture here
+# (effects, playlists, ephemeral stories) gets no test_request and stays unverified.
+OPENHANDLE_FIXTURES = {
+    "instagram": {
+        "profiles": "@instagram", "posts": "Dc30nJeRKKz", "comments": "18470057866113934",
+        "hashtags": "instagram", "locations": "384695225271379", "music": "27499285159675348",
+        "highlights": "18142207969557132", "comment_id": "18470057866113934",
+        "media_id": "3978880184454783667", "q": "instagram", "comment": "great post",
+    },
+    "tiktok": {
+        "profiles": "@tiktok", "posts": "7606449212716305678", "comment_id": "7606779946837164820", "hashtags": "fyp", "music": "7240110572024645634", "locations": "22535865201205278", "q": "tiktok",
+    },
+    "twitter": {
+        "profiles": "@NASA", "posts": "1808168603721650364", "comment_id": "1808170286425964893", "q": "NASA", "type": "image",
+    },
+    "reddit": {"profiles": "@spez", "subreddits": "python", "domains": "python.org",
+               "page": "index", "q": "python"},
+    "test-data": {"id": "instagram.profile.northstar-forge", "limit": 1},
+    "urls": {"url": "https://www.instagram.com/instagram/"},
+}
+OPENHANDLE_PRICE_NOTE = (
+    "Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests "
+    "per month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; "
+    "cache misses fetch and bill Live data. Confirmed not-found and private profiles are billed; "
+    "invalid input, provider failures and rate limits are not."
+)
+
+
+def openhandle_test_request(path: str, parameters: list[dict], body: dict | None) -> dict | None:
+    segments = path.split("/")
+    fixtures = OPENHANDLE_FIXTURES.get(segments[2], {})
+    resource = segments[segments.index("{identifier}") - 1] if "{identifier}" in segments else ""
+    request: dict = {}
+    for parameter in parameters:
+        name, where = parameter["name"], parameter["in"]
+        if where == "query" and name == "freshness":
+            request.setdefault("queryParams", {})[name] = "30d"
+            continue
+        if where != "path" and not parameter.get("required") and name not in fixtures:
+            continue
+        value = fixtures.get(resource) if name == "identifier" else fixtures.get(name)
+        if value is None:
+            return None
+        request.setdefault({"path": "pathParams", "query": "queryParams"}.get(where, "body"), {})[name] = value
+    if body is not None and "freshness" in body.get("properties", {}):
+        request.setdefault("body", {})["freshness"] = "30d"
+    return request or None
+
+
+def ingest_openhandle(refresh: bool) -> tuple[Path, dict]:
+    url = "https://api.openhandle.dev/openapi.json"
+    spec = json.loads(fetch(url, "openhandle_openapi.json", refresh=refresh))
+    skip = core_routes("openhandle")
+    endpoints = []
+    for path, item in sorted(spec["paths"].items()):
+        for method, operation in sorted(item.items()):
+            if method not in {"get", "post", "put", "patch", "delete", "head", "options"}:
+                continue
+            if (method.upper(), path) in skip:
+                continue
+            family = path.split("/")[2]
+            platform = {"twitter": "x", "urls": "creators", "test-data": "creators"}.get(family, family)
+            parameters = [*item.get("parameters", []), *operation.get("parameters", [])]
+            inp = {}
+            body = operation.get("requestBody", {}).get("content", {}).get("application/json", {}).get("schema")
+            if body:
+                inp["bodyType"] = "json"
+                for name, schema in body.get("properties", {}).items():
+                    parameters.append({"name": name, "in": "body", "schema": schema,
+                                       "required": name in body.get("required", []),
+                                       "description": schema.get("description", "")})
+            for parameter in parameters:
+                location = {"query": "queryParams", "path": "pathParams", "body": "body"}.get(parameter["in"])
+                if location is None:
+                    continue
+                schema = parameter.get("schema", {})
+                field = {"type": schema.get("type", "string"),
+                         "required": bool(parameter.get("required", False))}
+                note = clean(parameter.get("description", ""))
+                for key in ("enum", "default", "minimum", "maximum", "minLength", "format"):
+                    if key in schema:
+                        field[key] = schema[key]
+                if "example" in parameter:
+                    field["example"] = parameter["example"]
+                elif "example" in schema:
+                    field["example"] = schema["example"]
+                if note:
+                    field["note"] = note
+                inp.setdefault(location, {})[parameter["name"]] = field
+            inp["note"] = (
+                "OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live key. "
+                "freshness=30d makes cache hits free; cache misses still fetch and bill Live data."
+            )
+            free = family == "test-data"
+            cost = {
+                "type": "free" if free else "per_call",
+                "value": 0 if free else 0.0025,
+                "currency": "USD", "per": 1, "unit": "call",
+                "source": "docs", "source_url": url if free else "https://openhandle.dev/pricing.md",
+                "checked": "2026-09-21", "confidence": "documented",
+                "note": "Public, unmetered synthetic-fixture discovery." if free else OPENHANDLE_PRICE_NOTE,
+            }
+            ep = {
+                "id": slug_id("openhandle", method + path), "tier": "extended",
+                "platform": platform, "scope": "any_account",
+                "kind": "utility" if family in {"test-data", "urls"} else "data",
+                "method": method.upper(), "path": path,
+                "summary": clean(operation.get("summary") or operation.get("description") or path),
+                "input": inp, "cost": cost,
+                "docs_url": "https://openhandle.dev/docs/api-reference",
+            }
+            test = openhandle_test_request(path, parameters, body)
+            if test is None:
+                ep["unverified"] = "No real public identifier is on file for this route's required input; not called."
+            else:
+                ep["test_request"] = test
+                ep["unverified"] = "Imported from OpenAPI; a Live call has not verified this route yet."
+            endpoints.append(ep)
+    out = write_extended("openhandle", {"method": "openapi", "spec_urls": [url],
+                                        "ingested": "2026-09-21", "version": spec.get("info", {}).get("version")}, endpoints, [
+        "Every documented operation outside the core catalog is included, including free Test-data discovery.",
+        "Cross-platform URL dispatch and synthetic-fixture utilities share the creators platform.",
+        "Generated test requests use real public identifiers; synthetic OpenAPI examples only answer on Test keys.",
+        "Paid routes carry the published $0.0025 prepaid entry rate; verified stamps come from Live calls with a real key.",
+    ], carry_input=False)
+    return out, {"endpoints": len(endpoints)}
+
 INGESTERS = {
+    "openhandle": ingest_openhandle,
     "anyapi": ingest_anyapi,
     "tikhub": ingest_tikhub,
     "dataforseo": ingest_dataforseo,

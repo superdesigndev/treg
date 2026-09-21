@@ -1,0 +1,32 @@
+{
+  "platform": "tiktok",
+  "resource": "post",
+  "capturedAt": "2026-09-21T13:05:38.19194062Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "7686945827008433439",
+      "type": "video",
+      "createdAt": "2026-09-18T18:35:56Z",
+      "metrics": {
+        "likes": 3511,
+        "comments": 938,
+        "views": 177465,
+        "saves": 284,
+        "shares": 220,
+        "downloads": 9,
+        "reposts": 0,
+        "whatsapp": {
+          "shares": 1
+        }
+      },
+      "author": {
+        "id": "107955",
+        "handle": "tiktok",
+        "displayName": "TikTok",
+        "url": "https://www.tiktok.com/@tiktok"
+      },
+      "url": "https://www.tiktok.com/@tiktok/video/7686945827008433439"
+    }
+  ]
+}

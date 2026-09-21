@@ -1,0 +1,18 @@
+{
+  "platform": "reddit",
+  "resource": "subreddit",
+  "capturedAt": "2026-09-21T13:06:06.570531506Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "t5_2qh0y",
+      "handle": "Python",
+      "displayName": "Python",
+      "url": "https://www.reddit.com/r/Python/",
+      "createdAt": "2008-01-25T03:14:39Z",
+      "metrics": {
+        "subscribers": 1512970
+      }
+    }
+  ]
+}

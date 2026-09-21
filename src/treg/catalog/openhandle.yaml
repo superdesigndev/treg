@@ -1,0 +1,1346 @@
+provider: openhandle
+source:
+  docs: https://openhandle.dev/docs/api-reference
+  openapi: https://api.openhandle.dev/openapi.json
+  curated: '2026-09-21'
+  version: 1.1.0
+limits: 'Free: 2 requests/second per key; pay as you go: 10 requests/second per key. Each page is one
+  request.'
+pricing_url: https://openhandle.dev/pricing.md
+endpoints:
+- id: openhandle.instagram.user.profile
+  platform: instagram
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/instagram/profiles/{identifier}
+  summary: Get a profile
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: '@northstar_forge_test'
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: live
+  capability: instagram.user.profile
+  name: 'Instagram: Get a profile'
+  example_response: examples/openhandle.instagram.user.profile.json
+  verified: '2026-09-21'
+- id: openhandle.instagram.user.posts
+  platform: instagram
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/instagram/profiles/{identifier}/posts
+  summary: List profile posts
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: '@northstar_forge_test'
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+      since:
+        type: string
+        required: false
+        format: date-time
+        note: Return posts captured at or after this RFC 3339 timestamp.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: live
+  capability: instagram.user.posts
+  name: 'Instagram: List profile posts'
+  example_response: examples/openhandle.instagram.user.posts.json
+  verified: '2026-09-21'
+- id: openhandle.instagram.user.reels
+  platform: instagram
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/instagram/profiles/{identifier}/reels
+  summary: List profile reels
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: '@northstar_forge_test'
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@instagram'
+    queryParams:
+      freshness: live
+  capability: instagram.user.reels
+  name: 'Instagram: List profile reels'
+  example_response: examples/openhandle.instagram.user.reels.json
+  verified: '2026-09-21'
+- id: openhandle.instagram.search.users
+  platform: instagram
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/instagram/search/profiles
+  summary: Search Instagram profiles
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        minLength: 1
+        example: synthetic
+        note: Public search query.
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: instagram
+      freshness: live
+  capability: instagram.search.users
+  name: 'Instagram: Search Instagram profiles'
+  example_response: examples/openhandle.instagram.search.users.json
+  verified: '2026-09-21'
+- id: openhandle.instagram.post.detail
+  platform: instagram
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/instagram/posts/{identifier}
+  summary: Get a post
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: '910100000001'
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: Dc30nJeRKKz
+    queryParams:
+      freshness: live
+  capability: instagram.post.detail
+  name: 'Instagram: Get a post'
+  example_response: examples/openhandle.instagram.post.detail.json
+  verified: '2026-09-21'
+- id: openhandle.tiktok.user.profile
+  platform: tiktok
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/tiktok/profiles/{identifier}
+  summary: Get a profile
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: '@pixel_orchard_tt_test'
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@tiktok'
+    queryParams:
+      freshness: live
+  capability: tiktok.user.profile
+  name: 'TikTok: Get a profile'
+  example_response: examples/openhandle.tiktok.user.profile.json
+  verified: '2026-09-21'
+- id: openhandle.tiktok.user.videos
+  platform: tiktok
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/tiktok/profiles/{identifier}/posts
+  summary: List profile posts
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: '@pixel_orchard_tt_test'
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+      since:
+        type: string
+        required: false
+        format: date-time
+        note: Return posts captured at or after this RFC 3339 timestamp.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@tiktok'
+    queryParams:
+      freshness: live
+  capability: tiktok.user.videos
+  name: 'TikTok: List profile posts'
+  example_response: examples/openhandle.tiktok.user.videos.json
+  verified: '2026-09-21'
+- id: openhandle.tiktok.search.users
+  platform: tiktok
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/tiktok/search/profiles
+  summary: Search Tiktok profiles
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        minLength: 1
+        example: synthetic
+        note: Public search query.
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: tiktok
+      freshness: live
+  capability: tiktok.search.users
+  name: 'TikTok: Search Tiktok profiles'
+  example_response: examples/openhandle.tiktok.search.users.json
+  verified: '2026-09-21'
+- id: openhandle.tiktok.search.videos
+  platform: tiktok
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/tiktok/search/posts
+  summary: Search Tiktok posts
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        minLength: 1
+        example: synthetic
+        note: Public search query.
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: tiktok
+      freshness: live
+  capability: tiktok.search.videos
+  name: 'TikTok: Search Tiktok posts'
+  example_response: examples/openhandle.tiktok.search.videos.json
+  verified: '2026-09-21'
+- id: openhandle.tiktok.video.detail
+  platform: tiktok
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/tiktok/posts/{identifier}
+  summary: Get a post
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: '920100000000000001'
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '7606449212716305678'
+    queryParams:
+      freshness: live
+  capability: tiktok.video.detail
+  name: 'TikTok: Get a post'
+  example_response: examples/openhandle.tiktok.video.detail.json
+  verified: '2026-09-21'
+- id: openhandle.x.user.profile
+  platform: x
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/twitter/profiles/{identifier}
+  summary: Get a profile
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: '@copperfield_lab_x_test'
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@NASA'
+    queryParams:
+      freshness: live
+  capability: x.user.profile
+  name: 'X: Get a profile'
+  example_response: examples/openhandle.x.user.profile.json
+  verified: '2026-09-21'
+- id: openhandle.x.user.posts
+  platform: x
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/twitter/profiles/{identifier}/posts
+  summary: List profile posts
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: '@copperfield_lab_x_test'
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+      since:
+        type: string
+        required: false
+        format: date-time
+        note: Return posts captured at or after this RFC 3339 timestamp.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@NASA'
+    queryParams:
+      freshness: live
+  capability: x.user.posts
+  name: 'X: List profile posts'
+  example_response: examples/openhandle.x.user.posts.json
+  verified: '2026-09-21'
+- id: openhandle.x.search.users
+  platform: x
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/twitter/search/users
+  summary: Search Twitter users
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        minLength: 1
+        example: synthetic
+        note: Public search query.
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: NASA
+      freshness: live
+  capability: x.search.users
+  name: 'X: Search Twitter users'
+  example_response: examples/openhandle.x.search.users.json
+  verified: '2026-09-21'
+- id: openhandle.x.search.posts
+  platform: x
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/twitter/search/posts
+  summary: Search Twitter posts
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        minLength: 1
+        example: synthetic
+        note: Public search query.
+      sort:
+        type: string
+        required: false
+        enum:
+        - latest
+        - top
+        default: latest
+        example: latest
+        note: Result ordering for this operation.
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: NASA
+      freshness: live
+  capability: x.search.posts
+  name: 'X: Search Twitter posts'
+  example_response: examples/openhandle.x.search.posts.json
+  verified: '2026-09-21'
+- id: openhandle.x.post.detail
+  platform: x
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/twitter/posts/{identifier}
+  summary: Get a post
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: '940100000000000001'
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '1808168603721650364'
+    queryParams:
+      freshness: live
+  capability: x.post.detail
+  name: 'X: Get a post'
+  example_response: examples/openhandle.x.post.detail.json
+  verified: '2026-09-21'
+- id: openhandle.reddit.user.profile
+  platform: reddit
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/reddit/profiles/{identifier}
+  summary: Get a profile
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: '@synthetic_reddit'
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@spez'
+    queryParams:
+      freshness: live
+  capability: reddit.user.profile
+  name: 'Reddit: Get a profile'
+  example_response: examples/openhandle.reddit.user.profile.json
+  verified: '2026-09-21'
+- id: openhandle.reddit.user.posts
+  platform: reddit
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/reddit/profiles/{identifier}/posts
+  summary: List profile posts
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: '@synthetic_reddit'
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      sort:
+        type: string
+        required: false
+        enum:
+        - new
+        - hot
+        - top
+        - controversial
+        default: new
+        example: new
+        note: Result ordering for this operation.
+      t:
+        type: string
+        required: false
+        enum:
+        - hour
+        - day
+        - week
+        - month
+        - year
+        - all
+        note: Provider-specific public-data filter for this operation.
+      limit:
+        type: integer
+        required: false
+        default: 25
+        minimum: 1
+        maximum: 100
+        note: Maximum number of results to return.
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: '@spez'
+    queryParams:
+      freshness: live
+  capability: reddit.user.posts
+  name: 'Reddit: List profile posts'
+  example_response: examples/openhandle.reddit.user.posts.json
+  verified: '2026-09-21'
+- id: openhandle.reddit.subreddit.info
+  platform: reddit
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/reddit/subreddits/{identifier}
+  summary: Get a subreddit
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: synthetic
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: python
+    queryParams:
+      freshness: live
+  capability: reddit.subreddit.info
+  name: 'Reddit: Get a subreddit'
+  example_response: examples/openhandle.reddit.subreddit.info.json
+  verified: '2026-09-21'
+- id: openhandle.reddit.subreddit.posts
+  platform: reddit
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/reddit/subreddits/{identifier}/posts
+  summary: List subreddit posts
+  input:
+    pathParams:
+      identifier:
+        type: string
+        required: true
+        minLength: 1
+        example: synthetic
+        note: Public resource reference. Profile paths accept a username with an @ prefix, such as @openai,
+          or the stable platform ID. Post paths accept the platform post ID or shortcode.
+    queryParams:
+      sort:
+        type: string
+        required: false
+        enum:
+        - hot
+        - new
+        - top
+        - rising
+        - controversial
+        default: hot
+        example: hot
+        note: Result ordering for this operation.
+      t:
+        type: string
+        required: false
+        enum:
+        - hour
+        - day
+        - week
+        - month
+        - year
+        - all
+        note: Provider-specific public-data filter for this operation.
+      limit:
+        type: integer
+        required: false
+        default: 25
+        minimum: 1
+        maximum: 100
+        note: Maximum number of results to return.
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    pathParams:
+      identifier: python
+    queryParams:
+      freshness: live
+  capability: reddit.subreddit.posts
+  name: 'Reddit: List subreddit posts'
+  example_response: examples/openhandle.reddit.subreddit.posts.json
+  verified: '2026-09-21'
+- id: openhandle.reddit.search.posts
+  platform: reddit
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/reddit/search/posts
+  summary: Search posts
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        minLength: 1
+        example: synthetic
+        note: Public search query.
+      sort:
+        type: string
+        required: false
+        enum:
+        - relevance
+        - hot
+        - top
+        - new
+        - comments
+        default: relevance
+        example: relevance
+        note: Result ordering for this operation.
+      subreddit:
+        type: string
+        required: false
+        minLength: 1
+        example: synthetic
+        note: Provider-specific public-data filter for this operation.
+      t:
+        type: string
+        required: false
+        enum:
+        - hour
+        - day
+        - week
+        - month
+        - year
+        - all
+        example: synthetic
+        note: Provider-specific public-data filter for this operation.
+      limit:
+        type: integer
+        required: false
+        default: 25
+        minimum: 1
+        maximum: 100
+        example: synthetic
+        note: Maximum number of results to return.
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: python
+      freshness: live
+  capability: reddit.search.posts
+  name: 'Reddit: Search posts'
+  example_response: examples/openhandle.reddit.search.posts.json
+  verified: '2026-09-21'
+- id: openhandle.reddit.search.subreddits
+  platform: reddit
+  scope: any_account
+  kind: data
+  method: GET
+  path: /v1/reddit/search/subreddits
+  summary: Search subreddits
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        minLength: 1
+        example: synthetic
+        note: Public search query.
+      limit:
+        type: integer
+        required: false
+        default: 25
+        minimum: 1
+        maximum: 100
+        example: synthetic
+        note: Maximum number of results to return.
+      freshness:
+        type: string
+        required: false
+        enum:
+        - live
+        - 24h
+        - 7d
+        - 30d
+        default: 24h
+        example: 24h
+        note: Maximum accepted data age. The default is 24h.
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor returned by the previous page.
+    note: OpenAPI examples can refer to synthetic Test fixtures. Use real public identifiers with a Live
+      key. freshness=30d makes cache hits free; cache misses still fetch and bill Live data.
+  cost:
+    type: per_call
+    value: 0.0025
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://openhandle.dev/pricing.md
+    checked: '2026-09-21'
+    confidence: documented
+    note: 'Published prepaid entry rate per answered request: $0.0025 for the first 100,000 requests per
+      month, then $0.002. Cache hits cost less: 24h $0.0005, 7d $0.0001, 30d free; cache misses fetch
+      and bill Live data. Confirmed not-found and private profiles are billed; invalid input, provider
+      failures and rate limits are not. Live data verified 2026-09-21 with freshness=live. Response headers
+      reported Openhandle-Cost: 0.000, Openhandle-List-Price: 0.0025 and Openhandle-Billing-Disposition:
+      allowance. Paid charge unobserved; price remains documented.'
+  docs_url: https://openhandle.dev/docs/api-reference
+  test_request:
+    queryParams:
+      q: python
+      freshness: live
+  capability: reddit.search.subreddits
+  name: 'Reddit: Search subreddits'
+  example_response: examples/openhandle.reddit.search.subreddits.json
+  verified: '2026-09-21'

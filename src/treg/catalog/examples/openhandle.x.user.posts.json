@@ -1,0 +1,28 @@
+{
+  "platform": "twitter",
+  "resource": "post",
+  "capturedAt": "2026-09-21T13:05:51.592988273Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "2101770186156052959",
+      "createdAt": "2026-09-20T20:27:16Z",
+      "metrics": {
+        "likes": 0,
+        "comments": 0,
+        "reposts": 47,
+        "quotes": 0,
+        "saves": 0,
+        "views": 52206,
+        "viewsState": "EnabledWithCount"
+      },
+      "author": {
+        "id": "11348282",
+        "handle": "NASA",
+        "displayName": "NASA",
+        "url": "https://x.com/NASA"
+      },
+      "url": "https://x.com/NASA/status/2101770186156052959"
+    }
+  ]
+}

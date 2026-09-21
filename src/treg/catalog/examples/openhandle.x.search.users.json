@@ -1,0 +1,26 @@
+{
+  "platform": "twitter",
+  "resource": "profile",
+  "capturedAt": "2026-09-21T13:05:53.720593348Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "11348282",
+      "handle": "NASA",
+      "displayName": "NASA",
+      "url": "https://x.com/NASA",
+      "createdAt": "2007-12-19T20:20:32Z",
+      "isPrivate": false,
+      "isVerified": true,
+      "metrics": {
+        "followers": 92373832,
+        "following": 117,
+        "posts": 74312,
+        "likedPosts": 16996,
+        "mediaPosts": 28149,
+        "creatorSubscriptions": null,
+        "affiliates": null
+      }
+    }
+  ]
+}

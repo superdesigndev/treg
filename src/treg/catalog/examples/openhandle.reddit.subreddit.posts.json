@@ -1,0 +1,26 @@
+{
+  "platform": "reddit",
+  "resource": "post",
+  "capturedAt": "2026-09-21T13:06:02.807951726Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "t3_1w78kp5",
+      "metrics": {
+        "score": 18,
+        "upvoteRatio": 0.8,
+        "comments": 124,
+        "crossposts": 0,
+        "awards": 0,
+        "gilded": 0,
+        "views": null
+      },
+      "createdAt": "2026-09-04T16:05:19Z",
+      "author": {
+        "id": "t2_6l4z3",
+        "handle": "AutoModerator"
+      },
+      "url": "https://www.reddit.com/r/Python/comments/1w78kp5/showcase_thread/"
+    }
+  ]
+}

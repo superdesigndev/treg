@@ -307,3 +307,11 @@ For hosted rollout, release and verify the compatible CLI before deploying the m
 The served installer installs from PyPI, so changing the server alone does not make `treg update`
 install the new client. Old browser login and saved-token calls remain usable; affected email and
 team-change requests receive an update instruction before their local state can be replaced.
+
+## Openhandle platform key
+
+`TREG_PLATFORM_KEY_OPENHANDLE` takes an Openhandle Live Bearer key. The generic Render example
+includes an optional secret slot; operators configure their own key and provider allow-list.
+Workers that serve Openhandle calls need the same key setting. No production settings are included.
+The API uses prepaid USD, so no credit conversion belongs in `fx.yaml`. Paid catalog routes use
+`per_call` at the documented $0.0025 entry rate. Cache and volume discounts lower the upstream cost.

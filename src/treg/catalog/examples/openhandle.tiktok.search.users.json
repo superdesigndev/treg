@@ -1,0 +1,25 @@
+{
+  "platform": "tiktok",
+  "resource": "profile",
+  "capturedAt": "2026-09-21T13:05:41.595227392Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "107955",
+      "handle": "tiktok",
+      "displayName": "TikTok",
+      "url": "https://www.tiktok.com/@tiktok",
+      "createdAt": null,
+      "isPrivate": false,
+      "isVerified": true,
+      "metrics": {
+        "followers": 95830572,
+        "following": 1,
+        "posts": 1584,
+        "visiblePosts": null,
+        "likes": 464165962,
+        "likedPosts": null
+      }
+    }
+  ]
+}

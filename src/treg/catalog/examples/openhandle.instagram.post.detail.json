@@ -1,0 +1,37 @@
+{
+  "platform": "instagram",
+  "resource": "post",
+  "capturedAt": "2026-09-21T13:05:34.497582135Z",
+  "source": "live",
+  "data": {
+    "id": "3978880184454783667",
+    "code": "Dc30nJeRKKz",
+    "type": "reel",
+    "createdAt": "2026-09-04T16:32:46Z",
+    "metrics": {
+      "likes": 952138,
+      "comments": 22028,
+      "saves": null,
+      "reshares": 177594,
+      "reposts": null,
+      "premiumReactions": 0,
+      "plays": 127071571,
+      "views": null,
+      "instagram": {
+        "plays": 127071571
+      },
+      "facebook": {
+        "likes": null,
+        "plays": null,
+        "comments": null
+      }
+    },
+    "author": {
+      "id": "25025320",
+      "handle": "instagram",
+      "displayName": "Instagram",
+      "url": "https://www.instagram.com/instagram/"
+    },
+    "url": "https://www.instagram.com/reel/Dc30nJeRKKz/"
+  }
+}

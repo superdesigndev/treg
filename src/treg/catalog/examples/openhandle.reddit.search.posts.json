@@ -1,0 +1,21 @@
+{
+  "platform": "reddit",
+  "resource": "post",
+  "capturedAt": "2026-09-21T13:06:04.683282408Z",
+  "source": "live",
+  "data": [
+    {
+      "id": "t3_1v5fej6",
+      "metrics": {
+        "score": 124,
+        "upvoteRatio": 0.94,
+        "comments": 48,
+        "crossposts": 0,
+        "awards": 0,
+        "gilded": 0,
+        "views": null
+      },
+      "createdAt": "2026-07-24T15:57:00Z"
+    }
+  ]
+}
