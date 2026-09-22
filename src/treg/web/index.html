@@ -45,6 +45,7 @@ addEventListener('load', function(){
 <script src="/tutorial.js"></script>
 <script src="/dashboard-tour/tour.js"></script>
 <script src="/adtrack.js"></script>
+<script src="/gtag.js" data-conversion-only></script>
 <style>
   [v-cloak]{display:none}  /* hide the raw template until Vue mounts — else a hard refresh flashes the un-compiled markup while the script downloads. Vue drops the attribute on mount, which is also how the loader guard above detects that it never did. */
   /* ===== Ledger: warm paper + clay, mono-forward. Dark default. ===== */
@@ -5500,6 +5501,9 @@ createApp({
         this.onboarded=true; try{ await this.api('/onboard/skip',{method:'POST'}); }catch(e){}  // don't re-prompt
         await this.loadAll(); this.switchOrg({slug:o.org});
         this.analyticsIdentify(); this.intercomUpdate(); this.track('onboarding_team_created',{team:o.org});
+        // Google Ads `treg Signup (web)` — the browser-side twin of the server outbox row, for Google's
+        // cross-device and modeled attribution; secondary in the account, so it never double counts.
+        try{ if(typeof window.tregSignupConversion==='function') window.tregSignupConversion(o.org_id||o.org); }catch(e){}
         this.welcome.step=1; }  // stay in the modal: pick your agent → get the setup line
       catch(e){ this.welcome.err='Could not create the team: '+(e.detail||e.status); }
       finally{ this.welcome.busy=false; } },

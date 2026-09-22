@@ -39,7 +39,7 @@
       <li><b>We collect almost nothing about you.</b> An email address to sign in, the teams you're in, and a log of which tools were called. That's the account.</li>
       <li><b>Your credentials are encrypted and never returned.</b> No stored secret value is ever sent back to a client, shown in the dashboard, or read by us.</li>
       <li><b>We don't store what flows through the proxy.</b> A call's request and response bodies pass through and are gone. We keep the method, path, status code, and timestamp — not the content.</li>
-      <li><b>Minimal tracking.</b> Two first-party cookies, both ours: one keeps you signed in, one (only if you arrived from a Google Ads click) tells us the ad worked. On marketing pages (the landing page and use-case pages, not the signed-in dashboard), we load Google's gtag.js so that signups from ad clicks are counted back to Google Ads — this sets Google's <code>_gcl_*</code> cookies and sends pageviews to Google. There is no analytics on the dashboard itself.</li>
+      <li><b>Minimal tracking.</b> Two first-party cookies, both ours: one keeps you signed in, one (only if you arrived from a Google Ads click) tells us the ad worked. Every page loads Google's gtag.js with all consent signals denied: it sets no advertising cookie and reads none; it sends Google cookieless pings (page views on marketing pages, and one signup event when you create your first team) that Google uses only to estimate whether its ads lead to signups. When you sign up, make your first call, or make your first payment, we also send Google Ads a SHA-256 hash of your email address (Enhanced Conversions) so Google can match that event to an ad you saw or clicked, on any device; Google matches the hash only against its own signed-in accounts and never for personalised advertising. There is no analytics on the dashboard itself.</li>
       <li><b>No training, no selling.</b> Your credentials, skills, and connected-account data are never sold and never used to train models.</li>
     </ul>
   </div>
@@ -118,9 +118,10 @@
     <li>We never <b>sell</b> personal data, credentials, or anything reached through them.</li>
     <li>We never use your credentials, connected-account data, or skill content to <b>train machine
       learning models</b> — ours or anyone else's.</li>
-    <li>We do not run <b>analytics or session-replay scripts</b> on the signed-in dashboard. Marketing
-      pages (landing, use-case pages) load Google's gtag.js for ad-conversion measurement only — there
-      is no Google Analytics property, no pixel, and no session replay anywhere.</li>
+    <li>We do not run <b>analytics or session-replay scripts</b> on the signed-in dashboard. Pages load
+      Google's gtag.js for ad-conversion measurement only, with every consent signal denied (no
+      advertising cookies; the dashboard sends only the one signup event) — there is no Google
+      Analytics property, no pixel, and no session replay anywhere.</li>
     <li>We never use your stored credentials for anything other than the call you or a permitted
       teammate initiated, plus automated health checks and token refreshes.</li>
   </ul>
@@ -179,7 +180,7 @@
     <tr><td>Resend</td><td>Your email address and the message body</td><td>Sends sign-in codes and invitations</td><td>USA</td></tr>
     <tr><td>Google Fonts</td><td>Your IP address, when you load a treg web page</td><td>Serves the site's typefaces</td><td>USA</td></tr>
     <tr><td>Upstream APIs you connect</td><td>Whatever your call sends them</td><td>The call you asked us to make</td><td>Varies by provider</td></tr>
-    <tr><td>Google Ads</td><td>A click id and a conversion event (signup, first call, or first payment) — only if you arrived via a Google Ads click</td><td>Measures whether the ad that brought you converted</td><td>USA</td></tr>
+    <tr><td>Google Ads</td><td>A conversion event (signup, first call, or first payment) with your click id if you arrived via a Google Ads click, and a SHA-256 hash of your email address (Enhanced Conversions for Leads); never the address itself</td><td>Measures whether the ad that brought you converted</td><td>USA</td></tr>
   </table></div>
   <p><b>Referrals.</b> If you sign up through someone's referral link, <b>your email address is
   shown to the person who referred you</b>, along with the date you signed up and whether your team
@@ -216,9 +217,13 @@
   agent, or a paying team, so we can tell which ads to keep running. It is <b>first-party</b> (set by
   <code>treg.to</code>, readable only by us, never by Google or any other third party) and it is
   <b>not shared with third parties</b> beyond the conversion event itself — a signup, a first call, or
-  a first payment, each tagged with only the click id — uploaded to Google Ads so it can measure the
-  campaign. There is no advertising pixel, no third-party cookie, and no cross-site tracking script
-  anywhere on the Service.</p>
+  a first payment — uploaded to Google Ads so it can measure the campaign. Each event carries the
+  click id when there is one and a SHA-256 hash of your email address (Google's Enhanced Conversions
+  for Leads), which lets Google match the event to an ad you saw or clicked on another device; the
+  address itself is never sent, and we tell Google the hash may not be used for personalised
+  advertising. Google's own tag runs with every consent signal denied, so it sets no advertising
+  cookie; it only sends cookieless pings Google uses to estimate conversions. There is no advertising
+  pixel, no third-party cookie, and no cross-site tracking script anywhere on the Service.</p>
 
   <h2 class="sec" id="s8"><span class="n">08</span>How we protect it</h2>
   <ul>

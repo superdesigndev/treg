@@ -37,10 +37,17 @@ read-side Ads catalog calls (`oauth_providers.GOOGLE_ADS`), a separate credentia
    (90 days, the length of Google's click-through attribution window; `SameSite=Lax` so it survives
    the cross-site top-level navigation an ad click is). The cookie records the mutually-exclusive
    field name as well as its value (`gclid|…`, `gbraid|…`, or `wbraid|…`); the old `CLICK_ID|landing`
-   shape remains readable as a legacy GCLID. Marketing pages (landing, use-case pages, resources,
-   tutorial, catalog) also load `web/gtag.js`, which sends pageviews to Google Ads for attribution
-   modeling — this is the only browser-side Google request. The signed-in dashboard does not load
-   gtag.js.
+   shape remains readable as a legacy GCLID. Every page, the signed-in dashboard included, also loads
+   `web/gtag.js` — Google's tag in **advanced Consent Mode v2**: every consent signal is queued as
+   `denied` before the tag script is appended, so Google sets and reads no advertising cookie and
+   receives only cookieless pings, which is what lets it MODEL conversions for visitors who never
+   granted anything (a tag that is not loaded sends nothing and models nothing). The dashboard
+   includes it with `data-conversion-only` (`send_page_view: false`) and fires exactly one event,
+   `treg Signup (web)` (`AW-18392771132/0usqCIeQrO0cELzUrcJE`, action `7745505287`, SECONDARY
+   and excluded from the Conversions column, so it never double counts against the outbox below),
+   from `welcomeCreate()` right after `POST /orgs` succeeds, with `transaction_id =
+   treg-web-signup-<org id>` so a retry cannot count a team twice. A future consent UI grants
+   cookies via `window.tregAdsConsent('granted')`; nothing else depends on it.
    Which pages load `adtrack.js` is the whole feature's blast radius and it has been wrong twice —
    once for everything off `_page()` (2026-08-30), once for the standalone landing pages
    `/people-search`, `/grokbot` and `/fable` (2026-09-06, after 4,892 Demand Gen clicks landed on
@@ -63,9 +70,11 @@ read-side Ads catalog calls (`oauth_providers.GOOGLE_ADS`), a separate credentia
    - `application.signup._grant_signup_promo` calls `ACTION_SIGNUP` before `ledger.grant()`.
    - `api._record_first_call` → `ACTION_FIRST_CALL`, on the org's first successful `/call/`.
    - `billing._credit` → `ACTION_PAID`, on the org's first credited top-up, carrying `value_usd_micro`.
-   `queue()` no-ops (returns `False`) when tracking is disabled or the org has no `ad_gclid` — most
-   orgs — so the conversion side stays ad-attributed-only while the product metric it rides alongside
-   (`first_call_at`) is set for every org.
+   `queue()` no-ops (returns `False`) when tracking is disabled, for demo teams, and — unless
+   Enhanced Conversions for Leads is on (below) — for an org with no `ad_gclid`, so by default the
+   conversion side stays ad-attributed-only while the product metric it rides alongside
+   (`first_call_at`) is set for every org. With the flag on, every team with a human creator is
+   queued and identified by hashed email instead.
 4. **Upload** (`adsconv.worker`, started from `lifespan` when `adsconv.enabled()`, drains every 300s).
    `drain_once` selects due rows — neither uploaded nor terminal, older than a 6-hour delay, and past
    `next_attempt_at` — and POSTs one batch to the Google Ads API `uploadClickConversions` with
@@ -77,6 +86,46 @@ read-side Ads catalog calls (`oauth_providers.GOOGLE_ADS`), a separate credentia
    through eight attempts, then retain the row as a visible dead letter (`failed_at` + `error`). The
    six-hour delay exists because a click id may not be accepted immediately after the click; uploading
    too early can be rejected.
+
+## Enhanced Conversions for Leads: the hashed-email identifier (2026-09-21)
+
+A click id can only ever connect a conversion to a click **in the same browser**. The YouTube
+in-stream campaign (24217105891) is 99.9% mobile clicks against a product whose first step needs a
+terminal, so the journey that matters — a pre-roll watched or tapped on a phone, the team created on
+a laptop hours later — has no click id at either end. Fourteen days and A$2,191 of that campaign
+produced zero orgs carrying a Demand Gen click id; that was a real zero for click-through and a
+blind zero for everything else.
+
+`ads_conv_user_data` (default OFF) turns on Google's answer to that: **Enhanced Conversions for
+Leads**. With it on, `queue()` also records signup / first-call / paid rows for teams with no click
+id, provided the team has a **human creator** (`human_owner_emails`: the earliest non-demo member by
+membership id whose address is not on `AGENT_DOMAIN` — agent identities are unroutable and can match
+nobody, and 15% of paying teams are agent-owned), and every uploaded event carries
+`userData.userIdentifiers[].emailAddress` = SHA-256 of the **normalised** address (`normalize_email`:
+trim, lowercase, and for gmail.com / googlemail.com drop the dots in the local part — Google's rule,
+because Gmail ignores them) next to the click id when there is one and instead of it when there is
+not. Google matches the hash against its own signed-in accounts, which covers a signed-in YouTube
+viewer's engaged view or click on any device, ad blockers or not. Each such event also carries
+`consent: {adUserData: CONSENT_GRANTED, adPersonalization: CONSENT_DENIED}` — required for Google to
+use an EEA user's identifier; treg's basis is the privacy policy every signup accepts (§07 and the
+Google Ads processor row name this exact disclosure), and personalisation is always denied because the
+hash exists for measurement, never for audiences.
+
+The email is resolved at **upload** time (`drain_once` → `human_owner_emails`), never stored on the
+row: the outbox holds no address, hashed or not, and a team whose creator is later removed simply
+uploads without an identifier. A row with neither a click id nor a human creator is dead-lettered
+with `error = "outbox row has no attributable org: no click id and no human creator email"`.
+
+**Two account-side switches gate the flag**, both UI-only (the API reads them back but cannot set
+them): the Ads account must accept the *Customer Data Terms* and enable *Enhanced conversions for
+leads* (Goals → Conversions → Settings). Until then Google refuses every event that carries an
+identifier — verified live with `validateOnly` on 2026-09-21: the click-only request returns 200, and
+the same request plus `userData` returns 400 `events.events[0].destination_references[0]: The
+destination account hasn't agreed to the terms for enhanced conversions.` That description is in
+`_RETRYABLE_ROW_DESCRIPTIONS`, so rows queued before the click keep retrying (24-hour backoff cap)
+instead of dead-lettering after eight attempts. The same probe found that any request carrying
+`userData` must also carry a top-level `"encoding": "HEX"` (`events.encoding: Required field is
+missing`); `_payload_and_rows` adds it only then, so the click-only body is byte-for-byte unchanged.
 
 ## Authentication: a platform credential, not a customer's OAuth connection
 

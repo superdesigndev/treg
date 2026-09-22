@@ -502,6 +502,15 @@ class Settings(BaseSettings):
     # read their campaign data, and the two must not share a credential or a consent screen. Empty
     # = the whole feature is OFF. See docs/context/architecture/ads-conversions.md.
     ads_conv_refresh_token: str = ""
+    # Enhanced Conversions for Leads. OFF: the outbox only ever holds click-attributed teams and the
+    # upload carries click ids alone (the pre-2026-09 shape). ON: every human-owned team's signup,
+    # first call and first payment is queued, and each upload event also carries the SHA-256 of the
+    # team creator's normalised email as a `userData` identifier, so Google can match a conversion
+    # to a signed-in viewer who watched or clicked an ad on ANOTHER device (a YouTube pre-roll on a
+    # phone, the signup on a laptop) — the journey a click id can never connect. Turn on only after
+    # the Ads account has accepted the Customer Data Terms and enabled Enhanced conversions for
+    # leads; until then Google rejects the identifiers and the rows would dead-letter.
+    ads_conv_user_data: bool = False
 
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""

@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import time
 from datetime import datetime, timedelta, timezone
@@ -15,7 +16,9 @@ from treg import adsconv
 from treg.api import app
 from treg.config import get_settings
 from treg.infra.db import reset_db, session_maker
-from treg.models import AdConversion, Org
+from pathlib import Path
+
+from treg.models import AdConversion, Membership, Org, User
 from treg.timeutil import utcnow_naive
 
 
@@ -860,3 +863,186 @@ def test_transaction_id_is_never_purely_numeric():
         tid = p["events"][0]["transactionId"]
         assert not tid.isdigit(), f"transactionId {tid!r} is purely numeric — Google will 400"
         assert tid == f"treg-{row.id}"
+
+
+# ---- Enhanced Conversions for Leads: hashed-email identifiers ---------------------------------
+
+
+@pytest.fixture
+def user_data_enabled(ads_enabled, monkeypatch):
+    monkeypatch.setattr(ads_enabled, "ads_conv_user_data", True, raising=False)
+    assert adsconv.user_data_enabled() is True
+    return ads_enabled
+
+
+def test_email_normalisation_follows_googles_rules():
+    # Trim + lowercase everywhere; Gmail additionally ignores dots in the local part, so the two
+    # spellings of one inbox must hash to ONE identifier or Google matches only one of them.
+    assert adsconv.normalize_email("  J.Z@Gmail.com ") == "jz@gmail.com"
+    assert adsconv.normalize_email("Bob.Smith@Example.COM") == "bob.smith@example.com"
+    assert adsconv.normalize_email("first.last@googlemail.com") == "firstlast@googlemail.com"
+    assert adsconv.hash_email("J.Z@gmail.com") == hashlib.sha256(b"jz@gmail.com").hexdigest()
+    assert adsconv.hash_email("jz@gmail.com") == adsconv.hash_email("  J.Z@GMAIL.COM ")
+
+
+def test_user_data_requires_the_uploader_to_be_enabled(ads_disabled, monkeypatch):
+    monkeypatch.setattr(ads_disabled, "ads_conv_user_data", True, raising=False)
+    assert adsconv.user_data_enabled() is False
+
+
+def test_build_payload_without_user_data_flag_carries_click_ids_only(ads_enabled):
+    org = Org(id=1, name="t", slug="t", ad_gclid="CLICK1")
+    row = AdConversion(id=1, org_id=1, action=adsconv.ACTION_SIGNUP, created_at=utcnow_naive())
+    event = adsconv.build_payload([row], {1: org}, {1: "lead@example.com"})["events"][0]
+    assert event["adIdentifiers"] == {"gclid": "CLICK1"}
+    assert "userData" not in event and "consent" not in event
+    assert "encoding" not in adsconv.build_payload([row], {1: org}, {1: "lead@example.com"})
+
+
+def test_build_payload_attaches_hashed_email_next_to_the_click_id(user_data_enabled):
+    org = Org(id=1, name="t", slug="t", ad_gclid="CLICK1")
+    row = AdConversion(id=1, org_id=1, action=adsconv.ACTION_SIGNUP, created_at=utcnow_naive())
+    event = adsconv.build_payload([row], {1: org}, {1: "Lead@Example.com"})["events"][0]
+    assert event["adIdentifiers"] == {"gclid": "CLICK1"}
+    assert event["userData"] == {"userIdentifiers": [{"emailAddress": adsconv.hash_email("lead@example.com")}]}
+    # Google will not use an EEA identifier without a consent block; personalisation is never granted.
+    assert event["consent"] == {"adUserData": "CONSENT_GRANTED", "adPersonalization": "CONSENT_DENIED"}
+    # The raw address must never appear anywhere in the wire body.
+    assert "lead@example.com" not in json.dumps(adsconv.build_payload([row], {1: org}, {1: "lead@example.com"})).lower()
+
+
+def test_build_payload_identifies_an_unattributed_team_by_hashed_email_alone(user_data_enabled):
+    org = Org(id=2, name="t", slug="t2")  # organic: no click id at all
+    row = AdConversion(id=2, org_id=2, action=adsconv.ACTION_FIRST_CALL, created_at=utcnow_naive())
+    payload = adsconv.build_payload([row], {2: org}, {2: "lead@example.com"})
+    event = payload["events"][0]
+    assert "adIdentifiers" not in event
+    assert event["userData"]["userIdentifiers"] == [{"emailAddress": adsconv.hash_email("lead@example.com")}]
+    assert payload["destinations"][0]["productDestinationId"] == "7723667017"
+    # Data Manager rejects any request carrying userData without saying how the hashes are
+    # encoded (live validateOnly, 2026-09-21); a click-only request must not carry it.
+    assert payload["encoding"] == "HEX"
+    # Neither a click id nor an email: not an event.
+    empty = adsconv.build_payload([row], {2: org}, {})
+    assert empty["events"] == [] and "encoding" not in empty
+
+
+async def test_queue_records_an_unattributed_signup_when_user_data_is_enabled(clients, user_data_enabled):
+    await reset_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
+        r = await c.post("/users", json={"email": "lead@example.com"})  # no treg_ad cookie
+        assert r.status_code == 200, r.text
+        org_id = r.json()["org_id"]
+    async with session_maker() as db:
+        org = await db.get(Org, org_id)
+        assert org.ad_gclid is None
+        rows = (await db.execute(select(AdConversion).where(AdConversion.org_id == org_id))).scalars().all()
+        assert [r.action for r in rows] == [adsconv.ACTION_SIGNUP]
+
+
+async def test_queue_skips_a_team_whose_only_member_is_an_agent(clients, user_data_enabled):
+    # An agent identity lives on AGENT_DOMAIN: unroutable, matches nobody at Google, must not
+    # fill the outbox with rows that can only dead-letter.
+    async with session_maker() as db:
+        org = Org(name="t", slug="t-agent-only")
+        bot = User(email="agent-t-bot@agents.treg.local")
+        db.add(org); db.add(bot)
+        await db.commit(); await db.refresh(org); await db.refresh(bot)
+        db.add(Membership(user_id=bot.id, org_id=org.id, role="member", token_hash="x"))
+        await db.commit()
+        assert await adsconv.queue(db, org, adsconv.ACTION_FIRST_CALL) is False
+        assert await adsconv.human_owner_emails(db, {org.id}) == {}
+
+
+async def test_human_owner_is_the_earliest_human_member(clients, user_data_enabled):
+    async with session_maker() as db:
+        org = Org(name="t", slug="t-owner")
+        bot = User(email="agent-t-x@agents.treg.local")
+        human = User(email="Creator@Example.com")
+        later = User(email="teammate@example.com")
+        db.add_all([org, bot, human, later])
+        await db.commit()
+        for u in (org, bot, human, later):
+            await db.refresh(u)
+        db.add(Membership(user_id=bot.id, org_id=org.id, role="member", token_hash="a"))
+        db.add(Membership(user_id=human.id, org_id=org.id, role="owner", token_hash="b"))
+        db.add(Membership(user_id=later.id, org_id=org.id, role="member", token_hash="c"))
+        await db.commit()
+        assert await adsconv.human_owner_emails(db, {org.id}) == {org.id: "Creator@Example.com"}
+
+
+async def test_drain_uploads_the_hashed_email_for_an_unattributed_team(clients, user_data_enabled):
+    await reset_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
+        r = await c.post("/users", json={"email": "lead@example.com"})
+        org_id = r.json()["org_id"]
+    fake = FakeAdsClient(FakeAdsResponse({"requestId": "req-1"}))
+    async with session_maker() as db:
+        result = await adsconv.drain_once(db, fake)
+    assert result["sent"] == 1, result
+    event = fake.calls[0][1]["json"]["events"][0]
+    assert "adIdentifiers" not in event
+    assert event["userData"]["userIdentifiers"] == [{"emailAddress": adsconv.hash_email("lead@example.com")}]
+    assert "lead@example.com" not in json.dumps(fake.calls[0][1]["json"])
+    async with session_maker() as db:
+        row = (await db.execute(select(AdConversion).where(AdConversion.org_id == org_id))).scalars().one()
+        assert row.uploaded_at is not None
+
+
+async def test_drain_dead_letters_a_row_with_neither_click_nor_human(clients, user_data_enabled):
+    async with session_maker() as db:
+        org = Org(name="t", slug="t-nobody")  # no members at all, no click id
+        db.add(org); await db.commit(); await db.refresh(org)
+        db.add(AdConversion(org_id=org.id, action=adsconv.ACTION_SIGNUP)); await db.commit()
+        fake = FakeAdsClient(FakeAdsResponse({"requestId": "req-1"}))
+        result = await adsconv.drain_once(db, fake)
+        assert result["sent"] == 0 and result["failed"] == 1
+        assert fake.calls == []
+        row = (await db.execute(select(AdConversion).where(AdConversion.org_id == org.id))).scalars().one()
+        assert row.failed_at is not None and "no human creator email" in row.error
+
+
+async def test_terms_not_accepted_keeps_retrying_instead_of_dead_lettering(clients, user_data_enabled):
+    # Google's exact refusal (validateOnly, 2026-09-21) until an operator accepts the Customer Data
+    # Terms in the Ads UI. It is "not yet", not "never": the rows must outlive the attempt ceiling.
+    await reset_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
+        org_id = (await c.post("/users", json={"email": "lead@example.com"})).json()["org_id"]
+    async with session_maker() as db:
+        row = (await db.execute(select(AdConversion).where(AdConversion.org_id == org_id))).scalars().one()
+        row.attempts = 50  # far past _MAX_ATTEMPTS
+        db.add(row); await db.commit()
+    refusal = _rejected(_field_violation(0, "INVALID_ARGUMENT",
+        "The destination account hasn't agreed to the terms for enhanced conversions."))
+    fake = FakeAdsClient(FakeAdsResponse(refusal, status_code=400))
+    async with session_maker() as db:
+        result = await adsconv.drain_once(db, fake)
+        assert result["retried"] == 1 and result["failed"] == 0, result
+        row = (await db.execute(select(AdConversion).where(AdConversion.org_id == org_id))).scalars().one()
+        assert row.failed_at is None and row.next_attempt_at is not None
+        assert "terms for enhanced conversions" in row.error
+
+
+# ---- the browser tag: advanced consent mode + the web signup action ------------------------------
+
+_WEB = Path(adsconv.__file__).parent / "web"
+
+
+def test_gtag_queues_denied_consent_defaults_before_loading_googles_script():
+    js = (_WEB / "gtag.js").read_text()
+    # Advanced consent mode: the defaults are pushed BEFORE the tag script is appended and before
+    # config, otherwise Google treats the first hits as consented and sets cookies.
+    assert js.index("'consent', 'default'") < js.index("googletagmanager.com/gtag/js") < js.index("'config', TAG_ID")
+    for signal in ("ad_storage", "ad_user_data", "ad_personalization", "analytics_storage"):
+        assert f"{signal}: 'denied'" in js
+    assert "window.tregSignupConversion = function" in js
+    assert "AW-18392771132/0usqCIeQrO0cELzUrcJE" in js.replace("TAG_ID + '/", "AW-18392771132/")
+    assert "transaction_id: tid" in js and "'treg-web-signup-'" in js
+
+
+def test_dashboard_loads_the_tag_conversion_only_and_fires_on_first_team():
+    html = (_WEB / "index.html").read_text()
+    assert '<script src="/gtag.js" data-conversion-only></script>' in html
+    # Right after the team exists, keyed by the new org id.
+    assert "window.tregSignupConversion(o.org_id||o.org)" in html
+    assert html.index("<script src=\"/adtrack.js\"></script>") < html.index('<script src="/gtag.js" data-conversion-only>')
