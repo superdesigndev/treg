@@ -58,6 +58,7 @@ def test_every_provider_is_registered():
         "coingecko", "polygon", "finnhub", "twelvedata", "fmp", "eodhd", "marketstack", "tiingo",
         "financialdatasets",
         "microsoft-ads", "snapchat-ads", "tiktok-ads", "pinterest-ads",
+        "qbraid",
         # BYOK token providers
         "minimax", "fishaudio", "openrouter", "replicate", "reapi", "piapi",
     }

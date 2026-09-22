@@ -54,6 +54,7 @@ platforms:
 
   # --- Developer: code hosting & developer platforms -------------------------------------------
   github: {label: "GitHub", category: "Developer", summary: "Public repos, users, contributions and trending pages from GitHub."}
+  quantum: {label: "Quantum computing", category: "Developer", summary: "Quantum devices and simulators, OpenQASM validation and simulation, and job pricing, submission and results."}
 
   # --- Chinese social & video (merged into Social; non-China platforms lead by popularity) ---
   douyin: {label: "Douyin (TikTok China)", category: "Social", summary: "Profiles, videos, comments, search, billboards and live data — the deepest platform here."}

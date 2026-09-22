@@ -1298,6 +1298,34 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+QBRAID = OAuthProvider(
+    service="qbraid",
+    display_name="qBraid",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your qBraid API key (qbr_…)",
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://account.qbraid.com/account/api-keys",
+    setup_action_label="Get your qBraid API key",
+    setup_steps=(
+        "Sign in to account.qbraid.com and open Account → API keys.",
+        "Create a key and copy it (it starts with qbr_).",
+    ),
+    setup_note=("Device, provider, composer and cost-estimate routes are free; submitting a job "
+                "spends qBraid credits (1 credit = $0.01) set by the device's pricing × shots."),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Quantum",
+    summary="List quantum devices, validate and simulate OpenQASM circuits, price and run jobs on QPUs and simulators.",
+    base_url="https://api-v2.qbraid.com/api/v1",
+    docs_url="https://docs.qbraid.com/v2",
+    # free and authenticated — a bad key gets a 401 here. GET /providers is NOT a probe: it answers
+    # 200 without any credential (verified live 2026-09-22).
+    probe_path="/devices?limit=1",
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -3368,6 +3396,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
+        # Quantum computing API-key providers
+        QBRAID,
     )
 }
 
@@ -3376,7 +3406,7 @@ DEFAULT_CAPABILITY = "read"
 # Shelf order in the marketplace. Anything carrying a category not named here sorts last, so a
 # provider added without one is visible rather than lost between the shelves.
 CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Enrichment",
-                  "Market data", "Community", "Other")
+                  "Market data", "Community", "Quantum", "Other")
 
 
 def get(service: str) -> OAuthProvider | None:

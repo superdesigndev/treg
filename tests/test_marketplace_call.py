@@ -1496,6 +1496,21 @@ def test_crustdata_and_aviato_catalogs_are_platform_priced():
     assert all(cat.platform_eligible(ep) for ep in rows)
 
 
+def test_qbraid_free_routes_are_platform_priced():
+    """Every qBraid route except job submission is documented free (per_call 0 USD), so it is
+    platform-eligible. POST /jobs charges per-device credits × shots that only the live
+    cost-estimate route can compute, so its cost is unknown and it stays BYOK/refused."""
+    cat = A.catalog_store.load()
+    rows = cat.for_provider("qbraid")
+    assert len(rows) == 13
+    submit = [ep for ep in rows if ep["id"] == "qbraid.quantum.job.submit"]
+    assert len(submit) == 1 and not cat.platform_eligible(submit[0])
+    free = [ep for ep in rows if ep["id"] != "qbraid.quantum.job.submit"]
+    assert len(free) == 12
+    assert all(cat.platform_eligible(ep) for ep in free)
+    assert all(cat.cost_view(ep["cost"], "qbraid")["usd"] == 0 for ep in free)
+
+
 def test_exa_catalog_is_platform_priced():
     """Exa prices in dollars per call, so every curated route converts natively and is eligible."""
     cat = A.catalog_store.load()

@@ -287,6 +287,7 @@ _UNRECORDED_SIGNATURE = {
     "minimax", "oceanio", "openrouter", "replicate", "scrapecreators", "seranking",
     "piapi",  # prepaid wallet exhaustion not observed ($50 funded 2026-09-14); no overflow route
     "trestleiq",  # funded wallet remains; documented 403/429 shapes do not identify empty balance
+    "qbraid",  # listed routes are free; job submission is BYOK-only, so no credit exhaustion is forced
 
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "tomba", "twelvedata",
 }
