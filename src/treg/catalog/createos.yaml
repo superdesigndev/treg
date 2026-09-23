@@ -1,0 +1,173 @@
+provider: createos
+source:
+  docs: https://createos.sh/docs/Sandbox/REST-API/Overview/
+  openapi: null
+  curated: '2026-09-21'
+pricing_url: https://createos.sh/pricing
+limits: "API requests have no separate per-call fee. CreateOS bills running sandbox vCPU and memory by the second to the key owner's account; a sandbox can keep accruing charges between tool calls. Pausing stops vCPU billing; check current CreateOS pricing for other paused-state charges. treg does not meter own-key calls. Buffered exec output is capped at 1 MiB."
+proposed_capabilities:
+  sandbox.shapes.list: "List available cloud sandbox sizes"
+  sandbox.rootfs.list: "List available sandbox root filesystems"
+  sandbox.list: "List cloud sandboxes owned by the account"
+  sandbox.get: "Get the current state of one cloud sandbox"
+  sandbox.create: "Create a cloud sandbox"
+  sandbox.update: "Update supported settings on a cloud sandbox"
+  sandbox.exec: "Run a command in a cloud sandbox"
+  sandbox.delete: "Delete a cloud sandbox"
+endpoints:
+  - id: createos.sandbox.shapes.list
+    capability: sandbox.shapes.list
+    platform: sandbox
+    domain: catalog
+    kind: data
+    scope: own_account
+    method: GET
+    path: /v1/shapes
+    name: "List CreateOS sandbox shapes"
+    summary: "Get current CPU, memory, and disk presets for sandbox creation"
+    input:
+      note: "Use a returned data.data[].id as the shape in create. The catalog is public on CreateOS but treg routes it through your connected account."
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://createos.sh/pricing", checked: '2026-09-21', confidence: documented, note: "No API-call fee or sandbox runtime for this public lookup; treg does not meter own-key calls."}
+    unverified: "Pending independent verification through treg."
+    docs_url: https://nodeops.network/createos/docs/Sandbox/REST-API/Catalog-And-Identity
+
+  - id: createos.sandbox.rootfs.list
+    capability: sandbox.rootfs.list
+    platform: sandbox
+    domain: catalog
+    kind: data
+    scope: own_account
+    method: GET
+    path: /v1/rootfs
+    name: "List CreateOS root filesystems"
+    summary: "Get current images and the recommended default for sandbox creation"
+    input:
+      note: "Use a returned data.rootfs[] value as rootfs in create; data.default is the recommended choice. Pass rootfs explicitly because the live create API rejected an omitted value."
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://createos.sh/pricing", checked: '2026-09-21', confidence: documented, note: "No API-call fee or sandbox runtime for this public lookup; treg does not meter own-key calls."}
+    unverified: "Pending independent verification through treg."
+    docs_url: https://nodeops.network/createos/docs/Sandbox/REST-API/Catalog-And-Identity
+
+  - id: createos.sandbox.create
+    capability: sandbox.create
+    platform: sandbox
+    domain: lifecycle
+    kind: action
+    scope: own_account
+    method: POST
+    path: /v1/sandboxes
+    name: "Create a CreateOS sandbox"
+    summary: "Start an isolated cloud sandbox using your CreateOS account"
+    input:
+      bodyType: json
+      body:
+        shape: {type: string, required: true, example: "s-1vcpu-1gb", note: "Choose a supported shape; running compute is billed to the CreateOS account."}
+        rootfs: {type: string, required: true, example: "devbox:1", note: "Choose a root filesystem from GET /v1/rootfs."}
+        name: {type: string, required: false, example: "agent-workspace", note: "Maximum 22 characters; unique among active sandboxes."}
+        auto_pause_after_seconds: {type: integer, required: false, note: "Optional idle timeout; use this to limit unattended runtime."}
+      note: "The response data.id is the sandbox ID required by exec and delete. The sandbox bills while running, including between calls; destroy it when finished."
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://createos.sh/pricing", checked: '2026-09-21', confidence: documented, note: "The API request has no separate fee, but creating a sandbox starts per-second vCPU and memory billing on the CreateOS key owner's account. treg does not meter own-key calls."}
+    unverified: "Creating a sandbox incurs CreateOS compute charges; live verification requires a disposable key and cleanup."
+    docs_url: https://createos.sh/docs/Sandbox/REST-API/Sandboxes/
+
+  - id: createos.sandbox.list
+    capability: sandbox.list
+    platform: sandbox
+    domain: lifecycle
+    kind: data
+    scope: own_account
+    method: GET
+    path: /v1/sandboxes
+    name: "List CreateOS sandboxes"
+    summary: "List sandboxes owned by your CreateOS account"
+    input:
+      queryParams:
+        status: {type: string, required: false, note: "Optional lifecycle status filter, such as running or paused."}
+        limit: {type: integer, required: false, example: 50, note: "Page size; maximum 500."}
+        offset: {type: integer, required: false, example: 0, note: "Pagination offset."}
+      note: "Returns data.data[] and data.pagination. Use an item ID with get, update, exec, or delete."
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://createos.sh/pricing", checked: '2026-09-21', confidence: documented, note: "No separate API-call fee; existing running sandboxes keep accruing CreateOS runtime charges. treg does not meter own-key calls."}
+    unverified: "Pending independent verification through treg."
+    docs_url: https://nodeops.network/createos/docs/Sandbox/REST-API/Sandboxes
+
+  - id: createos.sandbox.get
+    capability: sandbox.get
+    platform: sandbox
+    domain: lifecycle
+    kind: data
+    scope: own_account
+    method: GET
+    path: /v1/sandboxes/{id}
+    name: "Get a CreateOS sandbox"
+    summary: "Get the current state and configuration of one sandbox"
+    input:
+      queryParams:
+        id: {type: string, required: true, note: "Sandbox ID from create or list", example: "sb-01K..."}
+      note: "Environment variable values are not returned; only their names are visible."
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://createos.sh/pricing", checked: '2026-09-21', confidence: documented, note: "No separate API-call fee; existing running sandboxes keep accruing CreateOS runtime charges. treg does not meter own-key calls."}
+    unverified: "Pending independent verification through treg."
+    docs_url: https://nodeops.network/createos/docs/Sandbox/REST-API/Sandboxes
+
+  - id: createos.sandbox.update
+    capability: sandbox.update
+    platform: sandbox
+    domain: lifecycle
+    kind: action
+    scope: own_account
+    method: PATCH
+    path: /v1/sandboxes/{id}
+    name: "Update a CreateOS sandbox"
+    summary: "Change a sandbox's ingress or idle auto-pause settings"
+    input:
+      queryParams:
+        id: {type: string, required: true, note: "Sandbox ID from create or list", example: "sb-01K..."}
+      bodyType: json
+      body:
+        ingress_enabled: {type: boolean, required: false, note: "Enable or disable public ingress."}
+        auto_pause_after_seconds: {type: integer, required: false, note: "Idle timeout, 60–86400 seconds."}
+        disable_auto_pause: {type: boolean, required: false, note: "Set true to remove the idle timeout; takes precedence over auto_pause_after_seconds."}
+      note: "Send at least one setting. PATCH changes only supplied settings; shape and rootfs are fixed at creation."
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://createos.sh/pricing", checked: '2026-09-21', confidence: documented, note: "No separate update-call fee; running sandbox vCPU and memory continue billing on the CreateOS key owner's account. treg does not meter own-key calls."}
+    unverified: "Pending independent verification through treg."
+    docs_url: https://nodeops.network/createos/docs/Sandbox/REST-API/Sandboxes
+
+  - id: createos.sandbox.exec
+    capability: sandbox.exec
+    platform: sandbox
+    domain: execution
+    kind: action
+    scope: own_account
+    method: POST
+    path: /v1/sandboxes/{id}/exec
+    name: "Run a command in a CreateOS sandbox"
+    summary: "Run one buffered command in a sandbox you created"
+    input:
+      queryParams:
+        id: {type: string, required: true, note: "path parameter; sandbox ID from create", example: "sb-01K..."}
+      bodyType: json
+      body:
+        cmd: {type: string, required: true, example: "printf"}
+        args: {type: array, required: false, example: ["hello\\n"]}
+        stdin: {type: string, required: false}
+        env: {type: object, required: false, note: "Only keys declared at sandbox creation can be overridden."}
+      note: "Buffered execution only. The response is CreateOS's JSend envelope; inspect data.result.exit_code as well as HTTP status."
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://createos.sh/pricing", checked: '2026-09-21', confidence: documented, note: "No separate exec-call fee; the running sandbox's vCPU and memory time is billed by CreateOS to the key owner. treg does not meter own-key calls."}
+    unverified: "Requires a sandbox created under the test key; live verification must create and destroy that sandbox."
+    docs_url: https://createos.sh/docs/Sandbox/REST-API/Execution-And-Files/
+
+  - id: createos.sandbox.delete
+    capability: sandbox.delete
+    platform: sandbox
+    domain: lifecycle
+    kind: action
+    scope: own_account
+    method: DELETE
+    path: /v1/sandboxes/{id}
+    name: "Delete a CreateOS sandbox"
+    summary: "Destroy a sandbox you own and stop its running compute charges"
+    input:
+      queryParams:
+        id: {type: string, required: true, note: "path parameter; sandbox ID from create", example: "sb-01K..."}
+      note: "Destruction is permanent. The returned status may be destroying while cleanup completes."
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://createos.sh/pricing", checked: '2026-09-21', confidence: documented, note: "No separate delete-call fee; CreateOS bills the key owner for sandbox runtime until compute stops. treg does not meter own-key calls."}
+    unverified: "Requires a disposable sandbox created under the test key; live verification must run after create and exec."
+    docs_url: https://createos.sh/docs/Sandbox/REST-API/Sandboxes/

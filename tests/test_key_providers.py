@@ -23,7 +23,7 @@ from treg import oauth_providers as P
 def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,
     not shown as 'not configured' the way an unset OAuth provider is."""
-    for svc in ("anyapi", "apollo", "pdl", "akta", "hunter", "sumble", "moltsets", "openmart", "harvestapi", "dropleads", "quickenrich", "prospeo", "aiark", "wiza", "limadata", "getleadsio", "scrubby", "zerobounce", "datagma", "contactout", "millionverifier", "bounceban", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush",
+    for svc in ("anyapi", "apollo", "pdl", "akta", "hunter", "createos", "sumble", "moltsets", "openmart", "harvestapi", "dropleads", "quickenrich", "prospeo", "aiark", "wiza", "limadata", "getleadsio", "scrubby", "zerobounce", "datagma", "contactout", "millionverifier", "bounceban", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush",
                 "justoneapi", "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
                 "cloro",
                 "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
@@ -52,6 +52,7 @@ def test_key_providers_appear_in_the_marketplace_listing():
     assert listing["bounceban"]["auth_kind"] == "key"
     assert listing["zerobounce"]["category"] == "Enrichment"
     assert listing["zerobounce"]["auth_kind"] == "key"
+    assert listing["createos"]["category"] == "Developer"
     assert listing["minimax"]["category"] == "AI generation"
     assert listing["minimax"]["summary"] == "Generate voice, images, and videos from text or source images."
     assert listing["openrouter"]["auth_kind"] == "token"

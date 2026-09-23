@@ -1333,6 +1333,31 @@ ANYAPI = OAuthProvider(
     probe_path="/v1/balance",  # free — reads the wallet, runs nothing and charges nothing
 )
 
+CREATEOS = OAuthProvider(
+    service="createos",
+    display_name="CreateOS Sandbox",
+    auth_kind="key",
+    token_label="CreateOS API key",
+    token_placeholder="your CreateOS API key",
+    token_header="X-Api-Key",
+    token_format="{secret}",
+    setup_url="https://createos.sh/app/profile",
+    setup_action_label="Create a CreateOS API key",
+    setup_steps=(
+        "Sign in to CreateOS and open your profile.",
+        "Create an API key and copy it into treg.",
+    ),
+    setup_note="CreateOS bills sandbox compute to your CreateOS account by runtime; treg does not meter calls made with your key.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Developer",
+    summary="Create a sandbox, run a command, and destroy it with your own CreateOS account.",
+    base_url="https://api.sb.createos.sh",
+    docs_url="https://createos.sh/docs/Sandbox/REST-API/Overview/",
+    probe_path="/v1/whoami",
+)
+
 SUMBLE = OAuthProvider(
     service="sumble", display_name="Sumble", auth_kind="key",
     token_label="API key", token_placeholder="your Sumble API key",
@@ -3352,7 +3377,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
-        REPLICATE,
+        REPLICATE, CREATEOS,
         REAPI, PIAPI,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
@@ -3376,7 +3401,7 @@ DEFAULT_CAPABILITY = "read"
 # Shelf order in the marketplace. Anything carrying a category not named here sorts last, so a
 # provider added without one is visible rather than lost between the shelves.
 CATEGORY_ORDER = ("AI generation", "SEO", "Advertising", "Social media", "Enrichment",
-                  "Market data", "Community", "Other")
+                  "Market data", "Community", "Developer", "Other")
 
 
 def get(service: str) -> OAuthProvider | None:

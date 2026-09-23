@@ -9,6 +9,8 @@ sources:
   - src/treg/application/provider_resources.py
   - src/treg/domain/provider_resources.py
   - src/treg/routers/provider_resources.py
+  - src/treg/catalog/createos.yaml
+  - src/treg/web/logos/createos.svg
   - src/treg/catalog/tavily.yaml
   - src/treg/catalog/exa.yaml
   - src/treg/catalog/anyapi.extended.yaml

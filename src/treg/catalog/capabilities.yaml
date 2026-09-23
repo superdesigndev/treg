@@ -54,6 +54,7 @@ platforms:
 
   # --- Developer: code hosting & developer platforms -------------------------------------------
   github: {label: "GitHub", category: "Developer", summary: "Public repos, users, contributions and trending pages from GitHub."}
+  sandbox: {label: "Cloud sandboxes", category: "Developer", summary: "Discover sizes and images; create, list, inspect, configure, run commands in, and delete isolated sandboxes."}
 
   # --- Chinese social & video (merged into Social; non-China platforms lead by popularity) ---
   douyin: {label: "Douyin (TikTok China)", category: "Social", summary: "Profiles, videos, comments, search, billboards and live data — the deepest platform here."}
