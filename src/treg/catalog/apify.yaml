@@ -255,4 +255,41 @@ endpoints:
     example_response: examples/apify.account.usage.json
     docs_url: https://docs.apify.com/api/v2/users-me-get
 
+  - id: apify.google.serp.maps
+    capability: google.serp.maps
+    platform: google
+    scope: any_account
+    method: POST
+    path: /actors/herus13~google-maps-scraper/run-sync-get-dataset-items
+    name: "Search Google Maps businesses by keyword and location"
+    summary: "Scrape Google Maps for businesses matching a keyword in a place — name, address, phone, website, rating, review_count, categories, hours and coordinates, with email and social-profile enrichment from each business site included in the result price"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "SERVER-SIDE result cap — the only hard spend ceiling for a pay-per-result actor; set it on every call", example: 100}
+        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        memory: {type: integer, required: false, note: "MB; the actor-start fee is $0.01 per GB (min 1 GB), so 1024 is the cheapest start. Detail-page enrichment wants more", example: 1024}
+        timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless — a large pull should use the async web.scrape.job.* pair above", example: 240}
+      body:
+        searchStringsArray: {type: "array[string]", required: true, note: "keywords to search, one per entry (dentist, plumber, coffee shop); each is searched inside locationQuery and every business becomes one row", example: ["coffee shop"]}
+        locationQuery: {type: string, required: false, note: "where to search, as typed into Google Maps: 'Austin, TX', 'London, UK', or a whole country. Omit to let each term carry its own location", example: "Austin, TX"}
+        maxCrawledPlacesPerSearch: {type: integer, required: false, note: "max businesses per search term, 1-500, counted AFTER filters; default 100", example: 20}
+        maxCrawledPlaces: {type: integer, required: false, note: "total businesses across all terms; 0 = no ceiling. You pay per business returned, so set this to cap the bill", example: 100}
+        language: {type: string, required: false, note: "result language, e.g. en|es|fr|de|ja|zh-CN|vi; default en", example: "en"}
+        scrapeContacts: {type: boolean, required: false, note: "look up each business site for emails and social links (emails, email_type, social_links). Default true — these fields are part of the result price, not an add-on", example: true}
+        scrapePlaceDetailPage: {type: boolean, required: false, note: "also open each place's Maps page for hours, price_level, popular_times and any missing phone/site. Default false; makes a run noticeably longer", example: false}
+        maxReviews: {type: integer, required: false, note: "reviews to attach per business, 0-500; default 0 (none). A place page holds roughly the first 8", example: 0}
+        placeMinimumStars: {type: string, required: false, note: "keep only businesses rated at or above '1'|'2'|'3'|'4'|'4.5'; empty keeps all. Filtered-out places are not returned, not charged", example: ""}
+        website: {type: string, required: false, note: "allPlaces | withWebsite | withoutWebsite — filter on whether the business has its own site. Filtered-out places are not charged", example: "allPlaces"}
+        skipClosedPlaces: {type: boolean, required: false, note: "leave out permanently-closed businesses so you do not pay for dead leads. Default true", example: true}
+        geo_split: {type: boolean, required: false, note: "split a wide area into a grid and search each cell to get past Google's ~120-per-view ceiling. Default false; turn on for anything wider than a city", example: false}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries place_id, name, address, phone, website, rating, review_count, categories, hours, latitude, longitude, google_maps_url, and (when scrapeContacts is on) emails and social_links. Cap every call with maxItems: it is the enforced ceiling and equals the count of result events billed. Filters (placeMinimumStars, website, skipClosedPlaces) drop places before they are returned or charged"
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.08, timeout: 240}
+      body: {searchStringsArray: ["coffee shop"], locationQuery: "Austin, TX", maxCrawledPlacesPerSearch: 1, maxCrawledPlaces: 1, scrapeContacts: false, maxReviews: 0, scrapePlaceDetailPage: false, skipClosedPlaces: true}
+    cost: {type: per_result, value: 0.009, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~google-maps-scraper', checked: '2026-09-23', confidence: documented, note: 'pay-per-event, TIERED by the caller''s Apify subscription — one result event = one business: FREE 0.009 (the value here, what a default caller pays), BRONZE 0.007, SILVER 0.005, GOLD/PLATINUM/DIAMOND 0.0035; email and social enrichment are included in this price, not billed separately. PLUS a one-time apify-actor-start fee of $0.01 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.01 start. apifyMarginPercentage 0.20, all read live 2026-09-23 from the actor pricingInfos. NOT self-observable from the owner meter: a maxItems=1 run 2026-09-23 (run s5MtwwgKV5ti7buel, HTTP 201, 1 business) reported usageTotalUsd 0.00065 of platform COMPUTE with chargedEventCounts null, because Apify does not bill an owner the per-result rental on their own actor'}
+    example_response: examples/apify.google.serp.maps.json
+    docs_url: https://apify.com/herus13/google-maps-scraper
+
 proposed_capabilities:
