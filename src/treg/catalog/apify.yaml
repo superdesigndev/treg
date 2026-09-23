@@ -255,4 +255,174 @@ endpoints:
     example_response: examples/apify.account.usage.json
     docs_url: https://docs.apify.com/api/v2/users-me-get
 
+  - id: apify.weibo.search.posts
+    capability: weibo.search.posts
+    platform: weibo
+    scope: any_account
+    method: POST
+    path: /actors/herus13~weibo-scraper/run-sync-get-dataset-items
+    name: "Search Weibo posts by keyword"
+    summary: "Search Weibo posts by keyword or #topic# with no login — relevance (top, up to ~2,000 posts per keyword) or newest-first (latest, walks back in time without a depth ceiling), optionally within a Beijing-time date range; text, counts, images, video, topics and author per post"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "SERVER-SIDE row cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. It caps the whole run, across every keyword/user/post given", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        memory: {type: integer, required: false, note: "MB; the actor-start fee is $0.00005 per GB (min 1 GB), so 1024 is the cheapest start", example: 1024}
+        timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless — a large pull should use the async web.scrape.job.* pair above", example: 260}
+      body:
+        mode: {type: string, required: true, note: "must be `search` for this entry — it selects the mode", example: "search"}
+        keywords: {type: "array[string]", required: true, note: "search terms, one per entry — e.g. 咖啡 or #新能源# for a topic; a post matching two terms is returned once", example: ["咖啡"]}
+        max_items: {type: integer, required: false, note: "posts per keyword, 1-10000; default 50. You pay per post returned — cap it here or with maxItems", example: 50}
+        search_type: {type: string, required: false, note: "top (default; relevance-ranked, ends after ~2,000 posts per keyword, often fewer) | latest (newest-first; keeps going back in time — use it, or a date range, for deep pulls)", example: "latest"}
+        start_date: {type: string, required: false, note: "YYYY-MM-DD in Beijing time (or a full ISO timestamp); only posts on or after it", example: "2026-09-01"}
+        end_date: {type: string, required: false, note: "YYYY-MM-DD in Beijing time, whole day inclusive; not before start_date", example: "2026-09-07"}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.weibo.search.posts, .trending.hot_search, .user.posts, .user.profile, .post.detail and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row carries mid, mblogid, url, created_at, text/text_raw, reposts/comments/attitudes counts, image_urls, video fields, topics, repost linkage and the author (user_id, screen name, verification, followers), plus source_keyword"
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 260}
+      body: {mode: "search", keywords: ["咖啡"], max_items: 1}
+    cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~weibo-scraper', checked: '2026-09-24', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers). This entry bills the `post` event — one event per post returned, $0.005 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.00005 start. Read live 2026-09-24 from the actor pricingInfos. Event COUNTS observed on the 2026-09-24 test run (chargedEventCounts: 1 start + 1 `post` for 1 row); the per-event PRICE is not self-observable because Apify does not bill an owner the rental on their own actor'}
+    example_response: examples/apify.weibo.search.posts.json
+    docs_url: https://apify.com/herus13/weibo-scraper
+
+  - id: apify.weibo.trending.hot_search
+    capability: weibo.trending.hot_search
+    platform: weibo
+    scope: any_account
+    method: POST
+    path: /actors/herus13~weibo-scraper/run-sync-get-dataset-items
+    name: "Weibo realtime hot-search board"
+    summary: "Weibo's realtime hot-search board (热搜榜, about 50 entries) with no login — word, rank, heat, label, pinned flag and the search URL per entry"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "SERVER-SIDE row cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. It caps the whole run, across every keyword/user/post given", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        memory: {type: integer, required: false, note: "MB; the actor-start fee is $0.00005 per GB (min 1 GB), so 1024 is the cheapest start", example: 1024}
+        timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless — a large pull should use the async web.scrape.job.* pair above", example: 260}
+      body:
+        mode: {type: string, required: true, note: "must be `hot_search` for this entry — it selects the mode", example: "hot_search"}
+        max_items: {type: integer, required: false, note: "caps the whole board (it holds about 50 entries); default 50", example: 50}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.weibo.search.posts, .trending.hot_search, .user.posts, .user.profile, .post.detail and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row carries rank, word, note, heat, label (热/新/沸…), is_pinned and the s.weibo.com search url; pinned entries carry rank and heat null"
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 260}
+      body: {mode: "hot_search", max_items: 1}
+    cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~weibo-scraper', checked: '2026-09-24', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers). This entry bills the `hot-search-entry` event — one event per board entry returned, $0.005 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.00005 start. Read live 2026-09-24 from the actor pricingInfos. Event COUNTS observed on the 2026-09-24 test run (chargedEventCounts: 1 start + 1 `hot-search-entry` for 1 row); the per-event PRICE is not self-observable because Apify does not bill an owner the rental on their own actor'}
+    example_response: examples/apify.weibo.trending.hot_search.json
+    docs_url: https://apify.com/herus13/weibo-scraper
+
+  - id: apify.weibo.user.posts
+    capability: weibo.user.posts
+    platform: weibo
+    scope: any_account
+    method: POST
+    path: /actors/herus13~weibo-scraper/run-sync-get-dataset-items
+    name: "List a Weibo user's recent posts"
+    summary: "A Weibo user's timeline, newest first, with no login — about 1,000 posts deep per user; same post fields as search"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "SERVER-SIDE row cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. It caps the whole run, across every keyword/user/post given", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        memory: {type: integer, required: false, note: "MB; the actor-start fee is $0.00005 per GB (min 1 GB), so 1024 is the cheapest start", example: 1024}
+        timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless — a large pull should use the async web.scrape.job.* pair above", example: 260}
+      body:
+        mode: {type: string, required: true, note: "must be `timeline` for this entry — it selects the mode", example: "timeline"}
+        users: {type: "array[string]", required: true, note: "one per entry: numeric uid (2803301701), screen name (人民日报), custom domain (rmrb) or a weibo.com / m.weibo.cn profile URL; the same user given twice is scraped once", example: ["2803301701"]}
+        max_items: {type: integer, required: false, note: "posts per user, 1-10000; default 50", example: 50}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.weibo.search.posts, .trending.hot_search, .user.posts, .user.profile, .post.detail and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row is a post (same fields as apify.weibo.search.posts) with source_user set to the requested user"
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 260}
+      body: {mode: "timeline", users: ["2803301701"], max_items: 1}
+    cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~weibo-scraper', checked: '2026-09-24', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers). This entry bills the `post` event — one event per post returned, $0.005 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.00005 start. Read live 2026-09-24 from the actor pricingInfos. Event COUNTS observed on the 2026-09-24 test run (chargedEventCounts: 1 start + 1 `post` for 1 row); the per-event PRICE is not self-observable because Apify does not bill an owner the rental on their own actor'}
+    example_response: examples/apify.weibo.user.posts.json
+    docs_url: https://apify.com/herus13/weibo-scraper
+
+  - id: apify.weibo.user.profile
+    capability: weibo.user.profile
+    platform: weibo
+    scope: any_account
+    method: POST
+    path: /actors/herus13~weibo-scraper/run-sync-get-dataset-items
+    name: "Get a Weibo user's public profile"
+    summary: "A Weibo user's public profile with no login — screen name, description, followers/following/post counts, verification type and reason, member rank, location, company, labels and account creation date"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "SERVER-SIDE row cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. It caps the whole run, across every keyword/user/post given", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        memory: {type: integer, required: false, note: "MB; the actor-start fee is $0.00005 per GB (min 1 GB), so 1024 is the cheapest start", example: 1024}
+        timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless — a large pull should use the async web.scrape.job.* pair above", example: 260}
+      body:
+        mode: {type: string, required: true, note: "must be `profile` for this entry — it selects the mode", example: "profile"}
+        users: {type: "array[string]", required: true, note: "one per entry: numeric uid, screen name, custom domain or profile URL — one profile row each", example: ["2803301701"]}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.weibo.search.posts, .trending.hot_search, .user.posts, .user.profile, .post.detail and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row carries uid, screen_name, url, description, followers_count, friends_count, statuses_count, verified/verified_type/verified_reason, mbrank, avatar_url, domain, account_created_at, company, labels, location, gender and source_input"
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 260}
+      body: {mode: "profile", users: ["2803301701"]}
+    cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~weibo-scraper', checked: '2026-09-24', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers). This entry bills the `profile` event — one event per profile returned, $0.005 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.00005 start. Read live 2026-09-24 from the actor pricingInfos. Event COUNTS observed on the 2026-09-24 test run (chargedEventCounts: 1 start + 1 `profile` for 1 row); the per-event PRICE is not self-observable because Apify does not bill an owner the rental on their own actor'}
+    example_response: examples/apify.weibo.user.profile.json
+    docs_url: https://apify.com/herus13/weibo-scraper
+
+  - id: apify.weibo.post.detail
+    capability: weibo.post.detail
+    platform: weibo
+    scope: any_account
+    method: POST
+    path: /actors/herus13~weibo-scraper/run-sync-get-dataset-items
+    name: "Get a Weibo post by id"
+    summary: "One or more Weibo posts by id, short code or URL with no login — FULL long text (search and timeline rows truncate long posts), counts including reads, images, video and topics"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "SERVER-SIDE row cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. It caps the whole run, across every keyword/user/post given", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        memory: {type: integer, required: false, note: "MB; the actor-start fee is $0.00005 per GB (min 1 GB), so 1024 is the cheapest start", example: 1024}
+        timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless — a large pull should use the async web.scrape.job.* pair above", example: 260}
+      body:
+        mode: {type: string, required: true, note: "must be `post` for this entry — it selects the mode", example: "post"}
+        post_ids: {type: "array[string]", required: true, note: "one per entry: numeric mid (16 digits), the mblogid short code from a weibo.com post URL, or the URL itself; the same post given in two forms is scraped and billed once", example: ["https://weibo.com/2803301701/Rjuwfpy8d"]}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.weibo.search.posts, .trending.hot_search, .user.posts, .user.profile, .post.detail and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row is a post (same fields as apify.weibo.search.posts) with the full text"
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 260}
+      body: {mode: "post", post_ids: ["https://weibo.com/2803301701/Rjuwfpy8d"]}
+    cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~weibo-scraper', checked: '2026-09-24', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers). This entry bills the `post` event — one event per post returned, $0.005 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.00005 start. Read live 2026-09-24 from the actor pricingInfos. Event COUNTS observed on the 2026-09-24 test run (chargedEventCounts: 1 start + 1 `post` for 1 row); the per-event PRICE is not self-observable because Apify does not bill an owner the rental on their own actor'}
+    example_response: examples/apify.weibo.post.detail.json
+    docs_url: https://apify.com/herus13/weibo-scraper
+
+  - id: apify.weibo.post.comments
+    capability: weibo.post.comments
+    platform: weibo
+    scope: any_account
+    method: POST
+    path: /actors/herus13~weibo-scraper/run-sync-get-dataset-items
+    name: "List a Weibo post's comments"
+    summary: "Comments on Weibo posts with no login, hot-first or newest-first, optionally with each comment's reply thread — text, likes, reply count, floor, IP region and commenter per row"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "SERVER-SIDE row cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. It caps the whole run, across every keyword/user/post given", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        memory: {type: integer, required: false, note: "MB; the actor-start fee is $0.00005 per GB (min 1 GB), so 1024 is the cheapest start", example: 1024}
+        timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless — a large pull should use the async web.scrape.job.* pair above", example: 260}
+      body:
+        mode: {type: string, required: true, note: "must be `comments` for this entry — it selects the mode", example: "comments"}
+        post_ids: {type: "array[string]", required: true, note: "one per entry: numeric mid, mblogid short code, or post URL", example: ["https://weibo.com/2803301701/Rjuwfpy8d"]}
+        max_items: {type: integer, required: false, note: "comments per post, 1-10000, replies included; default 50", example: 50}
+        comment_sort: {type: string, required: false, note: "hot (default, most-liked first) | time (newest first)", example: "hot"}
+        include_replies: {type: boolean, required: false, note: "also walk each comment's reply thread; replies come back as rows with is_reply true and root_id linking them to their comment, and bill as comments. Default false", example: false}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.weibo.search.posts, .trending.hot_search, .user.posts, .user.profile, .post.detail and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row carries comment_id, post_mid, root_id, is_reply, reply_to_id, floor_number, created_at, text/text_raw, source (IP region), like_count, reply_count, liked_by_author and the commenter (user_id, screen name, verification). Replies also answer weibo.comment.replies"
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 260}
+      body: {mode: "comments", post_ids: ["https://weibo.com/2803301701/Rjuwfpy8d"], max_items: 1}
+    cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~weibo-scraper', checked: '2026-09-24', confidence: documented, note: 'pay-per-event, FLAT (no plan tiers). This entry bills the `comment` event — one event per comment or reply returned, $0.005 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.00005 start. Read live 2026-09-24 from the actor pricingInfos. Event COUNTS observed on the 2026-09-24 test run (chargedEventCounts: 1 start + 1 `comment` for 1 row); the per-event PRICE is not self-observable because Apify does not bill an owner the rental on their own actor'}
+    example_response: examples/apify.weibo.post.comments.json
+    docs_url: https://apify.com/herus13/weibo-scraper
+
 proposed_capabilities:
