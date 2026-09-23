@@ -255,4 +255,32 @@ endpoints:
     example_response: examples/apify.account.usage.json
     docs_url: https://docs.apify.com/api/v2/users-me-get
 
+  - id: apify.lazada.search.products
+    capability: lazada.search.products
+    platform: lazada
+    scope: any_account
+    method: POST
+    path: /actors/herus13~lazada-scraper/run-sync-get-dataset-items
+    name: "Search Lazada products by keyword across Southeast Asia"
+    summary: "Search Lazada and return products with price, original price, currency, rating, review and sold counts, seller and location from one of six SEA country sites (SG, MY, VN, TH, PH, ID)"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "SERVER-SIDE result cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. Equals the number of product-result events billed", example: 40}
+        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless — a large pull should use the async web.scrape.job.* pair above", example: 180}
+      body:
+        search_terms: {type: "array[string]", required: true, note: "keywords to search, one per entry; each is paged until the run reaches max_results. An empty list stops the run with an input error before anything is charged", example: ["iphone 15 case"]}
+        region: {type: string, required: false, note: "one of sg|my|vn|th|ph|id — decides which country site, the listing language and the currency of every price. Default sg. One run covers one country, so comparing markets means one run per region", example: "sg"}
+        max_results: {type: integer, required: false, note: "total products across all search terms; default 40, min 1, max 4000. A single keyword usually runs out before 4000 — widen coverage with more terms, not a higher cap", example: 40}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass one gateway URL per entry (http://user:pass@host:port) to route through your own provider instead"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries title, price, price_original, currency, rating, review_count, sold_count, seller_name, location, brand and product_url. Cap every call with maxItems: it is the enforced ceiling and equals the count of product-result events billed"
+    test_request:
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 180}
+      body: {search_terms: ["iphone 15 case"], region: "sg", max_results: 1}
+    cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~lazada-scraper', checked: '2026-09-23', confidence: documented, note: 'pay-per-event: one product-result event = one product, $0.005 — read live 2026-09-23 from the actor pricingInfos (eventPriceUsd 0.005, the sole event; apifyMarginPercentage 0.20). The caller pays this on their own Apify token. NOT self-observable from the owner meter: a maxItems=1 run 2026-09-23 (run FoMZQgBrce1dYgbik, HTTP 201, 1 product) reported usageTotalUsd 0.00588 of platform COMPUTE with chargedEventCounts null, because Apify does not bill an owner the per-result rental on their own actor. Charged per product produced even if the run is cut short — cap with maxItems'}
+    example_response: examples/apify.lazada.search.products.json
+    docs_url: https://apify.com/herus13/lazada-scraper
+
 proposed_capabilities:
+  lazada.search.products: "Search Lazada products by keyword across Southeast Asia (SG, MY, VN, TH, PH, ID)"
