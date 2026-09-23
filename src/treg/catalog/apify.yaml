@@ -255,4 +255,33 @@ endpoints:
     example_response: examples/apify.account.usage.json
     docs_url: https://docs.apify.com/api/v2/users-me-get
 
+  - id: apify.tiktok-shop.search.products
+    capability: tiktok-shop.search.products
+    platform: tiktok-shop
+    scope: any_account
+    method: POST
+    path: /actors/herus13~tiktok-shop-scraper/run-sync-get-dataset-items
+    name: "Search TikTok Shop products by keyword"
+    summary: "Scrape TikTok Shop products for a keyword across 10 storefronts (US, GB, VN, TH, PH, MY, SG, JP, MX, ID) — title, price, original_price, discount_percent, seller_name, rating, sold_count and full category_path per product"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "SERVER-SIDE result cap — the only hard spend ceiling for a pay-per-result actor; set it on every call", example: 100}
+        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        memory: {type: integer, required: false, note: "MB; the actor-start fee is $0.002 per GB (min 1 GB), so 1024 is the cheapest start", example: 1024}
+        timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless — a large pull should use the async web.scrape.job.* pair above", example: 260}
+      body:
+        search_terms: {type: "array[string]", required: true, note: "keywords to search, one per entry; each returns every matching product up to max_results", example: ["phone case"]}
+        region: {type: string, required: false, note: "storefront to scrape — one of US|GB|VN|TH|PH|MY|SG|JP|MX|ID; decides the catalogue, listing language and price currency. Default US. Coverage is strongest on US and SEA storefronts", example: "US"}
+        max_results: {type: integer, required: false, note: "max products per search term, 1-500; default 100. You pay per product returned, so cap it or use maxItems", example: 100}
+        scrape_product_details: {type: boolean, required: false, note: "true opens each product's detail page for the full field set — billed at the higher product-detail price, not the search price (see cost note). Default false", example: false}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries product_id, title, price, original_price, discount_percent, currency, seller_name, seller_id, rating, review_count, sold_count, category_path, product_url and image URLs. Cap every call with maxItems: it is the enforced ceiling and equals the count of product-search-result events billed. The same actor also takes product_urls (per-product detail, billed product-detail) and category_urls (category browse); this entry is the keyword-search capability"
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.08, timeout: 260}
+      body: {search_terms: ["phone case"], region: "US", max_results: 1, scrape_product_details: false}
+    cost: {type: per_result, value: 0.008, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~tiktok-shop-scraper', checked: '2026-09-23', confidence: documented, note: 'pay-per-event, TIERED by the caller''s Apify plan. This entry (keyword search, scrape_product_details off) bills the `product-search-result` event — one result event = one product: FREE 0.008 (the value here, what a default caller pays), BRONZE 0.00733, SILVER 0.00667, GOLD/PLATINUM/DIAMOND 0.006. With scrape_product_details on, or the actor''s product_urls mode, each product bills the higher `product-detail` event instead: FREE 0.018 down to 0.013 at GOLD. PLUS a one-time apify-actor-start fee of $0.002 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.002 start. apifyMarginPercentage 0.20, all read live 2026-09-23 from the actor pricingInfos. NOT self-observable from the owner meter: a maxItems=1 run 2026-09-23 (run UaPaSIFWtOvj8vOfN, HTTP 201, 1 product) reported usageTotalUsd 0.00005 of platform COMPUTE with chargedEventCounts null, because Apify does not bill an owner the per-result rental on their own actor'}
+    example_response: examples/apify.tiktok-shop.search.products.json
+    docs_url: https://apify.com/herus13/tiktok-shop-scraper
+
 proposed_capabilities:
