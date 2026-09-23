@@ -57,7 +57,16 @@ def test_moltsets_env_key_is_detected_as_bearer(tmp_path):
     assert detected.required_headers == {"User-Agent": "treg/1.0 (+https://treg.to)"}
     [action] = prov.plan_actions([detected])
     assert action.required_headers == {"User-Agent": "treg/1.0 (+https://treg.to)"}
-    assert prov.CATALOG_VERSION == 17
+    assert prov.CATALOG_VERSION == 18
+
+
+def test_viktron_env_key_is_detected_as_bearer(tmp_path):
+    env = _write_env(tmp_path, "VIKTRON_API_KEY=vk_example\n")
+    [detected] = prov.scan_env(env)
+    assert detected.provider == "Viktron"
+    assert detected.auth == {"shape": "bearer"}
+    assert detected.base_url == "https://api.viktron.ai"
+    assert detected.probe == "api/teams"
 
 
 def test_limadata_env_key_is_detected_as_x_api_key(tmp_path):
