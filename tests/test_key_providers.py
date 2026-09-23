@@ -29,7 +29,7 @@ def test_key_providers_are_offerable_without_deployment_credentials():
                 "cloro",
                 "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
                 "companyenrich", "oceanio", "tomba", "predictleads", "findymail", "branddev",
-                "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato",
+                "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato", "dataforb2b",
                 "spyfu", "apify", "meta-ad-library", "serpapi", "adyntel",
                 "coingecko", "polygon", "finnhub", "twelvedata", "fmp", "eodhd", "marketstack",
                 "tiingo", "financialdatasets", "tinyfish", "keenable", "olostep"):

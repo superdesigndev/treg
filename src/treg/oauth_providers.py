@@ -2394,6 +2394,38 @@ CRUSTDATA = OAuthProvider(
 )
 
 
+DATAFORB2B = OAuthProvider(
+    service="dataforb2b",
+    display_name="DataForB2B",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your DataForB2B API key",
+    token_header="api_key",
+    token_format="{secret}",
+    setup_url="https://app.dataforb2b.ai/resources/api-key",
+    setup_action_label="Get your DataForB2B API key",
+    setup_steps=(
+        "Sign in to DataForB2B and open Resources → API Key.",
+        "Copy your API key.",
+    ),
+    setup_note=(
+        "Searches spend credits per result and enrichment per item found; the account check is "
+        "free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Search people and companies with structured filters, and enrich profiles with work "
+        "email, personal email and phone."
+    ),
+    base_url="https://api.dataforb2b.ai",
+    docs_url="https://docs.dataforb2b.ai",
+    probe_path="/account",  # free — a bad key gets 401 {"detail": "Invalid API key"}
+)
+
+
 AVIATO = OAuthProvider(
     service="aviato",
     display_name="Aviato",
@@ -3503,7 +3535,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, TAVILY, KEENABLE, OLOSTEP, CLORO,
         # more Enrichment API-key providers
-        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO,
+        LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO, DATAFORB2B,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB,
         # Market data API-key providers
