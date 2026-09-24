@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 # `auth` is the provider's DEFAULT shape; a per-variable form (CLIENT_ID/SECRET → oauth2) can override
 # it. Served at GET /providers.json so the CLI can refresh centrally (bundled copy = offline fallback);
 # bump CATALOG_VERSION whenever entries change so a cache can tell it's stale.
-CATALOG_VERSION = 19  # v19 2026-09-23: Olostep key detection
+CATALOG_VERSION = 19  # v19 2026-09-23: Viktron key detection
 # `skills` (optional) matches a SKILL FOLDER name for file-credential skills that have no env var to
 # key on (OAuth token files etc.) — see `match_skill`. Such providers carry `tokens: []` so the env
 # scanner never mis-detects them as a simple bearer key (their real auth is OAuth + extra headers).
@@ -255,6 +255,7 @@ CATALOG: list[dict] = [
     {"provider": "New Relic",   "tokens": ["NEWRELIC", "RELIC"],   "base_url": "https://api.newrelic.com/v2",                     "auth": {"shape": "api_key_header", "header": "X-Api-Key"}},
     {"provider": "PagerDuty",   "tokens": ["PAGERDUTY"],           "base_url": "https://api.pagerduty.com",                       "auth": {"shape": "api_key_header", "header": "Authorization", "format": "Token token={secret}"}},
     {"provider": "Honeycomb",   "tokens": ["HONEYCOMB"],           "base_url": "https://api.honeycomb.io/1",                      "auth": {"shape": "api_key_header", "header": "X-Honeycomb-Team"}},
+    {"provider": "Viktron",     "tokens": ["VIKTRON"],             "base_url": "https://api.viktron.ai",                          "auth": {"shape": "bearer"}, "probe": "api/teams"},
     {"provider": "Bunny",       "tokens": ["BUNNY"],               "base_url": "https://api.bunny.net",                           "auth": {"shape": "api_key_header", "header": "AccessKey"}},
     # --- payments / commerce ---
     {"provider": "Square",      "tokens": ["SQUARE"],              "base_url": "https://connect.squareup.com/v2",                 "auth": {"shape": "bearer"}},
