@@ -73,6 +73,13 @@ the connect dialog renders the warning from that field, and provisioning deliber
 the tool health check so later health runs cannot spend the team's provider wallet.
 `TREG_PLATFORM_KEY_TRESTLEIQ` supplies the optional shared binding; a team's own key still wins.
 
+`MARKETCHECK` uses the standard pasted-key flow with an `api_key` query parameter on
+`https://api.marketcheck.com/v2`. It has no free authenticated account route, so the connection
+probe is the cheapest data call, a basic VIN decode listed at $0.0015 (`probe_cost_micro=1500`,
+connect-only, never a saved health check). A bogus key answers HTTP 401
+`{"message": "Invalid authentication credentials"}` at the gateway (live 2026-09-24). The listing is
+BYOK only: there is no `TREG_PLATFORM_KEY_MARKETCHECK` slot.
+
 `LIMADATA` uses a pasted raw `x-api-key` header. Its free connection probe sends an invalid empty
 web-search body: the assigned key returns HTTP 400 and a bogus key returns 401. The real local
 connection flow accepted the former and rejected the latter. `TREG_PLATFORM_KEY_LIMADATA` is the
