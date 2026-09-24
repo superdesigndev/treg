@@ -121,7 +121,7 @@ def test_key_providers_appear_in_the_marketplace_listing():
 
 def test_paid_key_verification_probe_is_typed_and_unique():
     paid = {p.service: p.probe_cost_micro for p in P.REGISTRY.values() if p.probe_cost_micro}
-    assert paid == {"keenable": 4_000, "trestleiq": 15_000}
+    assert paid == {"keenable": 4_000, "trestleiq": 15_000, "besttime": 60_000}
     assert all(isinstance(p.probe_cost_micro, int) and p.probe_cost_micro >= 0
                for p in P.REGISTRY.values())
     listing = {row["service"]: row for row in P.listing()}
@@ -144,6 +144,24 @@ def test_keenable_registry_uses_the_billed_fetch_probe_and_x_api_key(monkeypatch
         "injector": "env",
         "location": "header",
         "name": "X-API-Key",
+        "format": "{secret}",
+    }]
+
+
+def test_besttime_registry_uses_private_key_and_paid_probe(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_BESTTIME", "PLATFORM-BESTTIME")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "besttime")
+    provider = P.get("besttime")
+    assert provider is not None
+    assert provider.token_param == "api_key_private"
+    assert provider.probe_path == "/venues?limit=1&page=0"
+    assert provider.probe_cost_micro == 60_000
+    assert Settings(_env_file=None).platform_key_for("besttime") == "PLATFORM-BESTTIME"
+    assert P.platform_bindings(provider) == [{
+        "platform_setting": "platform_key_besttime",
+        "injector": "env",
+        "location": "query",
+        "name": "api_key_private",
         "format": "{secret}",
     }]
 
