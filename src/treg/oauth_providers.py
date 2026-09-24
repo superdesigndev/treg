@@ -3485,6 +3485,34 @@ PINTEREST_ADS = OAuthProvider(
     probe_path="/user_account",  # cheap token check once configured; auto-provisions a Bearer tool
 )
 
+BAMF = OAuthProvider(
+    service="bamf",
+    display_name="BAMF.ai",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your BAMF API key",
+    # BAMF authenticates every REST route (and its MCP server at mcp.bamf.ai) with
+    # `Authorization: Bearer <key>`; there is no query-param form.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://bamf.ai/settings/api-keys",
+    setup_action_label="Get your BAMF API key",
+    setup_steps=(
+        "Sign in to BAMF.ai and open Settings → API Keys.",
+        "Create a key with the scopes you need (drafting, scheduling and publishing are separate scopes).",
+        "Copy the key.",
+    ),
+    setup_note="Reads, scheduling and reporting are included in every plan; AI generation draws on the plan's credit allowance.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Draft, schedule and publish LinkedIn and X posts in a creator's voice, and read their post analytics.",
+    base_url="https://api.bamf.ai/v1",
+    docs_url="https://bamf.ai/docs/",
+    probe_path="/me",  # free read — a bad key gets 401 {"error":{"code":"unauthorized",…}}
+)
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -3506,6 +3534,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB,
+        # Social content API-key providers
+        BAMF,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
