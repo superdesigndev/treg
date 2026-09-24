@@ -1,0 +1,294 @@
+# UNVERIFIED — vendor-submitted listing (BAMF.ai). No endpoint has been replayed with a
+# maintainer-held credential yet; prices are therefore capped at `documented`.
+#
+# Every route is own_account: a BAMF key acts inside the creator spaces (LinkedIn / X creator
+# profiles) its owner manages, so there is no public "any account" target. Most routes take a
+# `creator_id` that belongs to the caller — list it with bamf.account.profiles.list first. That is
+# why only the account-level reads carry a test_request.
+#
+# Billing: a subscription (Free $0, Creator $300/mo, Agency $1,000/mo) with a monthly credit
+# allowance. The pricing page says reads, scheduling, approvals and reporting do not spend
+# credits, and lists indicative credit costs for AI jobs (1 credit per post draft) during the
+# public beta. The API does not report a per-call charge today, so generation routes carry
+# `value: null` / `confidence: unknown` rather than a guessed dollar figure.
+#
+# The same surface is exposed as a remote MCP server at https://mcp.bamf.ai (same bearer key).
+provider: bamf
+source:
+  docs: https://bamf.ai/docs/
+  openapi: https://bamf.ai/openapi.json
+  curated: 2026-09-23
+limits: "per key per minute: 600 reads, 120 writes, 30 deletes, 30 generations, 10 publishes"
+pricing_url: https://bamf.ai/pricing
+proposed_capabilities:
+  account.profiles.list: "List the creator profiles or brands a key can act for"
+  account.jobs.status: "Check an async job's status and result"
+  linkedin.user.drafts.list: "List your draft and scheduled posts"
+  linkedin.user.post.draft.create: "Save a post as a draft for review"
+  linkedin.user.post.schedule: "Schedule a post to publish later"
+  linkedin.user.post.generate: "Write a post draft in your own voice"
+  linkedin.account.insights: "Followers, impressions & engagement for your profile"
+  x.post.generate: "Write an X post or thread in your own voice"
+  x.account.insights: "Followers, impressions & engagement for your X account"
+endpoints:
+  - id: bamf.account.identity
+    kind: account
+    capability: account.identity
+    platform: account
+    scope: own_account
+    method: GET
+    path: /me
+    name: "Inspect the authenticated key"
+    summary: "Inspect authenticated key"
+    input:
+      note: "no parameters — returns user_id, key_type, and the bound creator_id / creator_space for creator-scoped keys. Also the connection probe: a bad key gets 401 {\"error\":{\"code\":\"unauthorized\",\"message\":\"Missing or invalid bearer token\",…}}"
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "reads are included in every plan and spend no credits"}
+    docs_url: https://bamf.ai/docs/authentication/
+
+  - id: bamf.account.profiles.list
+    kind: account
+    capability: account.profiles.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /creator-spaces
+    name: "List creator spaces"
+    summary: "List creator spaces"
+    input:
+      note: "no parameters — lists the creator spaces (one per creator profile/brand) the key can act for, with creator_id, name, LinkedIn username/headline and safe follower metrics. Every other route takes one of these creator_id values"
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "reads are included in every plan and spend no credits"}
+    docs_url: https://bamf.ai/docs/api/creator-spaces/
+
+  - id: bamf.linkedin.user.drafts.list
+    capability: linkedin.user.drafts.list
+    platform: linkedin
+    scope: own_account
+    method: GET
+    path: /posts
+    name: "List draft and scheduled posts"
+    summary: "List posts"
+    input:
+      queryParams:
+        creator_id: {type: string, required: true, note: "a creator_id from bamf.account.profiles.list (UUID)", example: "3f1c2b4a-8d6e-4f7a-9b1c-2d3e4f5a6b7c"}
+        status: {type: string, required: false, note: "only `scheduled` is accepted; omit for all posts", example: "scheduled"}
+        include: {type: string, required: false, note: "comma list of media, first_comment, preview", example: "first_comment"}
+        limit: {type: integer, required: false, note: "max 100", example: 5}
+      note: "covers both LinkedIn and X posts; each row carries `platform`"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "reads are included in every plan and spend no credits"}
+    docs_url: https://bamf.ai/docs/api/posts/
+
+  - id: bamf.linkedin.user.post.draft.create
+    kind: action
+    capability: linkedin.user.post.draft.create
+    platform: linkedin
+    scope: own_account
+    method: POST
+    path: /posts
+    name: "Create a draft post"
+    summary: "Create a draft post"
+    input:
+      body:
+        creator_id: {type: string, required: true, note: "a creator_id from bamf.account.profiles.list", example: "3f1c2b4a-8d6e-4f7a-9b1c-2d3e4f5a6b7c"}
+        content: {type: string, required: true, note: "the post text", example: "Three things I learned shipping our API this quarter."}
+        topic: {type: string, required: false, example: "API launch"}
+        first_comment: {type: string, required: false, example: "Docs: https://bamf.ai/docs"}
+        post_type: {type: string, required: false, note: "text | image | carousel | video | article | poll", example: "text"}
+        platform: {type: string, required: false, note: "linkedin (default) | x", example: "linkedin"}
+      bodyType: json
+      note: "saves a draft only — never publishes. Needs the posts:write scope. An optional Idempotency-Key header makes retries safe"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "stores text you supply; no credit cost is listed for saving a draft"}
+    docs_url: https://bamf.ai/docs/api/posts/
+
+  - id: bamf.linkedin.user.post.schedule
+    kind: action
+    capability: linkedin.user.post.schedule
+    platform: linkedin
+    scope: own_account
+    method: POST
+    path: /posts/{post_id}/schedule
+    name: "Schedule a post"
+    summary: "Schedule a post"
+    input:
+      pathParams:
+        post_id: {type: string, required: true, note: "id returned by bamf.linkedin.user.post.draft.create", example: "7a9e0c1d-2b3f-4c5d-8e6f-0a1b2c3d4e5f"}
+      body:
+        scheduled_for: {type: string, required: true, note: "ISO 8601 date-time in the future", example: "2026-10-01T15:00:00Z"}
+        boost: {type: object, required: false, note: "optional Engagement Boost {enabled, tier: basic|power|mega, engagement_type}; needs the posts:boost scope"}
+      bodyType: json
+      note: "needs the posts:schedule scope; the post publishes to its platform (LinkedIn or X) at scheduled_for"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "scheduling is included in every plan and spends no credits"}
+    docs_url: https://bamf.ai/docs/api/posts/
+
+  - id: bamf.linkedin.user.post.create
+    kind: action
+    capability: linkedin.user.post.create
+    platform: linkedin
+    scope: own_account
+    method: POST
+    path: /posts/{post_id}/publish
+    name: "Publish a post immediately"
+    summary: "Publish a post immediately"
+    input:
+      pathParams:
+        post_id: {type: string, required: true, note: "id of an approved draft", example: "7a9e0c1d-2b3f-4c5d-8e6f-0a1b2c3d4e5f"}
+      note: "publishes the stored draft to the creator's connected LinkedIn (or X) account now. Needs the separate posts:publish scope, so a drafting key cannot publish. No test_request: every call is a real public post"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "publishing spends no credits"}
+    docs_url: https://bamf.ai/docs/api/posts/
+
+  - id: bamf.linkedin.user.posts
+    capability: linkedin.user.posts
+    platform: linkedin
+    scope: own_account
+    method: GET
+    path: /linkedin/posts
+    name: "List your LinkedIn posts with metrics"
+    summary: "Returns discovered LinkedIn posts for creator spaces, including Late-authoritative official_* metrics when available."
+    input:
+      queryParams:
+        creator_id: {type: string, required: false, note: "a creator_id from bamf.account.profiles.list; omit for every space the key can read", example: "3f1c2b4a-8d6e-4f7a-9b1c-2d3e4f5a6b7c"}
+        limit: {type: integer, required: false, note: "max 100", example: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "reporting is included in every plan and spends no credits"}
+    docs_url: https://bamf.ai/docs/api/analytics/
+
+  - id: bamf.linkedin.account.insights
+    capability: linkedin.account.insights
+    platform: linkedin
+    scope: own_account
+    method: GET
+    path: /analytics/summary
+    name: "LinkedIn analytics summary"
+    summary: "Returns LinkedIn analytics by default. Pass platform=x for saved X/Twitter account and post analytics."
+    input:
+      queryParams:
+        creator_id: {type: string, required: true, note: "a creator_id from bamf.account.profiles.list", example: "3f1c2b4a-8d6e-4f7a-9b1c-2d3e4f5a6b7c"}
+        platform: {type: string, required: false, note: "linkedin (default) | x", example: "linkedin"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "reporting is included in every plan and spends no credits"}
+    docs_url: https://bamf.ai/docs/api/analytics/
+
+  - id: bamf.x.user.posts
+    capability: x.user.posts
+    platform: x
+    scope: own_account
+    method: GET
+    path: /x/posts
+    name: "List your X posts with metrics"
+    summary: "Returns saved X/Twitter posts for a creator space, including owned metrics when the connected account and X API plan expose them."
+    input:
+      queryParams:
+        creator_id: {type: string, required: true, note: "a creator_id from bamf.account.profiles.list", example: "3f1c2b4a-8d6e-4f7a-9b1c-2d3e4f5a6b7c"}
+        limit: {type: integer, required: false, note: "max 500", example: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "reporting is included in every plan and spends no credits"}
+    docs_url: https://bamf.ai/docs/api/analytics/
+
+  - id: bamf.x.account.insights
+    capability: x.account.insights
+    platform: x
+    scope: own_account
+    method: GET
+    path: /x/analytics/summary
+    name: "X analytics summary"
+    summary: "Returns account snapshots, totals, engagement rate, and top X posts from saved creator analytics rows."
+    input:
+      queryParams:
+        creator_id: {type: string, required: true, note: "a creator_id from bamf.account.profiles.list", example: "3f1c2b4a-8d6e-4f7a-9b1c-2d3e4f5a6b7c"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "reporting is included in every plan and spends no credits"}
+    docs_url: https://bamf.ai/docs/api/analytics/
+
+  - id: bamf.linkedin.user.post.generate
+    kind: action
+    capability: linkedin.user.post.generate
+    platform: linkedin
+    scope: own_account
+    method: POST
+    path: /generate/posts
+    name: "Generate a post draft in the creator's voice"
+    summary: "For LinkedIn, returns one concise candidate grounded in fetched creator context, plus one focused follow-up question when a material personal detail is missing. Private source context is not returned. Does not create a post. Pass platform=x for X-native concepts, hooks, threads, CTAs, and performance-informed copy."
+    input:
+      body:
+        creator_id: {type: string, required: true, note: "a creator_id from bamf.account.profiles.list", example: "3f1c2b4a-8d6e-4f7a-9b1c-2d3e4f5a6b7c"}
+        brief: {type: string, required: true, note: "what the post should say", example: "Founder POV post about the operational reality under foundation models."}
+        topic: {type: string, required: false, example: "foundation models"}
+        post_type: {type: string, required: false, note: "text | image | carousel | video | article", example: "text"}
+        platform: {type: string, required: false, note: "linkedin (default) | x", example: "linkedin"}
+        tone: {type: string, required: false, example: "direct"}
+        include_first_comment: {type: boolean, required: false, example: true}
+        research_policy: {type: string, required: false, note: "auto | required | off — runs current research when the brief needs fresh facts", example: "off"}
+        source_urls: {type: array, required: false, note: "URLs to synthesize into the draft"}
+      bodyType: json
+      note: "202 with a job; poll bamf.account.jobs.status. Needs the ai:generate scope. Returns a reviewable candidate only — it does not save, schedule or publish anything"
+    async:
+      id_from: data.id
+      poll:
+        endpoint: bamf.account.jobs.status
+        param: {in: pathParams, name: job_id}
+      status:
+        path: data.status
+        success: [succeeded, completed]
+        failure: [failed, cancelled, canceled]
+        progress: [queued, running]
+      result:
+        path: data.output
+      interval: 5
+    cost:
+      type: per_success
+      value: null
+      currency: credit
+      confidence: unknown
+      note: "drawn from the plan's monthly credit allowance; the pricing page lists 1 credit per post draft as indicative during the public beta, and the API reports no per-call charge"
+    docs_url: https://bamf.ai/docs/api/jobs/
+
+  - id: bamf.x.post.generate
+    kind: action
+    capability: x.post.generate
+    platform: x
+    scope: own_account
+    method: POST
+    path: /generate/x-posts
+    name: "Generate an X post or thread in the creator's voice"
+    summary: "Returns X-native single-post or thread concepts, draft copy, hook/CTA rationale, and platform-specific recommendations. Does not create a post."
+    input:
+      body:
+        creator_id: {type: string, required: true, note: "a creator_id from bamf.account.profiles.list", example: "3f1c2b4a-8d6e-4f7a-9b1c-2d3e4f5a6b7c"}
+        brief: {type: string, required: true, note: "what the post or thread should say", example: "Thread on what we learned pricing an API for agents."}
+        post_type: {type: string, required: false, note: "e.g. text or thread", example: "thread"}
+        research_policy: {type: string, required: false, note: "auto | required | off", example: "off"}
+      bodyType: json
+      note: "202 with a job; poll bamf.account.jobs.status. Needs the ai:generate scope. Uses the creator's saved X analytics and bookmarks as context; creates nothing"
+    async:
+      id_from: data.id
+      poll:
+        endpoint: bamf.account.jobs.status
+        param: {in: pathParams, name: job_id}
+      status:
+        path: data.status
+        success: [succeeded, completed]
+        failure: [failed, cancelled, canceled]
+        progress: [queued, running]
+      result:
+        path: data.output
+      interval: 5
+    cost:
+      type: per_success
+      value: null
+      currency: credit
+      confidence: unknown
+      note: "drawn from the plan's monthly credit allowance; the pricing page lists 1 credit per post draft (3 per thread) as indicative during the public beta, and the API reports no per-call charge"
+    docs_url: https://bamf.ai/docs/api/jobs/
+
+  - id: bamf.account.jobs.status
+    kind: utility
+    capability: account.jobs.status
+    platform: account
+    scope: own_account
+    method: GET
+    path: /jobs/{job_id}
+    name: "Get an async job"
+    summary: "Get job"
+    input:
+      pathParams:
+        job_id: {type: string, required: true, note: "data.id from a /generate/* response", example: "5b6c7d8e-9f0a-4b1c-8d2e-3f4a5b6c7d8e"}
+      note: "status is queued | running | succeeded | completed | failed | cancelled; the result is data.output"
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "reads are included in every plan and spend no credits"}
+    docs_url: https://bamf.ai/docs/api/jobs/
