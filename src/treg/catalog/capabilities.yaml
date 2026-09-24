@@ -10,6 +10,7 @@
 # `account` that should not appear as a browsable tab tile.
 
 platforms:
+  venues: {label: "Venue foot traffic", category: "Enrichment", summary: "Venue busyness forecasts and visitor-pattern queries."}
   # --- SEO: search engines & the open web ------------------------------------------------------
   google: {label: "Google Keyword Data", category: "SEO/AEO", featured: 1, summary: "Organic rankings, keyword volume and full SERP data from Google."}
   web: {label: "Open web & SEO data", category: "SEO/AEO", featured: 2, summary: "Search, extract and crawl the open web, plus backlinks, referring domains and authority metrics."}

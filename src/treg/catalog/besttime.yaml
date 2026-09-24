@@ -1,0 +1,397 @@
+provider: besttime
+source:
+  docs: https://documentation.besttime.app/
+  openapi: null
+  curated: '2026-09-24'
+pricing_url: https://besttime.app/subscription/pricing
+limits: Plan and per-route limits apply; see BestTime API documentation. Public-key queries can only read venues
+  forecasted under the matching key pair.
+proposed_capabilities:
+  venues.types.list: List or search BestTime venue type identifiers
+  venues.foot_traffic.detail: Read one forecasted venue and its foot-traffic details
+  venues.foot_traffic.week: Read the full 168-hour weekly foot-traffic forecast for a venue
+  venues.foot_traffic.day: Read one day of a venue foot-traffic forecast
+  venues.foot_traffic.hour: Read one hour of a venue foot-traffic forecast
+  venues.foot_traffic.week_overview: Summarize foot-traffic patterns across a venue forecast week
+  venues.foot_traffic.busy_hours: Find the busiest hours for a forecasted venue
+  venues.foot_traffic.quiet_hours: Find the quietest hours for a forecasted venue
+  venues.foot_traffic.peak_hours: Find the peak hours for a forecasted venue
+  venues.foot_traffic.now: Read a venue forecast for the current hour
+endpoints:
+- id: besttime.types
+  capability: venues.types.list
+  platform: venues
+  scope: any_account
+  method: GET
+  path: /venues/types
+  name: Venue Types
+  summary: Search canonical broad or detailed venue types
+  input:
+    queryParams:
+      layer:
+        type: string
+        required: false
+        note: broad or detailed
+        example: broad
+      q:
+        type: string
+        required: false
+        note: Search text
+        example: bar
+      per_page:
+        type: integer
+        required: false
+        note: Maximum 100
+        example: 1
+  test_request:
+    queryParams:
+      layer: broad
+      q: bar
+      per_page: 1
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: Observed as a 0-credit Venue Types usage row in the BestTime meter.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed HTTP 200 and matching credit usage on 2026-09-24; maintainer verification with an
+    independent key pair is pending.
+- id: besttime.venue
+  capability: venues.foot_traffic.detail
+  platform: venues
+  scope: own_account
+  method: GET
+  path: /venues/{venue_id}
+  name: Venue
+  summary: Read venue details and forecast status
+  input:
+    pathParams:
+      venue_id:
+        type: string
+        required: true
+        note: BestTime venue ID forecasted under this key pair
+        example: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+  test_request:
+    pathParams:
+      venue_id: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: One query credit observed in the BestTime usage meter for this successful test. USD per credit varies
+      by subscription plan; this listing requires the customer's matching public key.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed HTTP 200 and matching credit usage on 2026-09-24; maintainer verification with an
+    independent key pair is pending.
+- id: besttime.week
+  capability: venues.foot_traffic.week
+  platform: venues
+  scope: own_account
+  method: GET
+  path: /forecasts/week
+  name: Week
+  summary: Read the complete weekly foot-traffic forecast
+  input:
+    queryParams:
+      venue_id:
+        type: string
+        required: true
+        note: BestTime venue ID forecasted under this key pair
+        example: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+  test_request:
+    queryParams:
+      venue_id: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: One query credit observed in the BestTime usage meter for this successful test. USD per credit varies
+      by subscription plan; this listing requires the customer's matching public key.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed HTTP 200 and matching credit usage on 2026-09-24; maintainer verification with an
+    independent key pair is pending.
+- id: besttime.day
+  capability: venues.foot_traffic.day
+  platform: venues
+  scope: own_account
+  method: GET
+  path: /forecasts/day
+  name: Day
+  summary: Read one day of foot-traffic data
+  input:
+    queryParams:
+      venue_id:
+        type: string
+        required: true
+        note: BestTime venue ID forecasted under this key pair
+        example: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+      day_int:
+        type: integer
+        required: false
+        note: 0=Monday through 6=Sunday
+        example: 0
+  test_request:
+    queryParams:
+      venue_id: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+      day_int: 0
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: One query credit observed in the BestTime usage meter for this successful test. USD per credit varies
+      by subscription plan; this listing requires the customer's matching public key.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed HTTP 200 and matching credit usage on 2026-09-24; maintainer verification with an
+    independent key pair is pending.
+- id: besttime.hour
+  capability: venues.foot_traffic.hour
+  platform: venues
+  scope: own_account
+  method: GET
+  path: /forecasts/hour
+  name: Hour
+  summary: Read the forecast for an hour of the week
+  input:
+    queryParams:
+      venue_id:
+        type: string
+        required: true
+        note: BestTime venue ID forecasted under this key pair
+        example: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+      day_int:
+        type: integer
+        required: true
+        note: 0=Monday through 6=Sunday
+        example: 0
+      hour:
+        type: integer
+        required: true
+        note: Hour of day, 0-23
+        example: 12
+  test_request:
+    queryParams:
+      venue_id: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+      day_int: 0
+      hour: 12
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: One query credit observed in the BestTime usage meter for this successful test. USD per credit varies
+      by subscription plan; this listing requires the customer's matching public key.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed HTTP 200 and matching credit usage on 2026-09-24; maintainer verification with an
+    independent key pair is pending.
+- id: besttime.weekoverview
+  capability: venues.foot_traffic.week_overview
+  platform: venues
+  scope: own_account
+  method: GET
+  path: /forecasts/weekoverview
+  name: Week Overview
+  summary: Read a summary of the weekly visitor pattern
+  input:
+    queryParams:
+      venue_id:
+        type: string
+        required: true
+        note: BestTime venue ID forecasted under this key pair
+        example: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+  test_request:
+    queryParams:
+      venue_id: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: One query credit observed in the BestTime usage meter for this successful test. USD per credit varies
+      by subscription plan; this listing requires the customer's matching public key.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed HTTP 200 and matching credit usage on 2026-09-24; maintainer verification with an
+    independent key pair is pending.
+- id: besttime.busy
+  capability: venues.foot_traffic.busy_hours
+  platform: venues
+  scope: own_account
+  method: GET
+  path: /forecasts/busy
+  name: Busy
+  summary: Find busy hours for a forecasted venue
+  input:
+    queryParams:
+      venue_id:
+        type: string
+        required: true
+        note: BestTime venue ID forecasted under this key pair
+        example: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+      day_int:
+        type: integer
+        required: false
+        note: 0=Monday through 6=Sunday
+        example: 0
+  test_request:
+    queryParams:
+      venue_id: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+      day_int: 0
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: One query credit observed in the BestTime usage meter for this successful test. USD per credit varies
+      by subscription plan; this listing requires the customer's matching public key.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed HTTP 200 and matching credit usage on 2026-09-24; maintainer verification with an
+    independent key pair is pending.
+- id: besttime.quiet
+  capability: venues.foot_traffic.quiet_hours
+  platform: venues
+  scope: own_account
+  method: GET
+  path: /forecasts/quiet
+  name: Quiet
+  summary: Find quiet hours for a forecasted venue
+  input:
+    queryParams:
+      venue_id:
+        type: string
+        required: true
+        note: BestTime venue ID forecasted under this key pair
+        example: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+      day_int:
+        type: integer
+        required: false
+        note: 0=Monday through 6=Sunday
+        example: 0
+  test_request:
+    queryParams:
+      venue_id: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+      day_int: 0
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: One query credit observed in the BestTime usage meter for this successful test. USD per credit varies
+      by subscription plan; this listing requires the customer's matching public key.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed HTTP 200 and matching credit usage on 2026-09-24; maintainer verification with an
+    independent key pair is pending.
+- id: besttime.peaks
+  capability: venues.foot_traffic.peak_hours
+  platform: venues
+  scope: own_account
+  method: GET
+  path: /forecasts/peaks
+  name: Peaks
+  summary: Find peak hours for a forecasted venue
+  input:
+    queryParams:
+      venue_id:
+        type: string
+        required: true
+        note: BestTime venue ID forecasted under this key pair
+        example: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+      day_int:
+        type: integer
+        required: false
+        note: 0=Monday through 6=Sunday
+        example: 0
+  test_request:
+    queryParams:
+      venue_id: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+      day_int: 0
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: One query credit observed in the BestTime usage meter for this successful test. USD per credit varies
+      by subscription plan; this listing requires the customer's matching public key.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed HTTP 200 and matching credit usage on 2026-09-24; maintainer verification with an
+    independent key pair is pending.
+- id: besttime.now
+  capability: venues.foot_traffic.now
+  platform: venues
+  scope: own_account
+  method: GET
+  path: /forecasts/now
+  name: Now
+  summary: Read the current-hour forecast for a venue
+  input:
+    queryParams:
+      venue_id:
+        type: string
+        required: true
+        note: BestTime venue ID forecasted under this key pair
+        example: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+  test_request:
+    queryParams:
+      venue_id: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: One query credit observed in the BestTime usage meter for this successful test. USD per credit varies
+      by subscription plan; this listing requires the customer's matching public key.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed HTTP 200 and matching credit usage on 2026-09-24; maintainer verification with an
+    independent key pair is pending.

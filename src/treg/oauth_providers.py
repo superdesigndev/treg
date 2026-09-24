@@ -1308,6 +1308,31 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+BESTTIME = OAuthProvider(
+    service="besttime",
+    display_name="BestTime",
+    auth_kind="key",
+    token_label="Public API key",
+    token_placeholder="pub_...",
+    token_location="query",
+    token_param="api_key_public",
+    token_format="{secret}",
+    setup_url="https://besttime.app/api/v1/api_keys_list",
+    setup_action_label="Get your BestTime public API key",
+    setup_steps=(
+        "Sign up or sign in to BestTime and open API keys.",
+        "Create a key pair and copy the public key (pub_...), not the private key.",
+    ),
+    setup_note="Venue type lookup is free; forecast queries use query credits. The public key reads venues forecasted under its matching key pair.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Other",
+    summary="Read venue foot-traffic forecasts, busy and quiet hours, and venue types.",
+    base_url="https://besttime.app/api/v1",
+    docs_url="https://documentation.besttime.app/",
+    probe_path="/venues/types?layer=broad&q=bar&per_page=1",
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -3492,7 +3517,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, BESTTIME, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
