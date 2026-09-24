@@ -33,7 +33,7 @@ def test_key_providers_are_offerable_without_deployment_credentials():
                 "spyfu", "apify", "meta-ad-library", "serpapi", "adyntel",
                 "coingecko", "polygon", "finnhub", "twelvedata", "fmp", "eodhd", "marketstack",
                 "tiingo", "financialdatasets", "tinyfish", "keenable", "olostep",
-                "scrapegraphai", "serper"):
+                "scrapegraphai", "serper", "marketcheck"):
         p = P.get(svc)
         assert p is not None, svc
         assert p.auth_kind == "key", svc
@@ -147,7 +147,7 @@ def test_serper_registry_uses_free_account_probe_and_scopes_the_scrape_host(monk
 
 def test_paid_key_verification_probe_is_typed_and_unique():
     paid = {p.service: p.probe_cost_micro for p in P.REGISTRY.values() if p.probe_cost_micro}
-    assert paid == {"keenable": 4_000, "trestleiq": 15_000}
+    assert paid == {"keenable": 4_000, "trestleiq": 15_000, "marketcheck": 1_500}
     assert all(isinstance(p.probe_cost_micro, int) and p.probe_cost_micro >= 0
                for p in P.REGISTRY.values())
     listing = {row["service"]: row for row in P.listing()}

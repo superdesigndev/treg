@@ -3355,6 +3355,45 @@ FINANCIALDATASETS = OAuthProvider(
 )
 
 
+MARKETCHECK = OAuthProvider(
+    service="marketcheck",
+    display_name="MarketCheck",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your MarketCheck API key",
+    token_location="query",
+    token_param="api_key",
+    token_format="{secret}",
+    setup_url="https://developers.marketcheck.com/api-keys",
+    setup_action_label="Get your MarketCheck API key",
+    setup_steps=(
+        "Sign up at developers.marketcheck.com (a Free plan is available).",
+        "Open the API keys page and copy your API key.",
+    ),
+    setup_note=(
+        "MarketCheck bills a monthly plan plus a per-call data fee that depends on the endpoint "
+        "(the Free plan includes 500 calls a month). Connecting checks the key with one basic VIN "
+        "decode, listed at $0.0015 (one call against the quota on the Free plan)."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Market data",
+    summary=(
+        "US and Canada vehicle listings (dealer, private party, auction, recently sold), VIN "
+        "decode and listing history, predicted used-car prices, dealers and market days supply."
+    ),
+    base_url="https://api.marketcheck.com/v2",
+    docs_url="https://docs.marketcheck.com/docs/api/cars",
+    # MarketCheck has no free authenticated account route, so the probe is the cheapest data call:
+    # a basic VIN decode of the docs' example VIN ($0.0015 at list). A bogus key answers
+    # 401 {"message": "Invalid authentication credentials"} at the gateway, and a valid key 200s
+    # with the decoded specs (both verified live 2026-09-24).
+    probe_path="/decode/car/1FAHP3F28CL148530/specs",
+    probe_cost_micro=1_500,
+)
+
+
 # Alpha Vantage is DELIBERATELY absent. Its API served real quote data to a garbage key (verified
 # live 2026-08-14: bogus key -> HTTP 200 with the IBM quote; even premium endpoints answer 200 with
 # an upsell note), so a pasted key can never be validated at connect — the ScrapeCreators rule:
@@ -3570,7 +3609,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         INFLUENCERSCLUB,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
-        FINANCIALDATASETS,
+        FINANCIALDATASETS, MARKETCHECK,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
