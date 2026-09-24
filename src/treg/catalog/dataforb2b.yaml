@@ -1,0 +1,113 @@
+provider: dataforb2b
+source:
+  docs: https://docs.dataforb2b.ai
+  openapi: null
+  curated: '2026-09-23'
+limits: "No published per-key rate limit on search or enrichment. A 402 is decided before the call from the worst case (requested count x rate), so a balance must cover the full requested count."
+pricing_url: https://dataforb2b.ai/pricing
+
+# One credit pool; the per-credit rate is in fx.yaml. Every successful response carries
+# `credits_used`, the vendor's own charge for that call; errors (4xx/5xx) are free. Searches bill
+# per result returned, at 1.5 credits in live mode (data refreshed at query time) or 0.75 in
+# indexed mode, selected by `enrich_live`. Enrichment bills each requested item only when found.
+
+endpoints:
+  - id: dataforb2b.people.search
+    domain: contacts
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    path: /search/people
+    name: "Search people by employer, title, skills or location"
+    summary: "Search professional profiles with advanced filters"
+    input:
+      bodyType: json
+      body:
+        filters: {type: object, required: false, note: "{op:'and'|'or', conditions:[...]} where each condition is {column, type, value, value2?} or a nested group. Operators: = (exact phrase), like (all words, any order), in (JSON array), between (with value2), >, >=, <, <=. Columns include current_title, current_company, current_company_id, current_company_size, current_company_industry, current_company_funding_stage, current_company_investor, past_company, past_title, skill, school, degree_level, language_iso, profile_country (ISO-2, GB not UK), profile_location, years_of_experience, keyword (headline full-text)", example: {op: "and", conditions: [{column: "current_company", type: "=", value: "Stripe"}, {column: "current_title", type: "like", value: "engineer"}]}}
+        count: {type: integer, required: false, note: "results to return, 1-1000, default 25; this is the price dial", example: 1}
+        offset: {type: integer, required: false, note: "results to skip, for pagination", example: 0}
+        enrich_live: {type: boolean, required: false, note: "default true: data refreshed at query time, 1.5 credits per result; false: indexed data, 0.75 per result", example: false}
+    test_request:
+      body:
+        filters: {op: "and", conditions: [{column: "current_company", type: "=", value: "Stripe"}, {column: "current_title", type: "like", value: "engineer"}]}
+        count: 1
+    cost:
+      type: per_result
+      value: 1.5
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://dataforb2b.ai/pricing
+      checked: '2026-09-23'
+      confidence: documented
+      note: "1.5 credits per profile returned in the default live mode; 0.75 with enrich_live false. An empty result is free. The response's credits_used is the exact charge."
+    docs_url: https://docs.dataforb2b.ai/api-reference/search-people
+
+  - id: dataforb2b.companies.search
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /search/companies
+    name: "Search companies by industry, size, growth or funding"
+    summary: "Search companies with advanced filters"
+    input:
+      bodyType: json
+      body:
+        filters: {type: object, required: false, note: "{op:'and'|'or', conditions:[...]} where each condition is {column, type, value, value2?} or a nested group. Same operators as people search. Columns include name, domain, keyword (name/tagline/description full-text), industry (lowercase), employee_count (number or range like 51-200), country_iso_code, city, region, office_country, employee_growth_6m, recent_hires_count, founded_year, company_type, funding_stage_normalized, last_funding_date, has_funding", example: {op: "and", conditions: [{column: "domain", type: "=", value: "stripe.com"}]}}
+        count: {type: integer, required: false, note: "results to return, 1-1000, default 25; this is the price dial", example: 1}
+        offset: {type: integer, required: false, note: "results to skip, for pagination", example: 0}
+        enrich_live: {type: boolean, required: false, note: "default false: indexed data, 0.75 credits per result; true: data refreshed at query time, 1.5 per result", example: false}
+    test_request:
+      body:
+        filters: {op: "and", conditions: [{column: "domain", type: "=", value: "stripe.com"}]}
+        count: 1
+    cost:
+      type: per_result
+      value: 0.75
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://dataforb2b.ai/pricing
+      checked: '2026-09-23'
+      confidence: documented
+      note: "0.75 credits per company returned in the default indexed mode; 1.5 with enrich_live true. An empty result is free. The response's credits_used is the exact charge."
+    docs_url: https://docs.dataforb2b.ai/api-reference/search-company
+
+  - id: dataforb2b.people.enrich
+    domain: contacts
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /enrich/profile
+    name: "Enrich a person: profile, work email, personal email, phone"
+    summary: "Enrich a profile with requested data (full profile, emails, phone)"
+    input:
+      bodyType: json
+      body:
+        profile_identifier: {type: string, required: true, note: "a prof_... id from people search (most reliable), a profile URL (linkedin.com/in/<slug>), its public slug, or an X handle/URL", example: "williamhgates"}
+        enrich_profile: {type: boolean, required: false, note: "full profile: experience, education, skills, languages (1.5 credits)", example: true}
+        enrich_work_email: {type: boolean, required: false, note: "work email (1 credit, only when found)"}
+        enrich_personal_email: {type: boolean, required: false, note: "personal email (3 credits, only when found)"}
+        enrich_phone: {type: boolean, required: false, note: "phone number (10 credits, only when found)"}
+        enrich_github: {type: boolean, required: false, note: "GitHub activity; implies enrich_profile and adds no credits"}
+      note: "set at least one enrich_* flag to true, or the API answers 422. A missing profile answers 404 when enrich_profile is requested."
+    test_request:
+      body: {profile_identifier: "williamhgates", enrich_profile: true}
+    cost:
+      type: per_result
+      value: 15.5
+      currency: credit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://dataforb2b.ai/pricing
+      checked: '2026-09-23'
+      confidence: documented
+      note: "Maximum 15.5 credits per person: full profile 1.5, work email +1, personal email +3, phone +10, each billed only when requested AND found; GitHub is free. Live calls on 2026-09-23 charged 1.5 for profile only and 15.5 with all four items found. The response's credits_used is the exact charge."
+    docs_url: https://docs.dataforb2b.ai/api-reference/enrich-profile
