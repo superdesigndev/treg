@@ -1,0 +1,301 @@
+provider: marketcheck
+source:
+  docs: https://docs.marketcheck.com/docs/api/cars
+  openapi: https://developers.marketcheck.com/openapi.json # OpenAPI 3.1, servers https://api.marketcheck.com/v2; paths and params below cross-checked against it and the docs .md pages 2026-09-24
+  curated: 2026-09-24
+# MarketCheck: US and Canada vehicle listings (dealer, private party, auction), recently sold and
+# expired listings, VIN decode, VIN listing history, the MarketCheck Price (ML predicted listing
+# price), dealers and market days supply. All prices are ASKING (listed) prices; an off-market
+# listing carries its last asking price, which is a sold proxy, never a transaction price.
+# Billing: a monthly plan (Free $0, Basic $299/mo, Standard $749/mo, Enterprise custom) PLUS a
+# per-call data fee by endpoint, from the published rate card at pricing_url. Every request counts
+# against the plan, whatever it returns; there is no per-response charge field and no balance
+# endpoint. Listed BYOK only: teams connect their own MarketCheck key (no platform-key slot).
+# Agent (platform) rate via treg: 10x the list prices below, a commercial arrangement to set up
+# with MarketCheck before any platform slot exists (see the listing PR).
+limits: "Free: 500 calls/month, 5 calls/s, 100-mile radius, 500-row pagination. Basic: 5,000 calls/month, 5 calls/s, 100-mile radius, 1,500-row pagination. Standard: no fixed monthly quota, 40 calls/s, 500-mile radius, 1,500-row pagination. Enterprise: custom. Quota and rate are per account across all keys; a 429 says 'API rate limit exceeded' or 'Monthly API quota exhausted'. rows max 50 per request; gateway timeout 120 s (timed-out requests are not charged)."
+pricing_url: https://www.marketcheck.com/apis/pricing/
+endpoints:
+  - id: marketcheck.cars.listings.search
+    capability: cars.listings.search
+    platform: cars
+    domain: listings
+    scope: any_account
+    method: GET
+    path: /search/car/active
+    name: "Search cars for sale (dealer inventory, US and Canada)"
+    summary: "Search active dealer inventory: near real-time inventory, advanced filters, geographic search"
+    input:
+      queryParams:
+        make: {type: string, required: false, note: "comma-separated for several (Toyota, Ford, Mercedes-Benz)", example: "toyota"}
+        model: {type: string, required: false, note: "comma-separated for several", example: "camry"}
+        year: {type: string, required: false, note: "model year; comma-separated for several", example: "2022"}
+        trim: {type: string, required: false}
+        car_type: {type: string, required: false, note: "new | used | certified"}
+        zip: {type: string, required: false, note: "5-digit ZIP; use with radius", example: "90210"}
+        radius: {type: integer, required: false, note: "miles around zip or latitude/longitude; capped by plan (Free and Basic 100, Standard 500)", example: 50}
+        latitude: {type: string, required: false}
+        longitude: {type: string, required: false}
+        state: {type: string, required: false, note: "US or Canadian state/province code(s), comma-separated"}
+        city: {type: string, required: false}
+        country: {type: string, required: false, note: "us (default) | ca | all"}
+        price_range: {type: string, required: false, note: "asking price in USD as min-max, e.g. 10000-30000"}
+        miles_range: {type: string, required: false, note: "odometer as min-max, e.g. 1000-50000"}
+        vin: {type: string, required: false, note: "full 17-character VIN"}
+        facets: {type: string, required: false, note: "field(s) to bucket-count, e.g. make,model"}
+        stats: {type: string, required: false, note: "numeric field(s) for mean/min/max/count, e.g. price,miles"}
+        sort_by: {type: string, required: false, note: "defaults to distance when a location filter is set"}
+        sort_order: {type: string, required: false, note: "asc (default) | desc"}
+        rows: {type: integer, required: false, note: "default 10, max 50. rows=0 returns num_found plus any facets/stats with no listings: the pre-flight count route (still one billed call)", example: 1}
+        start: {type: integer, required: false, note: "0-based offset; deep paging is capped by plan (Free 500 rows, Basic and Standard 1,500) and answers 422 past it"}
+    test_request:
+      queryParams: {make: "toyota", model: "camry", year: "2022", zip: "90210", radius: "50", rows: "1"}
+    cost: {type: per_call, value: 0.002, currency: USD, per: 1, unit: call, source: docs, source_url: "https://www.marketcheck.com/apis/pricing/", checked: "2026-09-24", confidence: documented, note: "Inventory Search API data fee, charged on top of the account's monthly MarketCheck plan; every request counts, whatever it returns. Agent (platform) rate via treg: 10x this list price, see PR."}
+    docs_url: https://docs.marketcheck.com/docs/api/cars/inventory/inventory-search
+  - id: marketcheck.cars.listings.sold
+    capability: cars.listings.sold
+    platform: cars
+    domain: listings
+    scope: any_account
+    method: GET
+    path: /search/car/recents
+    name: "Search recently sold and expired car listings (past 90 days)"
+    summary: "Access expired and sold dealer listings from the past 90 days with comprehensive filtering, sorting, analytics, and geographic targeting capabilities"
+    input:
+      queryParams:
+        make: {type: string, required: false, example: "toyota"}
+        model: {type: string, required: false, example: "camry"}
+        year: {type: string, required: false, example: "2022"}
+        zip: {type: string, required: false, example: "90210"}
+        radius: {type: integer, required: false, note: "miles; max is the smaller of 100 and the plan's radius", example: 50}
+        latitude: {type: string, required: false}
+        longitude: {type: string, required: false}
+        state: {type: string, required: false}
+        city: {type: string, required: false}
+        dealer_id: {type: string, required: false, note: "MarketCheck dealer id"}
+        source: {type: string, required: false, note: "website domain, e.g. cars.com"}
+        sold: {type: boolean, required: false, note: "true returns only listings MarketCheck infers were sold"}
+        car_type: {type: string, required: false, note: "new | used | certified"}
+        country: {type: string, required: false, note: "us (default) | ca | all"}
+        rows: {type: integer, required: false, note: "default 10, max 50", example: 1}
+        start: {type: integer, required: false}
+      note: "At least one of city, state, zip, latitude+longitude, radius, dealer_id or source is required. Only one of facets, stats or range_facets per request. Prices are the listings' last asking prices (a sold proxy), not transaction prices."
+    test_request:
+      queryParams: {make: "toyota", model: "camry", year: "2022", zip: "90210", radius: "50", rows: "1"}
+    cost: {type: per_call, value: 0.006, currency: USD, per: 1, unit: call, source: docs, source_url: "https://www.marketcheck.com/apis/pricing/", checked: "2026-09-24", confidence: documented, note: "Dealer Recent Inventory Search API (past 90 days) data fee, charged on top of the account's monthly MarketCheck plan; every request counts, whatever it returns. Agent (platform) rate via treg: 10x this list price, see PR."}
+    docs_url: https://docs.marketcheck.com/docs/api/cars/inventory/past-inventory-search
+  - id: marketcheck.cars.listings.private_party
+    capability: cars.listings.private_party
+    platform: cars
+    domain: listings
+    scope: any_account
+    method: GET
+    path: /search/car/fsbo/active
+    name: "Search private-seller car listings (for sale by owner)"
+    summary: "Search private seller listings: private party inventory, vehicle details, listing information"
+    input:
+      queryParams:
+        make: {type: string, required: false, example: "toyota"}
+        model: {type: string, required: false, example: "camry"}
+        year: {type: string, required: false}
+        zip: {type: string, required: false}
+        radius: {type: integer, required: false}
+        state: {type: string, required: false}
+        price_range: {type: string, required: false, note: "min-max in USD"}
+        country: {type: string, required: false, note: "us (default) | ca | all"}
+        rows: {type: integer, required: false, note: "default 10, max 50", example: 1}
+        start: {type: integer, required: false}
+    test_request:
+      queryParams: {make: "toyota", model: "camry", rows: "1"}
+    cost: {type: per_call, value: 0.01, currency: USD, per: 1, unit: call, source: docs, source_url: "https://www.marketcheck.com/apis/pricing/", checked: "2026-09-24", confidence: documented, note: "Private Party Inventory Search API data fee, charged on top of the account's monthly MarketCheck plan; every request counts, whatever it returns. Agent (platform) rate via treg: 10x this list price, see PR."}
+    docs_url: https://docs.marketcheck.com/docs/api/cars/inventory/private-party-search
+  - id: marketcheck.cars.listings.auction
+    capability: cars.listings.auction
+    platform: cars
+    domain: listings
+    scope: any_account
+    method: GET
+    path: /search/car/auction/active
+    name: "Search car auction listings"
+    summary: "Search auction inventory: auction site listings, advanced filters, geographic search"
+    input:
+      queryParams:
+        make: {type: string, required: false, example: "toyota"}
+        model: {type: string, required: false, example: "camry"}
+        year: {type: string, required: false}
+        zip: {type: string, required: false}
+        radius: {type: integer, required: false}
+        state: {type: string, required: false}
+        country: {type: string, required: false, note: "us (default) | ca | all"}
+        rows: {type: integer, required: false, note: "default 10, max 50", example: 1}
+        start: {type: integer, required: false}
+    test_request:
+      queryParams: {make: "toyota", model: "camry", rows: "1"}
+    cost: {type: per_call, value: 0.008, currency: USD, per: 1, unit: call, source: docs, source_url: "https://www.marketcheck.com/apis/pricing/", checked: "2026-09-24", confidence: documented, note: "Auction Inventory Search API data fee, charged on top of the account's monthly MarketCheck plan; every request counts, whatever it returns. Agent (platform) rate via treg: 10x this list price, see PR."}
+    docs_url: https://docs.marketcheck.com/docs/api/cars/inventory/auction-search
+  - id: marketcheck.cars.vin.decode
+    capability: cars.vin.decode
+    platform: cars
+    domain: vin
+    scope: any_account
+    method: GET
+    path: /decode/car/{vin}/specs
+    name: "Decode a VIN (basic specs)"
+    summary: "Basic VIN decoder service providing essential vehicle specifications and attributes from a 17-character VIN"
+    input:
+      pathParams:
+        vin: {type: string, required: true, note: "17-character VIN, case-insensitive; squish VINs not supported", example: "1FAHP3F28CL148530"}
+    test_request:
+      pathParams: {vin: "1FAHP3F28CL148530"}
+    cost: {type: per_call, value: 0.0015, currency: USD, per: 1, unit: call, source: docs, source_url: "https://www.marketcheck.com/apis/pricing/", checked: "2026-09-24", confidence: documented, note: "Basic VIN Decoder API data fee (the cheapest route), charged on top of the account's monthly MarketCheck plan; every request counts, whatever it returns. Agent (platform) rate via treg: 10x this list price, see PR."}
+    docs_url: https://docs.marketcheck.com/docs/api/cars/vehicle-specs/basic
+  - id: marketcheck.cars.vin.decode.enhanced
+    capability: cars.vin.decode.enhanced
+    platform: cars
+    domain: vin
+    scope: any_account
+    method: GET
+    path: /decode/car/neovin/{vin}/specs
+    name: "Decode a VIN with installed options and features (NeoVIN)"
+    summary: "NeoVIN enhanced VIN decoder: complete vehicle specifications with detailed installed options, features, and technical data"
+    input:
+      pathParams:
+        vin: {type: string, required: true, note: "17-character VIN; squish VINs not supported", example: "1FTEW1C59LKE56394"}
+    test_request:
+      pathParams: {vin: "1FTEW1C59LKE56394"}
+    cost: {type: per_call, value: 0.08, currency: USD, per: 1, unit: call, source: docs, source_url: "https://www.marketcheck.com/apis/pricing/", checked: "2026-09-24", confidence: documented, note: "NeoVIN Enhanced Decoder API data fee, charged on top of the account's monthly MarketCheck plan; every request counts, whatever it returns. Agent (platform) rate via treg: 10x this list price, see PR."}
+    docs_url: https://docs.marketcheck.com/docs/api/cars/vehicle-specs/neovin
+  - id: marketcheck.cars.vin.history
+    capability: cars.vin.history
+    platform: cars
+    domain: vin
+    scope: any_account
+    method: GET
+    path: /history/car/{vin}
+    name: "Listing and price history of a VIN"
+    summary: "Complete vehicle listing history by VIN with price trends and market data"
+    input:
+      pathParams:
+        vin: {type: string, required: true, note: "17-character VIN", example: "1FTEW1EP1MFA57388"}
+      queryParams:
+        fields: {type: string, required: false, note: "comma-separated response fields to include"}
+        sort_order: {type: string, required: false, note: "desc (default) | asc"}
+      note: "Each row is one online listing of the VIN (dealer, private party or auction) with its asking price, miles and dates; prices are asking prices, not transaction prices."
+    test_request:
+      pathParams: {vin: "1FTEW1EP1MFA57388"}
+    cost: {type: per_call, value: 0.006, currency: USD, per: 1, unit: call, source: docs, source_url: "https://www.marketcheck.com/apis/pricing/", checked: "2026-09-24", confidence: documented, note: "VIN History API data fee, charged on top of the account's monthly MarketCheck plan; every request counts, whatever it returns. Agent (platform) rate via treg: 10x this list price, see PR."}
+    docs_url: https://docs.marketcheck.com/docs/api/cars/vehicle-history/history-by-vin
+  - id: marketcheck.cars.price.predict
+    capability: cars.price.predict
+    platform: cars
+    domain: pricing
+    scope: any_account
+    method: GET
+    path: /predict/car/us/marketcheck_price
+    name: "Predicted used-car price by VIN (MarketCheck Price)"
+    summary: "Returns MarketCheck predicted price along with MSRP of the vehicle in the current used active market for US"
+    input:
+      queryParams:
+        vin: {type: string, required: true, note: "17-character VIN", example: "5TFJA5DB4PX066997"}
+        miles: {type: integer, required: true, note: "current odometer", example: 30000}
+        dealer_type: {type: string, required: true, note: "franchise | independent", example: "franchise"}
+        zip: {type: string, required: false, note: "either zip, or city and state, is required", example: "90210"}
+        city: {type: string, required: false}
+        state: {type: string, required: false, note: "2-letter code; with city"}
+        is_certified: {type: boolean, required: false, note: "default false"}
+        fallback_to_generic: {type: boolean, required: false, note: "base tier only: price generic definitions when the VIN cannot be decoded exactly; returns generic_prices with marketcheck_price and msrp null"}
+      note: "The predicted figure is a machine-learned estimate of the vehicle's listing (asking) price in the current market, not a transaction price."
+    test_request:
+      queryParams: {vin: "5TFJA5DB4PX066997", miles: "30000", zip: "90210", dealer_type: "franchise"}
+    cost: {type: per_call, value: 0.07, currency: USD, per: 1, unit: call, source: docs, source_url: "https://www.marketcheck.com/apis/pricing/", checked: "2026-09-24", confidence: documented, note: "Cars MarketCheck Price US USED Base API data fee, charged on top of the account's monthly MarketCheck plan; every request counts, whatever it returns. Agent (platform) rate via treg: 10x this list price, see PR."}
+    docs_url: https://docs.marketcheck.com/docs/api/cars/market-insights/marketcheck-price
+  - id: marketcheck.cars.price.comparables
+    capability: cars.price.comparables
+    platform: cars
+    domain: pricing
+    scope: any_account
+    method: GET
+    path: /predict/car/us/marketcheck_price/comparables
+    name: "Predicted used-car price with comparables"
+    summary: "Returns MarketCheck predicted price, MSRP along with similar comparables for matching VIN in US"
+    input:
+      queryParams:
+        vin: {type: string, required: true, example: "5TFJA5DB4PX066997"}
+        miles: {type: integer, required: true, example: 30000}
+        dealer_type: {type: string, required: true, note: "franchise | independent", example: "franchise"}
+        zip: {type: string, required: false, note: "either zip, or city and state, is required", example: "90210"}
+        city: {type: string, required: false}
+        state: {type: string, required: false}
+        is_certified: {type: boolean, required: false}
+      note: "Base tier output plus active and recent comparable listings (asking prices)."
+    test_request:
+      queryParams: {vin: "5TFJA5DB4PX066997", miles: "30000", zip: "90210", dealer_type: "franchise"}
+    cost: {type: per_call, value: 0.09, currency: USD, per: 1, unit: call, source: docs, source_url: "https://www.marketcheck.com/apis/pricing/", checked: "2026-09-24", confidence: documented, note: "Cars MarketCheck Price US USED Premium API data fee, charged on top of the account's monthly MarketCheck plan; every request counts, whatever it returns. Agent (platform) rate via treg: 10x this list price, see PR."}
+    docs_url: https://docs.marketcheck.com/docs/api/cars/market-insights/marketcheck-price
+  - id: marketcheck.cars.dealers.search
+    capability: cars.dealers.search
+    platform: cars
+    domain: dealers
+    scope: any_account
+    method: GET
+    path: /dealers/car
+    name: "Find car dealers near a location"
+    summary: "Find dealers within specific geographic areas using precise coordinate-based search functionality"
+    input:
+      queryParams:
+        zip: {type: string, required: false, example: "90210"}
+        radius: {type: integer, required: false, note: "miles around zip or latitude/longitude", example: 10}
+        latitude: {type: string, required: false}
+        longitude: {type: string, required: false}
+        city: {type: string, required: false}
+        state: {type: string, required: false}
+        dealer_type: {type: string, required: false, note: "franchise | independent"}
+        country: {type: string, required: false, note: "us (default) | ca | all"}
+        rows: {type: integer, required: false, note: "default 10, max 50", example: 1}
+        start: {type: integer, required: false}
+    test_request:
+      queryParams: {zip: "90210", radius: "10", rows: "1"}
+    cost: {type: per_call, value: 0.0025, currency: USD, per: 1, unit: call, source: docs, source_url: "https://www.marketcheck.com/apis/pricing/", checked: "2026-09-24", confidence: documented, note: "Dealer API data fee, charged on top of the account's monthly MarketCheck plan; every request counts, whatever it returns. Agent (platform) rate via treg: 10x this list price, see PR."}
+    docs_url: https://docs.marketcheck.com/docs/api/cars/dealerships/dealers-search
+  - id: marketcheck.cars.market.days_supply
+    capability: cars.market.days_supply
+    platform: cars
+    domain: market
+    scope: any_account
+    method: GET
+    path: /mds/car
+    name: "Market days supply for a vehicle in an area"
+    summary: "Get Market Days Supply (MDS) for vehicles based on inventory turnover rates. Calculate MDS using active inventory and sales data from the past 45 days."
+    input:
+      queryParams:
+        make: {type: string, required: false, example: "toyota"}
+        model: {type: string, required: false, example: "camry"}
+        year: {type: string, required: false, example: "2022"}
+        ymmt: {type: string, required: false, note: "Year|Make|Model|Trim, comma-separated for several, e.g. 2020|Toyota|Camry|LE"}
+        vin: {type: string, required: false, note: "MDS for similar vehicles; add exact=true to match down to build code"}
+        exact: {type: boolean, required: false}
+        car_type: {type: string, required: false, note: "new | used | certified", example: "used"}
+        zip: {type: string, required: false, example: "90210"}
+        radius: {type: integer, required: false, example: 50}
+        state: {type: string, required: false}
+        dealer_id: {type: string, required: false}
+        country: {type: string, required: false, note: "us (default) | ca | all"}
+      note: "MDS = active inventory count / (sales per day over the past 45 days); lower means faster turnover."
+    test_request:
+      queryParams: {make: "toyota", model: "camry", year: "2022", zip: "90210", radius: "50", car_type: "used"}
+    cost: {type: per_call, value: 0.006, currency: USD, per: 1, unit: call, source: docs, source_url: "https://www.marketcheck.com/apis/pricing/", checked: "2026-09-24", confidence: documented, note: "Cars Market APIs (Market Days Supply) data fee, charged on top of the account's monthly MarketCheck plan; every request counts, whatever it returns. Agent (platform) rate via treg: 10x this list price, see PR."}
+    docs_url: https://docs.marketcheck.com/docs/api/cars/market-insights/market-days-supply
+proposed_capabilities:
+  # No catalogued provider serves vehicle data today; these open a `cars` platform (added to
+  # capabilities.yaml platforms under Market data in this PR).
+  cars.listings.search: "Search cars for sale by make, model, year, price and location"
+  cars.listings.sold: "Search recently sold and expired car listings"
+  cars.listings.private_party: "Search cars listed for sale by private sellers"
+  cars.listings.auction: "Search cars listed at auction"
+  cars.vin.decode: "Decode a VIN into year, make, model, trim and core specs"
+  cars.vin.decode.enhanced: "Decode a VIN with installed options, packages and features"
+  cars.vin.history: "Get a VIN's listing and asking-price history"
+  cars.price.predict: "Estimate a used car's market listing price from VIN, miles and location"
+  cars.price.comparables: "Estimate a used car's market price with comparable listings"
+  cars.dealers.search: "Find car dealerships near a location"
+  cars.market.days_supply: "Get market days supply (how fast a vehicle sells) in an area"

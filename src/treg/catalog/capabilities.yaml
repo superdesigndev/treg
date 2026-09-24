@@ -123,6 +123,7 @@ platforms:
   # --- Market data: prices & financial markets --------------------------------------------------
   crypto: {label: "Crypto Market Data", category: "Market data", featured: 1, summary: "Live and historical prices, market caps, trends and exchanges across 17,000+ coins."}
   stocks: {label: "Stock Market Data", category: "Market data", featured: 2, summary: "End-of-day and intraday stock prices, tickers, splits and dividends across global exchanges."}
+  cars: {label: "Vehicle Market Data", category: "Market data", summary: "US and Canada car listings, sold listings, VIN decode and history, predicted prices, dealers and market days supply."}
 
 capabilities:
   # --- AI generation ---------------------------------------------------------------------------
