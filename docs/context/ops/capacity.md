@@ -35,6 +35,7 @@ sources:
   - tests/test_capacity_know.py
   - tests/test_capacity_collectors.py
   - tests/test_financialdatasets.py
+  - tests/test_tinyfish.py
 related:
   - architecture/data-model.md
   - architecture/money.md
@@ -43,6 +44,18 @@ related:
 ---
 
 # Provider capacity
+
+TinyFish capacity is `cash / manual / api`. `collectors._tinyfish` calls the free internal
+`GET /v1/wallet` route with the platform `X-API-Key`, accepts only a finite nonnegative
+`available_balance`, and retains the response currency plus whether vendor auto-reload is enabled.
+The wallet remains internal capacity evidence and is not a catalog tool. Shared-key request
+smoothing uses Search's documented 30 requests/minute burst limit. Fetch also limits URLs per
+minute/day and Agent limits concurrent runs; those differently shaped upstream limits are not
+misrepresented as request-token limits. An Agent run reserves its documented worst-case step cost:
+$2.40 for the default 150-step ceiling, or the $8.00 500-step fallback when the request cannot be
+matched to that ceiling. TinyFish currently beta-gates a caller-supplied `max_steps`, so low-balance
+teams can be refused even when the eventual run would be cheap; unused hold is released when the
+terminal `num_of_steps` is settled. BYOK calls bypass shared-key smoothing and treg metering.
 
 Fish Audio capacity is `cash / manual / api`. `collectors._fishaudio` calls the free
 `GET /wallet/self/api-credit` route with the platform Bearer key and the workspace selected through
@@ -74,6 +87,13 @@ TrestleIQ publishes no free balance or usage API. Capacity reports the wallet as
 Portal-only and does not spend a validation query to read it. The policy records cash with vendor
 auto recharge, manually verified as enabled in the portal, and a documented 10 requests/second
 shared-key pace. treg does not read or change the vendor's auto-top-up setting.
+
+Adyntel publishes no free balance or usage API. `NO_BALANCE_API` therefore reports PAYG credits as
+dashboard-only instead of the ambiguous "no fetcher written yet" state. `_KNOWN` classifies the
+wallet as manually funded credits, and `_RATE_LIMITS` smooths treg's shared key at the documented
+5 requests/second; BYOK remains outside capacity policy. An eight-request concurrent live burst
+returned eight HTTP 200 responses without `Retry-After`, so the pace is documentation-derived rather
+than a reproduced 429 limit. Top-up remains a manual provider-dashboard operation.
 
 LimaData exposes no free standalone balance API, so capacity reports its credit balance as
 dashboard-only. The assigned account's existing automatic top-up is enabled, and the default policy
@@ -224,7 +244,7 @@ smoothing becomes endpoint-aware.
 - **`collectors.py`** — the providers' *free* balance/quota calls (`coroutine(client, key) →
   {value, unit, note}`), shared with `scripts/provider_balances.py`. Providers such as DataForSEO,
   TikHub, Brightdata, and Kitt AI report balances in USD; other meters include credits, rows, and searches. `NO_BALANCE_API`
-  names the 9 providers that publish no free standalone meter so they read as "no API", never as a
+  names providers that publish no free standalone meter so they read as "no API", never as a
   broken key. Scrubby reports `remaining_credits` only on verification responses; collection never
   spends a verification merely to obtain that value.
   `provider_balance()` never raises — a failure is a row. It reads the *setting*, not

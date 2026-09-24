@@ -47,9 +47,9 @@ def test_every_provider_is_registered():
         "google-ads", "youtube", "linkedin", "slack", "x", "tiktok",
         "facebook", "instagram", "meta-ads",
         # API-key providers (auth_kind="key")
-        "anyapi", "apollo", "pdl", "akta", "hunter", "sumble", "moltsets", "openmart", "harvestapi", "dropleads", "quickenrich", "prospeo", "aiark", "wiza", "limadata", "getleadsio", "scrubby", "zerobounce", "datagma", "contactout", "millionverifier", "bounceban", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush", "justoneapi",
+        "adyntel", "anyapi", "apollo", "pdl", "akta", "hunter", "sumble", "moltsets", "openmart", "harvestapi", "dropleads", "quickenrich", "prospeo", "aiark", "wiza", "limadata", "getleadsio", "scrubby", "zerobounce", "datagma", "contactout", "millionverifier", "bounceban", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush", "justoneapi",
         "scrapecreators",
-        "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa", "tavily",
+        "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa", "tavily", "keenable", "olostep",
         "cloro",
         "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
         "companyenrich", "oceanio", "tomba", "trestleiq", "predictleads", "findymail", "branddev",
@@ -59,7 +59,7 @@ def test_every_provider_is_registered():
         "financialdatasets",
         "microsoft-ads", "snapchat-ads", "tiktok-ads", "pinterest-ads",
         # BYOK token providers
-        "minimax", "fishaudio", "openrouter", "replicate", "reapi", "piapi",
+        "minimax", "fishaudio", "openrouter", "replicate", "reapi", "piapi", "tinyfish",
     }
 
 

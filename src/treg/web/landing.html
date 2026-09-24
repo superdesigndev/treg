@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>treg — turn your coding agent into an SEO expert, a media buyer, an SDR</title>
-<meta name="description" content="Give your agent the tool catalog for the job. 2,630 endpoints across 47 providers — premium SEO, social, enrichment and ads data, pay as you go. Plus your own keys &amp; skills, and an identity per agent."/>
+<script src="/media/landing/hero-opening.js"></script>
+<title>treg.to: OpenRouter for agent tools and data, pay per call</title>
+<meta name="description" content="One MCP server, one key: {ENDPOINTS} tools across {PROVIDERS} providers for SEO, enrichment, ads, social and scraping data at the provider's own rate, no markup."/>
 <!-- {BASE}, not a hardcoded treg.to: this file is also served by every self-hosted registry, and a
      canonical pointing at someone else's domain tells a crawler the real page is not here. -->
 <link rel="canonical" href="{BASE}/"/>
@@ -13,25 +14,25 @@
 <meta property="og:type" content="website"/>
 <meta property="og:site_name" content="treg"/>
 <meta property="og:url" content="{BASE}/"/>
-<meta property="og:title" content="treg — the tool catalog for your agent"/>
-<meta property="og:description" content="2,630 endpoints across 47 providers — SEO, social, enrichment and ads data your agent can call with one key, priced per call. Plus your own keys &amp; skills."/>
+<meta property="og:title" content="treg.to: OpenRouter for agent tools and data, pay per call"/>
+<meta property="og:description" content="One MCP server, one key: {ENDPOINTS} tools across {PROVIDERS} providers for SEO, enrichment, ads, social and scraping data at the provider's own rate, no markup."/>
 <meta property="og:image" content="{BASE}/media/og.png"/>
 <meta property="og:image:width" content="1200"/>
 <meta property="og:image:height" content="630"/>
-<meta property="og:image:alt" content="treg — one unified key for 2,600+ agent tools, priced per call, open source"/>
+<meta property="og:image:alt" content="treg - one unified key for {ENDPOINTS} agent tools, priced per call, open source"/>
 <meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:title" content="treg — the tool catalog for your agent"/>
-<meta name="twitter:description" content="2,630 endpoints across 47 providers, callable with one key and priced per call. No provider signup."/>
+<meta name="twitter:title" content="treg.to: OpenRouter for agent tools and data, pay per call"/>
+<meta name="twitter:description" content="One MCP server, one key: {ENDPOINTS} tools across {PROVIDERS} providers for SEO, enrichment, ads, social and scraping data at the provider's own rate, no markup."/>
 <meta name="twitter:image" content="{BASE}/media/og.png"/>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&family=Inter:wght@400;450;500;600;650;700&family=DM+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
 <style>
 /* ================================================================
-   treg landing v3 — ROLE PROPOSITION · LIGHT
+   treg landing v3 - ROLE PROPOSITION · LIGHT
    Skin: the platform's rows.gg-derived system, tokens lifted
    verbatim from index.html's RESTYLE block (light theme).
-   Rules of the system: no brand accent — emphasis is ink, colour is
+   Rules of the system: no brand accent - emphasis is ink, colour is
    reserved for status; sans everywhere, mono only for identifiers,
    commands and counts; Geist Pixel on the h1 only; cards are
    surfaces (shadow, not border); layered shadows, quick eases.
@@ -71,6 +72,7 @@ a{color:var(--teal);text-decoration:none}
 .brand{display:flex;align-items:center;gap:9px;font-family:var(--mono);font-weight:600;font-size:15px;color:var(--ink)}
 .brand .glyph{display:grid;place-items:center;width:28px;height:28px;border-radius:8px;
   background:var(--inverse);color:var(--inverse-ink);font-size:14px}
+.glyph svg{width:57%;height:57%;display:block;fill:currentColor}
 .nav .links{margin-left:auto;display:flex;align-items:center;gap:22px}
 .nav .links a{font-size:13.5px;font-weight:500;color:var(--muted);cursor:pointer}
 .nav .links a:hover{color:var(--ink)}
@@ -78,7 +80,7 @@ a{color:var(--teal);text-decoration:none}
 .nav .links a.navico svg{width:15px;height:15px;display:block}
 @media(max-width:640px){.nav .links a.hidem{display:none}}
 
-/* buttons — rows.gg: the primary is the inverse fill, emphasis is ink */
+/* buttons - rows.gg: the primary is the inverse fill, emphasis is ink */
 .candy{display:inline-block;font-family:var(--sans);font-weight:550;letter-spacing:.01em;
   color:var(--inverse-ink);background:var(--inverse);
   border:0;border-radius:999px;padding:12px 26px;font-size:14px;cursor:pointer;
@@ -109,12 +111,12 @@ a{color:var(--teal);text-decoration:none}
 p.sub{font-size:15px;line-height:1.65;color:var(--muted);max-width:620px;margin:22px auto 0}
 p.sub b{color:var(--ink);font-weight:600}
 
-/* — the agent icons: a static row, one after another — */
+/* - the agent icons: a static row, one after another - */
 .agentslot{display:inline-flex;vertical-align:bottom;height:1.16em;
   align-items:center;gap:.14em;margin:0 .06em}
 .agentslot img{width:.82em;height:.82em;border-radius:.18em;object-fit:contain;flex:none}
 
-/* — the role wheel — */
+/* - the role wheel - */
 .roleslot{display:inline-block;height:1.16em;overflow:hidden;vertical-align:bottom;
   position:relative;transition:width .55s var(--ease-out)}
 .roleslot .rw{display:flex;flex-direction:column;align-items:flex-start;
@@ -126,7 +128,7 @@ p.sub b{color:var(--ink);font-weight:600}
   animation:blink 1.15s steps(1) infinite}
 @keyframes blink{50%{opacity:0}}
 
-/* — hero scene: agent → treg → the role's toolbelt — */
+/* - hero scene: agent → treg → the role's toolbelt - */
 .scene{margin:36px auto 0;max-width:900px;position:relative;z-index:2;
   display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:30px;
   align-items:stretch;text-align:left}
@@ -151,7 +153,7 @@ p.sub b{color:var(--ink);font-weight:600}
 .hst .ag2{width:18px;height:18px;border-radius:6px;background:var(--surface);border:1px solid var(--line2);
   color:var(--muted);display:grid;place-items:center;font-size:9px;flex:none}
 .hst i{font-style:normal;color:var(--green);font-size:10px;margin-left:auto;flex:none}
-/* middle: the treg core — the one inverse card on the page */
+/* middle: the treg core - the one inverse card on the page */
 .hcell.mid{justify-content:center;gap:12px;padding:18px;
   background:var(--inverse);color:var(--inverse-ink);box-shadow:var(--shadow-lg)}
 .hcore{display:flex;align-items:center;justify-content:center;gap:9px}
@@ -194,24 +196,32 @@ p.sub b{color:var(--ink);font-weight:600}
 .givebox .gb-cmd button.done{color:#7fdcae;border-color:#7fdcae66}
 
 /* ================================================================
-   ROLE CATALOGS — every toolbelt laid out, section after section
+   ROLE CATALOGS - every toolbelt laid out, section after section
    ================================================================ */
 .roles{position:relative;margin-top:110px}
 .seclab{text-align:center;font-family:var(--mono);font-size:10.5px;letter-spacing:.24em;
   text-transform:uppercase;color:var(--muted2)}
 .catwrap{max-width:1000px;margin:34px auto 0}
-/* the sub-section IS the header now — reference-style: bold title, hairline runs on */
+/* the sub-section IS the header now - reference-style: bold title, hairline runs on */
 .pcat{font-weight:650;font-size:17px;letter-spacing:-.2px;
   color:var(--ink);display:flex;align-items:baseline;gap:14px;margin:40px 0 12px}
 .pcat::after{content:"";height:1px;background:var(--line);flex:1;align-self:center}
 .pcat:first-of-type{margin-top:0}
 .pgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-/* a card is a surface, not a box — shadow at rest, deeper on hover, no translate */
+/* narrow screens show one category at a time behind a horizontal tab row; wide ones list them all */
+.ctabs{display:none}
+.ctab{font-family:var(--sans);font-size:13px;font-weight:550;letter-spacing:-.1px;color:var(--muted);
+  background:transparent;border:1px solid transparent;border-radius:99px;padding:7px 12px;
+  cursor:pointer;white-space:nowrap;flex:none;transition:color .2s var(--ease),background .2s var(--ease),box-shadow .2s var(--ease)}
+.ctab:hover{color:var(--ink)}
+.ctab[aria-selected=true]{color:var(--ink);background:var(--surface);border-color:var(--line);box-shadow:var(--shadow-sm)}
+.ctab:focus-visible{outline:2px solid var(--teal);outline-offset:2px}
+/* a card is a surface, not a box - shadow at rest, deeper on hover, no translate */
 .pcard{border-radius:var(--r);padding:13px 14px;background:var(--surface);
   box-shadow:var(--shadow-sm);display:flex;align-items:center;gap:12px;
   transition:box-shadow .24s var(--ease)}
 .pcard:hover{box-shadow:var(--shadow-lg)}
-/* near-white logo tile: brand marks are drawn for white — same rule as the app */
+/* near-white logo tile: brand marks are drawn for white - same rule as the app */
 .pcard .ph{display:grid;place-items:center;width:38px;height:38px;flex:none;border-radius:11px;
   background:#fbfaf7;border:1px solid rgba(0,0,0,.07)}
 .pcard .ph img{width:23px;height:23px;border-radius:5px;object-fit:contain}
@@ -229,7 +239,7 @@ p.sub b{color:var(--ink);font-weight:600}
 .oatag{flex:none;font-family:var(--sans);font-size:9px;font-weight:650;letter-spacing:.03em;
   color:var(--teal);background:#1a7da612;border:1px solid #1a7da628;
   border-radius:99px;padding:.5px 7px;line-height:1.5}
-/* the catalog trails off — a ghost row fading out, then the +N line */
+/* the catalog trails off - a ghost row fading out, then the +N line */
 .morewrap{margin-top:40px;pointer-events:none;
   -webkit-mask-image:linear-gradient(180deg,rgba(0,0,0,.5) 0%,transparent 88%);
   mask-image:linear-gradient(180deg,rgba(0,0,0,.5) 0%,transparent 88%)}
@@ -238,7 +248,7 @@ p.sub b{color:var(--ink);font-weight:600}
 .ghostbtn.sm{padding:9px 20px;font-size:13px;pointer-events:auto}
 
 /* ================================================================
-   BENEFITS — four, each with a real artifact
+   BENEFITS - four, each with a real artifact
    ================================================================ */
 .bens{padding:40px 0 0}
 .ben{display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:56px;align-items:center;
@@ -254,7 +264,7 @@ p.sub b{color:var(--ink);font-weight:600}
   display:flex;gap:8px 18px;flex-wrap:wrap}
 .benmeta span::before{content:"› ";color:var(--teal)}
 
-/* artifact chrome (shared window look) — a raised surface with a chrome bar */
+/* artifact chrome (shared window look) - a raised surface with a chrome bar */
 .win{border-radius:var(--r);overflow:hidden;background:var(--surface);box-shadow:var(--shadow-lg)}
 .wbar{display:flex;align-items:center;gap:7px;padding:12px 18px;border-bottom:1px solid var(--line);
   background:var(--panel)}
@@ -264,7 +274,7 @@ p.sub b{color:var(--ink);font-weight:600}
 .wf{padding:12px 20px;border-top:1px solid var(--line);text-align:center;
   font-family:var(--mono);font-size:11.5px;color:var(--green);background:var(--panel)}
 
-/* 01 — one unified key: the key pill over sliding provider rows */
+/* 01 - one unified key: the key pill over sliding provider rows */
 .keywall{border-radius:var(--r);background:var(--panel2);padding:26px 0 22px;
   display:flex;flex-direction:column;gap:20px;overflow:hidden;box-shadow:var(--shadow-sm)}
 .kw-key{align-self:center;display:flex;align-items:center;gap:10px;
@@ -285,7 +295,7 @@ p.sub b{color:var(--ink);font-weight:600}
   font-weight:550;font-size:13px;color:var(--ink);white-space:nowrap}
 .kw-chip img{width:20px;height:20px;border-radius:5px;object-fit:contain}
 
-/* 03 — capability comparison (scripted: ask → match → options pop → scan → the AGENT picks) */
+/* 03 - capability comparison (scripted: ask → match → options pop → scan → the AGENT picks) */
 .cap{padding:8px 20px 12px}
 .cap-req{display:flex;align-items:center;gap:8px;padding:10px 2px 12px;font-size:12.5px;min-height:42px}
 .cap-req img{width:20px;height:20px;border-radius:6px;flex:none}
@@ -319,7 +329,7 @@ p.sub b{color:var(--ink);font-weight:600}
 .cap.done .cap-pick,.cap.done .cap-warn{opacity:1;transform:none}
 .cap-ok{opacity:0;transition:opacity .3s var(--ease-out)}
 .cap.done .cap-ok{opacity:1}
-/* the answer, back in the chat — the loop closes where it started */
+/* the answer, back in the chat - the loop closes where it started */
 .cap-res{display:flex;align-items:center;gap:9px;margin:10px 2px 4px;padding:9px 13px;
   background:#11845309;border:1px solid #1184532b;border-radius:10px;
   font-family:var(--mono);font-size:11.5px;color:var(--ink);
@@ -342,7 +352,7 @@ p.sub b{color:var(--ink);font-weight:600}
 .cap-ok{margin-left:auto;color:var(--green);font-size:12px}
 .cap-warn{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--amber)}
 
-/* 04 — your org's shelf: scan → found → your cards drop into the catalog */
+/* 04 - your org's shelf: scan → found → your cards drop into the catalog */
 .shelf{padding:12px 20px 16px}
 .sh-cmd{display:flex;align-items:center;gap:9px;background:var(--inverse);border-radius:var(--rb);
   padding:10px 13px;font-family:var(--mono);font-size:12px;min-height:38px}
@@ -387,7 +397,7 @@ p.sub b{color:var(--ink);font-weight:600}
 #shwf{opacity:0;transition:opacity .45s var(--ease-out)}
 #shwf.in{opacity:1}
 
-/* 02 — price ledger */
+/* 02 - price ledger */
 .ledger{padding:6px 20px 12px}
 .lrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;
   padding:11px 2px;font-size:12.5px;opacity:0;transform:translateY(7px);
@@ -417,7 +427,7 @@ p.sub b{color:var(--ink);font-weight:600}
 #lwf{opacity:0;transition:opacity .45s var(--ease-out)}
 #lwf.in{opacity:1}
 
-/* 04 — 0% additional fee: display title + mono equation card */
+/* 04 - 0% additional fee: display title + mono equation card */
 .zeroband{padding:56px 0 72px;text-align:center}
 .zeroband h3{font-family:var(--display);font-weight:400;font-size:clamp(26px,3.2vw,40px);
   line-height:1.15;margin:0}
@@ -495,6 +505,12 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
   .scene{grid-template-columns:1fr;gap:26px;max-width:420px}
   .hcell:not(:last-child)::after{content:"↓";right:auto;left:50%;top:auto;bottom:-22px;transform:translateX(-50%)}
   .pgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ctabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;margin:0 -16px 14px;padding:2px 16px;
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 16px,#000 calc(100% - 28px),transparent);
+    mask-image:linear-gradient(90deg,transparent 0,#000 16px,#000 calc(100% - 28px),transparent)}
+  .ctabs::-webkit-scrollbar{display:none}
+  .catwrap .pcat,.catwrap .off,.catwrap .morewrap{display:none}
+  .moreline{margin-top:28px}
   .ben{grid-template-columns:1fr;gap:26px;padding:56px 0}
   .ben.flip .bentext{order:0}
   .zeroband{padding:36px 0 56px}
@@ -505,13 +521,20 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
   .roles{margin-top:64px}
 }
 @media(max-width:560px){
-  .pgrid{grid-template-columns:1fr}
+  .pgrid{grid-template-columns:1fr;gap:8px}
+  .pcard{padding:9px 12px;gap:11px}
+  .pcard .ph{width:32px;height:32px;border-radius:9px}
+  .pcard .ph img{width:19px;height:19px}
+  .pcard .ph .pi{width:19px;height:19px;font-size:9px}
+  .pcard .pt{flex-direction:row;align-items:baseline;gap:10px;flex:1;justify-content:space-between}
+  .pcard .pt>span:first-child{font-size:13px;flex:0 1 auto}
+  .pcard .pt>s,.pcard .pt>.row2{flex:0 1 auto;min-width:0}
   .hero-h1{font-size:29px}
 }
 
 </style>
 
-<!-- Structured data. Every figure below is also visible on the page — the free credit in benefit 03,
+<!-- Structured data. Every figure below is also visible on the page - the free credit in benefit 03,
      the 0% markup in the zeroband, the counts in the kicker and trustline. Schema that claims
      something the page does not say is a structured-data error, not a shortcut. -->
 <script type="application/ld+json">
@@ -523,13 +546,13 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
   "applicationCategory": "DeveloperApplication",
   "applicationSubCategory": "API gateway for AI agents",
   "operatingSystem": "Any (HTTP API, CLI, MCP)",
-  "description": "The tool catalog for your agent: 2,630 API endpoints across 47 providers — SEO, social, enrichment, ads and scraping data — callable with one key and priced per call, with no provider signup. Bring your own API keys and skills alongside them.",
+  "description": "The tool catalog for your agent: {ENDPOINTS} API endpoints across {PROVIDERS} providers - SEO, social, enrichment, ads and scraping data - callable with one key and priced per call, with no provider signup. Bring your own API keys and skills alongside them.",
   "image": "{BASE}/media/og.png",
   "license": "https://www.gnu.org/licenses/agpl-3.0.html",
   "isAccessibleForFree": true,
   "featureList": [
-    "2,630 curated API endpoints across 47 providers",
-    "Credentials injected server-side — the caller never holds a key",
+    "{ENDPOINTS} curated API endpoints across {PROVIDERS} providers",
+    "Credentials injected server-side - the caller never holds a key",
     "Per-call pricing shown before the call, with no markup",
     "Your own API keys and SKILL.md files as callable tools",
     "CLI, HTTP proxy and MCP interfaces"
@@ -538,7 +561,7 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
     "@type": "Offer",
     "price": "0",
     "priceCurrency": "USD",
-    "description": "$1.00 of free credit once per new verified account, then pay per call at the provider's own rate — treg adds 0% on top. No subscription.",
+    "description": "$1.00 of free credit once per new verified account, then pay per call at the provider's own rate - treg adds 0% on top. No subscription.",
     "availability": "https://schema.org/InStock",
     "url": "{BASE}/"
   }
@@ -551,26 +574,29 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
   "name": "treg",
   "url": "{BASE}/",
   "logo": "{BASE}/media/brand/logo.png",
-  "description": "The tool catalog for AI agents — one key for 2,630 API endpoints, plus your own keys and skills.",
+  "description": "The tool catalog for AI agents - one key for {ENDPOINTS} API endpoints, plus your own keys and skills.",
   "sameAs": ["https://github.com/superdesigndev/treg"]
 }
 </script>
+
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lenis@1.3.26/dist/lenis.css"/><link rel="stylesheet" href="/media/landing/refinement.css"/><link rel="stylesheet" href="/media/landing/gateway.css"/><link rel="stylesheet" href="/media/landing/product-theme.css"/>
 <script src="/adtrack.js"></script>
 <script src="/gtag.js"></script>
 </head>
-<body>
+<body data-signed-in="{SIGNED_IN}">
 
 
 <!-- floating pill nav -->
 <div class="navwrap">
   <nav class="nav">
-    <div class="brand"><span class="glyph">▚</span> treg</div>
+    <div class="brand"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</div>
     <div class="links">
       <a href="https://github.com/superdesigndev/treg" class="hidem navico" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>Repo</a>
       <a href="https://discord.gg/6mQYYfFMAn" class="hidem navico" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20.32 4.37a19.8 19.8 0 0 0-4.89-1.52.07.07 0 0 0-.08.04c-.21.38-.44.87-.6 1.25a18.3 18.3 0 0 0-5.49 0 12.6 12.6 0 0 0-.61-1.25.08.08 0 0 0-.08-.04 19.7 19.7 0 0 0-4.88 1.52.07.07 0 0 0-.03.03C.53 9.05-.32 13.58.1 18.06c0 .02.01.04.03.05a19.9 19.9 0 0 0 6 3.03.08.08 0 0 0 .08-.03c.46-.63.87-1.3 1.22-2a.08.08 0 0 0-.04-.11 13.1 13.1 0 0 1-1.87-.89.08.08 0 0 1-.01-.13c.13-.09.25-.19.37-.29a.07.07 0 0 1 .08-.01c3.93 1.79 8.18 1.79 12.06 0a.07.07 0 0 1 .08.01c.12.1.24.2.37.29a.08.08 0 0 1-.01.13c-.6.35-1.22.64-1.87.89a.08.08 0 0 0-.04.11c.36.7.77 1.36 1.22 2a.08.08 0 0 0 .08.03 19.8 19.8 0 0 0 6.02-3.03.08.08 0 0 0 .03-.05c.5-5.18-.84-9.67-3.55-13.66a.06.06 0 0 0-.03-.03zM8.02 15.33c-1.18 0-2.16-1.08-2.16-2.42s.96-2.42 2.16-2.42c1.21 0 2.18 1.1 2.16 2.42 0 1.34-.96 2.42-2.16 2.42zm7.97 0c-1.18 0-2.16-1.08-2.16-2.42s.96-2.42 2.16-2.42c1.21 0 2.18 1.1 2.16 2.42 0 1.34-.95 2.42-2.16 2.42z"/></svg>Community</a>
       <a href="/catalog">Catalog</a>
-      <a onclick="openSignin()">Sign in</a>
-      <button class="candy sm" onclick="openSignin()">Start free</button>
+      <!--signed-out--><a href="/app?ref=landing" onclick="event.preventDefault();openSignin()">Sign in</a><!--/signed-out-->
+      <button class="candy sm" onclick="openSignin()">{START_LABEL}</button>
     </div>
   </nav>
 </div>
@@ -578,7 +604,7 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
 <!-- ================= HERO ================= -->
 <section class="hero">
   <div class="wrap">
-    <span class="kicker rv"><a href="/catalog">2,630 endpoints · 47 providers</a> · <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">open source ↗</a></span>
+    <span class="kicker rv"><a href="/catalog">{ENDPOINTS} endpoints · {PROVIDERS} providers</a> · <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">open source ↗</a></span>
 
     <h1 class="hero-h1 rv">
       <span class="grad">OpenRouter for agent tools</span><br>
@@ -590,13 +616,15 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
 
     <!-- the story for the active role: agent → treg → toolbelt -->
     <div class="scene rv" id="scene">
+      <svg class="gateway-routes" aria-hidden="true"></svg>
       <div class="hcell">
         <div class="sl">agent</div>
         <div class="aghead"><img id="sc-agimg" src="" alt=""/><div><b id="sc-agname">Claude Code</b><i id="sc-agrole">agent:seo-weekly</i></div></div>
         <div class="hsteps" id="sc-steps"></div>
       </div>
       <div class="hcell mid">
-        <div class="hcore"><span class="glyph">▚</span><b>treg</b></div>
+        <div class="gateway-sculpture"></div>
+        <div class="hcore"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span><b>treg</b></div>
         <div class="hcli" id="sc-cli"></div>
       </div>
       <div class="hcell tools">
@@ -610,30 +638,42 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
     <div class="givebox rv">
       <div class="gb-h">Give this to your agent
         <span class="agicons">
-          <img src="https://unpkg.com/@lobehub/icons-static-png@latest/light/claudecode-color.png" alt="Claude Code" title="Claude Code" loading="lazy"/>
-          <img src="https://unpkg.com/@lobehub/icons-static-png@latest/light/codex-color.png" alt="Codex" title="Codex" loading="lazy"/>
-          <img src="https://unpkg.com/@lobehub/icons-static-png@latest/light/openclaw-color.png" alt="OpenClaw" title="OpenClaw" loading="lazy"/>
-          <img src="https://unpkg.com/@lobehub/icons-static-png@latest/light/hermesagent.png" alt="Hermes" title="Hermes" loading="lazy"/>
-          <img src="https://unpkg.com/@lobehub/icons-static-png@latest/light/opencode.png" alt="opencode" title="opencode" loading="lazy"/>
-          <img src="https://unpkg.com/@lobehub/icons-static-png@latest/light/pi.png" alt="pi" title="pi" loading="lazy"/>
+          <img src="/media/landing/assets/claudecode-color.svg" alt="Claude Code" title="Claude Code" loading="lazy"/>
+          <img src="/media/landing/assets/codex-color.svg" alt="Codex" title="Codex" loading="lazy"/>
+          <img src="/media/landing/assets/openclaw-color.svg" alt="OpenClaw" title="OpenClaw" loading="lazy"/>
+          <img src="/media/landing/assets/hermesagent.svg" alt="Hermes" title="Hermes" loading="lazy"/>
+          <img src="/media/landing/assets/opencode.svg" alt="opencode" title="opencode" loading="lazy"/>
+          <img src="/media/landing/assets/pi.svg" alt="pi" title="pi" loading="lazy"/>
         </span>
       </div>
       <div class="gb-cmd">
         <span class="ps">$</span>
-        <code id="cmd">set up treg — https://treg.to/llms.txt</code>
+        <code id="cmd">set up treg - {BASE}/llms.txt</code>
         <button id="copybtn" aria-label="Copy command">copy</button>
       </div>
     </div>
   </div>
 </section>
 
-<!-- ================= THE CATALOG — sub-sections only ================= -->
+<!-- ================= THE CATALOG - sub-sections only ================= -->
 <section class="roles" id="catalog">
   <div class="wrap">
-    <div class="seclab rv">the catalog · 2,630 endpoints · one key</div>
+    <div class="seclab rv">the catalog · {ENDPOINTS} endpoints · one key</div>
     <div class="catwrap">
-          <div class="pcat rv">Keyword &amp; rank tracking</div>
-          <div class="pgrid">
+          <div class="ctabs" role="tablist" aria-label="Catalog categories">
+            <button class="ctab" role="tab" aria-controls="cat-0" aria-selected="true" title="Keyword &amp; rank tracking">Keywords &amp; rank</button>
+            <button class="ctab" role="tab" aria-controls="cat-1" aria-selected="false" tabindex="-1" title="Backlinks &amp; authority">Backlinks</button>
+            <button class="ctab" role="tab" aria-controls="cat-2" aria-selected="false" tabindex="-1" title="AI visibility">AI visibility</button>
+            <button class="ctab" role="tab" aria-controls="cat-3" aria-selected="false" tabindex="-1" title="Trending &amp; discovery">Trending</button>
+            <button class="ctab" role="tab" aria-controls="cat-4" aria-selected="false" tabindex="-1" title="Publish on socials">Publish on socials</button>
+            <button class="ctab" role="tab" aria-controls="cat-5" aria-selected="false" tabindex="-1" title="Enrich people &amp; company">Enrichment</button>
+            <button class="ctab" role="tab" aria-controls="cat-6" aria-selected="false" tabindex="-1" title="Buying signals">Buying signals</button>
+            <button class="ctab" role="tab" aria-controls="cat-7" aria-selected="false" tabindex="-1" title="Manage ads campaigns">Ads campaigns</button>
+            <button class="ctab" role="tab" aria-controls="cat-8" aria-selected="false" tabindex="-1" title="Competitor creative">Competitor ads</button>
+            <button class="ctab" role="tab" aria-controls="cat-9" aria-selected="false" tabindex="-1" title="Measurement">Measurement</button>
+          </div>
+          <div class="pcat rv" data-cat="0">Keyword &amp; rank tracking</div>
+          <div class="pgrid" id="cat-0" data-cat="0">
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=semrush.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Keyword volume &amp; ideas</span><s>Semrush · $139/mo</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=serpstat.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Competitor keywords</span><s>Serpstat · $69/mo</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=spyfu.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Domain &amp; ad history</span><s>SpyFu · $39/mo</s></div></div>
@@ -644,24 +684,24 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=analytics.google.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>GA4 sessions &amp; goals</span><span class="row2"><s>Supermetrics · $69/mo</s><b class="oatag">OAuth</b></span></div></div>
           </div>
 
-          <div class="pcat rv">Backlinks &amp; authority</div>
-          <div class="pgrid">
+          <div class="pcat rv off" data-cat="1">Backlinks &amp; authority</div>
+          <div class="pgrid off" id="cat-1" data-cat="1">
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=moz.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Backlinks &amp; anchors</span><s>Moz · $99/mo</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=majestic.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Trust &amp; citation flow</span><s>Majestic · $50/mo</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=dataforseo.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Referring domains</span><s>DataForSEO Backlinks</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=ahrefs.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Broken-link audit</span><s>crawl endpoints</s></div></div>
           </div>
 
-          <div class="pcat rv">AI visibility</div>
-          <div class="pgrid">
+          <div class="pcat rv off" data-cat="2">AI visibility</div>
+          <div class="pgrid off" id="cat-2" data-cat="2">
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=google.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>AI Overview citations</span><s>SerpApi · $75/mo</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=openai.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Brand mentions in answers</span><s>no official API</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=perplexity.ai&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Cited-source tracking</span><s>no official API</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=reddit.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Where LLMs source it</span><s>rate-limited</s></div></div>
           </div>
 
-          <div class="pcat rv">Trending &amp; discovery</div>
-          <div class="pgrid">
+          <div class="pcat rv off" data-cat="3">Trending &amp; discovery</div>
+          <div class="pgrid off" id="cat-3" data-cat="3">
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=tiktok.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>TikTok trends &amp; sounds</span><s>API: invite-only</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=x.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>X posts &amp; profiles</span><s>X API · $200/mo</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=instagram.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Instagram posts &amp; reels</span><s>API: app review</s></div></div>
@@ -672,28 +712,16 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=linkedin.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>LinkedIn posts &amp; pages</span><s>partner-only</s></div></div>
           </div>
 
-          <div class="pcat rv">Video &amp; image generation</div>
-          <div class="pgrid">
-            <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=seed.bytedance.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Seedance 2.5 talking head</span><s>Higgsfield · $49/mo</s></div></div>
-            <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=seed.bytedance.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Real-face reference clips</span><s>BytePlus approval queue</s></div></div>
-            <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=gemini.google.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Gemini 3 Pro Image</span><s>Google AI Pro · $20/mo</s></div></div>
-            <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=openai.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>GPT Image 2.5</span><s>ChatGPT Plus · $20/mo</s></div></div>
-            <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=deepmind.google&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Veo 3.1 fast</span><s>Google AI Pro · $20/mo</s></div></div>
-            <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=alibaba.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Wan 3.0 video</span><s>via OpenRouter</s></div></div>
-            <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=minimax.io&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>MiniMax image &amp; video</span><s>Hailuo app · $10/mo</s></div></div>
-            <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=replicate.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Flux, Seedream, more</span><s>via Replicate</s></div></div>
-          </div>
-
-          <div class="pcat rv">Publish on socials</div>
-          <div class="pgrid">
+          <div class="pcat rv off" data-cat="4">Publish on socials</div>
+          <div class="pgrid off" id="cat-4" data-cat="4">
 <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=x.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Post to X</span><span class="row2"><s>Postiz · $29/mo</s><b class="oatag">OAuth</b></span></div></div>
 <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=instagram.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Publish Instagram reels</span><span class="row2"><s>Postiz · $29/mo</s><b class="oatag">OAuth</b></span></div></div>
 <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=linkedin.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Post to LinkedIn</span><span class="row2"><s>Postiz · $29/mo</s><b class="oatag">OAuth</b></span></div></div>
 <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=youtube.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Upload to YouTube</span><span class="row2"><s>Postiz · $29/mo</s><b class="oatag">OAuth</b></span></div></div>
           </div>
 
-          <div class="pcat rv">Enrich people &amp; company</div>
-          <div class="pgrid">
+          <div class="pcat rv off" data-cat="5">Enrich people &amp; company</div>
+          <div class="pgrid off" id="cat-5" data-cat="5">
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=hunter.io&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Find &amp; verify work email</span><s>Hunter · $34/mo</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=lusha.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Person enrichment</span><s>Lusha · $49/mo</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=peopledatalabs.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Profile &amp; role history</span><s>PDL · credit packs</s></div></div>
@@ -704,39 +732,39 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
             <div class="pcard"><div class="ph"><span class="pi" style="background:#0f766e">CS</span></div><div class="pt"><span>Company news &amp; signals</span><s>enterprise-only</s></div></div>
           </div>
 
-          <div class="pcat rv">Buying signals</div>
-          <div class="pgrid">
+          <div class="pcat rv off" data-cat="6">Buying signals</div>
+          <div class="pgrid off" id="cat-6" data-cat="6">
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=linkedin.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Hiring &amp; headcount</span><s>enterprise-only</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=leadmagic.io&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Mobile &amp; social lookup</span><s>LeadMagic · credits</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=google.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Local business data</span><s>rate-limited</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=hunter.io&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Deliverability check</span><s>Hunter · $34/mo</s></div></div>
           </div>
 
-          <div class="pcat rv">Manage ads campaigns</div>
-          <div class="pgrid">
+          <div class="pcat rv off" data-cat="7">Manage ads campaigns</div>
+          <div class="pgrid off" id="cat-7" data-cat="7">
             <div class="pcard"><div class="ph"><img src="https://www.gstatic.com/images/branding/product/2x/ads_48dp.png" alt="" loading="lazy"/></div><div class="pt"><span>Google Ads campaigns</span><span class="row2"><s>Optmyzr · $249/mo</s><b class="oatag">OAuth</b></span></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=facebook.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Meta Ads budgets</span><span class="row2"><s>Revealbot · $99/mo</s><b class="oatag">OAuth</b></span></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=tiktok.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>TikTok Ads</span><span class="row2"><s>Madgicx · $55/mo</s><b class="oatag">OAuth</b></span></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=bing.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Microsoft Ads</span><span class="row2"><s>Adalysis · $99/mo</s><b class="oatag">OAuth</b></span></div></div>
           </div>
 
-          <div class="pcat rv">Competitor creative</div>
-          <div class="pgrid">
+          <div class="pcat rv off" data-cat="8">Competitor creative</div>
+          <div class="pgrid off" id="cat-8" data-cat="8">
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=facebook.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Meta Ad Library</span><s>manual research</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=google.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Google Ads Transparency</span><s>SerpApi · $75/mo</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=tiktok.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>TikTok ad library</span><s>EU-only UI</s></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=linkedin.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>LinkedIn ad library</span><s>manual research</s></div></div>
           </div>
 
-          <div class="pcat rv">Measurement</div>
-          <div class="pgrid">
+          <div class="pcat rv off" data-cat="9">Measurement</div>
+          <div class="pgrid off" id="cat-9" data-cat="9">
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=analytics.google.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>GA4 conversions</span><span class="row2"><s>Supermetrics · $69/mo</s><b class="oatag">OAuth</b></span></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.gstatic.com/images/branding/product/2x/google_my_business_64dp.png" alt="" loading="lazy"/></div><div class="pt"><span>Business Profile</span><span class="row2"><s>BrightLocal · $39/mo</s><b class="oatag">OAuth</b></span></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=pinterest.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Pinterest Ads</span><span class="row2"><s>Tailwind · $25/mo</s><b class="oatag">OAuth</b></span></div></div>
             <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=snapchat.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Snapchat Ads</span><span class="row2"><s>manual in Ads Manager</s><b class="oatag">OAuth</b></span></div></div>
           </div>
 
-          <div class="morewrap" aria-hidden="true">
+          <div class="morewrap">
             <div class="pgrid">
 <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=slack.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Slack messages</span><s>workspace app</s></div></div>
 <div class="pcard"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=apify.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Actor runs at scale</span><s>per-seat plans</s></div></div>
@@ -745,7 +773,7 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
             </div>
           </div>
           <div class="moreline rv">+2,500 more expert tools in the catalog<br>
-            <button class="ghostbtn sm" onclick="openSignin()">Browse all 2,630 tools</button></div>
+            <button class="ghostbtn sm" onclick="openSignin()">Browse all {ENDPOINTS} tools</button></div>
     </div>
   </div>
 </section>
@@ -759,8 +787,8 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
       <div class="bentext">
         <div class="bennum">01</div>
         <h3>One <i>unified key.</i></h3>
-        <p>Forty-two providers, <b>one credential</b>. No per-provider signups, no key files scattered across machines — your agent holds a single treg token and every tool in the catalog answers to it.</p>
-        <div class="benmeta"><span>one signup, 47 providers</span><span>revoke it in one place</span><span>works in any agent</span></div>
+        <p>{PROVIDERS} providers, <b>one credential</b>. No per-provider signups, no key files scattered across machines - your agent holds a single treg token and every tool in the catalog answers to it.</p>
+        <div class="benmeta"><span>one signup, {PROVIDERS} providers</span><span>revoke it in one place</span><span>works in any agent</span></div>
       </div>
       <div class="keywall">
         <div class="kw-key"><span class="kg">▚</span><code>trg_live_</code><span class="kdots">••••••••••••••••</span></div>
@@ -777,13 +805,13 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
       <div class="bentext">
         <div class="bennum">02</div>
         <h3>Expert tool for <i>everything.</i></h3>
-        <p>Your agent asks for the <b>task, not the tool</b>. Nineteen providers sell backlinks, nine sell email lookup — treg shows what each one charges and <b>what we've measured them doing</b>: success rate, speed, last time it answered. Your agent picks on evidence, not on a guess.</p>
+        <p>Your agent asks for the <b>task, not the tool</b>. Nineteen providers sell backlinks, nine sell email lookup - treg shows what each one charges and <b>what we've measured them doing</b>: success rate, speed, last time it answered. Your agent picks on evidence, not on a guess.</p>
         <div class="benmeta"><span>priced per result, compared live</span><span>success rate &amp; speed we measured</span><span>pin a vendor any time</span></div>
       </div>
       <div class="win">
-        <div class="wbar"><i></i><i></i><i></i><span class="wt">catalog — <b>compare the providers</b></span></div>
+        <div class="wbar"><i></i><i></i><i></i><span class="wt">catalog - <b>compare the providers</b></span></div>
         <div class="cap" id="cap">
-          <div class="cap-req"><img src="https://unpkg.com/@lobehub/icons-static-png@latest/light/claudecode-color.png" alt="Claude Code"/><b>claude code</b><code id="capq"></code><span class="capcaret" id="capcaret"></span></div>
+          <div class="cap-req"><img src="/media/landing/assets/claudecode-color.svg" alt="Claude Code"/><b>claude code</b><code id="capq"></code><span class="capcaret" id="capcaret"></span></div>
           <div class="cap-h"><span class="cap-t" id="capt"></span><span class="cap-n" id="capn"></span></div>
           <div id="caprows">
             <div class="cap-row"><span class="cap-logo"><img alt="" loading="lazy"/></span><b></b><code></code><span class="cap-pick">best ✓</span><span class="cap-ok">✓</span><span class="cap-warn"></span></div>
@@ -794,7 +822,7 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
           </div>
           <div class="cap-res" id="capres"><span class="cr-arr">↩</span><span id="caprestxt"></span></div>
         </div>
-        <div class="wf" id="capwf">✓ your agent picked on live data — price, success rate, speed</div>
+        <div class="wf" id="capwf">✓ your agent picked on live data - price, success rate, speed</div>
       </div>
     </div>
 
@@ -803,11 +831,11 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
       <div class="bentext">
         <div class="bennum">03</div>
         <h3>No subscription, <i>pay for results.</i></h3>
-        <p>Semrush, Moz, Crunchbase, Hunter — seats you'd never buy for one agent run. treg carries the subscriptions and bills you <b>fractions of a cent per call</b>, price shown before the call, $1.00 free to start. Already pay for a provider? <b>Bring your own key</b> and those calls route through it, unmetered.</p>
+        <p>Semrush, Moz, Crunchbase, Hunter - seats you'd never buy for one agent run. treg carries the subscriptions and bills you <b>fractions of a cent per call</b>, price shown before the call, $1.00 free to start. Already pay for a provider? <b>Bring your own key</b> and those calls route through it, unmetered.</p>
         <div class="benmeta"><span>no provider signup</span><span>price quoted up front</span><span>your own key always wins</span></div>
       </div>
       <div class="win">
-        <div class="wbar"><i></i><i></i><i></i><span class="wt">balance — <b>this week</b></span></div>
+        <div class="wbar"><i></i><i></i><i></i><span class="wt">balance - <b>this week</b></span></div>
         <div class="ledger" id="ledger">
           <div class="lrow"><span class="n"><img src="https://www.google.com/s2/favicons?domain=semrush.com&sz=64" alt=""/><b>Keyword volume &amp; ideas</b></span><span class="pr"><s>$139/mo</s><em>$0.006 / call</em></span></div>
           <div class="lrow"><span class="n"><img src="https://www.google.com/s2/favicons?domain=moz.com&sz=64" alt=""/><b>Backlinks &amp; anchors</b></span><span class="pr"><s>$99/mo</s><em>$0.012 / call</em></span></div>
@@ -819,33 +847,33 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
       </div>
     </div>
 
-    <!-- 04 — 0% additional fee -->
+    <!-- 04 - 0% additional fee -->
     <div class="zeroband rv" id="zeroband">
       <h3>0% <i>additional fee.</i></h3>
       <!-- The equation is spelled out here, not only in the typing animation below: this is the one
            line that states the pricing model, and a crawler (or a reader with JS off) saw an empty
            <code>. The script clears it on load and types it back in. -->
       <div class="zeq"><span class="ps">$</span><code id="zeqtxt">provider rate <b>+ $0.000 markup</b> = your price</code><span class="zcaret"></span></div>
-      <div class="zsub">we earn on volume pricing with vendors — not on you</div>
+      <div class="zsub">we earn on volume pricing with vendors - not on you</div>
     </div>
 
-    <!-- BYOK shelf scene — parked 2026-08-05; BYOK now a line in 03. Re-enable by uncommenting. -->
+    <!-- BYOK shelf scene - parked 2026-08-05; BYOK now a line in 03. Re-enable by uncommenting. -->
 <!--
     <div class="ben flip rv">
       <div class="bentext">
         <div class="bennum">04</div>
         <h3>Bring your own <i>keys &amp; skills.</i></h3>
-        <p>The catalog is the public half. The other half is yours: scan a project and treg turns your <b>API keys and SKILL.md files into callable tools</b>. Teammates' agents use them by token — the key itself never leaves the gateway.</p>
+        <p>The catalog is the public half. The other half is yours: scan a project and treg turns your <b>API keys and SKILL.md files into callable tools</b>. Teammates' agents use them by token - the key itself never leaves the gateway.</p>
         <div class="benmeta"><span>keys never on a machine</span><span>skills travel, secrets don't</span><span>rotate in one place</span></div>
       </div>
       <div class="win">
-        <div class="wbar"><i></i><i></i><i></i><span class="wt">catalog — <b>your org's shelf</b></span></div>
+        <div class="wbar"><i></i><i></i><i></i><span class="wt">catalog - <b>your org's shelf</b></span></div>
         <div class="shelf" id="shelf">
           <div class="sh-cmd"><span class="shp">$</span><code id="shq"></code><span class="capcaret" id="shcaret"></span></div>
           <div class="sh-found" id="shfound">
-            <div class="shf">› google-ads-report — SKILL.md + GOOGLE_ADS_TOKEN</div>
-            <div class="shf">› brand-voice — SKILL.md · knowledge, no key</div>
-            <div class="shf">› SEMRUSH_KEY — .env</div>
+            <div class="shf">› google-ads-report - SKILL.md + GOOGLE_ADS_TOKEN</div>
+            <div class="shf">› brand-voice - SKILL.md · knowledge, no key</div>
+            <div class="shf">› SEMRUSH_KEY - .env</div>
           </div>
           <div class="sh-grid">
             <div class="pcard mini" id="shsem"><div class="ph"><img src="https://www.google.com/s2/favicons?domain=semrush.com&sz=64" alt="" loading="lazy"/></div><div class="pt"><span>Keyword volume &amp; ideas</span><s class="m1">$0.006/call · treg key</s><em class="m2">your key ✓ · unmetered</em></div><b class="yb">yours</b></div>
@@ -856,7 +884,7 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
             <div class="sh-slot" id="shslot2"><span class="ghosttxt">+ yours</span><div class="pcard mini drop"><div class="ph"><span class="pi" style="background:#1a1a1a">🎙</span></div><div class="pt"><span>brand-voice</span><em class="m2">SKILL.MD · no key</em></div><b class="yb on">yours</b></div></div>
           </div>
         </div>
-        <div class="wf" id="shwf">✓ same shelf, same call — and your own key always beats the metered one</div>
+        <div class="wf" id="shwf">✓ same shelf, same call - and your own key always beats the metered one</div>
       </div>
     </div>
 
@@ -867,21 +895,22 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
 </section>
 
 <!-- ================= CLOSE ================= -->
+<div class="ending-reveal"><div class="ending-layer">
 <section class="close">
   <div class="wrap">
     <div class="rv">
       <h2><span class="grad">Connect your agents to</span> <span class="grad2">every tool it needs.</span></h2>
-      <p class="sub">One command in your agent, and it can do the job — with your keys, its own identity, and a bill you can read.</p>
+      <p class="sub">One command in your agent, and it can do the job - with your keys, its own identity, and a bill you can read.</p>
       <div style="margin-top:30px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
-        <button class="candy" onclick="openSignin()">Start free</button>
+        <button class="candy" onclick="openSignin()">{START_LABEL}</button>
         <a class="ghostbtn" href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg> GitHub</a>
       </div>
-      <p class="listyours">Building an API or a skill worth sharing? <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">List your tool in the catalog ↗</a> — it's open source.</p>
+      <p class="listyours">Building an API or a skill worth sharing? <a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">List your tool in the catalog ↗</a> - it's open source.</p>
     </div>
     <div class="trustline rv">
       <span><b>100% open source</b> · AGPL</span>
-      <span><b>2,630 endpoints</b> priced up front</span>
+      <span><b>{ENDPOINTS} endpoints</b> priced up front</span>
       <span>credentials injected server-side, <b>never on a machine</b></span>
     </div>
   </div>
@@ -890,12 +919,12 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
 <footer>
   <div class="foot-in">
     <div class="foot-brand">
-      <div class="brand"><span class="glyph">▚</span> treg</div>
+      <div class="brand"><span class="glyph" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span> treg</div>
       <div class="note">100% open source</div>
     </div>
     <nav class="foot-cols" aria-label="Site">
       <div class="foot-col"><div class="lab">Explore</div>
-        <a href="/catalog">Catalog</a><a href="/enrich-arena">Enrich Arena</a><!--hosted--><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><a href="/agents">Agents</a><!--/hosted--></div>
+        <a href="/catalog">Catalog</a><a href="/enrich-arena">Enrich Arena</a><!--hosted--><a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a><a href="/agents">Agents</a><a href="/blog">Blog</a><!--/hosted--></div>
       <div class="foot-col"><div class="lab">Build</div>
         <a href="/tutorial">Docs</a><a href="/docs">API</a><a href="/llms.txt">llms.txt</a><a href="https://github.com/superdesigndev/treg" target="_blank" rel="noopener">GitHub ↗</a></div>
       <div class="foot-col"><div class="lab">Company</div>
@@ -906,6 +935,7 @@ footer{margin-top:150px;border-top:1px solid var(--line);position:relative;overf
   </div>
   <div class="watermark">treg</div>
 </footer>
+</div></div>
 
 <script>
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -917,13 +947,48 @@ const io=new IntersectionObserver(es=>es.forEach(e=>{
 }),{threshold:.12});
 document.querySelectorAll('.roles .rv,.bens .rv,.close .rv').forEach(el=>io.observe(el));
 
+/* ---------- catalog category tabs (narrow screens) ---------- */
+(()=>{
+  const tabs=[...document.querySelectorAll('.ctab')],parts=[...document.querySelectorAll('.catwrap [data-cat]')];
+  const pick=(t,focus)=>{
+    const n=t.getAttribute('aria-controls').slice(4);
+    tabs.forEach(o=>{const on=o===t;o.setAttribute('aria-selected',on);o.tabIndex=on?0:-1;});
+    parts.forEach(el=>el.classList.toggle('off',el.dataset.cat!==n));
+    if(focus)t.focus();
+    t.scrollIntoView({block:'nearest',inline:'nearest',behavior:REDUCED?'auto':'smooth'});
+  };
+  tabs.forEach((t,i)=>{
+    t.addEventListener('click',()=>pick(t));
+    t.addEventListener('keydown',e=>{
+      const d={ArrowRight:1,ArrowLeft:-1}[e.key];
+      if(d){e.preventDefault();pick(tabs[(i+d+tabs.length)%tabs.length],true);}
+      else if(e.key==='Home'||e.key==='End'){e.preventDefault();pick(tabs[e.key==='Home'?0:tabs.length-1],true);}
+    });
+  });
+})();
+
 /* ---------- copy the agent command ---------- */
-document.getElementById('copybtn').addEventListener('click',async e=>{
-  const btn=e.currentTarget;
-  try{await navigator.clipboard.writeText(document.getElementById('cmd').textContent.trim());}catch(_){}
-  btn.textContent='copied';btn.classList.add('done');
-  setTimeout(()=>{btn.textContent='copy';btn.classList.remove('done');},1800);
-});
+(()=>{
+ const btn=document.getElementById('copybtn');let timer,busy=false;
+ const idle=document.createElement('span');idle.className='copy-idle';idle.textContent=btn.textContent;
+ const result=document.createElement('span');result.className='copy-result';
+ idle.setAttribute('aria-hidden','true');result.setAttribute('aria-hidden','true');
+ btn.replaceChildren(idle,result);btn.setAttribute('aria-label','Copy agent command');
+ const status=document.createElement('span');status.className='copy-status';status.setAttribute('role','status');btn.after(status);
+ function reset(){btn.classList.remove('done','copy-feedback');btn.setAttribute('aria-label','Copy agent command');status.textContent='';}
+ btn.addEventListener('click',async()=>{
+  if(busy)return;busy=true;clearTimeout(timer);
+  try{
+   await navigator.clipboard.writeText(document.getElementById('cmd').textContent.trim());
+   result.innerHTML='<svg class="copy-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8l3.2 3.2L13 4.5"/></svg><span>copied</span>';
+   btn.classList.add('done');btn.setAttribute('aria-label','Copied');status.textContent='Copied';
+  }catch(_){
+   result.textContent='retry';btn.classList.remove('done');btn.setAttribute('aria-label','Copy failed, please retry');status.textContent='Copy failed, please retry';
+  }finally{
+   busy=false;btn.classList.add('copy-feedback');timer=setTimeout(reset,2200);
+  }
+ });
+})();
 
 /* ================================================================
    the role wheel + its toolbelt
@@ -943,7 +1008,7 @@ const ROLES=[
   {line:'an SDR', belt:'the outbound toolbelt', ag:'agent:leadgen',
    steps:[['tg','find ICP companies'],['tg','enrich decision-makers'],['tg','verify work emails'],['ag2','✎','drafted the outreach list']],
    cli:'hunter.email.finder',
-   tools:[['hunter.io','Hunter'],['lusha.com','Lusha'],['peopledatalabs.com','PDL'],['apollo.io','Apollo'],['crunchbase.com','Crunchbase'],['coresignal.com','Coresignal']],
+   tools:[['hunter.io','Hunter'],['lusha.com','Lusha'],['peopledatalabs.com','PDL'],['aviato.co','Aviato'],['crunchbase.com','Crunchbase'],['coresignal.com','Coresignal']],
    more:'+130 endpoints', foot:'<b>pay per lookup</b> · no seats'},
   {line:'a media buyer', belt:'the media-buying toolbelt', ag:'agent:media-buyer',
    steps:[['tg','pull competitor ads'],['tg','check GA4 conversions'],['tg','rebalance budgets'],['ag2','✓','budget +12% applied']],
@@ -952,11 +1017,11 @@ const ROLES=[
    more:'+150 endpoints', foot:'<b>read and write</b> · OAuth stays in treg'},
 ];
 const AGENTS=[
-  {n:'Claude Code',i:'claudecode-color.png'},
-  {n:'Codex',      i:'codex-color.png'},
-  {n:'OpenClaw',   i:'openclaw-color.png'},
+  {n:'Claude Code',i:'claudecode-color.svg'},
+  {n:'Codex',      i:'codex-color.svg'},
+  {n:'OpenClaw',   i:'openclaw-color.svg'},
 ];
-const LOBE='https://unpkg.com/@lobehub/icons-static-png@latest/light/';
+const LOBE='/media/landing/assets/';
 
 /* the role wheel; the agents are a static row, listed one after another */
 const rolewheel=document.getElementById('rolewheel');
@@ -967,7 +1032,7 @@ document.getElementById('agentslot').innerHTML=
 let roleI=0, userTouched=false;
 
 /* the hero scene retells the active role: agent steps → treg call → toolbelt.
-   each role is worked by a different agent — variety without a rotation. */
+   each role is worked by a different agent - variety without a rotation. */
 function paintScene(i){
   const r=ROLES[i], a=AGENTS[i%AGENTS.length];
   document.getElementById('sc-agimg').src=LOBE+a.i;
@@ -975,8 +1040,8 @@ function paintScene(i){
   document.getElementById('sc-agrole').textContent=r.ag;
   document.getElementById('sc-steps').innerHTML=r.steps.map(s=>
     s[0]==='tg'
-      ?`<div class="hst"><span class="tg">▚</span>${s[1]}<i>✓</i></div>`
-      :`<div class="hst"><span class="ag2">${s[1]}</span>${s[2]}<i>✓</i></div>`
+      ?`<div class="hst"><span class="tg">▚</span><span class="hst-label">${s[1]}</span><i>✓</i></div>`
+      :`<div class="hst"><span class="ag2">${s[1]}</span><span class="hst-label">${s[2]}</span><i>✓</i></div>`
   ).join('');
   document.getElementById('sc-cli').innerHTML=
     `<span class="ps">$</span> treg call <span class="cy">${r.cli}</span> <span class="okc">✓ 200</span>`;
@@ -1002,12 +1067,13 @@ function setRole(i){
   [...rolewheel.children].forEach((el,n)=>el.classList.toggle('on',n===roleI));
   fit(document.getElementById('roleslot'),rolewheel,roleI);
   paintScene(roleI);
+  window.dispatchEvent(new CustomEvent('treg:rolechange',{detail:{index:roleI}}));
 }
-/* hero auto-rotation — runs while the hero is on screen */
+/* hero auto-rotation - runs while the hero is on screen */
 let roleTimer;
 function startRotation(){
   if(REDUCED) return;
-  roleTimer=setInterval(()=>{ if(!userTouched && heroVisible()) setRole(roleI+1); },3400);
+  roleTimer=setInterval(()=>{ if(!userTouched && !document.hidden && heroVisible() && !document.documentElement.classList.contains('opening-stage') && !document.documentElement.classList.contains('motion-off') && !matchMedia('(prefers-reduced-motion: reduce)').matches && !document.querySelector('#sc-tools :focus')) setRole(roleI+1); },3400);
 }
 function heroVisible(){ return scrollY < innerHeight*.8 }
 function stopRotation(){ userTouched=true; clearInterval(roleTimer); }
@@ -1027,7 +1093,7 @@ function stopRotation(){ userTouched=true; clearInterval(roleTimer); }
 })();
 
 /* ================================================================
-   best tool for every scenario — each replay is a different ask:
+   best tool for every scenario - each replay is a different ask:
    the agent types a task, treg matches the capability, the vendor
    ladder pops in, the best one wins, and the ANSWER returns to the
    agent. The agent never chose a vendor.
@@ -1118,7 +1184,7 @@ function stopRotation(){ userTouched=true; clearInterval(roleTimer); }
 })();
 
 /* ================================================================
-   your org's shelf — scan finds your keys & skills, and they drop
+   your org's shelf - scan finds your keys & skills, and they drop
    into the same catalog grid the agent already shops from.
    ================================================================ */
 (function(){
@@ -1159,7 +1225,7 @@ function stopRotation(){ userTouched=true; clearInterval(roleTimer); }
 })();
 
 /* ================================================================
-   the ledger — seat prices land first, dark and real; then the
+   the ledger - seat prices land first, dark and real; then the
    strike draws through each one and the per-call price takes over.
    The OAuth row flips to free.
    ================================================================ */
@@ -1193,7 +1259,7 @@ function stopRotation(){ userTouched=true; clearInterval(roleTimer); }
 })();
 
 /* ================================================================
-   the 0% band — the equation types itself out once when it
+   the 0% band - the equation types itself out once when it
    scrolls in; the markup term stays highlighted.
    ================================================================ */
 (function(){
@@ -1209,7 +1275,7 @@ function stopRotation(){ userTouched=true; clearInterval(roleTimer); }
     }
     el.innerHTML=h;
   }
-  if(REDUCED){ render(total); return; }
+  if(REDUCED){ render(total); band.classList.add('typing-complete'); return; }
   render(0);   // the markup ships with the equation already written out (so it survives with JS
                // off); clear it here, on load, so the type-in below starts from empty rather than
                // snapping from the full line back to one character when the band scrolls in.
@@ -1217,7 +1283,7 @@ function stopRotation(){ userTouched=true; clearInterval(roleTimer); }
     if(!e.isIntersecting) return;
     io.disconnect();
     let n=0;
-    const tick=setInterval(()=>{ render(++n); if(n>=total) clearInterval(tick); },38);
+    const tick=setInterval(()=>{ render(++n); if(n>=total){clearInterval(tick);band.classList.add('typing-complete');} },38);
   }),{threshold:.5});
   io.observe(band);
 })();
@@ -1230,14 +1296,16 @@ document.getElementById('roleslot').style.cursor='pointer';
 
 function refit(){ fit(document.getElementById('roleslot'),rolewheel,roleI); }
 setRole(0); startRotation();
-/* the display face loads late — remeasure once it lands, or the slot keeps
+/* the display face loads late - remeasure once it lands, or the slot keeps
    the fallback-font width and the caret drifts off the word */
 if(document.fonts&&document.fonts.ready) document.fonts.ready.then(refit);
 addEventListener('load',refit);
 addEventListener('resize',refit);
 
 /* ===== sign-in (same door as landing.html) ===== */
-function openSignin(){ document.getElementById('signin-scrim').classList.add('open');
+function openSignin(){
+  if(document.body.dataset.signedIn==='true'){ location.href='/app'; return; }
+  document.getElementById('signin-scrim').classList.add('open');
   document.getElementById('em-input').focus(); }
 function closeSignin(){ document.getElementById('signin-scrim').classList.remove('open'); }
 addEventListener('keydown',e=>{ if(e.key==='Escape') closeSignin(); });
@@ -1254,7 +1322,7 @@ async function emailStart(){
     document.getElementById('em-step1').style.display='none';
     document.getElementById('em-step2').style.display='block';
     if(d.dev_code){ document.getElementById('em-code').value=d.dev_code;
-      err.style.color='var(--green)'; err.textContent='dev mode — your code: '+d.dev_code;
+      err.style.color='var(--green)'; err.textContent='dev mode - your code: '+d.dev_code;
     } else { err.style.color=''; }
     document.getElementById('em-code').focus();
   }catch(e){ err.textContent=e.message; document.getElementById('em-btn1').textContent='Email me a sign-in code'; }
@@ -1294,8 +1362,15 @@ async function emailVerify(){
     <div class="err" id="em-err"></div>
   </div>
 </div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/lenis@1.3.26/dist/lenis.min.js"></script><script src="/media/landing/catalog-drum.js"></script><script src="/media/landing/refinement.js"></script><script src="/media/landing/gateway.js"></script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/","three/fonts/":"https://cdn.jsdelivr.net/npm/three@0.180.0/examples/fonts/"}}</script>
+<script src="/media/landing/gateway-loader.js"></script>
+<script src="/media/landing/hero-particles.js"></script>
+<script src="/media/landing/command-beam.js"></script>
 <script>
-// Support chat (Intercom), anonymous visitor mode — loads ONLY when this deployment configured an
+// Support chat (Intercom), anonymous visitor mode - loads ONLY when this deployment configured an
 // app id (/meta.intercom_app_id); self-hosted instances serve "" and nothing loads. No id is
 // hardcoded here on purpose: the page is the same bytes for every deployment.
 (function(){

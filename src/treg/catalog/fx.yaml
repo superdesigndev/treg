@@ -28,7 +28,9 @@
 # NOTE: this block must stay ABOVE `rates_to_usd:` -- catalog_fx_update.py rewrites the file
 # from the text before that key, so anything below it is discarded on the next FX refresh.
 credit_rates_usd:
+  olostep: {usd: 0.002, basis: "Actual account purchase: $2 per 1,000 Olostep credits = $0.002 per credit. Olostep's dashboard sometimes labels credits as requests, but its API meters endpoint-specific credits: standard Scrape and bounded Map use 1, Search uses 5, Answer uses 20, and Crawl uses 1 per completed page", source: "Olostep account purchase plus live GET /user/credits/info balance deltas and https://docs.olostep.com/balance-billing/balance-and-billing", checked: "2026-09-23"}
   tavily: {usd: 0.008, basis: "Pay-as-you-go replacement cost: $0.008 per API credit. Free monthly credits and discounted subscription tiers do not reduce the stable acquisition rate used for shared-key settlement", source: "https://docs.tavily.com/documentation/api-credits", checked: "2026-09-21"}
+  adyntel: {usd: 0.011, basis: "Pay-as-you-go purchase: $55 / 5,000 credits = $0.011 per credit; successful ad-library pages normally cost one credit", source: "Adyntel account purchase and https://www.adyntel.com/pricing", checked: "2026-09-21"}
   reapi: {usd: 0.001, basis: "reAPI meters every task in credits at 1,000 per dollar: the terminal task body's usage.credits is the charge (593 credits for the $0.593 5 s 480p Seedance probe). Video rows settle on that figure; the USD price tables are the reserve", source: "https://reapi.ai/models/seedance-2-5 and live task bodies", checked: "2026-09-20"}
   datagma: {usd: 0.02258, basis: "Assigned prepaid purchase: EUR 59 / 3,000 credits = EUR 0.0196667 per credit, converted at the ECB 2026-09-17 reference rate EUR 1 = USD 1.1481 to USD 0.0225793 and rounded up to 22,580 micro-USD. This is treg's base cost before configured platform margin", source: "Datagma account purchase and https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/eurofxref-graph-usd.en.html", checked: "2026-09-18"}
   zerobounce: {usd: 0.0138, basis: "Supplied replacement cost: $69 / 5,000 purchased pay-as-you-go credits = $0.0138 per credit. Live validation deducted one credit per non-unknown result. After a shared 10-call promotional Finder/Domain Search allocation was exhausted, a successful Email Finder call deducted 20 credits; undetermined results are documented as free. treg treats replenishment as manual", source: "ZeroBounce account purchase, live balance observations, https://www.zerobounce.net/pricing, https://www.zerobounce.net/docs/email-finder-api and https://www.zerobounce.net/docs/domain-search-api", checked: "2026-09-17"}
@@ -92,6 +94,8 @@ credit_rates_usd:
 # sales-gated. Majestic's three pools share ONE subscription price, so each pool's rate divides the
 # WHOLE subscription by that pool's allowance -- an upper bound per pool; never sum pools per call.
 unit_rates_usd:
+  tinyfish:
+    step: {usd: 0.016, basis: "TinyFish Agent is billed at $0.016 for each agent step reported as num_of_steps on the terminal run", source: "https://www.tinyfish.ai/pricing", checked: "2026-09-23"}
   semrush:
     api_unit: {usd: null, basis: "units are pre-purchased in packages (2M / 5M / 10M / 20M) whose prices Semrush does not list publicly; every route says contact sales", source: "https://developer.semrush.com/api/get-started/api-access/", checked: "2026-07-31"}
   majestic:

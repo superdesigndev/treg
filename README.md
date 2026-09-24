@@ -306,6 +306,7 @@ scripts/dev-local.sh reset       # wipe the dev DB + CLI sandbox for a fresh sta
 Or run the server directly, without tmux:
 
 ```bash
+bash scripts/build-dashboard.sh # Node 22.12+ and npm; build the Dashboard
 uv sync                        # create the venv from uv.lock (pulls the server deps for dev)
 uv run python -m treg upgrade  # prepare schema + run idempotent release tasks without serving
 uv run python -m treg          # serve on 0.0.0.0:18790 (add --reload for dev)

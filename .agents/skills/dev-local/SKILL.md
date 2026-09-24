@@ -11,8 +11,9 @@ settings, and gives you a sandboxed CLI that never touches `~/.treg/config.json`
 | Service | Command (managed by the script) | Port |
 |---|---|---|
 | treg server | `uv run python -m treg --reload` + `TREG_EMAIL_DEV_MODE=true`, own sqlite `treg-dev.db` | 18790 |
+| Dashboard Vite | `npm run dev` in `frontend/`, hot updates loaded by the Python entry | 5173 |
 
-No infra deps (sqlite). Prerequisites: `tmux`, `uv` (the script runs `uv sync` if `.venv` is missing).
+No infra deps (sqlite). Prerequisites: Node 22.12+, npm, `tmux`, `uv` (the script runs `uv sync` if `.venv` is missing).
 
 ## Subcommands
 
@@ -31,6 +32,12 @@ scripts/dev-local.sh reset       # down + wipe treg-dev.db and the CLI sandbox
 repo's CLI against localhost with `HOME=scripts/.dev-home`, so the real
 `~/.treg/config.json` (usually pointing at production) is never overwritten.
 Email OTP dev mode is on — codes appear in the login page / API response, no mail sender needed.
+
+`TREG_DEV_DB=/absolute/path/to/dev.db` selects a separate database without resetting the default.
+
+For a LAN preview, build with `bash scripts/build-dashboard.sh`, then use
+`TREG_FRONTEND_DEV=false scripts/dev-local.sh restart` (or `up` if stopped). This serves
+compiled assets on port 18790; the default hot-update mode requires a browser on the same machine.
 
 ## Troubleshooting
 

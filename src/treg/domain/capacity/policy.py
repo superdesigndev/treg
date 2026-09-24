@@ -19,11 +19,13 @@ AGGREGATORS = ("orthogonal", "monid")
 # capacity_type / funding_mode / source. Anything not listed imports as unknown/unknown and is
 # flagged by the sweep — a policy row must be classified by a person, never guessed by code.
 _KNOWN: dict[str, tuple[str, str, str]] = {
+    "adyntel": ("credits", "manual", "manual"),
     "dropleads": ("credits", "manual", "api"),
     "trykitt": ("cash", "manual", "api"),
     "harvestapi": ("cash", "auto_recharge", "api"),  # Owner will enable vendor auto top-up for production.
     "dataforseo": ("cash", "auto_recharge", "api"),
     "tikhub": ("cash", "auto_recharge", "api"),
+    "tinyfish": ("cash", "manual", "api"),
     "lusha": ("credits", "auto_recharge", "api"),
     "scrapecreators": ("credits", "manual", "api"),
     "contactout": ("credits", "unknown", "api"),  # independent pools; overages unconfirmed
@@ -42,6 +44,8 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     # reads nor changes that setting, so the observation source remains manual.
     "trestleiq": ("cash", "auto_recharge", "manual"),
     "tavily": ("credits", "manual", "api"),
+    "keenable": ("requests", "manual", "manual"),
+    "olostep": ("credits", "manual", "api"),
     "getleadsio": ("credits", "manual", "api"),
     "sumble": ("monthly_quota", "quota_reset", "api"),
     "moltsets": ("rolling_quota", "subscription", "api"),
@@ -86,6 +90,11 @@ _QUOTAS: dict[str, dict] = {
     "aiark": {"limit": 15000, "period": "billing", "resets_at_rule": "monthly subscription; date not reported by API"},
 }
 _RATE_LIMITS: dict[str, dict] = {
+    "adyntel": {"limit": 5, "window_s": 1, "source": "docs"},
+    # Search's documented burst allowance is the strictest request-count limit shared by these
+    # hosts. Fetch additionally meters URLs and Agent limits concurrency; upstream remains the
+    # authority for those differently-shaped limits.
+    "tinyfish": {"limit": 30, "window_s": 60, "source": "docs"},
     # The only platform-served tool is standard single verification, documented at 100/s. Keep
     # the shared key at one quarter of that allowance; BYOK calls bypass this limiter.
     "bounceban": {"limit": 25, "window_s": 1, "source": "docs"},
@@ -109,6 +118,11 @@ _RATE_LIMITS: dict[str, dict] = {
     # documented tier until the shared key's environment is verified. Crawl has the same 100/minute
     # ceiling on both tiers, so this provider-wide pace is safe for all four catalog tools.
     "tavily": {"limit": 100, "window_s": 60, "source": "docs"},
+    "keenable": {"limit": 10, "window_s": 1, "source": "docs"},
+    # Olostep publishes 429 guidance but no numeric general API ceiling, and successful live calls
+    # returned no rate-limit headers. Smooth the shared key conservatively until the vendor supplies
+    # a contract value or production traffic establishes a safer bound. BYOK bypasses this policy.
+    "olostep": {"limit": 5, "window_s": 1, "source": "policy"},
     # Routing-friendly shared-key pace. The 5,000-request/5h rolling allowance is capacity, not a
     # burst rate; encoding it here would make the spacer add 3.6s before every routed attempt.
     "moltsets": {"limit": 10, "window_s": 1, "source": "policy"},

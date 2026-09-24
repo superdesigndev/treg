@@ -59,6 +59,36 @@ def test_tavily_surface_keeps_only_safe_synchronous_data_tools():
     ))
 
 
+def test_olostep_surface_is_bounded_byok_and_platform_safe():
+    cat = cs.load(refresh=True)
+    rows = {ep["id"]: ep for ep in cat.for_provider("olostep")}
+    assert set(rows) == {
+        "olostep.web.scrape",
+        "olostep.web.search",
+        "olostep.web.answer",
+        "olostep.web.map.search",
+        "olostep.web.crawl",
+        "olostep.web.crawl.status",
+        "olostep.web.crawl.results",
+    }
+    assert all(ep["scope"] == "any_account" for ep in rows.values())
+    assert all(cat.platform_eligible(ep) for ep in rows.values())
+    assert not any("batch" in eid for eid in rows)
+    assert cat.credit_rates["olostep"] == 0.002
+    assert cat.cost_view(rows["olostep.web.scrape"]["cost"], "olostep")["usd"] == 0.002
+    assert cat.cost_view(rows["olostep.web.search"]["cost"], "olostep")["usd"] == 0.01
+    assert cat.cost_view(rows["olostep.web.answer"]["cost"], "olostep")["usd"] == 0.04
+    assert rows["olostep.web.map.search"]["input"]["body"]["top_n"]["max"] == 1000
+    crawl = rows["olostep.web.crawl"]
+    assert crawl["input"]["body"]["max_pages"]["max"] == 100
+    assert crawl["cost"]["settle"] == "usage"
+    assert crawl["cost"]["usage"] == {"path": "credits_consumed", "unit": "credit"}
+    status_owner = rows["olostep.web.crawl.status"]["resource_ownership"]["requires"]
+    results_owner = rows["olostep.web.crawl.results"]["resource_ownership"]["requires"]
+    assert status_owner["kind"] == "poll:olostep.web.crawl.status"
+    assert results_owner["kind"] == "fetch:olostep.web.crawl.results"
+
+
 def test_trestleiq_surface_is_three_direct_single_record_tools():
     cat = cs.load()
     rows = {ep["id"]: ep for ep in cat.for_provider("trestleiq")}

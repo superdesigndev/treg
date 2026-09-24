@@ -1,0 +1,1054 @@
+
+  [v-cloak]{display:none}  /* hide the raw template until Vue mounts — else a hard refresh flashes the un-compiled markup while the script downloads. Vue drops the attribute on mount, which is also how the loader guard above detects that it never did. */
+  /* ===== Ledger: warm paper + clay, mono-forward. Dark default. ===== */
+  :root{ --bg:#211d16;--panel:#2a251d;--panel2:#332d23;--ink:#f0e9d9;--muted:#a99e88;--line:#3b352a;
+    --accent:#e0703f;--onAccent:#231c14;--green:#7fae72;--amber:#d0a24a;--teal:#6aa89c;--red:#e08a7a;--r:14px;--rb:9px;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  [data-theme="light"]{ --bg:#f7f3ea;--panel:#fffdf8;--panel2:#f0eadc;--ink:#201c15;--muted:#877e6c;
+    --line:#e3dac7;--accent:#b8461f;--onAccent:#fff;--green:#3f6f3f;--amber:#a8720a;--teal:#2f7d74;--red:#a5382b;}
+  *{box-sizing:border-box}
+  /* a11y: a visible keyboard-focus indicator (there were none) + a skip-to-content link */
+  :focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:2px}
+  .skip{position:absolute;left:-9999px;top:8px;z-index:100;background:var(--accent);color:var(--onAccent);padding:8px 12px;border-radius:var(--rb)}
+  .skip:focus{left:8px}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:14px;line-height:1.5}
+  .sub,.lead,.card p,.help p,.loginbox p{font-family:var(--sans)}
+  button{font:inherit;cursor:pointer} .muted{color:var(--muted)} .mono{font-family:var(--mono)}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);padding:6px 12px;border-radius:var(--rb);font-family:var(--mono);font-size:12.5px;line-height:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:34px;box-sizing:border-box;white-space:nowrap}
+  .btn:hover{border-color:var(--accent)} .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--onAccent);font-weight:600}
+  .btn.sm{padding:4px 9px;font-size:12px} .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.ico{width:34px;min-width:34px;padding:0;flex:0 0 auto} .btn.sm.ico{width:30px;min-width:30px;min-height:30px}
+  .btn.danger{border-color:var(--red);color:var(--red)} .btn.danger:hover{background:color-mix(in srgb,var(--red) 15%,transparent);border-color:var(--red)}
+  .msel{background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:3px 7px;font-family:var(--mono);font-size:12px}
+  .frow{display:flex;align-items:center;gap:10px;margin:8px 0} .frow label{width:78px;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;flex:none}
+  .frow input,.frow select{flex:1;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:var(--rb);padding:7px 10px;font-family:var(--mono);font-size:12.5px}
+  .frow input:disabled{opacity:.6}
+  .bindrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:7px 0;padding:8px;background:var(--bg);border:1px solid var(--line);border-radius:8px}
+  .bindrow .msel{flex:none} .bindinput{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 8px;font-family:var(--mono);font-size:12px;flex:1;min-width:110px}
+  /* Provider logos sit in a uniform near-white tile in BOTH themes. Brand marks are drawn for
+     white, they differ wildly in ink coverage (LinkedIn is a full-bleed square, Analytics is three
+     thin bars), and monochrome ones like X vanish on one theme if left bare — one shared surface
+     fixes all three and keeps the column optically even. object-fit keeps a mark with odd
+     proportions (YouTube is wider than tall) inside the same box. */
+  /* Marketplace. minmax(0,1fr) on the tracks, not just auto-fill: a long base_url or summary in
+     one card must not widen every column and push the grid past the viewport. */
+  .mk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,290px),1fr));gap:12px}
+  .mk-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px;
+    display:flex;flex-direction:column;gap:10px;cursor:pointer;min-width:0;
+    transition:border-color .12s ease,transform .12s ease}
+  .mk-card:hover{border-color:var(--muted);transform:translateY(-1px)}
+  .mk-card:focus-visible{outline:2px solid var(--muted);outline-offset:2px}
+  .mk-top{display:flex;align-items:center;gap:11px;min-width:0}
+  .mk-top b{display:block;line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mk-cat{display:block;font-size:11px;color:var(--muted)}
+  /* Clamped so a long summary can't make one card twice the height of its neighbours. */
+  .mk-sum{margin:0;font-size:12.5px;line-height:1.5;color:var(--muted);flex:1;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .mk-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;
+    border-top:1px solid var(--line);padding-top:10px;font-size:11px}
+  .mk-quiet{color:var(--muted)} .mk-auth{color:var(--muted)}
+  .mk-filters{display:flex;flex-wrap:wrap;gap:7px;margin:16px 0 4px}
+  .mk-chip{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:999px;
+    padding:5px 12px;font-size:12px;font-family:inherit;cursor:pointer}
+  .mk-chip span{color:var(--muted);margin-left:5px}
+  .mk-chip.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  .mk-chip.on span{color:var(--bg);opacity:.65}
+  .mk-empty{border:1px dashed var(--line);border-radius:var(--r);padding:16px;color:var(--muted);font-size:13px}
+  /* A disclosure the user has to read before consenting, not a failure — so it borrows the panel
+     surface rather than .banner, which is red and would read as "something went wrong". */
+  .mk-notice{margin:12px 0 0;background:var(--panel2);border:1px solid var(--line2);
+    border-radius:8px;padding:9px 12px;color:var(--muted);font-size:12.5px;line-height:1.5}
+  .mk-perms{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:12px}
+  .mk-perm{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:13px}
+  .mk-perm-h{display:flex;align-items:center;gap:8px;margin-bottom:9px;font-size:12px}
+  .mk-perm-l{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+  .mk-perm-l li{font-size:12.5px;line-height:1.45;color:var(--muted);display:flex;gap:7px;align-items:flex-start}
+  .mk-tick{color:var(--ok,#7bbf7b);flex:0 0 auto}
+  /* Endpoint catalog (marketplace → Browse by platform). Deliberately reuses .mk-card and .ttable:
+     the only genuinely new furniture is the METHOD+path line and the expandable example row. */
+  /* own_account vs any_account is the load-bearing distinction in a capability list, so the
+     OAuth-only rows are the ones that get colour. */
+  .chip.own{color:var(--teal);border-color:color-mix(in srgb,var(--teal) 42%,var(--line));background:color-mix(in srgb,var(--teal) 10%,transparent)}
+  /* "You can call this right now." The one green in the marketplace, so it cannot be confused with
+     the verified/health greens elsewhere: filled, weighted, and led by a haloed dot.
+     (`.chip.ok` alone is unstyled and renders muted grey — which is how a ready capability came to
+     look identical to an unavailable one.) */
+  .chip.go{display:inline-flex;align-items:center;gap:6px;font-weight:600;color:var(--green);
+    border-color:color-mix(in srgb,var(--green) 48%,var(--line));
+    background:color-mix(in srgb,var(--green) 14%,transparent)}
+  .godot{width:6px;height:6px;border-radius:50%;background:var(--green);flex:0 0 6px;
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--green) 24%,transparent)}
+  .chip.any{color:var(--muted)}
+  /* onboarding "waiting for your agent" status: a soft pulsing dot */
+  .wc-wait{display:inline-flex;align-items:center;gap:8px;font-family:var(--sans);font-size:13px;color:var(--muted)}
+  .wc-waitdot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none;animation:wcpulse 1.4s ease-in-out infinite}
+  @keyframes wcpulse{0%,100%{opacity:.35;box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 40%,transparent)}50%{opacity:1;box-shadow:0 0 0 5px color-mix(in srgb,var(--accent) 0%,transparent)}}
+  /* Marketplace tab bar: All + one tab per catalog category + Platform (the provider shelves).
+     Scrolls rather than wraps — ten tabs and a narrow window must not become two ragged rows.
+     The rule under the tabs lives on the WRAPPER, not the scroller: the scroller carries a mask,
+     and a masked border would fade out 26px short of the right edge and read as a rendering bug. */
+  .mk-tabs-wrap{border-bottom:1px solid var(--line);margin:6px 0 16px}
+  /* Scrollbar hidden, scrolling kept. The right edge fades instead, so a cut-off tab hints that
+     there is more — and because the tabs are left-aligned, the fade falls on empty space (and
+     changes nothing) whenever they all fit. Fading the LEFT edge too would clip "All" at rest. */
+  .mk-tabs{display:flex;gap:2px;overflow-x:auto;margin-bottom:-1px;
+    scrollbar-width:none;-ms-overflow-style:none;
+    -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent);
+    mask-image:linear-gradient(90deg,#000 calc(100% - 26px),transparent)}
+  .mk-tabs::-webkit-scrollbar{display:none}
+  .mk-tabs button{background:none;border:0;color:var(--muted);padding:9px 10px;white-space:nowrap;
+    border-bottom:2px solid transparent;font-family:var(--mono);font-size:12.5px;cursor:pointer}
+  .mk-tabs button:hover{color:var(--ink)}
+  .mk-tabs button.on{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+  .mk-tabs button span{color:var(--muted);font-size:11px;margin-left:5px}
+  /* A section heading is a real heading, not a caption: the page is browsed by category, so the
+     category has to be the loudest thing on it after the page title. */
+  .tgroup.shelf{margin-bottom:34px}
+  .sec-head{margin:0 0 13px}
+  .sec-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:0}
+  .sec-h b{font-size:19px;font-weight:600;letter-spacing:-.35px;line-height:1.25;color:var(--ink)}
+  .sec-n{background:var(--panel2);border:1px solid var(--line);border-radius:999px;
+    padding:1px 9px;font-size:11.5px;color:var(--muted);font-family:var(--mono)}
+  .sec-hint{display:block;margin-top:4px;font-size:12.5px;color:var(--muted);line-height:1.5}
+  /* Platform cards. The card IS the platform: its mark and name, who serves it, what it covers,
+     how much of it there is and what the cheapest call costs — enough to choose without opening it.
+     Providers appear only as a logo stack; the capability x provider matrix lives inside. */
+  .pt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:12px}
+  .pt-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:16px 17px;
+    display:flex;flex-direction:column;gap:11px;cursor:pointer;min-width:0;
+    color:var(--ink);font-family:inherit;text-align:left;
+    transition:border-color .12s ease,transform .12s ease}
+  .pt-card:hover{border-color:var(--muted);transform:translateY(-1px)}
+  .pt-card:focus-visible{outline:2px solid var(--muted);outline-offset:2px}
+  .pt-top{display:flex;align-items:flex-start;gap:11px;min-width:0}
+  /* Same near-white surface rule as .plogo-tile: brand marks are drawn for white and half of them
+     vanish on one of our two themes if left bare. The generated fallback keeps its own colour. */
+  .pt-logo{width:40px;height:40px;flex:0 0 40px;border-radius:11px;background:#fbfaf7;
+    border:1px solid rgba(0,0,0,.07);display:grid;place-items:center;overflow:hidden}
+  .pt-logo img{width:25px;height:25px;object-fit:contain;display:block}
+  .pt-logo.gen{border-color:transparent}
+  .pt-logo .pt-i{font-size:17px;font-weight:700;color:#fff;font-family:var(--sans);line-height:1}
+  /* With the description gone there is room for the whole name: "Google Search Console" wraps to
+     a second line rather than ellipsizing to "Google Search Con…", which is a card that can't say
+     what it is. Two lines is the cap — past that the shelf stops being a grid of equals. */
+  .pt-name{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+    font-size:14.5px;font-weight:600;line-height:1.3;letter-spacing:-.2px}
+  .pt-cat{display:block;font-size:11.5px;color:var(--muted);line-height:1.4;margin-top:1px}
+  /* Can I call this today? The card corner answers that and nothing else. */
+  .pt-conn{margin-left:auto;flex:0 0 auto;padding-left:8px}
+  .pt-quiet{font-size:11px;color:var(--muted);opacity:.72;white-space:nowrap}
+  .pt-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    margin-top:auto;padding-top:10px;border-top:1px solid var(--line);font-size:11.5px}
+  .pt-eps{color:var(--muted);display:inline-flex;align-items:center;gap:6px;font-family:var(--mono)}
+  .pt-dot{width:5px;height:5px;border-radius:50%;background:var(--muted);opacity:.65;flex:0 0 5px}
+  .pt-price{color:var(--muted);font-family:var(--mono);white-space:nowrap}
+  .pt-price b{color:var(--ink);font-weight:600}
+  .pt-price.free b{color:var(--teal)}
+  /* The provider's own figure, alongside the converted one. Muted and small: it is provenance,
+     not the number you compare on — but leaving it out invites "where did that price come from?" */
+  .cost-nat{margin-left:5px;color:var(--muted);opacity:.8;font-weight:400;font-size:.92em}
+  /* The tail of a long shelf: one quiet row — a stack of the marks it is hiding, two of their
+     names, and an arrow. NOT a dashed box: a dashed border reads as a drop zone or a placeholder,
+     and it drew more attention than the cards it sits under. */
+  .pt-more{display:flex;align-items:center;gap:11px;width:100%;margin-top:10px;
+    background:none;border:0;border-radius:var(--r);padding:9px 13px;
+    color:var(--muted);font-family:inherit;font-size:12.5px;text-align:left;cursor:pointer;
+    transition:color .12s ease}
+  .pt-more:hover{color:var(--ink)}
+  .pt-more:focus-visible{outline:2px solid var(--muted);outline-offset:2px}
+  /* The arrow says the row expands; it slides a little on hover, which is the whole affordance. */
+  .pt-more-a{flex:0 0 auto;margin-left:-5px;font-size:13px;color:var(--muted2);
+    transition:transform .18s var(--ease),color .18s var(--ease)}
+  .pt-more:hover .pt-more-a{transform:translateX(2px);color:var(--ink)}
+  .pt-stack{display:flex;flex:0 0 auto}
+  .pt-mini{width:22px;height:22px;flex:0 0 22px;border-radius:6px;background:#fbfaf7;
+    border:1px solid rgba(0,0,0,.07);display:grid;place-items:center;overflow:hidden;
+    margin-right:-6px;box-shadow:0 0 0 1px var(--bg)}
+  .pt-mini:last-child{margin-right:0}
+  .pt-mini img{width:14px;height:14px;object-fit:contain;display:block}
+  .pt-mini.gen{border-color:transparent}
+  .pt-mini .pt-i{font-size:10px;font-weight:700;color:#fff;font-family:var(--sans);line-height:1}
+  .pt-more-t{min-width:0}
+  /* Platform page header: one full-width column. See the template for why it is not .tut-head. */
+  .plat-head{margin-bottom:4px}
+  .plat-title{display:flex;align-items:center;gap:13px;min-width:0}
+  .plat-title h1{margin:0;min-width:0}
+  .plat-intro{margin:10px 0 0;max-width:74ch}
+  .plat-provs{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin-top:14px}
+  .plat-provs-l{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-right:2px}
+  /* What you have to SEND, one block per location. Dense on purpose: it sits inside an expanded
+     table row, and a param list that needs its own scroll is a param list nobody reads. */
+  .prm{margin:0 0 12px;border:1px solid var(--line);border-radius:var(--rb);
+    background:color-mix(in srgb,var(--panel) 55%,transparent);padding:11px 12px}
+  .prm-h{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:8px}
+  .prm-note{margin:0 0 9px;font-size:12px;color:var(--muted);line-height:1.5;max-width:82ch}
+  .prm-sec + .prm-sec{margin-top:11px}
+  .prm-loc{font-size:11.5px;font-weight:600;color:var(--ink);margin-bottom:5px}
+  .prm-type{margin-left:7px;font-weight:400;font-size:10.5px;color:var(--muted)}
+  /* The global `table` rule paints a panel, a border and a radius, and `th` a filled header bar —
+     all of which fight the .prm box this already sits inside, and clip the first column against
+     the table's own border. This is a bare grid; the box around it is the chrome. */
+  .prm-t{width:100%;border-collapse:collapse;font-size:11.5px;table-layout:fixed;
+    background:none;border:0;border-radius:0}
+  .prm-t th{background:none;text-align:left;font-weight:500;color:var(--muted);font-size:10.5px;
+    text-transform:uppercase;letter-spacing:.06em;padding:0 10px 5px 0;border-bottom:1px solid var(--line)}
+  .prm-t th:nth-child(1){width:23%} .prm-t th:nth-child(2){width:13%} .prm-t th:nth-child(3){width:13%}
+  .prm-t td{padding:6px 10px 6px 0;vertical-align:top;border-bottom:1px solid color-mix(in srgb,var(--line) 55%,transparent)}
+  .prm-t tr:last-child td{border-bottom:0}
+  .prm-n{color:var(--ink);font-weight:600;word-break:break-word}
+  .prm-ty{color:var(--muted)}
+  .prm-req{color:var(--amber);font-size:10.5px}
+  .prm-opt{color:var(--muted);font-size:10.5px;opacity:.75}
+  .prm-d{color:var(--muted);line-height:1.5}
+  .prm-ex{display:block;margin-top:2px;color:var(--teal);word-break:break-word}
+  .prm-none{margin:0 0 12px;font-size:12px;color:var(--muted);opacity:.8}
+  /* The path is the fact you came for, so it keeps ink colour where .ttable .th would mute it, and
+     wraps rather than widening the table (some provider paths are 70+ chars). */
+  .cat-path{color:var(--ink);white-space:normal;word-break:break-all}
+  .cat-m{color:var(--teal);font-weight:600;margin-right:7px}
+  .cat-d td{background:var(--panel2)}
+  .cat-sum{margin:0 0 10px;color:var(--muted);line-height:1.5;max-width:78ch;font-size:12.5px}
+  .cat-ex{margin-top:10px} .cat-ex pre{max-height:340px}
+  .chip.ver{color:var(--green);border-color:color-mix(in srgb,var(--green) 42%,var(--line));background:color-mix(in srgb,var(--green) 10%,transparent)}
+  .plogo-tile{width:30px;height:30px;flex:0 0 30px;border-radius:8px;background:#fbfaf7;
+    border:1px solid rgba(0,0,0,.07);display:flex;align-items:center;justify-content:center}
+  .plogo{width:19px;height:19px;object-fit:contain;display:block}
+  h3 .plogo-tile{display:inline-flex;vertical-align:-9px;margin-right:9px}
+  .pl-row{display:flex;align-items:center;gap:11px;min-width:0}
+  .chip{display:inline-block;font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid var(--line);color:var(--muted)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:3px}
+  .chip.env{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 42%,var(--line));background:color-mix(in srgb,var(--amber) 10%,transparent)}
+  .chip.oauth{color:var(--teal);border-color:color-mix(in srgb,var(--teal) 42%,var(--line));background:color-mix(in srgb,var(--teal) 10%,transparent)}
+  .chip.secret_file{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 42%,var(--line));background:color-mix(in srgb,var(--accent) 10%,transparent)}
+  .chip.run{color:var(--teal);border-color:color-mix(in srgb,var(--teal) 42%,var(--line));background:color-mix(in srgb,var(--teal) 10%,transparent)}
+  .btn.ico.on{color:var(--teal);border-color:color-mix(in srgb,var(--teal) 50%,var(--line))}
+  .badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;padding:2px 9px;border-radius:999px;font-weight:600}
+  .badge.ok{color:var(--green);background:color-mix(in srgb,var(--green) 15%,transparent)}
+  .badge.unknown{color:var(--muted);background:color-mix(in srgb,var(--muted) 14%,transparent)}
+  .badge.invalid{color:var(--red);background:color-mix(in srgb,var(--red) 15%,transparent)}
+  .role{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+  .role.owner{color:var(--amber)} .role.admin{color:var(--accent)} .role.member{color:var(--green)} .role.viewer{color:var(--muted)}
+  .top{display:flex;align-items:center;gap:14px;padding:11px 20px;border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:20}
+  .brand{font-weight:700;letter-spacing:-.3px} .spacer{flex:1}
+  .orgsel{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:var(--rb);padding:6px 10px;cursor:pointer;position:relative}
+  .dropdown{position:absolute;top:108%;left:0;width:300px;max-width:calc(100vw - 32px);background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 34px rgba(0,0,0,.28);padding:6px;z-index:30}
+  .dropdown .row{padding:8px 10px;border-radius:7px;display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:pointer}
+  .dropdown .row:hover{background:var(--panel2)} .dropdown .row.off{opacity:.6}
+  .row-actions{display:inline-flex;align-items:center;justify-content:flex-end;gap:6px}
+  .key-actions-menu{position:fixed;min-width:150px;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 12px 34px rgba(0,0,0,.28);padding:5px;z-index:70}
+  .key-actions-menu button{display:block;width:100%;border:0;background:none;color:var(--ink);text-align:left;
+    padding:8px 10px;border-radius:7px;font:inherit;font-size:12px;cursor:pointer}
+  .key-actions-menu button:hover,.key-actions-menu button:focus-visible{background:var(--panel2);outline:0}
+  .key-actions-menu button.danger{color:var(--red)}
+  .key-table .key-identity{min-width:220px}
+  .key-table td{padding-top:12px;padding-bottom:12px;vertical-align:middle}
+  .key-primary{display:flex;align-items:center;gap:7px;white-space:nowrap}
+  .key-primary b{font-size:13px}
+  .key-meta{margin-top:4px;color:var(--muted);font-size:11.5px;line-height:1.3}
+  .key-table th:last-child,.key-table td:last-child{width:1%}
+  .search{flex:1;max-width:520px;display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:var(--rb);padding:7px 11px}
+  .search input{flex:1;border:0;background:none;color:var(--ink);outline:none;font-family:var(--mono);font-size:13px}
+  .iconbtn{background:var(--panel2);border:1px solid var(--line);border-radius:var(--rb);width:34px;height:34px;display:grid;place-items:center;color:var(--ink);box-sizing:border-box}
+  .ava{width:32px;height:32px;border-radius:8px;background:var(--panel2);border:1px solid var(--line);display:grid;place-items:center;font-weight:700;font-size:12px}
+  /* minmax(0,1fr): a plain 1fr track's implied min-width:auto lets a wide child (the marketplace
+     tab strip) stretch the track past the viewport, putting a horizontal scrollbar on the PAGE
+     instead of inside the strip's own overflow-x container. */
+  .layout{display:grid;grid-template-columns:230px minmax(0,1fr);min-height:calc(100vh - 57px)}
+  /* Public catalog: no sidebar, so the main column takes the whole width. */
+  .layout.solo{grid-template-columns:minmax(0,1fr)}
+  .pubnav{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:22px;
+    padding:11px 22px;background:color-mix(in srgb,var(--bg) 86%,transparent);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+  .pubnav .brand{font-family:var(--mono);font-weight:600;font-size:16px;color:var(--ink);text-decoration:none}
+  .pubnav-links{margin-left:auto;display:flex;align-items:center;gap:20px;font-size:14px}
+  .pubnav-links a{color:var(--muted);font-weight:500;text-decoration:none;cursor:pointer}
+  .pubnav-links a:hover,.pubnav-links a[aria-current]{color:var(--ink)}
+  .pubnav .brand,.pubnav-links a{white-space:nowrap}
+  @media(max-width:640px){ .pubnav{gap:12px;padding:10px 14px} .pubnav-links{gap:13px} .pubnav-links .hidem{display:none} }
+  @media(max-width:440px){ .pubnav-links{gap:11px;font-size:13px} .pubnav-links a[href="/tutorial"],.pubnav-links a[href="/docs"]{display:none} }
+  .side{border-right:1px solid var(--line);padding:12px 10px;background:var(--panel);display:flex;flex-direction:column}
+  .side .nav{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:none;border:0;color:var(--ink);padding:9px 11px;border-radius:var(--rb);font-size:13.5px}
+  .side .nav:hover{background:var(--panel2)} .side .nav.active{background:var(--panel2);color:var(--accent);font-weight:600}
+  .side .grp{font-size:10px;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);margin:14px 11px 6px}
+  .side .agent-copy{display:flex;align-items:center;justify-content:space-between;padding:5px 11px;font-size:13px;border-radius:var(--rb)}
+  .side .agent-copy:hover{background:var(--panel2)}
+  .side .agent-copy .ac-label{font-family:var(--mono);color:var(--ink)}
+  .side .agent-copy .ac-label.ac-link{cursor:pointer;flex:1} .side .agent-copy:hover .ac-label.ac-link{color:var(--accent)}
+  .side .ac-btn{background:none;border:0;color:var(--muted);cursor:copy;font-size:14px;line-height:1;padding:5px 7px;border-radius:6px;display:inline-flex;align-items:center}
+  .side .ac-btn:hover{color:var(--accent);background:var(--panel2)} .side .ac-btn.done{color:var(--good,#7fae72)}
+  /* org block (top of sidebar) */
+  .orgblock{position:relative;background:var(--panel2);border:1px solid var(--line);border-radius:var(--rb);margin-bottom:12px}
+  .orgblock .orgmain{display:flex;align-items:center;gap:8px;min-width:0;cursor:pointer;padding:8px 10px}
+  .orgblock .orgname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}
+  .orgcaret{margin-left:auto;color:var(--muted);flex:0 0 auto;font-size:12px}
+  /* team-switcher dropdown rows: name truncates, actions stay pinned right */
+  .orgrow{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:8px}
+  .orgrow:hover{background:var(--panel2)} .orgrow.off{opacity:.6}
+  .orgrow-main{flex:1;min-width:0} .orgrow-name{font-weight:700;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .orgrow-meta{display:flex;gap:6px;align-items:center;margin-top:3px}
+  .orgrow-btn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:7px;padding:4px 8px;font-size:11.5px;line-height:1;cursor:pointer;flex:0 0 auto} .orgrow-btn:hover{border-color:var(--accent);color:var(--accent)}
+  .orgrow-active{font-size:11px;color:var(--green);flex:0 0 auto;white-space:nowrap;padding:0 2px}
+  .orgrow-sep{height:1px;background:var(--line);margin:6px 8px}
+  .side-nav{display:flex;flex-direction:column;gap:2px;flex:1}
+  .side-acct{margin-top:auto;display:flex;align-items:center;gap:8px;padding:7px 8px;border:1px solid var(--line);border-radius:var(--rb);background:var(--panel2)}
+  .acct-you{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)}
+  .side-acct .iconbtn{width:30px;height:30px;font-size:13px}
+  main{padding:22px 26px;max-width:1080px;width:100%;margin:0 auto}  /* centered in the content column, not left-hugging */
+  h1{font-size:19px;margin:0 0 3px;letter-spacing:-.3px} .sub{color:var(--muted);margin:0 0 18px;font-size:13px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+  .seg{display:inline-flex;gap:3px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:3px;margin-bottom:18px}
+  .seg button{background:none;border:0;color:var(--muted);padding:5px 12px;border-radius:7px;font-size:12.5px;cursor:pointer;font-family:var(--mono);display:inline-flex;gap:6px;align-items:center;line-height:1}
+  .seg button:hover{color:var(--ink)} .seg button.on{background:var(--panel);color:var(--ink)} .seg button span{color:var(--muted);font-size:11px}
+  .tgroup{margin-bottom:22px}
+  .tgh{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:0 0 9px;display:flex;align-items:center;gap:9px}
+  .tgh-n{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--ink);letter-spacing:0}
+  .tgh-hint{text-transform:none;letter-spacing:0;color:var(--muted);font-size:11.5px}
+  .ttable-wrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+  .ttable{border:0;border-radius:0;background:none}
+  .ttable td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;font-size:13px}
+  .ttable tr:last-child td{border-bottom:0} .ttable tr:hover td{background:var(--panel2)}
+  .ttable .tn{width:22%;white-space:nowrap} .ttable .th{color:var(--muted)}
+  /* The global .sub carries margin-bottom:18px for prose. Inside a table cell that is invisible
+     dead space BELOW the text, so vertical-align:middle centres the block 9px too high and the
+     row grows for nothing. Reset it here, and pin both line-heights so the two-line stack is a
+     predictable height for the logo tile to centre against. */
+  .ttable .sub{margin:0;line-height:1.4}
+  .ttable .tn b{display:block;line-height:1.4}
+  .ttable .ta{width:1%;white-space:nowrap} .ttable .ta .chip{margin-right:4px}
+  .ttable .tx{text-align:right;white-space:nowrap;width:1%} .ttable .tx .btn{margin-left:5px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:15px}
+  .card h3{margin:0;font-size:15px;display:flex;align-items:center;gap:8px;letter-spacing:-.2px}
+  .card .host{font-size:11.5px;color:var(--muted);margin:4px 0 10px;word-break:break-all}
+  .card .foot{display:flex;gap:8px;margin-top:13px}
+  .kv{display:flex;gap:18px;flex-wrap:wrap;margin:9px 0} .kv div{font-size:13px} .kv b{display:block;color:var(--muted);font-weight:500;font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+  th,td{text-align:left;padding:10px 13px;border-bottom:1px solid var(--line);overflow-wrap:anywhere} th{color:var(--muted);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.06em;background:var(--panel2)}
+  tr:last-child td{border-bottom:0}
+  .statgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px} .stat .n{font-size:26px;font-weight:700;color:var(--accent)} .stat .l{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:14px} .tabs button{background:none;border:0;color:var(--muted);padding:9px 13px;border-bottom:2px solid transparent;font-family:var(--mono)} .tabs button.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+  .tswitch{display:inline-flex;align-items:center;flex:none;cursor:pointer} .tswitch input{display:none}
+  .tswitch .knob{width:30px;height:17px;border-radius:9px;background:var(--line);position:relative;transition:background .15s;flex:none}
+  .tswitch .knob::after{content:'';position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:var(--muted);transition:transform .15s,background .15s}
+  .tswitch input:checked+.knob{background:var(--accent)} .tswitch input:checked+.knob::after{transform:translateX(13px);background:#fff}
+  /* Billing: one-click top-up amounts. Each card IS the buy button - no dropdown. */
+  .fundgrid{display:grid;grid-template-columns:repeat(4,minmax(86px,1fr));gap:8px;max-width:460px}
+  .fundcard{background:var(--panel2);border:1px solid var(--line);border-radius:var(--rb);padding:13px 8px 11px;text-align:center;cursor:pointer;color:var(--ink);font-family:var(--mono);transition:border-color .12s,transform .12s}
+  .fundcard:hover:not(:disabled){border-color:var(--accent);transform:translateY(-1px)}
+  .fundcard:disabled{opacity:.55;cursor:default}
+  .fundcard.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+  .fundcard b{display:block;font-size:17px;letter-spacing:-.3px}
+  .fundcard span{display:block;font-size:10.5px;color:var(--muted);margin-top:3px}
+  @media(max-width:520px){.fundgrid{grid-template-columns:repeat(2,1fr)}}
+  /* a switch-option card: knob + [title / caption], vertically centered on the title line */
+  .cliopt{display:flex;align-items:flex-start;gap:10px;margin:12px 0;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);cursor:pointer}
+  .cliopt .tswitch{margin-top:1px} .cliopt b{font-size:12.5px;line-height:1.4} .cliopt .sub{font-size:11px;line-height:1.5;margin:0}
+  /* OAuth authorization-method picker. One logical provider can have several genuinely separate
+     grants; make that one choice behind Add account instead of scattering secondary actions around
+     the page. The native radio stays visible so the selection is unambiguous and keyboard-safe. */
+  .method-grid{display:grid;gap:9px;margin:14px 0 18px}
+  .method-card{display:flex;align-items:flex-start;gap:11px;padding:13px 14px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);cursor:pointer;transition:border-color .12s,background .12s}
+  .method-card:hover{border-color:var(--accent)}
+  .method-card.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);background:var(--bg)}
+  .method-card.off{opacity:.58;cursor:not-allowed}
+  .method-card input{margin:3px 0 0;accent-color:var(--accent);flex:none}
+  .method-copy{min-width:0;flex:1}.method-title{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .method-copy .sub{display:block;margin:4px 0 0;line-height:1.5}
+  .scrim{position:fixed;inset:0;background:rgba(20,16,10,.55);display:grid;place-items:center;z-index:50}
+  /* Inline spinner for waits on a live upstream (resource discovery), so a slow round-trip reads
+     as "working" rather than "broken". */
+  .spin{display:inline-block;width:11px;height:11px;margin-right:7px;vertical-align:-1px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:treg-spin .7s linear infinite}
+  @keyframes treg-spin{to{transform:rotate(360deg)}}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;width:min(680px,94vw);max-height:88vh;overflow:auto}
+  /* first-run welcome: agent picker cards + the Skip/Next footer */
+  .agent-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  @media(max-width:560px){ .agent-grid{grid-template-columns:repeat(2,1fr)} }
+  .agent-card{display:flex;align-items:center;gap:9px;padding:12px 13px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--ink);font-family:inherit;font-size:13.5px;cursor:pointer;text-align:left}
+  .agent-card img{width:20px;height:20px;flex:none}
+  .agent-card.on{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);background:var(--bg)}
+  .wc-foot{display:flex;justify-content:space-between;align-items:center;margin-top:22px;padding-top:16px;border-top:1px solid var(--line)}
+  /* Getting started: numbered step cards, the agent dropdown, and the try-it example grid */
+  .start-card{border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+  .start-hd{display:flex;align-items:center;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line)}
+  .start-num{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--ink);color:var(--bg);font-size:13px;font-weight:700;flex:none}
+  .start-bd{padding:18px}
+  .agent-menu{position:absolute;top:calc(100% + 6px);left:0;z-index:40;min-width:200px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:6px;display:flex;flex-direction:column;gap:2px;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+  .agent-menu .agent-card{border:0;background:none;width:100%;padding:8px 10px;box-shadow:none}
+  .agent-menu .agent-card:hover,.agent-menu .agent-card.on{background:var(--panel2)}
+  .try-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:700px){ .try-grid{grid-template-columns:1fr} }
+  .try-card{display:block;text-align:left;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:var(--ink);font-family:inherit;cursor:pointer;transition:border-color .15s}
+  .try-card:hover{border-color:var(--accent)}
+  .try-cat{display:flex;align-items:center;justify-content:space-between;font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .try-ico{width:15px;height:15px;flex:none}
+  .try-ico.avatar{border-radius:50%}
+  .try-copy{font-weight:400;letter-spacing:0;text-transform:none;font-size:11.5px;color:var(--muted)}
+  .try-card:hover .try-copy{color:var(--accent)} .try-copy.done{color:var(--green)}
+  .try-txt{display:block;font-family:var(--sans);font-size:13px;line-height:1.55;color:var(--ink)}
+  .oauth-grp{font-family:var(--sans);font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:8px}
+  .prov-chip{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);font-family:var(--sans);font-size:12.5px;color:var(--ink);cursor:pointer;transition:border-color .15s}
+  .prov-chip img{width:15px;height:15px;flex:none}
+  .prov-chip:hover{border-color:var(--accent)}
+  .oauth-div{display:flex;align-items:center;gap:14px;margin-top:28px;margin-bottom:4px;color:var(--muted);font-family:var(--sans);font-size:12.5px;white-space:nowrap}
+  .oauth-div::before,.oauth-div::after{content:'';flex:1;border-top:1px solid var(--line);min-width:20px}
+  .soon-note{position:relative;font-family:var(--sans);font-size:12px;color:var(--muted);cursor:default;border-bottom:1px dotted var(--muted)}
+  .soon-note::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 7px);left:50%;transform:translateX(-50%);white-space:nowrap;background:var(--ink);color:var(--bg);font-size:11.5px;padding:5px 10px;border-radius:7px;opacity:0;pointer-events:none;transition:opacity .12s}
+  .soon-note:hover::after{opacity:1}
+  .chip.demo{border-color:var(--accent);color:var(--accent)}
+  .modal .hd{display:flex;justify-content:space-between;align-items:center;padding:15px 18px;border-bottom:1px solid var(--line)}
+  .tabs .act-toggle{margin-left:auto;align-self:center;margin-bottom:6px;padding:4px 11px;font-family:inherit;font-size:12px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:999px} .tabs .act-toggle:hover{border-color:var(--accent);color:var(--accent)}
+  tr.act-row{cursor:pointer} tr.act-row:hover td{background:var(--panel2)} .act-view{font-size:11px;color:var(--accent);margin-left:6px;white-space:nowrap}
+  .drawer .hd{display:flex;justify-content:space-between;align-items:center;gap:12px} .drawer .hd b{min-width:0;overflow-wrap:anywhere}
+  .drawer{position:fixed;top:0;right:0;height:100vh;width:min(520px,96vw);background:var(--panel);border-left:1px solid var(--line);z-index:50;box-shadow:-12px 0 44px rgba(20,16,10,.34);display:flex;flex-direction:column}
+  pre{margin:0;padding:14px;background:var(--bg);border:1px solid var(--line);border-radius:10px;font-family:var(--mono);font-size:12.5px;overflow:auto;white-space:pre-wrap;word-break:break-word;max-height:50vh}
+  pre.code{white-space:pre;overflow-x:auto;word-break:normal;overflow-wrap:normal;line-height:1.55}
+  .field{display:flex;gap:8px;margin:8px 0} .field input,.field select,.field textarea{background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:var(--rb);padding:8px 10px;font-family:var(--mono);font-size:13px} .field input,.field textarea{flex:1}
+  .field input.field-invalid{border-color:var(--red)}
+  .field.auth-method-field{flex-direction:column;align-items:flex-start;gap:6px}.auth-method-field select{min-width:170px}
+  .login{min-height:100vh;display:grid;place-items:center} .loginbox{width:min(420px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:30px;text-align:center}
+  .phase2{opacity:.5} .hint{font-family:var(--mono);font-size:11px;color:var(--amber);border:1px dashed var(--amber);border-radius:6px;padding:2px 7px}
+  a{color:var(--accent);text-decoration:none;cursor:pointer}
+  .banner{background:color-mix(in srgb,var(--red) 15%,transparent);color:var(--red);border:1px solid var(--red);border-radius:8px;padding:8px 12px;margin-bottom:14px;font-size:12.5px}
+  .explain{font-family:var(--sans);font-size:12px;color:var(--muted);margin:2px 0 12px}
+  .skill-drop{display:flex;gap:14px;align-items:center;padding:18px;border:1.5px dashed var(--line);border-radius:10px;cursor:pointer;background:var(--panel2)}
+  .skill-drop:hover{border-color:var(--accent)} .skill-drop .sd-ic{font-size:24px;line-height:1}
+  .skill-item{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:8px;background:var(--panel2)}
+  .skill-item.off{opacity:.5} .si-head{display:flex;align-items:center;gap:8px;cursor:pointer} .si-head input{cursor:pointer}
+  .si-body{margin:7px 0 0 22px;display:flex;flex-direction:column;gap:4px}
+  .si-sec{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px}
+  .si-input{background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:4px 8px;font-family:var(--mono);font-size:12px;min-width:180px}
+  .si-ok{color:var(--green);font-size:12px} .si-warn{color:var(--amber);font-size:12px}
+  .adv-link{color:var(--muted);font-size:12px;text-decoration:underline;cursor:pointer;margin-left:auto} .adv-link:hover{color:var(--accent)}
+  .exrow{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px}
+  .exchip{font-family:var(--mono);font-size:11.5px;padding:3px 9px;border-radius:7px;border:1px solid var(--line);background:var(--panel2);color:var(--ink);cursor:pointer}
+  .exchip:hover{border-color:var(--accent)} .exchip.on{border-color:var(--accent);color:var(--accent)}
+  .exchip .m{color:var(--muted);margin-right:5px}
+  .lbl{font-family:var(--sans);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:2px 0 5px}
+  /* ===== interactive tutorial (Help view) ===== */
+  .tut-head{display:flex;align-items:center;gap:12px;margin-bottom:20px} .tut-actions{margin-left:auto;display:flex;gap:6px}
+  .tut-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin:12px 0}
+  .tut-cards.wide{grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+  .tut-cards .card h4{margin:0 0 5px;font-size:13px;color:var(--accent);font-family:var(--mono)}
+  .tut-cards .card p{margin:0;font-size:12px;color:var(--muted);font-family:var(--sans)}
+  .tut-cards .card p code,.tut-cards .card p .mono{color:var(--accent);font-family:var(--mono)}
+  .tut-cards .card pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:6px 0;font-size:11px;line-height:1.5;color:var(--ink);overflow-x:auto;white-space:pre}
+  .tut-body{display:grid;grid-template-columns:248px 1fr;gap:22px;margin-top:14px;align-items:start}
+  .tut-nav{border-right:1px solid var(--line);padding-right:10px;max-height:74vh;overflow:auto;position:sticky;top:70px}
+  .tut-part{font-size:10px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted);margin:14px 8px 5px}
+  .tut-step{display:block;width:100%;text-align:left;background:none;border:0;color:var(--ink);padding:7px 9px;border-radius:7px;font-size:12px;border-left:2px solid transparent}
+  .tut-step:hover{background:var(--panel2)} .tut-step.active{background:var(--panel2);border-left-color:var(--accent);color:var(--accent);font-weight:600}
+  .tut-step .n{color:var(--muted);margin-right:8px;font-variant-numeric:tabular-nums} .tut-step.active .n{color:var(--accent)}
+  .tut-main{min-width:0;max-width:760px} .tut-main .crumbs{color:var(--muted);font-size:11px;margin-bottom:4px}
+  .tut-main h2{font-size:20px;margin:0 0 8px;letter-spacing:-.3px}
+  .persona{display:inline-block;font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid var(--line);margin-bottom:14px}
+  .persona.tom{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+  .persona.bob{color:var(--green);border-color:color-mix(in srgb,var(--green) 45%,var(--line))}
+  .persona.alice{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,var(--line))}
+  .persona.sys{color:var(--muted)} .persona.ops{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,var(--line))}
+  .persona.you{color:var(--green);border-color:color-mix(in srgb,var(--green) 45%,var(--line))}
+  .persona.sam{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 45%,var(--line))}
+  .tut-label{display:flex;align-items:center;gap:8px;font-family:var(--sans);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:16px 0 6px}
+  .tut-label .copy{margin-left:auto;border:1px solid var(--line);background:var(--panel2);color:var(--muted);border-radius:6px;padding:2px 9px;font-size:11px;font-family:var(--mono)}
+  .tut-label .copy:hover{color:var(--ink);border-color:var(--accent)}
+  pre.term{max-height:none}
+  /* the "expected result" pane is secondary, but it is still body copy in a code block —
+     --muted lands at 3.7:1 on the light surface, the syntax ramp's comment grey at 4.7 */
+  pre.term.out{color:var(--sx-cmt)}
+  .tut-notice{border-left:3px solid var(--amber);background:color-mix(in srgb,var(--amber) 9%,transparent);padding:10px 13px;border-radius:0 8px 8px 0;margin:16px 0;font-size:12px;font-family:var(--sans)} .tut-notice b{color:var(--amber)}
+  .tgl{display:inline-flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;user-select:none} .tgl input{margin:0;cursor:pointer} .btn.sm.active{border-color:var(--accent);color:var(--accent)}
+  .tut-foot{display:flex;gap:10px;align-items:center;margin-top:20px;padding-top:14px;border-top:1px solid var(--line)} .tut-foot .pos{color:var(--muted);font-size:12px;margin:0 auto}
+  .tour-mat{border-radius:14px;padding:min(4vw,36px);display:flex;justify-content:center;margin:2px 0 4px;transition:background .3s}
+  .tour-mat img{width:100%;max-width:960px;height:auto;border-radius:9px;box-shadow:0 16px 44px rgba(0,0,0,.36),0 3px 9px rgba(0,0,0,.22);display:block}
+  @media(max-width:760px){.tut-body{grid-template-columns:1fr}.tut-nav{border-right:0;border-bottom:1px solid var(--line);position:static;max-height:210px}}
+  /* Mobile hamburger menu: hidden on desktop, visible on mobile */
+  .mob-menu{display:none;background:none;border:0;color:var(--ink);padding:6px;cursor:pointer;font-size:18px;line-height:1}
+  /* Mobile sidebar overlay backdrop */
+  .mob-backdrop{display:none;position:fixed;inset:0;background:rgba(20,16,10,.55);z-index:40}
+  /* Mobile sidebar close button: hidden on desktop */
+  .mob-close{display:none;background:none;border:0;color:var(--muted);font-size:20px;cursor:pointer;padding:4px 8px;margin-left:auto}
+  /* App shell: collapse the fixed sidebar to a single column on narrow viewports + let wide tables
+     scroll inside themselves so the page body never scrolls horizontally on mobile. */
+  @media(max-width:760px){
+    /* minmax(0,1fr) stops the grid column from expanding to its content's min-width (the classic
+       1fr blowout); min-width:0 + overflow-wrap let long nav text / the "Tools in <email>" heading
+       wrap instead of forcing horizontal page scroll. */
+    .layout{grid-template-columns:minmax(0,1fr);min-height:0}
+    /* Hide sidebar by default on mobile; show it as a slide-in overlay when .mob-open is set */
+    .side{display:none;position:fixed;top:0;left:0;width:min(280px,85vw);height:100vh;z-index:45;border-right:1px solid var(--line);overflow-y:auto}
+    .side.mob-open{display:flex}
+    .mob-backdrop.mob-open{display:block}
+    main{min-width:0}
+    .side-acct{margin-top:auto}
+    h1,.tut-head,.brand{overflow-wrap:anywhere}
+    .tut-head{flex-wrap:wrap} .tut-head>div:first-child{flex:1 1 100%} .tut-actions{flex:1 1 auto;justify-content:flex-start;margin-left:0}
+    table{display:block;overflow-x:auto;white-space:nowrap}td,th{word-break:break-word}
+    /* header wraps instead of forcing horizontal page scroll: the search drops to its own full-width
+       row and the flex spacer is removed so brand/org/theme/avatar/sign-out fit the viewport. */
+    .top{flex-wrap:wrap;gap:8px;padding:10px 12px}.top .spacer{display:none}.search{flex:1 1 100%;max-width:none;order:9}.orgsel{min-width:0}
+    /* Show hamburger menu button on mobile */
+    .mob-menu{display:grid;place-items:center;order:-1}
+    /* Show close button in sidebar on mobile */
+    .mob-close{display:block}}
+  /* Medium viewports: sidebar visible but content area is narrow — reduce padding so tabs fit.
+     Remove the fade mask here since it cuts into visible tab text; scrolling is still available. */
+  @media(min-width:761px) and (max-width:1200px){
+    main{padding:18px 14px}
+    .mk-tabs{-webkit-mask-image:none;mask-image:none}}
+  /* ---- landing page (logged-out) ---- */
+  .lp{max-width:1040px;margin:0 auto;padding:0 20px 60px}
+  .lp-nav{display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:20}
+  .lp-nav .brand{font-family:var(--mono);font-weight:700;font-size:15px}
+  .lp-links{display:flex;align-items:center;gap:16px} .lp-links a{font-family:var(--mono);font-size:13px;color:var(--muted)} .lp-links a:hover{color:var(--ink)}
+  .lp-hero{text-align:center;padding:46px 0 22px}
+  .lp-eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  .lp-h1{font-size:clamp(29px,4.8vw,46px);line-height:1.05;letter-spacing:-.02em;margin:0;font-family:var(--mono);font-weight:700;text-wrap:balance}
+  /* Desktop: the whole headline on ONE line. The mono face needs 41× its font-size for this copy
+     (measured in Chrome: scrollWidth 1288px at 31.4px) —
+     wider than the 1040px shell — so the h1 breaks out toward the viewport edge and its size tracks
+     the viewport ((100vw-64)/42 leaves slack for the scrollbar; 32px is shaved off the box for the
+     same reason) until the 46px cap fits. Below 1140px it re-wraps (balanced) inside the shell.
+     The divisor is tuned to the COPY LENGTH (64 chars today): change the headline, re-tune it, or
+     the nowrap line runs past the viewport edge. */
+  @media(min-width:1140px){.lp-h1{white-space:nowrap;width:calc(100vw - 32px);margin-left:calc(50% - 50vw + 16px);font-size:min(46px,calc((100vw - 64px)/42))}}
+  .lp-lead{font-family:var(--sans);font-size:16.5px;line-height:1.55;color:var(--muted);max-width:590px;margin:16px auto 0} .lp-lead b{color:var(--ink);font-weight:600}
+  .lp-cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-top:22px}
+  .btn.lg{padding:12px 20px;font-size:14px}
+  .lp-section{padding:44px 0;border-top:1px solid var(--line);margin-top:44px}
+  .lp-head{text-align:center;max-width:640px;margin:0 auto 26px}
+  .lp-kicker{display:inline-block;font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--onAccent);background:var(--accent);border-radius:999px;padding:3px 11px;margin-bottom:12px}
+  .lp-head h2{font-family:var(--mono);font-size:26px;margin:0 0 8px;letter-spacing:-.01em}
+  .lp-head p{font-family:var(--sans);font-size:15px;line-height:1.5;color:var(--muted);margin:8px 0 0} .lp-head p b{color:var(--ink)}
+  .lp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px} @media(max-width:720px){.lp-grid{grid-template-columns:1fr}}
+  .lp-panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+  .lp-panel-t{font-family:var(--mono);font-size:12px;color:var(--muted);padding:11px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+  .lp-panel pre{margin:0;border:0;border-radius:0;background:transparent;max-height:340px;min-height:120px}
+  .lp-empty{padding:30px 14px;text-align:center;color:var(--muted);font-family:var(--mono);font-size:12.5px;min-height:120px;display:grid;place-items:center}
+  .tag{font-family:var(--mono);font-size:10.5px;padding:1px 7px;border-radius:999px;border:1px solid var(--line)} .tag.ok{color:var(--green);border-color:var(--green)}
+  .badge{font-family:var(--mono);font-size:11px;padding:1px 7px;border-radius:6px} .badge.ok{color:var(--green);border:1px solid var(--green)} .badge.invalid{color:var(--red);border:1px solid var(--red)}
+  .lp-aha{margin-top:16px;background:color-mix(in srgb,var(--accent) 12%,transparent);border:1px solid var(--accent);border-radius:var(--r);padding:14px 16px;font-family:var(--sans);font-size:15px;line-height:1.5;text-align:center}
+  .lp-aha code{font-family:var(--mono);font-size:13px;color:var(--accent);background:var(--bg);padding:2px 6px;border-radius:5px;word-break:break-all}
+  .lp-actions{display:flex;align-items:center;gap:14px;justify-content:center;margin-top:20px;flex-wrap:wrap}
+  .term{background:#161310;border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;font-family:var(--mono);font-size:13px;line-height:1.7;color:var(--ink);overflow:auto;white-space:pre;max-width:720px;margin:0 auto}
+  :root[data-theme=light] .term{background:#201c15;color:#f0e9d9}
+  .lp-signin{padding-top:44px} .lp-signin .loginbox{margin:0 auto}
+  .lp-foot{text-align:center;font-family:var(--mono);font-size:12px;color:var(--muted);padding-top:36px} .lp-foot a{color:var(--muted)} .lp-foot a:hover{color:var(--ink)}
+  /* ---- logged-out landing (lc-*) ---- */
+  .lc-chips{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:20px}
+  .lc-chips span{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:6px 13px}
+  .md-dd{position:relative;display:inline-block}
+  .md-menu{position:absolute;left:0;top:calc(100% + 6px);background:var(--panel);border:1px solid var(--line);border-radius:var(--rb);box-shadow:0 12px 30px rgba(0,0,0,.3);padding:5px;display:none;flex-direction:column;gap:2px;width:max-content;min-width:170px;z-index:30}
+  .md-menu.show{display:flex}
+  .md-menu button{background:none;border:0;color:var(--ink);text-align:left;padding:8px 12px;border-radius:6px;font-family:var(--mono);font-size:12.5px;cursor:pointer;white-space:nowrap}
+  .md-menu button:hover{background:var(--panel2)}
+  .lc-codewrap{position:relative;background:#161310;border:1px solid var(--line);border-radius:var(--rb);overflow:hidden}
+  :root[data-theme=light] .lc-codewrap{background:#201c15}
+  .lc-codewrap pre{margin:0;background:transparent;border:0;color:#f0e9d9;padding:14px 46px 14px 16px;white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:12px}
+  .lc-cp{position:absolute;top:9px;right:9px;font-size:11px;background:#2a251d;color:#f0e9d9;border:1px solid #3b352a;border-radius:6px;padding:3px 9px;cursor:pointer} .lc-cp:hover{border-color:var(--accent);color:var(--accent)}
+  /* triptych */
+  .lc-tri{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:24px} @media(max-width:760px){.lc-tri{grid-template-columns:1fr}}
+  .lc-pain{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+  .lc-pain .t{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .lc-pain .p{font-family:var(--sans);margin-top:10px;color:var(--ink);font-size:14px;line-height:1.5}
+  .lc-pain .f{font-family:var(--sans);margin-top:10px;color:var(--muted);font-size:13px;padding-top:10px;border-top:1px solid var(--line);line-height:1.5} .lc-pain .f b{color:var(--green)}
+  /* modal */
+  .lc-scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;place-items:center;z-index:60;padding:20px} .lc-scrim.open{display:grid}
+  .lc-modal{width:min(400px,94vw);background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:26px;text-align:center;position:relative}
+  .lc-modal .cls{position:absolute;top:10px;right:14px;background:none;border:0;color:var(--muted);font-size:18px;cursor:pointer}
+/* ================================================================
+   MONOLOGUE / PIXEL RESKIN — matches the new landing (landing.html).
+   Token-level override: charcoal + grain, DM Mono, Geist Pixel display,
+   cyan accent, mint success, paper primary buttons, pill radii.
+   The light theme below keeps its own palette and is untouched.
+   ================================================================ */
+:root{
+  --bg:#151412; --panel:#1c1b19; --panel2:#252422; --ink:#f2efe8;
+  --muted:rgba(242,239,232,.55); --line:rgba(255,255,255,.09);
+  --accent:#19D0E8; --onAccent:#06282e;
+  --green:#A6EE98; --amber:#d8d2c2; --teal:#19D0E8; --red:#f08a7a;
+  --mono:"DM Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --sans:"DM Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  --display:"Geist Pixel",var(--mono);
+}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:90;
+  background:repeating-linear-gradient(180deg,transparent 0 3px,rgba(255,255,255,.012) 3px 4px)}
+h1{font-family:var(--display);font-weight:400;font-size:23px;letter-spacing:0}
+.tut-main h2{font-family:var(--display);font-weight:400;letter-spacing:0}
+.stat .n{font-family:var(--display);font-weight:400}
+.top{background:linear-gradient(180deg,#1b1a18,#171614)}
+.side{background:#181715}
+.btn{border-radius:999px}
+.btn.primary{background:linear-gradient(180deg,#fdfcf7 0%,#eae7de 100%);border-color:transparent;color:#1c1b19;
+  box-shadow:rgba(178,168,165,.2) -1.3px -1.3px 2.5px 0, rgba(0,0,0,.4) 1.5px 1.5px 1.5px 0}
+.btn.primary:hover{border-color:transparent;
+  box-shadow:rgba(178,168,165,.2) -1.3px -1.3px 2.5px 0, rgba(0,0,0,.5) 2px 2px 2px 0}
+.btn.ico,.btn.sm.ico{border-radius:999px}
+.iconbtn{border-radius:999px}
+.seg{border-radius:999px} .seg button{border-radius:999px}
+.seg button.on{background:linear-gradient(180deg,#fdfcf7,#eae7de);color:#1c1b19}
+.seg button.on span{color:rgba(28,27,25,.55)}
+th{background:rgba(0,0,0,.25)}
+.ttable-wrap,table{box-shadow:rgba(255,255,255,.07) 0 1px 0 inset}
+.stat{background:linear-gradient(180deg,#201f1d,#181715);
+  box-shadow:rgba(255,255,255,.07) 0 1px 0 inset, rgba(0,0,0,.35) 0 10px 24px -14px}
+.card{background:linear-gradient(180deg,#1e1d1b 0%,#171614 100%);
+  box-shadow:rgba(255,255,255,.07) 0 1px 0 inset}
+.modal,.drawer{background:linear-gradient(180deg,#201f1d,#171614)}
+.term{background:#0d0c0b;border-color:var(--line)}
+.lc-codewrap{background:#0d0c0b}
+:root:not([data-theme=light]) pre{background:rgba(0,0,0,.28);
+  box-shadow:rgba(0,0,0,.4) 0 2px 8px 0 inset;border-color:var(--line)}
+.frow input,.frow select,.field input,.field select,.field textarea,.search,.msel,.bindinput,.si-input{
+  background:#0d0c0b;box-shadow:rgba(0,0,0,.35) 0 2px 6px 0 inset}
+.chip{border-radius:999px}
+.hint{color:var(--amber);border-color:rgba(216,210,194,.4)}
+/* sidebar: pinned below the top bar with its own scroll, so HELP + the account
+   footer stay on screen no matter how long the main column gets */
+.side{position:sticky;top:57px;height:calc(100vh - 57px);overflow-y:auto;align-self:start}
+@media(max-width:760px){.side{position:static;height:auto;overflow:visible}}
+/* light theme keeps its paper palette but adopts the new fonts + shapes */
+[data-theme="light"] body::before{display:none}
+
+/* ================================================================
+   RESTYLE — Phase 1 (tokens) + the platform-card grid.
+   Reference: https://rows.gg/demo (values read off the live site).
+   The agentreach prototype is a second-hand implementation of the
+   same look; where the two disagree, rows.gg wins.
+   See docs/context/interface/restyle-plan.md for the full mapping,
+   the remaining phases, and the open questions.
+
+   Last block in the sheet on purpose: it overrides the pixel reskin
+   above by source order alone, so the whole change reverts by
+   deleting from here to the end of the sheet.
+   ================================================================ */
+:root{
+  --bg:#161518; --surface:#1e1d20; --panel:#1c1b1e; --panel2:#232226;
+  --ink:#f0f0ee; --muted:#989898; --muted2:#6f6f6d;
+  --line:#f3f3f512; --line2:#f3f3f524; --hover:#f4f4f50a;
+  --accent:#6fcdf0; --onAccent:#06282e; --teal:#6fcdf0;
+  --green:#45e39e; --amber:#f0c249; --red:#f08a84;
+  --inverse:#f8f8f7; --inverse-ink:#1a1a1a;
+  /* rows.gg layers its elevation instead of using one blur; on dark the alphas
+     are raised, since 4–8% black is invisible against a #161518 page. */
+  --shadow-sm:0 1px 2px #00000052;
+  --shadow-md:0 1px 2px -1px #0000003d,0 4px 6px -1px #00000052;
+  --shadow-lg:0 1px 2px -1px #0000003d,0 4px 6px -1px #00000052,0 8px 16px #00000052;
+  /* The two curves rows.gg actually ships: --ease drives colour/shadow/size,
+     --ease-out is reserved for transforms. Both are far quicker than they look. */
+  --ease:cubic-bezier(.2,.72,.25,1); --ease-out:cubic-bezier(.22,1,.36,1);
+  --r:15px; --rb:10px;
+  --sans:"Suisse Intl","Inter","Segoe UI",system-ui,sans-serif;
+}
+[data-theme="light"]{
+  --bg:#f4f4f1; --surface:#fff; --panel:#fafaf9; --panel2:#f0f0ee;
+  --ink:#1a1a1a; --muted:#7c7c7c; --muted2:#989898;
+  --line:#2626231a; --line2:#25252233; --hover:#2a2a250a;
+  --accent:#1a7da6; --onAccent:#fff; --teal:#1a7da6;
+  --green:#118453; --amber:#ba6603; --red:#c0362f;
+  --inverse:#1a1a1a; --inverse-ink:#f8f8f7;
+  --shadow-sm:0 1px 2px #00000014;
+  --shadow-md:0 1px 2px -1px #0000000a,0 4px 6px -1px #0000000f;
+  --shadow-lg:0 1px 2px -1px #0000000a,0 4px 6px -1px #0000000f,0 8px 16px #0000000a;
+}
+/* The theme toggle cross-fades rather than cutting. */
+body{transition:background .24s var(--ease),color .24s var(--ease)}
+/* rows.gg's focus ring: a hole punched in the page colour, then the ink — it
+   reads on a card and on the page background without an offset outline. */
+:focus-visible{outline:0;box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--ink)}
+@media (prefers-reduced-motion: reduce){body{transition:none}}
+
+/* ---- platform cards (marketplace shelves) ---- */
+/* The shelf heading: a title, and the count as the source's quiet mono pill. */
+.sec-h b{font-family:var(--sans);font-size:17px;font-weight:500;letter-spacing:-.3px}
+.sec-n{background:none;border-color:var(--line2);font-size:11px;font-weight:450;
+  color:var(--muted);padding:2px 10px;letter-spacing:.1px}
+.sec-hint{font-family:var(--sans);font-size:12px;color:var(--muted);max-width:64ch}
+/* A card is a surface, not a box: no border, an ambient shadow at rest, and a deeper one
+   on hover. The lift is the shadow itself — no translate, so a 40-card grid stays still. */
+.pt-card{background:var(--surface);border:0;border-radius:var(--r);padding:16px 18px;gap:10px;
+  box-shadow:var(--shadow-sm);
+  transition:box-shadow .24s var(--ease),background-color .2s var(--ease)}
+.pt-card:hover{border-color:transparent;transform:none;box-shadow:var(--shadow-md)}
+.pt-card:focus-visible{outline:0;box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--ink)}
+.pt-name{font-family:var(--sans);font-size:14px;font-weight:500;letter-spacing:-.2px}
+.pt-cat{font-family:var(--sans);font-size:11px;color:var(--muted);letter-spacing:.1px}
+.pt-quiet{font-size:11px;color:var(--muted2);opacity:1}
+.pt-foot{border-top:1px solid var(--line);padding-top:10px;font-size:11px}
+/* Denser without the description: a name, its category, and the two facts. */
+.pt-card{padding:14px 16px;gap:12px}
+.pt-eps,.pt-price{color:var(--muted2);font-variant-numeric:tabular-nums}
+.pt-price b{font-weight:500;color:var(--muted)}
+/* The loud green "Connected" chip is a deliberate exception to rows.gg's quiet pills —
+   "you can call this right now" has to survive being skimmed across 40 cards. It keeps
+   its fill and its haloed dot; every OTHER chip goes quiet (see the pill rule below). */
+.pt-more{border:0;border-radius:var(--r);color:var(--muted);
+  font-family:var(--sans);font-size:12px;
+  transition:color .2s var(--ease),background-color .2s var(--ease)}
+.pt-more:hover{color:var(--ink);background:var(--hover)}
+.pt-mini{box-shadow:0 0 0 1px var(--bg)}
+
+/* ================================================================
+   RESTYLE — Phase 2 (marketplace) + Phase 3 (the rest).
+   Reference: https://rows.gg/demo. Decisions locked with the founder:
+   light is the default theme, Geist Pixel on h1 only, NO brand accent
+   (colour is reserved for status), 10px buttons, the green Connected
+   chip stays loud, neutral charcoal, card density unchanged.
+   ================================================================ */
+
+/* ---- 3.0 the light theme was half-tokenised ----
+   The pixel reskin above hardcodes a dark value on nine surfaces with no theme
+   guard, which is why light mode rendered a dark top bar and sidebar with dark
+   text on them, and dark inputs inside light content. Every rule below either
+   routes through a token or is scoped to a theme. Nothing here is a colour
+   literal except the code surfaces, which are intentionally dark in both. */
+/* Native controls — <select> popups, checkboxes, scrollbars — are painted by the UA,
+   not by our tokens. Without color-scheme they stay light-on-light in dark mode. */
+:root{color-scheme:dark} [data-theme=light]{color-scheme:light}
+input[type=checkbox],input[type=radio]{accent-color:var(--ink)}
+.top{background:var(--panel);border-bottom:1px solid var(--line)}
+.side{background:var(--panel)}
+.stat{background:var(--surface);border-color:transparent;box-shadow:var(--shadow-sm)}
+.card{background:var(--surface);border-color:transparent;box-shadow:var(--shadow-sm)}
+.modal,.drawer{background:var(--surface);box-shadow:var(--shadow-lg)}
+.ttable-wrap,table{box-shadow:none}
+.ttable-wrap{background:var(--surface);border-color:var(--line)}
+table{background:var(--surface)}
+/* rows.gg's column heads are label text over a rule, not a filled bar. */
+th{background:none;color:var(--muted2);font-weight:450;border-bottom:1px solid var(--line2)}
+.frow input,.frow select,.field input,.field select,.field textarea,.search,.msel,.bindinput,.si-input{
+  background:var(--surface);box-shadow:none;border:1px solid var(--line2);color:var(--ink)}
+.frow input::placeholder,.field input::placeholder,.field textarea::placeholder,.search input::placeholder{color:var(--muted2)}
+:root:not([data-theme=light]) pre{background:var(--panel2);box-shadow:none;border-color:var(--line)}
+[data-theme=light] pre{background:var(--panel2);border:1px solid var(--line);color:var(--ink)}
+/* The scanline grain is a dark-theme texture; on paper it reads as dirt. */
+[data-theme=light] body::before{display:none}
+.scrim,.lc-scrim{background:color-mix(in srgb,var(--inverse-ink) 55%,transparent)}
+
+/* ---- 3.1 no brand accent ----
+   rows.gg has no accent colour: emphasis is ink, and colour is reserved for status.
+   Rather than rewrite 66 call sites, --accent becomes ink and --onAccent the page —
+   which turns every accent FILL into rows.gg's inverse button and every accent TEXT
+   into ink. Status tokens (--green/--amber/--red/--teal) are untouched. */
+:root,[data-theme=light]{--accent:var(--ink);--onAccent:var(--bg)}
+/* Syntax highlighting is the one place colour is not status and not decoration:
+   it is how a long command stays readable. It keeps its own ramp — see 3.8, where the
+   ramp is themed, because a ramp drawn for a dark block is invisible on a light one. */
+
+/* ---- 3.2 type: Geist Pixel on h1 only, everything else sans ----
+   Mono is kept for what it is good at — identifiers, counts, commands, code. */
+body{font-family:var(--sans)}
+h1{font-family:var(--display)}
+h2,h3,h4,.tut-main h2{font-family:var(--sans);font-weight:500;letter-spacing:-.2px}
+.btn,.seg button,.tabs button,.mk-tabs button,.side .nav,.frow input,.frow select,
+.field input,.field select,.search input,.msel,.bindinput,.sub,.lead,p,label,
+.side .grp,.acct-you,.kv,.chip,.badge{font-family:var(--sans)}
+.stat .n{font-family:var(--mono);font-weight:500;font-variant-numeric:tabular-nums}
+.mono,pre,code,.term,.cli,.ttable .tn b,.side .ac-label{font-family:var(--mono)}
+h1{font-size:22px;letter-spacing:-.44px} h2{font-size:17px} h3{font-size:15px}
+.sub{font-size:12.5px;color:var(--muted);max-width:74ch}
+/* 450 "book" is a real weight in this design — it is why secondary labels sit
+   between regular and medium instead of going grey-and-bold. */
+.side .grp,th,.kv b,.tgh,.stat .l{font-weight:450;text-transform:none;letter-spacing:.1px}
+
+/* ---- 3.3 controls: 10px, not pills ----
+   Chips and badges stay round; only the BUTTONS square off. */
+.btn,.btn.ico,.btn.sm.ico,.iconbtn,.seg,.seg button{border-radius:var(--rb)}
+.btn{border:1px solid var(--line2);background:none;color:var(--ink);font-weight:450;
+  transition:background-color .18s var(--ease),border-color .18s var(--ease),
+             color .18s var(--ease),transform .12s var(--ease-out)}
+.btn:hover{border-color:var(--line2);background:var(--hover)}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--inverse);border-color:var(--inverse);color:var(--inverse-ink);
+  box-shadow:none;font-weight:500}
+.btn.primary:hover{background:var(--inverse);border-color:var(--inverse);opacity:.88}
+.seg button.on{background:var(--inverse);color:var(--inverse-ink);box-shadow:none}
+.seg button.on span{color:color-mix(in srgb,var(--inverse-ink) 55%,transparent)}
+.iconbtn{background:none;border:1px solid var(--line2);color:var(--muted);
+  transition:background-color .18s var(--ease),color .18s var(--ease)}
+.iconbtn:hover{background:var(--hover);color:var(--ink)}
+
+/* ---- 3.4 tabs and nav: ink, not accent ---- */
+.tabs button.active,.mk-tabs button.on{color:var(--ink);border-bottom-color:var(--ink);font-weight:500}
+.side .nav{transition:background-color .18s var(--ease),color .18s var(--ease)}
+.side .nav:hover{background:var(--hover)}
+.side .nav.active{background:var(--panel2);color:var(--ink);font-weight:500}
+a{color:var(--ink);text-decoration:underline;text-underline-offset:3px;
+  text-decoration-color:var(--line2)}
+a:hover{text-decoration-color:var(--muted)}
+
+/* ---- 3.5 quiet pills (the Connected chip keeps its fill — see above) ----
+   One status token drives both text and border; the border is that colour at 30%. */
+.chip{border-radius:999px;font-size:10px;font-weight:450;letter-spacing:.09px;padding:2px 9px;
+  border:1px solid var(--line2);color:var(--muted);background:none}
+.chip.env{color:var(--amber);border-color:color-mix(in srgb,var(--amber) 30%,transparent);background:none}
+.chip.oauth,.chip.run,.chip.own{color:var(--teal);border-color:color-mix(in srgb,var(--teal) 30%,transparent);background:none}
+.chip.ver{color:var(--green);border-color:color-mix(in srgb,var(--green) 30%,transparent);background:none}
+.chip.secret_file,.chip.demo{color:var(--muted);border-color:var(--line2);background:none}
+.chip.cached{color:var(--muted);border-color:var(--line2);background:var(--panel2)}
+.badge{border-radius:999px;font-size:10px;font-weight:450;padding:2px 9px;border:1px solid transparent}
+.badge.ok{color:var(--green);border-color:color-mix(in srgb,var(--green) 30%,transparent);background:none}
+.badge.invalid{color:var(--red);border-color:color-mix(in srgb,var(--red) 30%,transparent);background:none}
+.badge.unknown{color:var(--muted);border-color:var(--line2);background:none}
+.role{font-weight:500;font-size:10px;letter-spacing:.09px}
+.role.admin{color:var(--muted)}
+.sec-n,.tgh-n{border-radius:999px}
+
+/* ---- 3.6 surfaces: the marketplace's other cards, matched to .pt-card ---- */
+.mk-card,.mk-perm{background:var(--surface);border:0;border-radius:var(--r);
+  box-shadow:var(--shadow-sm);
+  transition:box-shadow .24s var(--ease),background-color .2s var(--ease)}
+.mk-card:hover{border-color:transparent;transform:none;box-shadow:var(--shadow-md)}
+/* ---- the Platform tab as a LIST ----
+   One integration per row: name and summary on a shared left edge, auth kind and connect state as
+   quiet columns, the action inline. Cards made every name start somewhere else; a shelf you scan
+   for the one provider you hold an account with wants a column. */
+.prov-list{width:100%}
+/* Outrank the base table rules: .ttable .tn is a nowrap 22% column with a MONO name — right for
+   tool names, wrong for "Google Business Profile" next to a summary. */
+.prov-list .tn{width:34%;white-space:nowrap}
+.prov-list .tn b{font-family:var(--sans)}
+.prov-row{cursor:pointer}
+.prov-row td{transition:background-color .2s var(--ease)}
+.prov-row:hover td{background:var(--hover)}
+.prov-row:focus-visible{outline:0;box-shadow:inset 0 0 0 2px var(--ink)}
+.prov-n-i{display:flex;align-items:center;gap:11px;min-width:0}
+.prov-name{min-width:0}
+.prov-name b{font-family:var(--sans);font-size:13px;font-weight:500;letter-spacing:-.1px;display:block;white-space:nowrap}
+.prov-sum{display:block;font-family:var(--sans);font-size:11.5px;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:62ch}
+.prov-auth{font-family:var(--sans);font-size:11.5px;color:var(--muted2);white-space:nowrap}
+.prov-st{white-space:nowrap}
+/* The landing flash after a "Bring your own key" jump: the row you were sent to, then it fades. */
+.prov-row.focus td{background:color-mix(in srgb,var(--teal) 14%,transparent)}
+@media (max-width:760px){.prov-sum{display:none}.prov-auth{display:none}}
+.mk-card:focus-visible{outline:0;
+  box-shadow:0 0 0 2px var(--bg),0 0 0 3.5px var(--ink)}
+.mk-chip{border-radius:999px;padding:4px 12px;font-size:11px;font-weight:450;
+  background:none;border:1px solid var(--line2);color:var(--muted);
+  transition:background-color .2s var(--ease),color .2s var(--ease),border-color .2s var(--ease)}
+.mk-chip:hover{background:var(--hover);color:var(--ink)}
+.mk-chip.on{background:var(--inverse);color:var(--inverse-ink);border-color:var(--inverse)}
+.mk-chip.on span{color:color-mix(in srgb,var(--inverse-ink) 55%,transparent)}
+.mk-empty{border-color:var(--line2);color:var(--muted2);font-size:12px}
+.ttable tr:hover td{background:var(--hover)}
+.dropdown{background:var(--surface);border-color:var(--line2);box-shadow:var(--shadow-lg)}
+.orgblock,.side-acct,.orgsel,.search{background:none;border:1px solid var(--line2)}
+.tswitch input:checked+.knob{background:var(--ink)}
+.tswitch input:checked+.knob::after{background:var(--bg)}
+.spin{border-top-color:var(--ink)}
+.loginbox{background:var(--surface);border:0;border-radius:var(--r);box-shadow:var(--shadow-md)}
+
+/* ---- 3.7 the platform ledger ----
+   ONE table per platform, filed into sticky domain sections. Two sticky layers stack under the
+   57px top bar: the filter bar, then the section headings beneath it — so --lsec-top is the top
+   bar plus the bar's own height, and the bar's height is fixed by scrolling its chips instead of
+   wrapping them. */
+:root{--lbar-top:57px;--lsec-top:107px}
+.lbar{position:sticky;top:var(--lbar-top);z-index:6;background:var(--bg);
+  display:flex;align-items:center;gap:8px;padding:12px 0 9px;margin-top:8px}
+.lchips{display:flex;gap:6px;min-width:0;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent);
+  mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent)}
+.lchips::-webkit-scrollbar{display:none}
+.lbar .mk-chip{padding:3px 11px;font-size:11.5px;white-space:nowrap;cursor:pointer}
+.lchk{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);
+  cursor:pointer;user-select:none;white-space:nowrap}
+.lfind{flex:0 0 auto;width:190px;background:var(--surface);border:1px solid var(--line2);
+  border-radius:var(--rb);color:var(--ink);font-family:var(--sans);font-size:12.5px;padding:6px 11px}
+.lfind::placeholder{color:var(--muted2)}
+.lstat{margin:0 0 10px;font-size:11.5px;color:var(--muted2);font-variant-numeric:tabular-nums}
+.lclear{background:none;border:0;padding:0 0 0 6px;color:var(--muted);font:inherit;cursor:pointer;
+  text-decoration:underline;text-underline-offset:2px}
+.lclear:hover{color:var(--ink)}
+/* Both the wrapper and the table drop their overflow clip: an `overflow:hidden` ancestor is a
+   scroll container, and a sticky heading inside one never leaves it. */
+.lwrap{overflow:visible;border-radius:var(--r)}
+/* Fixed layout, so a nowrap path or `treg call` line inside an expanded row scrolls INSIDE its
+   cell instead of widening the table past the page. */
+.ledger{overflow:visible;table-layout:fixed}
+.ledger th{padding:9px 12px 7px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;
+  white-space:nowrap;color:var(--muted2)}
+.lth-w{width:33%} .lth-p{width:170px} .lth-v{width:38px}
+.ledger td{padding:8px 12px;font-size:12.5px;vertical-align:top;border-bottom:1px solid var(--line)}
+.ledger tr:last-child td{border-bottom:0}
+.lsec td{position:sticky;top:var(--lsec-top);z-index:4;background:var(--panel2);padding:6px 12px;
+  font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.lsec td span{margin-left:7px;font-weight:450;letter-spacing:0;color:var(--muted2)}
+.lrow{cursor:pointer}
+.lrow:hover td{background:var(--hover)}
+/* The management-endpoints expander at the foot of a section — the same muted "show more" gesture
+   as the platform-tile .pt-more, keeping account/utility plumbing one click out of the browse view. */
+/* The one collapsed section at the foot of the ledger. Its heading is a button, so it reads as a
+   section that opens rather than a row that does something. */
+.lsec-btn{display:inline-flex;align-items:center;gap:7px;padding:0;border:0;background:none;
+  font:inherit;color:inherit;letter-spacing:inherit;text-transform:inherit;cursor:pointer}
+.lsec-btn:hover{color:var(--ink)}
+.lsec-btn .lcar{transition:transform .12s}
+.lsec-btn[aria-expanded="true"] .lcar{transform:rotate(90deg)}
+/* Same rule down the leading edge the capability list used: the row you can call today is the
+   reason to read the table, so it is findable without reading. */
+.lrow.go td:first-child{box-shadow:inset 3px 0 0 color-mix(in srgb,var(--green) 75%,transparent)}
+.lsum-i{display:flex;align-items:flex-start;gap:7px;max-width:430px}
+.lsum b{font-weight:500;color:var(--ink);line-height:1.45}
+/* DataForSEO's summaries are paragraphs. Two lines keeps the ledger scannable; the full text is
+   one click away, in the expansion. */
+.lsum b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.lcar{flex:0 0 auto;display:inline-block;font-size:9px;line-height:2;color:var(--muted2);
+  transition:transform .15s var(--ease)}
+.lrow.open .lcar{transform:rotate(90deg)}
+.ln{margin-left:7px;font-size:11px;color:var(--muted2);white-space:nowrap}
+/* A merged row's providers, priced side by side — the comparison the merge exists to make. Short
+   pills only (see `pillPrice`), so a six-provider row costs a second line at worst. */
+.lprovs{display:flex;flex-wrap:nowrap;overflow:hidden;gap:4px}
+.pchip.more{color:var(--muted2)}
+.pchip{display:inline-flex;align-items:center;gap:5px;background:var(--panel2);border-radius:7px;
+  padding:2px 8px;font-size:11px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.pchip b{color:var(--ink);font-weight:500}
+.lpath{display:block;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:11px;color:var(--muted)}
+.lpath b{margin-right:7px;font-family:var(--sans);font-weight:500;color:var(--ink)}
+/* What KIND of plumbing an Actions row is — account (the provider's own records) or utility
+   (a helper). Only ever rendered inside the Actions section, where the distinction is the only
+   thing separating one row from the next. */
+.lkind{margin-left:8px;font-family:var(--sans);vertical-align:1px}
+.lprice{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.vmark{color:var(--green);font-weight:600}
+.xmark{color:var(--muted2)}
+/* The expansion: one block per endpoint — a merged row shows its providers stacked, a single row
+   shows the same block alone, so the two can never present the instruction differently. */
+/* Level two: one collapsed line per provider, and the detail under whichever one is opened. */
+.lgrp + .lgrp{margin-top:4px}
+.lsub{display:flex;align-items:center;gap:8px;width:100%;padding:6px 9px;
+  background:var(--surface);border:1px solid var(--line2);border-radius:var(--rb);
+  color:var(--ink);font-family:inherit;font-size:12px;text-align:left;cursor:pointer;
+  transition:border-color .2s var(--ease),background-color .2s var(--ease)}
+.lsub:hover{background:var(--hover)}
+.lsub.on{border-color:var(--line2);background:var(--hover)}
+.lsub.on .lcar{transform:rotate(90deg)}
+.lsub b{font-weight:500;white-space:nowrap}
+.lsub-label{min-width:0;text-align:left}
+.lsub-name{display:block;font-size:12px;white-space:normal;overflow-wrap:anywhere}
+.lsub-price{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap;
+  font-variant-numeric:tabular-nums}
+.lsub-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  text-align:right;font-size:11px;color:var(--muted2)}
+.lsub .plogo-tile{width:20px;height:20px;flex:0 0 20px;border-radius:6px}
+.lsub .plogo{width:13px;height:13px}
+.lsub .chip.go{font-size:9.5px;padding:1px 7px}
+.lgrp .lep{padding:12px 9px 2px}
+/* The detail's tab bar: two panes on the left, and on the right the two things you should never
+   have to scroll for — the provider's docs and the Connect button. */
+.ltabs{display:flex;align-items:center;gap:4px;margin:0 0 11px;
+  border-bottom:1px solid var(--line2);padding-bottom:7px}
+.ltab{background:none;border:0;border-radius:var(--rb);padding:5px 11px;
+  font-family:inherit;font-size:12px;font-weight:450;color:var(--muted);cursor:pointer;
+  transition:background-color .2s var(--ease),color .2s var(--ease)}
+.ltab:hover:not(:disabled){background:var(--hover);color:var(--ink)}
+.ltab.on{background:var(--inverse);color:var(--inverse-ink);font-weight:500}
+.ltab:disabled{color:var(--muted2);opacity:.55;cursor:default}
+.ltabs-r{margin-left:auto;display:flex;align-items:center;gap:7px;flex:0 0 auto}
+/* Connect is the one action that unblocks every row on the page, so it wears the strongest
+   treatment the design language has — the same ink fill as the active tab. */
+.ltabs-r .btn.primary{background:var(--inverse);color:var(--inverse-ink);border-color:var(--inverse)}
+.lep-id{margin-top:8px;font-size:10.5px;color:var(--muted2)}
+.lep + .lep{margin-top:15px;padding-top:15px;border-top:1px solid var(--line2)}
+.lep-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:9px}
+.lep-h b{font-size:12.5px;font-weight:500}
+.lep-chips{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.lfacts{margin:0 0 11px;padding-left:17px;max-width:82ch;font-size:11.5px;line-height:1.6;color:var(--muted)}
+/* A DataForSEO body can carry thirty parameters. Capped and scrolled, the expansion stays a card
+   you read; uncapped it becomes a page that pushes every row below it off the screen. The captured
+   response gets the SAME cap, so the two panes are the same size box. */
+.prm{max-height:320px;overflow-y:auto}
+.cat-ex pre{max-height:320px}
+/* The line that actually runs it — `treg call` proxies the key server-side, so it is paste-ready
+   on a machine that holds no credential. */
+.lcall{display:flex;align-items:center;gap:9px;margin:0 0 11px;padding:7px 9px;
+  background:var(--surface);border:1px solid var(--line2);border-radius:var(--rb)}
+.lcall code{flex:1;min-width:0;overflow-x:auto;white-space:nowrap;font-size:11.5px;color:var(--ink)}
+
+/* ================================================================
+   RESTYLE — 3.8 code surfaces follow the theme.
+   Light mode used to paint the code BLOCK light (the generic
+   `[data-theme=light] pre` rule outranks `.lc-codewrap pre`) while the
+   syntax ramp stayed drawn for a dark block — a near-white command on a
+   near-white background, bright cyan URLs, a dark copy pill. Two fixes,
+   both structural: the ramp becomes a themed variable set, and the code
+   surface is a token as well, so a block and the ink on it can never be
+   specified by different generations of this sheet again.
+   ================================================================ */
+:root{
+  --code-bg:#161518; --code-ink:#f0f0ee; --code-line:var(--line2); --code-btn:#2c2b30;
+  --sx-cmd:#f0f0ee; --sx-var:#6fcdf0; --sx-str:#45e39e; --sx-flag:#f0c249;
+  --sx-cmt:#9a9a9a; --sx-punct:#9a9a9a;
+}
+[data-theme=light]{
+  --code-bg:#f4f4f1; --code-ink:#1a1a1a; --code-line:var(--line2); --code-btn:#e6e6e2;
+  /* Every value below clears 4.5:1 on --code-bg: ink command, a deep green URL, a burnt
+     amber flag, a slate identifier, a grey comment that is still readable italic. */
+  --sx-cmd:#1a1a1a; --sx-var:#16688a; --sx-str:#0f7346; --sx-flag:#9a5502;
+  --sx-cmt:#6b6b6b; --sx-punct:#6b6b6b;
+}
+/* The surface. Both selectors are :root-qualified so they outrank the older
+   `:root[data-theme=light] .term` / `.lc-codewrap` rules earlier in the sheet. */
+.term,.lc-codewrap,
+:root[data-theme=light] .term,:root[data-theme=light] .lc-codewrap{
+  background:var(--code-bg);color:var(--code-ink);border:1px solid var(--code-line)}
+/* The inner <pre> is a PANE of its wrapper, not a block of its own — it must beat both
+   generic `pre` rules, which is what painted a light panel inside a dark wrapper. */
+.lc-codewrap pre,
+:root[data-theme=light] .lc-codewrap pre,
+:root:not([data-theme=light]) .lc-codewrap pre{
+  background:transparent;border:0;box-shadow:none;color:var(--code-ink)}
+.lc-cp{background:var(--code-btn);color:var(--code-ink);border:1px solid var(--code-line)}
+.lc-cp:hover{background:var(--code-btn);border-color:var(--code-ink);color:var(--code-ink)}
+/* The shared onboarding component (agent-setup.js) uses Arena's .text-button for "Show key";
+   this sheet never had one, so the browser painted a native button. */
+.agent-setup-instructions .text-button{background:none;border:0;padding:0;font:inherit;font-size:12px;color:var(--muted);text-decoration:underline;cursor:pointer}
+.agent-setup-instructions .text-button:hover{color:var(--ink)}
+/* One ramp, themed, covering all three generations of token class in this file. */
+.hl-cmd,.hl-kw,.s-kw{color:var(--sx-cmd);font-weight:600}
+.s-token,.hl-var,.hl-key,.s-proxy{color:var(--sx-var)}
+.s-proxy{font-weight:600}
+.hl-str,.hl-string,.s-host{color:var(--sx-str)}
+.hl-flag,.hl-num,.s-path{color:var(--sx-flag)}
+.s-path{font-weight:600}
+.hl-comment,.s-cmt{color:var(--sx-cmt);font-style:italic}
+.hl-punct,.hl-env{color:var(--sx-punct)}
+
+/* ---- Find tools for a job (state/find.js, components/FindAnswer.vue, pages/SearchPage.vue) ---- */
+/* The Catalog page's search: under the title, left-aligned, the page's first control. */
+.cat-find{position:relative;display:flex;align-items:center;gap:10px;max-width:760px;margin:6px 0 26px;padding:0 8px 0 16px;
+  min-height:52px;border:1px solid var(--line2,var(--line));border-radius:14px;background:var(--surface,var(--panel));
+  transition:border-color .15s,box-shadow .15s}
+.cat-find:focus-within{border-color:color-mix(in srgb,var(--ink) 28%,var(--line));box-shadow:0 0 0 4px color-mix(in srgb,var(--ink) 6%,transparent)}
+.cat-find-i{flex:none;color:var(--muted)}
+.cat-find input{flex:1;min-width:0;border:0;outline:none;background:none;color:var(--ink);font-family:var(--sans);font-size:15.5px;padding:14px 0}
+/* The box shows focus (:focus-within above); the global focus ring on the bare input would draw a box in a box. */
+.cat-find input:focus,.cat-find input:focus-visible,.redesign .cat-find input:focus-visible{outline:none;box-shadow:none}
+.cat-find-x{flex:none;width:32px;height:32px;border:0;border-radius:8px;background:none;color:var(--muted);font-size:20px;line-height:1;cursor:pointer}
+.cat-find-x:hover{color:var(--ink);background:var(--hover,rgba(0,0,0,.05))}
+.cat-find-suggest{display:flex;align-items:center;gap:12px;width:100%;max-width:760px;box-sizing:border-box;margin:-16px 0 26px;padding:12px 14px;
+  border:1px solid color-mix(in srgb,var(--ink) 22%,var(--line));border-radius:12px;background:var(--surface,var(--panel));color:var(--ink);
+  font-family:var(--sans);font-size:14.5px;text-align:left;cursor:pointer;box-shadow:0 10px 26px -18px var(--ink);animation:cat-suggest .2s ease-out both}
+.cat-find-suggest:hover{border-color:var(--ink)}
+@keyframes cat-suggest{from{opacity:0;transform:translateY(-4px)}}
+.cat-find-suggest-i{flex:none;width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--inverse,var(--ink));color:var(--inverse-ink,var(--bg))}
+.cat-find-suggest-t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.cat-find-suggest-t b{color:var(--ink);font-weight:500}
+.cat-find-suggest kbd{flex:none;font-family:var(--mono);font-size:11.5px;border:1px solid var(--line2,var(--line));border-bottom-width:2px;border-radius:6px;padding:2px 7px;color:var(--ink)}
+.cat-find-suggest.quiet{border-color:var(--line);box-shadow:none;background:transparent;padding:9px 14px;font-size:14px}
+.cat-find-suggest.quiet:hover{background:var(--surface,var(--panel));border-color:var(--line2,var(--line))}
+.cat-find-suggest.quiet .cat-find-suggest-i{background:var(--hover,rgba(0,0,0,.05));color:var(--ink);width:26px;height:26px}
+@media (prefers-reduced-motion:reduce){.cat-find-suggest{animation:none}}
+.find-miss{margin:18px 0;font-family:var(--sans);font-size:13.5px;color:var(--muted)}
+.pt-card{position:relative;transition:opacity .3s,box-shadow .3s}
+.pt-card.find-dim{opacity:.38}
+.pt-card.find-hit{box-shadow:0 0 0 1.5px var(--ink),0 8px 24px -14px var(--ink)}
+.pt-find{position:absolute;top:-9px;right:12px;font-family:var(--mono);font-size:10.5px;line-height:1;padding:4px 8px;border-radius:999px;
+  background:var(--inverse,var(--ink));color:var(--inverse-ink,var(--bg))}
+@media (prefers-reduced-motion:reduce){.cat-find,.pt-card{transition:none}}
+/* /search is one viewport tall and owns its own edges (pages/SearchPage.vue). */
+main.flush,.redesign main.flush{padding:0;max-width:none}

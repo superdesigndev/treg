@@ -8,7 +8,7 @@
   const NAMES = {'treg':'Email verification waterfall','millionverifier':'MillionVerifier','contactout':'ContactOut','trykitt':'Kitt','fiber-ai':'Fiber','pdl':'People Data Labs','branddev':'Brand.dev',
     'thecompaniesapi':'TheCompaniesAPI','companyenrich':'CompanyEnrich','leadmagic':'LeadMagic',
     'findymail':'Findymail','leadsforge':'Leadsforge','icypeas':'Icypeas','predictleads':'PredictLeads',
-    'apollo':'Apollo','exa':'Exa','aviato':'Aviato','hunter':'Hunter','tomba':'Tomba','lusha':'Lusha'};
+    'apollo':'Apollo','exa':'Exa','aviato':'Aviato','aiark':'AI Ark','hunter':'Hunter','tomba':'Tomba','lusha':'Lusha'};
   const LABELS = {q:'Describe the people',country:'Country code',count:'Matches returned',people:'People',companies:'Companies',full_name:'Full name',domain:'Company domain',linkedin_url:'LinkedIn URL',name:'Company name',
     email:'Email',first_name:'First name',last_name:'Last name',company_domain:'Company domain',
     line_type:'Line type',country_code:'Country code',valid:'Valid mailbox',verified:'Verified',

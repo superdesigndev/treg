@@ -163,9 +163,110 @@ def trestleiq_platform_on(monkeypatch):
 
 
 @pytest.fixture
+def adyntel_platform_on(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ADYNTEL", "PLATFORM-ADYNTEL")
+    monkeypatch.setenv("TREG_PLATFORM_EMAIL_ADYNTEL", "platform@example.com")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "adyntel")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(("endpoint_id", "body", "expected_micro"), [
+    ("adyntel.meta-ads.library.advertiser", {"company_domain": "example.com"}, 11_000),
+    ("adyntel.google.ads.transparency", {"company_domain": "example.com", "extract_text": True}, 22_000),
+    ("adyntel.tiktok-ads.library.search.company", {"company_domain": "example.com", "influencer_ads": True}, 22_000),
+    ("adyntel.google.domain.keywords.overview", {"company_domain": "example.com"}, 22_000),
+])
+def test_adyntel_observed_credit_prices_reserve_the_expected_amount(
+    endpoint_id: str, body: dict, expected_micro: int,
+):
+    catalog = catalog_store.load()
+    ep = catalog.by_id[endpoint_id]
+    cost = catalog.cost_view(ep["cost"], "adyntel")
+    estimate, _ = call_resolution._marketplace_pricing(
+        "adyntel", endpoint_id, cost, call_resolution.QueryValues(()), json.dumps(body).encode(),
+    )
+    assert estimate == expected_micro
+
+
+async def test_adyntel_platform_hit_settles_but_miss_and_failures_release(
+    clients, adyntel_platform_on, monkeypatch,
+):
+    endpoint = "adyntel.google.ads.transparency"
+    payload = {"company_domain": "example.com"}
+    before = await _balance(clients)
+
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"ads":[{"id":"sample"}]}'))
+    hit = await clients.post(f"/call/{endpoint}", json=payload)
+    assert hit.status_code == 200
+    assert hit.headers["X-Treg-Cost-Micro"] == "11000"
+    assert await _balance(clients) == before - 11_000
+
+    for status in (204, 400, 401, 402, 429):
+        monkeypatch.setattr(call_service, "relay", _fake_relay(status, b'{"error":"synthetic"}'))
+        current = await _balance(clients)
+        response = await clients.post(f"/call/{endpoint}", json=payload)
+        assert response.status_code == status
+        assert response.headers["X-Treg-Cost-Micro"] == "0"
+        assert await _balance(clients) == current
+
+
+async def test_adyntel_byok_pair_wins_and_remains_unmetered(
+    clients, adyntel_platform_on,
+):
+    key_id = (await clients.post(
+        "/secrets", json={"name": "adyntel-key", "value": "OWN-KEY"},
+    )).json()["id"]
+    email_id = (await clients.post(
+        "/secrets", json={"name": "adyntel-email", "value": "own@example.com"},
+    )).json()["id"]
+    tool = await clients.post("/tools", json={
+        "name": "adyntel",
+        "base_url": "https://api.adyntel.com",
+        "bindings": [
+            {"secret_id": key_id, "injector": "env", "location": "json",
+             "name": "api_key", "format": "{secret}"},
+            {"secret_id": email_id, "injector": "env", "location": "json",
+             "name": "email", "format": "{secret}"},
+        ],
+    })
+    assert tool.status_code == 200, tool.text
+    captured = {}
+
+    def upstream(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200, stream=httpx.ByteStream(b'{"ads":[{"id":"sample"}]}'),
+            headers={"content-type": "application/json"},
+        )
+
+    await A.app.state.http.aclose()
+    A.app.state.http = AsyncClient(transport=httpx.MockTransport(upstream))
+    before = await _balance(clients)
+    response = await clients.post(
+        "/call/adyntel.google.ads.transparency", json={"company_domain": "example.com"},
+    )
+    assert response.status_code == 200, response.text
+    assert captured["api_key"] == "OWN-KEY"
+    assert captured["email"] == "own@example.com"
+    assert "X-Treg-Cost-Micro" not in response.headers
+    assert await _balance(clients) == before
+
+
+@pytest.fixture
 def tavily_platform_on(monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_TAVILY", "PLATFORM-TAVILY")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "tavily")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture
+def olostep_platform_on(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_OLOSTEP", "PLATFORM-OLOSTEP")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "olostep")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -1710,6 +1811,33 @@ async def test_tavily_platform_gates_search_usage_and_site_work_limits(
     response = await clients.post(f"/call/tavily.web.{endpoint}", json=body)
     assert response.status_code == 400
     assert response.json()["detail"]["error"] == "catalog_parameter_invalid"
+    assert await _balance(clients) == before
+
+
+@pytest.mark.parametrize(("endpoint", "body", "parameter"), [
+    ("olostep.web.map.search", {
+        "url": "https://docs.olostep.com",
+        "search_query": "billing",
+        "top_n": 1001,
+    }, "body.top_n"),
+    ("olostep.web.crawl", {
+        "start_url": "https://example.com",
+        "max_pages": 101,
+        "follow_robots_txt": True,
+    }, "body.max_pages"),
+])
+async def test_olostep_catalog_bounds_refuse_overspend_before_reserve(
+    clients, olostep_platform_on, endpoint, body, parameter,
+):
+    before = await _balance(clients)
+    response = await clients.post(f"/call/{endpoint}", json=body)
+    assert response.status_code == 400
+    assert response.json()["detail"] == {
+        "error": "catalog_parameter_invalid",
+        "endpoint_id": endpoint,
+        "parameter": parameter,
+        "message": f"{endpoint} received an invalid value for {parameter}",
+    }
     assert await _balance(clients) == before
 
 

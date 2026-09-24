@@ -83,8 +83,8 @@ class OAuthProvider:
     # Where the pasted credential rides. "header" (default) injects it as token_header; "query"
     # injects it as the token_param query parameter — Semrush authenticates the classic API with
     # `?key=…`, not a header. Drives both the connect-time probe and the provisioned tool's binding.
-    token_location: str = "header"  # "header" | "query"
-    token_param: str = ""  # query-param name when token_location == "query" (Semrush: "key")
+    token_location: str = "header"  # "header" | "query" | "json"
+    token_param: str = ""  # query/JSON field name outside the default header shape
     # Provider protocol headers that are required on EVERY request but are not credentials. The
     # provisioner turns these into ordinary constant-format bindings, so the generic proxy still
     # only applies bindings and never learns provider-specific behavior. A tuple keeps this frozen
@@ -152,6 +152,10 @@ class OAuthProvider:
     # free probe, so we POST an empty body: a valid key answers 400/422 (bad request, no charge) while
     # an invalid key answers 401 — so only 401/403 should count as a bad-key rejection there.
     probe_reject_statuses: tuple[int, ...] = ()
+    # Some APIs authenticate with a credential pair in the request body. The first connect step
+    # cannot prove the primary half until the user supplies the second; these statuses mean
+    # "store it as unchecked and continue the pair setup", never "verified".
+    probe_deferred_statuses: tuple[int, ...] = ()
 
     # Per-provider auth quirks. Defaults match Google, which is the common case.
     auth_params: dict[str, str] | None = None  # extra ?query on the consent URL
@@ -193,6 +197,8 @@ class OAuthProvider:
     extra_credential_note: str = ""
     extra_credential_label: str = ""  # what to call it in the UI, e.g. "Developer token"
     extra_credential_header: str = ""  # the header it's injected as, e.g. "developer-token"
+    extra_credential_location: str = "header"  # "header" | "query" | "json"
+    extra_credential_param: str = ""  # query/JSON name; header remains the compatibility default
     # Settings attribute holding TREG's own value for it. When set, users supply nothing and the
     # tool is provisioned with a platform binding; the per-user prompt is only the fallback.
     extra_credential_setting: str = ""
@@ -216,7 +222,11 @@ class OAuthProvider:
 
     @property
     def needs_extra_credential(self) -> bool:
-        return bool(self.extra_credential_header)
+        return bool(self.extra_credential_header or self.extra_credential_param)
+
+    @property
+    def extra_credential_name(self) -> str:
+        return self.extra_credential_param or self.extra_credential_header
 
     @property
     def platform_extra_credential(self) -> str:
@@ -1857,6 +1867,41 @@ PIAPI = OAuthProvider(
     probe_path="/account/info",  # free; a bad key answers 401 {"message":"Failed to verify api key"}
 )
 
+TINYFISH = OAuthProvider(
+    service="tinyfish",
+    display_name="TinyFish",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your TinyFish API key",
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://agent.tinyfish.ai/api-keys",
+    setup_action_label="Get your TinyFish API key",
+    setup_steps=(
+        "Sign in to TinyFish and open API keys.",
+        "Create or copy an API key and paste it here.",
+    ),
+    setup_note=(
+        "Search and Fetch are free within TinyFish's published limits. Agent runs cost $0.016 "
+        "per reported step; treg reads the terminal step count before settling a platform call."
+    ),
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Search and fetch the web, or run an asynchronous browser agent toward a stated goal.",
+    base_url="https://agent.tinyfish.ai",
+    catalog_targets=(
+        CatalogTarget(host="api.search.tinyfish.ai", base_url="https://api.search.tinyfish.ai"),
+        CatalogTarget(host="api.fetch.tinyfish.ai", base_url="https://api.fetch.tinyfish.ai"),
+    ),
+    extra_tools=(
+        {"suffix": "search", "base_url": "https://api.search.tinyfish.ai"},
+        {"suffix": "fetch", "base_url": "https://api.fetch.tinyfish.ai"},
+    ),
+    docs_url="https://docs.tinyfish.ai/",
+    probe_path="/v1/wallet",
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -2438,6 +2483,63 @@ TAVILY = OAuthProvider(
     probe_path="/usage",
 )
 
+KEENABLE = OAuthProvider(
+    service="keenable",
+    display_name="Keenable",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="keen_…",
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://app.keenable.ai/console",
+    setup_action_label="Get your Keenable API key",
+    setup_steps=(
+        "Sign in to Keenable and open the console.",
+        "Create or copy an API key.",
+    ),
+    setup_note=(
+        "Search and Fetch each spend one request from the Keenable organization. Connecting checks "
+        "the key with one $0.004 fetch because Keenable exposes no free authenticated account route."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Search the web and fetch indexed or live pages as clean Markdown.",
+    base_url="https://api.keenable.ai",
+    docs_url="https://docs.keenable.ai/api-reference",
+    probe_path="/v1/fetch?url=https%3A%2F%2Fdocs.keenable.ai%2F&max_chars=1",
+    token_verify_field="url",
+    probe_cost_micro=4_000,
+)
+
+OLOSTEP = OAuthProvider(
+    service="olostep",
+    display_name="Olostep",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="sk_…",
+    setup_url="https://www.olostep.com/dashboard/api-keys",
+    setup_action_label="Get your Olostep API key",
+    setup_steps=(
+        "Sign in to Olostep and open API Keys.",
+        "Create or copy an API key.",
+    ),
+    setup_note=(
+        "Olostep meters tools in credits: standard Scrape and bounded Map cost one credit, "
+        "Search costs five, Answer costs twenty, and Crawl costs one per completed page. "
+        "Connecting checks the free credit-balance endpoint."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Scrape pages, search the web, answer questions, map sites and run bounded crawls.",
+    base_url="https://api.olostep.com",
+    docs_url="https://docs.olostep.com/",
+    probe_path="/user/credits/info",
+)
+
 CLORO = OAuthProvider(
     service="cloro",
     display_name="cloro",
@@ -2561,6 +2663,48 @@ OCEANIO = OAuthProvider(
     # 403 {"detail":"API token should be provided in headers or query parameters"}, so the default
     # reject-on-status verify is enough — no token_verify_field / probe_reject_statuses needed.
     probe_path="/v2/data-fields",
+)
+
+
+ADYNTEL = OAuthProvider(
+    service="adyntel",
+    display_name="Adyntel",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Adyntel API key",
+    token_location="json",
+    token_param="api_key",
+    token_format="{secret}",
+    extra_credential_label="Account email",
+    extra_credential_location="json",
+    extra_credential_param="email",
+    platform_extra_setting="platform_email_adyntel",
+    extra_credential_note=(
+        "Adyntel authenticates every request with both your API key and account email in the JSON "
+        "body. Add the email after the key; treg injects both values server-side."
+    ),
+    setup_url="https://platform.adyntel.com/",
+    setup_action_label="Get your Adyntel API key",
+    setup_steps=(
+        "Sign in to Adyntel and copy your API key.",
+        "Paste the API key here, then add the email address for the same Adyntel account.",
+    ),
+    setup_note=(
+        "Successful ad-library pages spend credits. Empty and rejected requests are not billed. "
+        "Catalog tools expose controlled page-by-page calls; your own raw tool can use the full API."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Advertising",
+    summary="Search public ads on Meta, LinkedIn, Google and TikTok, plus paid keyword data.",
+    base_url="https://api.adyntel.com",
+    docs_url="https://docs.adyntel.com/",
+    probe_path="/facebook",
+    probe_method="POST",
+    probe_json={"company_domain": "treg-credential-check.invalid"},
+    probe_reject_statuses=(401, 403),
+    probe_deferred_statuses=(422,),
 )
 
 
@@ -3353,14 +3497,14 @@ REGISTRY: dict[str, OAuthProvider] = {
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
         REPLICATE,
-        REAPI, PIAPI,
+        REAPI, PIAPI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
-        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, TAVILY, CLORO,
+        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, TAVILY, KEENABLE, OLOSTEP, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO,
-        COMPANYENRICH, OCEANIO, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
+        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
@@ -3631,8 +3775,8 @@ def platform_bindings(provider) -> list[dict]:
     never written to a Secret row (unreadable by the tenant, unexportable by a local run, and
     `api.py`'s cross-org secret check would reject it anyway)."""
     setting = platform_setting_name(provider.service)
-    if provider.token_location == "query":
-        bindings = [{"platform_setting": setting, "injector": "env", "location": "query",
+    if provider.token_location in {"query", "json"}:
+        bindings = [{"platform_setting": setting, "injector": "env", "location": provider.token_location,
                      "name": provider.token_param, "format": provider.token_format}]
     else:
         bindings = [{"platform_setting": setting, "injector": "env", "location": "header",
@@ -3649,6 +3793,7 @@ def platform_bindings(provider) -> list[dict]:
     # ride user connects, pairing a user's key with treg's secret — a pair the provider rejects.
     if provider.needs_extra_credential and provider.platform_extra_setting:
         bindings.append({"platform_setting": provider.platform_extra_setting, "injector": "env",
-                         "location": "header", "name": provider.extra_credential_header,
+                         "location": provider.extra_credential_location,
+                         "name": provider.extra_credential_name,
                          "format": "{secret}"})
     return bindings

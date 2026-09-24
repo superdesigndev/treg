@@ -263,6 +263,7 @@ def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
 # Platform providers whose out-of-credit answer nobody has recorded in `_TABLE` yet. An acknowledged
 # gap, not a claim the vendor never runs dry: their 4xx trips `unrecorded` instead.
 _UNRECORDED_SIGNATURE = {
+    "adyntel",  # no balance endpoint; documented 402 does not uniquely prove wallet exhaustion
     "apify", "aviato", "branddev", "brightdata", "coingecko", "coresignal", "crustdata", "dataforseo",
     "diffbot", "exa", "fiber-ai", "finnhub", "icypeas", "justoneapi", "marketstack",
     "sumble",  # exhaustion not forced; no overflow route claimed
@@ -274,6 +275,8 @@ _UNRECORDED_SIGNATURE = {
     "wiza",  # The funded grant was not exhausted; no provider-specific body was forced
     "limadata",  # Starter credits remain; no provider-specific empty-balance body was forced
     "getleadsio",  # promotional allocation was not exhausted; bare 402 remains the generic signal
+    "keenable",  # funded request balance remains; documented bare 402 was not forced
+    "olostep",  # funded credit balance remains; documented 402 was not forced
     "scrubby",  # funded account not exhausted; no provider-specific empty-balance body recorded
     "millionverifier",  # funded-account exhaustion not observed; trial still has credits
     "bounceban",  # verification credits remain; exhaustion was not forced and no overflow is claimed
@@ -286,6 +289,7 @@ _UNRECORDED_SIGNATURE = {
     "fishaudio",  # shared-key serving stays disabled until the funded-account signatures are verified
     "minimax", "oceanio", "openrouter", "replicate", "scrapecreators", "seranking",
     "piapi",  # prepaid wallet exhaustion not observed ($50 funded 2026-09-14); no overflow route
+    "tinyfish",  # funded wallet remains; no provider-specific empty-wallet response was forced
     "trestleiq",  # funded wallet remains; documented 403/429 shapes do not identify empty balance
 
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "tomba", "twelvedata",

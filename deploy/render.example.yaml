@@ -22,13 +22,15 @@ services:
     # tested. A plain `pip install ".[server]"` resolves afresh on every build and picks up whatever
     # a dependency published since; that is how a breaking upstream release reaches production
     # without any commit. `--locked` fails the build when the lock is stale instead of resolving.
-    buildCommand: uv sync --locked --no-dev --extra server --active
+    buildCommand: bash scripts/build-web.sh
     preDeployCommand: python -m treg upgrade
     startCommand: python -m treg
     healthCheckPath: /meta
     envVars:
       # Render adds uv to the Python runtime when uv.lock is present; its default is older than the
       # `required-version` in pyproject.toml, so name one it accepts.
+      - key: NODE_VERSION
+        value: "22.22.0"
       - key: UV_VERSION
         value: "0.12.3"
       - key: TREG_DATABASE_URL

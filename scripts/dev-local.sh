@@ -26,12 +26,12 @@ set -euo pipefail
 SESSION="treg-dev"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT=18790
-DEV_DB="$ROOT/treg-dev.db"                 # *.db is gitignored
+DEV_DB="${TREG_DEV_DB:-$ROOT/treg-dev.db}"                 # *.db is gitignored
 DEV_HOME="$ROOT/scripts/.dev-home"         # sandbox HOME for the dev CLI
 
 DEV_KEYS="$DEV_HOME/dev-keys.env"           # stable dev-only Fernet + session keys, minted once —
                                             # without them every --reload restart drops sessions/secrets
-SERVER_ENV="TREG_EMAIL_DEV_MODE=true TREG_CONNECT_DEMO_ENABLED=true TREG_DATABASE_URL=sqlite+aiosqlite:///$DEV_DB"
+SERVER_ENV="TREG_EMAIL_DEV_MODE=true TREG_DASHBOARD_ROLLOUT_ENABLED=${TREG_DASHBOARD_ROLLOUT_ENABLED:-true} TREG_DASHBOARD_ROLLOUT_PERCENT=${TREG_DASHBOARD_ROLLOUT_PERCENT:-100} TREG_FRONTEND_DEV=${TREG_FRONTEND_DEV:-true} TREG_PUBLIC_URL=http://localhost:$PORT TREG_CONNECT_DEMO_ENABLED=true TREG_DATABASE_URL=sqlite+aiosqlite:///$DEV_DB"
 SERVER_CMD="cd $ROOT && set -a && . $DEV_KEYS && set +a && env $SERVER_ENV uv run python -m treg --reload"
 
 ensure_dev_keys() {
@@ -60,6 +60,10 @@ preflight() {
 up() {
   preflight
   ensure_dev_keys
+  command -v npm >/dev/null 2>&1 || die "npm not found. Install Node 22.12 or later."
+  if [ ! -d "$ROOT/frontend/node_modules" ]; then
+    (cd "$ROOT/frontend" && npm ci --include=dev)
+  fi
   if port_up "$PORT" && ! tmux has-session -t "$SESSION" 2>/dev/null; then
     die "port $PORT is already in use by something outside this script (lsof -i :$PORT)"
   fi
@@ -70,6 +74,10 @@ up() {
     info "waiting for the server…"
     for _ in $(seq 1 30); do port_up "$PORT" && break; sleep 0.5; done
     port_up "$PORT" || { tmux capture-pane -pt "$SESSION:server" | tail -20; die "server didn't come up — window output above"; }
+  fi
+  if ! tmux list-windows -t "$SESSION" -F '#{window_name}' | grep -qx frontend; then
+    port_up 5173 && die "port 5173 is already in use outside this dev stack"
+    tmux new-window -t "$SESSION" -n frontend "cd '$ROOT/frontend' && npm run dev -- --host localhost"
   fi
   ok "server up  →  http://localhost:$PORT   (dashboard · /docs · /login)"
   echo "  email OTP dev mode is ON: codes appear on the page / in the API response"

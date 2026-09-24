@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>treg</title>
+<!-- The dashboard is an authenticated app: every view needs a session and supports shared deep links. Nothing here is indexable, and a crawler that got in would index a sign-in prompt. -->
+<meta name="robots" content="noindex, follow"/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,400..700&family=Geist+Pixel&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+
+
+
+<script src="/tutorial.js"></script>
+<script src="/dashboard-tour/tour.js"></script>
+<script src="/adtrack.js"></script>
+</head>
+<body>
+<div id="app"><p role="status">Loading treg…</p><p>If this page does not load, <a href="">reload</a> to get the latest version.</p></div>
+<script src="/sitetrack.js"></script>
+<script src="/agent-setup.js"></script>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

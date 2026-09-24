@@ -425,8 +425,74 @@ async def test_akta_collector_marks_enterprise_accounts():
 
 def test_no_balance_api_includes_expected_providers():
     """Verify the vendors that have no free balance API are documented."""
-    expected = {"aviato", "coresignal", "exa", "financialdatasets", "finnhub", "justoneapi", "limadata", "marketstack", "scrubby", "tiingo", "trestleiq"}
+    expected = {
+        "adyntel", "aviato", "coresignal", "exa", "financialdatasets", "finnhub",
+        "justoneapi", "keenable", "limadata", "marketstack", "scrubby", "tiingo", "trestleiq",
+    }
     assert expected == set(collectors.NO_BALANCE_API.keys())
+
+
+async def test_keenable_capacity_is_portal_only_with_documented_rate_limit(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_KEENABLE", "test")
+    collectors.get_settings.cache_clear()
+    try:
+        row = await collectors.provider_balance("keenable")
+        assert row["value"] is None and row["no_api"] is True
+        capacity = policy.default_policy("keenable", has_key=True)
+        assert capacity.capacity_type == "requests"
+        assert capacity.funding_mode == "manual"
+        assert capacity.source == "manual"
+        assert capacity.rate_limit == {"limit": 10, "window_s": 1, "source": "docs"}
+    finally:
+        collectors.get_settings.cache_clear()
+
+
+async def test_olostep_balance_and_conservative_shared_key_rate(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_OLOSTEP", "test-key")
+    collectors.get_settings.cache_clear()
+    try:
+        def probe(request):
+            assert request.method == "GET"
+            assert request.url.path == "/user/credits/info"
+            assert request.headers["authorization"] == "Bearer test-key"
+            return httpx.Response(200, json={
+                "credits": 4321,
+                "active_subscription": {"display_name": "Free"},
+                "allow_usage": True,
+            })
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
+            row = await collectors.provider_balance("olostep", client)
+        assert row == {
+            "provider": "olostep",
+            "value": 4321,
+            "unit": "credits",
+            "note": "plan Free; usage allowed",
+        }
+        capacity = policy.default_policy("olostep", has_key=True)
+        assert capacity.capacity_type == "credits"
+        assert capacity.funding_mode == "manual"
+        assert capacity.source == "api"
+        assert capacity.rate_limit == {"limit": 5, "window_s": 1, "source": "policy"}
+    finally:
+        collectors.get_settings.cache_clear()
+
+
+async def test_adyntel_capacity_is_dashboard_only_and_rate_limited(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ADYNTEL", "PLATFORM-ADYNTEL")
+    collectors.get_settings.cache_clear()
+    try:
+        row = await collectors.provider_balance("adyntel")
+        assert row["no_api"] is True and row["value"] is None
+        assert "dashboard only" in row["note"]
+        capacity = policy.default_policy("adyntel", has_key=True)
+        assert capacity.capacity_type == "credits"
+        assert capacity.funding_mode == "manual"
+        assert capacity.auto_funding_enabled is False
+        assert capacity.source == "manual"
+        assert capacity.rate_limit == {"limit": 5, "window_s": 1, "source": "docs"}
+    finally:
+        collectors.get_settings.cache_clear()
 
 
 def test_limadata_policy_uses_auto_recharge_and_the_documented_rate():

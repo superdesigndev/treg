@@ -340,18 +340,21 @@ def _show(resp: httpx.Response) -> None:
 
 
 def _show_charge_line(resp: httpx.Response) -> None:
-    """The bill for a metered call, on stderr, next to the answer: `X-Treg-Cost-Micro` is the settled
-    charge and `X-Treg-Call-Id` the record to quote — neither is in the provider's body, which is all
-    stdout carries. A customer who saw only `results` and `next_token` could not tell whether a
-    $0.13 estimate or a $0.0067 row had been charged and stopped testing (2026-09-04). Silent for an
-    unmetered call (no header) — a team's own key is never billed — and for every non-call response."""
+    """The bill for a metered call, on stderr, next to the answer. Async submissions are the one
+    exception: their cost header is a hold pending terminal settlement, so say `reserved` rather
+    than falsely claiming the ceiling was charged. `X-Treg-Call-Id` is the record to quote; neither
+    field is in the provider body, which is all stdout carries. Silent for an unmetered call (no
+    header) — a team's own key is never billed — and for every non-call response."""
     headers = getattr(resp, "headers", {}) or {}
     cost = headers.get("X-Treg-Cost-Micro")
     if cost is None:
         return
-    line = f"treg: charged ${int(cost) / 1_000_000:g}"
+    asynchronous = bool(headers.get("X-Treg-Async"))
+    line = (f"treg: reserved up to ${int(cost) / 1_000_000:g} for async settlement"
+            if asynchronous else f"treg: charged ${int(cost) / 1_000_000:g}")
     if headers.get("X-Treg-Idempotent-Replay"):
-        line += " by the original call (this is a replay — nothing new charged)"
+        line += (" by the original call (this is a replay — nothing new reserved)"
+                 if asynchronous else " by the original call (this is a replay — nothing new charged)")
     if call_id := headers.get("X-Treg-Call-Id"):
         line += f" · call id {call_id}"
     print(line, file=sys.stderr)
@@ -2468,10 +2471,11 @@ def await_async_task(descriptor: dict, submission: httpx.Response, call_fn, cloc
             if found["ttl_note"]:
                 result["ttl_note"] = found["ttl_note"]
             return result
-        if outcome == "failure":
+        if outcome in ("failure", "billed_failure"):
             return {"code": 2, "task_id": str(task_id), "recovery": recovery,
                     "response": response, "status": status}
-        if status not in warned:
+        progress = {str(item) for item in descriptor["status"].get("progress", [])}
+        if status not in progress and status not in warned:
             warned.add(status)
             _clock_report(clock, f"warning: unknown async status {_shown(status)!r}; continuing to wait")
         _clock_report(clock, f"async task {_shown(task_id)}: {_shown(status)} "

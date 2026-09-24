@@ -1,0 +1,22 @@
+{
+  "page_id": "redacted-live-id",
+  "keyword": null,
+  "countries": null,
+  "total_ads": 1443,
+  "ads": [
+    {
+      "creative_type": "SPONSORED_VIDEO",
+      "ad_id": "redacted-live-id",
+      "type": "video",
+      "advertiser": {
+        "name": "HubSpot",
+        "logo_url": "https://example.invalid/redacted",
+        "promoted": true
+      },
+      "commentary": {"text": "Redacted live creative text.", "link": null},
+      "view_details_link": "https://example.invalid/redacted"
+    }
+  ],
+  "continuation_token": "redacted-live-token",
+  "is_last_page": false
+}

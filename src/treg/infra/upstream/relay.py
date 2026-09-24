@@ -9,7 +9,9 @@ Faithfulness contract — it alters ONLY these, everything else is relayed verba
      they never leak upstream. treg's own cookies (`treg_session`, `treg_oauth_state`) are scrubbed
      from the Cookie header too (the dashboard's `credentials:'include'` Try-it would otherwise leak
      our session token to the upstream); any other caller cookies are preserved.
-  3. the credential(s) the tool's bindings inject — overwrite only their target header/param.
+  3. the credential(s) the tool's bindings inject — overwrite only their target header, query
+     parameter or top-level JSON field. A JSON binding buffers, parses and reserializes the object;
+     it is semantic JSON relay, not byte-faithful, and is forbidden for raw-body-signature APIs.
   4. on treg's SHARED key only (tier 4), the caller's `Idempotency-Key` is re-scoped per org by
      `scope_shared_idempotency_key` before the request is built. Every org shares one provider
      account there, so a provider that honors the header would hand org B the job org A created
@@ -17,8 +19,9 @@ Faithfulness contract — it alters ONLY these, everything else is relayed verba
      against LeadsForge, 2026-09-09). The caller loses nothing: treg's own idempotency table already
      replays their answer for the same label. A team's own key relays the header verbatim.
 
-It never buffers the body (rule 5: stream, don't duplicate) and uses the shared long-lived
-httpx client (rule 1: keepalive). Secrets are passed already-loaded (api does the DB work).
+Except for that explicit JSON-binding contract, it never buffers the body (rule 5: stream, don't
+duplicate) and uses the shared long-lived httpx client (rule 1: keepalive). Secrets are passed
+already-loaded (api does the DB work).
 """
 
 from __future__ import annotations
@@ -65,6 +68,16 @@ def _is_dropped_request_header(name: str, extra: frozenset[str]) -> bool:
 
 
 _IDEMPOTENCY_HEADER = b"idempotency-key"
+
+
+def _unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """Build an object while refusing ambiguous duplicate keys before credential injection."""
+    result: dict[str, object] = {}
+    for name, value in pairs:
+        if name in result:
+            raise ValueError(f"duplicate JSON object key: {name}")
+        result[name] = value
+    return result
 
 
 def scope_shared_idempotency_key(
@@ -146,6 +159,25 @@ async def relay(
         if not drop_params or k not in drop_params
     ]
 
+    json_bindings = any(binding.get("location") == "json" for binding in tool.bindings)
+    json_body: dict[str, object] | None = None
+    if json_bindings:
+        if not request.has_body or request.body_read is None:
+            raise GatewayFailed(
+                "injection_failed", status_code=502,
+                detail="JSON credential injection requires a readable request body")
+        try:
+            parsed = json.loads(await request.body_read(), object_pairs_hook=_unique_json_object)
+        except ValueError as exc:
+            raise GatewayFailed(
+                "injection_failed", status_code=502,
+                detail="JSON credential injection requires valid JSON with unique object keys") from exc
+        if not isinstance(parsed, dict):
+            raise GatewayFailed(
+                "injection_failed", status_code=502,
+                detail="JSON credential injection requires a JSON object request body")
+        json_body = parsed
+
     # Apply every binding (a request may need several credentials at once).
     for binding in tool.bindings:
         # A PLATFORM binding injects one of treg's own credentials (Google Ads' developer token),
@@ -160,7 +192,7 @@ async def relay(
                     "injection_failed", status_code=502,
                     detail=f"this server has no {setting} configured")
             try:
-                injectors.inject(headers, params, binding, value)
+                injectors.inject(headers, params, binding, value, json_body=json_body)
             except ValueError as exc:
                 raise GatewayFailed(
                     "injection_failed", status_code=502,
@@ -168,7 +200,8 @@ async def relay(
             continue
         secret = secrets[binding["secret_id"]]
         try:
-            injectors.inject(headers, params, binding, crypto.decrypt(secret.value))
+            injectors.inject(headers, params, binding, crypto.decrypt(secret.value),
+                             json_body=json_body)
         except ValueError as exc:
             raise GatewayFailed(
                 "injection_failed", status_code=502,
@@ -177,13 +210,16 @@ async def relay(
     # Only carry a body when the caller actually sent one — otherwise passing an (unsized) stream
     # makes httpx frame the request `Transfer-Encoding: chunked`, putting a bogus body-frame on a
     # GET/HEAD/OPTIONS (which strict upstreams reject).
-    content = request.body_stream() if request.has_body else None
+    content = (json.dumps(json_body, separators=(",", ":"), ensure_ascii=False).encode()
+               if json_body is not None else request.body_stream() if request.has_body else None)
     # A streamed body with no length makes httpx frame it `Transfer-Encoding: chunked`. The bytes are
     # the caller's, unaltered, so the caller's own Content-Length is exact — carry it, and httpx
     # frames the upstream request with it instead. Meta's Graph API edge does not read a chunked
     # request body: every JSON/form/multipart POST arrived as a bodyless request, and an ad creative
     # sent that way failed "Ad incomplete" (live 2026-09-19). A caller who streamed chunked stays chunked.
-    if content is not None and (cl := _header_value(request.raw_headers, "content-length")):
+    if json_body is not None:
+        headers["content-length"] = str(len(content))
+    elif content is not None and (cl := _header_value(request.raw_headers, "content-length")):
         headers["content-length"] = cl
     # Merge the query onto the URL rather than passing params=: httpx REPLACES a URL's existing
     # query whenever params is given (even an empty list), which silently stripped a catalog path's

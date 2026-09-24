@@ -999,8 +999,8 @@ def _platform_bindings(provider) -> list[dict]:
     carrying the attribute costs nothing and keeps the contract explicit."""
     setting = platform_setting_name(provider.service)
     encode_attr = {"token_encode": provider.token_encode} if provider.token_encode else {}
-    if provider.token_location == "query":
-        bindings = [{"platform_setting": setting, "injector": "env", "location": "query",
+    if provider.token_location in {"query", "json"}:
+        bindings = [{"platform_setting": setting, "injector": "env", "location": provider.token_location,
                      "name": provider.token_param, "format": provider.token_format, **encode_attr}]
     else:
         bindings = [{"platform_setting": setting, "injector": "env", "location": "header",
@@ -1017,7 +1017,8 @@ def _platform_bindings(provider) -> list[dict]:
     # ride user connects, pairing a user's key with treg's secret — a pair the provider rejects.
     if provider.needs_extra_credential and provider.platform_extra_setting:
         bindings.append({"platform_setting": provider.platform_extra_setting, "injector": "env",
-                         "location": "header", "name": provider.extra_credential_header,
+                         "location": provider.extra_credential_location,
+                         "name": provider.extra_credential_name,
                          "format": "{secret}"})
     return bindings
 
@@ -1257,24 +1258,78 @@ def _enforce_catalog_query(ep: dict, query: QueryValues, has_body: bool) -> None
 
 
 def _enforce_catalog_body(ep: dict, body: bytes) -> None:
-    """Enforce opt-in array cardinality without rewriting a catalog request.
+    """Enforce an opt-in reviewed JSON-body surface without rewriting the request.
 
     Most catalog schemas describe the upstream API and deliberately leave BYOK requests as a
     faithful relay. ``strict_body`` is the narrow exception for a catalog tool whose advertised
-    contract is intentionally smaller than the upstream surface. Array limits are read from the
-    existing input declaration and applied on every credential tier.
+    contract is intentionally smaller than the upstream surface. ``body_allowlist`` additionally
+    rejects undeclared fields and validates the declared scalar types, enums and numeric bounds.
+    Array limits are read from the existing input declaration. These constraints apply on every
+    credential tier when the caller chooses the catalog endpoint; a team's raw tool remains a
+    faithful relay.
     """
-    if not ep.get("strict_body"):
+    if not ep.get("strict_body") and not ep.get("body_allowlist"):
         return
     document = _strict_json_object(body, ep["id"])
     fields = (ep.get("input") or {}).get("body") or {}
+    if ep.get("body_allowlist"):
+        unknown = sorted(set(document) - set(fields))
+        missing = sorted(
+            name for name, spec in fields.items()
+            if isinstance(spec, dict) and spec.get("required")
+            and (name not in document or document.get(name) in (None, ""))
+        )
+        if unknown or missing:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid",
+                    "endpoint_id": ep["id"],
+                    "message": "Use only the declared body fields and include every required field.",
+                    **({"undeclared": unknown} if unknown else {}),
+                    **({"missing": missing} if missing else {}),
+                },
+            )
+        scalar_types = {
+            "string": lambda value: isinstance(value, str),
+            "integer": lambda value: isinstance(value, int) and not isinstance(value, bool),
+            "number": lambda value: isinstance(value, (int, float)) and not isinstance(value, bool),
+            "boolean": lambda value: isinstance(value, bool),
+            "object": lambda value: isinstance(value, dict),
+        }
+        for name, value in document.items():
+            spec = fields.get(name)
+            if not isinstance(spec, dict):
+                continue
+            declared = str(spec.get("type") or "")
+            checker = scalar_types.get(declared)
+            invalid = checker is not None and not checker(value)
+            if (not invalid and not declared.startswith("array")
+                    and spec.get("enum") is not None):
+                invalid = value not in spec["enum"]
+            if not invalid and declared in {"integer", "number"}:
+                minimum, maximum = spec.get("min"), spec.get("max")
+                invalid = ((isinstance(minimum, (int, float)) and value < minimum)
+                           or (isinstance(maximum, (int, float)) and value > maximum))
+            if invalid:
+                raise ResolutionFailed(
+                    "catalog_parameter_invalid", status_code=400, detail={
+                        "error": "catalog_parameter_invalid",
+                        "endpoint_id": ep["id"],
+                        "parameter": f"body.{name}",
+                        "message": f"{ep['id']} received an invalid value for body.{name}",
+                    },
+                )
     for name, spec in fields.items():
         if not isinstance(spec, dict) or not str(spec.get("type") or "").startswith("array"):
+            continue
+        if name not in document and not spec.get("required"):
             continue
         value = document.get(name)
         minimum = spec.get("minItems", spec.get("min"))
         maximum = spec.get("maxItems", spec.get("max"))
         valid = isinstance(value, list)
+        if valid and spec.get("enum") is not None:
+            valid = all(item in spec["enum"] for item in value)
         if valid and isinstance(minimum, int):
             valid = len(value) >= minimum
         if valid and isinstance(maximum, int):
@@ -1521,11 +1576,18 @@ def _async_resource_refs(ep: dict) -> list[tuple[str, dict]]:
     return refs
 
 
-def _one_resource_value(ep: dict, query: QueryValues, refs: list[tuple[str, dict]]) -> str:
+def _one_resource_value(ep: dict, query: QueryValues, refs: list[tuple[str, dict]],
+                        body: bytes = b"") -> str:
     supplied: list[str] = []
+    document = _strict_json_object(body, ep["id"]) if body else {}
     for _, param in refs:
         name = str(param.get("name") or "")
-        supplied.extend(value for key, value in query.items if key == name)
+        if param.get("in") == "body":
+            value = document.get(name)
+            if isinstance(value, (str, int, float)) and not isinstance(value, bool):
+                supplied.append(str(value))
+        else:
+            supplied.extend(value for key, value in query.items if key == name)
     values = set(supplied)
     if len(values) != 1:
         raise ResolutionFailed(
@@ -1544,14 +1606,18 @@ def _descriptor_ref(descriptor: dict, kind: str) -> tuple[str, dict]:
 
 
 async def _enforce_platform_async_ownership(
-    ep: dict, query: QueryValues, caller: Caller, db: AsyncSession,
+    ep: dict, query: QueryValues, body: bytes, caller: Caller, db: AsyncSession,
 ) -> str | None:
     """Authorize shared-key task/result utilities through the caller org's durable submission."""
     ownership = ep.get("resource_ownership") or {}
     required = ownership.get("requires") or {}
     resource_owned = False
     if required:
-        value = _one_resource_value(ep, query, [("resource", {"name": required.get("param")})])
+        value = _one_resource_value(
+            ep, query,
+            [("resource", {"name": required.get("param"), "in": required.get("in")})],
+            body,
+        )
         resource_owned = (await db.execute(select(AsyncResourceRecord.id).where(
             AsyncResourceRecord.org_id == caller.org_id,
             *pinned_tag_predicates(AsyncResourceRecord.tags, caller.membership.pinned_tags),
@@ -1565,7 +1631,7 @@ async def _enforce_platform_async_ownership(
         if required and not resource_owned:
             raise _async_resource_denied(caller)
         return None
-    value = _one_resource_value(ep, query, refs)
+    value = _one_resource_value(ep, query, refs, body)
     candidates = (await db.execute(select(AsyncTaskRecord).where(
         AsyncTaskRecord.org_id == caller.org_id,
         *pinned_tag_predicates(AsyncTaskRecord.tags, caller.membership.pinned_tags),
@@ -1842,9 +1908,14 @@ async def _resolve_marketplace_call(
     unit_view = cat.cost_view({**raw_cost, "value": 1, "per": 1}, service) if raw_cost else None
     unit_micro = _usd_to_micro(unit_view.get("usd")) if unit_view else 0
     usage_unit_micro = None
-    if (raw_cost.get("usage") or {}).get("unit") == "credit":
+    usage_unit = str((raw_cost.get("usage") or {}).get("unit") or "")
+    if usage_unit == "credit":
         # One provider credit in micro-USD, from fx.yaml; the validator guarantees the entry.
         usage_unit_micro = _usd_to_micro(cat.credit_rates.get(service))
+    elif usage_unit and usage_unit != "usd":
+        # Freeze a provider-native meter just like a credit rate so a later rate-card edit cannot
+        # re-price a task already in flight.
+        usage_unit_micro = _usd_to_micro(cat.unit_rates.get(service, {}).get(usage_unit))
     basis = settlement_basis.derive_basis(
         raw_cost, request=request_data, input_schema=ep.get("input") or {},
         unit_micro=unit_micro, terminal=bool(ep.get("async")),
@@ -1947,7 +2018,7 @@ async def _resolve_marketplace_call(
                         "parameter": name, "expected": expected,
                         "message": f"{ep['id']} requires {name}={expected!r}; use the matching catalog tool.",
                     })
-        async_owner_call_id = await _enforce_platform_async_ownership(ep, query, caller, db)
+        async_owner_call_id = await _enforce_platform_async_ownership(ep, query, body, caller, db)
         public_resource_ids = await _enforce_platform_managed_ownership(
             ep, query, body, request_headers, caller, db)
     skip_direct = False

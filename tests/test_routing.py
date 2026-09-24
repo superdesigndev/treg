@@ -140,19 +140,21 @@ def test_openmart_tools_are_direct_only_not_routed():
     assert "openmart.companies.enrich" not in cat.by_id["treg.companies.enrich"]["routed_children"]
 
 
-def test_tavily_routes_only_search_and_keeps_result_settled_tools_direct():
+def test_tavily_routes_synchronous_web_tools_and_keeps_crawl_direct():
     cat = catalog_store.load()
-    assert "tavily.web.search" in cat.by_id["treg.web.search"]["routed_children"]
-    assert cat.adapters["tavily.web.search"].verified
-    direct = {
+    routed = {
+        "tavily.web.search": "treg.web.search",
         "tavily.web.extract": "treg.web.extract",
         "tavily.web.map": "treg.web.map",
-        "tavily.web.crawl": "treg.web.crawl",
     }
-    for child, parent in direct.items():
-        assert child not in cat.adapters
-        assert parent not in cat.by_id or child not in cat.by_id[parent]["routed_children"]
-        assert cat.platform_eligible(cat.by_id[child])
+    for child, parent in routed.items():
+        assert cat.adapters[child].verified
+        assert child in cat.by_id[parent]["routed_children"]
+    assert "tavily.web.crawl" not in cat.adapters
+    assert "treg.web.crawl" not in cat.by_id or (
+        "tavily.web.crawl" not in cat.by_id["treg.web.crawl"]["routed_children"]
+    )
+    assert cat.platform_eligible(cat.by_id["tavily.web.crawl"])
 
 
 async def test_tavily_routed_empty_search_is_a_paid_miss_then_falls_through(

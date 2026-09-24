@@ -11,7 +11,8 @@ sources:
   - src/treg/api.py
   - src/treg/routers/onboard.py
   - src/treg/routers/web.py
-  - src/treg/web/index.html
+  - frontend/src/state/boot.js
+  - frontend/src/components/SignedOutPage.vue
   - src/treg/web/install.sh
 related:
   - interface/dashboard.md
@@ -28,7 +29,7 @@ related:
 > explanation, footer CTA, invite and share gates, OAuth entry, and sign-in modal remain.
 
 The sections below document backend behavior that is still shipped but has no visitor-facing mint
-path in `index.html`. Provisioning, export, samples, and garbage collection remain in
+path in the Dashboard components. Provisioning, export, samples, and garbage collection remain in
 `application/onboard/sandbox.py`; the call-side sandbox engine remains in `sandbox.py`; and the routes
 remain in `routers/onboard.py`. Their removal is intentionally deferred to the backend follow-up.
 
@@ -79,7 +80,7 @@ or deletes of the seeded `stripe` tool and its `STRIPE_KEY` while the wire is on
 fully editable). `is_live_tool` lives in `sandbox.py`; `visitor_name` and its wordlists (`ADJECTIVES`/
 `ANIMALS`) live in the neutral `sandbox_identity.py` leaf. `mint()` returns the visitor name;
 `POST /demo/sandbox` adds `"live"` and `GET /demo/sandbox/live` (`demo_sandbox_live`) reports `{live, visitor}`.
-Both routes remain pending backend removal, but `index.html` no longer calls either one or holds a
+Both routes remain pending backend removal, but the Dashboard components no longer calls either one or holds a
 sandbox token.
 
 ## The public payments feed (`application/onboard/pubfeed.py`)

@@ -1089,11 +1089,13 @@ def test_terminal_classification_coerces_status_values_and_treats_none_as_progre
             "path": "task.status",
             "success": [2],
             "failure": ["3"],
+            "billed_failure": [4],
         },
     }
 
     assert asynctasks.classify_terminal(descriptor, {"task": {"status": "2"}}) == "success"
     assert asynctasks.classify_terminal(descriptor, {"task": {"status": 3}}) == "failure"
+    assert asynctasks.classify_terminal(descriptor, {"task": {"status": "4"}}) == "billed_failure"
     assert asynctasks.classify_terminal(descriptor, {"task": {"status": None}}) == "progress"
     assert asynctasks.classify_terminal(descriptor, {"task": {}}) == "progress"
 

@@ -29,7 +29,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Local CLI runs — run a vendor CLI as a dedicated user with a server-held credential (`treg run`)](architecture/local-run.md) | shipped | localrun.py, egress.py, fsjail.py |
 | [MCP — the front door for assistants, and treg as an OAuth authorization server](architecture/mcp-oauth.md) | shipped | auth.py, mcp.py, health.py, mcp_oauth.py, … |
 | [Media hosting - reference files a vendor can fetch (`treg host`)](architecture/media.md) | shipped | media.py, media.py, models.py, 0037_media_hosting.py, … |
-| [Money — prepaid balance, the ledger, Stripe, and the reports that check it](architecture/money.md) | shipped | tavily.yaml, __init__.py, settlement.py, __init__.py, … |
+| [Money — prepaid balance, the ledger, Stripe, and the reports that check it](architecture/money.md) | shipped | tavily.yaml, tinyfish.yaml, test_tinyfish.py, __init__.py, … |
 | [Multi-tenancy — orgs, memberships, invites, per-org scoping](architecture/multi-tenancy.md) | shipped | access.py, 0042_pinned_read_scope.py, test_pinned_read_scope.py, models.py, … |
 | [The proxy — faithful credential-injecting relay + tool resolution](architecture/proxy-model.md) | shipped | relay.py, ssrf.py, api.py, authorize.py, … |
 | [Discovery experiment — a relevance judge behind catalog search, measured on what the caller does next](architecture/search-experiment.md) | building | search_experiment.py, interleave.py, judge.py, 0041_searchlog.py, … |
@@ -42,7 +42,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [The API — the only brain (FastAPI)](interface/api.md) | shipped | media.py, sitetrack.js, api.py, bootstrap_handlers.py, … |
 | [Catalog browse review — categories, platform placement, and domain sections](interface/catalog-review-proposal.md) | reference | store.py, capabilities.yaml |
 | [The CLI (treg) + skill scaffolding](interface/cli.md) | shipped | cli.py, test_released_cli_compat.py, test_cli_key_compatibility.py, auth_helpers.py, … |
-| [The web dashboard (Ledger, served from FastAPI)](interface/dashboard.md) | shipped | sitetrack.js, index.html, agent-setup.js, README.md, … |
+| [The web dashboard (served from FastAPI)](interface/dashboard.md) | shipped | sitetrack.js, index.html, package.json, vite.config.ts, … |
 | [Enrich Arena — paid comparisons, one-click feedback, and visible waterfalls](interface/enrich-arena.md) | shipped | arena.py, arena.py, arena.py, models.py, … |
 | [Import — scan a .env AND/OR a skills dir, auto-register as tools + bundles](interface/env-import.md) | in-progress | providers.py, skills.py |
 | [Landing sandbox backend - front-end entry removed](interface/landing-sandbox.md) | shipped | sandbox.py, sandbox_identity.py, pubfeed.py, sandbox.py, … |
@@ -56,7 +56,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | Fragment | Status | Covers |
 |---|---|---|
 | [Provider capacity — knowing what treg's own vendor accounts have left](ops/capacity.md) | shipped | __init__.py, collectors.py, policy.py, sweep.py, … |
-| [Running & deploying the server](ops/deploy.md) | shipped | pyproject.toml, __main__.py, maintenance.py, env.py, … |
+| [Running & deploying the server](ops/deploy.md) | shipped | pyproject.toml, hatch_build.py, build-dashboard.sh, build-web.sh, … |
 
 ## Reference
 

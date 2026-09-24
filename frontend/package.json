@@ -1,0 +1,30 @@
+{
+  "name": "treg-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build && node scripts/copy-runtime.mjs",
+    "test": "vitest run",
+    "check": "vue-tsc --noEmit",
+    "test:e2e": "playwright test",
+    "predev": "node scripts/copy-runtime.mjs"
+  },
+  "dependencies": {
+    "matter-js": "0.20.0",
+    "vue": "3.5.41"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/matter-js": "0.20.2",
+    "@types/node": "26.6.2",
+    "@vitejs/plugin-vue": "6.0.9",
+    "typescript": "5.9.3",
+    "vite": "8.3.0",
+    "vitest": "5.0.1",
+    "vue-tsc": "3.3.11"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

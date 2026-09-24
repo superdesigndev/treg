@@ -1536,7 +1536,7 @@ async def test_the_SEARCH_TOOL_itself_ranks_on_evidence_not_just_the_helper(clie
     from treg.infra.db import session_maker
     from treg.models import CallRecord
 
-    broken = "apify.meta-ads.library.search"  # earlier in file order: rerank must move it
+    broken = "apify.tiktok-ads.library.search"  # earlier in file order: rerank must move it
     good = "tikhub.x.tiktok-ads-search-ads"
     async with session_maker() as db:
         for status in (200, 200, 200, 200, 503):
@@ -1550,9 +1550,9 @@ async def test_the_SEARCH_TOOL_itself_ranks_on_evidence_not_just_the_helper(clie
 
     token = (await clients.post("/users", json={"email": "ranker@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
-        await _call_tool(c, "catalog_search", {"query": "ad library", "limit": 25}, token=token)
+        await _call_tool(c, "catalog_search", {"query": "tiktok ads", "limit": 25}, token=token)
         await app.state.endpoint_observation_reader.wait_for_idle()
-        out = await _call_tool(c, "catalog_search", {"query": "ad library", "limit": 25}, token=token)
+        out = await _call_tool(c, "catalog_search", {"query": "tiktok ads", "limit": 25}, token=token)
     ids = [r["endpoint_id"] for r in out["results"]]
     assert ids.index(good) < ids.index(broken), ids
     good_row = next(r for r in out["results"] if r["endpoint_id"] == good)

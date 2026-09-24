@@ -406,6 +406,7 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   | `GET /catalog/platforms` | Non-empty platforms with capability/endpoint counts and providers, ordered by endpoint count |
   | `GET /catalog/platforms/{slug}` | Capabilities, extended endpoints, dashboard domain rows and provider metadata; unknown slug is 404 |
   | `GET /catalog/search?q=&limit=` | Ranked endpoint views, count/total and hints; default 25, maximum 100 |
+  | `GET /catalog/find?q=` | Find tools for a described job: NDJSON stream of `candidates` then `judged` (verdict + kept rows with probabilities); rate limited per IP, 503 without a judge key |
   | `GET /catalog/endpoints/{id}` | Endpoint, provider, capability siblings, call template, inline example and next-step hints; `overflow_price_usd` / `overflow_price_unit` / `overflow_via` on the endpoint when the deployment can relay it |
   | `GET /catalog/examples/{id}` | Captured JSON, resolved through the catalog before constructing a file path |
   | `POST /tool-requests` | Open, rate-limited demand report with capped fields and optional caller attribution |
@@ -450,8 +451,10 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
     before returning CLI users to the team picker.
   - Email: `POST /auth/email/start` and `/verify`. Six-digit codes, attempt counts and per-email/
     per-IP start limits live in DB-backed `Ephemeral` state. `expose_dev_code` permits response/
-    log disclosure only on guarded local SQLite; other deployments email the code. Verification
-    issues an identity token and session cookie.
+    log disclosure only on guarded local SQLite; other deployments email the code. An email listed
+    in `TREG_FIXED_LOGIN_CODES` (an account with no inbox, such as a directory reviewer's demo
+    account) is issued its configured code hash instead and nothing is sent; attempts, TTL and
+    start limits are unchanged. Verification issues an identity token and session cookie.
   - Invite sign-in: the admin-visible invite code is join-only. An independent inbox-only
     `email_token` authenticates through `/auth/invite-signin`, consumed once. Invalid/expired
     links return `/?invite_expired=1`. See [auth-secrets](../architecture/auth-secrets.md).
@@ -490,8 +493,8 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   `tutorial_js` (`GET /tutorial.js` - shared `window.TREG_TUTORIAL` + `hl()`), `tutorial_page`
   (`GET /tutorial` - standalone CLI tutorial). The **dashboard tour** is a `StaticFiles(html=True)` mount
   at `/dashboard-tour/` (serves `web/tour/` - `tour.js`, the standalone `index.html`, and the WebP
-  `img/`). **Vendored front-end libraries** are an `_ImmutableStatic` mount at `/vendor/` (serves
-  `web/vendor/` - today just Vue, version-pinned in the filename, hence `Cache-Control: immutable`):
+  `img/`). **Package-generated front-end runtimes** are an `_ImmutableStatic` mount at `/vendor/` (serves
+  `web/vendor/` - Vue copied from the npm lockfile at build time, version-pinned in the filename, hence `Cache-Control: immutable`):
   the dashboard must not depend on a CDN a visitor's network may not reach, see
   [dashboard](dashboard.md). `favicon` (`GET /favicon.svg` + `/favicon.ico`). `llms_txt` (`GET /llms.txt`) serves
   `web/llms.txt` as `text/plain` with `{BASE}` templated from `public_url` - the [llms.txt](https://llmstxt.org)

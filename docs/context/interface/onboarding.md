@@ -8,7 +8,9 @@ sources:
   - src/treg/cli.py
   - src/treg/routers/auth.py
   - src/treg/routers/onboard.py
-  - src/treg/web/index.html
+  - frontend/src/state/onboarding.js
+  - frontend/src/dialogs/WelcomeDialog.vue
+  - frontend/src/pages/GettingStartedPage.vue
 related:
   - interface/api.md
   - interface/cli.md
@@ -140,7 +142,7 @@ callable tool exists → `_demo_call_log`), then `_demo_next_steps`.
 After a first **human** `treg login`, `_maybe_offer_onboarding` prompts `[Y/n]` then `_pick_path` +
 `_dispatch_onboard` — **TTY-only / CI-safe**; a decline posts `/onboard/skip` so it never re-asks.
 
-## Dashboard face (`web/index.html`)
+## Dashboard face (`frontend/src/dialogs/WelcomeDialog.vue`)
 
 The old docked "Getting started" stepper (`onb.*` state, `.onb-panel`/`.onb-push`/`.onb-shift`) is
 **removed** — its content had drifted from the product and it kept re-appearing after signup. First-run

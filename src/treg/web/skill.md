@@ -89,7 +89,9 @@ Notes:
   different: YOUR `X-Treg-Route-Max-Cost` header refused the call before anything was charged —
   ask for fewer rows/targets or raise the ceiling.
 - The real charge is the response header `X-Treg-Cost-Micro` (micro-USD), with `X-Treg-Call-Id`
-  as the id to quote. The catalog `~$/call` figure for a `per_result` route assumes a 20-row page
+  as the id to quote. On an asynchronous submission that header is the reserved ceiling; the CLI
+  labels it as a reservation, and the terminal task settles the real charge. The catalog `~$/call`
+  figure for a `per_result` route assumes a 20-row page
   when the price is per row; when the catalog `cost.unit` is `target`/`domain`/`keyword` you pay
   per thing asked about, one unit per target. Failed calls (4xx/5xx relayed from the provider)
   are free; empty results mean whatever the provider means by them — treg relays, it does not

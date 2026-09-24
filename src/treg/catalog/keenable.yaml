@@ -1,0 +1,74 @@
+provider: keenable
+source:
+  docs: https://docs.keenable.ai/api-reference
+  openapi: https://docs.keenable.ai/api-reference/openapi.json
+  curated: '2026-09-23'
+pricing_url: https://app.keenable.ai/console
+limits: "Authenticated search and fetch share an organization-wide 10 requests/second limit. Keenable documents X-RateLimit-Limit, X-RateLimit-Remaining and X-RateLimit-Reset response headers, but none appeared on four successful live REST calls. The console, not the REST API, reports the remaining credit balance."
+
+endpoints:
+  - id: keenable.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v1/search
+    body_allowlist: true
+    name: Search the open web
+    summary: Search Keenable's web index with site, publication, acquisition and point-in-time filters.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Keenable API documentation"}
+        mode: {type: string, required: false, default: pro, enum: [pro, realtime], example: pro, note: "pro performs deeper retrieval; realtime returns faster. The response echoes the mode actually used."}
+        site: {type: string, required: false, example: docs.keenable.ai, note: "Restrict results to one domain."}
+        acquired_after: {type: string, required: false, example: 7d, note: "RFC 3339 date, ISO 8601 timestamp, or relative delta such as 7d, 30min, 2h, 6mo, or 1y."}
+        acquired_before: {type: string, required: false, note: "RFC 3339 date, ISO 8601 timestamp, or relative delta. A bare date includes that full UTC day."}
+        published_after: {type: string, required: false, example: 30d, note: "RFC 3339 date, ISO 8601 timestamp, or relative delta."}
+        published_before: {type: string, required: false, note: "RFC 3339 date, ISO 8601 timestamp, or relative delta. A bare date includes that full UTC day."}
+        query_time: {type: string, required: false, note: "Search the index as it existed at this date or timestamp; relative filters are rebased to it."}
+        snippet_max_length: {type: integer, required: false, min: 180, max: 10000, example: 500}
+        max_results: {type: integer, required: false, default: 10, min: 1, max: 50, example: 10}
+      note: "Results include title, URL, description, snippet, and optional published/acquired timestamps. Unknown body fields are refused locally on the shared key."
+    test_request:
+      body: {query: "Keenable API documentation", mode: pro, max_results: 2, snippet_max_length: 180}
+    cost: &request_cost
+      type: per_call
+      value: 0.004
+      currency: USD
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://app.keenable.ai/console
+      checked: '2026-09-23'
+      confidence: verified
+      note: "The configured purchased package costs $4 per 1,000 requests. Keenable documents one credit per authenticated search or fetch, including both search modes and indexed/live fetch; no evidence says rejected requests are free, so platform calls are metered per request. BYOK calls are unmetered by treg."
+    verified: '2026-09-23'
+    docs_url: https://docs.keenable.ai/api-reference/search
+    example_response: examples/keenable.web.search.json
+
+  - id: keenable.web.fetch
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: GET
+    path: /v1/fetch
+    strict_query: true
+    name: Fetch page content
+    summary: Fetch an indexed or live webpage as Markdown, optionally reduced by an extraction instruction.
+    input:
+      queryParams:
+        url: {type: string, required: true, format: uri, example: "https://docs.keenable.ai/"}
+        max_chars: {type: integer, required: false, default: 50000, min: 1, example: 5000, note: "Longer content is truncated and a notice is appended after the cut."}
+        live: {type: boolean, required: false, default: false, note: "Fetch directly from the source instead of using the indexed copy; also supports URLs absent from the index."}
+        prompt: {type: string, required: false, maxLength: 2000, example: "List the API endpoints.", note: "Return only the extraction requested here instead of the full page."}
+      note: "The live response returned published_at as a Unix timestamp even though the OpenAPI schema says string; treg relays the provider value unchanged."
+    test_request:
+      queryParams: {url: "https://docs.keenable.ai/", max_chars: 500, live: false}
+    cost:
+      <<: *request_cost
+    verified: '2026-09-23'
+    docs_url: https://docs.keenable.ai/api-reference/fetch
+    example_response: examples/keenable.web.fetch.json

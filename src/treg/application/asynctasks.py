@@ -157,7 +157,7 @@ async def observe_owned_poll(call_id: str, status_code: int, body: bytes) -> str
             return "noop"
         snapshot = row.model_copy()
     outcome = asynctasks.classify_terminal(snapshot.descriptor, document)
-    if outcome not in ("success", "failure"):
+    if outcome not in ("success", "failure", "billed_failure"):
         return "noop"
     return await _finish_terminal(
         snapshot, outcome, document, status_code, body, utcnow_naive(), require_usage=True)
@@ -312,9 +312,10 @@ async def _finish(call_id: str, outcome: str, document: object | None, now, *,
             return "noop"
         if expected_attempt is not None and row.attempts != expected_attempt:
             return "noop"
-        if outcome in ("success", "failure") and asynctasks.expired(row.created_at, now):
+        if outcome in ("success", "failure", "billed_failure") and asynctasks.expired(row.created_at, now):
             outcome = "timed_out"
-        if outcome in ("success", "failure", "timed_out") and await db.get(Hold, call_id) is None:
+        if outcome in ("success", "failure", "billed_failure", "timed_out") \
+                and await db.get(Hold, call_id) is None:
             # The request path already closed this hold (cancelled at the commit boundary, or
             # reaped): there is no money left to move, and a row "settled" at zero would lie.
             row.status = asynctasks.RELEASED
@@ -324,12 +325,13 @@ async def _finish(call_id: str, outcome: str, document: object | None, now, *,
             await db.commit()
             log.warning("async task %s reached %s but its hold was already closed", call_id, outcome)
             return row.status
-        if outcome == "success":
+        if outcome in ("success", "billed_failure"):
             evidence = {"terminal": document}
-            row.result_id = _result_id(row.descriptor, document)
-            fetch = (row.descriptor or {}).get("result") or {}
-            if row.result_id is not None and fetch.get("fetch"):
-                await _remember_resource(db, row, f"fetch:{fetch['fetch']}", row.result_id)
+            if outcome == "success":
+                row.result_id = _result_id(row.descriptor, document)
+                fetch = (row.descriptor or {}).get("result") or {}
+                if row.result_id is not None and fetch.get("fetch"):
+                    await _remember_resource(db, row, f"fetch:{fetch['fetch']}", row.result_id)
             unobserved = (row.settlement_basis["amount"]["kind"] == "usage"
                           and settlement.usage_evidence(row.settlement_basis, evidence) is None)
             if unobserved and require_usage:
@@ -345,9 +347,12 @@ async def _finish(call_id: str, outcome: str, document: object | None, now, *,
                           row.call_id, row.provider, row.endpoint_id)
             row.settled_micro = await ledger.settle_in_transaction(db, row.call_id, raw, meta={
                 "provider": row.provider, "cost_source": row.settlement_basis["amount"]["kind"],
-                "async_task": True, **({"reconcile_review": True} if unobserved else {}),
+                "async_task": True, "terminal_outcome": outcome,
+                **({"reconcile_review": True} if unobserved else {}),
             })
             row.status = asynctasks.SETTLED
+            if outcome == "billed_failure" and not row.error:
+                row.error = "provider reported a billable terminal failure"
         elif outcome == "failure":
             await ledger.release_in_transaction(db, row.call_id, reason="async_task_failed",
                                                 meta={"provider": row.provider, "async_task": True})
@@ -386,7 +391,7 @@ async def _finish_terminal(snapshot: AsyncTaskRecord, outcome: str, document: ob
     """One settlement and evidence path for caller polling and the recovery worker."""
     result = await _finish(snapshot.call_id, outcome, document, now, require_usage=require_usage,
                            expected_attempt=expected_attempt)
-    expected = asynctasks.SETTLED if outcome == "success" else asynctasks.RELEASED
+    expected = asynctasks.SETTLED if outcome in ("success", "billed_failure") else asynctasks.RELEASED
     if result == expected:
         # Only the winning finalizer records evidence; a late poll cannot replace the result
         # whose usage was charged. Archive failure cannot undo the committed money transaction.
@@ -421,7 +426,7 @@ async def _process(call_id: str, client: httpx.AsyncClient, attempt: int) -> str
             return await _finish(call_id, "poll_error", None, utcnow_naive(), expected_attempt=attempt)
         document = json.loads(body)
         outcome = asynctasks.classify_terminal(snapshot.descriptor, document)
-        if outcome in ("success", "failure"):
+        if outcome in ("success", "failure", "billed_failure"):
             return await _finish_terminal(snapshot, outcome, document, status, body, utcnow_naive(),
                                           expected_attempt=attempt)
         return await _finish(call_id, outcome, document, utcnow_naive(), expected_attempt=attempt)

@@ -1,51 +1,51 @@
-company,domain,person_found,email_source,verify,catch_all,latest_news,note
-Apty,apty.ai,yes,tomba,valid,false,,
-Avoma,avoma.com,yes,tomba,valid,false,integrates with (2025-03-29),
-Blavity Inc.,blavityinc.com,yes,tomba,valid,false,launches (2025-12-15),
-COGNNA,cognna.com,yes,tomba,valid,false,integrates with (2026-01-25),
-Conversion,conversion.ai,yes,tomba,valid,false,receives financing (2025-07-31),
-Cranium AI,cranium.ai,yes,tomba,valid,false,partners with (2026-05-21),
-DiligenceVault,diligencevault.com,yes,hunter,valid,false,launches (2026-07-28),
-Efficient Capital Labs,ecaplabs.com,yes,hunter,valid,false,launches (2026-03-17),
-Elucidata,elucidata.io,yes,tomba,valid,false,is developing (2026-01-23),
-Eqvista,eqvista.com,yes,hunter,valid,false,identified as competitor of (2026-07-17),
-FLORA,flora.ai,yes,tomba,valid,false,identified as competitor of (2026-02-14),
-FlutterFlow,flutterflow.io,yes,tomba,valid,false,launches (2026-07-29),
-LiveSwitch,liveswitch.com,yes,tomba,valid,false,promotes (2026-08-13),
-LlamaIndex,llamaindex.ai,yes,tomba,valid,false,integrates with (2026-08-11),
-Loop AI,loopai.com,yes,tomba,valid,false,invests into (2026-02-04),
-Lucidity,lucidity.cloud,yes,tomba,valid,false,launches (2026-08-21),
-OpenArt AI,openart.ai,yes,hunter,valid,false,identified as competitor of (2026-08-09),
-Passion.io,passion.io,yes,tomba,valid,false,launches (2022-11-01),
-PaxeraHealth,paxerahealth.com,yes,tomba,valid,false,integrates with (2026-06-10),
-RepeatMD,repeatmd.com,yes,hunter,valid,false,launches (2025-10-23),
-rePurpose Global,repurpose.global,yes,tomba,valid,false,partners with (2026-08-24),
-Reveal HealthTech,revealhealthtech.com,yes,hunter,valid,false,invests into (2025-09-04),
-Sauce,getsauce.com,yes,tomba,valid,false,launches (2026-05-14),
-Shipday,shipday.com,yes,tomba,valid,false,,
-Spendflo,spendflo.com,yes,tomba,valid,false,launches (2026-05-13),
-SuperAGI,superagi.com,yes,tomba,valid,false,launches (2026-01-18),
-TrueFan AI,truefan.ai,yes,tomba,valid,false,invests into (2026-06-04),
-AdPushup,adpushup.com,yes,hunter,invalid,false,integrates with (2025-10-01),
-Borneo (Acquired by Atlassian),borneo.io,yes,hunter,invalid,false,acquires (2025-07-02),
-Goldcast,goldcast.io,yes,tomba,invalid,false,acquires (2025-12-15),
-Process Street,process.st,yes,hunter,invalid,false,launches (2026-08-10),
-Clari Groove,,no,,,,,no domain on the Apollo row
-Conduit,conduitpay.com,no,,,,,no matching person at either provider
-Convo,convo.com,yes,,,,,no email found by either finder
-ElectroNeek,electroneek.com,yes,,,,,no email found by either finder
-Ema,ema.ai,no,,,,,no matching person at either provider
-Files.com,files.com,yes,,,,,no email found by either finder
-FinancialForce,,no,,,,,no domain on the Apollo row
-Fireflies.ai,fireflies.ai,no,,,,,no matching person at either provider
-Hyperbots Inc.,hyperbots.com,no,,,,,no matching person at either provider
-inFeedo AI,infeedo.ai,yes,,,,,no email found by either finder
-Lavender 💜🔮,lavender.ai,yes,,,,,no email found by either finder
-Legal.io,legal.io,yes,,,,,no email found by either finder
-Lingopal,lingopal.ai,yes,,,,,no email found by either finder
-procol ai,procol.in,no,,,,,no matching person at either provider
-Redrob,redrob.io,yes,,,,,no email found by either finder
-"Slintel, a 6sense company",,no,,,,,no domain on the Apollo row
-StackAI,stackai.com,no,,,,,no matching person at either provider
-TestFit,testfit.io,no,,,,,no matching person at either provider
-Trekea Mobile,fieldlogs.com,yes,,,,,no email found by either finder
+company,domain,person_found,email_source,verify,catch_all,latest_news,opener_score,jev_fit,gate,note
+Orum 🥇,orum.com,yes,hunter,valid,,acquires (2026-07-15),2.61,0.66,pass,
+Aligned,alignedup.com,yes,hunter,valid,,receives_financing (2026-07-01),2.55,0.60,pass,
+PermitFlow,permitflow.com,yes,hunter,valid,,receives_financing (2025-12-03),2.33,0.67,pass,
+Defense Unicorns,defenseunicorns.com,yes,hunter,valid,,signs_new_client (2026-09-14),2.25,0.50,pass,
+RemotePass,remotepass.com,yes,hunter,valid,,invests_into (2026-08-11),1.97,0.60,pass,
+Gamma,gamma.app,yes,trykitt,valid,,launches (2026-09-21),1.92,0.61,pass,
+"AppCard, Inc.",appcard.com,yes,hunter,valid,,launches (2026-08-19),1.91,0.58,pass,
+Jones Software,getjones.com,yes,hunter,valid,,hires (2026-01-14),1.89,0.58,pass,
+Prophecy,prophecy.ai,yes,hunter,valid,,launches (2026-09-08),1.84,0.59,pass,
+RudderStack,rudderstack.com,yes,hunter,valid,,recognized_as (2026-06-22),1.83,0.50,pass,
+Triomics,triomics.com,yes,hunter,valid,,invests_into (2026-06-01),1.81,0.58,pass,
+Gigs,gigs.com,yes,hunter,valid,,partners_with (2026-08-17),1.78,0.62,pass,
+Higgsfield AI,higgsfield.ai,yes,hunter,valid,,invests_into (2026-09-22),1.71,0.55,pass,
+Certa.ai,certa.ai,yes,hunter,valid,,recognized_as (2026-06-08),1.70,0.67,pass,
+Mighty Networks,mightynetworks.com,yes,hunter,valid,,loses_client (2026-05-14),1.54,0.57,pass,
+ChurnZero,churnzero.com,yes,hunter,valid,,receives_award (2026-08-11),1.50,0.57,pass,
+gnani.ai,gnani.ai,yes,trykitt,valid,,launches (2026-08-29),1.46,0.65,pass,
+Cypress.io,cypress.io,yes,hunter,valid,,launches (2026-05-20),1.05,0.50,pass,
+Aha!,aha.io,yes,hunter,valid,,identified_as_competitor_of (2025-11-24),0.40,0.60,pass,
+Hebbia,hebbia.com,yes,none,,,,,0.65,pass,
+Doxel,doxel.ai,yes,trykitt,valid,,,,0.65,pass,
+Hypersonix Inc.,hypersonix.ai,yes,hunter,unknown,,,,0.64,pass,
+Entropik,entropik.io,yes,none,,,,,0.64,pass,
+Wispr Flow,wisprflow.ai,yes,none,,,,,0.63,pass,
+Krea,krea.ai,yes,none,,,,,0.56,pass,
+Flam,flamapp.ai,yes,none,,,,,0.51,pass,
+Hiver,hiverhq.com,yes,none,,,,,0.50,pass,
+Nanonets,nanonets.com,,,,,,,0.49,drop,
+Gridware,gridware.io,,,,,,,0.48,drop,
+LoanStreet Inc.,loan-street.com,,,,,,,0.48,drop,
+Wellfound,wellfound.com,,,,,,,0.47,drop,
+Roboflow,roboflow.com,,,,,,,0.47,drop,
+Wizehire,wizehire.com,,,,,,,0.44,drop,
+Ollama,ollama.com,,,,,,,0.43,drop,
+Briq,briq.ai,,,,,,,0.43,drop,
+Stability AI,stability.ai,,,,,,,0.41,drop,
+Pinecone,pinecone.io,,,,,,,0.40,drop,
+Paraform,paraform.com,,,,,,,0.39,drop,
+invideo,invideo.io,,,,,,,0.38,drop,
+CloudBolt Software,cloudbolt.io,,,,,,,0.38,drop,
+Zippin,getzippin.com,,,,,,,0.34,drop,
+Pocket Gems,pocketgems.com,,,,,,,0.33,drop,
+Salesken,salesken.ai,,,,,,,0.28,drop,
+User Interviews,userinterviews.com,,,,,,,0.26,drop,
+Bravado,bravado.com,,,,,,,0.23,drop,
+Bright Money,brightmoney.co,,,,,,,0.19,drop,
+ELITE ROBOTS,eliterobots.com,,,,,,,0.19,drop,
+EdSurge,edsurge.com,,,,,,,0.15,drop,
+Alibaba Cloud Global,,,,,,,,,no domain,no primary domain on the Apollo row
+Bluesky Social,,,,,,,,,no domain,no primary domain on the Apollo row

@@ -45,13 +45,14 @@ async def validate_bindings(bindings: list[dict], *, org_id: int, caller_email: 
         except (KeyError, IndexError, ValueError):
             raise ToolConfigError(f"invalid binding format {fmt!r} — use only {{secret}}")
         # name/secret_field, if present, feed httpx header/param setters and the JSON extractor —
-        # a null or non-string there AttributeErrors on the hot path; location must be header|query.
+        # a null or non-string there AttributeErrors on the hot path; location is an explicit
+        # transport target. JSON means one top-level field in a JSON object request body.
         for key in ("name", "secret_field"):
             if key in b and not (isinstance(b[key], str) and b[key]):
                 raise ToolConfigError(f"binding {key} must be a non-empty string")
         loc = b.get("location", "header")
-        if loc not in ("header", "query"):
-            raise ToolConfigError("binding location must be 'header' or 'query'")
+        if loc not in ("header", "query", "json"):
+            raise ToolConfigError("binding location must be 'header', 'query', or 'json'")
         sid = b.get("secret_id")
         secret = await db.get(Secret, sid) if sid is not None else None
         if secret is None or secret.org_id != org_id:
@@ -70,6 +71,10 @@ async def validate_bindings(bindings: list[dict], *, org_id: int, caller_email: 
     hdupes = sorted({n for n in hnames if hnames.count(n) > 1})
     if hdupes:
         raise ToolConfigError(f"duplicate header binding name(s): {hdupes}")
+    jnames = [b.get("name", "Authorization") for b in bindings if b.get("location") == "json"]
+    jdupes = sorted({n for n in jnames if jnames.count(n) > 1})
+    if jdupes:
+        raise ToolConfigError(f"duplicate JSON binding name(s): {jdupes}")
 
 
 def validate_cli_profile(cli: dict | None) -> None:

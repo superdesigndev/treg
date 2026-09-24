@@ -121,3 +121,59 @@ async def test_social_signup_tracking_reuses_same_new_user_rule(client, monkeypa
     await _provision_social_user("social@example.test", "unused", method, "arena")
     assert len(events) == 1
     assert events[0][1:] == ("signup_completed", {"signup_method": method, "entry_surface": "arena"})
+
+
+REVIEWER = "reviewer@example.com"
+REVIEWER_CODE = "40718293561728394056"
+
+
+@pytest.fixture
+def fixed_code(monkeypatch):
+    import hashlib
+    digest = hashlib.sha256(REVIEWER_CODE.encode()).hexdigest()
+    monkeypatch.setattr(get_settings(), "fixed_login_codes", f"Reviewer@Example.com={digest}")
+
+
+async def test_designated_account_signs_in_with_its_fixed_code_and_nothing_is_sent(
+    client, fixed_code, monkeypatch,
+):
+    from treg import email as email_sender
+    sent: list[str] = []
+
+    async def record(email, code, **_):
+        sent.append(email)
+
+    monkeypatch.setattr(get_settings(), "email_dev_mode", False)
+    monkeypatch.setattr(email_sender, "send_otp", record)
+    for _ in range(2):  # the same code works on every sign-in, not once
+        start = await client.post("/auth/email/start", json={"email": REVIEWER})
+        assert start.status_code == 200 and "dev_code" not in start.json()
+        ok = await client.post("/auth/email/verify", json={"email": REVIEWER, "code": REVIEWER_CODE})
+        assert ok.status_code == 200, ok.text
+    assert sent == []  # a designated account has no inbox, so no code is ever mailed
+
+    await client.post("/auth/email/start", json={"email": "someone@matrix.io"})
+    assert sent == ["someone@matrix.io"]  # every other email still gets its emailed code
+
+
+async def test_designated_account_keeps_the_attempt_limit(client, fixed_code):
+    await client.post("/auth/email/start", json={"email": REVIEWER})
+    from treg.application.auth import MAX_OTP_ATTEMPTS
+    for _ in range(MAX_OTP_ATTEMPTS):
+        bad = await client.post("/auth/email/verify", json={"email": REVIEWER, "code": "123456"})
+        assert bad.status_code == 401
+    # The issued code is spent after the allowed wrong guesses, so even the right code needs a new start.
+    spent = await client.post("/auth/email/verify", json={"email": REVIEWER, "code": REVIEWER_CODE})
+    assert spent.status_code == 401
+    await client.post("/auth/email/start", json={"email": REVIEWER})
+    ok = await client.post("/auth/email/verify", json={"email": REVIEWER, "code": REVIEWER_CODE})
+    assert ok.status_code == 200
+
+
+def test_fixed_login_codes_refuses_a_malformed_entry():
+    from pydantic import ValidationError
+    from treg.config import Settings
+    with pytest.raises(ValidationError):
+        Settings(fixed_login_codes="reviewer@example.com=not-a-sha256")
+    with pytest.raises(ValidationError):
+        Settings(fixed_login_codes="reviewer@example.com")

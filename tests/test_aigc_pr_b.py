@@ -91,6 +91,22 @@ def test_async_wait_succeeds_after_unknown_status_and_warns_once():
     assert sum("unknown async status" in event for event in clock.events) == 1
 
 
+def test_async_wait_does_not_warn_for_declared_progress_status():
+    descriptor = static_descriptor()
+    descriptor["status"]["progress"] = ["queued", "running"]
+    replies = iter([
+        response(200, {"task": {"status": "running"}}),
+        response(200, {"task": {"status": "succeeded", "content": {"url": "asset"}}}),
+    ])
+    clock = FakeClock()
+    outcome = cli.await_async_task(
+        descriptor, response(202, {"task_id": "task-progress"}),
+        lambda target, params: next(replies), clock, 30,
+    )
+    assert outcome["code"] == 0
+    assert not any("unknown async status" in event for event in clock.events)
+
+
 def test_async_wait_returns_terminal_failure_verbatim_to_caller():
     terminal = response(200, {"task": {"status": "failed", "error": "moderated"}})
     outcome = cli.await_async_task(

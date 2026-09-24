@@ -256,6 +256,10 @@ class UpstreamRequest:
     query_items: tuple[tuple[str, str], ...]
     body_stream: Callable[[], AsyncIterator[bytes]]
     has_body: bool
+    # JSON credential bindings are the one body rewrite the relay permits. HTTP callers expose a
+    # cached read so that provider explicitly opting into that shape can inject without consuming
+    # the stream twice; ordinary header/query providers leave this unset and keep streaming.
+    body_read: Callable[[], Awaitable[bytes]] | None = None
 
 
 @dataclass(frozen=True)

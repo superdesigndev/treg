@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from functools import lru_cache
+import hashlib
 import html as _html
 import html as html_mod
 import json
@@ -17,7 +18,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTe
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from .. import adsconv, agent_pages, oauth_providers
+from .. import adsconv, agent_pages, analytics, oauth_providers
 from ..domain import referrals
 from ..domain.catalog import store as catalog_store
 from ..domain.identity import session as sess
@@ -30,6 +31,78 @@ from .catalog import (_endpoint_observation_reader, _observed_or_empty, _platfor
 from ..domain.identity.access import _user_from_session
 from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _take_oauth_return
 from .signup_cookies import _remember_referral
+
+
+def _dashboard_bucket(user_id: int) -> int:
+    return int.from_bytes(hashlib.sha256(f"dashboard-v2:{user_id}".encode()).digest()[:8], "big") % 100
+
+
+def _dashboard_assignment(user: User) -> str:
+    """Why this account gets its frontend: `off`, `allowlist` or `bucket`."""
+    settings = get_settings()
+    if not settings.dashboard_rollout_enabled:
+        return "off"
+    return "allowlist" if user.id in settings.dashboard_rollout_user_ids else "bucket"
+
+
+def _new_dashboard(user: User | None) -> bool:
+    if user is None:
+        return False
+    assignment = _dashboard_assignment(user)
+    if assignment != "bucket":
+        return assignment == "allowlist"
+    return _dashboard_bucket(user.id) < get_settings().dashboard_rollout_percent
+
+
+def _record_dashboard_served(user: User, new: bool) -> None:
+    """Tell product analytics which frontend this account was served.
+
+    The bucket alone cannot say when an account switched (the percentage moves) or whether it
+    ever opened the Dashboard, and PostHog persons carry no user ID to recompute it from. The
+    person property lets any funnel break down by frontend; the event dates each exposure.
+    """
+    variant = "new" if new else "legacy"
+    bucket = _dashboard_bucket(user.id)
+    analytics.capture(user.email, "dashboard_served", {
+        "variant": variant,
+        "assignment": _dashboard_assignment(user),
+        "bucket": bucket,
+        "rollout_percent": get_settings().dashboard_rollout_percent,
+        "$set": {"dashboard_variant": variant, "dashboard_bucket": bucket},
+    })
+
+
+def _dashboard_index(user: User | None = None) -> Path:
+    new = _new_dashboard(user)
+    if user is not None:
+        _record_dashboard_served(user, new)
+    if not new:
+        return _WEB_DIR / "dashboard-legacy" / "index.html"
+    return _new_dashboard_index()
+
+
+def _new_dashboard_index() -> Path:
+    """The new frontend's index, whoever asks: the rollout decision is `_dashboard_index`'s."""
+    settings = get_settings()
+    if settings.frontend_dev:
+        host = urlsplit(settings.public_url).hostname
+        if "sqlite" not in settings.database_url or host not in {"localhost", "127.0.0.1", "::1"}:
+            raise RuntimeError("TREG_FRONTEND_DEV requires local SQLite and a loopback public URL")
+        return Path(__file__).resolve().parents[3] / "frontend" / "index.html"
+    return _WEB_DIR / "dashboard" / "index.html"
+
+
+def _dashboard_document(index: Path) -> str:
+    document = index.read_text(encoding="utf-8")
+    if get_settings().frontend_dev and index.parent.name == "frontend":
+        host = urlsplit(get_settings().public_url).hostname
+        origin = "http://[::1]:5173" if host == "::1" else f"http://{host}:5173"
+        document = document.replace(
+            '<script type="module" src="/src/main.ts"></script>',
+            f'<script type="module" src="{origin}/app/ui/@vite/client"></script>'
+            f'<script type="module" src="{origin}/app/ui/src/main.ts"></script>',
+        )
+    return document
 
 
 LOCAL_USER_EMAIL = "you@local.treg"   # the single-user identity; a real address is never needed
@@ -62,7 +135,7 @@ app = catalog_pages_router
 # `/catalog/<slug>` is registered after the JSON routes so /catalog/platforms, /catalog/search,
 # /catalog/endpoints/… and /catalog/examples/… keep matching first. Registration order alone is a
 # thin guarantee, so the reserved names are also refused explicitly below.
-_CATALOG_RESERVED = {"platforms", "search", "endpoints", "examples"}
+_CATALOG_RESERVED = {"platforms", "search", "find", "endpoints", "examples"}
 
 _GH = "https://github.com/superdesigndev/treg"
 
@@ -168,7 +241,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
     # The job, workflow and agent pages exist on the hosted deployment only (`_hosted`): a
     # self-hosted registry must not put three 404s in its own footer.
     hub_links = ('<a href="/use-cases">Use cases</a><a href="/workflows">Workflows</a>'
-                 '<a href="/agents">Agents</a>' if _hosted() else "")
+                 '<a href="/agents">Agents</a><a href="/blog">Blog</a>' if _hosted() else "")
     return HTMLResponse(f"""<!doctype html>
 <html lang="en">
 <head>
@@ -235,7 +308,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 
 
 def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
-                      prerender: str) -> HTMLResponse:
+                      prerender: str, user: User | None = None, *, index: Path | None = None) -> HTMLResponse:
     """Serve the dashboard SPA at a PUBLIC catalog URL, with the head a crawler needs.
 
     The public catalog is not a second implementation of the marketplace — it IS the marketplace.
@@ -256,7 +329,7 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
        implementation this design avoids. It carries the TEXT (names, summaries, providers, prices),
        which is what a crawler that does not run scripts is here for.
     """
-    index = _WEB_DIR / "index.html"
+    index = index or _dashboard_index(user)
     if not index.exists():
         return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
     base = get_settings().public_url.rstrip("/")
@@ -289,7 +362,7 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
         f'<meta name="twitter:image" content="{base}/media/og.png"/>\n'
         + blocks
     )
-    html = index.read_text(encoding="utf-8")
+    html = _dashboard_document(index)
     # index.html carries `robots: noindex` for the authenticated app; these URLs are public, and the
     # `index, follow` in `meta` only wins if the noindex is gone. Stripped BEFORE `meta` is spliced
     # in, so this scan only ever runs over the static bundle — never over a string carrying a
@@ -305,7 +378,7 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
     marker = '<div id="app"'
     if marker in html:
         html = html.replace(marker, f'<div id="prerender">{prerender}</div>\n{marker}', 1)
-    return HTMLResponse(html, headers={"Cache-Control": "public, max-age=600"})
+    return HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
 
 
 # The fallback's own skin. Scoped to #prerender and written against the dashboard's OWN tokens
@@ -329,7 +402,7 @@ _PRERENDER_CSS = """<style>
 
 
 @app.get("/catalog", include_in_schema=False)
-async def catalog_index():
+async def catalog_index(treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
     """The catalog index — the marketplace's Catalog view, on a public, indexable URL."""
     base = get_settings().public_url.rstrip("/")
     rows = _platform_rows()
@@ -376,7 +449,8 @@ async def catalog_index():
                     'compare the providers that do one job, <a href="/workflows">the workflows</a> '
                     'chain several jobs into one prompt with the price of each step, and '
                     '<a href="/agents">the agent pages</a> show the whole menu for one '
-                    'agent.</p>' if _hosted() else "")
+                    'agent, and <a href="/blog">the blog</a> carries the measured receipts and '
+                    'launch notes.</p>' if _hosted() else "")
                  + "".join(sections)
                  + f"<h2>The providers</h2><p>{len(prov_rows)} vendors serve this catalog, each "
                    f"with its own page: {prov_links}</p>")
@@ -398,11 +472,33 @@ async def catalog_index():
         f"Tool catalog — {total_eps:,} API endpoints your agent can call | treg",
         f"Browse {total_eps:,} endpoints across {len(rows)} platforms and {len(providers)} providers "
         "— SEO, social, enrichment, ads and scraping data. One key, priced per call, no provider signup.",
-        "/catalog", ld, prerender)
+        "/catalog", ld, prerender, await _user_from_session(treg_session, db))
+
+
+@app.get("/search", include_in_schema=False)
+async def search_page():
+    """Find tools by describing the job: the new frontend's public find view over `/catalog/find`.
+
+    Only the new frontend has this page, so it is served to every visitor while the rollout is
+    enabled (anonymous included), with no per-user rollout check, and is absent when the rollout
+    switch forces legacy."""
+    if not get_settings().dashboard_rollout_enabled:
+        raise HTTPException(status_code=404, detail="not found")
+    rows = _platform_rows()
+    prerender = (_PRERENDER_CSS
+                 + "<h1>Find tools for a job</h1>"
+                 + '<p class="lede">Describe what your agent needs to do in plain words, and the tools in '
+                   f"the treg catalog that can do it rise out of the {len(rows)} platforms. "
+                   'Prefer to browse? <a href="/catalog">The catalog</a> lists every platform.</p>')
+    return _spa_catalog_page(
+        "Find tools for your agent | treg",
+        "Describe the job in plain words and see which tools in the treg catalog can do it, "
+        "priced per call, callable through one key.",
+        "/search", [], prerender, index=_new_dashboard_index())
 
 
 @app.get("/catalog/{slug}", include_in_schema=False)
-async def catalog_page(slug: str):
+async def catalog_page(slug: str, treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
     """One platform shelf — the marketplace's platform view, on a public, indexable URL."""
     if slug in _CATALOG_RESERVED:
         raise HTTPException(status_code=404, detail=f"unknown platform {slug!r}")
@@ -462,12 +558,14 @@ async def catalog_page(slug: str):
               "url": f"{base}/catalog/{slug}#{cap['id']}"}
              for i, cap in enumerate(caps, 1)]},
         {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
-            {"@type": "ListItem", "position": 1, "name": "treg", "item": base + "/"},
+            {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
             {"@type": "ListItem", "position": 2, "name": "Catalog", "item": base + "/catalog"},
             {"@type": "ListItem", "position": 3, "name": label, "item": f"{base}/catalog/{slug}"}]},
     ]
-    return _spa_catalog_page(f"{label} API — {len(eps)} endpoints, priced per call | treg",
-                             desc[:300], f"/catalog/{slug}", ld, prerender)
+    # "{platform} api pricing" is the non-brand phrasing that reaches the site (GSC), so the shelf
+    # title leads with it; the brand is treg.to and the copy carries no em-dash.
+    return _spa_catalog_page(f"{label} API pricing: {len(eps)} endpoints priced per call | treg.to",
+                             desc[:300], f"/catalog/{slug}", ld, prerender, await _user_from_session(treg_session, db))
 
 
 # --------------------------------------------------------------------------- /agents/<agent>
@@ -1238,7 +1336,12 @@ async def use_case_job_page(request: Request, job: str,
                 md += [f"**{head}**", "", f'> "{quote}" ({who}: {url})', "",
                        f"What this page can do about it: {answer}", ""]
         md += ["", "## What actually differs", ""] + [f"- {x}" for x in spec["notes"]]
-        md += ["", f"## {spec.get('what_is_heading', 'What is this?')}", "", spec["what_is"], "", "## Questions", ""]
+        md += ["", f"## {spec.get('what_is_heading', 'What is this?')}", "", spec["what_is"]]
+        if spec.get("failure_modes"):
+            md += ["", "## Where it goes wrong", ""]
+            for h, p in spec["failure_modes"]:
+                md += [f"**{h}** {p}", ""]
+        md += ["", "## Questions", ""]
         for q, a in spec["faq"]:
             md += [f"**{q}** {a}", ""]
         md += [f"HTML version: {base}/use-cases/{job_slug}"]
@@ -1429,6 +1532,10 @@ async def use_case_job_page(request: Request, job: str,
     related += "".join(_extra_link_card(lbl, href, desc)
                        for lbl, href, desc in spec.get("extra_links", ()))
     faq_html = "".join(f'<h3>{_esc_html(q)}</h3><p>{_esc_html(a)}</p>' for q, a in spec["faq"])
+    # Optional on a use-case page (a workflow page always has one): the same "Where it goes wrong"
+    # block, between the background and the FAQ.
+    failures = "".join(f'<h3>{_esc_html(h)}</h3><p>{_esc_html(p)}</p>'
+                       for h, p in spec.get("failure_modes", ()))
 
     # The "instead of" anchor: what the same job costs on subscriptions from the providers on this
     # page whose plan prices are recorded in marketing/landing/_facts.md, against a real run here.
@@ -1503,6 +1610,9 @@ async def use_case_job_page(request: Request, job: str,
         + f'<section id="what"><div class="wrap"><div class="seclab">Background</div>'
           f'<h2>{_esc_html(spec.get("what_is_heading", "What is this?"))}</h2>'
           f'<p>{_esc_html(spec["what_is"])}</p></div></section>'
+
+        + (f'<section id="failures"><div class="wrap"><div class="seclab">The detail</div>'
+           f'<h2>Where it goes wrong</h2>{failures}</div></section>' if failures else "")
 
         + f'<section id="faq"><div class="wrap"><div class="seclab">Questions</div>'
           f'<h2>Before you start</h2>{faq_html}</div></section>'
@@ -1601,6 +1711,16 @@ async def _wf_steps(cat, observations: endpoint_stats.EndpointObservationReader,
     price per billing unit, how many providers do the step, and the observed stats when any."""
     out = []
     for name, cap, asks, ep_id, why in spec["steps"]:
+        if cap == "decision":
+            # A judgement on rows already fetched (jev), priced from DECISION_STEPS, not the catalog.
+            dec = agent_pages.DECISION_STEPS[ep_id]
+            out.append({
+                "name": name, "cap": cap, "asks": asks, "why": why, "ep": None, "ep_id": ep_id,
+                "provider": dec["provider"], "provider_name": dec["provider_name"],
+                "domain": dec["domain"], "usd": dec["usd"], "unit": dec["unit"], "providers": 1,
+                "ok_rate": None, "p50": None, "samples": 0, "link": dec["link"], "decision": True,
+            })
+            continue
         eps = [e for e in cat.for_capability(cap) if _pub(e)]
         used = next((e for e in eps if e["id"] == ep_id), None)
         cv = cat.cost_view(used.get("cost"), used.get("provider")) if used else None
@@ -1616,7 +1736,7 @@ async def _wf_steps(cat, observations: endpoint_stats.EndpointObservationReader,
             "ok_rate": st.get("ok_rate") if st.get("samples") else None,
             "p50": st.get("p50_ms") if st.get("samples") else None,
             "samples": st.get("samples") or 0,
-            "link": _wf_use_case_link(cap, agent_slug),
+            "link": _wf_use_case_link(cap, agent_slug), "decision": False,
         })
     return out
 
@@ -1704,7 +1824,8 @@ async def workflow_page(request: Request, slug: str,
                "| # | Step | What the agent asks | Provider used | Price | Success rate |", "|---|---|---|---|---|---|"]
         for i, s in enumerate(steps, 1):
             price = f"{money(s['usd'])} per {s['unit']}" if s["usd"] else "no dollar rate published"
-            rel = f"{pct(s['ok_rate'])} over {s['samples']} calls, {ms(s['p50'])} median" if s["samples"] else "not yet measured"
+            rel = (f"{pct(s['ok_rate'])} over {s['samples']} calls, {ms(s['p50'])} median" if s["samples"]
+                   else "a verdict on rows already fetched" if s["decision"] else "not yet measured")
             md.append(f"| {i} | {s['name']} | {s['asks']} | {s['provider_name']} (`{s['ep_id']}`, {s['providers']} providers, "
                       f"{base}{s['link']}) | {price} | {rel} |")
         md += [""] + [f"- {s['name']}: {s['why']}" for s in steps]
@@ -1758,6 +1879,8 @@ async def workflow_page(request: Request, slug: str,
         return '<span style="color:var(--muted2)">no dollar rate published</span>'
 
     def rel_cell(s: dict) -> str:
+        if s["decision"]:
+            return '<span style="color:var(--muted2)">a verdict on rows already fetched</span>'
         if not s["samples"]:
             return '<span style="color:var(--muted2)">not yet measured</span>'
         return (f'{pct(s["ok_rate"])} <span style="color:var(--muted2)">({s["samples"]} calls'
@@ -1949,6 +2072,14 @@ _AGENTS = [("ChatGPT", "openai.png"), ("Claude", "claude-color.png"),
 
 _AGENT_CDN = "https://unpkg.com/@lobehub/icons-static-png@latest/light/"
 
+# Own-account providers where GSC shows strong "{provider} mcp" or "{provider} connector" impressions
+# with near-zero clicks. Their titles/H1s lead with MCP intent instead of the generic "connect your
+# own account" pattern.
+_MCP_INTENT_PROVIDERS = {
+    "google-search-console", "google-analytics", "semrush",  # SEO and analytics
+    "snapchat-ads", "pinterest-ads", "meta-ads", "tiktok-ads", "facebook",  # ads and social
+}
+
 
 def _agent_ptiles() -> str:
     return "".join(
@@ -2094,12 +2225,17 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
               else f"{len(eps)} tools · from {_esc_html(cheapest)} · $0.000 markup")
     if measured:
         kicker += f" · {_esc_html(measured)}"
-    lede = (f"{_esc_html(blurb)} Connect your own {esc_d} account once and your agent uses it "
+    mcp_intent = svc in _MCP_INTENT_PROVIDERS
+    lede = (f"{_esc_html(blurb)} One MCP server for the whole catalog. Connect your own {esc_d} "
+            "account once and your agent uses it from then on. Calls on your own connection are never metered."
+            if is_oauth and mcp_intent else
+            f"{_esc_html(blurb)} Connect your own {esc_d} account once and your agent uses it "
             "from then on, through one treg.to token. Calls on your own connection are never metered."
             if is_oauth else
             f"{_esc_html(blurb)} {len(eps)} tools for your agent through one treg.to key, priced "
             f"at the provider's own rate{' from ' + _esc_html(cheapest) if cheapest else ''}, with no {esc_d} signup.")
-    h1_text = (f"{esc_d}: connect your own account" if is_oauth
+    h1_text = (f"{esc_d} MCP: connect your own account" if is_oauth and mcp_intent
+               else f"{esc_d}: connect your own account" if is_oauth
                else (f"{esc_d}: {len(eps)} tools from {_esc_html(cheapest)}" if cheapest
                      else f"{esc_d}: {len(eps)} tools"))
     if mixed:
@@ -2110,7 +2246,9 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
                 "Your own key always wins and treg does not meter those calls.")
     if oauth_metered:
         kicker = f"{len(eps)} tools · OAuth connection · metered"
-        lede = (f"{_esc_html(blurb)} Connect your own {esc_d} account. "
+        # The H1 above still says "MCP" for an MCP-intent provider, so the lede must too.
+        lede = (f"{_esc_html(blurb)} {'One MCP server for the whole catalog. ' if mcp_intent else ''}"
+                f"Connect your own {esc_d} account. "
                 "Calls through treg's OAuth app are metered under this server's billing policy.")
     hero = (
         '<div class="hero"><div class="wrap">'
@@ -2349,36 +2487,43 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
     body = _TOOLS_CSS + hero + flow + setup + tryit + why + tools_sec + used_sec + alt_sec + faq + copy_js
 
     if is_oauth:
-        title = f"{display}: connect your own account | treg.to"
-        desc = (f"Use {display} from Claude Code, ChatGPT or any MCP agent: {len(eps)} tools "
-                "through one treg.to token. Calls on your own connection are never metered.")
+        if mcp_intent:
+            title = f"{display} MCP: connect your own account | treg.to"
+            desc = (f"{display} MCP server: connect your own account and call {len(eps)} tools "
+                    "through treg.to, one MCP for the whole catalog. Never metered on your connection.")
+        else:
+            title = f"{display}: connect your own account | treg.to"
+            desc = (f"Use {display} from Claude Code, ChatGPT or any MCP agent: {len(eps)} tools "
+                    "through one treg.to token. Calls on your own connection are never metered.")
     else:
-        # The title leads with the pricing intent: Search Console shows "{provider} api pricing" is
-        # what reaches these pages ("linkedin api pricing", "1688 api pricing" — the site's one
-        # non-brand click), and the number is the part no vendor page prints.
-        # `cheapest` already names its unit ("$0.00245/result"), so the title does not say "per
-        # call" beside it — a per-result price is not a per-call one.
+        # Title matches H1: `{Provider}: {n} tools from {price}`.
         # `cheapest` carries its own billing unit ("$0.00245/result", "$0.0089/call"), so the copy
         # never says "per call" next to it: a per-result or per-success rate is not a per-call one.
-        title = (f"{display} API pricing: from {cheapest}, no signup | treg.to" if cheapest
-                 else f"{display} API pricing, no signup | treg.to")
+        title = (f"{display}: {len(eps)} tools from {cheapest} | treg.to" if cheapest
+                 else f"{display}: {len(eps)} tools | treg.to")
         if len(title) > _TITLE_MAX:
-            title = (f"{display} API pricing: from {cheapest} | treg.to" if cheapest
-                     else f"{display} API pricing | treg.to")
+            # Both branches must be shorter than the primary; the H1 still starts with `display`.
+            title = (f"{display}: from {cheapest} | treg.to" if cheapest
+                     else f"{display} | treg.to")
         desc = (f"{display} API pricing at the provider's own rate, with no {display} signup: {len(eps)} tools "
                 f"{'from ' + cheapest + ' ' if cheapest else ''}through one treg.to key or MCP server"
                 f"{', ' + measured if measured else ''}. Use it from Claude Code, ChatGPT or any agent.")
 
     if mixed:
-        title = f"{display} API pricing: {cheapest}, platform + BYOK | treg.to"
+        # Title matches H1: `{Provider}: {n} tools, platform or your own key`.
+        title = f"{display}: {len(eps)} tools, platform or your own key | treg.to"
         if len(title) > _TITLE_MAX:
-            title = f"{display} API pricing: {cheapest} | treg.to"
+            title = f"{display}: {len(eps)} tools, platform + BYOK | treg.to"
         if len(title) > _TITLE_MAX:
-            title = f"{display} API pricing: platform + BYOK | treg.to"
+            title = f"{display}: platform + BYOK | treg.to"
         desc = (f"{display} on treg: {len(platform_eps)} tools with platform or your own key, "
                 f"{byok_only} BYOK only. Compare access, billing units and live verification for every tool.")
     if oauth_metered:
-        desc = (f"Use {display} through your OAuth connection. Calls through treg's OAuth app "
+        # Same shape as the H1/title: an MCP-intent provider keeps "MCP" in its description.
+        desc = (f"{display} MCP server: connect your own account and call {len(eps)} tools through "
+                "treg.to. Calls through treg's OAuth app are metered under this server's billing policy."
+                if mcp_intent else
+                f"Use {display} through your OAuth connection. Calls through treg's OAuth app "
                 "are metered under this server's billing policy.")
     ld = [
         {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
@@ -2421,6 +2566,13 @@ _PV_CSS = """<style>
 .pv-why{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin:14px 0}
 .pv-why div{background:#fff;border:1px solid var(--line,#e6e6df);border-radius:12px;padding:14px 16px;font-size:13.5px;color:#4a4a46}
 .pv-why b{display:block;margin-bottom:5px;color:#191917;font-size:14px}
+.pv-receipts{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin:18px 0}
+.pv-receipt{background:#fff;border:1px solid var(--line,#e6e6df);border-radius:12px;padding:16px 18px}
+.pv-receipt h4{margin:0 0 8px;font-size:14px;color:#191917}
+.pv-receipt .date{font-size:12px;color:var(--muted,#6b6b66);margin-bottom:10px}
+.pv-receipt ul{margin:0;padding:0 0 0 16px;font-size:13px;color:#4a4a46;line-height:1.6}
+.pv-receipt .total{margin-top:10px;font-weight:600;color:#191917;font-size:13.5px}
+.pv-receipt a{color:inherit;text-decoration:underline;text-underline-offset:2px}
 </style>"""
 
 
@@ -2449,6 +2601,14 @@ async def pricing_page():
          "Anything that is yours: calls on your team's own provider keys (your key always wins), "
          "your team's own registered tools and skills, and your own connected accounts (Google "
          "Analytics, Search Console, Google Ads, Business Profile and the rest)."),
+        ("What is the difference between call cost and usable-result cost?",
+         "A raw API call is one charge at the provider's rate. A usable result (like a verified "
+         "deliverable lead) often takes multiple calls and filters out misses, so the per-result "
+         "cost is higher. The receipts above show both: the total metered and the per-usable-row cost."),
+        ("Are own-key calls billed?",
+         "No. Register your team's provider key and treg.to uses it instead of the shared key. "
+         "Those calls are never metered. The receipts still show the shared-key rate for comparison, "
+         "as in the Meta Ad Library example where the team's own Apify key made the Meta calls free."),
         ("What happens when the balance runs out?",
          "Metered calls stop with a clear error until you top up. Calls on your own keys and your "
          "own tools are unaffected."),
@@ -2481,6 +2641,49 @@ async def pricing_page():
             "connected accounts are yours; calls on them are never metered.</div>"
             "<div><b>Runs dry, fails loud</b>When the balance is empty, metered calls stop with a "
             "clear error until you top up. Your own-key calls keep working.</div></div>"
+            "<h2>Understanding costs</h2>"
+            "<p>Every workflow receipt on this site comes from a real run, not a rate card. "
+            "Four patterns that show what genuinely costs.</p>"
+            '<div class="pv-why">'
+            "<div><b>Billing unit</b>Metered per catalog call (or per success where the provider "
+            "bills that way) at the provider's own rate, no markup. Prepaid balance, $1.00 free to start.</div>"
+            "<div><b>Call cost vs usable-result cost</b>A raw API call is one charge; a deliverable "
+            "row can cost more when multi-step work filters out misses. The receipts below show both.</div>"
+            "<div><b>Misses</b>Invalid, empty, or catch-all outcomes. On per-success tools, a miss "
+            "settles at $0.00. On per-call tools, every call costs regardless of what comes back.</div>"
+            "<div><b>BYOK (bring your own key)</b>Register your team's provider key and treg.to uses "
+            "it instead. Calls on your own key are never metered. Receipts still show the shared-key "
+            "rate for comparison.</div></div>"
+            "<h2>Receipts from real runs</h2>"
+            "<p>These figures are what the ledger settled, not rate-card estimates.</p>"
+            '<div class="pv-receipts">'
+            '<div class="pv-receipt"><h4>Enrichment: verified lead list</h4>'
+            '<div class="date">2026-09-23 · <a href="/workflows/find-and-verify-a-lead-list">workflow</a></div>'
+            "<ul><li>50 companies in, 27 kept by a jev gate before any paid step, 20 verified deliverable leads out</li>"
+            "<li>$2.33 total metered ($0.12 per deliverable lead); the first run of the same filter without the gate was $3.62 for 27</li>"
+            "<li>Miss handling: Hunter, Kitt and LeadMagic settled every miss at $0.00 "
+            "(per-success, no hit); Findymail billed all 27 calls at list rate, 7 misses included</li></ul>"
+            '<div class="total">Multi-step cost: $0.05 per row, $0.12 per usable lead</div></div>'
+            '<div class="pv-receipt"><h4>SEO: keyword demand</h4>'
+            '<div class="date">2026-09-14 · <a href="/workflows/keyword-demand-to-ad-budget">workflow</a></div>'
+            "<ul><li>50 keywords expanded, volume and trend priced</li>"
+            "<li>$0.11 total: $0.018 ideas, $0.09 volume (batch), $0.0012 trend</li>"
+            "<li>Volume call billed per request, not per keyword (50 keywords cost one fee)</li></ul>"
+            '<div class="total">Three calls, $0.11</div></div>'
+            '<div class="pv-receipt"><h4>Ad library: Meta and Google ads</h4>'
+            '<div class="date">2026-09-14 · <a href="/workflows/mine-competitor-meta-ads-as-creative-pack">workflow</a></div>'
+            "<ul><li>20 Meta ads and 17 Google ads pulled for Notion</li>"
+            "<li>Meta calls ran on team's own Apify key (not metered)</li>"
+            "<li>Google call metered: $0.015 on treg.to's shared key</li>"
+            "<li>Shared-key rate for Meta if needed: $0.105 for probe and 20 ads</li></ul>"
+            '<div class="total">BYOK in action: own key $0, shared key $0.12</div></div>'
+            '<div class="pv-receipt"><h4>Creator discovery: Instagram</h4>'
+            '<div class="date">2026-09-14 · <a href="/workflows/discover-creators-in-a-niche">workflow</a></div>'
+            "<ul><li>25 fitness creators discovered, profiles and posts pulled</li>"
+            "<li>$0.20 total: $0.15 discovery, $0.025 profiles, $0.024 posts</li>"
+            "<li>Discovery billed per creator returned; a zero-match page costs nothing</li></ul>"
+            '<div class="total">Per-creator cost: $0.008</div></div>'
+            "</div>"
             "<h2>Example rates, by platform</h2>"
             "<p>Rendered from the live catalog; every tool page carries its own rate.</p>"
             f"<ul>{lis}</ul>"
@@ -2575,12 +2778,13 @@ async def docs_page():
                 + (f'<div class="params">{_esc_html(params)}</div>' if params else "")
                 + "</div>")
 
+    n_endpoints, _ = catalog_store.headline_counts(catalog_store.load())
     body = f"""<main class="wrap">
 <div class="phead">
   <div class="crumbs"><a href="/">treg</a> / api</div>
   <h1>API reference</h1>
   <p class="lede">One base URL, one token. Call any of {len(ops)} documented operations, or proxy a
-  real request to any of 2,630 catalogued provider endpoints through <code>/call/</code>.</p>
+  real request to any of {n_endpoints} catalogued provider endpoints through <code>/call/</code>.</p>
   <div class="facts">
     <span>base <b>{_esc_html(base)}</b></span>
     <span><b>Bearer</b> token auth</span>
@@ -2595,10 +2799,10 @@ async def docs_page():
 </main>"""
     ld = [{"@context": "https://schema.org", "@type": "TechArticle",
            "headline": "treg API reference",
-           "description": "How to call 2,630 provider API endpoints through one treg token.",
+           "description": f"How to call {n_endpoints} provider API endpoints through one treg.to token.",
            "url": f"{base}/docs"}]
     return _page("API reference — call any tool through one endpoint | treg",
-                 "The treg HTTP API: proxy a real request to any of 2,630 catalogued provider "
+                 f"The treg.to HTTP API: proxy a real request to any of {n_endpoints} catalogued provider "
                  "endpoints through /call/, with the credential injected server-side. Plus the "
                  "catalog, org, billing and tool-management routes.",
                  "/docs", body, ld, nav_current="/docs")
@@ -2619,40 +2823,67 @@ def _esc_html(s: str) -> str:
     return _html.escape(str(s), quote=True)
 
 
+def _resume_parked_authorization(request: Request) -> RedirectResponse | None:
+    """Send a signed-in browser back to its parked `/oauth/authorize` request, consuming the cookie."""
+    if (parked := _take_oauth_return(request)) is None:
+        return None
+    resume = RedirectResponse(parked, status_code=302)
+    resume.delete_cookie(OAUTH_RETURN_COOKIE)
+    return resume
+
+
 @app.get("/", include_in_schema=False)
 async def landing(request: Request, treg_session: str = Cookie(default=""),
                   db: AsyncSession = Depends(get_session)):
-    """Serve the marketing landing at the root. Any query string (invite links, OAuth returns,
-    tour deep-links) belongs to the SPA, so those requests fall through to the dashboard —
-    the landing is only the clean, parameterless front door. A signed-in visitor belongs on
-    the dashboard, so a live session redirects to /app instead of re-showing the pitch.
+    """Serve the homepage with session-aware entry points.
 
-    `?ref=<code>` is the ONE exception, and it has to be: a referral link's whole job is to show a
-    stranger the pitch. Falling through to the SPA would send someone who has never heard of treg
-    to an empty dashboard shell — so a lone `ref` counts as parameterless, and the code is parked in
-    a cookie on the way past. It is only redeemed much later, when they create their first team.
+    Query links go to the SPA, except a lone referral code retained for signup.
     """
     page = _WEB_DIR / "landing.html"
     ref = referrals.normalize_code(request.query_params.get("ref", ""))
-    # Only `ref` may be present. Anything else alongside it belongs to the SPA, and a referral code
-    # is not a reason to hijack an invite or an OAuth return.
     ref_only = set(request.query_params.keys()) <= {"ref"}
     if page.exists() and (not request.query_params or (ref and ref_only)):
-        if treg_session and await _user_from_session(treg_session, db):
-            return RedirectResponse("/app", status_code=302)
-        # Read-and-substitute rather than a bare FileResponse: the canonical, og:url and og:image
-        # are `{BASE}`-templated so they name the serving host. Hardcoded, a self-hosted registry
-        # would tell crawlers its front page really lives on treg.to.
-        html = page.read_text(encoding="utf-8").replace(
+        signed_in = bool(treg_session and await _user_from_session(treg_session, db))
+        # The email-code door signs in on the page that opened it and reloads there, and the
+        # OAuth sign-in modal opens on `/`, so a parked authorization must resume here as well.
+        if signed_in and (resume := _resume_parked_authorization(request)) is not None:
+            return resume
+        # Canonical and social URLs use the serving origin.
+        html = _fill_headline(page.read_text(encoding="utf-8")).replace(
             "{BASE}", get_settings().public_url.rstrip("/"))
+        html = html.replace("{SIGNED_IN}", "true" if signed_in else "false")
+        html = html.replace("{START_LABEL}", "Open dashboard" if signed_in else "Start free")
+        if signed_in:
+            html = re.sub(r"<!--signed-out-->.*?<!--/signed-out-->", "", html, flags=re.S)
         # The footer's hub links point at hosted-only pages; a self-hosted landing drops them.
         if not _hosted():
             html = re.sub(r"<!--hosted-->.*?<!--/hosted-->", "", html, flags=re.S)
-        resp = HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+        resp = HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
         if ref:
             _remember_referral(resp, request, ref)
         return resp
     return await dashboard(request, treg_session, db)
+
+
+def _dashboard_asset(directory: Path, name: str) -> FileResponse:
+    # Select a file discovered inside the build directory; never construct a path from a URL.
+    root = directory.resolve()
+    assets = {p.relative_to(root).as_posix(): p for p in root.rglob("*")
+              if p.is_file() and p.resolve().is_relative_to(root)}
+    asset = assets.get(name)
+    if asset is None:
+        raise HTTPException(404)
+    return FileResponse(asset, headers={"Cache-Control": "public, max-age=31536000, immutable"})
+
+
+@app.get("/app/legacy/assets/{path:path}", include_in_schema=False)
+async def legacy_dashboard_asset(path: str):
+    return _dashboard_asset(_WEB_DIR / "dashboard-legacy" / "assets", path)
+
+
+@app.get("/app/ui/assets/{name}", include_in_schema=False)
+async def dashboard_asset(name: str):
+    return _dashboard_asset(_WEB_DIR / "dashboard" / "assets", name)
 
 
 @app.get("/app", include_in_schema=False)
@@ -2660,7 +2891,7 @@ async def dashboard(
     request: Request, treg_session: str = Cookie(default=""),
     db: AsyncSession = Depends(get_session),
 ):
-    """Serve the single-file dashboard (same-origin, so it calls this API directly).
+    """Serve the compiled dashboard (same-origin, so it calls this API directly).
 
     Also the place a parked OAuth authorization resumes. Every browser sign-in door — GitHub, Google,
     the email code — ends here, so honouring the cookie at this ONE point covers all of them, rather
@@ -2672,32 +2903,29 @@ async def dashboard(
     an account. Only reachable when `single_user_ok` holds (local sqlite + loopback URL), so this
     can never hand a session to a stranger on a real deploy.
     """
-    index = _WEB_DIR / "index.html"
-    if not index.exists():
-        return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
     signed_in = await _user_from_session(treg_session, db)
     # A parked authorization resumes here, but ONLY once the user is actually signed in — otherwise
     # this would bounce them back to /oauth/authorize, which would bounce them here again.
-    if signed_in and (parked := _take_oauth_return(request)) is not None:
-        resume = RedirectResponse(parked, status_code=302)
-        resume.delete_cookie(OAUTH_RETURN_COOKIE)
+    if signed_in and (resume := _resume_parked_authorization(request)) is not None:
         return resume
-    resp = FileResponse(index, headers={"Cache-Control": "no-cache"})
-    if not signed_in:
-        owner = await _local_owner(db)
-        if owner is not None:
-            resp.set_cookie(sess.COOKIE, sess.make_session(owner.id, token_version=owner.token_version),
-                            httponly=True, samesite="lax",
-                            secure=_is_https(request),
-                            max_age=sess.TTL_SECONDS)
+    owner = await _local_owner(db) if not signed_in else None
+    index = _dashboard_index(signed_in or owner)
+    if not index.exists():
+        raise HTTPException(503, "Dashboard not bundled")
+    resp = HTMLResponse(_dashboard_document(index), headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
+    if owner is not None:
+        resp.set_cookie(sess.COOKIE, sess.make_session(owner.id, token_version=owner.token_version),
+                        httponly=True, samesite="lax",
+                        secure=_is_https(request),
+                        max_age=sess.TTL_SECONDS)
     return resp
 
 
-def _spa_with_og(kind: str, name: str):
+def _spa_with_og(kind: str, name: str, user: User | None = None):
     """Serve the SPA at a shareable detail path (/app/skills/x, /app/tools/x) with per-resource
     og/twitter meta so link unfurls show what was shared. The meta echoes only the URL's own
-    name segment — no DB read, so an unauthenticated crawler learns nothing it didn't send."""
-    index = _WEB_DIR / "index.html"
+    name segment. Session lookup selects the frontend but never exposes resource contents."""
+    index = _dashboard_index(user)
     if not index.exists():
         return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
     label = "skill" if kind == "skills" else "tool"
@@ -2713,11 +2941,11 @@ def _spa_with_og(kind: str, name: str):
     # `<title>tools-registry</title>`, the page says `<title>treg</title>`, so the replacement
     # silently did nothing and every shared link unfurled blank — a rename in the dashboard must
     # not be able to switch this off without a word.
-    html, hits = re.subn(r"<title>.*?</title>", lambda _m: meta, index.read_text(encoding="utf-8"),
+    html, hits = re.subn(r"<title>.*?</title>", lambda _m: meta, _dashboard_document(index),
                          count=1, flags=re.IGNORECASE | re.DOTALL)
     if not hits:  # no title at all: still emit the meta rather than serve a bare page
         html = html.replace("<head>", "<head>\n" + meta, 1)
-    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+    return HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
 
 
 @app.get("/app/marketplace/{service}", include_in_schema=False)
@@ -2741,13 +2969,13 @@ async def dashboard_marketplace(
 
 
 @app.get("/app/skills/{name}", include_in_schema=False)
-async def dashboard_skill_page(name: str):
-    return _spa_with_og("skills", name)
+async def dashboard_skill_page(name: str, treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
+    return _spa_with_og("skills", name, await _user_from_session(treg_session, db))
 
 
 @app.get("/app/tools/{name}", include_in_schema=False)
-async def dashboard_tool_page(name: str):
-    return _spa_with_og("tools", name)
+async def dashboard_tool_page(name: str, treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
+    return _spa_with_og("tools", name, await _user_from_session(treg_session, db))
 
 
 @app.get("/llms.txt", include_in_schema=False)
@@ -2804,6 +3032,7 @@ _SITEMAP_PAGES: tuple[tuple[str, str, str], ...] = (
     ("/docs", "", "0.7"),
     ("/resources", "resources.html", "0.8"),
     ("/blog", "", "0.7"),
+    ("/blog/work-email-finding-bench", "", "0.6"),
     ("/blog/people-search-bench", "", "0.6"),
     ("/vendor-listing", "vendor-listing.md", "0.5"),
     ("/support", "support.html", "0.4"),
@@ -3326,9 +3555,23 @@ _BLOG_LAUNCHES: list[tuple[str, str, str, str]] = [
 # have their own top-level routes), but they sit prominently on the /blog index above launches.
 _BLOG_POSTS: list[tuple[str, str, str, str]] = [
     # (slug under /blog/, title, date, one-line blurb)
+    ("work-email-finding-bench", "Work Email Finding: a 292 Person Receipt", "2026-09-16",
+     "Quality tie across vendors. Cost is the gap: $0.0056 vs $0.0395 per correct."),
     ("people-search-bench", "#1 on People Search Bench", "2026-09-14",
      "treg.to scores 80.0% on recruiting, 78.2% on B2B prospecting. 119 real tasks, same agent."),
 ]
+
+
+def _blog_posting_ld(slug: str, base: str) -> dict:
+    """BlogPosting schema for one entry of `_BLOG_POSTS`: a dated, bylined article. The posts are
+    first-party measurements, and a named author with a visible date is what earns the validation
+    click and the AI citation; breadcrumbs alone describe a page, not a piece of writing."""
+    _, title, date, blurb = next(p for p in _BLOG_POSTS if p[0] == slug)
+    return {"@context": "https://schema.org", "@type": "BlogPosting", "headline": title,
+            "description": blurb, "datePublished": date, "dateModified": date,
+            "mainEntityOfPage": f"{base}/blog/{slug}", "url": f"{base}/blog/{slug}",
+            "author": {"@type": "Person", "name": "Jason Zhou", "url": "https://github.com/JayZeeDesign"},
+            "publisher": {"@type": "Organization", "name": "treg.to", "url": base + "/"}}
 
 
 @app.get("/blog", include_in_schema=False)
@@ -3429,7 +3672,8 @@ async def blog_people_search_bench():
         '</main>'
     )
 
-    ld = [{"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+    ld = [_blog_posting_ld("people-search-bench", base),
+          {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
         {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
         {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
         {"@type": "ListItem", "position": 3, "name": "#1 on People Search Bench",
@@ -3439,6 +3683,153 @@ async def blog_people_search_bench():
                  "treg.to scores 80.0% on recruiting, 78.2% on B2B prospecting on People Search Bench "
                  "by LessieAI. 119 real tasks, same agent with and without the plugin.",
                  "/blog/people-search-bench", body, ld)
+
+
+@app.get("/blog/work-email-finding-bench", include_in_schema=False)
+async def blog_work_email_finding_bench():
+    """Receipt post: work-email finding across vendors on a 292-person list with published answers.
+    Measured 2026-09-16. Quality is a tie; cost is the gap."""
+    if not _hosted():
+        raise HTTPException(status_code=404, detail="not found")
+    base = get_settings().public_url.rstrip("/")
+
+    body = (
+        '<main class="wrap" style="max-width:780px">'
+        '<div class="phead">'
+        '<div class="crumbs"><a href="/">treg.to</a> / <a href="/blog">Blog</a> / '
+        '<a href="/blog/work-email-finding-bench">Work Email Finding</a></div>'
+        '<h1>Work Email Finding: a 292 Person Receipt</h1>'
+        '<p class="lede">Measured 2026-09-16. Quality is a tie across vendors. Cost is the gap.</p>'
+        '</div>'
+        '<section class="cat">'
+        '<p>We ran a 292-person list (88 orgs, 16 industries, name + domain only) through five '
+        'aggregators and compared the returned emails against each org&#x27;s published team-page address. '
+        'Every person had a public team-page email, so find rates are inflated vs. a cold list; '
+        'cost per row and exact-match rate are the clean comparisons.</p>'
+        '<h2 style="margin-top:32px;font-size:1.1em">The run</h2>'
+        '<p><code>treg.people.email.find</code> routed across catalog providers that answered '
+        '(QuickEnrich ~61%, Kitt ~36%, plus Tomba, DropLeads, Hunter, Findymail). The other columns '
+        'represent alternative aggregators, not the underlying providers.</p>'
+        '<div style="overflow-x:auto">'
+        '<table style="width:100%;margin:24px 0;border-collapse:collapse;font-size:0.95em">'
+        '<thead><tr style="border-bottom:1px solid var(--border)">'
+        '<th style="text-align:left;padding:8px 0"></th>'
+        '<th style="text-align:right;padding:8px 12px">treg.to</th>'
+        '<th style="text-align:right;padding:8px 12px">Clay</th>'
+        '<th style="text-align:right;padding:8px 12px">Monid</th>'
+        '<th style="text-align:right;padding:8px 12px">Freckle</th>'
+        '<th style="text-align:right;padding:8px 12px">Deepline</th>'
+        '</tr></thead>'
+        '<tbody>'
+        '<tr><td style="padding:6px 0">Found</td>'
+        '<td style="text-align:right;padding:6px 12px">289</td>'
+        '<td style="text-align:right;padding:6px 12px">280</td>'
+        '<td style="text-align:right;padding:6px 12px">250</td>'
+        '<td style="text-align:right;padding:6px 12px">281</td>'
+        '<td style="text-align:right;padding:6px 12px">266</td></tr>'
+        '<tr><td style="padding:6px 0">Exact match</td>'
+        '<td style="text-align:right;padding:6px 12px">264</td>'
+        '<td style="text-align:right;padding:6px 12px">262</td>'
+        '<td style="text-align:right;padding:6px 12px">233</td>'
+        '<td style="text-align:right;padding:6px 12px">263</td>'
+        '<td style="text-align:right;padding:6px 12px">253</td></tr>'
+        '<tr><td style="padding:6px 0">Success (exact/292)</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">90.4%</td>'
+        '<td style="text-align:right;padding:6px 12px">89.7%</td>'
+        '<td style="text-align:right;padding:6px 12px">79.8%</td>'
+        '<td style="text-align:right;padding:6px 12px">90.1%</td>'
+        '<td style="text-align:right;padding:6px 12px">86.6%</td></tr>'
+        '<tr><td style="padding:6px 0">Precision (exact/found)</td>'
+        '<td style="text-align:right;padding:6px 12px">91.3%</td>'
+        '<td style="text-align:right;padding:6px 12px">93.6%</td>'
+        '<td style="text-align:right;padding:6px 12px">93.2%</td>'
+        '<td style="text-align:right;padding:6px 12px">93.6%</td>'
+        '<td style="text-align:right;padding:6px 12px">95.1%</td></tr>'
+        '<tr><td style="padding:6px 0">Off-domain</td>'
+        '<td style="text-align:right;padding:6px 12px">5</td>'
+        '<td style="text-align:right;padding:6px 12px">4</td>'
+        '<td style="text-align:right;padding:6px 12px">0</td>'
+        '<td style="text-align:right;padding:6px 12px">4</td>'
+        '<td style="text-align:right;padding:6px 12px">0</td></tr>'
+        '<tr style="border-top:1px solid var(--border)"><td style="padding:6px 0">Cost (finding only)</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">$1.49</td>'
+        '<td style="text-align:right;padding:6px 12px">$10.34</td>'
+        '<td style="text-align:right;padding:6px 12px">$5.98</td>'
+        '<td style="text-align:right;padding:6px 12px">$11.22</td>'
+        '<td style="text-align:right;padding:6px 12px">$23.38</td></tr>'
+        '<tr><td style="padding:6px 0">Per row</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">$0.0051</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0354</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0205</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0384</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0801</td></tr>'
+        '<tr><td style="padding:6px 0">Per correct</td>'
+        '<td style="text-align:right;padding:6px 12px;font-weight:600">$0.0056</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0395</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0257</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0427</td>'
+        '<td style="text-align:right;padding:6px 12px">$0.0924</td></tr>'
+        '<tr><td style="padding:6px 0">Hit latency (median)</td>'
+        '<td style="text-align:right;padding:6px 12px">0.44s</td>'
+        '<td style="text-align:right;padding:6px 12px">11.2s</td>'
+        '<td style="text-align:right;padding:6px 12px">2.0s</td>'
+        '<td style="text-align:right;padding:6px 12px">65s</td>'
+        '<td style="text-align:right;padding:6px 12px;color:var(--muted)">batch</td></tr>'
+        '</tbody>'
+        '</table>'
+        '</div>'
+        '<p style="color:var(--muted);font-size:0.85em;margin-top:8px">'
+        'Monid = Hunter only. Freckle = LeadMagic&rarr;Findymail. Deepline = ZeroBounce-first play. '
+        'Clay dollars are at Clay&#x27;s Launch data-credit list price ($0.05/credit on 2026-09-16).</p>'
+        '<h2 style="margin-top:32px;font-size:1.1em">What the numbers say</h2>'
+        '<ul style="margin:16px 0;padding-left:24px">'
+        '<li style="margin:8px 0"><strong>Quality is a tie.</strong> treg.to, Clay and Freckle land at '
+        '264, 262 and 263 exact matches; the difference is noise.</li>'
+        '<li style="margin:8px 0"><strong>Different-from-published is mostly not invalid.</strong> '
+        'Many returned addresses are valid aliases. Exact-match is a floor, not a ceiling.</li>'
+        '<li style="margin:8px 0"><strong>Cost is structural.</strong> Credit-based waterfalls run '
+        '7x to 16x treg.to per correct row. Deepline is an outlier because ZeroBounce fires on every '
+        'pattern guess.</li>'
+        '<li style="margin:8px 0"><strong>Latency only matters for per-call paths.</strong> '
+        'treg.to (0.44s) and Monid (2.0s) are per-call; do not rank batch tools on speed.</li>'
+        '<li style="margin:8px 0"><strong>Aggregator columns are routes, not products.</strong> '
+        'Each column represents how that aggregator dispatched the query to its underlying providers.</li>'
+        '</ul>'
+        '<h2 style="margin-top:32px;font-size:1.1em">When to choose Clay</h2>'
+        '<p>Choose Clay when you want a visual table, the broader Clay ecosystem for GTM orchestration, '
+        'or a seat that already includes enrichment inside a bigger workflow. Spreadsheet-native teams '
+        'may prefer the Clay UI over API calls.</p>'
+        '<p>Choose treg.to when you want a metered catalog call with a known provider price and a dated '
+        'receipt. See <a href="/pricing">how billing works</a>.</p>'
+        '<h2 style="margin-top:32px;font-size:1.1em">Disclosures</h2>'
+        '<ul style="margin:16px 0;padding-left:24px;color:var(--muted);font-size:0.9em">'
+        '<li style="margin:6px 0"><strong>List bias:</strong> every person had a published team-page '
+        'email, so find rates are inflated vs. a cold list.</li>'
+        '<li style="margin:6px 0"><strong>MillionVerifier re-verify:</strong> we re-verified addresses '
+        'with MillionVerifier after Kitt ran out of credits. MV served 0 cache hits. Kitt is also in '
+        'the treg.to catalog, so its hits are not independent for the treg.to column.</li>'
+        '<li style="margin:6px 0"><strong>treg.to bug:</strong> 3 rows returned HTTP 502 (route_failed) '
+        'and were scored as misses. $0 charged for those rows.</li>'
+        '</ul>'
+        '<p style="margin-top:24px">Related: '
+        '<a href="/people-search">People Search</a>, '
+        '<a href="/workflows/find-and-verify-a-lead-list">Build a Verified Lead List</a>, '
+        '<a href="/use-cases/lead-enrichment-for-ai-agents">Waterfall Enrichment</a>.</p>'
+        '</section>'
+        '</main>'
+    )
+
+    ld = [_blog_posting_ld("work-email-finding-bench", base),
+          {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "treg.to", "item": base + "/"},
+        {"@type": "ListItem", "position": 2, "name": "Blog", "item": base + "/blog"},
+        {"@type": "ListItem", "position": 3, "name": "Work Email Finding",
+         "item": base + "/blog/work-email-finding-bench"}]}]
+
+    return _page("Work Email Finding: 292 Person Bench | treg.to",
+                 "Quality tie across vendors, cost is the gap. Measured 2026-09-16: "
+                 "treg.to $0.0056/correct vs Clay $0.0395/correct on 292 people.",
+                 "/blog/work-email-finding-bench", body, ld)
 
 
 @app.get("/resources", include_in_schema=False)

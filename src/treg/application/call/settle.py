@@ -58,6 +58,10 @@ def _platform_billable(status_code: int, cost_type: str) -> bool:
                                    `per_result`/`per_success` a rejected request produced nothing.
       5xx / 3xx / network error  → no. An upstream failure is never billed to the caller.
     """
+    # 204 carries no result. For success-priced tools it is the provider's standard free-miss
+    # signal (including Adyntel); treating it as a paid success would settle the full estimate.
+    if status_code == 204 and cost_type == "per_success":
+        return False
     if 200 <= status_code < 300:
         return True
     if 400 <= status_code < 500:

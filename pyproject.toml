@@ -1,6 +1,6 @@
 [project]
 name = "tools-registry"
-version = "0.21.0"
+version = "0.21.2"
 description = "A remote registry that turns team skills into shareable, callable tools via a credential-injecting proxy."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -257,6 +257,9 @@ pythonpath = ["."]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build.hooks.custom]
+path = "hatch_build.py"
+
 [tool.hatch.build.targets.sdist]
 # The sdist is PUBLISHED — everything it carries becomes public on PyPI. Hatchling's default is
 # "every file git does not ignore", and `.git/info/exclude` is LOCAL-ONLY, so working material kept
@@ -272,15 +275,21 @@ exclude = [
   ".worktrees",             # local linked checkouts may contain private or stale material
   ".import_linter_cache",   # build cache (nested .gitignore hides it from git, not from hatchling)
   ".codegraph",
+  ".lavish",                # local visual review artifacts, not distributable product assets
+  "frontend/node_modules", "frontend/test-results", "frontend/playwright-report",
   "videos",                 # git-excluded marketing renders
+  "/src/treg/web/media/**/*.mp4",  # hosted-page demos stay in Git deployments, not PyPI
   "*.db", "*.sqlite3", "scratch*", "body.json",   # stray local artifacts
   ".env", ".env.*",         # belt and braces: a credential file must never reach a tarball
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/treg"]
+exclude = [
+  "/src/treg/web/media/**/*.mp4",  # the light CLI must not carry hosted-page demo videos
+]
 # The web/ dir lives inside the treg package, so `packages` already ships every asset
-# (favicon.svg, index.html, tutorial.*, tour/, llms.txt, install.sh) — hatchling includes
+# needed at runtime (favicon.svg, index.html, tutorial.*, tour/, llms.txt, install.sh) — hatchling includes
 # non-.py data files under a package by default. A force-include here would add each a SECOND
 # time and break the wheel build (`A second file is being added ... at the same path`).
 

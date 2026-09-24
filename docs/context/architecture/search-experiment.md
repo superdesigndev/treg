@@ -8,6 +8,8 @@ sources:
   - src/treg/alembic/versions/0041_searchlog.py
   - scripts/search_experiment_report.sql
   - tests/test_search_experiment.py
+  - src/treg/application/catalog_find.py
+  - tests/test_catalog_find.py
 ---
 
 # Discovery experiment
@@ -99,6 +101,34 @@ team + email within ten minutes of the search, on endpoints that were on the ser
 4. re-query rate — a second search within two minutes and no call in between is a page that did
    not do its job.
 
+## Served to people: find tools for a job
+
+`GET /catalog/find?q=` (`application/catalog_find.py`) is the same mechanism with a person on the
+other end: `store.candidates` recall, one `infra.judge` request, the same `search_judge_keep` /
+`search_judge_high` cuts. It backs the dashboard's Catalog search box (Enter on a described job) and
+the public `/search` page (see `interface/dashboard.md`). It differs from the experiment where the
+audience differs:
+
+- **Wider recall, looser timeout.** `find_candidates` (60) and `find_timeout_s` (6 s). The judge
+  scores a request's candidates in parallel, so 60 measured the same wall time as 30, and it lets
+  rows the lexical order ranks low reach the judge ("why is my blog losing google traffic" found
+  the Search Console performance report only at 60).
+- **Streamed.** Two NDJSON events: `candidates` as soon as the recall is computed, `judged` when the
+  judge answers. The pages animate the gap on the first event.
+- **A verdict, not a page.** `strong` (a row at or over `high`), `closest` (kept rows, none strong),
+  `none` (nothing kept), or `keyword` when the judge abstained and the rows are the lexical page,
+  unjudged. Kept rows are best fit first (no `interleave.bucketed` lexical order inside a bucket),
+  each with its fit and the catalog's own price shape; the event carries `high` so the pages draw
+  the strong cut from the server's setting. The probability is shown to people; agents still never
+  see it.
+- **Open and rate limited.** No identity is needed, so `admit` bounds use per IP and per deployment
+  (`find_max_per_ip_hour`, `find_max_per_hour`) through `ratestore`, in a session that is committed
+  and closed before the judge is called.
+- **Logged in the same tables.** One `SearchLog` row with `mode=find`, `source=web-find` and no
+  identity (so no outcome join yet), and a `SearchMiss` when nothing fit.
+
+Agents are unaffected: `/catalog/search` and MCP `catalog_search` answer exactly as before.
+
 ## Guardrails and what is deliberately not here
 
 - The judge can add at most `typesafe_timeout_s` (2.5 s) to a search and can never fail one. Live
@@ -108,7 +138,8 @@ team + email within ten minutes of the search, on endpoints that were on the ser
 - The agent-facing response does not carry the judge's probability. Exposing it would change how
   agents pick and turn the experiment into a different one.
 - Page length is the same in every arm, so "more options" cannot masquerade as "better options".
-- Nothing here touches `/call/`, money, or the HTTP search route. The routed-discovery switch
+- Nothing here touches `/call/`, money, or the HTTP search route (`/catalog/find` is its own
+  route). The routed-discovery switch
   (`routed_discovery`) applies to the judged page through the shared finishing function.
-- Not yet built: a read path for `SearchMiss` other than the report scripts, and any use of the
-  judge outside search.
+- Not yet built: a read path for `SearchMiss` other than the report scripts, any use of the judge
+  outside catalog discovery, and crediting a `/catalog/find` answer with what the person did next.

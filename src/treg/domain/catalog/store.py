@@ -63,7 +63,7 @@ COST_UNITS = ("call", "result", "row", "record", "keyword", "page", "character",
               "section", "employee", "GB", "ad", "month", "line", "target", "domain", "item",
               "post", "user",
               "api_unit", "analysis_unit", "retrieval_unit", "index_item_unit", "quota_row",
-              "verifier_credit")
+              "verifier_credit", "step")
 # A platform key spends OUR money on a caller's behalf, so it is allowed only where the price is
 # machine-computable and provenanced. `account`-kind routes are the provider's own bookkeeping —
 # never worth spending on — and `own_account` scope needs the caller's own credential by definition.
@@ -173,15 +173,16 @@ class Catalog:
         floor = cost.get("table_min")
         if isinstance(floor, (int, float)) and rate is not None and per > 0 and usd is not None:
             out["usd_min"] = min(usd, round(floor * rate / per, 9))
-        # A duration-priced table is ADVERTISED as a per-second rate (`rate_usd_min`-`rate_usd`
-        # per `rate_unit`), the way every video model is quoted; `usd`/`usd_min` stay the
-        # reserve ceiling and floor for a whole call.
+        # A meter-priced table is advertised as a unit rate; `usd`/`usd_min` stay the reserve
+        # ceiling and floor for a whole call.
         span = cost.get("table_rate")
-        if isinstance(span, list) and len(span) == 2 and rate is not None and per > 0 \
+        rate_unit = cost.get("table_rate_unit")
+        if isinstance(span, list) and len(span) == 2 and isinstance(rate_unit, str) \
+                and rate_unit and rate is not None and per > 0 \
                 and usd is not None:
             out["rate_usd_min"] = round(float(span[0]) * rate / per, 9)
             out["rate_usd"] = round(float(span[1]) * rate / per, 9)
-            out["rate_unit"] = "s"
+            out["rate_unit"] = rate_unit
         # A $0 trial price travels with its allowance, so every surface showing the price can also
         # say how much of it a team gets — a bare $0.00 would read as unlimited.
         if provider in self.trial_pools and usd == 0:
@@ -316,15 +317,12 @@ def _table_floor(cost: object, input_schema: object) -> float | None:
     return min(floors) if floors else None
 
 
-def _table_rate(cost: object) -> tuple[float, float] | None:
-    """The per-second rate span of a duration-priced table: (cheapest row, dearest row) in the
-    table's own currency, when EVERY row multiplies its value by a `duration` field. A video
-    model is quoted per second of output everywhere else, so a $0.47-$13.9 total range (minimum
-    clip at the cheapest resolution up to the longest clip at the dearest) reads as a mistake;
-    the rate is what a reader compares. Display only - reserve and settle read the rows."""
+def _table_rate(cost: object) -> tuple[float, float, str] | None:
+    """Rate span for tables whose rows multiply one recognized request meter."""
     if not isinstance(cost, dict) or not isinstance(cost.get("table"), list) or not cost["table"]:
         return None
     values = []
+    meter: str | None = None
     for row in cost["table"]:
         if not isinstance(row, dict) or not isinstance(row.get("value"), (int, float)):
             return None
@@ -333,12 +331,16 @@ def _table_rate(cost: object) -> tuple[float, float] | None:
             # A flat row pinning the duration itself (`duration: -1`, the provider's auto mode)
             # is a whole-clip reserve ceiling, not a rate; the per-second rows still quote the model.
             continue
-        if not isinstance(times, str) or times.rsplit(".", 1)[-1] != "duration":
+        if not isinstance(times, str):
             return None
+        unit = {"duration": "s", "max_steps": "step"}.get(times.rsplit(".", 1)[-1])
+        if unit is None or (meter is not None and meter != unit):
+            return None
+        meter = unit
         values.append(float(row["value"]))
-    if not values:
+    if not values or meter is None:
         return None
-    return (min(values), max(values))
+    return (min(values), max(values), meter)
 
 
 def _parse(directory: Path) -> Catalog:
@@ -405,7 +407,8 @@ def _parse(directory: Path) -> Catalog:
                 raw = {**raw, "cost": {**raw["cost"], "table_min": floor}}
             span = _table_rate(raw.get("cost"))
             if span is not None:
-                raw = {**raw, "cost": {**raw["cost"], "table_rate": list(span)}}
+                raw = {**raw, "cost": {**raw["cost"], "table_rate": list(span[:2]),
+                                        "table_rate_unit": span[2]}}
             ep = _normalize(raw, provider, directory)
             if ep["id"] in by_id:  # first file wins; ids are unique by validator contract
                 continue
@@ -669,6 +672,7 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         ),
         "strict_query": raw.get("strict_query") is True,
         "strict_body": raw.get("strict_body") is True,
+        "body_allowlist": raw.get("body_allowlist") is True,
         "cost": _effective_cost(raw),
         # Absent `tier` means core: the curated first wave predates the split, and treating an
         # unmarked endpoint as extended would hide it from the platform view entirely.
@@ -780,6 +784,7 @@ def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None) -
         "input": ep.get("input") or None,
         **({"strict_query": True} if ep.get("strict_query") else {}),
         **({"strict_body": True} if ep.get("strict_body") else {}),
+        **({"body_allowlist": True} if ep.get("body_allowlist") else {}),
         # the exact request that live-verified this endpoint — the Try-it drawer prefills from it
         # verbatim (it also carries the ground truth the input spec can't express: whether the
         # body is a bare object or an ARRAY of tasks, which dataforseo requires)

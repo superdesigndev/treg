@@ -7,6 +7,7 @@ conftest (`/whoami` echoes; `/units` and `/units-bad` model Semrush's plain-text
 
 from __future__ import annotations
 
+import json
 import httpx
 from treg.api import app
 from treg.config import Settings
@@ -29,15 +30,73 @@ def test_key_providers_are_offerable_without_deployment_credentials():
                 "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
                 "companyenrich", "oceanio", "tomba", "predictleads", "findymail", "branddev",
                 "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato",
-                "spyfu", "apify", "meta-ad-library", "serpapi",
+                "spyfu", "apify", "meta-ad-library", "serpapi", "adyntel",
                 "coingecko", "polygon", "finnhub", "twelvedata", "fmp", "eodhd", "marketstack",
-                "tiingo", "financialdatasets"):
+                "tiingo", "financialdatasets", "tinyfish", "keenable", "olostep"):
         p = P.get(svc)
         assert p is not None, svc
         assert p.auth_kind == "key", svc
         assert p.uses_pasted_secret is True, svc
         assert p.is_token_kind is False, f"{svc}: an API key is not a Slack bot token"
         assert P.is_configured(p) is True, svc
+
+
+def test_adyntel_registry_uses_two_json_body_credentials(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_ADYNTEL", "PLATFORM-ADYNTEL")
+    monkeypatch.setenv("TREG_PLATFORM_EMAIL_ADYNTEL", "owner@example.com")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "adyntel")
+    provider = P.get("adyntel")
+    assert provider is not None
+    assert provider.base_url == "https://api.adyntel.com"
+    assert provider.probe_path == "/facebook"
+    assert provider.probe_method == "POST"
+    assert provider.probe_deferred_statuses == (422,)
+    assert provider.token_location == "json" and provider.token_param == "api_key"
+    assert provider.extra_credential_location == "json"
+    assert provider.extra_credential_name == "email"
+    assert P.platform_bindings(provider) == [
+        {"platform_setting": "platform_key_adyntel", "injector": "env",
+         "location": "json", "name": "api_key", "format": "{secret}"},
+        {"platform_setting": "platform_email_adyntel", "injector": "env",
+         "location": "json", "name": "email", "format": "{secret}"},
+    ]
+
+
+async def test_adyntel_connect_collects_both_credentials_before_provisioning(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "POST"
+        assert request.url.path == "/facebook"
+        assert json.loads(request.content) == {
+            "company_domain": "treg-credential-check.invalid",
+            "api_key": "own-key",
+        }
+        return httpx.Response(422, json={"detail": "email is required"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        first = await clients.post(
+            "/connections/token", json={"provider": "adyntel", "token": "own-key"},
+        )
+        assert first.status_code == 200, first.text
+        connection = first.json()
+        assert connection["health"] == "unknown"
+        pending_tool = next(
+            t for t in (await clients.get("/tools")).json() if t["name"] == "adyntel"
+        )
+        assert [(b["location"], b["name"]) for b in pending_tool["bindings"]] == [
+            ("json", "api_key"),
+        ]
+        ready = await clients.post(
+            f"/connections/{connection['id']}/extra-credential",
+            json={"value": "owner@example.com"},
+        )
+        assert ready.status_code == 200, ready.text
+        assert ready.json()["ready"] is True
+
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "adyntel")
+    assert [(b["location"], b["name"]) for b in tool["bindings"]] == [
+        ("json", "api_key"), ("json", "email"),
+    ]
 
 
 def test_key_providers_appear_in_the_marketplace_listing():
@@ -62,12 +121,49 @@ def test_key_providers_appear_in_the_marketplace_listing():
 
 def test_paid_key_verification_probe_is_typed_and_unique():
     paid = {p.service: p.probe_cost_micro for p in P.REGISTRY.values() if p.probe_cost_micro}
-    assert paid == {"trestleiq": 15_000}
+    assert paid == {"keenable": 4_000, "trestleiq": 15_000}
     assert all(isinstance(p.probe_cost_micro, int) and p.probe_cost_micro >= 0
                for p in P.REGISTRY.values())
     listing = {row["service"]: row for row in P.listing()}
     assert listing["trestleiq"]["probe_cost_micro"] == 15_000
     assert listing["wiza"]["probe_cost_micro"] == 0
+
+
+def test_keenable_registry_uses_the_billed_fetch_probe_and_x_api_key(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_KEENABLE", "PLATFORM-KEENABLE")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "keenable")
+    provider = P.get("keenable")
+    assert provider is not None
+    assert provider.base_url == "https://api.keenable.ai"
+    assert provider.probe_path == "/v1/fetch?url=https%3A%2F%2Fdocs.keenable.ai%2F&max_chars=1"
+    assert provider.probe_cost_micro == 4_000
+    assert provider.token_verify_field == "url"
+    assert Settings(_env_file=None).platform_key_for("keenable") == "PLATFORM-KEENABLE"
+    assert P.platform_bindings(provider) == [{
+        "platform_setting": "platform_key_keenable",
+        "injector": "env",
+        "location": "header",
+        "name": "X-API-Key",
+        "format": "{secret}",
+    }]
+
+
+def test_olostep_registry_uses_free_credit_probe_and_bearer_auth(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_OLOSTEP", "PLATFORM-OLOSTEP")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "olostep")
+    provider = P.get("olostep")
+    assert provider is not None
+    assert provider.base_url == "https://api.olostep.com"
+    assert provider.probe_path == "/user/credits/info"
+    assert provider.probe_cost_micro == 0
+    assert Settings(_env_file=None).platform_key_for("olostep") == "PLATFORM-OLOSTEP"
+    assert P.platform_bindings(provider) == [{
+        "platform_setting": "platform_key_olostep",
+        "injector": "env",
+        "location": "header",
+        "name": "Authorization",
+        "format": "Bearer {secret}",
+    }]
 
 
 def test_trestleiq_registry_uses_the_billed_sandbox_probe_and_lowercase_header(monkeypatch):

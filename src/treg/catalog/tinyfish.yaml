@@ -1,0 +1,301 @@
+provider: tinyfish
+source:
+  docs: https://docs.tinyfish.ai/
+  openapi: https://agent.tinyfish.ai/v1/openapi/main
+  curated: '2026-09-23'
+pricing_url: https://www.tinyfish.ai/pricing
+limits: "Search: 30 requests/minute and 500/hour. Fetch: 150 URLs/minute and 1,000/day. Agent: 2 concurrent runs. Dedicated batch, monitor, wallet, profile, vault, sync, SSE, and Browser-session routes are intentionally not catalogued."
+cache: forbidden
+proposed_capabilities:
+  web.search.news: "Search recent news articles by topic"
+  web.search.publications: "Search research papers and publications"
+  web.agent.run: "Run an asynchronous browser agent toward a goal"
+  web.agent.run.status: "Check an asynchronous browser-agent run"
+  web.agent.run.cancel: "Cancel an asynchronous browser-agent run"
+  web.agent.step.screenshot: "Retrieve a browser-agent step screenshot"
+  web.agent.step.html: "Retrieve browser-agent step HTML"
+async:
+  id_from: run_id
+  poll:
+    endpoint: tinyfish.web.agent.run.get
+    param: {in: pathParams, name: run_id}
+  status:
+    path: status
+    progress: [PENDING, RUNNING]
+    success: [COMPLETED]
+    failure: []
+    billed_failure: [FAILED, CANCELLED]
+  result:
+    path: result
+  interval: 2
+
+endpoints:
+  - id: tinyfish.web.search
+    async: false
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    host: api.search.tinyfish.ai
+    path: /
+    name: Search the open web
+    summary: Search the web by keyword or meaning, with domain, language, location, and date filters.
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "TinyFish API documentation"}
+        domain_type: {type: string, required: true, default: web, enum: [web], example: web}
+        purpose: {type: string, required: false, note: "Describe what the results will be used for."}
+        location: {type: string, required: false, example: "United States"}
+        language: {type: string, required: false, example: en}
+        include_domains: {type: "array[string]", required: false}
+        exclude_domains: {type: "array[string]", required: false}
+        after_date: {type: string, required: false, note: "Only results after this date."}
+        before_date: {type: string, required: false, note: "Only results before this date."}
+        recency_minutes: {type: integer, required: false, min: 1}
+        page: {type: integer, required: false, default: 0, min: 0, max: 10}
+        include_thumbnail: {type: boolean, required: false, default: false}
+        fetch: {type: boolean, required: false, default: false, note: "Attach fetched page content to results."}
+    test_request: {queryParams: {query: "TinyFish API documentation", domain_type: web}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-09-23', confidence: verified, note: "TinyFish lists Search at $0.00 per request; a live call left the wallet unchanged."}
+    verified: '2026-09-23'
+    example_response: examples/tinyfish.web.search.json
+    docs_url: https://docs.tinyfish.ai/api-reference/search-the-web
+
+  - id: tinyfish.web.search.news
+    async: false
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    host: api.search.tinyfish.ai
+    path: /
+    name: Search recent news
+    summary: Search TinyFish's news index with optional recency, date, domain, language, and location filters.
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "AI browser agents"}
+        domain_type: {type: string, required: true, default: news, enum: [news], example: news}
+        purpose: {type: string, required: false}
+        location: {type: string, required: false}
+        language: {type: string, required: false, example: en}
+        include_domains: {type: "array[string]", required: false}
+        exclude_domains: {type: "array[string]", required: false}
+        after_date: {type: string, required: false}
+        before_date: {type: string, required: false}
+        recency_minutes: {type: integer, required: false, min: 1}
+        page: {type: integer, required: false, default: 0, min: 0, max: 10}
+        include_thumbnail: {type: boolean, required: false, default: false}
+        fetch: {type: boolean, required: false, default: false}
+    test_request: {queryParams: {query: "AI browser agents", domain_type: news}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-09-23', confidence: verified, note: "TinyFish lists Search at $0.00 per request; the news index uses the same free endpoint."}
+    verified: '2026-09-23'
+    example_response: examples/tinyfish.web.search.news.json
+    docs_url: https://docs.tinyfish.ai/api-reference/search-the-web
+
+  - id: tinyfish.web.search.publications
+    async: false
+    capability: web.search.publications
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    host: api.search.tinyfish.ai
+    path: /
+    name: Search research publications
+    summary: Search research papers by topic, publication year, domain, language, and date.
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "browser agent benchmark"}
+        domain_type: {type: string, required: true, default: research_paper, enum: [research_paper], example: research_paper}
+        purpose: {type: string, required: false}
+        language: {type: string, required: false, example: en}
+        include_domains: {type: "array[string]", required: false}
+        exclude_domains: {type: "array[string]", required: false}
+        after_date: {type: string, required: false}
+        before_date: {type: string, required: false}
+        pub_year_min: {type: integer, required: false, min: 1900}
+        pub_year_max: {type: integer, required: false, min: 1900}
+        page: {type: integer, required: false, default: 0, min: 0, max: 10}
+        include_thumbnail: {type: boolean, required: false, default: false}
+        fetch: {type: boolean, required: false, default: false}
+    test_request: {queryParams: {query: "browser agent benchmark", domain_type: research_paper, pub_year_min: 2024}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-09-23', confidence: verified, note: "TinyFish lists Search at $0.00 per request; the research-paper index uses the same free endpoint."}
+    verified: '2026-09-23'
+    example_response: examples/tinyfish.web.search.publications.json
+    docs_url: https://docs.tinyfish.ai/api-reference/search-the-web
+
+  - id: tinyfish.web.fetch
+    async: false
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    host: api.fetch.tinyfish.ai
+    path: /
+    name: Fetch clean page content
+    summary: Fetch up to ten URLs as Markdown, HTML, or structured JSON, with optional links, metadata, and selectors.
+    input:
+      bodyType: json
+      body:
+        urls: {type: "array[string]", required: true, minItems: 1, maxItems: 10, example: ["https://example.com"]}
+        purpose: {type: string, required: false}
+        format: {type: string, required: false, default: markdown, enum: [html, markdown, json]}
+        links: {type: boolean, required: false, default: false}
+        image_links: {type: boolean, required: false, default: false}
+        page_metadata: {type: boolean, required: false, default: false}
+        ttl: {type: integer, required: false, min: 0, note: "TinyFish cache lifetime in seconds; 0 requests a fresh fetch."}
+        per_url_timeout_ms: {type: integer, required: false, min: 1}
+        if_none_match: {type: string, required: false}
+        if_modified_since: {type: string, required: false}
+        include_etag_and_last_modified: {type: boolean, required: false, default: false}
+        include_selectors: {type: "array[string]", required: false}
+        exclude_selectors: {type: "array[string]", required: false}
+    test_request: {body: {urls: ["https://example.com"], format: markdown, links: true, ttl: 0}}
+    cost: {type: free, value: 0, currency: USD, unit: call, source: docs, source_url: "https://www.tinyfish.ai/pricing", checked: '2026-09-23', confidence: verified, note: "TinyFish lists Fetch at $0.00 per URL; a live fetch left the wallet unchanged."}
+    verified: '2026-09-23'
+    example_response: examples/tinyfish.web.fetch.json
+    docs_url: https://docs.tinyfish.ai/api-reference/fetch-and-extract-content-from-urls
+
+  - id: tinyfish.web.agent.run
+    capability: web.agent.run
+    platform: web
+    domain: agent
+    scope: any_account
+    method: POST
+    path: /v1/automation/run-async
+    name: Run a browser agent
+    summary: Start an asynchronous browser agent on a URL and have it work toward a natural-language goal.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, example: "https://example.com"}
+        goal: {type: string, required: true, example: "Return the page heading and explain what this site is for."}
+        browser_profile: {type: string, required: false, default: lite, enum: [lite, stealth]}
+        agent_config:
+          type: object
+          required: false
+          default: {max_steps: 150}
+          properties:
+            mode: {type: string, required: false, default: default, enum: [default, strict]}
+            cursor_style: {type: string, required: false, enum: [fish, standard, green-pointer]}
+            max_steps: {type: integer, required: false, default: 150, min: 1, max: 500, note: "TinyFish currently beta-gates custom max_steps; omit it unless the account is enabled."}
+            max_duration_seconds: {type: integer, required: false, min: 1}
+        capture_config:
+          type: object
+          required: false
+          properties:
+            elements: {type: boolean, required: false, default: false}
+            snapshots: {type: boolean, required: false, default: false}
+            screenshots: {type: boolean, required: false, default: false}
+            recording: {type: boolean, required: false, default: false}
+            html: {type: boolean, required: false, default: false}
+        proxy_config:
+          type: object
+          required: false
+          properties:
+            enabled: {type: boolean, required: true}
+            country_code: {type: string, required: false, enum: [US, GB, CA, DE, FR, JP, AU]}
+        output_schema: {type: object, required: false, note: "JSON Schema for a structured terminal result."}
+    test_request:
+      body: {url: "https://example.com", goal: "Return the page heading and explain what this site is for.", browser_profile: lite, capture_config: {screenshots: true, html: true}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.browser_profile: lite}, value: 1, times: body.agent_config.max_steps}
+        - {when: {body.browser_profile: stealth}, value: 1, times: body.agent_config.max_steps}
+      fallback: {value: 500, note: "The request schema caps a run at TinyFish's documented 500 steps."}
+      currency: unit
+      unit: step
+      settle: usage
+      usage: {path: num_of_steps, unit: step}
+      source: observed
+      source_url: https://www.tinyfish.ai/pricing
+      checked: '2026-09-23'
+      confidence: verified
+      note: "TinyFish publishes $0.016 per Agent step. COMPLETED, FAILED, and CANCELLED runs settle from the terminal num_of_steps value, so a zero-step terminal response costs $0 while completed work remains billable; a completed live run reported 3 steps and reduced the wallet by exactly $0.048, and a cancelled live run reported 0 steps with no wallet change."
+    verified: '2026-09-23'
+    example_response: examples/tinyfish.web.agent.run.json
+    docs_url: https://docs.tinyfish.ai/api-reference/automation/start-automation-asynchronously
+
+  - id: tinyfish.web.agent.run.get
+    async: false
+    kind: utility
+    capability: web.agent.run.status
+    platform: web
+    scope: any_account
+    method: GET
+    path: /v1/runs/{run_id}
+    name: Check a browser-agent run
+    summary: Read an Agent run's state, step count, result, and captured step metadata.
+    resource_ownership:
+      requires: {kind: "poll:tinyfish.web.agent.run.get", param: run_id}
+    input:
+      pathParams:
+        run_id: {type: string, required: true, example: "e1f90a04-486f-441b-95af-7f7223eb994b"}
+    test_request: {pathParams: {run_id: "e1f90a04-486f-441b-95af-7f7223eb994b"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading a run does not start another Agent run."}
+    verified: '2026-09-23'
+    example_response: examples/tinyfish.web.agent.run.get.json
+    docs_url: https://docs.tinyfish.ai/api-reference/runs/get-run-by-id
+
+  - id: tinyfish.web.agent.run.cancel
+    async: false
+    kind: utility
+    capability: web.agent.run.cancel
+    platform: web
+    scope: any_account
+    method: POST
+    path: /v1/runs/{run_id}/cancel
+    name: Cancel a browser-agent run
+    summary: Stop a pending or running Agent run; completed steps remain billable upstream.
+    resource_ownership:
+      requires: {kind: "poll:tinyfish.web.agent.run.get", param: run_id}
+    input:
+      pathParams:
+        run_id: {type: string, required: true, example: "e1f90a04-486f-441b-95af-7f7223eb994b"}
+    test_request: {pathParams: {run_id: "e1f90a04-486f-441b-95af-7f7223eb994b"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "The cancel request itself is free; any Agent steps already completed belong to the original run."}
+    verified: '2026-09-23'
+    example_response: examples/tinyfish.web.agent.run.cancel.json
+    docs_url: https://docs.tinyfish.ai/api-reference/runs/cancel-run-by-id
+
+  - id: tinyfish.web.agent.step.screenshot
+    async: false
+    kind: utility
+    capability: web.agent.step.screenshot
+    platform: web
+    scope: any_account
+    method: GET
+    path: /v1/runs/{run_id}/steps/{step_id}/screenshot
+    name: Retrieve an Agent step screenshot
+    summary: Retrieve the JPEG screenshot captured for one step of a run that requested screenshots.
+    resource_ownership:
+      requires: {kind: "poll:tinyfish.web.agent.run.get", param: run_id}
+    input:
+      pathParams:
+        run_id: {type: string, required: true}
+        step_id: {type: string, required: true}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Retrieving an existing captured screenshot is free."}
+    docs_url: https://docs.tinyfish.ai/api-reference/runs/get-step-screenshot
+
+  - id: tinyfish.web.agent.step.html
+    async: false
+    kind: utility
+    capability: web.agent.step.html
+    platform: web
+    scope: any_account
+    method: GET
+    path: /v1/runs/{run_id}/steps/{step_id}/html
+    name: Retrieve Agent step HTML
+    summary: Retrieve the HTML captured for one step of a run that requested HTML capture.
+    resource_ownership:
+      requires: {kind: "poll:tinyfish.web.agent.run.get", param: run_id}
+    input:
+      pathParams:
+        run_id: {type: string, required: true}
+        step_id: {type: string, required: true}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Retrieving existing captured HTML is free."}
+    docs_url: https://docs.tinyfish.ai/api-reference/runs/get-step-html-snapshot

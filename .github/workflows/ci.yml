@@ -46,6 +46,15 @@ jobs:
         if: steps.docs.outputs.only != 'true'
         with:
           python-version: "3.13"
+      - uses: actions/setup-node@v4
+        if: steps.docs.outputs.only != 'true'
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build dashboard
+        if: steps.docs.outputs.only != 'true'
+        run: bash scripts/build-dashboard.sh
       - name: Install dependencies
         if: steps.docs.outputs.only != 'true'
         run: uv sync --locked
@@ -85,6 +94,13 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Build dashboard
+        run: bash scripts/build-dashboard.sh
       - name: Install dependencies
         run: uv sync --locked
       - name: Run Postgres tests serially
@@ -160,3 +176,52 @@ jobs:
         # HEAD is the PR merge commit (both parents) or the pushed main commit. Scan all
         # reachable history, including deleted secrets, without unrelated fetched branch tips.
         run: gitleaks detect --source . --config .gitleaks.toml --log-opts="HEAD" --verbose --redact
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: uv sync --locked
+      - run: bash scripts/build-dashboard.sh
+      - run: npm --prefix frontend test
+      - name: Install browser
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - run: npm --prefix frontend run test:e2e
+      - name: Check distributable assets
+        run: |
+          uv build
+          python - <<'PYCODE'
+          from pathlib import Path
+          from tarfile import open as open_tar
+          from zipfile import ZipFile
+          import re
+          with ZipFile(next(Path('dist').glob('*.whl'))) as wheel:
+              assert not [name for name in wheel.namelist() if name.endswith('.mp4')]
+              html = wheel.read('treg/web/dashboard/index.html').decode()
+              assets = re.findall(r'/app/ui/(assets/[^"\s]+)', html)
+              assert assets, 'Dashboard entry must reference compiled assets'
+              for asset in assets:
+                  assert wheel.read('treg/web/dashboard/' + asset)
+              legacy = wheel.read('treg/web/dashboard-legacy/index.html').decode()
+              legacy_assets = re.findall(r'/app/legacy/(assets/[^"\s]+)', legacy)
+              assert legacy_assets
+              for asset in legacy_assets:
+                  assert wheel.read('treg/web/dashboard-legacy/' + asset)
+              arena = wheel.read('treg/web/enrich-arena.html').decode()
+              for asset in re.findall(r'src="(/vendor/vue-[^"\s]+)"', arena):
+                  assert wheel.read('treg/web' + asset)
+              assert wheel.read('treg/web/vendor/LICENSE')
+          with open_tar(next(Path('dist').glob('*.tar.gz'))) as source:
+              assert not [member.name for member in source.getmembers()
+                          if member.name.endswith('.mp4')]
+          PYCODE

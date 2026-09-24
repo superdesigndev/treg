@@ -730,7 +730,7 @@ test('Additional lookup pricing includes its automatic verification cap',()=>{
 
 test('MillionVerifier success uses a readable verification verdict',()=>{
  const {app}=setup();assert.equal(app.verificationVerdict({verification:{state:'hit',output:{valid:true,status:'ok'}}}),'Valid');
- assert.equal(app.providerName('millionverifier'),'MillionVerifier');assert.equal(app.providerName('contactout'),'ContactOut');assert.equal(app.providerName('trykitt'),'Kitt');
+ assert.equal(app.providerName('millionverifier'),'MillionVerifier');assert.equal(app.providerName('contactout'),'ContactOut');assert.equal(app.providerName('trykitt'),'Kitt');assert.equal(app.providerName('aiark'),'AI Ark');
 });
 
 test('Email verdict badges distinguish uncertain statuses from invalid boolean projections',()=>{

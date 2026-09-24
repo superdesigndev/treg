@@ -8,8 +8,26 @@ sources:
   - src/treg/web/robots.txt
   - src/treg/web/catalog.css
   - src/treg/web/usecase.css
-  - src/treg/web/index.html
+  - frontend/index.html
+  - frontend/src/App.vue
+  - frontend/src/components/PublicNavigation.vue
+  - frontend/src/state/boot.js
   - src/treg/web/landing.html
+  - src/treg/web/media/landing/product-theme.css
+  - src/treg/web/media/landing/refinement.css
+  - src/treg/web/media/landing/gateway.css
+  - src/treg/web/media/landing/hero-opening.js
+  - src/treg/web/media/landing/refinement.js
+  - src/treg/web/media/landing/catalog-drum.js
+  - src/treg/web/media/landing/gateway.js
+  - src/treg/web/media/landing/gateway-loader.js
+  - src/treg/web/media/landing/gateway-3d.js
+  - src/treg/web/media/landing/gateway-model.js
+  - src/treg/web/media/landing/gateway-intro.js
+  - src/treg/web/media/landing/hero-particles.js
+  - src/treg/web/media/landing/command-beam.js
+  - src/treg/web/media/landing/SOURCES.md
+  - frontend/e2e/landing.spec.ts
   - src/treg/web/terms.html
   - src/treg/web/usecase-seo.html
   - src/treg/web/usecase-company.html
@@ -63,6 +81,19 @@ a new signup grant. Actual eligibility and migration behavior live in
 The landing footer links to the public standalone [Enrich Arena](enrich-arena.md) page. Its query
 form is visible before login; submission is authenticated and metered against team credits.
 
+The root landing remains server-rendered from `web/landing.html`. Its visual implementation lives
+under `web/media/landing/`: a Three.js gateway in the hero, a scroll-driven catalog, particle
+backgrounds and the dark closing section. `SOURCES.md` pins the design reference and library versions. Three.js and Lenis load from the
+version-pinned jsDelivr npm CDN; our own animation modules ship through the existing media mount. Reduced
+motion uses static presentation; WebGL failure releases the opening sequence and shows the treg
+mark. BFCache preserves animation resources; `pageshow` resumes animation and refreshes layout.
+The setup command uses `{BASE}`, and sign-in, local navigation, structured data, attribution
+and deployment-configured support chat retain their existing contracts. Browser coverage lives in
+`frontend/e2e/landing.spec.ts`.
+Headline totals use `_fill_headline` and `catalog_store.headline_counts` in copy and metadata.
+Signed-in visitors see **Open dashboard** on `/`; the dashboard logo links back here.
+Session-dependent HTML uses `private, no-store` and `Vary: Cookie`. Query deep links keep SPA routing.
+
 `/gpt6` is the launch-film destination, served by `gpt6_page` as bundled,
 no-cache HTML and included in the sitemap and route ownership manifest. `/astra` redirects
 permanently to `/gpt6`, preserving query parameters for campaign attribution. It leads with
@@ -93,12 +124,12 @@ server-side first-touch attribution across signup, first successful call and top
 | `/robots.txt` | Bundled file, `{BASE}`-templated. Disallows `/app`, `/login`, auth and OAuth flows, `/call/`, `/mcp`, `/admin`, `/docs/api`. Names the sitemap. |
 | `/sitemap.xml` | **Generated**, not bundled — 80 of its URLs come from the catalog. Static pages take `lastmod` from their file's mtime, shelves from the newest mtime under `src/treg/catalog/`. |
 | `/resources` + `/use-cases/<slug>` | The outcome pages and their hub. Their sitemap rows are spread from `_USE_CASES` rather than listed by hand, so routing a new page lists it — see below. |
-| `/blog` + `/blog/people-search-bench` | A thin, hand-kept index of the launch pages (`_BLOG_LAUNCHES`, newest first, dated by the day each route shipped) and short posts (`_BLOG_POSTS`); the bench post repeats the four People Search Bench scores from `/grokbot#bench` and links there. Both are `_page()`-rendered, hosted-only, sitemapped (0.7 / 0.6) and in the route manifest. `/agents/grok-bot` (and `.md`) 301 to `/grokbot`: the launch page is the destination, the agent page was never linked as one, and the sitemap lists only `/grokbot`. |
+| `/blog` + `/blog/people-search-bench` | A thin, hand-kept index of the launch pages (`_BLOG_LAUNCHES`, newest first, dated by the day each route shipped) and short posts (`_BLOG_POSTS`); the bench post repeats the four People Search Bench scores from `/grokbot#bench` and links there. Each post carries `BlogPosting` schema from `_blog_posting_ld` (headline, the `_BLOG_POSTS` date as published and modified, a named `Person` author, treg.to as publisher) beside its breadcrumbs, because a dated, bylined article earns the validation click and the AI citation where a bare page does not. Both are `_page()`-rendered, hosted-only, sitemapped (0.7 / 0.6) and in the route manifest. `/agents/grok-bot` (and `.md`) 301 to `/grokbot`: the launch page is the destination, the agent page was never linked as one, and the sitemap lists only `/grokbot`. |
 | `/people-search` + `/grokbot` + `/fable` + `/ugc` | The launch-campaign landings, bundled files served by their own routes (`FileResponse`, no-cache). All are first-class pages: canonical, OG tags, listed in `_SITEMAP_PAGES` at 0.8 — `/people-search` is "Claude for people search" (the enrichment launch film's destination), `/grokbot` the "Grok Bot for Outreach" animatic plus the six-bot treg team gallery (ICP Map Coach, Lookalike Scout, Rival Watch Desk, SERP Watch Team, Creator Shortlist Crew, and GTM Expert, each linked directly to its `x.ai/bot/…` page). Its nav, hero and closing CTAs remain the pair **"Setup treg"**, primary — signed in it goes to `/app`, signed out it opens the page's own sign-in modal in place (the `/people-search` pattern; the `href` `/app?ref=grokbot` is only the no-JS fallback) and stashes `treg-ref=grokbot` so the first-run welcome preselects Grok Bot, and **"Install plugin"** → the x.ai plugin page, secondary. `/fable` (file `fable-gtm.html`) is the Claude Fable 5.1 launch: one terminal session that reads the market, plans, spawns four agents and shows one result window at a time. `/ugc` (file `ugc.html`) is the AI UGC workflow article as a page: an arcads-style hero of generated clips, then the five steps told as one pinned Claude Code session on the left that crossfades between steps while the artifacts scroll on the right (trend grid, a five-model character board with real-image showcases, Seedance talking heads, the demo, hook variants and the bill), then pricing against subscription tools and the catalog grid. Its asset paths are **relative** (`media/…`, `logos/…`) so the same file previews from `file://`; that only holds while the routes stay slashless. All are registered in `bootstrap.py`'s route-ownership manifest like every other route. |
 | `/jev` | "How to use Jev" (file `jev.html`; the on-page headline reads "How to use Jev for GTM Automation"); the hero carries a literal "What is Jev?" heading. Sections in order: "Quick Jev 101", ONE arrow-driven deck of eleven slides (three on what jev is, five use-case demos judged live by jev with three community recordings credited and linked, three on how to use it in code) staged like the video slides: a kicker, one big header, the visual full width, description text hidden by CSS scoped to `#deck`; then the GTM recipes, whose tab bar is mirrored in the nav everywhere except while the real bar is on screen; then community posts as cards built from each post's own data (avatars and posters bundled in `media/jev/built/`, no X embed script) in a marquee that becomes a swipeable row on touch and reduced motion; then the FAQ with its JSON-LD. The use-case demo script follows the deck through a `deckslide` event, offset by the three opening slides. The recipes are three agent prompts to copy, plus a build-your-own one, each with the demo it produces underneath. Every prompt opens with a "Before you build" block: the steps are a reference implementation, not a spec, so the agent asks about the reader's own workflow, states the plan and the cost of one run, and waits for a go-ahead. Setup is then two steps: treg through `treg.to/llms.txt` (never the install one-liner), and jev as OPTIONAL. With a Vercel AI Gateway key the agent calls jev's evaluation-model endpoint; without one it judges behind the same `state`/`questions` interface itself and labels those results `judge: agent`, so the build works today and switching to jev is a one-line change. `tests/test_jev.py` pins all of it. The X launch radar recipe is **live**: `/jev/xboost.json` serves the document `treg-worker jev xboost` stores daily under Ephemeral (`jev`/`xboost`), else the bundled snapshot `media/jev/xboost-seed.json` flagged `snapshot: true`; `POST /jev/xboost/judge {url}` runs the same forensics + jev on one visitor-pasted post (5 per IP and 60 fleet-wide per hour via ratestore, 503 until `jev_treg_token` and `ai_gateway_api_key` are set) and prepends it to the document's `manual` list, which survives the daily run. treg is a client of itself in that pipeline (`application/jev_xboost.py` calls `/call/` with the demo team's token), so the receipt is a real bill. The signup-triage and signal-first-leads recipes replay bundled runs in `media/jev/*.json` with every email address replaced; `tests/test_jev.py` pins that. Same nav, footer, capture scripts, sitemap priority and `_BLOG_LAUNCHES` entry as the other landings. |
 | `/catalog` | The dashboard SPA, in public mode — the marketplace's Catalog view on an indexable URL. |
-| `/catalog/<slug>` | The same SPA, on the platform view for one shelf. |
-| `/tools/<service>` | The catalog sliced by **vendor**, fully server-rendered (`_page`, no SPA): one public page per provider. Titles lead with API pricing; mixed-access heroes show the full inventory with platform/BYOK counts. Own-account providers get `{Provider}: connect your own account`. The page shows logo, category, blurb from the oauth-provider registry, setup/MCP instructions, all tools for inventories of up to 50, otherwise up to 8 tools per platform (with a catalog link for larger sets), why-treg cards, alternatives, and a metered-vs-own-account FAQ. JSON-LD: BreadcrumbList (with `treg.to` not bare `treg`), ItemList, FAQPage, HowTo. Tool counts and prices are live from `catalog_store`, never hardcoded. No em-dashes in page copy. There is no provider index page: /providers earned no searches and the provider links live in /catalog's prerender instead. `/tools/<service>` is safe from shadowing the API (the API's GETs are `/tools` and `/tools/by-name/…`). A signed-out `GET /app/marketplace/<service>` 302s to `/tools/<service>`. `tests/test_provider_pages.py` pins the route shape. |
+| `/catalog/<slug>` | The same SPA, on the platform view for one shelf. Title `{Platform} API pricing: {n} endpoints priced per call \| treg.to`: the `{platform} api pricing` phrasing is the non-brand query shape that reaches the site, the brand is treg.to, no em-dash. |
+| `/tools/<service>` | The catalog sliced by **vendor**, fully server-rendered (`_page`, no SPA): one public page per provider. Title matches H1 (metered: `{Provider}: {n} tools from {price}`, mixed: `{Provider}: {n} tools, platform or your own key`, own-account: `{Provider}: connect your own account`); mixed-access heroes show the full inventory with platform/BYOK counts. The page shows logo, category, blurb from the oauth-provider registry, setup/MCP instructions, all tools for inventories of up to 50, otherwise up to 8 tools per platform (with a catalog link for larger sets), why-treg cards, alternatives, and a metered-vs-own-account FAQ. JSON-LD: BreadcrumbList (with `treg.to` not bare `treg`), ItemList, FAQPage, HowTo. Tool counts and prices are live from `catalog_store`, never hardcoded. No em-dashes in page copy. There is no provider index page: /providers earned no searches and the provider links live in /catalog's prerender instead. `/tools/<service>` is safe from shadowing the API (the API's GETs are `/tools` and `/tools/by-name/…`). A signed-out `GET /app/marketplace/<service>` 302s to `/tools/<service>`. `tests/test_provider_pages.py` pins the route shape. |
 | `/docs` | Server-rendered API reference built from `app.openapi()`. |
 | `/docs/api` | FastAPI's Swagger UI, moved here and `Disallow`ed. ReDoc is off. |
 | `/media/og.png` | The 1200×630 social card, served by the pre-existing `/media` mount. |
@@ -181,9 +212,9 @@ competing providers merged onto it** (Majestic $0.0008 · Serpstat $0.0025 · SE
 the comparison *is* the product — while the hand-built page listed each endpoint separately. Same
 data, different axis, two things to maintain.
 
-So `/catalog` and `/catalog/<slug>` now serve **`index.html`**, and the Vue app renders the same
+So `/catalog` and `/catalog/<slug>` serve the **compiled Dashboard entry**, and the Vue app renders the same
 platform views a member sees. This works because the catalog API is unauthenticated; `publicCatalog`
-in `index.html` is the flag, set from `catalogFromPath()` before the `/auth/me` check so the first
+in `frontend/src/state/data.js` is the flag, set from `catalogFromPath()` before the `/auth/me` check so the first
 paint is already in public mode.
 
 What public mode changes, and why each one:
@@ -211,11 +242,8 @@ on a public shelf renders as its bare slug and the whole action chain collapses 
 `mkOauth` has no public fallback — the open response carries no `auth_kind` — so the public branch
 offers BYOK, which is true for every provider, rather than guessing Connect.
 
-**Each action is ONE button whose handler forks on `publicCatalog`**, not a duplicated public
-template. `tests/test_dashboard_markup.py` asserts the member chain's exact shape
-(`v-else-if="mkOauth(e.provider)" class="btn sm primary"`, `openProvider(e.provider)`, …), and a
-fork keeps those substrings intact where a parallel branch drifts. That test reads a fixed-size
-window of the markup and has already been outgrown once by these forks.
+Each catalog action chooses sign-in or the member flow based on `publicCatalog`. Browser coverage
+in `frontend/e2e/dashboard.spec.ts` checks public catalog navigation and reachable sign-in.
 
 ### The no-JS fallback
 
@@ -245,8 +273,7 @@ skips `Other` outright — so the sitemap would publish `/catalog/<slug>` while 
 links to nothing. `test_no_shelf_is_published_that_the_app_grid_hides` fails the build if that
 happens.
 
-**UI changes to the shared views reach the public pages automatically** — it is the same
-`index.html`. Three things do NOT follow along:
+**UI changes to the shared views reach the public pages automatically** — they use the same Dashboard components. Three things do NOT follow along:
 
 1. **Anything reading member-only state.** `providers`, `connCount`, `billing` and `sessionMode` are
    all empty without a session, so a new element built on them renders blank publicly. Three helpers
@@ -283,13 +310,13 @@ asserted to appear in its body. Edit one, edit the other, same commit.
 
 **The catalog page and the app must ask for the same population.** See `include_hidden` above.
 
-**A promo banner on `index.html` is a catalog-page edit.** `/catalog` and `/catalog/<slug>` render
-from `index.html`, so anything added to that file lands on all ~80 crawlable shelves unless it is
+**A promo banner in `App.vue` is a catalog-page edit.** `/catalog` and `/catalog/<slug>` render
+from the same Vue app, so anything added to its shell lands on all ~80 crawlable shelves unless it is
 gated. The one banner this app has carried — the Product Hunt launch strip, since removed — sat
 inside the Vue app behind `v-if="…&& !publicCatalog"` for exactly this reason; anything similar needs
 the same gate, plus a test that the catalog's `#prerender` block never carries it. Note also that
 `landing.html` **is** `{BASE}`-substituted
-and `index.html` **is not** (`dashboard()` returns a plain `FileResponse`), so a placeholder that is
+and `index.html` **is not** (`dashboard()` returns the compiled document without that substitution), so a placeholder that is
 safe in one half ships literally in the other — hardcode absolute URLs on the app side.
 
 **Prices need `_usd_short`, not `%g`.** `%g` flips to scientific notation below `1e-4`, and a shelf
@@ -469,7 +496,9 @@ seven seconds apart. `voices` renders in HTML and in the `.md` mirror, and is op
 (two of the first seven pages ship without it), so `test_no_use_case_page_ships_with_an_empty_section`
 requires `voices` and `voices_intro` together rather than requiring either.
 
-**The section order is comparison, then voices, then notes, then FAQ.** Copy inside `voices`,
+**The section order is comparison, then voices, then notes, then background, then FAQ**, with an
+optional "Where it goes wrong" block (`failure_modes`, the workflow pages' shape, at least four)
+between background and FAQ on the pages that carry one. Copy inside `voices`,
 `notes` and `faq` that says "the comparison below" is pointing backwards; the first written pages
 say it anyway. Write position-neutral ("the comparison above", "the prices here") or the sentence
 is wrong for every reader who scrolls.
@@ -647,15 +676,17 @@ legacy-hub route serves no `.md`, so every one 404ed. The brand anchor reads `tr
 lead-enrichment "Proof from one real run" block no longer shows the 1-email $0.0245 demo: it
 carries the receipt of the 50-company workflow run (2026-08-26, $3.62, $0.13 per deliverable
 lead) and points at `/workflows/find-and-verify-a-lead-list`, so the hub sells the workflow
-instead of competing with it.
+instead of competing with it. That page now headlines the gated 2026-09-23 re-run and keeps
+the 2026-08-26 total in its narrative as the before, so the hub's block names its run as the
+ungated first one; `/pricing` and `/people-search` carry the 2026-09-23 receipt.
 
 **Links to job pages, not competing with them.** The "Next steps" section links real job pages and
-workflows: lead-enrichment links `/workflows/find-and-verify-a-lead-list` ($3.62 from a real run) and
+workflows: lead-enrichment links `/workflows/find-and-verify-a-lead-list` (the receipt of a real run) and
 `/use-cases/find-professional-emails`; SEO links keyword and SERP job pages; social links creator and
 trending job pages. The hubs sell the job pages, not cannibalize them.
 
 **No hardcoded numbers.** Every figure on the page comes from `catalog_store` or a real run receipt.
-The workflow receipts (e.g. $3.62 for lead generation) are hand-recorded from actual runs, not
+The workflow receipts (e.g. the lead-list total) are hand-recorded from actual runs, not
 rate-card estimates.
 
 **`{BASE}` templating.** The canonical URL and `og:url` use `{BASE}` in the HTML, substituted at
@@ -671,13 +702,20 @@ endpoint the worked run used, its `cost_view` price per billing unit, how many p
 step, observed success rate and p50 when there are samples, and a link to the step's use-case page
 resolved through `USE_CASES` by capability — or the category anchor on the default agent page when
 no page is written), a worst-case total (`price × rows_in` if every call hits), then **the receipt**
-of a real run (`id="run"`), `WHY_TREG`, the failure modes, the FAQ, and four related cards.
+of a real run (`id="run"`), `WHY_TREG`, the failure modes (at least four), the FAQ (four to six
+entries; a use-case page stays at exactly four), and four related cards.
 JSON-LD: BreadcrumbList, a `HowTo` whose steps are the table rows, and a FAQPage. `.md` mirrors it
 all, ending with `HTML version: …`. Hosted-only, sitemapped (hub 0.8, page 0.7) and case-folded to
 the canonical slug with a 301, exactly like the use-case pages.
 
 The data lives in `agent_pages.WORKFLOWS`, one dict per slug: `steps` are
-`(name, capability, what the agent asks, endpoint the run used, why)` tuples; `run` holds the
+`(name, capability, what the agent asks, endpoint the run used, why)` tuples. A step whose
+capability is `decision` is a judgement on rows the earlier steps fetched, not a fetch: jev reads
+the row and returns a probability. jev is not a catalog capability (the run goes through the
+team's own TypeSafe key), so `_wf_steps` prices it from `agent_pages.DECISION_STEPS` (provider,
+domain, list rate per verdict, unit, link), the one place that rate lives, and the table's
+success-rate cell reads "a verdict on rows already fetched" instead of a measured rate. The
+`.md` twin and the hub's per-row price read the same dict. `run` holds the
 `date`, `rows_in` (and an optional `rows_noun`, default "companies", for the "N companies in"
 line), the `receipt` label/value pairs, `cost_usd`, the narrative paragraphs and the
 CSV path. **Prices are never written into the copy**: the step table prints the live catalog
@@ -700,6 +738,21 @@ discovery, creator screening, keyword demand to ad budget, competitor Meta ads, 
 Xiaohongshu category intel), each with a run made through the treg CLI on 2026-09-14 and its
 CSV in `workflow_runs/`. Their CSVs carry row numbers and stats, never handles.
 
+The lead list was re-run on 2026-09-23 with two jev decision steps (the Jev × GTM plan: update
+the existing page, never add a route): an ICP gate after the Apollo list, on the list fields
+alone, with a 50% threshold, and an opener score after the news step. Same filter, same slug,
+seven steps. The receipt keeps the 2026-08-26 run's total and lead count in its narrative as the
+before, and says plainly that the dropped rows are the one thing the run cannot measure. The
+CSV gained `opener_score`, `jev_fit` and `gate` columns after the original prefix
+(`test_workflow_page_is_served_with_the_crawler_essentials` pins that prefix) and is sorted
+strongest opener first. The run was made with `httpx` against `/call/` directly (four in
+parallel, a browser-like `User-Agent`, since Tomba and Findymail 403 the Python default); the
+gate and opener went through the team's `typesafe` own tool at `/call/typesafe/v1/systemone`, so
+jev's cost is stated at list price and marked as not metered. Tomba was out of capacity on
+treg.to's key for the whole run, so Hunter served and Kitt took Hunter's misses; that is the
+"cheapest provider is out" failure mode with a new name on it. Its `extra_links` now open with
+`/jev`, the one link from a workflow page to the Jev landing.
+
 Tests: `test_workflow_page_is_served_with_the_crawler_essentials` (crawler plumbing, HowTo with the
 step count, `.md`, `.csv`, hub, 301, sitemap), `test_every_workflow_step_capability_and_endpoint_exist`,
 `test_no_workflow_ships_with_an_empty_section`, `test_workflow_copy_has_no_em_dashes`,
@@ -708,8 +761,14 @@ receipt with no file behind it is exactly the fabricated-run failure these pages
 
 ## Counts
 
-`2,630 endpoints / 47 providers / 80 platforms`, from `catalog_store.load()`. The landing, `llms.txt`
-and the schema all state them and had drifted apart (2,617/42 and ~2,600/~48). Note the catalog index
+The two headline numbers come from `catalog_store.headline_counts` (direct endpoints rounded down
+to the hundred, and their providers) and are never typed: `llms.txt`, `skill.md`, the landing (title,
+descriptions, JSON-LD, kicker, CTA) and `/docs` all read `{ENDPOINTS}` / `{PROVIDERS}` through
+`_fill_headline` or the same call. The landing once carried eight typed copies that had drifted to
+2,630/47 against a catalog of 3,600+/91; `test_landing_and_docs_quote_the_live_counts` pins that
+none remain. The landing title is `treg.to: OpenRouter for agent tools and data, pay per call`
+(58 characters, matching the H1's positioning line) and its description names one MCP server, one
+key and the data categories, with no count to go stale. Note the catalog index
 shows the **whole** catalog, not the sum of its tiles: a tile counts only its browse surface, so the
 account/utility endpoints — real inventory, listed on each shelf page — are excluded from tile counts
 by `catalog_store.HIDDEN_KINDS`.
@@ -727,8 +786,8 @@ What links what now, and where it is generated:
 
 | From | To | Where |
 |---|---|---|
-| footer of every server-rendered page (Explore / Build / Company columns; the nav is unchanged by request) | `/use-cases`, `/workflows`, `/agents/claude-code` — **hosted only**: those pages 404 on a self-hosted registry, so the links are gated by `_hosted()` (the landing wraps them in `<!--hosted-->` markers the route strips off-host) | `_page()` in `routers/web.py` |
-| the landing footer (`landing.html`; the public catalog SPA has no footer and links the hubs from its prerender) | same three | hand-kept markup, so `test_every_surface_links_the_three_hubs` walks `/` and `/catalog` |
+| footer of every server-rendered page (Explore / Build / Company columns; the nav is unchanged by request) | `/use-cases`, `/workflows`, `/agents/claude-code`, and `/blog` — **hosted only**: those pages 404 on a self-hosted registry, so the links are gated by `_hosted()` (the landing wraps them in `<!--hosted-->` markers the route strips off-host) | `_page()` in `routers/web.py` |
+| the landing footer (`landing.html`; the public catalog SPA has no footer and links the hubs from its prerender) | same four; the people-search, jev and use-case landings carry `/blog` in their hand-kept footers too | hand-kept markup, so `test_every_surface_links_the_three_hubs` walks `/` and `/catalog` |
 | `/catalog` prerender | both hubs, in a sentence | `catalog_index` |
 | `/tools/<provider>` "Used in" | every job page whose capabilities the provider answers | `_jobs_by_provider()`, cached per process from `USE_CASE_PAGES` × the catalog |
 | `/use-cases/<job>` "Run the full sequence" | every workflow with a step on one of the job's capabilities | `_workflows_by_capability()`, cached from `WORKFLOWS[*].steps` |
@@ -737,23 +796,32 @@ What links what now, and where it is generated:
 Both reverse indexes are derived from the same tables the pages render from, so a new job or
 workflow is cross-linked the moment it is routed, and nothing is listed by hand.
 
-### Titles: the pricing intent
+### Titles: Title matches H1
 
-The non-brand queries that reach the site are "{provider} api pricing" phrasings ("linkedin api
-pricing", "1688 api pricing"), not "api for agents". So:
+`/tools/<provider>` titles match their H1s:
 
-- `/tools/<provider>` titles lead with it: `{Provider} API pricing: from $0.00245/result, no signup | treg.to`
-  (the price label carries its own billing unit, so the copy never says "per call" beside it;
-  falls back to `{Provider} API pricing: from $X | treg.to` past 65 characters; own-account
-  providers get `{Provider}: connect your own account | treg.to`). **Title and H1 now match**:
-  metered H1 is `{Provider}: {n} tools from {price}`, own-account H1 is `{Provider}: connect your own account`.
-  The kicker carries the measured line (calls observed, ok rate weighted by DECIDED calls, median p50)
-  read through `_observed_or_empty`. Descriptions go through `_serp_desc` (sentence-fit under
-  Google's cut), and the HowTo's steps mirror the visible setup section in order — the one-line
-  install first, direct MCP second — because schema describing a different flow than the page
-  shows is the mismatch Google treats as a violation. The setup line on these pages is the
-  canonical `set up treg — {base}/llms.txt` (the em-dash is the documented exception, and a
-  colon variant that shipped briefly forked the product's one paste-line).
+- Metered: `{Provider}: {n} tools from {price} | treg.to` (falls back to `{Provider}: from {price} | treg.to`
+  past 65 characters; with no price the primary is `{Provider}: {n} tools | treg.to` and the fallback is
+  `{Provider} | treg.to`, which the H1 still starts with)
+- Mixed (platform + BYOK): `{Provider}: {n} tools, platform or your own key | treg.to` (falls back to
+  `{Provider}: {n} tools, platform + BYOK | treg.to` or `{Provider}: platform + BYOK | treg.to` past 65 characters)
+- Own-account: `{Provider}: connect your own account | treg.to`
+- **MCP-intent own-account providers** (`_MCP_INTENT_PROVIDERS`: google-search-console, google-analytics,
+  semrush, snapchat-ads, pinterest-ads, meta-ads, tiktok-ads, facebook) lead with MCP instead:
+  `{Provider} MCP: connect your own account | treg.to` for Title and H1, and the meta description
+  names MCP plus connect-own-account plus treg.to as one MCP for the catalog. The set is the pages
+  where GSC shows `{provider} mcp` or `{provider} connector` impressions with near-zero clicks.
+  The MCP-intent titles win over the generic own-account title pattern for these providers.
+
+The price label carries its own billing unit ("$0.00245/result", "$0.0089/call"), so the copy
+never says "per call" beside it: a per-result or per-success rate is not a per-call one.
+The kicker carries the measured line (calls observed, ok rate weighted by DECIDED calls, median p50)
+read through `_observed_or_empty`. Descriptions go through `_serp_desc` (sentence-fit under
+Google's cut) and may still mention pricing intent. The HowTo's steps mirror the visible setup section
+in order — the one-line install first, direct MCP second — because schema describing a different
+flow than the page shows is the mismatch Google treats as a violation. The setup line on these
+pages is the canonical `set up treg — {base}/llms.txt` (the em-dash is the documented exception,
+and a colon variant that shipped briefly forked the product's one paste-line).
 - compare-form job titles get `, from $X` appended when the hand-written title carries no price and
   the result stays within `_TITLE_MAX` (65); " compared" is dropped to make room.
 
@@ -768,7 +836,7 @@ registered in `bootstrap.py`'s ownership table like every other public route.
 
 Tests: `test_every_surface_links_the_three_hubs`, `test_provider_page_names_the_jobs_it_serves`,
 `test_job_page_names_the_workflows_that_chain_it`, `test_compare_titles_carry_the_cheapest_price`,
-`test_provider_title_leads_with_pricing`, `test_indexnow_key_is_served_from_the_root`.
+`test_provider_title_matches_h1`, `test_indexnow_key_is_served_from_the_root`.
 
 ### Agent pages name the workflows
 
@@ -789,3 +857,9 @@ inventories (up to 50) list every tool. Prices use the display units from `Catal
 notes explain composite or rounded billing. Only platform-eligible prices inform the platform
 starting price. OAuth rows use account-connection language; configured billed OAuth calls are
 labeled metered. The sample uses `call_template`, including the upstream method and inputs.
+
+The landing redesign is released to all homepage visitors and is independent of Dashboard account
+rollout. It has no old/new landing experiment. Logged-in visitors can revisit `/` and use Open
+dashboard. The classic `gateway-loader.js` catches failed module downloads outside the Three.js
+module graph and reveals the monochrome fallback. BFCache page transitions retain the scene and
+resume the shared animation clock on restoration.

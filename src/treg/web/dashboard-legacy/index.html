@@ -14,8 +14,8 @@
 <!-- Vue is vendored and served from this origin, never a CDN: an unpkg.com that a visitor's network
      cannot reach used to leave the whole signed-in dashboard blank (issue #137). Version lives in
      the filename — bump it here and in src/treg/web/vendor/ together. -->
-<script src="/vendor/vue-3.5.41.global.prod.js"></script>
-<script src="/agent-setup.js"></script>
+<script src="/app/legacy/assets/81e84d6e19e3b54f7b591d1ea45e99c8c7a4560a/vendor/vue-3.5.41.global.prod.js"></script>
+<script src="/app/legacy/assets/81e84d6e19e3b54f7b591d1ea45e99c8c7a4560a/agent-setup.js"></script>
 <script>
 // Fail loudly. `[v-cloak]{display:none}` hides the un-compiled template until Vue mounts, so
 // anything that stops Vue mounting turns the dashboard into a silent blank page with nothing in
@@ -42,8 +42,8 @@ addEventListener('load', function(){
   }, 1500);   // generous: a slow connection is still a working one, and must not see this
 });
 </script>
-<script src="/tutorial.js"></script>
-<script src="/dashboard-tour/tour.js"></script>
+<script src="/app/legacy/assets/81e84d6e19e3b54f7b591d1ea45e99c8c7a4560a/tutorial.js"></script>
+<script src="/app/legacy/assets/81e84d6e19e3b54f7b591d1ea45e99c8c7a4560a/dashboard-tour/tour.js"></script>
 <script src="/adtrack.js"></script>
 <style>
   [v-cloak]{display:none}  /* hide the raw template until Vue mounts — else a hard refresh flashes the un-compiled markup while the script downloads. Vue drops the attribute on mount, which is also how the loader guard above detects that it never did. */

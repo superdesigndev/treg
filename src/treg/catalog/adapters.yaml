@@ -2617,6 +2617,19 @@ adapters:
     miss: "coalesce(output.data.suggestions, []) == []"
 
   # ---- open web -----------------------------------------------------------------------------
+  tinyfish.web.search:
+    accepts: [[q]]
+    in: {q: queryParams.query}
+    const: {queryParams.domain_type: web}
+    out: {results: results, count: "coalesce(total_results, len(results))"}
+    miss: "coalesce(results, []) == []"
+  keenable.web.search:
+    accepts: [[q]]
+    in: {q: body.query}
+    in_expr: {body.max_results: limit}
+    const: {body.mode: pro}
+    out: {results: results, count: "len(results)"}
+    miss: "coalesce(results, []) == []"
   tavily.web.search:
     accepts: [[q]]
     in: {q: body.query}
@@ -2631,20 +2644,68 @@ adapters:
     const: {body.type: auto}
     out: {results: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
+  olostep.web.search:
+    accepts: [[q]]
+    in: {q: body.query}
+    in_expr: {body.limit: limit}
+    const: {body.fast_mode: true}
+    out: {results: result.links, count: "len(result.links)"}
+    miss: "coalesce(result.links, []) == []"
 
+  tinyfish.web.fetch:
+    accepts: [[url]]
+    in_expr: {body.urls: "list(url)"}
+    test_identity: {url: "https://example.com"}
+    const: {body.format: markdown, body.links: true, body.ttl: 0}
+    out: {pages: results, count: "len(results)"}
+    miss: "coalesce(results, []) == []"
   exa.web.contents.get:
-    accepts: [[urls]]
-    in: {urls: body.urls}
+    accepts: [[url]]
+    in_expr: {body.urls: "list(url)"}
+    test_identity: {url: "https://en.wikipedia.org/wiki/Hierarchical_navigable_small_world"}
     const: {body.text: true}
     out: {pages: results, count: "len(results)"}
     miss: "coalesce(results, []) == []"
+  olostep.web.scrape:
+    accepts: [[url]]
+    in: {url: body.url_to_scrape}
+    const: {body.formats: [markdown], body.max_age: 604800}
+    out: {pages: "list(result)", count: "len(list(result))"}
+    miss: "result == null"
+  tavily.web.extract:
+    accepts: [[url]]
+    in_expr: {body.urls: "list(url)"}
+    test_identity: {url: "https://example.com"}
+    const: {body.extract_depth: basic}
+    out: {pages: results, count: "len(results)"}
+    miss: "coalesce(results, []) == []"
+  keenable.web.fetch:
+    accepts: [[url]]
+    in: {url: queryParams.url}
+    const: {queryParams.live: false}
+    out: {pages: "list(.)", count: "len(list(.))"}
+    miss: ". == null"
 
   anyapi.web.map:
-    accepts: [[url]]
-    in: {url: body.url}
+    accepts: [[url], [url, q]]
+    in: {url: body.url, q: body.search}
     in_expr: {body.limit: limit}
+    test_identity: {url: "https://www.iana.org", q: domain}
     out: {results: output.data.results, count: "len(output.data.results)"}
     miss: "coalesce(output.data.results, []) == []"
+  tavily.web.map:
+    accepts: [[url], [url, q]]
+    in: {url: body.url, q: body.instructions}
+    in_expr: {body.limit: limit}
+    out: {results: results, count: "len(results)"}
+    miss: "coalesce(results, []) == []"
+  olostep.web.map.search:
+    accepts: [[url, q]]
+    in: {url: body.url, q: body.search_query}
+    in_expr: {body.top_n: limit}
+    test_identity: {url: "https://docs.olostep.com", q: "billing and credits"}
+    out: {results: urls, count: "len(urls)"}
+    miss: "coalesce(urls, []) == []"
 
   anyapi.web.crawl:
     accepts: [[url]]

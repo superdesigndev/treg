@@ -1,0 +1,271 @@
+provider: olostep
+source:
+  docs: https://docs.olostep.com/
+  openapi: https://docs.olostep.com/openapi/scrapes.json
+  curated: '2026-09-23'
+pricing_url: https://www.olostep.com/dashboard/billing
+limits: "Olostep publishes no numeric general API rate limit. Successful live Scrape, Search, Answer, Map, Crawl and account calls returned no rate-limit headers; treg therefore smooths only the shared key at a conservative policy rate of 5 requests/second. Batch, monitor, schedule, file, agent, top-up and generic retrieve routes are intentionally not catalogued."
+proposed_capabilities:
+  web.answer: "Answer a question from live web research with sources"
+  web.crawl.status: "Check a website crawl's progress and final credit usage"
+  web.crawl.results: "List the pages produced by a website crawl"
+async:
+  id_from: id
+  poll:
+    endpoint: olostep.web.crawl.status
+    param: {in: pathParams, name: crawl_id}
+  status:
+    path: status
+    progress: [in_progress]
+    success: [completed]
+    failure: [failed]
+  result:
+    fetch: olostep.web.crawl.results
+    fetch_param: {in: pathParams, name: crawl_id, value_from: id}
+  interval: 2
+
+endpoints:
+  - id: olostep.web.scrape
+    async: false
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /v1/scrapes
+    body_allowlist: true
+    name: Scrape a web page
+    summary: Fetch one page as clean Markdown, HTML, text or a hosted screenshot.
+    input:
+      bodyType: json
+      body:
+        url_to_scrape: {type: string, required: true, format: uri, example: "https://example.com"}
+        formats: {type: "array[string]", required: false, minItems: 1, maxItems: 4, enum: [html, markdown, text, screenshot], example: [markdown], note: "Structured parsers, JSON extraction and llm_extract are deliberately excluded because they have separate variable credit prices."}
+        max_age: {type: integer, required: false, default: 0, min: 0, max: 604800, note: "Reuse an Olostep scrape no older than this many seconds; 0 requests a fresh scrape."}
+        remove_images: {type: boolean, required: false, default: false}
+        transformer: {type: string, required: false, enum: [postlight, none]}
+        links_on_page:
+          type: object
+          required: false
+          properties:
+            query_to_order_links_by: {type: string, required: false}
+            include_links: {type: "array[string]", required: false}
+            exclude_links: {type: "array[string]", required: false}
+      note: "This is the fixed one-credit surface. Olostep parsers and LLM extraction are not accepted by this catalog tool; a team can call them directly through its own raw Olostep tool."
+    test_request:
+      body: {url_to_scrape: "https://example.com", formats: [markdown], max_age: 604800}
+    cost: &one_credit
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.olostep.com/features/scrapes
+      checked: '2026-09-23'
+      confidence: verified
+      note: "A standard scrape costs one credit per request. A live cached-eligible scrape returned credits_consumed: 1 and reduced the account balance by one credit; no evidence says rejected requests are free. BYOK calls remain unmetered by treg."
+    verified: '2026-09-23'
+    docs_url: https://docs.olostep.com/api-reference/scrapes/create
+    example_response: examples/olostep.web.scrape.json
+
+  - id: olostep.web.search
+    async: false
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /v1/searches
+    body_allowlist: true
+    name: Search the open web
+    summary: Search the web with a natural-language query and domain filters.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Olostep API documentation"}
+        limit: {type: integer, required: false, default: 12, min: 1, max: 25, example: 5}
+        include_domains: {type: "array[string]", required: false, maxItems: 20}
+        exclude_domains: {type: "array[string]", required: false, maxItems: 20}
+        fast_mode: {type: boolean, required: false, default: false}
+      note: "The five-credit base search is exposed. scrape_options is deliberately excluded because it adds one or more scrape credits for every returned page."
+    test_request:
+      body: {query: "Olostep API documentation", limit: 3, fast_mode: true}
+    cost:
+      type: per_call
+      value: 5
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.olostep.com/features/search
+      checked: '2026-09-23'
+      confidence: verified
+      note: "Base Search costs five credits per request. A live fast-mode, three-result request reported credits_consumed: 5; no evidence says rejected requests are free. Search page-scraping add-ons are not accepted by this catalog tool."
+    verified: '2026-09-23'
+    docs_url: https://docs.olostep.com/api-reference/searches/create
+    example_response: examples/olostep.web.search.json
+
+  - id: olostep.web.answer
+    async: false
+    capability: web.answer
+    platform: web
+    domain: answer
+    scope: any_account
+    method: POST
+    path: /v1/answers
+    body_allowlist: true
+    name: Answer a question with live web research
+    summary: Research a task on the live web and return a structured answer with sources.
+    input:
+      bodyType: json
+      body:
+        task: {type: string, required: true, example: "What is the title of https://example.com? Return the title and source URL."}
+        json_format: {type: object, required: false, note: "Describe the desired JSON output with an object containing empty example values."}
+    test_request:
+      body: {task: "What is the title of https://example.com? Return the title and source URL."}
+    cost:
+      type: per_call
+      value: 20
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.olostep.com/features/answers
+      checked: '2026-09-23'
+      confidence: verified
+      note: "Answers cost twenty credits per request. The response does not report a charge field; a live request reduced the account balance by exactly twenty credits, and no evidence says rejected requests are free, so the fixed documented price is the settlement amount."
+    verified: '2026-09-23'
+    docs_url: https://docs.olostep.com/api-reference/answers/create
+    example_response: examples/olostep.web.answer.json
+
+  - id: olostep.web.map.search
+    async: false
+    capability: web.map
+    platform: web
+    domain: map
+    scope: any_account
+    method: POST
+    path: /v1/maps
+    body_allowlist: true
+    name: Find relevant URLs on a website
+    summary: Map a site and return at most 1,000 URLs ranked for a search query.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://docs.olostep.com"}
+        search_query: {type: string, required: true, example: "billing and credit documentation"}
+        top_n: {type: integer, required: true, min: 1, max: 1000, example: 10, note: "The 1,000-URL cap keeps this request inside Olostep's first one-credit map band."}
+        include_subdomain: {type: boolean, required: false, default: true}
+        include_urls: {type: "array[string]", required: false}
+        exclude_urls: {type: "array[string]", required: false}
+      note: "Olostep bills one credit for the first 1,000 returned URLs and another credit per additional 1,000. Requiring top_n <= 1,000 makes the platform hold exact. Unbounded mapping is available through a team's own raw Olostep tool."
+    test_request:
+      body: {url: "https://docs.olostep.com", search_query: "billing and credits", top_n: 3}
+    cost:
+      <<: *one_credit
+      source_url: https://docs.olostep.com/features/maps
+      note: "A map request costs one credit through 1,000 returned URLs. This row requires a relevance query and top_n <= 1,000; a live one-URL map reduced the account balance by one credit even though the immediate response's credits_consumed and cost_usd fields were null, and no evidence says rejected requests are free."
+    verified: '2026-09-23'
+    docs_url: https://docs.olostep.com/api-reference/maps/create
+    example_response: examples/olostep.web.map.search.json
+
+  - id: olostep.web.crawl
+    capability: web.crawl
+    platform: web
+    domain: crawl
+    scope: any_account
+    method: POST
+    path: /v1/crawls
+    body_allowlist: true
+    name: Crawl a website
+    summary: Start a bounded asynchronous website crawl and pay only for completed pages.
+    input:
+      bodyType: json
+      body:
+        start_url: {type: string, required: true, format: uri, example: "https://example.com"}
+        max_pages: {type: integer, required: true, min: 1, max: 100, example: 10, note: "treg reserves this many one-credit pages before submission; shared-key crawls are capped at 100 pages ($0.20 at the platform rate)."}
+        max_depth: {type: integer, required: false, min: 0, max: 10, example: 2}
+        follow_robots_txt: {type: boolean, required: true, enum: [true], note: "Catalog crawls always respect robots.txt."}
+        include_urls: {type: "array[string]", required: false}
+        exclude_urls: {type: "array[string]", required: false}
+        include_external: {type: boolean, required: false, default: false}
+        include_subdomain: {type: boolean, required: false, default: false}
+        search_query: {type: string, required: false}
+        top_n: {type: integer, required: false, min: 1, max: 100}
+        timeout: {type: integer, required: false, min: 1, max: 600}
+        scrape_options:
+          type: object
+          required: false
+          properties:
+            formats: {type: "array[string]", required: false, minItems: 1, maxItems: 4, enum: [html, markdown, text, screenshot]}
+      note: "Webhooks, follow_robots_txt=false and structured parsers are deliberately excluded. Use olostep.web.crawl.results with formats=markdown or html to read completed content."
+    test_request:
+      body: {start_url: "https://example.com", max_pages: 1, max_depth: 0, follow_robots_txt: true}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.follow_robots_txt: true}, value: 1, times: body.max_pages}
+      fallback: {value: 100, note: "The input schema caps platform crawls at 100 pages, one credit each."}
+      currency: credit
+      unit: page
+      settle: usage
+      usage: {path: credits_consumed, unit: credit}
+      source: observed
+      source_url: https://docs.olostep.com/features/crawls
+      checked: '2026-09-23'
+      confidence: verified
+      note: "Crawl costs one credit per completed page. treg reserves max_pages, then the terminal status response's credits_consumed settles the exact charge and releases the rest. A live one-page crawl completed with pages_count: 1 and credits_consumed: 1; the account's actual purchase cost is $0.002 per credit."
+    verified: '2026-09-23'
+    docs_url: https://docs.olostep.com/api-reference/crawls/create
+    example_response: examples/olostep.web.crawl.json
+
+  - id: olostep.web.crawl.status
+    async: false
+    kind: utility
+    capability: web.crawl.status
+    platform: web
+    scope: any_account
+    method: GET
+    path: /v1/crawls/{crawl_id}
+    name: Check a website crawl
+    summary: Read an owned crawl's progress, completed-page count and terminal credit usage.
+    resource_ownership:
+      requires: {kind: "poll:olostep.web.crawl.status", param: crawl_id}
+    input:
+      pathParams:
+        crawl_id: {type: string, required: true, example: "crawl_wp3m5fl4sf"}
+    test_request: {pathParams: {crawl_id: "crawl_wp3m5fl4sf"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling an existing crawl consumes no Olostep credits."}
+    verified: '2026-09-23'
+    docs_url: https://docs.olostep.com/api-reference/crawls/info
+    example_response: examples/olostep.web.crawl.status.json
+
+  - id: olostep.web.crawl.results
+    async: false
+    kind: utility
+    capability: web.crawl.results
+    platform: web
+    scope: any_account
+    method: GET
+    path: /v1/crawls/{crawl_id}/pages
+    name: Retrieve website crawl pages
+    summary: List an owned crawl's pages, optionally including Markdown or HTML content.
+    resource_ownership:
+      requires: {kind: "fetch:olostep.web.crawl.results", param: crawl_id}
+    input:
+      pathParams:
+        crawl_id: {type: string, required: true, example: "crawl_wp3m5fl4sf"}
+      queryParams:
+        cursor: {type: integer, required: false, min: 0}
+        limit: {type: integer, required: false, min: 1, max: 50, example: 10}
+        search_query: {type: string, required: false}
+        formats: {type: "array[string]", required: false, minItems: 1, maxItems: 2, enum: [html, markdown], example: [markdown], note: "Olostep marks inline formats deprecated in favor of /v1/retrieve, but this owned read keeps shared-account content accessible without exposing untracked retrieve_ids."}
+      note: "Use cursor until it is absent. The 50-row page cap plus Olostep's own 10 MB response cap bounds each read."
+    test_request:
+      pathParams: {crawl_id: "crawl_wp3m5fl4sf"}
+      queryParams: {limit: 10, formats: [markdown]}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading pages from an existing crawl consumes no Olostep credits."}
+    verified: '2026-09-23'
+    docs_url: https://docs.olostep.com/api-reference/crawls/pages
+    example_response: examples/olostep.web.crawl.results.json

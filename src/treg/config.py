@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from typing import Literal
 
@@ -30,6 +31,14 @@ def platform_setting_name(provider: str) -> str:
     """The Settings attribute holding treg's own key for `provider` — the string a `platform_setting`
     binding carries, and the only form of a platform credential that ever leaves this module."""
     return "platform_key_" + (provider or "").lower().replace("-", "_")
+
+
+@lru_cache
+def _fixed_login_codes(raw: str) -> dict[str, str]:
+    """Parse `TREG_FIXED_LOGIN_CODES` (`email=sha256hex,...`) into {normalised email: code hash}.
+    Malformed entries are refused by the field validator, so parsing here can trust the shape."""
+    pairs = (part.split("=", 1) for part in raw.split(",") if part.strip())
+    return {email.strip().lower(): digest.strip().lower() for email, digest in pairs}
 
 
 @lru_cache
@@ -202,6 +211,8 @@ class Settings(BaseSettings):
     platform_key_wiza: str = ""  # Bearer; prepaid API credits, no vendor auto-top-up
     platform_key_limadata: str = ""  # x-api-key; monthly credits with configured auto top-up
     platform_key_getleadsio: str = ""  # Bearer; 1,000 promotional database credits, capped treg trial
+    platform_key_adyntel: str = ""  # JSON body api_key; PAYG credits, manual top-up
+    platform_email_adyntel: str = ""  # JSON body email paired with the Adyntel API key
     platform_key_scrubby: str = ""  # x-api-key; prepaid verification credits
     platform_key_zerobounce: str = ""  # api_key query param; PAYG validation credits, Auto-Pay managed upstream
     platform_key_datagma: str = ""  # apiId query param; prepaid purchased credits, replenished manually
@@ -243,6 +254,8 @@ class Settings(BaseSettings):
     platform_key_aviato: str = ""     # Bearer key; $10 auto-top-up buys 1,000 credits
     platform_key_exa: str = ""        # x-api-key; dollar-metered ($7/1k searches, $1/1k pages); settles from costDollars.total
     platform_key_tavily: str = ""     # Bearer; Search reports per-call usage, other tools settle returned successes
+    platform_key_keenable: str = ""   # X-API-Key; $4/1,000-request package, 10 requests/s per organization
+    platform_key_olostep: str = ""    # Bearer; prepaid credits, platform price $0.002/credit
     platform_key_cloro: str = ""      # Bearer key (sk_live_…); Hobby metered rate $0.0004/credit; settles from X-Credits-Charged
     platform_key_minimax: str = ""    # Bearer key for MiniMax voice, image and video generation
     platform_key_fishaudio: str = ""  # Bearer key for Fish Audio speech and private voices
@@ -259,6 +272,7 @@ class Settings(BaseSettings):
     platform_key_replicate: str = ""  # Bearer token for official asynchronous models
     platform_key_reapi: str = ""      # Bearer key; prepaid credits at $0.001, Seedance 2.5 + image models
     platform_key_piapi: str = ""      # X-API-Key; prepaid USD balance, Seedance 2.5 less-restriction + image models
+    platform_key_tinyfish: str = ""   # X-API-Key; free Search/Fetch plus Agent billed per terminal step
     # Overflow aggregators (docs/PROVIDER-CAPACITY-PLAN.md §4.3): treg-owned accounts that serve the
     # SAME vendor endpoint when our direct account is out. Env only, never a Secret row, never logged.
     # Not platform_key_* on purpose: they are a credential RUNG (platform-overflow), not a provider.
@@ -305,6 +319,16 @@ class Settings(BaseSettings):
     # Past this the search answers from the baseline alone; the row records `judge_error=timeout`.
     # Measured at 30 candidates: about 1.2-1.5 s per answer on a quiet day, so 1.5 sits on the edge.
     typesafe_timeout_s: float = 2.5
+    # "Find tools for a job" (application.catalog_find): the same judge served to PEOPLE on the
+    # dashboard's Catalog page and the public /search page. Its recall is wider than the MCP
+    # experiment's: the judge scores a request's candidates in parallel, so 60 costs no more wall
+    # time than 30 and lets rows the lexical order ranks low (a Search Console report for "why is
+    # my blog losing traffic") reach the judge at all. A person is waiting on a page that animates
+    # the wait, so the timeout is looser than an agent's search. Rate limits bound anonymous use.
+    find_candidates: int = 60
+    find_timeout_s: float = 6.0
+    find_max_per_ip_hour: int = 40
+    find_max_per_hour: int = 3000
     # DEFAULT per-org, per-UTC-day limit on tier-4 spend, for a team that has not set its own
     # `Org.daily_cap_micro`. 0 = no default limit. A team may set its own figure to anything,
     # including 0 for no limit — the limit is the team's protection against a runaway agent
@@ -546,6 +570,10 @@ class Settings(BaseSettings):
     # response, which is an unauthenticated account-takeover vector in prod — so it defaults OFF and
     # must be explicitly enabled (TREG_EMAIL_DEV_MODE=true) for local testing without a mail sender.
     email_dev_mode: bool = False
+    dashboard_rollout_enabled: bool = False
+    dashboard_rollout_percent: int = Field(default=0, ge=0, le=100)
+    dashboard_rollout_user_ids: set[PositiveInt] = Field(default_factory=set)
+    frontend_dev: bool = False  # Local SQLite development only; use Vite module scripts.
 
     # The WHOLE email-domain blocklist (TREG_BLOCKED_EMAIL_DOMAINS), comma-separated:
     # "example-one.io,example-two.net". There is no list in the code; empty (the default) blocks
@@ -556,6 +584,27 @@ class Settings(BaseSettings):
     # listed domain are suspended out of band, so listing one strands nobody legitimate. A blocklist,
     # deliberately: no allowlist, no table, no admin UI.
     blocked_email_domains: str = ""
+
+    # Sign-in codes for designated accounts that cannot receive email, such as the demo account an
+    # app directory's reviewers use: `email=<sha256 hex of the code>,...`. For a listed email the
+    # email-code door sends nothing and accepts only the configured code, under the same attempt and
+    # start limits as an emailed one. Only the hash is configured; use a long random code. Empty
+    # (the default) leaves every email on the normal emailed code.
+    fixed_login_codes: str = ""
+
+    @field_validator("fixed_login_codes")
+    @classmethod
+    def _fixed_login_codes_shape(cls, v: str) -> str:
+        for part in (p for p in v.split(",") if p.strip()):
+            email, sep, digest = part.partition("=")
+            if not sep or "@" not in email or not re.fullmatch(r"[0-9a-fA-F]{64}", digest.strip()):
+                raise ValueError("fixed_login_codes entries must be email=<64-hex sha256>")
+        return v
+
+    @property
+    def fixed_login_code_hashes(self) -> dict[str, str]:
+        """The normalised `TREG_FIXED_LOGIN_CODES` entries; empty = no designated accounts."""
+        return _fixed_login_codes(self.fixed_login_codes)
 
     @property
     def blocked_email_domain_set(self) -> frozenset[str]:

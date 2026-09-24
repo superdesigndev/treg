@@ -62,9 +62,9 @@ def _provider_bindings(provider, secret: Secret) -> list[dict]:
     carries `token_encode` so the injector can detect and encode a raw value at call time, making both
     add paths produce the same Authorization header."""
     if provider.uses_pasted_secret:
-        if provider.token_location == "query":
+        if provider.token_location in {"query", "json"}:
             bindings = [{
-                "secret_id": secret.id, "injector": "env", "location": "query",
+                "secret_id": secret.id, "injector": "env", "location": provider.token_location,
                 "name": provider.token_param, "format": provider.token_format,
                 **({"token_encode": provider.token_encode} if provider.token_encode else {}),
             }]
@@ -91,7 +91,8 @@ def _provider_bindings(provider, secret: Secret) -> list[dict]:
     if provider.needs_extra_credential and provider.extra_credential_is_platform:
         bindings.append({
             "platform_setting": provider.extra_credential_setting, "injector": "env",
-            "location": "header", "name": provider.extra_credential_header, "format": "{secret}",
+            "location": provider.extra_credential_location,
+            "name": provider.extra_credential_name, "format": "{secret}",
         })
     return bindings
 
@@ -559,8 +560,13 @@ async def connect_with_pasted_secret(
     # check may also live on a different host than base_url, so honor an absolute probe_url override,
     # and a POST probe with a JSON body (Serpstat's JSON-RPC limits call).
     rendered = provider.token_format.format(secret=token)
+    probe_json = dict(provider.probe_json or {})
+    sends_probe_json = provider.probe_json is not None or provider.token_location == "json"
     if provider.token_location == "query":
         headers, params = {}, {provider.token_param: rendered}
+    elif provider.token_location == "json":
+        headers, params = {}, {}
+        probe_json[provider.token_param] = rendered
     else:
         headers, params = {provider.token_header: rendered}, {}
     headers.update(dict(provider.required_headers))
@@ -577,7 +583,7 @@ async def connect_with_pasted_secret(
         client = client_factory()
         resp = await client.request(
             provider.probe_method or "GET", probe_url,
-            headers=headers, params=params, json=provider.probe_json,
+            headers=headers, params=params, json=probe_json if sends_probe_json else None,
         )
     except Exception as exc:  # noqa: BLE001
         raise ConnectError(
@@ -613,7 +619,8 @@ async def connect_with_pasted_secret(
         and not ctype.startswith("application/json")
         and resp.text.lstrip().upper().startswith("ERROR")
     )
-    if status_reject or field_bad or field_reject or equals_bad or text_error:
+    deferred = resp.status_code in provider.probe_deferred_statuses
+    if (status_reject and not deferred) or field_bad or field_reject or equals_bad or text_error:
         why = (
             payload.get("error")
             or (payload.get("ErrorMessage") if equals_bad else None)
@@ -641,8 +648,14 @@ async def connect_with_pasted_secret(
             if granted:
                 secret.granted_scopes = " ".join(x.strip() for x in granted.split(",") if x.strip())
         secret.last_error = ""
-        secret.health_status, secret.health_detail = "ok", "token verified at connect"
-        secret.health_checked_at = _utcnow_naive()
+        if deferred:
+            secret.health_status, secret.health_detail = (
+                "unknown", f"credential pair not checked yet; add {provider.extra_credential_label}"
+            )
+            secret.health_checked_at = None
+        else:
+            secret.health_status, secret.health_detail = "ok", "token verified at connect"
+            secret.health_checked_at = _utcnow_naive()
         if provider.has_identity:
             ident = _dig(payload, provider.identity_id_path)
             if ident:
@@ -1128,7 +1141,7 @@ async def supply_extra_credential(
         if not value:
             raise ConnectError("extra_credential_required", f"{provider.extra_credential_label} is required")
 
-        name = f"{provider.service}-{provider.extra_credential_header}"
+        name = f"{provider.service}-{provider.extra_credential_name}"
         extra = (await db.execute(
             select(Secret).where(Secret.org_id == org_id, Secret.name == name)
         )).scalars().first()
@@ -1145,8 +1158,9 @@ async def supply_extra_credential(
         # Hardcoding the OAuth shape here gave a key provider a binding that JSON-parses a bare key and
         # fails on every call, so build the primary half with the same helper the connect flow uses.
         bindings = _provider_bindings(provider, secret) + [
-            {"secret_id": extra.id, "injector": "env", "location": "header",
-             "name": provider.extra_credential_header, "format": "{secret}"},
+            {"secret_id": extra.id, "injector": "env",
+             "location": provider.extra_credential_location,
+             "name": provider.extra_credential_name, "format": "{secret}"},
         ]
         tool = (await db.execute(
             select(Tool).where(Tool.org_id == org_id, Tool.name == provider.service)

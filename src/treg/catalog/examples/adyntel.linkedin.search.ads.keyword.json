@@ -1,0 +1,22 @@
+{
+  "total_ads": 227772,
+  "ads": [
+    {
+      "creative_type": "SPONSORED_UPDATE_LINKEDIN_ARTICLE",
+      "ad_id": "redacted-live-id",
+      "type": "image",
+      "advertiser": {
+        "name": "Redacted live advertiser",
+        "logo_url": "https://example.invalid/redacted",
+        "promoted": true
+      },
+      "commentary": {
+        "text": "Redacted live creative text.",
+        "link": "https://example.invalid/redacted"
+      },
+      "view_details_link": "https://example.invalid/redacted"
+    }
+  ],
+  "has_more": true,
+  "continuation_token": "redacted-live-token"
+}

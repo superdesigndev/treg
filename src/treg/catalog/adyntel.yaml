@@ -1,0 +1,203 @@
+provider: adyntel
+source:
+  docs: https://docs.adyntel.com/
+  openapi: https://docs.adyntel.com/openapi-docs/existing-endpoints
+  curated: '2026-09-22'
+limits: "Adyntel asks clients to use at most 5 requests per second. treg does not claim an API-observed quota. Ad-library pages normally return up to 30-40 ads; continue one page at a time with continuation_token."
+pricing_url: https://www.adyntel.com/pricing
+
+# Adyntel authenticates inside the JSON body. The provider registry injects api_key and email;
+# callers never supply either field. body_allowlist makes this reviewed catalog surface smaller
+# than the raw API while a team's own raw tool remains a faithful relay.
+endpoints:
+  - id: adyntel.meta-ads.library.advertiser
+    capability: meta-ads.library.advertiser
+    platform: meta-ads
+    domain: advertising
+    scope: any_account
+    method: POST
+    path: /facebook
+    body_allowlist: true
+    name: Find a company's Facebook and Instagram ads
+    summary: Return one page of Meta ads for a company or Facebook page.
+    input:
+      body:
+        company_domain: {type: string, required: true, example: nike.com}
+        facebook_url: {type: string, required: false, example: "https://www.facebook.com/nike"}
+        country_code: {type: string, required: false, example: US}
+        continuation_token: {type: string, required: false, note: "Use the token from the previous response for the next page."}
+        media_type: {type: string, required: false, enum: [image, meme, image_and_meme, video]}
+        active_status: {type: string, required: false, enum: [inactive, all]}
+      note: "Provide company_domain or facebook_url. Automatic all-page scraping and webhooks are not exposed on the shared key."
+    test_request: {body: {company_domain: nike.com, country_code: US}}
+    example_response: examples/adyntel.meta-ads.library.advertiser.json
+    miss: {status: 204, means: "No matching ads were returned."}
+    cost: &one_credit
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: page
+      source: observed
+      source_url: https://www.adyntel.com/facebook-ads-scraper
+      checked: '2026-09-22'
+      confidence: verified
+      note: "One credit for a page with results; HTTP 204 misses are free."
+    verified: '2026-09-22'
+    docs_url: https://docs.adyntel.com/ad-libraries/meta
+
+  - id: adyntel.meta-ads.library.search
+    capability: meta-ads.library.search
+    platform: meta-ads
+    domain: advertising
+    scope: any_account
+    method: POST
+    path: /facebook_ad_search
+    body_allowlist: true
+    name: Search Facebook and Instagram ads by keyword
+    summary: Return one page of Meta Ad Library matches for a keyword.
+    input:
+      body:
+        keyword: {type: string, required: true, example: webinar}
+        country_code: {type: string, required: false, example: US}
+        continuation_token: {type: string, required: false}
+    test_request: {body: {keyword: webinar, country_code: US}}
+    example_response: examples/adyntel.meta-ads.library.search.json
+    miss: {status: 204, means: "No matching ads were returned."}
+    cost:
+      <<: *one_credit
+      source_url: https://docs.adyntel.com/ad-libraries/meta-ad-search
+    verified: '2026-09-22'
+    docs_url: https://docs.adyntel.com/openapi-docs/existing-endpoints
+
+  - id: adyntel.linkedin.search.ads.company
+    capability: linkedin.search.ads
+    platform: linkedin
+    domain: advertising
+    scope: any_account
+    method: POST
+    path: /linkedin
+    body_allowlist: true
+    name: Find a company's LinkedIn ads
+    summary: Return one page of LinkedIn ads for one company or LinkedIn page.
+    input:
+      body:
+        company_domain: {type: string, required: true, example: hubspot.com}
+        linkedin_page_id: {type: string, required: false}
+        continuation_token: {type: string, required: false}
+        extract: {type: string, required: false, enum: [number_of_ads]}
+        live_ads: {type: boolean, required: false, default: false}
+      note: "Provide company_domain or linkedin_page_id. Batch arrays, automatic all-page scraping and webhooks are not exposed on the shared key."
+    test_request: {body: {company_domain: hubspot.com}}
+    example_response: examples/adyntel.linkedin.search.ads.company.json
+    miss: {status: 204, means: "No matching ads were returned."}
+    cost:
+      <<: *one_credit
+      source_url: https://docs.adyntel.com/ad-libraries/linkedin
+    verified: '2026-09-22'
+    docs_url: https://docs.adyntel.com/ad-libraries/linkedin
+
+  - id: adyntel.linkedin.search.ads.keyword
+    capability: linkedin.search.ads
+    platform: linkedin
+    domain: advertising
+    scope: any_account
+    method: POST
+    path: /linkedin-keyword-search
+    body_allowlist: true
+    name: Search LinkedIn ads by keyword
+    summary: Return one page of LinkedIn Ad Library matches with optional country and date filters.
+    input:
+      body:
+        keyword: {type: string, required: true, example: webinar}
+        country: {type: string, required: false, example: US}
+        dateOption: {type: string, required: false, enum: [current-month, current-year, last-30-days, last-year]}
+        continuation_token: {type: string, required: false}
+    test_request: {body: {keyword: webinar, country: US}}
+    example_response: examples/adyntel.linkedin.search.ads.keyword.json
+    miss: {status: 204, means: "No matching ads were returned."}
+    cost:
+      <<: *one_credit
+      source_url: https://docs.adyntel.com/openapi-docs/existing-endpoints
+    verified: '2026-09-22'
+    docs_url: https://docs.adyntel.com/openapi-docs/existing-endpoints
+
+  - id: adyntel.google.ads.transparency
+    capability: google.ads.transparency
+    platform: google
+    domain: advertising
+    scope: any_account
+    method: POST
+    path: /google
+    body_allowlist: true
+    name: Find a company's Google ads
+    summary: Return one page of Google search, image or video ads for a company.
+    input:
+      body:
+        company_domain: {type: string, required: true, example: tesla.com}
+        media_type: {type: string, required: false, enum: [text, image, video]}
+        continuation_token: {type: string, required: false}
+        extract_text: {type: boolean, required: false, default: false, note: "Adds one credit when true."}
+    test_request: {body: {company_domain: tesla.com}}
+    example_response: examples/adyntel.google.ads.transparency.json
+    miss: {status: 204, means: "No matching ads were returned."}
+    cost:
+      <<: *one_credit
+      settle: modifiers
+      modifiers:
+        extract_text: {location: body, when: truthy, add_credits: 1}
+      note: "One credit for a result page; extract_text=true costs one extra credit. HTTP 204 misses are free."
+    verified: '2026-09-22'
+    docs_url: https://docs.adyntel.com/ad-libraries/google
+
+  - id: adyntel.tiktok-ads.library.search.company
+    capability: tiktok-ads.library.search
+    platform: tiktok-ads
+    domain: advertising
+    scope: any_account
+    method: POST
+    path: /tiktok
+    body_allowlist: true
+    name: Find a company's TikTok ads
+    summary: Return TikTok brand ads, with optional influencer ads.
+    input:
+      body:
+        company_domain: {type: string, required: true, example: gymshark.com}
+        influencer_ads: {type: boolean, required: false, default: false, note: "Adds one credit when true."}
+    test_request: {body: {company_domain: gymshark.com}}
+    example_response: examples/adyntel.tiktok-ads.library.search.company.json
+    miss: {status: 204, means: "No matching ads were returned."}
+    cost:
+      <<: *one_credit
+      settle: modifiers
+      modifiers:
+        influencer_ads: {location: body, when: truthy, add_credits: 1}
+      note: "One credit for brand ads; influencer_ads=true costs one extra credit. HTTP 204 misses are free."
+    verified: '2026-09-22'
+    docs_url: https://www.adyntel.com/tiktok-ads-scraper/
+
+  - id: adyntel.google.domain.keywords.overview
+    capability: google.domain.overview
+    platform: google
+    domain: seo
+    scope: any_account
+    method: POST
+    path: /domain-keywords
+    body_allowlist: true
+    name: Compare a domain's paid and organic keywords
+    summary: Return paid and organic keyword counts, traffic estimates, positions, budget and CPC.
+    input:
+      body:
+        company_domain: {type: string, required: true, example: tesla.com}
+        language: {type: string, required: false, default: English}
+        limit: {type: integer, required: false, default: 1, min: 1, max: 1}
+    test_request: {body: {company_domain: tesla.com, language: English, limit: 1}}
+    example_response: examples/adyntel.google.domain.keywords.overview.json
+    miss: {status: 204, means: "No matching domain keyword data was returned."}
+    cost:
+      <<: *one_credit
+      value: 2
+      unit: call
+      note: "A successful live call used two credits."
+    verified: '2026-09-22'
+    docs_url: https://docs.adyntel.com/ad-libraries/paid-vs-organic-keywords

@@ -1060,6 +1060,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 query_items=tuple(request.query_params.multi_items()),
                 body_stream=request.stream,
                 has_body=request.has_body,
+                body_read=request.body,
             )
             if platform_tier:
                 # Burst smoothing, half one (plan §4.4): many callers share treg's key, so a call that

@@ -222,14 +222,20 @@ async def start_email_login(email: str, client_ip: str) -> dict:
         ):
             await db.commit()
             raise EmailAuthError("rate_limited")
+        # A designated account has no inbox: its configured code hash is issued instead, so the
+        # verify path, attempt count and TTL are exactly those of an emailed code.
+        fixed_hash = get_settings().fixed_login_code_hashes.get(email)
         code = f"{_secrets.randbelow(1_000_000):06d}"
         await ratestore.kv_put(
             db, OTP_NS, email,
-            {"hash": crypto.hash_token(code), "attempts": MAX_OTP_ATTEMPTS}, EMAIL_CODE_TTL,
+            {"hash": fixed_hash or crypto.hash_token(code), "attempts": MAX_OTP_ATTEMPTS},
+            EMAIL_CODE_TTL,
         )
         await db.commit()
 
     result = {"sent": True, "email": email}
+    if fixed_hash:
+        return result
     if get_settings().expose_dev_code:
         print(f"[email-otp] {email} -> {code}")
         result["dev_code"] = code

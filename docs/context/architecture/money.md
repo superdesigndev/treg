@@ -3,6 +3,8 @@ title: Money — prepaid balance, the ledger, Stripe, and the reports that check
 status: shipped
 sources:
   - src/treg/catalog/tavily.yaml
+  - src/treg/catalog/tinyfish.yaml
+  - tests/test_tinyfish.py
   - src/treg/domain/money/__init__.py
   - src/treg/domain/money/settlement.py
   - src/treg/domain/asynctasks/__init__.py
@@ -244,6 +246,9 @@ evidence settles the original task once under its row lock. Caller success witho
 only learns result ownership and leaves the hold for a later observation; worker fallback retains
 its reserve-based settlement with a reconciliation alert. Settlement errors leave the provider
 response unchanged and cron retries. Only the winning finalizer archives terminal evidence.
+An async status declared as `billed_failure` is still presented as failure by the CLI, but the
+worker settles its usage evidence and records the terminal outcome; this covers cancellation after
+billable work without manufacturing a successful result.
 
 The worker selects due candidates, acquires provider/global concurrency slots, then atomically
 claims each still-due row. `attempts` fences stale workers from changing a newer claim's state.
@@ -292,11 +297,12 @@ ate what the team's blocks could not cover). A success whose terminal response c
 figure settles at the reserve with `reconcile_review` and an ERROR alert, never at the ceiling.
 When the pending row itself cannot be persisted, the request path releases the
 hold with reason `async_task_not_recorded` and logs an ERROR alert - the same doctrine, since nobody
-will observe that task's outcome. Two usage units settle: `usd` (OpenRouter's `usage.cost`) and
-`credit`, the provider's own credit priced by its `credit_rates_usd` entry in fx.yaml (reAPI's
-`usage.credits`). The credit's micro-USD worth is frozen into the basis as `amount.unit_micro` at
-reserve, so a later fx edit never re-prices a task in flight, and a credit basis with no frozen rate
-settles at the reserve rather than reading credits as dollars. The table is then only the reserve:
+will observe that task's outcome. Usage can settle in `usd` (OpenRouter's `usage.cost`), `credit`
+priced by the provider's `credit_rates_usd` entry (reAPI's `usage.credits`), or a provider-native
+meter priced by `unit_rates_usd[provider][unit]` (for example an Agent step). The unit's micro-USD
+worth is frozen into the basis as `amount.unit_micro` at reserve, so a later rate edit never
+re-prices a task in flight; a non-USD basis with no frozen rate settles at the reserve rather than
+reading native units as dollars. The table is then only the reserve:
 a table-settled video row once billed its fallback ceiling for the provider's mandatory `duration: -1`
 (auto) mode, because the frozen request re-prices identically at settle. A token unit returns with
 the first metered token-priced listing, together with its fx rule and a live test. Ledger writes remain exclusively through `domain/money`.

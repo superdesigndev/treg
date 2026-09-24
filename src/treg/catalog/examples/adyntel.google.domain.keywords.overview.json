@@ -1,0 +1,28 @@
+{
+  "organic": {
+    "count": 161018,
+    "estimated_traffic": 32158780,
+    "pos_1": 76977,
+    "is_new": 62257,
+    "is_up": 26989,
+    "is_down": 24475,
+    "is_lost": 0
+  },
+  "organic_percentages": {
+    "pos_1": 47.81,
+    "is_new": 38.66,
+    "is_up": 16.76,
+    "is_down": 15.2,
+    "is_lost": 0.0
+  },
+  "paid": {
+    "count": 5,
+    "estimated_traffic": 2030,
+    "estimated_ad_budget": 450,
+    "estimated_avg_cpc": 0.22
+  },
+  "paid_percentages": {
+    "pos_1": 80.0,
+    "pos_2_3": 20.0
+  }
+}

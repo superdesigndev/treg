@@ -6,9 +6,10 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 
 from .. import audit, oauth_providers
+from ..application import catalog_find as find
 from ..config import get_settings
 from ..domain.capacity.routes_view import view as overflow_routes_view
 from ..domain.catalog import store as catalog_store
@@ -273,6 +274,31 @@ async def catalog_search(q: str = "", limit: int = 25,
             hints.insert(1, f"nearest: {first['endpoint_id']} matches "
                             f"{', '.join(first['matches'])} but not {', '.join(first['missing'])}")
     return out
+
+
+@app.get("/catalog/find")
+async def catalog_find(request: Request, q: str = ""):
+    """Open, rate limited: find the endpoints that can do a described JOB (application.catalog_find).
+
+    Streams newline-delimited JSON, two events: `candidates` (the lexical recall, immediately) and
+    `judged` (the relevance judge's kept rows and a verdict, when it answers). The pages that call
+    this animate the gap between them. Agents keep `/catalog/search` and MCP `catalog_search`."""
+    from .auth import _client_ip   # auth imports web, which imports this module
+
+    query = find.clean_query(q)
+    if not query:
+        raise HTTPException(status_code=400, detail="describe the job in ?q=")
+    if not find.configured():
+        raise HTTPException(status_code=503, detail="finding tools by description is not configured on this server")
+    if not await find.admit(_client_ip(request)):
+        raise HTTPException(status_code=429, detail="too many searches from here this hour; try again later or use /catalog/search")
+
+    async def lines():
+        async for event in find.stream(query, _provider_display):
+            yield json.dumps(event) + "\n"
+
+    return StreamingResponse(lines(), media_type="application/x-ndjson",
+                             headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
 def _related_capabilities(ep: dict, cat) -> list[dict]:

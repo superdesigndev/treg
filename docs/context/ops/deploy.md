@@ -3,6 +3,10 @@ title: Running & deploying the server
 status: shipped
 sources:
   - pyproject.toml
+  - hatch_build.py
+  - scripts/build-dashboard.sh
+  - scripts/build-web.sh
+  - scripts/frontend-e2e-server.sh
   - src/treg/__main__.py
   - src/treg/maintenance.py
   - src/treg/alembic/env.py
@@ -229,12 +233,34 @@ database is local SQLite. Hosted deployments must still leave it false.
 
 ## Web service and generic Render example
 
-`GET /` serves the single-file dashboard from `src/treg/web/index.html`. The package includes the
-whole `web/` directory, so tutorials, agent files and installer assets ship with the server wheel.
+The redesigned homepage ships to all homepage visitors independently of Dashboard rollout.
+Its rollback requires a code rollback/revert; the Dashboard master switch does not change it.
+
+`GET /app` selects either the frozen legacy artifact or the Vite-built Vue application.
+The rollout defaults to legacy. Set `TREG_DASHBOARD_ROLLOUT_ENABLED=true` with a JSON array in
+`TREG_DASHBOARD_ROLLOUT_USER_IDS` for an account allowlist, then increase
+`TREG_DASHBOARD_ROLLOUT_PERCENT` from zero. Disabling the master switch forces legacy, including
+allowlisted accounts. Environment changes require restarting Web processes, not rebuilding assets.
+Both frontends ship together; anonymous catalog/sign-in entries remain legacy even at 100%.
+See `frontend/README.md` for the full rollout and retirement contract.
+The frontend is authored in `frontend/` within the same repository. `GET /` retains the existing
+landing behavior. Dashboard assets, tutorials, agent files and installer assets ship with the wheel.
+Hosted-page MP4 demos remain in Git checkout deployments but are excluded from published wheels and
+source archives; a server installed from PyPI serves the product surfaces without those optional
+marketing videos.
+
+Run `bash scripts/build-dashboard.sh` before building a distributable Python package. Hatch's
+build hook rejects a wheel or sdist without the dashboard entry and includes the generated assets;
+editable installs remain Python-only. Node and npm are build tools, not runtime services.
+`TREG_FRONTEND_DEV=true` serves the authored entry with Vite scripts on local port 5173 and is
+accepted only with SQLite and a loopback public URL. `scripts/dev-local.sh up` manages both processes.
+For browser previews from another device, build the dashboard and start or restart the local stack
+with `TREG_FRONTEND_DEV=false`; compiled assets then use the same origin on port 18790.
 
 [`deploy/render.example.yaml`](../../../deploy/render.example.yaml) is a generic self-hosting example.
 It creates one web service and one PostgreSQL database, builds with
-`uv sync --locked --no-dev --extra server --active`, runs `python -m treg upgrade` before serving,
+`bash scripts/build-web.sh` (frontend build followed by the locked Python install), runs
+`python -m treg upgrade` before serving,
 starts `python -m treg`, and checks `/meta`. Copy it into the operator's own deployment repository and
 change resource names, region, plans, public URL and integrations.
 
@@ -258,10 +284,10 @@ version that satisfies it. Upgrading a dependency is a `uv lock --upgrade-packag
 Installing the published wheel (`pip install "tools-registry[server]"`) is a different path: a wheel
 carries no lock, so that operator pins versions in their own requirements file.
 
-The published source archive is built by Hatchling from the checkout. The
-`tool.hatch.build.targets.sdist.exclude` rules in `pyproject.toml` keep local linked worktrees,
-root-level working plans and previews, evidence, databases and environment files out of that public
-artifact. Release validation inspects the archive itself; a clean Git diff alone is not sufficient.
+The published source archive is built by Hatchling from the checkout. The Hatch target exclusions in
+`pyproject.toml` keep local linked worktrees, root-level working plans and previews, evidence,
+databases, environment files and hosted-page MP4 demos out of public artifacts. Release validation
+inspects both archive contents; a clean Git diff alone is not sufficient.
 
 The example is deliberately not the treg.to production Blueprint. The hosted topology and settings
 are private operational state.

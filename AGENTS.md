@@ -39,8 +39,11 @@ Everything else in this file is guidance; these are the contract, and they win o
 3. A request holds zero database connections while upstream or object-storage I/O is in flight.
    Keep `reserve` and `settle` separate; read archive pointers, close the session, then fetch bytes.
 4. Plain `/call/` is a faithful relay: the injected credential, the transport headers listed in
-   `src/treg/infra/upstream/relay.py`, and (on treg's shared key only) the per-org and, for pinned agents, per-pin re-scoping of the
-   caller's `Idempotency-Key` are the only rewrites. Never add upstream-specific modeling.
+   `src/treg/infra/upstream/relay.py`, and (on treg's shared key only) the per-org and, for pinned
+   agents, per-pin re-scoping of the caller's `Idempotency-Key` are the only rewrites. A credential
+   binding with `location: "json"` explicitly parses and reserializes the top-level JSON object; it
+   is not byte-faithful and must never be used with an upstream that signs or hashes the raw body.
+   Never add upstream-specific modeling.
    A live-verified free catalog endpoint may declare an anonymous fallback; its empty binding list
    omits credential injection but does not strip or rewrite caller headers.
    Routed endpoints and overflow wrap the child's answer and say so; they never alter it. Responses needing settlement or ownership evidence are buffered by the application
@@ -152,8 +155,18 @@ xdist is pulled via `--with`, not the lockfile — same as CI. The Postgres CI j
   `[server]` extra, the certificate authority is `[proxy]`. Never import a heavy dependency at the
   top of a CLI-path module; the "Lightweight CLI modules" import-linter contract lists them and
   fails the build.
-- **The dashboard** (`src/treg/web/index.html`) is a single-file Vue app with no build step, so a
-  broken view name fails silently. Verify in a browser.
+- **Frontend rollout.** `frontend/README.md` documents account assignment and rollback.
+  `src/treg/web/dashboard-legacy/` is **deprecated**, retained only for temporary rollout and
+  rollback. Never hand-edit it or mirror new features/fixes into it; `frontend/` is the only
+  maintained Dashboard source. Follow the retirement checklist in `frontend/README.md` to remove
+  it after rollout, including anonymous entries that still use legacy at 100%.
+- **The dashboard** lives in `frontend/` (Vue components, TypeScript entry/transport, Vite).
+  Build with `bash scripts/build-dashboard.sh`; generated assets in `src/treg/web/dashboard/`
+  ship with Python. Run `npm --prefix frontend test` and `npm --prefix frontend run test:e2e`.
+  Existing Options API use cases live in `frontend/src/state/`; preserve their session and
+  navigation behavior when narrowing component state. Never put dashboard logic back into HTML.
+  Manage third-party browser libraries through pinned npm packages or version-pinned CDN URLs;
+  do not commit copied library builds. Keep critical app runtimes available from the npm build.
 - **Schema.** Alembic owns it (`src/treg/alembic/versions/`); every schema change is a revision.
   Startup only verifies the revision and refuses to boot when behind; migrations run only via
   `python -m treg upgrade`.

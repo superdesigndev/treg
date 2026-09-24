@@ -15,7 +15,8 @@ sources:
   - src/treg/infra/oauth_exchange.py
   - src/treg/mcp.py
   - src/treg/routers/call.py
-  - src/treg/web/index.html
+  - frontend/src/state/connections.js
+  - frontend/src/pages/ProviderPage.vue
   - src/treg/alembic/versions/0010_oauth_authorization_method.py
   - tests/test_instagram_oauth_architecture.py
 related:

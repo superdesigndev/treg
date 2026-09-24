@@ -1138,6 +1138,13 @@ def test_show_prints_the_charge_and_call_id_for_a_metered_success(capsys):
     _, err = capsys.readouterr()
     assert "replay" in err and "nothing new charged" in err
 
+    async_submission = httpx.Response(200, content=b'{"run_id":"r1"}', headers={
+        "content-type": "application/json", "X-Treg-Cost-Micro": "2400000",
+        "X-Treg-Async": "{}", "X-Treg-Call-Id": "async1"})
+    cli._show(async_submission)
+    _, err = capsys.readouterr()
+    assert err.strip() == "treg: reserved up to $2.4 for async settlement · call id async1"
+
 
 def test_host_prints_the_url_alone_and_the_full_response_under_json(monkeypatch, tmp_path, capsys):
     """`$(treg host face.jpg)` must yield the bare URL; `--json` is the GLOBAL flag main() pops from

@@ -5314,6 +5314,45 @@
         "summary": "Catalog Endpoint"
       }
     },
+    "/catalog/find": {
+      "get": {
+        "description": "Open, rate limited: find the endpoints that can do a described JOB (application.catalog_find).\n\nStreams newline-delimited JSON, two events: `candidates` (the lexical recall, immediately) and\n`judged` (the relevance judge's kept rows and a verdict, when it answers). The pages that call\nthis animate the gap between them. Agents keep `/catalog/search` and MCP `catalog_search`.",
+        "operationId": "catalog_find_catalog_find_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Catalog Find"
+      }
+    },
     "/catalog/platforms": {
       "get": {
         "description": "Open: the platform shelves of the endpoint catalog, busiest first.",
@@ -6556,7 +6595,7 @@
     },
     "/meta": {
       "get": {
-        "description": "Open: what the dashboard needs to render correct, shareable snippets — the public proxy URL\n(so copy/paste snippets use the real domain, not whatever origin the browser happens to be on)\n— plus the bundle version, so an open tab can detect a new deploy and offer a refresh.\n\n`treg_version` and `app_version` answer DIFFERENT questions and both are worth having.\n`app_version` is a hash of index.html: it changes whenever the dashboard bundle does, which is\nwhat an open tab compares to offer a refresh. `treg_version` is the released package version,\nwhich is what a release check needs — after publishing 0.9.0 there was no way to confirm from the\nlive path which version was actually serving, only the commit id.",
+        "description": "Open: what the dashboard needs to render correct, shareable snippets — the public proxy URL\n(so copy/paste snippets use the real domain, not whatever origin the browser happens to be on)\n— plus the bundle version, so an open tab can detect a new deploy and offer a refresh.\n\n`treg_version` and `app_version` answer DIFFERENT questions and both are worth having.\n`app_version` hashes the dashboard entry and rollout policy: it changes with either, which is\nwhat an open tab compares to offer a refresh. `treg_version` is the released package version,\nwhich is what a release check needs — after publishing 0.9.0 there was no way to confirm from the\nlive path which version was actually serving, only the commit id.",
         "operationId": "meta_meta_get",
         "responses": {
           "200": {

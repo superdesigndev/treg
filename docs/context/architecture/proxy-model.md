@@ -34,6 +34,7 @@ sources:
   - tests/test_tag_billing_adversarial.py
   - tests/test_call_architecture.py
   - tests/test_asynctasks.py
+  - tests/test_relay_content_length.py
 related:
   - architecture/data-model.md
   - architecture/auth-secrets.md
@@ -85,7 +86,12 @@ incl. duplicates, headers, cookies, body bytes):
    `_DROP_REQUEST = _HOP_BY_HOP | _CONTROL`, so none leaks upstream. `_scrub_treg_cookies` also strips
    treg's own cookies (`treg_session`, `treg_oauth_state`) from the Cookie header - the dashboard's
    `credentials:'include'` Try-it would otherwise leak our session token - while keeping other cookies.
-3. **the injected credential(s)** - each binding overwrites only its target header/param.
+3. **the injected credential(s)** - each binding overwrites only its target header, query parameter,
+   or top-level JSON field. A JSON binding is an explicit provider contract and is the only case
+   that buffers and reserializes the caller body; all other bodies retain the streamed byte path.
+   This is semantic JSON relay, not byte-faithful relay: formatting changes, non-ASCII text is
+   emitted as UTF-8, and duplicate keys fail closed. Never use a JSON binding where the upstream
+   signs or hashes the caller's raw body bytes.
 
 > **What treg keeps from a call.** Successes retain no content: the relay forwards bytes and the audit
 > row records status, size and timing. A **failed relayed call** - platform, own-key, or plain own-tool
@@ -131,7 +137,7 @@ Faithfulness mechanics inside `relay()`:
   response exactly once.
 
 A request may carry several credentials: `relay()` loops `tool.bindings` and calls
-`injectors.inject(headers, params, binding, crypto.decrypt(secret.value))` per binding.
+`injectors.inject(headers, params, binding, crypto.decrypt(secret.value), json_body=...)` per binding.
 Bindings can also stamp provider protocol constants: a format with no `{secret}` renders literally
 (Crustdata's required API-version header is the first registry use). It still carries the same secret
 reference for binding validation and lifecycle, and the assignment overwrites a caller-supplied value.
@@ -318,7 +324,8 @@ an unknown `injector` and a cross-org/dangling `secret_id`; `register_skill` run
 `call_tool` translates a call-time injector `ValueError` and an upstream `httpx.RequestError` into a
 `502` instead of an unhandled 500 (and audits the failed attempt, not just successes). A binding
 `format` is validated to render with only `{secret}` and `name`/`secret_field` to be non-empty strings;
-duplicate `location:"query"` binding names are rejected (they'd silently overwrite each other).
+duplicate target names are rejected independently for `location:"header"`, `"query"`, and `"json"`
+(they would silently overwrite each other).
 `health._probe` skips a dangling binding rather than `KeyError`-ing the whole run.
 
 **Relay security + faithfulness (bug-hunt):** the response side strips a `Set-Cookie` for treg's own
@@ -567,7 +574,16 @@ CLI output, boundaries, Range, disconnects, settlement evidence, archive and rep
 
 ## HarvestAPI integration
 
-Catalog entries can opt into `strict_query`: `_enforce_catalog_query` rejects bodies, undeclared/duplicate query parameters, missing required inputs and unsupported enum values before credential selection. It applies to catalog calls on every tier, leaves unmarked entries unchanged and does not rewrite requests or constrain arbitrary raw own-tool relays.
+Catalog entries can opt into `strict_query`: `_enforce_catalog_query` rejects bodies,
+undeclared/duplicate query parameters, missing required inputs and unsupported enum values before
+credential selection. They can separately opt into `body_allowlist`: `_enforce_catalog_body`
+rejects undeclared top-level JSON fields, missing required fields, invalid declared scalar values,
+and arrays outside their declared cardinality or item enum. An omitted optional array is allowed;
+its cardinality applies only when the caller supplies it. Both checks apply to catalog calls on every
+tier, leave unmarked entries unchanged and do not constrain arbitrary raw own-tool relays. Legacy
+`resource_ownership.requires` accepts a declared body
+parameter as well as path/query parameters, allowing a POST status utility to authorize an opaque
+shared-account task id.
 
 ## Pinned shared-provider reads
 

@@ -1109,9 +1109,9 @@ contracts:
     idempotent: true
 
   web.extract:
-    summary: "Extract clean content from one or more web pages — provider-native rows in `pages`"
+    summary: "Extract clean content from one web page — provider-native rows in `pages`"
     identity:
-      - {urls: list}
+      - {url: url}
     filters: {}
     output:
       pages: {type: list, required: true, note: "the provider's own extracted page objects; raw is the same body"}
@@ -1123,6 +1123,7 @@ contracts:
     summary: "Discover the URLs on a website — provider-native map rows in `results`"
     identity:
       - {url: url}
+      - {url: url, q: str}
     filters:
       limit: {type: int, default: 10, note: "maximum discovered URLs"}
     output:

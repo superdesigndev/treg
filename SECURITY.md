@@ -49,6 +49,11 @@ provider account and bypass this platform ownership table.
   (`TREG_BLOCKED_EMAIL_DOMAINS`, unset means no blocks) remains a configurable speed bump at every
   sign-in/sign-up door and both team-creating endpoints; it fails open on classifier errors.
   Suspend abusive users and teams separately, retaining their records for investigation.
+- **Designated sign-in codes are a password, stored only as a hash.** `TREG_FIXED_LOGIN_CODES`
+  (unset by default) maps an email with no inbox, such as an app directory reviewer's demo account,
+  to the SHA-256 of a fixed code. The email-code door then sends nothing and accepts only that code,
+  under the same five-guess and start limits as an emailed code. Use a long random code, give the
+  account a dedicated team with sample data only, and rotate by changing the hash.
 
 ## Archive object storage credentials
 

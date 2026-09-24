@@ -953,6 +953,24 @@ async def test_a_signed_out_user_is_returned_to_the_consent_screen(clients):
     assert back.headers["location"].startswith("/oauth/authorize?")
 
 
+async def test_email_sign_in_on_the_homepage_resumes_the_parked_authorization(clients):
+    """The OAuth sign-in modal opens on `/`, and the email-code door reloads that page once the code
+    is accepted, so the plain homepage must resume the authorization too. Only `/app` did, and an
+    email sign-in from an MCP client ended on the marketing page with the connection abandoned."""
+    clients.cookies.set("treg_oauth_return", "/oauth/authorize?client_id=x")
+    signed_out = await clients.get("/", follow_redirects=False)
+    assert signed_out.status_code == 200, "a signed-out visitor sees the homepage, not a loop"
+
+    await _signed_in(clients, "homepage-returner@superdesign.dev")
+    clients.cookies.set("treg_oauth_return", "/oauth/authorize?client_id=x")
+    back = await clients.get("/", follow_redirects=False)
+    assert back.status_code == 302
+    assert back.headers["location"] == "/oauth/authorize?client_id=x"
+
+    clients.cookies.set("treg_oauth_return", "/anything-else")
+    assert (await clients.get("/", follow_redirects=False)).status_code == 200
+
+
 async def test_connect_demo_is_explicitly_enabled_and_never_displays_token_prefixes(
     monkeypatch, clients,
 ):

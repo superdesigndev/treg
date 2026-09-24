@@ -77,6 +77,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "catalog_find",
+    "path": "/catalog/find"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "catalog_endpoint",
     "path": "/catalog/endpoints/{endpoint_id}"
   },
@@ -97,6 +106,15 @@
     ],
     "name": "catalog_index",
     "path": "/catalog"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "search_page",
+    "path": "/search"
   },
   {
     "kind": "APIRoute",
@@ -456,6 +474,24 @@
     ],
     "name": "landing",
     "path": "/"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "legacy_dashboard_asset",
+    "path": "/app/legacy/assets/{path:path}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "dashboard_asset",
+    "path": "/app/ui/assets/{name}"
   },
   {
     "kind": "APIRoute",
@@ -833,6 +869,15 @@
     ],
     "name": "blog_people_search_bench",
     "path": "/blog/people-search-bench"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "blog_work_email_finding_bench",
+    "path": "/blog/work-email-finding-bench"
   },
   {
     "kind": "APIRoute",

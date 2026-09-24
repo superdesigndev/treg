@@ -500,8 +500,9 @@ A signed-out visitor to `/oauth/authorize` has the destination parked in a short
 cookie and is redirected to `/?signin=oauth`. The dashboard opens the existing sign-in modal with
 generic connection copy, removes the query parameter from the visible URL, and does not create a
 sandbox session. The query parameter is only a UI cue; it contains no OAuth request data. Google,
-GitHub, and email-code sign-in all return to the dashboard, which resumes the parked authorization
-request. The cookie stores a relative path and honours only `/oauth/authorize`, so it cannot become a
+GitHub, and email-code sign-in all resume the parked authorization request: the social callbacks
+land on `/app`, and the email-code door reloads `/`, where the modal opened; both resume once signed
+in. The cookie stores a relative path and honours only `/oauth/authorize`, so it cannot become a
 general "send me anywhere after login" primitive.
 
 ## `/connect-demo`

@@ -57,8 +57,7 @@ def test_moltsets_env_key_is_detected_as_bearer(tmp_path):
     assert detected.required_headers == {"User-Agent": "treg/1.0 (+https://treg.to)"}
     [action] = prov.plan_actions([detected])
     assert action.required_headers == {"User-Agent": "treg/1.0 (+https://treg.to)"}
-    assert prov.CATALOG_VERSION == 18
-
+    assert prov.CATALOG_VERSION == 19
 
 def test_viktron_env_key_is_detected_as_bearer(tmp_path):
     env = _write_env(tmp_path, "VIKTRON_API_KEY=vk_example\n")
@@ -69,12 +68,30 @@ def test_viktron_env_key_is_detected_as_bearer(tmp_path):
     assert detected.probe == "api/teams"
 
 
+
 def test_limadata_env_key_is_detected_as_x_api_key(tmp_path):
     env = _write_env(tmp_path, "LIMADATA_API_KEY=lm_example\n")
     [detected] = prov.scan_env(env)
     assert detected.provider == "LimaData"
     assert detected.auth == {"shape": "api_key_header", "header": "x-api-key"}
     assert detected.base_url == "https://api.limadata.com"
+
+
+def test_keenable_env_key_is_detected_as_x_api_key(tmp_path):
+    env = _write_env(tmp_path, "KEENABLE_API_KEY=keen_example\n")
+    [detected] = prov.scan_env(env)
+    assert detected.provider == "Keenable"
+    assert detected.auth == {"shape": "api_key_header", "header": "X-API-Key"}
+    assert detected.base_url == "https://api.keenable.ai"
+
+
+def test_olostep_env_key_is_detected_as_bearer(tmp_path):
+    env = _write_env(tmp_path, "OLOSTEP_API_KEY=olo_example\n")
+    [detected] = prov.scan_env(env)
+    assert detected.provider == "Olostep"
+    assert detected.auth == {"shape": "bearer"}
+    assert detected.base_url == "https://api.olostep.com"
+    assert detected.probe == "user/credits/info"
 
 
 def test_trestleiq_env_key_is_detected_as_lowercase_x_api_key(tmp_path):

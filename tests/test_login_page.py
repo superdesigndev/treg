@@ -64,17 +64,26 @@ async def _seed_user_org(email="pat@x.dev", team="Acme", slug="acme", tools=0):
 
 
 # ---- the page ------------------------------------------------------------------------------
-async def test_landing_redirects_signed_in_visitor_to_app(web):
-    """`/` is the front door for strangers; a live session belongs on the dashboard."""
+async def test_landing_offers_dashboard_for_a_live_session(web):
+    """Members can revisit the homepage without signing out."""
     r = await web.get("/", follow_redirects=False)
     assert r.status_code == 200  # anonymous → marketing landing
+    assert 'data-signed-in="false"' in r.text
+    assert '>Start free</button>' in r.text
     uid = await _seed_user()
     web.cookies.set("treg_session", sess.make_session(uid))
     r = await web.get("/", follow_redirects=False)
-    assert r.status_code == 302 and r.headers["location"] == "/app"
+    assert r.status_code == 200
+    assert 'data-signed-in="true"' in r.text
+    assert '>Open dashboard</button>' in r.text
+    assert '>Sign in</a>' not in r.text
+    assert r.headers['cache-control'] == 'private, no-store'
+    assert r.headers['vary'] == 'Cookie'
     web.cookies.set("treg_session", sess.make_session(uid, ttl=-1))  # expired session → landing again
     r = await web.get("/", follow_redirects=False)
     assert r.status_code == 200
+    assert 'data-signed-in="false"' in r.text
+    assert '>Start free</button>' in r.text
 
 
 async def test_login_without_cli_redirects_to_dashboard(web):

@@ -64,6 +64,8 @@ def classify_terminal(descriptor: dict, response: object) -> str:
     status = str(value)
     if status in {str(item) for item in status_rule.get("success", [])}:
         return "success"
+    if status in {str(item) for item in status_rule.get("billed_failure", [])}:
+        return "billed_failure"
     if status in {str(item) for item in status_rule.get("failure", [])}:
         return "failure"
     return "progress"
