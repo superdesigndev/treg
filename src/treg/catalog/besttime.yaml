@@ -1,0 +1,590 @@
+provider: besttime
+source:
+  docs: https://documentation.besttime.app/
+  openapi: null
+  curated: '2026-09-24'
+pricing_url: https://besttime.app/subscription/pricing
+limits: Plan and route limits apply. Shared-key filter use requires a request cap and settled credit parity;
+  Treg funding and private-key configuration are separate operational steps.
+proposed_capabilities:
+  venues.find: Discover and filter venues by location, type, forecast busyness, time, and rating
+  venues.foot_traffic.forecast: Generate a weekly 168-hour forecast by venue ID or name and address
+  venues.foot_traffic.live: Get current live venue busyness by ID or name and address
+endpoints:
+- id: besttime.venues.busy_bars
+  capability: venues.find
+  platform: venues
+  scope: any_account
+  method: GET
+  path: /venues/filter
+  name: Find busy bars
+  summary: Find bars forecast to be busy in an area and time
+  input:
+    queryParams:
+      lat:
+        type: number
+        required: true
+        example: 40.748
+      lng:
+        type: number
+        required: true
+        example: -73.986
+      radius:
+        type: integer
+        required: true
+        example: 2000
+      limit:
+        type: integer
+        required: false
+        default: 10
+        min: 1
+        max: 10
+        example: 10
+      page:
+        type: integer
+        required: false
+        default: 0
+        example: 0
+      own_venues_only:
+        type: boolean
+        required: false
+        default: false
+        example: false
+      types:
+        type: string
+        required: false
+        example: BAR
+      busy_min:
+        type: integer
+        required: false
+        min: 0
+        max: 100
+        example: 50
+      busy_max:
+        type: integer
+        required: false
+        min: 0
+        max: 100
+        example: 40
+      day_int:
+        type: integer
+        required: false
+        min: 0
+        max: 6
+        example: 5
+      hour_min:
+        type: integer
+        required: false
+        min: 0
+        max: 23
+        example: 18
+      hour_max:
+        type: integer
+        required: false
+        min: 0
+        max: 23
+        example: 23
+      rating_min:
+        type: number
+        required: false
+        min: 0
+        max: 5
+        example: 4.0
+    note: Area search on the global venue database. Keep limit <=10 and own_venues_only=false. Avoid live_refresh;
+      use the Live endpoint for current busyness. Treg must enforce the limit and prohibit unpriced options
+      before enabling its shared key.
+  test_request:
+    queryParams:
+      lat: 40.748
+      lng: -73.986
+      radius: 2000
+      limit: 10
+      page: 0
+      own_venues_only: false
+      types: BAR
+      busy_min: 50
+      day_int: 5
+      hour_min: 18
+      hour_max: 23
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: One credit for 1-19 returned venues (minimum one), based on live meter and implementation. Larger
+      pages consume more credits; platform activation needs enforced page-size and settlement parity. Empty
+      results can be HTTP 404 and still cost one credit. Do not enable live_refresh on a shared key.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed the live call and meter on 2026-09-24; maintainer verification with an independent
+    private key remains pending.
+- id: besttime.venues.quiet_museums
+  capability: venues.find
+  platform: venues
+  scope: any_account
+  method: GET
+  path: /venues/filter
+  name: Find quiet museums
+  summary: Find museums forecast to be quiet in an area and time
+  input:
+    queryParams:
+      lat:
+        type: number
+        required: true
+        example: 40.748
+      lng:
+        type: number
+        required: true
+        example: -73.986
+      radius:
+        type: integer
+        required: true
+        example: 2000
+      limit:
+        type: integer
+        required: false
+        default: 10
+        min: 1
+        max: 10
+        example: 10
+      page:
+        type: integer
+        required: false
+        default: 0
+        example: 0
+      own_venues_only:
+        type: boolean
+        required: false
+        default: false
+        example: false
+      types:
+        type: string
+        required: false
+        example: BAR
+      busy_min:
+        type: integer
+        required: false
+        min: 0
+        max: 100
+        example: 50
+      busy_max:
+        type: integer
+        required: false
+        min: 0
+        max: 100
+        example: 40
+      day_int:
+        type: integer
+        required: false
+        min: 0
+        max: 6
+        example: 5
+      hour_min:
+        type: integer
+        required: false
+        min: 0
+        max: 23
+        example: 18
+      hour_max:
+        type: integer
+        required: false
+        min: 0
+        max: 23
+        example: 23
+      rating_min:
+        type: number
+        required: false
+        min: 0
+        max: 5
+        example: 4.0
+    note: Area search on the global venue database. Keep limit <=10 and own_venues_only=false. Avoid live_refresh;
+      use the Live endpoint for current busyness. Treg must enforce the limit and prohibit unpriced options
+      before enabling its shared key.
+  test_request:
+    queryParams:
+      lat: 40.748
+      lng: -73.986
+      radius: 2000
+      limit: 10
+      page: 0
+      own_venues_only: false
+      types: MUSEUM
+      busy_max: 40
+      day_int: 2
+      hour_min: 10
+      hour_max: 16
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: One credit for 1-19 returned venues (minimum one), based on live meter and implementation. Larger
+      pages consume more credits; platform activation needs enforced page-size and settlement parity. Empty
+      results can be HTTP 404 and still cost one credit. Do not enable live_refresh on a shared key.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed the live call and meter on 2026-09-24; maintainer verification with an independent
+    private key remains pending.
+- id: besttime.venues.rated
+  capability: venues.find
+  platform: venues
+  scope: any_account
+  method: GET
+  path: /venues/filter
+  name: Find highly rated venues
+  summary: Find venues above a rating threshold in an area
+  input:
+    queryParams:
+      lat:
+        type: number
+        required: true
+        example: 40.748
+      lng:
+        type: number
+        required: true
+        example: -73.986
+      radius:
+        type: integer
+        required: true
+        example: 2000
+      limit:
+        type: integer
+        required: false
+        default: 10
+        min: 1
+        max: 10
+        example: 10
+      page:
+        type: integer
+        required: false
+        default: 0
+        example: 0
+      own_venues_only:
+        type: boolean
+        required: false
+        default: false
+        example: false
+      types:
+        type: string
+        required: false
+        example: BAR
+      busy_min:
+        type: integer
+        required: false
+        min: 0
+        max: 100
+        example: 50
+      busy_max:
+        type: integer
+        required: false
+        min: 0
+        max: 100
+        example: 40
+      day_int:
+        type: integer
+        required: false
+        min: 0
+        max: 6
+        example: 5
+      hour_min:
+        type: integer
+        required: false
+        min: 0
+        max: 23
+        example: 18
+      hour_max:
+        type: integer
+        required: false
+        min: 0
+        max: 23
+        example: 23
+      rating_min:
+        type: number
+        required: false
+        min: 0
+        max: 5
+        example: 4.0
+    note: Area search on the global venue database. Keep limit <=10 and own_venues_only=false. Avoid live_refresh;
+      use the Live endpoint for current busyness. Treg must enforce the limit and prohibit unpriced options
+      before enabling its shared key.
+  test_request:
+    queryParams:
+      lat: 40.748
+      lng: -73.986
+      radius: 2000
+      limit: 10
+      page: 0
+      own_venues_only: false
+      rating_min: 4.0
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: One credit for 1-19 returned venues (minimum one), based on live meter and implementation. Larger
+      pages consume more credits; platform activation needs enforced page-size and settlement parity. Empty
+      results can be HTTP 404 and still cost one credit. Do not enable live_refresh on a shared key.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed the live call and meter on 2026-09-24; maintainer verification with an independent
+    private key remains pending.
+- id: besttime.venues.discover
+  capability: venues.find
+  platform: venues
+  scope: any_account
+  method: GET
+  path: /venues/filter
+  name: Discover nearby venues
+  summary: Discover venues with forecast visitor patterns in an area
+  input:
+    queryParams:
+      lat:
+        type: number
+        required: true
+        example: 40.748
+      lng:
+        type: number
+        required: true
+        example: -73.986
+      radius:
+        type: integer
+        required: true
+        example: 2000
+      limit:
+        type: integer
+        required: false
+        default: 10
+        min: 1
+        max: 10
+        example: 10
+      page:
+        type: integer
+        required: false
+        default: 0
+        example: 0
+      own_venues_only:
+        type: boolean
+        required: false
+        default: false
+        example: false
+      types:
+        type: string
+        required: false
+        example: BAR
+      busy_min:
+        type: integer
+        required: false
+        min: 0
+        max: 100
+        example: 50
+      busy_max:
+        type: integer
+        required: false
+        min: 0
+        max: 100
+        example: 40
+      day_int:
+        type: integer
+        required: false
+        min: 0
+        max: 6
+        example: 5
+      hour_min:
+        type: integer
+        required: false
+        min: 0
+        max: 23
+        example: 18
+      hour_max:
+        type: integer
+        required: false
+        min: 0
+        max: 23
+        example: 23
+      rating_min:
+        type: number
+        required: false
+        min: 0
+        max: 5
+        example: 4.0
+    note: Area search on the global venue database. Keep limit <=10 and own_venues_only=false. Avoid live_refresh;
+      use the Live endpoint for current busyness. Treg must enforce the limit and prohibit unpriced options
+      before enabling its shared key.
+  test_request:
+    queryParams:
+      lat: 40.748
+      lng: -73.986
+      radius: 2000
+      limit: 10
+      page: 0
+      own_venues_only: false
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: One credit for 1-19 returned venues (minimum one), based on live meter and implementation. Larger
+      pages consume more credits; platform activation needs enforced page-size and settlement parity. Empty
+      results can be HTTP 404 and still cost one credit. Do not enable live_refresh on a shared key.
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed the live call and meter on 2026-09-24; maintainer verification with an independent
+    private key remains pending.
+- id: besttime.forecast.address
+  capability: venues.foot_traffic.forecast
+  platform: venues
+  scope: any_account
+  method: POST
+  path: /forecasts
+  name: Venue foot-traffic forecast by name and address
+  summary: Get a 24x7 foot-traffic forecast from venue name and address.
+  input:
+    queryParams:
+      venue_name:
+        type: string
+        required: true
+        example: MOA Korean BBQ & Bar
+      venue_address:
+        type: string
+        required: true
+        example: 128 S Tryon St Charlotte NC 28202
+    note: Supply a BestTime venue_id or a venue name and street address. A new forecast returns the 168 hourly
+      values for a week; Live returns current busyness when available.
+  test_request:
+    queryParams:
+      venue_name: MOA Korean BBQ & Bar
+      venue_address: 128 S Tryon St Charlotte NC 28202
+  cost:
+    type: per_call
+    value: 2
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: 'Observed successful call and meter: 2 credit(s). Live availability varies by venue and time.'
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed the live call and meter on 2026-09-24; maintainer verification with an independent
+    private key remains pending.
+- id: besttime.forecast.id
+  capability: venues.foot_traffic.forecast
+  platform: venues
+  scope: any_account
+  method: POST
+  path: /forecasts
+  name: Venue foot-traffic forecast by ID
+  summary: Get a 24x7 foot-traffic forecast for a known BestTime venue ID.
+  input:
+    queryParams:
+      venue_id:
+        type: string
+        required: true
+        example: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+    note: Supply a BestTime venue_id or a venue name and street address. A new forecast returns the 168 hourly
+      values for a week; Live returns current busyness when available.
+  test_request:
+    queryParams:
+      venue_id: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+  cost:
+    type: per_call
+    value: 2
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: 'Observed successful call and meter: 2 credit(s). Live availability varies by venue and time.'
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed the live call and meter on 2026-09-24; maintainer verification with an independent
+    private key remains pending.
+- id: besttime.live.address
+  capability: venues.foot_traffic.live
+  platform: venues
+  scope: any_account
+  method: POST
+  path: /forecasts/live
+  name: Venue live busyness by name and address
+  summary: Get current live busyness from venue name and address.
+  input:
+    queryParams:
+      venue_name:
+        type: string
+        required: true
+        example: MOA Korean BBQ & Bar
+      venue_address:
+        type: string
+        required: true
+        example: 128 S Tryon St Charlotte NC 28202
+    note: Supply a BestTime venue_id or a venue name and street address. A new forecast returns the 168 hourly
+      values for a week; Live returns current busyness when available.
+  test_request:
+    queryParams:
+      venue_name: MOA Korean BBQ & Bar
+      venue_address: 128 S Tryon St Charlotte NC 28202
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: 'Observed successful call and meter: 1 credit(s). Live availability varies by venue and time.'
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed the live call and meter on 2026-09-24; maintainer verification with an independent
+    private key remains pending.
+- id: besttime.live.id
+  capability: venues.foot_traffic.live
+  platform: venues
+  scope: any_account
+  method: POST
+  path: /forecasts/live
+  name: Venue live busyness by ID
+  summary: Get current live busyness for a known BestTime venue ID.
+  input:
+    queryParams:
+      venue_id:
+        type: string
+        required: true
+        example: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+    note: Supply a BestTime venue_id or a venue name and street address. A new forecast returns the 168 hourly
+      values for a week; Live returns current busyness when available.
+  test_request:
+    queryParams:
+      venue_id: ven_67575a6757632d4d6d576852676f5668323937376b78354a496843
+  cost:
+    type: per_call
+    value: 1
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://besttime.app/subscription/pricing
+    checked: '2026-09-24'
+    confidence: verified
+    note: 'Observed successful call and meter: 1 credit(s). Live availability varies by venue and time.'
+  docs_url: https://documentation.besttime.app/
+  unverified: Vendor observed the live call and meter on 2026-09-24; maintainer verification with an independent
+    private key remains pending.

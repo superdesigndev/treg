@@ -199,6 +199,7 @@ class Settings(BaseSettings):
     platform_key_millionverifier: str = ""  # raw key; injected as ?api=…
     platform_key_bounceban: str = ""  # raw key in Authorization; prepaid verification credits
     platform_key_hunter: str = ""
+    platform_key_besttime: str = ""  # api_key_private query param; fund BestTime account before enabling
     platform_key_sumble: str = ""  # Bearer; Pro monthly credits, optional vendor auto-top-up
     platform_key_moltsets: str = ""  # Bearer; shared subscription fair-use pools, no auto-top-up
     platform_key_openmart: str = ""  # Bearer; monthly subscription credits, no auto-top-up

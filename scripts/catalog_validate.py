@@ -1162,6 +1162,14 @@ def main(argv: list[str]) -> int:
                 fail(errors, name, f"credential literal in file: '{m.group(0)[:24]}…'")
             continue
         for m in LEAK.finditer(text):
+            # BestTime venue identifiers are public data IDs, not API credentials. Their
+            # hex suffix matches the generic high-entropy secret heuristic.
+            public_venue_id = (
+                text[max(0, m.start() - 4):m.start()] == "ven_"
+                and re.fullmatch(r"[0-9a-f]{40,}", m.group(0))
+            )
+            if public_venue_id:
+                continue
             if looks_like_secret(m.group(0)):
                 fail(errors, name, f"possible credential literal in file: '{m.group(0)[:24]}…'")
 
