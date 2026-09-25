@@ -57,7 +57,7 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        timeout: {type: integer, required: false, note: "treg's key requires 1-280 so the run ends before Apify's 300-second synchronous wait. seconds before the synchronous run is cut off. This route blocks until the actor finishes and Apify closes the connection at 300s regardless — use the async pair below for anything large", example: 120}
+        timeout: {type: integer, required: false, note: "treg's key requires 1-90 so the run and its rows arrive before any wait gives up (a larger pull needs your own key). seconds before the synchronous run is cut off. This route blocks until the actor finishes and Apify closes the connection at 300s regardless — use the async pair below for anything large", example: 120}
       body:
         startUrls: {type: array, required: true, note: "[{\"url\": \"…\"}] — either a Facebook Page URL or a full Meta Ad Library search URL (facebook.com/ads/library/?q=…&country=US)", example: [{"url": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=US&q=project%20management"}]}
         resultsLimit: {type: integer, required: false, note: "max ads PER URL; unlimited if omitted, which is how runs get expensive", example: 50}
@@ -72,7 +72,7 @@ endpoints:
       note: "the response is the dataset items array directly — no run envelope, no polling. Result count is what you pay for, so onlyTotal:true is the cheap probe before a full pull. Unofficial: this reads the Ad Library web UI, so field availability tracks whatever Meta currently renders"
     platform_request: {body.enrichWithEcommerceData: false}
     test_request:
-      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 180}
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 90}
       body: {startUrls: [{url: "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=project%20management"}], resultsLimit: 1, activeStatus: "active", isDetailsPerAd: false, onlyTotal: true, enrichWithEcommerceData: false}
     cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: ad, source: observed, source_url: 'https://apify.com/pricing', checked: '2026-07-31', confidence: verified, note: 'pay-per-result: one result = one ad. OBSERVED 2026-07-31 on the STARTER plan — a run capped at maxItems=1 reported usageTotalUsd 0.005 in GET /actor-runs, matching the $5.00-per-1,000 list rate; the rate varies $3.40–$5.80 across subscription tiers, so this is the Starter figure. Charged on results produced even if the run is cut short — cap it with maxTotalChargeUsd'}
     verified: 2026-07-31
@@ -91,7 +91,7 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        timeout: {type: integer, required: false, note: "treg's key requires 1-280 so the run ends before Apify's 300-second synchronous wait", example: 120}
+        timeout: {type: integer, required: false, note: "treg's key requires 1-90 so the run and its rows arrive before any wait gives up (a larger pull needs your own key)", example: 120}
       body:
         search: {type: string, required: true, note: "keyword or advertiser name to search the ad library for", example: "skincare"}
         adv_biz_ids: {type: string, required: false, note: "advertiser business id, to pin the search to one advertiser instead of a keyword"}
@@ -106,7 +106,7 @@ endpoints:
       bodyType: json
       note: "returns creative content, advertiser, dates, audience reach and targeting as TikTok discloses them in the Commercial Content Library. Community actor, not an official TikTok surface — the only route to this capability in the catalog, and the one most likely to break upstream, so check the actor's run history before relying on it"
     test_request:
-      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 180}
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 90}
       body: {search: "nike", region: "all", query_type: "1", limit: 1, offset: 0}
     cost: {type: per_result, value: 0.003, currency: USD, per: 1, unit: ad, source: docs, source_url: 'https://apify.com/pricing', checked: '2026-08-13', confidence: documented, note: 'pay-per-event: ~$3.00 per 1,000 ads scraped (published on the actor page), no subscription minimum. The per-ad price is documented, but the charge stays unobservable: a live run 2026-08-13 succeeded (201) yet returned 0 items (x-apify-pagination-total 0), as did all three 2026-07-31 runs — the actor consistently yields nothing, so a real call bills $0. Treat as effectively non-returning until the upstream actor is fixed.'}
     unverified: "actor is upstream-broken, not the route: HTTP 201 with an EMPTY dataset ([]) on three
@@ -131,7 +131,7 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 25}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        timeout: {type: integer, required: false, note: "treg's key requires 1-280 so the run ends before Apify's 300-second synchronous wait. seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless", example: 120}
+        timeout: {type: integer, required: false, note: "treg's key requires 1-90 so the run and its rows arrive before any wait gives up (a larger pull needs your own key). seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless", example: 120}
       body:
         jobTitles: {type: "array[string]", required: true, note: "job-search queries; supports boolean operators. To list ALL of one company's openings, pass a broad query here and pin `company`", example: ["software engineer"]}
         company: {type: "array[string]", required: false, note: "restrict to these companies — names or LinkedIn company URLs", example: ["Netflix"]}
@@ -146,7 +146,7 @@ endpoints:
       bodyType: json
       note: "the response is the dataset items array directly — no run envelope. Community actor scraping LinkedIn's public job search: no LinkedIn login needed, but expect the flakiness every LinkedIn scraper shows — retry before concluding a company has no openings"
     test_request:
-      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 180}
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 90}
       body: {jobTitles: ["attorney"], locations: ["Miami, Florida"], maxItems: 1}
     cost: {type: per_result, value: 0.001, call_fee: 0.001, currency: USD, per: 1, unit: result, source: docs, source_url: 'https://apify.com/harvestapi/linkedin-job-search', checked: '2026-08-20', confidence: documented, note: 'pay-per-event: $1.00 per 1,000 jobs published on the actor page, no platform usage charge on top; the flat $0.001 call_fee is the actor-start event (read live 2026-09-25 from pricingInfos). Charged per dataset item produced — cap every call with maxTotalChargeUsd and read usageTotalUsd from GET /v2/actor-runs after a big pull'}
     verified: 2026-08-20
