@@ -1034,9 +1034,10 @@ settles the rows run-sync returned times the row price plus the fee; within two 
 caller's cap was reached, and the hold is the bill, because a run stops when its next event would
 pass the cap and can already have billed one event it never pushed and a plan-tier price below the catalog's fits more rows under the cap.
 Apify's `usageTotalUsd` trails a finished run by minutes, so it is not settlement evidence. A run
-that exceeds its own timeout answers 400 with no rows and settles at zero although Apify bills up
-to the cap, and so do a run that FAILS or is ABORTED after billing and an answer over the 8 MiB
-evidence limit; the $1 ceiling bounds each loss. `timeout` is required and at most 90 seconds (and
+that exceeds its own timeout answers 400 `run-failed` with no rows, while Apify bills up to the cap
+and the run's dataset stays readable by the run id in that body; the caller chose the run's size
+and timeout, so that answer settles at the hold. A run that FAILS or is ABORTED after billing and an
+answer over the 8 MiB evidence limit still release; the $1 ceiling bounds each loss. `timeout` is required and at most 90 seconds (and
 30 under `call_timeout_s`), because a run still going when Apify's 300-second synchronous wait,
 treg's upstream read timeout or the MCP client's 120 s ends leaves a failed call that releases
 unbilled while the run keeps billing. The cap must cover `call_fee` plus three rows, or the

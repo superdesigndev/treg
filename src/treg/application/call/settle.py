@@ -41,6 +41,22 @@ from .types import GatewayFailed, UpstreamResponse
 _NOT_THE_CALLERS_FAULT = frozenset({401, 402, 403, 405, 407, 408, 429})
 
 
+def _apify_run_timed_out(mk: MarketplaceCall, status_code: int | None, body: bytes) -> bool:
+    """A platform Apify run-sync call whose run outlived its own `timeout`. Apify answers 400
+    `run-failed` with no rows, yet it billed the events the run produced up to the caller's
+    maxTotalChargeUsd, and the run's dataset stays readable by the run id in that body. The
+    caller chose the run's size and timeout, so the hold (their cap) is the bill."""
+    if not (status_code == 400 and mk.tier == "platform" and mk.provider == "apify"
+            and mk.cost_type == "per_result"):
+        return False
+    try:
+        error = json.loads(body).get("error") or {}
+    except (ValueError, UnicodeDecodeError, AttributeError):
+        return False
+    return (isinstance(error, dict) and error.get("type") == "run-failed"
+            and "status: TIMED-OUT" in str(error.get("message") or ""))
+
+
 def _platform_billable(status_code: int, cost_type: str) -> bool:
     """MAY a response with this status cost us money? (plan §2.2) — the status gate only.
       2xx                        → yes, the provider served it.
@@ -899,8 +915,12 @@ async def _platform_settle(
     # delta vs treg's direct price): folded into the SAME settle transaction, the one allowlisted
     # overflow write (`overflow_spend_in_settle`). It is recorded even when the vendor response is
     # not billable to the caller because the aggregator's prepaid account still incurred the cost.
-    observed = ((observed_override if observed_override is not None
-                 else _observed_cost_micro(mk, body, headers)) if billable else None)
+    timed_out = _apify_run_timed_out(mk, status_code, body)
+    if timed_out:
+        billable, reason = True, "apify_run_timed_out"
+    observed = (mk.estimate_micro if timed_out
+                else (observed_override if observed_override is not None
+                      else _observed_cost_micro(mk, body, headers)) if billable else None)
     if billable and status_code >= 400 and not observed:
         # A rejected request is billed on the provider's word, never on the estimate. The estimate
         # prices a SERVED call; a 4xx served nothing, and a `per_call` rate card does not say the

@@ -84,3 +84,33 @@ async def test_persistent_settlement_failure_keeps_response_path_non_raising(
     async with session_maker() as db:
         assert await db.get(Hold, call_id) is not None
         assert await ledger.balance_of(db, org_id) < before
+
+
+_TIMED_OUT = (b'{"error":{"type":"run-failed","message":"Actor run did not succeed '
+              b'(run ID: K7Ap5kqvhC8N8bQLN, status: TIMED-OUT)."}}')
+
+
+async def test_timed_out_apify_platform_run_settles_at_the_hold(clients: AsyncClient) -> None:
+    """The run billed up to the caller's cap and its rows stay readable by run id."""
+    call_id = "apify-timed-out"
+    org_id, before, mk = await _funded_call(clients, call_id)
+    mk.provider, mk.cost_type = "apify", "per_result"
+    mk.settlement_basis = {"when": "response", "amount": {"kind": "observed"}, "fallback_micro": 1_000}
+    charged, observed = await call_settle._platform_settle(mk, 400, _TIMED_OUT)
+    assert observed == 1_000 and charged >= 1_000
+    async with session_maker() as db:
+        assert await ledger.balance_of(db, org_id) == before - charged
+
+
+def test_only_a_timed_out_platform_apify_run_is_billed_on_400() -> None:
+    mk = MarketplaceCall(tool=None, upstream="", consumed=set(), provider="apify",
+                         endpoint_id="apify.weibo.search.posts",
+                         tier="platform", cost_type="per_result", estimate_micro=1_000)
+    assert call_settle._apify_run_timed_out(mk, 400, _TIMED_OUT)
+    failed = _TIMED_OUT.replace(b"TIMED-OUT", b"FAILED")
+    assert not call_settle._apify_run_timed_out(mk, 400, failed)
+    assert not call_settle._apify_run_timed_out(mk, 408, _TIMED_OUT)
+    assert not call_settle._apify_run_timed_out(mk, 400, b"not json")
+    assert not call_settle._apify_run_timed_out(mk, 400, b"[]")
+    mk.tier = "credential"
+    assert not call_settle._apify_run_timed_out(mk, 400, _TIMED_OUT)
