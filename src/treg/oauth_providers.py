@@ -1308,6 +1308,37 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+UNIPILE = OAuthProvider(
+    service="unipile",
+    display_name="Unipile",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Unipile API key",
+    # The key rides in X-API-KEY, never in the path or a query param.
+    token_header="X-API-KEY",
+    token_format="{secret}",
+    setup_url="https://dashboardv2.unipile.com/",
+    setup_action_label="Get your Unipile API key",
+    setup_steps=(
+        "Create an account on dashboardv2.unipile.com and open an application.",
+        "Copy the application's API key.",
+        "Connect at least one provider account (LinkedIn, WhatsApp, Instagram, Telegram, Gmail, "
+        "Outlook, IMAP or a calendar): the endpoints act on those connected accounts.",
+    ),
+    setup_note=(
+        "Billed per connected account per month, never per call: once an account is connected every "
+        "endpoint is included. Listing the connected accounts is free and is the health probe."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Act on the LinkedIn, WhatsApp, Instagram, Telegram, email and calendar accounts a person already owns.",
+    base_url="https://api.unipile.com",
+    docs_url="https://developer.unipile.com/v2.0/docs/welcome",
+    probe_path="/v2/accounts/",  # free — a bad key gets a 401 here
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -3577,7 +3608,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         REPLICATE,
         REAPI, PIAPI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
-        SCRAPECREATORS,
+        SCRAPECREATORS, UNIPILE,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, TAVILY, KEENABLE, OLOSTEP,
         SCRAPEGRAPHAI, SERPER, CLORO,

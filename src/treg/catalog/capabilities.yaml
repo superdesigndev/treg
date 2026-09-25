@@ -101,6 +101,9 @@ platforms:
   # --- Community -------------------------------------------------------------------------------
   slack: {label: "Slack", category: "Community", featured: 1, summary: "Read channels and post messages in your own Slack workspace via your bot token."}
   telegram: {label: "Telegram", category: "Community", featured: 2, summary: "Channel and chat data from Telegram."}
+  whatsapp: {label: "WhatsApp", category: "Community", summary: "Conversations and messages of a WhatsApp account you own."}
+  email: {label: "Email (Gmail, Outlook, IMAP)", category: "Community", summary: "Read and send from a mailbox you own, whichever provider hosts it."}
+  calendar: {label: "Calendar (Google, Outlook)", category: "Community", summary: "Events of a calendar you own."}
 
   # --- Advertising: own-account ad platforms ---------------------------------------------------
   microsoft-ads: {label: "Microsoft Advertising (Bing Ads)", category: "Advertising", summary: "Your Microsoft Advertising campaigns, spend and performance on the Bing network."}

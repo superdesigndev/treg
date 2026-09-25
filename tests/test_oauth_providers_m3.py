@@ -48,7 +48,7 @@ def test_every_provider_is_registered():
         "facebook", "instagram", "meta-ads",
         # API-key providers (auth_kind="key")
         "adyntel", "anyapi", "apollo", "pdl", "akta", "hunter", "sumble", "moltsets", "openmart", "harvestapi", "fetchinio", "dropleads", "quickenrich", "prospeo", "aiark", "wiza", "limadata", "getleadsio", "scrubby", "zerobounce", "datagma", "contactout", "millionverifier", "bounceban", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush", "justoneapi",
-        "scrapecreators",
+        "scrapecreators", "unipile",
         "dataforseo", "seranking", "moz", "majestic", "serpstat", "serper", "exa", "tavily", "keenable", "olostep", "scrapegraphai",
         "cloro",
         "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",

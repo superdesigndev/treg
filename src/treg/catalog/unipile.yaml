@@ -1,0 +1,1202 @@
+# Unipile — one API over the messaging, email and calendar accounts a person already owns.
+#
+# WHAT MAKES IT DIFFERENT from the linkedin.yaml entry already in this catalog: LinkedIn's own API
+# grants w_member_social, which permits exactly two things (identify the member, post to their
+# feed). Unipile drives the member's own account, so the inbox, the search, the invitations and the
+# engagement on a post are reachable — and the same routes serve WhatsApp, Instagram, Telegram,
+# Gmail, Outlook, any IMAP mailbox and Google/Microsoft calendars.
+#
+# ONE ROUTE, SEVERAL PLATFORMS: `/v2/{account_id}/chats` is provider-agnostic; the connected
+# account behind `account_id` decides whether it answers about LinkedIn or WhatsApp. The messaging
+# routes are therefore listed twice, once per platform shelf, with the same path — that is the
+# honest way to put them on both comparison shelves, not padding.
+#
+# LINKEDIN CLASSIC / SALES NAVIGATOR / RECRUITER are three different products on one account and
+# they are kept distinct here, because an agent that confuses them sends the wrong kind of message:
+# each has its own search route and its own inbox, and `/inboxes` is how you find out which ones
+# this account actually has.
+#
+# BILLING is per connected account per month (from 49 EUR), never per call: no per-request price
+# exists to publish, so every `cost` below is `free` with the subscription named in the note. That
+# also means the endpoints are NOT platform-eligible — a treg-held key with no connected account
+# answers nothing useful, so this listing is bring-your-own-key only.
+#
+# PROVENANCE: every path below is a route Unipile's own production MCP server calls today, not a
+# route read off a docs page; every `docs_url` slug and every `summary` is the operation's own
+# title from the published reference index.
+#
+# VERIFICATION: Unipile's Development applications provide Mock accounts that implement the whole
+# Methods surface (chats, messages, users, relations, posts, emails, calendars). Every test_request
+# below is written against a Mock account, so live verification touches no real LinkedIn or
+# WhatsApp and messages no real person.
+provider: unipile
+source:
+  docs: https://developer.unipile.com/v2.0/docs/welcome
+  reference: https://developer.unipile.com/v2.0/reference/
+  curated: 2026-09-25
+
+limits: "per-provider pacing enforced upstream (LinkedIn ~100 actions/day/account, WhatsApp 20 new chats/day); no global API quota"
+pricing_url: https://www.unipile.com/pricing-api/
+endpoints:
+  - id: unipile.account.connections.list
+    kind: account
+    capability: account.connections.list
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v2/accounts/
+    name: "Connected accounts"
+    summary: "List all Accounts"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "any connected account", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      queryParams:
+        limit: {type: integer, required: false, note: "page size", example: 20}
+        cursor: {type: string, required: false, note: "opaque cursor from the previous page's `cursor` field; do not build one by hand", example: "c3RhcnQ9MjA"}
+      note: "no parameter required. This is also the free health probe: a key that is invalid or revoked answers 401 api/invalid_credentials."
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free; Unipile bills per connected account per month, never per call"}
+    docs_url: https://developer.unipile.com/v2.0/reference/listaccounts
+
+  - id: unipile.account.identity
+    kind: account
+    capability: account.identity
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/users/me
+    name: "Who this account is"
+    summary: "Get a User Profile — `me` resolves to the owner of the connected account"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "any connected account", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      note: "the `me` alias is how you learn which real person's LinkedIn, WhatsApp or mailbox sits behind an account_id."
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getuserprofile
+
+  - id: unipile.linkedin.user.profile
+    capability: linkedin.user.profile
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /v2/{account_id}/users/{user_id}
+    name: "LinkedIn profile"
+    summary: "Get a User Profile"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        user_id: {type: string, required: true, note: "provider user id or public identifier — take it from a search result or from the last path segment of a profile URL, never the whole URL", example: "williamhgates"}
+      queryParams:
+        with_sections: {type: string, required: false, note: "repeatable: experience, education, skills, languages…", example: "experience"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", user_id: "{{MOCK_USER_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getuserprofile
+
+  - id: unipile.linkedin.search.people
+    capability: linkedin.search.people
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /v2/{account_id}/linkedin/search/people
+    name: "LinkedIn people search (Classic)"
+    summary: "Perform People Search"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      body:
+        keywords: {type: string, required: false, example: "head of operations logistics"}
+        limit: {type: integer, required: false, example: 10}
+      note: "Classic search. Sales Navigator and Recruiter are separate products with their own routes, listed below; an existing search URL can be replayed with POST /v2/{account_id}/linkedin/search."
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+      body: {keywords: "operations", limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account; counts against the account's daily action budget"}
+    docs_url: https://developer.unipile.com/v2.0/reference/performclassicpeoplesearch
+
+  - id: unipile.linkedin.search.companies
+    capability: linkedin.search.companies
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /v2/{account_id}/linkedin/search/companies
+    name: "LinkedIn company search"
+    summary: "Perform Companies Search"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      body:
+        keywords: {type: string, required: false, example: "third-party logistics"}
+        limit: {type: integer, required: false, example: 10}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+      body: {keywords: "logistics", limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/performclassiccompaniessearch
+
+  - id: unipile.linkedin.search.posts
+    capability: linkedin.search.posts
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /v2/{account_id}/linkedin/search/posts
+    name: "LinkedIn post search"
+    summary: "Perform Posts Search"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      body:
+        keywords: {type: string, required: false, example: "warehouse automation"}
+        limit: {type: integer, required: false, example: 10}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+      body: {keywords: "automation", limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/performclassicpostssearch
+
+  - id: unipile.linkedin.search.jobs
+    capability: linkedin.search.jobs
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /v2/{account_id}/linkedin/search/jobs
+    name: "LinkedIn job search"
+    summary: "Perform Jobs Search"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      body:
+        keywords: {type: string, required: false, example: "supply chain manager"}
+        limit: {type: integer, required: false, example: 10}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+      body: {keywords: "supply chain", limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/performclassicjobssearch
+
+  - id: unipile.linkedin.company.profile
+    capability: linkedin.company.profile
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /v2/{account_id}/linkedin/company/{company_id}
+    name: "LinkedIn company profile"
+    summary: "Get a Company Profile"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        company_id: {type: string, required: true, note: "company id or public identifier from a company search or a profile's experience block", example: "unipile"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", company_id: "{{MOCK_COMPANY_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getclassiccompanyprofile
+
+  - id: unipile.linkedin.job.detail
+    capability: linkedin.job.detail
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /v2/{account_id}/linkedin/jobs/{job_id}
+    name: "LinkedIn job posting"
+    summary: "Get a Job Posting"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        job_id: {type: string, required: true, note: "job id from a job search result", example: "3812345678"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", job_id: "{{MOCK_JOB_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getclassicjobposting
+
+  - id: unipile.linkedin.user.posts
+    capability: linkedin.user.posts
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /v2/{account_id}/users/{user_id}/posts
+    name: "Posts of a LinkedIn member"
+    summary: "List all User's Posts"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        user_id: {type: string, required: true, note: "provider user id, or `me` for the connected account itself", example: "me"}
+      queryParams:
+        offset: {type: integer, required: false, note: "0-based; prefer `cursor` where both are offered", example: 0}
+        limit: {type: integer, required: false, note: "page size", example: 20}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", user_id: "{{MOCK_USER_ID}}"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getpostslist
+
+  - id: unipile.linkedin.post.detail
+    capability: linkedin.post.detail
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /v2/{account_id}/posts/{post_id}
+    name: "LinkedIn post"
+    summary: "Get a Post"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        post_id: {type: string, required: true, note: "post id or share urn as returned by a post listing or a posts search — not the post URL", example: "urn:li:activity:7100000000000000000"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", post_id: "{{MOCK_POST_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getpost
+
+  - id: unipile.linkedin.post.comments
+    capability: linkedin.post.comments
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /v2/{account_id}/posts/{post_id}/comments
+    name: "Comments on a LinkedIn post"
+    summary: "List all Post's Comments"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        post_id: {type: string, required: true, note: "post id or share urn as returned by a post listing or a posts search — not the post URL", example: "urn:li:activity:7100000000000000000"}
+      queryParams:
+        offset: {type: integer, required: false, note: "0-based; prefer `cursor` where both are offered", example: 0}
+        limit: {type: integer, required: false, note: "page size", example: 20}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", post_id: "{{MOCK_POST_ID}}"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getpostcommentslist
+
+  - id: unipile.linkedin.post.reactions
+    capability: linkedin.post.reactions
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /v2/{account_id}/posts/{post_id}/reactions
+    name: "Reactions on a LinkedIn post"
+    summary: "List all Post's Reactions"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        post_id: {type: string, required: true, note: "post id or share urn as returned by a post listing or a posts search — not the post URL", example: "urn:li:activity:7100000000000000000"}
+      queryParams:
+        offset: {type: integer, required: false, note: "0-based; prefer `cursor` where both are offered", example: 0}
+        limit: {type: integer, required: false, note: "page size", example: 20}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", post_id: "{{MOCK_POST_ID}}"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getpostreactionslist
+
+  - id: unipile.linkedin.user.followers
+    capability: linkedin.user.followers
+    platform: linkedin
+    scope: any_account
+    method: GET
+    path: /v2/{account_id}/users/{user_id}/followers
+    name: "Followers of a LinkedIn member"
+    summary: "List Followers of a User"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        user_id: {type: string, required: true, note: "provider user id, or `me`", example: "me"}
+      queryParams:
+        offset: {type: integer, required: false, note: "0-based; prefer `cursor` where both are offered", example: 0}
+        limit: {type: integer, required: false, note: "page size", example: 20}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", user_id: "me"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/listuserfollowers
+
+  - id: unipile.linkedin.user.post.create
+    kind: action
+    capability: linkedin.user.post.create
+    platform: linkedin
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/posts
+    name: "Publish a LinkedIn post"
+    summary: "Create a Post"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      body:
+        text: {type: string, required: true, example: "We shipped the thing."}
+        visibility: {type: string, required: false, note: "public or connections", example: "public"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+      body: {text: "treg listing verification"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account; a write — do not retry after an ambiguous failure, read the feed back instead"}
+    docs_url: https://developer.unipile.com/v2.0/reference/createpost
+
+  - id: unipile.linkedin.inboxes.list
+    capability: linkedin.inboxes.list
+    platform: linkedin
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/inboxes
+    name: "LinkedIn inboxes (Classic, Sales Navigator, Recruiter)"
+    summary: "List all Inboxes"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      note: "one account can hold several products. CLASSIC_PRIMARY always exists; a Sales Navigator or Recruiter inbox appears only if that seat is active on the account. Read this before starting a conversation, or you send a plain message where an InMail was meant."
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getinboxeslist
+
+  - id: unipile.linkedin.dm.conversations.list
+    capability: linkedin.dm.conversations.list
+    platform: linkedin
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/chats
+    name: "LinkedIn conversations"
+    summary: "List all Chats"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      queryParams:
+        limit: {type: integer, required: false, note: "page size", example: 20}
+        cursor: {type: string, required: false, note: "opaque cursor from the previous page's `cursor` field; do not build one by hand", example: "c3RhcnQ9MjA"}
+        after: {type: string, required: false, note: "ISO 8601 UTC datetime; conversations whose last activity is after it", example: "2026-09-01T00:00:00.000Z"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getchatslist
+
+  - id: unipile.linkedin.dm.conversation.detail
+    capability: linkedin.dm.conversation.detail
+    platform: linkedin
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/chats/{chat_id}
+    name: "One LinkedIn conversation"
+    summary: "Get a Chat"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        chat_id: {type: string, required: true, note: "from the chat listing; a message id is scoped to its chat, so both ids travel together", example: "cht_01h2xd8m5kq7"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", chat_id: "{{MOCK_CHAT_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getchat
+
+  - id: unipile.linkedin.dm.inbox.conversations.list
+    capability: linkedin.dm.inbox.conversations.list
+    platform: linkedin
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/inboxes/{inbox_id}/chats
+    name: "Conversations of one LinkedIn inbox"
+    summary: "List Inbox Chats"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        inbox_id: {type: string, required: true, note: "from GET /v2/{account_id}/inboxes; CLASSIC_PRIMARY for the ordinary inbox", example: "CLASSIC_PRIMARY"}
+      queryParams:
+        limit: {type: integer, required: false, note: "page size", example: 20}
+        cursor: {type: string, required: false, note: "opaque cursor from the previous page's `cursor` field; do not build one by hand", example: "c3RhcnQ9MjA"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", inbox_id: "CLASSIC_PRIMARY"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getinboxchatslist
+
+  - id: unipile.linkedin.dm.messages.list
+    capability: linkedin.dm.messages.list
+    platform: linkedin
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/chats/{chat_id}/messages
+    name: "Messages of a LinkedIn conversation"
+    summary: "List all Chat Messages"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        chat_id: {type: string, required: true, note: "from the chat listing; a message id is scoped to its chat, so both ids travel together", example: "cht_01h2xd8m5kq7"}
+      queryParams:
+        limit: {type: integer, required: false, note: "page size", example: 20}
+        cursor: {type: string, required: false, note: "opaque cursor from the previous page's `cursor` field; do not build one by hand", example: "c3RhcnQ9MjA"}
+        after: {type: string, required: false, note: "ISO 8601 UTC datetime, filters on the message timestamp", example: "2026-09-24T00:00:00.000Z"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", chat_id: "{{MOCK_CHAT_ID}}"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getmessageslist
+
+  - id: unipile.linkedin.dm.message.send
+    kind: action
+    capability: linkedin.dm.message.send
+    platform: linkedin
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/chats/{chat_id}/messages/send
+    name: "Reply in a LinkedIn conversation"
+    summary: "Send a Message"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        chat_id: {type: string, required: true, note: "from the chat listing; a message id is scoped to its chat, so both ids travel together", example: "cht_01h2xd8m5kq7"}
+      body:
+        text: {type: string, required: true, example: "Thanks for getting back to me — Thursday works."}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", chat_id: "{{MOCK_CHAT_ID}}"}
+      body: {text: "treg listing verification"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account; a write — do not retry after an ambiguous failure, read the thread back instead"}
+    docs_url: https://developer.unipile.com/v2.0/reference/sendmessage
+
+  - id: unipile.linkedin.dm.conversation.create
+    kind: action
+    capability: linkedin.dm.conversation.create
+    platform: linkedin
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/inboxes/{inbox_id}/chats/send
+    name: "Start a LinkedIn conversation"
+    summary: "Start a Chat from Inbox"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        inbox_id: {type: string, required: true, note: "which product sends it: CLASSIC_PRIMARY, or a Sales Navigator / Recruiter inbox id from GET /v2/{account_id}/inboxes. Sales Navigator requires a subject; Recruiter may require a subject and a signature.", example: "CLASSIC_PRIMARY"}
+      body:
+        users_ids: {type: string, required: true, note: "stable provider user id of the recipient, resolved from a profile or a search — never a linkedin.com URL. An array requests a group conversation.", example: "ACoAAB1t7cUBxxxxxxxxxxxxxxxxxxxxxxxx"}
+        text: {type: string, required: true, example: "Happy to connect after your post on logistics."}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", inbox_id: "CLASSIC_PRIMARY"}
+      body: {users_ids: "{{MOCK_USER_ID}}", text: "treg listing verification"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account; a write, and LinkedIn paces new conversations per account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/startchatfrominbox
+
+  - id: unipile.linkedin.invitations.list
+    capability: linkedin.invitations.list
+    platform: linkedin
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/users/me/relation-requests
+    name: "Pending LinkedIn invitations"
+    summary: "List all pending Relation / Follow requests"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      queryParams:
+        type: {type: string, required: false, note: "sent or received", example: "sent"}
+        limit: {type: integer, required: false, note: "page size", example: 20}
+        cursor: {type: string, required: false, note: "opaque cursor from the previous page's `cursor` field; do not build one by hand", example: "c3RhcnQ9MjA"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+      queryParams: {type: "sent", limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getrelationrequestslist
+
+  - id: unipile.linkedin.invitation.send
+    kind: action
+    capability: linkedin.invitation.send
+    platform: linkedin
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/users/me/relation-requests
+    name: "Send a LinkedIn invitation"
+    summary: "Send a Relation request"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      body:
+        user_id: {type: string, required: true, note: "stable provider user id from a search or a profile read, never a URL", example: "ACoAAB1t7cUBxxxxxxxxxxxxxxxxxxxxxxxx"}
+        message: {type: string, required: false, note: "invitation note; LinkedIn caps how many noted invitations a free account may send", example: "Happy to connect after your post on logistics."}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+      body: {user_id: "{{MOCK_USER_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account; LinkedIn's refusals come back as typed errors (already invited, three-week cooldown, noted-invitation quota), so an agent can stop instead of retrying"}
+    docs_url: https://developer.unipile.com/v2.0/reference/createrelationrequest
+
+  - id: unipile.linkedin.invitation.accept
+    kind: action
+    capability: linkedin.invitation.accept
+    platform: linkedin
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/users/me/relation-requests/{request_id}/accept
+    name: "Accept a LinkedIn invitation"
+    summary: "Accept a Relation request"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        request_id: {type: string, required: true, note: "id from the received invitations listing, not the inviter's user id", example: "inv_01h2xdabc9"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", request_id: "{{MOCK_INVITATION_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/acceptrelationrequest
+
+  - id: unipile.linkedin.relations.list
+    capability: linkedin.relations.list
+    platform: linkedin
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/users/{user_id}/relations
+    name: "LinkedIn connections"
+    summary: "List Relations of a User"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        user_id: {type: string, required: true, note: "`me` for the connected account's own connections", example: "me"}
+      queryParams:
+        cursor: {type: string, required: false, note: "opaque cursor from the previous page's `cursor` field; do not build one by hand", example: "c3RhcnQ9MjA"}
+        search: {type: string, required: false, note: "narrows to connections whose name matches", example: "ada"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", user_id: "me"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getuserrelations
+
+  - id: unipile.linkedin.post.comment.create
+    kind: action
+    capability: linkedin.post.comment.create
+    platform: linkedin
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/posts/{post_id}/comments
+    name: "Comment on a LinkedIn post"
+    summary: "Add Comment to a Post"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        post_id: {type: string, required: true, note: "post id or share urn as returned by a post listing or a posts search — not the post URL", example: "urn:li:activity:7100000000000000000"}
+      body:
+        text: {type: string, required: true, example: "Useful breakdown — the second point matches what we see."}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", post_id: "{{MOCK_POST_ID}}"}
+      body: {text: "treg listing verification"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account; a write — a retry posts a second comment, so read the comment list back instead"}
+    docs_url: https://developer.unipile.com/v2.0/reference/addpostcomment
+
+  - id: unipile.linkedin.post.reaction.add
+    kind: action
+    capability: linkedin.post.reaction.add
+    platform: linkedin
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/posts/{post_id}/reactions
+    name: "React to a LinkedIn post"
+    summary: "Add Reaction to a Post"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+        post_id: {type: string, required: true, note: "post id or share urn as returned by a post listing or a posts search — not the post URL", example: "urn:li:activity:7100000000000000000"}
+      body:
+        reaction: {type: string, required: true, note: "like, celebrate, support, love, insightful, funny", example: "like"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}", post_id: "{{MOCK_POST_ID}}"}
+      body: {reaction: "like"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/addpostreaction
+
+  - id: unipile.linkedin.company.pages.managed
+    capability: linkedin.company.pages.managed
+    platform: linkedin
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/linkedin/company/pages
+    name: "Company pages this account administers"
+    summary: "List Managed Company Pages"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      note: "which pages the member may post as; an empty list means the account can only post to its own feed."
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getmanagedcompanypages
+
+  - id: unipile.linkedin.inmail.credits
+    capability: linkedin.inmail.credits
+    platform: linkedin
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/linkedin/inmail-credits
+    name: "InMail credits left"
+    summary: "Get InMail Credits"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      note: "read this before an InMail campaign: credits are the hard limit, and a refusal mid-sequence is worse than not starting."
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getinmailcredits
+
+  - id: unipile.linkedin.sales_navigator.search.people
+    capability: linkedin.sales_navigator.search.people
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /v2/{account_id}/linkedin/sales-navigator/search/people
+    name: "Sales Navigator people search"
+    summary: "Perform People Search — Sales Navigator"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      body:
+        keywords: {type: string, required: false, example: "vp operations"}
+        limit: {type: integer, required: false, example: 10}
+      note: "a different product from Classic search, with its own filters and its own seat requirement; it answers only if a Sales Navigator seat is active on the account."
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+      body: {keywords: "operations", limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/performsalespeoplesearch
+
+  - id: unipile.linkedin.recruiter.search.people
+    capability: linkedin.recruiter.search.people
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /v2/{account_id}/linkedin/recruiter/search/people
+    name: "Recruiter people search"
+    summary: "Perform People Search — Recruiter"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected LinkedIn account, from GET /v2/accounts/", example: "acc_01h2xcejqtf2nbrexx3vqjhp41"}
+      body:
+        keywords: {type: string, required: false, example: "warehouse supervisor"}
+        limit: {type: integer, required: false, example: 10}
+      note: "requires an active Recruiter seat on the account."
+    test_request:
+      pathParams: {account_id: "{{MOCK_LINKEDIN_ACCOUNT_ID}}"}
+      body: {keywords: "supervisor", limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/performrecruiterpeoplesearch
+
+  - id: unipile.whatsapp.dm.conversations.list
+    capability: whatsapp.dm.conversations.list
+    platform: whatsapp
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/chats
+    name: "WhatsApp conversations"
+    summary: "List all Chats"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected WhatsApp account — the same routes as LinkedIn, the account behind the id decides the platform", example: "acc_01h2xd0waqkm8bzb6y1n3cvt77"}
+      queryParams:
+        limit: {type: integer, required: false, note: "page size", example: 20}
+        cursor: {type: string, required: false, note: "opaque cursor from the previous page's `cursor` field; do not build one by hand", example: "c3RhcnQ9MjA"}
+        type: {type: string, required: false, note: "1to1, group or channel", example: "1to1"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_WHATSAPP_ACCOUNT_ID}}"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getchatslist
+
+  - id: unipile.whatsapp.dm.conversation.detail
+    capability: whatsapp.dm.conversation.detail
+    platform: whatsapp
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/chats/{chat_id}
+    name: "One WhatsApp conversation"
+    summary: "Get a Chat"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected WhatsApp account — the same routes as LinkedIn, the account behind the id decides the platform", example: "acc_01h2xd0waqkm8bzb6y1n3cvt77"}
+        chat_id: {type: string, required: true, note: "from the chat listing; a message id is scoped to its chat, so both ids travel together", example: "cht_01h2xd8m5kq7"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_WHATSAPP_ACCOUNT_ID}}", chat_id: "{{MOCK_CHAT_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getchat
+
+  - id: unipile.whatsapp.dm.messages.list
+    capability: whatsapp.dm.messages.list
+    platform: whatsapp
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/chats/{chat_id}/messages
+    name: "Messages of a WhatsApp conversation"
+    summary: "List all Chat Messages"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected WhatsApp account — the same routes as LinkedIn, the account behind the id decides the platform", example: "acc_01h2xd0waqkm8bzb6y1n3cvt77"}
+        chat_id: {type: string, required: true, note: "from the chat listing; a message id is scoped to its chat, so both ids travel together", example: "cht_01h2xd8m5kq7"}
+      queryParams:
+        limit: {type: integer, required: false, note: "page size", example: 20}
+        cursor: {type: string, required: false, note: "opaque cursor from the previous page's `cursor` field; do not build one by hand", example: "c3RhcnQ9MjA"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_WHATSAPP_ACCOUNT_ID}}", chat_id: "{{MOCK_CHAT_ID}}"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getmessageslist
+
+  - id: unipile.whatsapp.dm.message.send
+    kind: action
+    capability: whatsapp.dm.message.send
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/chats/{chat_id}/messages/send
+    name: "Reply in a WhatsApp conversation"
+    summary: "Send a Message"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected WhatsApp account — the same routes as LinkedIn, the account behind the id decides the platform", example: "acc_01h2xd0waqkm8bzb6y1n3cvt77"}
+        chat_id: {type: string, required: true, note: "from the chat listing; a message id is scoped to its chat, so both ids travel together", example: "cht_01h2xd8m5kq7"}
+      body:
+        text: {type: string, required: true, example: "Sending the quote now."}
+    test_request:
+      pathParams: {account_id: "{{MOCK_WHATSAPP_ACCOUNT_ID}}", chat_id: "{{MOCK_CHAT_ID}}"}
+      body: {text: "treg listing verification"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account; a write — do not retry after an ambiguous failure, read the thread back instead"}
+    docs_url: https://developer.unipile.com/v2.0/reference/sendmessage
+
+  - id: unipile.whatsapp.dm.conversation.create
+    kind: action
+    capability: whatsapp.dm.conversation.create
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/chats/send
+    name: "Start a WhatsApp conversation"
+    summary: "Start a Chat"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected WhatsApp account — the same routes as LinkedIn, the account behind the id decides the platform", example: "acc_01h2xd0waqkm8bzb6y1n3cvt77"}
+      body:
+        users_ids: {type: string, required: true, note: "the recipient's number in international format without the leading +; an array requests a group", example: "33612345678"}
+        text: {type: string, required: true, example: "Hi Ada, sending the quote now."}
+      note: "to answer inside a conversation that already exists, use the chat-scoped send route instead — starting a new one where a thread exists splits the history."
+    test_request:
+      pathParams: {account_id: "{{MOCK_WHATSAPP_ACCOUNT_ID}}"}
+      body: {users_ids: "{{MOCK_ATTENDEE_ID}}", text: "treg listing verification"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account; WhatsApp allows only a limited number of brand-new conversations per day per account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/startchat
+
+  - id: unipile.whatsapp.dm.message.read
+    kind: action
+    capability: whatsapp.dm.message.read
+    platform: whatsapp
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/chats/{chat_id}/messages/{message_id}/read
+    name: "Mark a WhatsApp message read"
+    summary: "Read a Message"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected WhatsApp account — the same routes as LinkedIn, the account behind the id decides the platform", example: "acc_01h2xd0waqkm8bzb6y1n3cvt77"}
+        chat_id: {type: string, required: true, note: "from the chat listing; a message id is scoped to its chat, so both ids travel together", example: "cht_01h2xd8m5kq7"}
+        message_id: {type: string, required: true, note: "from the message listing of that same chat", example: "msg_01h2xd9p2n"}
+      note: "sends a read receipt to the other person — visible to them, so it is a write, not bookkeeping."
+    test_request:
+      pathParams: {account_id: "{{MOCK_WHATSAPP_ACCOUNT_ID}}", chat_id: "{{MOCK_CHAT_ID}}", message_id: "{{MOCK_MESSAGE_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/readmessage
+
+  - id: unipile.whatsapp.dm.attachment.download
+    capability: whatsapp.dm.attachment.download
+    platform: whatsapp
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/chats/{chat_id}/messages/{message_id}/attachments/{attachment_id}
+    name: "Download a WhatsApp attachment"
+    summary: "Get a Message Attachment"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected WhatsApp account — the same routes as LinkedIn, the account behind the id decides the platform", example: "acc_01h2xd0waqkm8bzb6y1n3cvt77"}
+        chat_id: {type: string, required: true, note: "from the chat listing; a message id is scoped to its chat, so both ids travel together", example: "cht_01h2xd8m5kq7"}
+        message_id: {type: string, required: true, note: "from the message listing of that same chat", example: "msg_01h2xd9p2n"}
+        attachment_id: {type: string, required: true, note: "from the message's attachments array", example: "att_01h2xdz4"}
+      note: "returns the binary, not JSON — a voice note or an image that the text of the message alone does not carry."
+    test_request:
+      pathParams: {account_id: "{{MOCK_WHATSAPP_ACCOUNT_ID}}", chat_id: "{{MOCK_CHAT_ID}}", message_id: "{{MOCK_MESSAGE_ID}}", attachment_id: "{{MOCK_ATTACHMENT_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getattachment
+
+  - id: unipile.whatsapp.dm.participants.list
+    capability: whatsapp.dm.participants.list
+    platform: whatsapp
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/chats/{chat_id}/participants
+    name: "Participants of a WhatsApp conversation"
+    summary: "List all Chat Participants"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected WhatsApp account — the same routes as LinkedIn, the account behind the id decides the platform", example: "acc_01h2xd0waqkm8bzb6y1n3cvt77"}
+        chat_id: {type: string, required: true, note: "from the chat listing; a message id is scoped to its chat, so both ids travel together", example: "cht_01h2xd8m5kq7"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_WHATSAPP_ACCOUNT_ID}}", chat_id: "{{MOCK_CHAT_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getparticipantslist
+
+  - id: unipile.whatsapp.contacts.list
+    capability: whatsapp.contacts.list
+    platform: whatsapp
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/contacts
+    name: "WhatsApp contacts"
+    summary: "List contacts"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected WhatsApp account — the same routes as LinkedIn, the account behind the id decides the platform", example: "acc_01h2xd0waqkm8bzb6y1n3cvt77"}
+      queryParams:
+        limit: {type: integer, required: false, note: "page size", example: 20}
+        cursor: {type: string, required: false, note: "opaque cursor from the previous page's `cursor` field; do not build one by hand", example: "c3RhcnQ9MjA"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_WHATSAPP_ACCOUNT_ID}}"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getcontactslist
+
+  - id: unipile.email.messages.list
+    capability: email.messages.list
+    platform: email
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/emails
+    name: "Emails of a connected mailbox"
+    summary: "List all Emails"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Gmail, Outlook or generic IMAP mailbox", example: "acc_01h2xd3mailv9q0k7rt2xwzb54"}
+      queryParams:
+        limit: {type: integer, required: false, note: "page size", example: 20}
+        cursor: {type: string, required: false, note: "opaque cursor from the previous page's `cursor` field; do not build one by hand", example: "c3RhcnQ9MjA"}
+        any_email: {type: string, required: false, note: "address on either side of the exchange", example: "ada@example.com"}
+        after: {type: string, required: false, note: "ISO 8601 UTC datetime; Gmail and IMAP both honour it exactly", example: "2026-09-24T00:00:00.000Z"}
+        role: {type: string, required: false, note: "inbox, sent, draft…", example: "inbox"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_MAIL_ACCOUNT_ID}}"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getemailslist
+
+  - id: unipile.email.message.detail
+    capability: email.message.detail
+    platform: email
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/emails/{email_id}
+    name: "One email"
+    summary: "Get an Email"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Gmail, Outlook or generic IMAP mailbox", example: "acc_01h2xd3mailv9q0k7rt2xwzb54"}
+        email_id: {type: string, required: true, note: "id from the email listing; provider message ids are not interchangeable between accounts", example: "eml_01h2xdm7q4"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_MAIL_ACCOUNT_ID}}", email_id: "{{MOCK_EMAIL_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getemail
+
+  - id: unipile.email.message.send
+    kind: action
+    capability: email.message.send
+    platform: email
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/emails/send
+    name: "Send an email"
+    summary: "Send an Email"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Gmail, Outlook or generic IMAP mailbox", example: "acc_01h2xd3mailv9q0k7rt2xwzb54"}
+      body:
+        to: {type: array, required: true, note: "list of {identifier, display_name}", example: [{identifier: "ada@example.com"}]}
+        subject: {type: string, required: false, example: "The quote you asked for"}
+        body: {type: string, required: false, example: "Hi Ada, here it is."}
+    test_request:
+      pathParams: {account_id: "{{MOCK_MAIL_ACCOUNT_ID}}"}
+      body: {to: [{identifier: "verification@example.com"}], subject: "treg listing verification", body: "verification"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account; a write — a retry after an ambiguous failure sends the mail twice"}
+    docs_url: https://developer.unipile.com/v2.0/reference/sendemail
+
+  - id: unipile.email.message.read
+    kind: action
+    capability: email.message.read
+    platform: email
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/emails/{email_id}/read
+    name: "Mark an email read"
+    summary: "Read an Email"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Gmail, Outlook or generic IMAP mailbox", example: "acc_01h2xd3mailv9q0k7rt2xwzb54"}
+        email_id: {type: string, required: true, note: "id from the email listing; provider message ids are not interchangeable between accounts", example: "eml_01h2xdm7q4"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_MAIL_ACCOUNT_ID}}", email_id: "{{MOCK_EMAIL_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/reademail
+
+  - id: unipile.email.message.trash
+    kind: action
+    capability: email.message.trash
+    platform: email
+    scope: own_account
+    method: DELETE
+    path: /v2/{account_id}/emails/{email_id}
+    name: "Move an email to trash"
+    summary: "Trash an Email"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Gmail, Outlook or generic IMAP mailbox", example: "acc_01h2xd3mailv9q0k7rt2xwzb54"}
+        email_id: {type: string, required: true, note: "id from the email listing; provider message ids are not interchangeable between accounts", example: "eml_01h2xdm7q4"}
+      note: "moves to the trash folder; it does not erase the message."
+    test_request:
+      pathParams: {account_id: "{{MOCK_MAIL_ACCOUNT_ID}}", email_id: "{{MOCK_EMAIL_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/trashemail
+
+  - id: unipile.email.thread.detail
+    capability: email.thread.detail
+    platform: email
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/threads/{thread_id}
+    name: "An email thread"
+    summary: "Get a Thread"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Gmail, Outlook or generic IMAP mailbox", example: "acc_01h2xd3mailv9q0k7rt2xwzb54"}
+        thread_id: {type: string, required: true, note: "thread id carried by each email in the listing", example: "thr_01h2xdn8s2"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_MAIL_ACCOUNT_ID}}", thread_id: "{{MOCK_THREAD_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getthread
+
+  - id: unipile.email.attachment.download
+    capability: email.attachment.download
+    platform: email
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/emails/{email_id}/attachments/{attachment_id}
+    name: "Download an email attachment"
+    summary: "Get an Email Attachment"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Gmail, Outlook or generic IMAP mailbox", example: "acc_01h2xd3mailv9q0k7rt2xwzb54"}
+        email_id: {type: string, required: true, note: "id from the email listing; provider message ids are not interchangeable between accounts", example: "eml_01h2xdm7q4"}
+        attachment_id: {type: string, required: true, note: "from the email's attachments array", example: "att_01h2xdp1"}
+      note: "returns the binary."
+    test_request:
+      pathParams: {account_id: "{{MOCK_MAIL_ACCOUNT_ID}}", email_id: "{{MOCK_EMAIL_ID}}", attachment_id: "{{MOCK_ATTACHMENT_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getattachment1
+
+  - id: unipile.email.folders.list
+    capability: email.folders.list
+    platform: email
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/folders
+    name: "Mailbox folders"
+    summary: "List all Folders"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Gmail, Outlook or generic IMAP mailbox", example: "acc_01h2xd3mailv9q0k7rt2xwzb54"}
+      queryParams:
+        limit: {type: integer, required: false, note: "page size", example: 20}
+        cursor: {type: string, required: false, note: "opaque cursor from the previous page's `cursor` field; do not build one by hand", example: "c3RhcnQ9MjA"}
+      note: "folder ids differ per provider — Gmail labels and IMAP folders are not the same objects, so resolve the id here rather than passing a display name."
+    test_request:
+      pathParams: {account_id: "{{MOCK_MAIL_ACCOUNT_ID}}"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getfolderslist
+
+  - id: unipile.email.drafts.list
+    capability: email.drafts.list
+    platform: email
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/drafts
+    name: "Drafts"
+    summary: "List all Drafts"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Gmail, Outlook or generic IMAP mailbox", example: "acc_01h2xd3mailv9q0k7rt2xwzb54"}
+      queryParams:
+        limit: {type: integer, required: false, note: "page size", example: 20}
+        cursor: {type: string, required: false, note: "opaque cursor from the previous page's `cursor` field; do not build one by hand", example: "c3RhcnQ9MjA"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_MAIL_ACCOUNT_ID}}"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getdraftslist
+
+  - id: unipile.email.draft.create
+    kind: action
+    capability: email.draft.create
+    platform: email
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/drafts
+    name: "Create a draft"
+    summary: "Create a Draft"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Gmail, Outlook or generic IMAP mailbox", example: "acc_01h2xd3mailv9q0k7rt2xwzb54"}
+      body:
+        to: {type: array, required: true, example: [{identifier: "ada@example.com"}]}
+        subject: {type: string, required: false, example: "The quote you asked for"}
+        body: {type: string, required: false, example: "Hi Ada, here it is."}
+      note: "the safe half of send: an agent that is unsure can leave the message for a human to approve."
+    test_request:
+      pathParams: {account_id: "{{MOCK_MAIL_ACCOUNT_ID}}"}
+      body: {to: [{identifier: "verification@example.com"}], subject: "treg listing verification"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/createdraft
+
+  - id: unipile.email.draft.send
+    kind: action
+    capability: email.draft.send
+    platform: email
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/drafts/{draft_id}/send
+    name: "Send a draft"
+    summary: "Send a Draft"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Gmail, Outlook or generic IMAP mailbox", example: "acc_01h2xd3mailv9q0k7rt2xwzb54"}
+        draft_id: {type: string, required: true, note: "id returned when the draft was created", example: "drf_01h2xdq5"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_MAIL_ACCOUNT_ID}}", draft_id: "{{MOCK_DRAFT_ID}}"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account; a write — a retry sends the draft twice"}
+    docs_url: https://developer.unipile.com/v2.0/reference/senddraft
+
+  - id: unipile.calendar.calendars.list
+    capability: calendar.calendars.list
+    platform: calendar
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/calendars
+    name: "Calendars of an account"
+    summary: "List all Calendars"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Google or Microsoft account", example: "acc_01h2xd4calz6p8n5sq9fjm1e08"}
+      queryParams:
+        limit: {type: integer, required: false, note: "page size", example: 20}
+        cursor: {type: string, required: false, note: "opaque cursor from the previous page's `cursor` field; do not build one by hand", example: "c3RhcnQ9MjA"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_CALENDAR_ACCOUNT_ID}}"}
+      queryParams: {limit: 5}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getcalendarslist
+
+  - id: unipile.calendar.events.list
+    capability: calendar.events.list
+    platform: calendar
+    scope: own_account
+    method: GET
+    path: /v2/{account_id}/calendars/{calendar_id}/events
+    name: "Calendar events"
+    summary: "List all calendar events"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Google or Microsoft account", example: "acc_01h2xd4calz6p8n5sq9fjm1e08"}
+        calendar_id: {type: string, required: true, note: "exact id from the calendar listing — a display name is not a calendar_id", example: "primary"}
+      queryParams:
+        start: {type: string, required: false, note: "ISO 8601 lower bound", example: "2026-09-25T00:00:00.000Z"}
+        end: {type: string, required: false, example: "2026-09-26T00:00:00.000Z"}
+        limit: {type: integer, required: false, note: "page size", example: 20}
+    test_request:
+      pathParams: {account_id: "{{MOCK_CALENDAR_ACCOUNT_ID}}", calendar_id: "{{MOCK_CALENDAR_ID}}"}
+      queryParams: {start: "2026-09-25T00:00:00.000Z", end: "2026-09-26T00:00:00.000Z"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/getcalendareventlist
+
+  - id: unipile.calendar.event.create
+    kind: action
+    capability: calendar.event.create
+    platform: calendar
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/calendars/{calendar_id}/events
+    name: "Create a calendar event"
+    summary: "Create a calendar event"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Google or Microsoft account", example: "acc_01h2xd4calz6p8n5sq9fjm1e08"}
+        calendar_id: {type: string, required: true, note: "exact id from the calendar listing — a display name is not a calendar_id", example: "primary"}
+      body:
+        title: {type: string, required: true, example: "Quote walkthrough"}
+        start: {type: string, required: true, note: "ISO 8601 with an explicit offset or Z — a naive local time is the usual way to book the wrong hour", example: "2026-09-28T14:00:00.000Z"}
+        end: {type: string, required: true, example: "2026-09-28T14:30:00.000Z"}
+        attendees: {type: array, required: false, example: [{identifier: "ada@example.com"}]}
+    test_request:
+      pathParams: {account_id: "{{MOCK_CALENDAR_ACCOUNT_ID}}", calendar_id: "{{MOCK_CALENDAR_ID}}"}
+      body: {title: "treg listing verification", start: "2026-09-28T14:00:00.000Z", end: "2026-09-28T14:30:00.000Z"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account; a write, and it emails the attendees — a retry invites them twice"}
+    docs_url: https://developer.unipile.com/v2.0/reference/createcalendarevent
+
+  - id: unipile.calendar.event.rsvp
+    kind: action
+    capability: calendar.event.rsvp
+    platform: calendar
+    scope: own_account
+    method: POST
+    path: /v2/{account_id}/calendars/{calendar_id}/events/{event_id}/rsvp
+    name: "Answer an invitation"
+    summary: "Respond to a calendar event"
+    input:
+      pathParams:
+        account_id: {type: string, required: true, note: "a connected Google or Microsoft account", example: "acc_01h2xd4calz6p8n5sq9fjm1e08"}
+        calendar_id: {type: string, required: true, note: "exact id from the calendar listing — a display name is not a calendar_id", example: "primary"}
+        event_id: {type: string, required: true, note: "from the event listing", example: "evt_01h2xdr9"}
+      body:
+        response: {type: string, required: true, note: "accepted, declined or tentative", example: "accepted"}
+    test_request:
+      pathParams: {account_id: "{{MOCK_CALENDAR_ACCOUNT_ID}}", calendar_id: "{{MOCK_CALENDAR_ID}}", event_id: "{{MOCK_EVENT_ID}}"}
+      body: {response: "accepted"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "included with the connected account"}
+    docs_url: https://developer.unipile.com/v2.0/reference/setcalendareventrsvp
+
+proposed_capabilities:
+  account.connections.list: "List the provider accounts connected to your credential"
+  linkedin.search.companies: "Search companies by name or keyword"
+  linkedin.inboxes.list: "List the LinkedIn inboxes a connected account holds (Classic, Sales Navigator, Recruiter)"
+  linkedin.dm.conversations.list: "List your LinkedIn inbox conversations"
+  linkedin.dm.conversation.detail: "Get one conversation's participants and unread state"
+  linkedin.dm.inbox.conversations.list: "List the conversations of one LinkedIn inbox (Classic, Sales Navigator or Recruiter)"
+  linkedin.dm.messages.list: "Read the messages of a conversation"
+  linkedin.dm.message.send: "Send a message in an existing conversation"
+  linkedin.dm.conversation.create: "Start a new conversation by sending its first message"
+  linkedin.invitations.list: "List pending connection invitations, sent or received"
+  linkedin.invitation.send: "Send a connection invitation"
+  linkedin.invitation.accept: "Accept a pending connection invitation"
+  linkedin.relations.list: "List the connections of an account"
+  linkedin.post.comment.create: "Comment on a post"
+  linkedin.post.reaction.add: "React to a post"
+  linkedin.company.pages.managed: "List the company pages the account can post as"
+  linkedin.inmail.credits: "Check how many InMail credits are left"
+  linkedin.sales_navigator.search.people: "Search people with Sales Navigator's filters"
+  linkedin.recruiter.search.people: "Search people with Recruiter's filters"
+  whatsapp.dm.conversations.list: "List your WhatsApp conversations"
+  whatsapp.dm.conversation.detail: "Get one conversation's participants and unread state"
+  whatsapp.dm.messages.list: "Read the messages of a conversation"
+  whatsapp.dm.message.send: "Send a message in an existing conversation"
+  whatsapp.dm.conversation.create: "Start a new conversation by sending its first message"
+  whatsapp.dm.message.read: "Mark a message as read"
+  whatsapp.dm.attachment.download: "Download a file or voice note sent in a conversation"
+  whatsapp.dm.participants.list: "List who is in a group conversation"
+  whatsapp.contacts.list: "List the contacts of a connected account"
+  email.messages.list: "List the emails of a connected mailbox"
+  email.message.detail: "Read one email in full, with its body and attachment list"
+  email.message.send: "Send an email from a connected mailbox"
+  email.message.read: "Mark an email as read"
+  email.message.trash: "Move an email to the trash"
+  email.thread.detail: "Read a whole email conversation in order"
+  email.attachment.download: "Download a file attached to an email"
+  email.folders.list: "List a mailbox's folders or labels"
+  email.drafts.list: "List the drafts of a connected mailbox"
+  email.draft.create: "Save an email as a draft instead of sending it"
+  email.draft.send: "Send a draft that was prepared earlier"
+  calendar.calendars.list: "List the calendars of a connected account"
+  calendar.events.list: "List the events of a calendar"
+  calendar.event.create: "Create an event on a calendar"
+  calendar.event.rsvp: "Accept or decline a calendar invitation"
