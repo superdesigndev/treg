@@ -186,10 +186,7 @@ def _app_version() -> str:
     if _app_version_cache is None or _app_version_cache[0] != mtime:
         digest = hashlib.sha256(index.read_bytes()).hexdigest()[:12]
         _app_version_cache = (mtime, digest)
-    settings = get_settings()
-    rollout = (settings.dashboard_rollout_enabled, settings.dashboard_rollout_percent,
-               sorted(settings.dashboard_rollout_user_ids))
-    return hashlib.sha256(f"{_app_version_cache[1]}:{rollout}".encode()).hexdigest()[:12]
+    return _app_version_cache[1]
 
 
 @app.get("/meta")

@@ -578,9 +578,6 @@ class Settings(BaseSettings):
     # response, which is an unauthenticated account-takeover vector in prod — so it defaults OFF and
     # must be explicitly enabled (TREG_EMAIL_DEV_MODE=true) for local testing without a mail sender.
     email_dev_mode: bool = False
-    dashboard_rollout_enabled: bool = False
-    dashboard_rollout_percent: int = Field(default=0, ge=0, le=100)
-    dashboard_rollout_user_ids: set[PositiveInt] = Field(default_factory=set)
     frontend_dev: bool = False  # Local SQLite development only; use Vite module scripts.
 
     # The WHOLE email-domain blocklist (TREG_BLOCKED_EMAIL_DOMAINS), comma-separated:

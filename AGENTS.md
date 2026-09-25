@@ -156,11 +156,6 @@ so parallel runs and side-by-side runs never share one.
   `[server]` extra, the certificate authority is `[proxy]`. Never import a heavy dependency at the
   top of a CLI-path module; the "Lightweight CLI modules" import-linter contract lists them and
   fails the build.
-- **Frontend rollout.** `frontend/README.md` documents account assignment and rollback.
-  `src/treg/web/dashboard-legacy/` is **deprecated**, retained only for temporary rollout and
-  rollback. Never hand-edit it or mirror new features/fixes into it; `frontend/` is the only
-  maintained Dashboard source. Follow the retirement checklist in `frontend/README.md` to remove
-  it after rollout; at 100% every entry, anonymous included, already serves the new app.
 - **The dashboard** lives in `frontend/` (Vue components, TypeScript entry/transport, Vite).
   Build with `bash scripts/build-dashboard.sh`; generated assets in `src/treg/web/dashboard/`
   ship with Python. Run `npm --prefix frontend test` and `npm --prefix frontend run test:e2e`.

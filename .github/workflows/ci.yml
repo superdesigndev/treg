@@ -211,11 +211,7 @@ jobs:
               assert assets, 'Dashboard entry must reference compiled assets'
               for asset in assets:
                   assert wheel.read('treg/web/dashboard/' + asset)
-              legacy = wheel.read('treg/web/dashboard-legacy/index.html').decode()
-              legacy_assets = re.findall(r'/app/legacy/(assets/[^"\s]+)', legacy)
-              assert legacy_assets
-              for asset in legacy_assets:
-                  assert wheel.read('treg/web/dashboard-legacy/' + asset)
+              assert not [name for name in wheel.namelist() if 'dashboard-legacy' in name]
               arena = wheel.read('treg/web/enrich-arena.html').decode()
               for asset in re.findall(r'src="(/vendor/vue-[^"\s]+)"', arena):
                   assert wheel.read('treg/web' + asset)

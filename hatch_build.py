@@ -14,17 +14,9 @@ class CustomBuildHook(BuildHookInterface):
             raise RuntimeError(
                 "Dashboard assets are missing. Run bash scripts/build-dashboard.sh before uv build."
             )
-        legacy = Path(self.root) / "src/treg/web/dashboard-legacy/index.html"
-        if not legacy.is_file():
-            raise RuntimeError("Frozen legacy dashboard is missing; both frontends must ship during rollout.")
         build_data["artifacts"].append("src/treg/web/dashboard/**")
-        web = legacy.parent.parent
-        for page in [legacy, web / "enrich-arena.html"]:
-            for url in re.findall(r'src="([^"]*/vendor/vue-[^"]+\.js)"', page.read_text()):
-                relative = url.replace("/app/legacy/", "dashboard-legacy/").lstrip("/")
-                if not (web / relative).is_file():
-                    raise RuntimeError("Vue runtime is missing. Run bash scripts/build-dashboard.sh.")
-        build_data["artifacts"].extend([
-            "src/treg/web/vendor/*.js", "src/treg/web/vendor/LICENSE",
-            "src/treg/web/dashboard-legacy/assets/*/vendor/**",
-        ])
+        web = index.parent.parent
+        for url in re.findall(r'src="([^"]*/vendor/vue-[^"]+\.js)"', (web / "enrich-arena.html").read_text()):
+            if not (web / url.lstrip("/")).is_file():
+                raise RuntimeError("Vue runtime is missing. Run bash scripts/build-dashboard.sh.")
+        build_data["artifacts"].extend(["src/treg/web/vendor/*.js", "src/treg/web/vendor/LICENSE"])

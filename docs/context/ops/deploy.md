@@ -233,17 +233,12 @@ database is local SQLite. Hosted deployments must still leave it false.
 
 ## Web service and generic Render example
 
-The redesigned homepage ships to all homepage visitors independently of Dashboard rollout.
-Its rollback requires a code rollback/revert; the Dashboard master switch does not change it.
+The redesigned homepage ships to all homepage visitors; its rollback, like the Dashboard's, is a
+code revert or a deploy of the previous build.
 
-`GET /app` selects either the frozen legacy artifact or the Vite-built Vue application.
-The rollout defaults to legacy. Set `TREG_DASHBOARD_ROLLOUT_ENABLED=true` with a JSON array in
-`TREG_DASHBOARD_ROLLOUT_USER_IDS` for an account allowlist, then increase
-`TREG_DASHBOARD_ROLLOUT_PERCENT` from zero. Disabling the master switch forces legacy, including
-allowlisted accounts. Environment changes require restarting Web processes, not rebuilding assets.
-Both frontends ship together. Anonymous catalog, shared-link and sign-in entries have no account
-bucket and move only at 100%; below it, or with the switch off, they remain legacy.
-See `frontend/README.md` for the full rollout and retirement contract.
+`GET /app`, the catalog pages and shared links all serve the Vite-built Vue application. There is
+no frontend switch to configure; a Dashboard rollback is a deploy of the previous build. See
+`frontend/README.md`.
 The frontend is authored in `frontend/` within the same repository. `GET /` retains the existing
 landing behavior. Dashboard assets, tutorials, agent files and installer assets ship with the wheel.
 Hosted-page MP4 demos remain in Git checkout deployments but are excluded from published wheels and

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from functools import lru_cache
-import hashlib
 import html as _html
 import html as html_mod
 import json
@@ -18,7 +17,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTe
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
-from .. import adsconv, agent_pages, analytics, oauth_providers
+from .. import adsconv, agent_pages, oauth_providers
 from ..domain import referrals
 from ..domain.catalog import store as catalog_store
 from ..domain.identity import session as sess
@@ -33,60 +32,8 @@ from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _take_oauth_return
 from .signup_cookies import _remember_referral
 
 
-def _dashboard_bucket(user_id: int) -> int:
-    return int.from_bytes(hashlib.sha256(f"dashboard-v2:{user_id}".encode()).digest()[:8], "big") % 100
-
-
-def _dashboard_assignment(user: User) -> str:
-    """Why this account gets its frontend: `off`, `allowlist` or `bucket`."""
-    settings = get_settings()
-    if not settings.dashboard_rollout_enabled:
-        return "off"
-    return "allowlist" if user.id in settings.dashboard_rollout_user_ids else "bucket"
-
-
-def _new_dashboard(user: User | None) -> bool:
-    if user is None:
-        # A visitor with no account has no bucket, so it follows the rollout only once every
-        # bucket is in: at 100% the public catalog, shared links and the signed-out app move with
-        # the accounts, and lowering the percentage or switching the rollout off moves them back.
-        settings = get_settings()
-        return settings.dashboard_rollout_enabled and settings.dashboard_rollout_percent == 100
-    assignment = _dashboard_assignment(user)
-    if assignment != "bucket":
-        return assignment == "allowlist"
-    return _dashboard_bucket(user.id) < get_settings().dashboard_rollout_percent
-
-
-def _record_dashboard_served(user: User, new: bool) -> None:
-    """Tell product analytics which frontend this account was served.
-
-    The bucket alone cannot say when an account switched (the percentage moves) or whether it
-    ever opened the Dashboard, and PostHog persons carry no user ID to recompute it from. The
-    person property lets any funnel break down by frontend; the event dates each exposure.
-    """
-    variant = "new" if new else "legacy"
-    bucket = _dashboard_bucket(user.id)
-    analytics.capture(user.email, "dashboard_served", {
-        "variant": variant,
-        "assignment": _dashboard_assignment(user),
-        "bucket": bucket,
-        "rollout_percent": get_settings().dashboard_rollout_percent,
-        "$set": {"dashboard_variant": variant, "dashboard_bucket": bucket},
-    })
-
-
-def _dashboard_index(user: User | None = None) -> Path:
-    new = _new_dashboard(user)
-    if user is not None:
-        _record_dashboard_served(user, new)
-    if not new:
-        return _WEB_DIR / "dashboard-legacy" / "index.html"
-    return _new_dashboard_index()
-
-
-def _new_dashboard_index() -> Path:
-    """The new frontend's index, whoever asks: the rollout decision is `_dashboard_index`'s."""
+def _dashboard_index() -> Path:
+    """The compiled Dashboard's index. Local frontend development swaps in Vite's source entry."""
     settings = get_settings()
     if settings.frontend_dev:
         host = urlsplit(settings.public_url).hostname
@@ -312,7 +259,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 
 
 def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
-                      prerender: str, user: User | None = None, *, index: Path | None = None) -> HTMLResponse:
+                      prerender: str) -> HTMLResponse:
     """Serve the dashboard SPA at a PUBLIC catalog URL, with the head a crawler needs.
 
     The public catalog is not a second implementation of the marketplace — it IS the marketplace.
@@ -333,7 +280,7 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
        implementation this design avoids. It carries the TEXT (names, summaries, providers, prices),
        which is what a crawler that does not run scripts is here for.
     """
-    index = index or _dashboard_index(user)
+    index = _dashboard_index()
     if not index.exists():
         return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
     base = get_settings().public_url.rstrip("/")
@@ -406,7 +353,7 @@ _PRERENDER_CSS = """<style>
 
 
 @app.get("/catalog", include_in_schema=False)
-async def catalog_index(treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
+async def catalog_index():
     """The catalog index — the marketplace's Catalog view, on a public, indexable URL."""
     base = get_settings().public_url.rstrip("/")
     rows = _platform_rows()
@@ -476,18 +423,12 @@ async def catalog_index(treg_session: str = Cookie(default=""), db: AsyncSession
         f"Tool catalog — {total_eps:,} API endpoints your agent can call | treg",
         f"Browse {total_eps:,} endpoints across {len(rows)} platforms and {len(providers)} providers "
         "— SEO, social, enrichment, ads and scraping data. One key, priced per call, no provider signup.",
-        "/catalog", ld, prerender, await _user_from_session(treg_session, db))
+        "/catalog", ld, prerender)
 
 
 @app.get("/search", include_in_schema=False)
 async def search_page():
-    """Find tools by describing the job: the new frontend's public find view over `/catalog/find`.
-
-    Only the new frontend has this page, so it is served to every visitor while the rollout is
-    enabled (anonymous included), with no per-user rollout check, and is absent when the rollout
-    switch forces legacy."""
-    if not get_settings().dashboard_rollout_enabled:
-        raise HTTPException(status_code=404, detail="not found")
+    """Find tools by describing the job: the Dashboard's public find view over `/catalog/find`."""
     rows = _platform_rows()
     # Until the page's script runs, a visitor sees the page's own ground and nothing else: a
     # different first screen that swaps out would read as a loading step. The words are for readers
@@ -502,11 +443,11 @@ async def search_page():
         "Find tools for your agent | treg",
         "Describe the job in plain words and see which tools in the treg catalog can do it, "
         "priced per call, callable through one key.",
-        "/search", [], prerender, index=_new_dashboard_index())
+        "/search", [], prerender)
 
 
 @app.get("/catalog/{slug}", include_in_schema=False)
-async def catalog_page(slug: str, treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
+async def catalog_page(slug: str):
     """One platform shelf — the marketplace's platform view, on a public, indexable URL."""
     if slug in _CATALOG_RESERVED:
         raise HTTPException(status_code=404, detail=f"unknown platform {slug!r}")
@@ -573,7 +514,7 @@ async def catalog_page(slug: str, treg_session: str = Cookie(default=""), db: As
     # "{platform} api pricing" is the non-brand phrasing that reaches the site (GSC), so the shelf
     # title leads with it; the brand is treg.to and the copy carries no em-dash.
     return _spa_catalog_page(f"{label} API pricing: {len(eps)} endpoints priced per call | treg.to",
-                             desc[:300], f"/catalog/{slug}", ld, prerender, await _user_from_session(treg_session, db))
+                             desc[:300], f"/catalog/{slug}", ld, prerender)
 
 
 # --------------------------------------------------------------------------- /agents/<agent>
@@ -2881,11 +2822,6 @@ def _dashboard_asset(directory: Path, name: str) -> FileResponse:
     return FileResponse(asset, headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
-@app.get("/app/legacy/assets/{path:path}", include_in_schema=False)
-async def legacy_dashboard_asset(path: str):
-    return _dashboard_asset(_WEB_DIR / "dashboard-legacy" / "assets", path)
-
-
 @app.get("/app/ui/assets/{name}", include_in_schema=False)
 async def dashboard_asset(name: str):
     return _dashboard_asset(_WEB_DIR / "dashboard" / "assets", name)
@@ -2914,7 +2850,7 @@ async def dashboard(
     if signed_in and (resume := _resume_parked_authorization(request)) is not None:
         return resume
     owner = await _local_owner(db) if not signed_in else None
-    index = _dashboard_index(signed_in or owner)
+    index = _dashboard_index()
     if not index.exists():
         raise HTTPException(503, "Dashboard not bundled")
     resp = HTMLResponse(_dashboard_document(index), headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
@@ -2926,11 +2862,11 @@ async def dashboard(
     return resp
 
 
-def _spa_with_og(kind: str, name: str, user: User | None = None):
+def _spa_with_og(kind: str, name: str):
     """Serve the SPA at a shareable detail path (/app/skills/x, /app/tools/x) with per-resource
     og/twitter meta so link unfurls show what was shared. The meta echoes only the URL's own
-    name segment. Session lookup selects the frontend but never exposes resource contents."""
-    index = _dashboard_index(user)
+    name segment and never exposes resource contents."""
+    index = _dashboard_index()
     if not index.exists():
         return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
     label = "skill" if kind == "skills" else "tool"
@@ -2974,13 +2910,13 @@ async def dashboard_marketplace(
 
 
 @app.get("/app/skills/{name}", include_in_schema=False)
-async def dashboard_skill_page(name: str, treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
-    return _spa_with_og("skills", name, await _user_from_session(treg_session, db))
+async def dashboard_skill_page(name: str):
+    return _spa_with_og("skills", name)
 
 
 @app.get("/app/tools/{name}", include_in_schema=False)
-async def dashboard_tool_page(name: str, treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
-    return _spa_with_og("tools", name, await _user_from_session(treg_session, db))
+async def dashboard_tool_page(name: str):
+    return _spa_with_og("tools", name)
 
 
 @app.get("/llms.txt", include_in_schema=False)
