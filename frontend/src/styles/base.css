@@ -1091,9 +1091,18 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
 @media (prefers-reduced-motion:reduce){.app-toast{animation:none}}
 
 /* The boot screen: index.html paints it before any script runs and App.vue renders the same
-   markup until boot resolves, so the handover is invisible. Global, not scoped, for that reason. */
-.boot-status{min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:var(--muted)}
+   markup until boot resolves. Global, not scoped, for that reason. A fast boot shows nothing but
+   the page ground; a slow one gets a thin indeterminate bar along the top edge after 600ms. Every
+   delay is offset by --boot-t (minus the time since navigation, set by App.vue), so the node Vue
+   swaps in carries on where index.html's left off. */
+.boot-status{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:var(--muted)}
 .boot-status .brand{color:var(--text);text-decoration:none}
 .boot-status p{margin:0}
-.boot-stuck{opacity:0;animation:boot-stuck-in .3s 8s forwards}
-@keyframes boot-stuck-in{to{opacity:1}}
+.boot-bar{position:fixed;top:0;left:0;right:0;height:2px;overflow:hidden;pointer-events:none;
+  opacity:0;animation:boot-in .4s ease-out calc(var(--boot-t,0ms) + .6s) forwards}
+.boot-bar::before{content:"";position:absolute;top:0;bottom:0;left:0;width:35%;
+  background:color-mix(in srgb,var(--inverse) 70%,transparent);
+  animation:boot-slide 1.3s cubic-bezier(.45,0,.25,1) var(--boot-t,0ms) infinite}
+@keyframes boot-in{to{opacity:1}}
+@keyframes boot-slide{from{transform:translateX(-100%)}to{transform:translateX(290%)}}
+@media (prefers-reduced-motion:reduce){.boot-bar::before{animation:none;width:100%;opacity:.35}}
