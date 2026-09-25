@@ -1,0 +1,398 @@
+# TRDEFI — non-custodial stablecoin liquidity
+#
+# The API is read-first and prepare-only. Reading needs no credential at all.
+# Creating a position or a swap needs a key, and even then the API only returns
+# UNSIGNED transactions: the caller's own wallet signs them. We never sign, never
+# broadcast and never hold a key.
+#
+# Revenue is not a per-call fee. A position carries a 0.05% protocol fee embedded
+# in the maker's signed order, so it is paid by the position itself when it
+# trades — nothing is charged for calling this API.
+provider: trdefi
+
+source:
+  docs: https://yield.trdefi.com/docs/api
+  openapi: https://yield.trdefi.com/openapi.json
+  curated: '2026-09-25'
+
+pricing_url: https://yield.trdefi.com/docs/overall-scheme
+
+limits: |
+  Read surface: open, no key, rate-limited per bucket and the limit is advertised
+  on every reply (RateLimit-*). Write path: an API key is required and requests are
+  refused with 401 without one. The write path is prepare-only — it returns
+  unsigned transactions and cannot sign, broadcast or move value.
+
+# New platform and capability family. DeFi / on-chain liquidity is not represented
+# in the catalogue yet; these are proposed for review.
+proposed_capabilities:
+  platform:
+    slug: defi
+    label: DeFi liquidity
+    category: DeFi
+    summary: On-chain liquidity positions, live stablecoin market making, and prepare-only order building.
+  capabilities:
+    - id: defi.liquidity.stats
+      label: Liquidity catalogue statistics
+      summary: Aggregate totals, per-chain breakdown and the deepest pairs by volume and by position count.
+    - id: defi.liquidity.chains
+      label: Supported networks
+      summary: The live set of networks, their engines and the tokens a position can be built from.
+    - id: defi.liquidity.list
+      label: Open liquidity positions
+      summary: The live catalogue of open maker positions, filterable by network and pair.
+    - id: defi.liquidity.detail
+      label: Position detail
+      summary: One position by its strategy hash.
+    - id: defi.liquidity.quote
+      label: Indicative quote
+      summary: Simulate a swap against one position. Simulated on-chain; a gated position answers with a reason rather than a price.
+    - id: defi.liquidity.badge
+      label: Live metrics badge
+      summary: A shields.io endpoint payload so a README can show live catalogue metrics.
+    - id: defi.liquidity.prepare_position
+      label: Prepare a position
+      summary: Return the unsigned transactions that create a maker position. Prepare-only.
+    - id: defi.liquidity.prepare_swap
+      label: Prepare a swap
+      summary: Simulate a swap, then return the unsigned transactions for the caller's wallet to sign. Prepare-only.
+
+endpoints:
+  - id: trdefi.liquidity.stats
+    domain: defi
+    capability: defi.liquidity.stats
+    platform: defi
+    scope: any_account
+    method: GET
+    path: /api/stats
+    name: Liquidity catalogue statistics
+    summary: Aggregate totals, per-chain breakdown and the deepest pairs by volume and by position count. No credential required.
+    input:
+      queryType: object
+      query: {}
+    test_request:
+      query: {}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: documented
+      source_url: https://yield.trdefi.com/docs/api
+      checked: '2026-09-25'
+      confidence: verified
+      note: Free and keyless by design. Observed 0.00 on live calls.
+    verified: '2026-09-25'
+    example_response: examples/trdefi.liquidity.stats.json
+    docs_url: https://yield.trdefi.com/docs/overall-scheme
+
+  - id: trdefi.liquidity.chains
+    domain: defi
+    capability: defi.liquidity.chains
+    platform: defi
+    scope: any_account
+    method: GET
+    path: /api/chains
+    name: Supported networks
+    summary: The live set of networks, their engine addresses and the tokens a position can be built from.
+    input:
+      queryType: object
+      query: {}
+    test_request:
+      query: {}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: documented
+      checked: '2026-09-25'
+      confidence: verified
+    verified: '2026-09-25'
+    example_response: examples/trdefi.liquidity.chains.json
+    docs_url: https://yield.trdefi.com/docs/overall-scheme
+
+  - id: trdefi.liquidity.list
+    domain: defi
+    capability: defi.liquidity.list
+    platform: defi
+    scope: any_account
+    method: GET
+    path: /api/strategies
+    name: Open liquidity positions
+    summary: The live catalogue of open maker positions. Filter by network and pair; page with limit.
+    input:
+      queryType: object
+      query:
+        chain:
+          type: string
+          required: false
+          description: Network key, e.g. base or ethereum. Defaults to all.
+          example: base
+        pair:
+          type: string
+          required: false
+          enum: ['usdc-usdt']
+          description: Pair filter. Currently only the USDC/USDT stable pair is selectable.
+        limit:
+          type: number
+          required: false
+          default: 50
+          description: Rows to return, 1-500.
+          example: 3
+        filter:
+          type: string
+          required: false
+          enum: [active, docked]
+          default: active
+    test_request:
+      query:
+        limit: 3
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: documented
+      checked: '2026-09-25'
+      confidence: verified
+    verified: '2026-09-25'
+    example_response: examples/trdefi.liquidity.list.json
+    docs_url: https://yield.trdefi.com/docs/overall-scheme
+
+  - id: trdefi.liquidity.detail
+    domain: defi
+    capability: defi.liquidity.detail
+    platform: defi
+    scope: any_account
+    method: GET
+    path: /api/strategy-detail
+    name: Position detail
+    summary: One position by its 32-byte strategy hash.
+    input:
+      queryType: object
+      query:
+        hash:
+          type: string
+          required: true
+          description: Strategy hash, 64 hex characters.
+          example: '0x5928c6b6c24c08615ddde8b832e6f4b135550601e2bb903dba4123c1b8ff8f2c'
+    test_request:
+      query:
+        hash: '0x5928c6b6c24c08615ddde8b832e6f4b135550601e2bb903dba4123c1b8ff8f2c'
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: documented
+      checked: '2026-09-25'
+      confidence: verified
+    verified: '2026-09-25'
+    example_response: examples/trdefi.liquidity.detail.json
+    docs_url: https://yield.trdefi.com/docs/overall-scheme
+
+  - id: trdefi.liquidity.quote
+    domain: defi
+    capability: defi.liquidity.quote
+    platform: defi
+    scope: any_account
+    method: GET
+    path: /api/quote
+    name: Indicative quote
+    summary: Simulate a swap against one position, on-chain, at the current block. Nothing is signed. A maker may gate a position on the caller holding an access licence token — about four in five do — and those answer 422 "Strategy is gated" with a reason instead of a price.
+    input:
+      queryType: object
+      query:
+        hash:
+          type: string
+          required: true
+          description: Strategy hash, 64 hex characters.
+          example: '0x5928c6b6c24c08615ddde8b832e6f4b135550601e2bb903dba4123c1b8ff8f2c'
+        chain:
+          type: string
+          required: false
+          default: ethereum
+          description: Network key.
+        amount:
+          type: string
+          required: true
+          description: Amount in base units, as an integer string.
+          example: '1000000'
+        direction:
+          type: string
+          required: false
+          enum: [aToB, bToA]
+          default: aToB
+    test_request:
+      query:
+        hash: '0x5928c6b6c24c08615ddde8b832e6f4b135550601e2bb903dba4123c1b8ff8f2c'
+        chain: ethereum
+        amount: '1000000'
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: documented
+      checked: '2026-09-25'
+      confidence: verified
+    verified: '2026-09-25'
+    example_response: examples/trdefi.liquidity.quote.json
+    docs_url: https://yield.trdefi.com/docs/overall-scheme
+
+  - id: trdefi.liquidity.badge
+    domain: defi
+    capability: defi.liquidity.badge
+    platform: defi
+    scope: any_account
+    method: GET
+    path: /api/badge
+    name: Live metrics badge
+    summary: A shields.io endpoint payload so a repository README can show live catalogue metrics.
+    input:
+      queryType: object
+      query:
+        metric:
+          type: string
+          required: false
+          enum: [volume30, volume7, volume1, strategies, makers, pairs, chains]
+          default: volume30
+    test_request:
+      query:
+        metric: volume30
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: documented
+      checked: '2026-09-25'
+      confidence: verified
+    verified: '2026-09-25'
+    example_response: examples/trdefi.liquidity.badge.json
+    docs_url: https://yield.trdefi.com/docs/api
+
+  # ---------------------------------------------------------------------------
+  # Write path. Both are prepare-only: the response is a set of UNSIGNED
+  # transactions and the caller's wallet signs them. The key used for these is a
+  # prepare key — it cannot sign, broadcast or move value, so holding it carries
+  # no custody risk to either side.
+  # ---------------------------------------------------------------------------
+
+  - id: trdefi.liquidity.prepare_position
+    domain: defi
+    capability: defi.liquidity.prepare_position
+    platform: defi
+    scope: per_account
+    method: POST
+    path: /v1/positions
+    name: Prepare a maker position
+    summary: Return the ordered set of UNSIGNED transactions that create a position, with the 0.05% protocol fee already embedded in the order. Approve steps appear only where the live allowance is short.
+    input:
+      bodyType: json
+      body:
+        chain:
+          type: string
+          required: true
+          enum: [base, arc, baseSepolia]
+          example: arc
+        wallet:
+          type: string
+          required: true
+          format: address
+          description: The address that will sign. It must be the caller's own.
+          example: '0xf038179b39144d5b3585abddb2b7bbc70716722b'
+        deposits:
+          type: array
+          required: true
+          description: Exactly two { symbol, amount } entries. Amounts are integer strings in base units.
+          example: [{ symbol: USDC, amount: '1000000' }, { symbol: EURC, amount: '900000' }]
+        makerFeeBps:
+          type: number
+          required: false
+          default: 0
+          description: The caller's own commission, in the protocol's 1e7 fee scale. Independent of the 0.05% protocol fee.
+          example: 30000
+        checkBalances:
+          type: boolean
+          required: false
+          default: false
+          description: Add live balance checks to the preflight block.
+    test_request:
+      body:
+        chain: arc
+        wallet: '0xf038179b39144d5b3585abddb2b7bbc70716722b'
+        deposits: [{ symbol: USDC, amount: '1000000' }, { symbol: EURC, amount: '900000' }]
+        makerFeeBps: 30000
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: documented
+      checked: '2026-09-25'
+      confidence: verified
+      note: No per-call charge. Revenue is the 0.05% protocol fee embedded in the position's signed order, paid on-chain when the position trades.
+    verified: '2026-09-25'
+    example_response: examples/trdefi.liquidity.prepare_position.json
+    docs_url: https://yield.trdefi.com/docs/overall-scheme
+
+  - id: trdefi.liquidity.prepare_swap
+    domain: defi
+    capability: defi.liquidity.prepare_swap
+    platform: defi
+    scope: per_account
+    method: POST
+    path: /v1/swaps
+    name: Prepare a swap
+    summary: Simulate a swap against a shipped position, then return the UNSIGNED transactions for the caller's own wallet to sign. If the swap cannot succeed the response explains why and returns no transactions at all.
+    input:
+      bodyType: json
+      body:
+        chain:
+          type: string
+          required: true
+          enum: [ethereum, base, arbitrum, optimism, polygon, arc]
+          example: ethereum
+        wallet:
+          type: string
+          required: true
+          format: address
+          example: '0x28C6c06298d514Db089934071355E5743bf21d60'
+        strategyHash:
+          type: string
+          required: true
+          description: The maker position to swap against.
+          example: '0x5928c6b6c24c08615ddde8b832e6f4b135550601e2bb903dba4123c1b8ff8f2c'
+        amount:
+          type: string
+          required: true
+          description: Input amount in base units, as an integer string.
+          example: '1000000'
+        tokenIn:
+          type: string
+          required: false
+          format: address
+        tokenOut:
+          type: string
+          required: false
+          format: address
+    test_request:
+      body:
+        chain: ethereum
+        wallet: '0x28C6c06298d514Db089934071355E5743bf21d60'
+        strategyHash: '0x5928c6b6c24c08615ddde8b832e6f4b135550601e2bb903dba4123c1b8ff8f2c'
+        amount: '1000000'
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: documented
+      checked: '2026-09-25'
+      confidence: verified
+      note: No per-call charge. The 0.05% protocol fee already sits inside the maker's order and is paid on-chain by the swap itself.
+    verified: '2026-09-25'
+    example_response: examples/trdefi.liquidity.prepare_swap.json
+    docs_url: https://yield.trdefi.com/docs/overall-scheme
