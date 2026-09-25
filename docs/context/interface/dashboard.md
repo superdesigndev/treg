@@ -99,8 +99,6 @@ sources:
   - src/treg/web/tour/tour.js
   - src/treg/web/tour/index.html
   - src/treg/api.py
-  - tests/test_dashboard_rollout.py
-  - src/treg/web/dashboard-legacy/README.md
   - src/treg/routers/web.py
   - src/treg/domain/identity/session.py
   - src/treg/routers/api_keys.py
@@ -209,26 +207,11 @@ History navigation retains existing hashes, catalog URLs and shared links in `st
 Mainline Team resources and Fish Audio upload, voice-management and audio-preview flows live
 in `TeamResourcesPage.vue`, `FishVoiceDialog.vue`, `TryEndpointDialog.vue` and their state modules.
 
-`_new_dashboard` selects the compiled entry by verified session user ID: the master rollout switch
-must be on, then an ID allowlist or a stable SHA-256 bucket below the configured percentage selects
-new. Defaults are off and zero percent. Anonymous and token-only browser entries have no bucket, so
-they get new only while the switch is on at 100%, and otherwise the frozen
-`dashboard-legacy/index.html`, whose Vue/onboarding/tutorial JavaScript has revision-qualified legacy asset
-URLs. Tying them to 100% keeps one rollback lever: lowering the percentage or switching off moves
-them back with the accounts, and no separate setting has to be retired later. No query parameter, team selection or analytics service controls assignment. All dashboard,
-shared-link and catalog entries use this decision and `private, no-store` plus `Vary: Cookie`.
-Environment changes require restarting Web processes. Existing tabs switch on reload; the version
-stamp also incorporates rollout settings to offer a refresh when assignment policy changes.
-Every signed-in selection emits `dashboard_served` (variant, assignment, bucket, percentage) and
-sets the `dashboard_variant` and `dashboard_bucket` person properties. Analytics only observes the
-decision: PostHog persons carry no user ID to recompute the bucket from, and the bucket alone cannot
-date an account's switch when the percentage moves.
-
-The legacy snapshot is deprecated and scheduled for removal after rollout, not a second maintained
-Dashboard. New features and routine fixes belong only in `frontend/`; normal main-branch syncs must
-not refresh the frozen artifact. `frontend/README.md` owns the retirement checklist: once
-100% has held, remove the snapshot, legacy asset route, selection settings and obsolete rollout
-plumbing.
+`_dashboard_index` returns the one compiled entry for every Dashboard, shared-link and catalog
+request, signed in or not, so those pages no longer look up the session to choose a frontend. They
+are served `private, no-store` with `Vary: Cookie`. The frozen legacy snapshot and its percentage
+rollout were retired once every visitor was on this app; rollback is a deploy of the previous build.
+The version stamp in `/meta` is the bundle hash, so an open tab offers a refresh after a deploy.
 
 `GET /app` serves the selected document same-origin from the Python package, preserving local
 sign-in and parked OAuth authorization. Catalog and shared-link handlers modify that same document's
@@ -245,7 +228,7 @@ and Vite, using a local-only development entry for hot updates. See `CONTRIBUTIN
 
 Vue is pinned in the npm lockfile and bundled from the same origin, so a blocked CDN cannot
 prevent startup. The shared onboarding widgets in `/agent-setup.js` still serve both Dashboard and
-Arena; their templates use Vue's bundled compiler. The global Vue runtime for standalone pages and the legacy snapshot is
+Arena; their templates use Vue's bundled compiler. The global Vue runtime for the standalone Arena page is
 copied from the npm package at build time, with its license; generated copies are not committed. Agent icons and Google Fonts remain optional external presentation assets.
 The unmounted entry displays a loading message and a reload link rather than hiding a raw template.
 The authenticated redesign follows the root `design.md`.
@@ -1057,9 +1040,8 @@ fit is its best provider's. The page never re-ranks providers.
   copies. Any result (a card, a job line, a tile) opens that platform in the dashboard: directly
   for a member; otherwise sign-in first, the destination kept in localStorage for ten minutes and
   resumed by boot (`findResume`) however sign-in returns, and first-run onboarding leaves a
-  visitor on that platform rather than on Getting started. The server serves the new frontend here
-  to every visitor while the rollout is enabled (there is no legacy view of this page) and 404s
-  when the rollout switch forces legacy.
+  visitor on that platform rather than on Getting started. The server serves this page to every
+  visitor.
 
 **Analytics for finds** (PostHog through `track`, anonymous until sign-in, when the visitor's
 earlier events join the identified person): `search_opened` (`ref`: the landing's Tools link sends

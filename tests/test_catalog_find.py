@@ -149,15 +149,10 @@ async def test_refuses_empty_unconfigured_and_over_the_limit(clients, monkeypatc
     assert r.status_code == 429
 
 
-async def test_search_page_is_served_to_signed_out_visitors(clients, monkeypatch):
-    s = get_settings()
+async def test_search_page_is_served_to_signed_out_visitors(clients):
     clients.headers.pop("X-Treg-Token", None)
     clients.cookies.clear()
-    monkeypatch.setattr(s, "dashboard_rollout_enabled", True)
-    monkeypatch.setattr(s, "dashboard_rollout_percent", 0)
     r = await clients.get("/search")
-    assert r.status_code == 200 and "/app/legacy/assets/" not in r.text
-    monkeypatch.setattr(s, "dashboard_rollout_enabled", False)
-    assert (await clients.get("/search")).status_code == 404
+    assert r.status_code == 200 and "/app/ui/assets/" in r.text
     # `find` is reserved: it is the JSON route, never a platform shelf
     assert (await clients.get("/catalog/find")).status_code == 400
