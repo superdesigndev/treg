@@ -30,6 +30,7 @@ import httpx
 from ... import audit
 from ...config import get_settings
 from ...infra.db import session_maker
+from ...domain.capacity.routes_view import view as overflow_routes_view
 from ...domain.capacity.view import view as capacity_view
 from ...domain.capacity.signatures import classify as classify_capacity
 from ...domain.catalog import stats as endpoint_stats
@@ -296,10 +297,19 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             "platform"
         )
         cv = cat.cost_view(e.get("cost"), e["provider"])
+        direct_exhausted = tier == "platform" and capacity_view.is_exhausted(e["provider"], e["id"])
+        overflow_route = None
+        if (direct_exhausted and get_settings().overflow_mode == "on"
+                and not getattr(caller.org, "platform_overflow_disabled", False)):
+            overflow_route = next(iter(overflow_routes_view.for_endpoint(e["id"])), None)
         price = 0 if tier != "platform" else cost_at(cv, identity, ad)
+        if overflow_route is not None:
+            price = overflow_route.agg_price_micro
         c = Candidate(endpoint=e, adapter=ad, variant=v, tier=tier, price_micro=price, hit_rate=st.get("hit_rate"),
                       ok_rate=st.get("ok_rate"), p50_ms=st.get("p50_ms"), last_ok_days=st.get("last_ok_days"),
-                      exhausted=(tier == "platform" and capacity_view.is_exhausted(e["provider"], e["id"])),
+                      exhausted=direct_exhausted and overflow_route is None,
+                      note=(f"direct account exhausted; overflow via {overflow_route.aggregator}"
+                            if overflow_route is not None else ""),
                       ignored=ignored_filters(ad, contract, identity))
         if tier == "platform" and not cat.platform_eligible(e):
             dropped.append({"endpoint_id": e["id"], "why": "not platform-eligible and no own key"})
@@ -392,6 +402,9 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
     contract = catalog_store.load().contracts.get(ep["capability"])
     options = RouteOptions.from_headers(
         get_header, int(round(contract.default_max_cost_usd * 1_000_000)) if contract and contract.default_max_cost_usd else None)
+    await capacity_view.load()
+    if get_settings().overflow_mode != "off":
+        await overflow_routes_view.load()
     plan = await build_plan(ep, given, parent.input.caller, options)
     if not plan.candidates:
         # 503 only when capacity or keys took a candidate away; a strict-filter drop is the

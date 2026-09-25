@@ -5,13 +5,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+from types import SimpleNamespace
 
+import httpx
 import pytest
 from httpx import AsyncClient
 from sqlmodel import select
 
 from treg import audit
 from treg.domain import money as ledger
+from treg.application.call import overflow as call_overflow
 from treg.application.call import route as call_route
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
@@ -22,7 +25,7 @@ from treg.domain.catalog.routing import paths as P
 from treg.domain.catalog.routing.contracts import canonical_identity
 from treg.domain.catalog.routing.plan import Candidate, cost_at, rank
 from treg.infra.catalog_observations import CachedEndpointObservationReader
-from treg.models import CallRecord, Hold, LedgerEntry
+from treg.models import CallRecord, Hold, LedgerEntry, OverflowRoute
 
 from test_marketplace_call import _balance, platform_on  # noqa: F401
 
@@ -283,6 +286,93 @@ async def test_routed_plan_keeps_per_success_hit_fallback_from_the_cache(
     )
     tomba = next(candidate for candidate in plan.candidates if candidate.endpoint["id"] == endpoint_id)
     assert tomba.hit_rate == pytest.approx(2 / 3, abs=1e-3)
+
+
+async def test_routed_plan_keeps_an_exhausted_provider_when_its_overflow_route_is_enabled(
+    clients: AsyncClient, monkeypatch,
+):
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "akta,predictleads")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_AKTA", "AKTA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_PREDICTLEADS", "PREDICTLEADS-KEY")
+    monkeypatch.setenv("TREG_OVERFLOW_MODE", "on")
+    monkeypatch.setenv("TREG_OVERFLOW_KEY_MONID", "MONID-KEY")
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_route.capacity_view, "is_exhausted",
+                        lambda provider, endpoint_id=None: provider == "akta")
+    route = SimpleNamespace(aggregator="monid", agg_price_micro=10_000)
+    monkeypatch.setattr(call_route.overflow_routes_view, "for_endpoint",
+                        lambda endpoint_id: [route] if endpoint_id == "akta.companies.news" else [])
+
+    class _Org:
+        id = 1
+        platform_overflow_disabled = False
+
+    class _Caller:
+        org_id = 1
+        org = _Org()
+
+    ep = catalog_store.load().by_id["treg.companies.news"]
+    options = call_route.RouteOptions.from_headers(lambda key: None)
+    plan = await call_route.build_plan(ep, {"domain": "canva.com", "limit": 1}, _Caller(), options)
+    akta = next(c for c in plan.candidates if c.endpoint["id"] == "akta.companies.news")
+    assert plan.candidates[0] is akta
+    assert akta.price_micro == 10_000
+    assert not akta.exhausted
+    assert akta.note == "direct account exhausted; overflow via monid"
+    assert not any(d["endpoint_id"] == "akta.companies.news" for d in plan.dropped)
+
+    monkeypatch.setattr(call_route.overflow_routes_view, "for_endpoint", lambda endpoint_id: [])
+    without_overflow = await call_route.build_plan(
+        ep, {"domain": "canva.com", "limit": 1}, _Caller(), options)
+    assert not any(c.endpoint["id"] == "akta.companies.news" for c in without_overflow.candidates)
+    assert any(d["endpoint_id"] == "akta.companies.news" and "exhausted" in d["why"]
+               for d in without_overflow.dropped)
+
+
+async def test_routed_call_reaches_an_enabled_overflow_before_the_next_provider(
+    clients: AsyncClient, platform_on, monkeypatch,  # noqa: F811
+):
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "akta,predictleads")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_AKTA", "AKTA-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_PREDICTLEADS", "PREDICTLEADS-KEY")
+    monkeypatch.setenv("TREG_OVERFLOW_MODE", "on")
+    monkeypatch.setenv("TREG_OVERFLOW_KEY_MONID", "MONID-KEY")
+    monkeypatch.setenv("TREG_OVERFLOW_DAILY_BUDGET_USD", "10")
+    get_settings.cache_clear()
+    async with session_maker() as db:
+        db.add(OverflowRoute(
+            endpoint_id="akta.companies.news", aggregator="monid", provider="akta",
+            method="GET", path="/v1/news/", agg_slug="akta", agg_path="/v1/news",
+            agg_price_micro=10_000, agg_unit="call", ratio=1, enabled=True,
+        ))
+        await db.commit()
+    call_route.overflow_routes_view.invalidate()
+    monkeypatch.setattr(call_route.capacity_view, "is_exhausted",
+                        lambda provider, endpoint_id=None: provider == "akta")
+
+    async def overflow_send(client, req):
+        return httpx.Response(200, json={
+            "runId": "run-akta-news",
+            "status": "COMPLETED",
+            "output": {"data": [{"title": "served through Monid"}], "total": 1, "count": 1,
+                       "limit": 1, "offset": 0},
+            "providerResponse": {"httpStatus": 200},
+            "billing": {"reportedCost": {"value": 5_500, "unit": "MICRO_DOLLAR"}},
+        })
+
+    async def direct_relay_must_not_run(*args, **kwargs):
+        raise AssertionError("the routed call must skip direct Akta and never reach PredictLeads")
+
+    monkeypatch.setattr(call_overflow, "_send", overflow_send)
+    monkeypatch.setattr(call_service, "relay", direct_relay_must_not_run)
+    response = await clients.post("/call/treg.companies.news", json={"domain": "canva.com", "limit": 1})
+    assert response.status_code == 200, response.text
+    doc = response.json()
+    assert doc["output"]["articles"] == [{"title": "served through Monid"}]
+    assert doc["_treg"]["served_by"] == "akta.companies.news"
+    assert doc["_treg"]["provider"] == "akta"
+    assert doc["_treg"]["charged_micro"] == 5_500
+    assert [attempt["endpoint_id"] for attempt in doc["_treg"]["tried"]] == ["akta.companies.news"]
 
 
 # ---- the call path ---------------------------------------------------------------------------
