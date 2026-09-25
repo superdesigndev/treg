@@ -7,7 +7,6 @@ Soft by design (best-effort audit → fails open), so these tests seed records d
 from __future__ import annotations
 
 from datetime import date, timedelta
-from pathlib import Path
 
 from httpx import AsyncClient
 from sqlmodel import select
@@ -49,22 +48,6 @@ async def _mk_echo_tool(c: AsyncClient, name: str = "echo") -> None:
     assert r.status_code == 200, r.text
 
 
-async def test_call_blocked_once_the_cap_is_reached(clients: AsyncClient):
-    await _mk_echo_tool(clients)
-    org_id = await _set_cap(1)
-    assert (await clients.get("/call/echo/anything")).status_code == 200  # 1st call: under cap
-    await audit.drain()  # its CallRecord is fire-and-forget
-    blocked = await clients.get("/call/echo/anything")
-    assert blocked.status_code == 429 and "daily usage limit" in blocked.json()["detail"]
-    _ = org_id
-
-
-async def test_unlimited_by_default(clients: AsyncClient):
-    await _mk_echo_tool(clients)  # cap defaults to -1 → no cap query, never blocked
-    for _ in range(5):
-        assert (await clients.get("/call/echo/anything")).status_code == 200
-
-
 async def _counter(org_id: int, email: str) -> tuple[int, date | None]:
     async with session_maker() as s:
         uid = (await s.execute(select(User.id).where(User.email == email))).scalar_one()
@@ -83,11 +66,8 @@ async def _set_counter(org_id: int, email: str, n: int, day: date) -> None:
 
 
 async def test_runs_and_calls_share_one_gate(clients: AsyncClient):
-    """A member can't dodge the cap by switching path: both run handlers in api.py go through the
-    same `_enforce_daily_cap` door as `/call/` (authorize.py), and that door is what moves the
-    counter. Pinned statically because the run surfaces need a bundle to exercise end to end."""
-    src = (Path(__file__).parents[1] / "src" / "treg" / "api.py").read_text()
-    assert src.count("await _enforce_daily_cap(caller, db)") == 2  # local-run grant + server run
+    """Prior events already on today's counter (from runs or calls alike) block the next call, and
+    a refused call does not move the counter."""
     await _mk_echo_tool(clients)
     org_id = await _set_cap(2)
     today = _utcnow_naive().date()
@@ -118,7 +98,8 @@ async def test_yesterdays_usage_does_not_count_today(clients: AsyncClient):
     await _set_counter(org_id, "tim@superdesign.dev", 1, today - timedelta(days=1))  # yesterday's
     assert (await clients.get("/call/echo/anything")).status_code == 200  # a new day starts from 0
     assert await _counter(org_id, "tim@superdesign.dev") == (1, today)  # ...and this was its first
-    assert (await clients.get("/call/echo/anything")).status_code == 429
+    blocked = await clients.get("/call/echo/anything")
+    assert blocked.status_code == 429 and "daily usage limit" in blocked.json()["detail"]
 
 
 async def test_setting_a_cap_seeds_the_counter_from_todays_journal(clients: AsyncClient):

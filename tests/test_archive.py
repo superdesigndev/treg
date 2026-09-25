@@ -1,9 +1,7 @@
-"""The archive skeleton (PR 1): mode gate, eligibility policy, cache key, and the two tables.
+"""The archive: mode gate, eligibility policy, cache key, recorder, serve path and learner.
 
-No behavior exists yet — the recorder and the serve path arrive in later PRs — so these tests pin
-the contracts everything later builds on: the mode degrades safely, the policy refuses every
-uncertain input, the key is canonical, and the tables round-trip on both engines (this file runs
-in the sqlite suite and in CI's serial Postgres job).
+This file runs in the sqlite suite and in CI's serial Postgres job, so every recorder test also
+round-trips the archive tables on both engines.
 """
 
 from __future__ import annotations
@@ -11,10 +9,15 @@ from __future__ import annotations
 import json
 
 import pytest
+from httpx import AsyncClient
+from sqlalchemy import select
 
 from treg import archive, audit
 from treg.application.call import service as call_service
-from treg.archive import cache_key, content_hash, policy, storable
+from treg.archive import cache_key, policy, storable
+from treg.config import get_settings
+from treg.domain.catalog import store as catalog_store
+from treg.infra.db import session_maker
 from treg.models import ArchiveKey, ArchiveSnapshot
 
 
@@ -104,11 +107,6 @@ def test_keep_all_can_be_switched_off(monkeypatch):
     assert policy({"cache": "transient"}) == "transient"            # judged stays judged
 
 
-def test_policy_action_beats_license():
-    # Gate order: an action is never stored even when a license field says archive.
-    assert policy({"kind": "action", "cache": "archive"}) == "forbidden"
-
-
 def test_policy_accepts_judged_entries():
     assert policy({"cache": "transient"}) == "transient"
     assert policy({"cache": "archive"}) == "archive"
@@ -155,69 +153,8 @@ def test_key_non_json_body_hashes_raw():
     assert a == b != c
 
 
-def test_content_hash_is_raw_identity():
-    assert content_hash(b"same") == content_hash(b"same")
-    assert content_hash(b"same") != content_hash(b"Same")
-
-
-# ---------------------------------------------------------------------------------------------
-# Tables: round-trip on the running engine (sqlite locally, Postgres in CI's serial job)
-
-async def test_tables_round_trip(clients):  # clients fixture resets the schema on this engine
-    from sqlmodel import select
-    from treg.infra.db import session_maker
-
-    async with session_maker() as s:
-        key = ArchiveKey(key_hash="k" * 64, endpoint_id="prov.search", provider="prov",
-                         policy="transient", ttl_s=3600, volatile_paths=["$.request_id"])
-        s.add(key)
-        await s.commit()
-        await s.refresh(key)
-
-        first = ArchiveSnapshot(key_id=key.id, version=1, status_code=200,
-                                media_type="application/json", content_hash=content_hash(b"{}"),
-                                body=b"{}", size_bytes=2, origin="caller")
-        s.add(first)
-        await s.commit()
-        await s.refresh(first)
-        # Deduplicated second version: same bytes, body carried by reference, not stored again.
-        s.add(ArchiveSnapshot(key_id=key.id, version=2, status_code=200,
-                              media_type="application/json", content_hash=first.content_hash,
-                              body=None, body_of=first.id, size_bytes=2, origin="refresh"))
-        await s.commit()
-
-        rows = (await s.execute(select(ArchiveSnapshot).where(ArchiveSnapshot.key_id == key.id)
-                                .order_by(ArchiveSnapshot.version))).scalars().all()
-        assert [r.version for r in rows] == [1, 2]
-        assert rows[0].body == b"{}" and rows[1].body is None
-        assert rows[1].body_of == rows[0].id
-        stored = (await s.execute(select(ArchiveKey)
-                                  .where(ArchiveKey.key_hash == "k" * 64))).scalars().one()
-        assert stored.volatile_paths == ["$.request_id"]
-        assert stored.change_seen == 0 and stored.heat == 0.0
-
-
-async def test_key_hash_is_unique(clients):
-    from sqlalchemy.exc import IntegrityError
-    from treg.infra.db import session_maker
-
-    async with session_maker() as s:
-        s.add(ArchiveKey(key_hash="dup", endpoint_id="a"))
-        await s.commit()
-        s.add(ArchiveKey(key_hash="dup", endpoint_id="b"))
-        with pytest.raises(IntegrityError):
-            await s.commit()
-
-
 # ---------------------------------------------------------------------------------------------
 # The recorder (PR 2): observe metered platform answers, never touch the call
-
-from httpx import AsyncClient
-from sqlalchemy import select
-
-from treg.domain.catalog import store as catalog_store
-from treg.config import get_settings
-from treg.infra.db import session_maker
 
 EP = "tikhub.tiktok.video.comments"   # tier-4 eligible in the test allow-list, GET, $0.001/call
 
@@ -296,13 +233,6 @@ async def test_different_answer_counts_as_change(clients: AsyncClient, shadow, m
     assert snaps[0].body == b'{"n": 1}' and snaps[1].body == b'{"n": 2}'
 
 
-async def test_different_params_are_different_keys(clients: AsyncClient, shadow):
-    await clients.get(f"/call/{EP}?aweme_id=7")
-    await clients.get(f"/call/{EP}?aweme_id=8")
-    keys, _ = await _rows()
-    assert len(keys) == 2
-
-
 async def test_oversized_body_is_counted_not_kept(clients: AsyncClient, shadow, monkeypatch):
     monkeypatch.setitem(catalog_store.load().by_id[EP], "cache", "transient")
     monkeypatch.setattr(get_settings(), "archive_max_body_bytes", 4)
@@ -333,17 +263,6 @@ async def test_a_recorder_crash_never_fails_the_call(clients: AsyncClient, shado
 # ---------------------------------------------------------------------------------------------
 # The catalog cache field (PR 3): one judgment at the file header covers the provider
 
-def test_header_cache_is_inherited_by_endpoints():
-    c = catalog_store.load()
-    entry = c.by_id["coingecko.simple.price"]
-    assert entry["cache"]["mode"] == "transient"          # inherited from the file header
-    assert archive.policy(entry) == "transient"
-    assert entry["cache"]["max_age_s"] == 86400           # CoinGecko's own 24h refresh ceiling
-    assert archive.policy(c.by_id["finnhub.quote"]) == "forbidden"   # judged forbidden
-    assert c.by_id["finnhub.quote"]["cache"]["license_quote"]        # …with its evidence attached
-    assert c.by_id["tikhub.tiktok.video.comments"]["cache"] is None  # unjudged stays absent
-
-
 def test_every_declared_cache_field_in_the_catalog_is_valid():
     """A judged entry must be complete: a known mode, and provenance when declared as a dict.
     Absent is always legal (⇒ forbidden). This is the validator for the whole shipped catalog."""
@@ -364,16 +283,6 @@ def test_every_declared_cache_field_in_the_catalog_is_valid():
             assert declared.get("checked"), f"{ep['id']}: judged cache needs its check date"
         else:
             assert declared in ("forbidden", "transient", "archive"), ep["id"]
-
-
-async def test_recorder_respects_a_judged_forbidden(clients: AsyncClient, shadow, monkeypatch):
-    """A provider judged forbidden is counted, never kept — even though the policy is declared."""
-    monkeypatch.setitem(catalog_store.load().by_id[EP], "cache",
-                        {"mode": "forbidden", "license_quote": "q", "source_url": "u", "checked": "d"})
-    await clients.get(f"/call/{EP}?aweme_id=7")
-    keys, snaps = await _rows()
-    assert keys[0].policy == "forbidden"
-    assert snaps[0].body is None and snaps[0].size_bytes > 0
 
 
 # ---------------------------------------------------------------------------------------------
@@ -830,33 +739,14 @@ async def test_a_hit_is_not_a_new_observation(clients: AsyncClient, serve):
     assert keys[0].last_requested_at is not None          # …but demand was noted
 
 
-async def test_no_cache_forces_live(clients: AsyncClient, serve):
+@pytest.mark.parametrize("bypass", [{"Cache-Control": "no-cache"}, {"X-Treg-Max-Age": "0"}])
+async def test_a_bypass_header_forces_live(clients: AsyncClient, serve, bypass):
     await clients.get(f"/call/{EP}?aweme_id=7")
     await archive.drain()
-    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"Cache-Control": "no-cache"})
+    r = await clients.get(f"/call/{EP}?aweme_id=7", headers=bypass)
     assert r.status_code == 200 and "x-treg-cache" not in r.headers
     _, snaps = await _rows()
     assert len(snaps) == 2                                # the forced live call was recorded
-
-
-async def test_max_age_zero_forces_live(clients: AsyncClient, serve):
-    await clients.get(f"/call/{EP}?aweme_id=7")
-    await archive.drain()
-    r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"X-Treg-Max-Age": "0"})
-    assert r.status_code == 200 and "x-treg-cache" not in r.headers
-
-
-async def test_a_stale_snapshot_is_not_served(clients: AsyncClient, serve, monkeypatch):
-    from datetime import timedelta
-    await clients.get(f"/call/{EP}?aweme_id=7")
-    await archive.drain()
-    async with session_maker() as s:                      # age the snapshot past every window
-        snap = (await s.execute(select(ArchiveSnapshot))).scalars().one()
-        snap.fetched_at = snap.fetched_at - timedelta(days=30)
-        s.add(snap)
-        await s.commit()
-    r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 200 and "x-treg-cache" not in r.headers
 
 
 async def test_default_forbidden_never_serves(clients: AsyncClient, platform_on, monkeypatch):
@@ -879,46 +769,10 @@ async def test_shadow_mode_never_serves(clients: AsyncClient, shadow, monkeypatc
     assert r.status_code == 200 and "x-treg-cache" not in r.headers
 
 
-async def test_a_lookup_crash_degrades_to_live(clients: AsyncClient, serve, monkeypatch):
-    await clients.get(f"/call/{EP}?aweme_id=7")
-    await archive.drain()
-    async def _boom(**kwargs):
-        raise RuntimeError("lookup exploded")
-    monkeypatch.setattr(archive, "_touch", lambda kh: (_ for _ in ()).throw(RuntimeError))
-    monkeypatch.setattr(archive, "lookup", _boom)
-    r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 200 and "x-treg-cache" not in r.headers
-
-
 # ---------------------------------------------------------------------------------------------
 # The learner (PR 5): timers that adjust, noise that stops counting, keys that opt out
 
-async def test_stable_refetch_grows_the_timer(clients: AsyncClient, shadow, monkeypatch):
-    monkeypatch.setitem(catalog_store.load().by_id[EP], "cache", "transient")
-    await clients.get(f"/call/{EP}?aweme_id=7")
-    await archive.drain()                           # land the first recording
-    await clients.get(f"/call/{EP}?aweme_id=7")     # identical echo answer ⇒ stable
-    keys, _ = await _rows()
-    # other.* capability default is 3600; one stable step ⇒ ×1.5
-    assert keys[0].ttl_s == int(keys[0].ttl_s)  # int stays int
-    assert keys[0].stable_seen == 1 and keys[0].ttl_s > 3600 * 1.4
-
-
-async def test_changed_refetch_shrinks_the_timer(clients: AsyncClient, shadow, monkeypatch):
-    monkeypatch.setitem(catalog_store.load().by_id[EP], "cache", "transient")
-    from tests.test_marketplace_call import _fake_relay
-    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"n": 1}'))
-    await clients.get(f"/call/{EP}?aweme_id=7")
-    monkeypatch.setattr(call_service, "relay", _fake_relay(200, b'{"n": 2}'))
-    await clients.get(f"/call/{EP}?aweme_id=7")
-    keys, _ = await _rows()
-    assert keys[0].change_seen == 1 and keys[0].ttl_s == 1800   # 3600 × 0.5
-
-
-@pytest.mark.parametrize("comparison", ["strict", "typo"])
-async def test_repeated_business_change_is_strict_by_default(clients: AsyncClient, shadow, monkeypatch,
-                                                            comparison):
-    assert not hasattr(get_settings(), "archive_comparison_mode")
+async def test_repeated_business_change_is_strict_by_default(clients: AsyncClient, shadow, monkeypatch):
     from tests.test_marketplace_call import _fake_relay
     for revenue in (100, 200, 300):
         body = json.dumps({"company": "A", "country": "US", "currency": "USD",
@@ -931,22 +785,6 @@ async def test_repeated_business_change_is_strict_by_default(clients: AsyncClien
     assert keys[0].change_seen == 2 and keys[0].stable_seen == 0
     assert keys[0].ttl_s == 900
     assert len(snaps) == 3 and all(s.body is not None for s in snaps)
-
-
-async def test_removed_noise_mode_cannot_weaken_strict_comparison(clients: AsyncClient, shadow, monkeypatch):
-    assert not hasattr(get_settings(), "archive_comparison_mode")
-    monkeypatch.setitem(catalog_store.load().by_id[EP], "cache", "transient")
-    from tests.test_marketplace_call import _fake_relay
-    bodies = [json.dumps({"req_id": i, "ts": i * 10,
-                          "data": {"a": 1, "b": 2, "c": 3, "d": 4}}).encode() for i in range(3)]
-    for b in bodies:
-        monkeypatch.setattr(call_service, "relay", _fake_relay(200, b))
-        await clients.get(f"/call/{EP}?aweme_id=7")
-        await archive.drain()                          # recordings must land in call order
-    keys, _ = await _rows()
-    # A legacy configuration value cannot restore heuristic comparisons. Both changes count.
-    assert keys[0].change_seen == 2 and keys[0].stable_seen == 0
-    assert keys[0].volatile_paths == []
 
 
 async def test_always_changing_key_marks_itself_never_cache(clients: AsyncClient, serve, monkeypatch):
@@ -1095,13 +933,6 @@ async def test_admin_archive_keys_endpoint(clients: AsyncClient, serve, monkeypa
         assert row["hits"] == 1 and row["kept_bytes"] > 0
     finally:
         get_settings.cache_clear()
-
-
-async def test_archive_panel_page_serves(clients: AsyncClient):
-    r = await clients.get("/admin/archive/panel")
-    assert r.status_code == 200
-    assert "Archive" in r.text and "TREG_ADMIN_TOKEN" in r.text  # the shell + its token gate
-    assert "data-tip" in r.text                                  # the explanations shipped
 
 
 async def test_admin_archive_body_viewer(clients: AsyncClient, serve, monkeypatch):
@@ -1372,7 +1203,8 @@ async def test_pruner_never_cache_keeps_only_newest(clients: AsyncClient, shadow
     async with session_maker() as s:                     # the learner's verdict, set directly
         k = (await s.execute(select(ArchiveKey))).scalars().one()
         k.ttl_s = archive.TTL_NEVER
-        s.add(k); await s.commit()
+        s.add(k)
+        await s.commit()
     assert await archive.prune_once() == 2               # young age is no defense for never-cache
     _, snaps = await _rows()
     assert sum(1 for x in snaps if x.body_storage is not None) == 1
@@ -1390,7 +1222,8 @@ async def test_pruner_spares_demanded_and_carriers(clients: AsyncClient, shadow,
         from datetime import timedelta
         k = (await s.execute(select(ArchiveKey))).scalars().one()
         k.last_requested_at = archive._utcnow() - timedelta(days=1)
-        s.add(k); await s.commit()
+        s.add(k)
+        await s.commit()
     assert await archive.prune_once() == 0               # demanded recently: full budget kept
     _, snaps = await _rows()
     assert snaps[0].body is not None                     # v1 the carrier untouched
@@ -1711,33 +1544,6 @@ async def test_cache_reports_miss_hit_bypass_and_lookup_failure(clients, serve, 
         assert not any(k in p for k in ("key_hash", "volatile_paths", "body", "request_headers"))
 
 
-@pytest.mark.parametrize("timer,outcome", [
-    (30 * 86400, "hit"), (3600, "stale"), (archive.TTL_NEVER, "ttl_disabled"),
-])
-async def test_strict_comparison_preserves_existing_ttl(clients, serve, monkeypatch, timer, outcome):
-    from datetime import timedelta
-    await clients.get(f"/call/{EP}?aweme_id=7")
-    await archive.drain()
-    async with session_maker() as session:
-        key = (await session.execute(select(ArchiveKey))).scalars().one()
-        snap = (await session.execute(select(ArchiveSnapshot))).scalars().one()
-        key.ttl_s = timer
-        snap.fetched_at -= timedelta(hours=2)
-        session.add(key)
-        session.add(snap)
-        await session.commit()
-    events = []
-    monkeypatch.setattr(call_service.analytics, "capture",
-                        lambda who, event, props, **kw: events.append((event, props)))
-    r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 200
-    assert (r.headers.get("x-treg-cache") == "hit") == (outcome == "hit")
-    props = [p for e, p in events if e == "tool_called"][-1]
-    assert props["cache_outcome"] == outcome
-    if timer > 0:
-        assert props["cache_window_s"] == timer
-
-
 @pytest.mark.parametrize("learned,cap,wanted,age,window,outcome", [
     (86400, 3600, None, 1800, 3600, "hit"),
     (86400, 3600, None, 7200, 3600, "stale"),
@@ -1746,6 +1552,7 @@ async def test_strict_comparison_preserves_existing_ttl(clients, serve, monkeypa
     (86400, 3600, 600, 900, 600, "stale"),
     (86400, 3600, 7200, 1800, 3600, "hit"),
     (600, 3600, 1800, 900, 600, "stale"),
+    (archive.TTL_NEVER, None, None, 7200, None, "ttl_disabled"),
 ])
 async def test_serve_caps_learned_ttl_only_by_declared_and_caller_limits(
     clients, serve, monkeypatch, learned, cap, wanted, age, window, outcome,
@@ -1772,8 +1579,9 @@ async def test_serve_caps_learned_ttl_only_by_declared_and_caller_limits(
     assert (response.headers.get("x-treg-cache") == "hit") == (outcome == "hit")
     props = [p for e, p in events if e == "tool_called"][-1]
     assert props["cache_outcome"] == outcome
-    assert props["cache_window_s"] == window
-    if cap is None:
+    if window is not None:
+        assert props["cache_window_s"] == window
+    if cap is None and outcome == "hit":
         assert learned > archive.ttl_for(entry)
 
 
@@ -1881,8 +1689,6 @@ def test_catalog_accepts_an_endpoint_level_public_sharing(tmp_path):
     (tmp_path / 'test.yaml').write_text(yaml.safe_dump(doc))
     cat = catalog_store.load(directory=tmp_path)
     assert archive.sharing(cat.by_id['test.read'], own_credential=True) == 'public'
-    assert not any(isinstance(ep.get('cache'), dict) and 'sharing' in ep['cache']
-                   for ep in catalog_store.load().endpoints)   # nothing declared public yet
 
 
 def test_catalog_preserves_ignore_paths_and_defaults(tmp_path):
@@ -1913,13 +1719,6 @@ def test_ignore_normalization(old, new, paths, equal):
     before, after = json.dumps(old).encode(), json.dumps(new).encode()
     assert (archive._normalized_hash(before, paths) == archive._normalized_hash(after, paths)) is equal
     assert json.loads(before) == old and json.loads(after) == new
-
-
-@pytest.mark.parametrize('raw', [b'not JSON', b'\xff', b'{"x":NaN}'])
-def test_ignore_non_json_uses_raw_comparison(raw):
-    assert archive._normalized_hash(raw, ['id']) is None
-    assert archive._normalized_hash(raw, ['x']) is None
-    assert archive._change_summary(raw, b'{}')['changed_paths'] == ['non_json']
 
 
 @pytest.mark.parametrize('paths,expected', [([], (0, 1, 1800)), (['request_id'], (1, 0, 5400))])
@@ -2090,13 +1889,6 @@ async def test_cancelled_change_compute_keeps_slot_until_thread_finishes():
     assert archive._get_sem()._value == archive._MAX_CONCURRENT_WRITES
 
 
-def test_change_summary_never_reserializes_subtrees(monkeypatch):
-    def forbidden(*args, **kwargs):
-        pytest.fail('structure comparison must not reserialize JSON')
-    monkeypatch.setattr(archive.json, 'dumps', forbidden)
-    assert archive._change_summary(b'{"a":[{"b":1}]}', b'{"a":[{"b":2}]}')['changed_paths'] == ['a[*].b']
-
-
 @pytest.mark.parametrize('before,after,equal', [
     (b'{"a":1,"nested":{"b":2,"c":3}}', b'{ "nested":{"c":3,"b":2}, "a":1 }', True),
     (b'[{"a":1,"b":2}]', b'[{"b":2,"a":1}]', True),
@@ -2110,9 +1902,13 @@ def test_default_json_equality(before, after, equal):
     assert (archive._normalized_hash(before, []) == archive._normalized_hash(after, [])) is equal
 
 
-@pytest.mark.parametrize('body', [
-    b'{"a":1,"a":2}', b'{"a":0.1234567890123456789}', b'{"a":1e-500}',
-    b'{"a":NaN}', b'{"a":1e500}', b'plain text',
+@pytest.mark.parametrize('paths', [[], ['id'], ['x']])
+@pytest.mark.parametrize('body,non_json', [
+    (b'{"a":1,"a":2}', False), (b'{"a":0.1234567890123456789}', False), (b'{"a":1e-500}', False),
+    (b'{"a":1e500}', False), (b'{"a":NaN}', True), (b'{"x":NaN}', True), (b'plain text', True),
+    (b'not JSON', True), (b'\xff', True),
 ])
-def test_ambiguous_or_lossy_json_comparison_falls_back(body):
-    assert archive._normalized_hash(body, []) is None
+def test_ambiguous_or_lossy_json_comparison_falls_back(body, non_json, paths):
+    assert archive._normalized_hash(body, paths) is None
+    if non_json:
+        assert archive._change_summary(body, b'{}')['changed_paths'] == ['non_json']

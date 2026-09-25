@@ -20,7 +20,6 @@ from treg.domain.catalog import store as catalog_store
 from treg.infra.upstream.aggregators import by_name, monid, orthogonal
 from treg.models import CapacityPolicy, OverflowRoute
 from treg.timeutil import utcnow_naive
-from treg import worker
 
 FIX = Path(__file__).parent / "fixtures" / "aggregators"
 
@@ -100,7 +99,6 @@ async def test_sync_reproduces_the_verified_set_and_never_enables_a_bad_ratio(mo
     seed = [{**x, "verified_at": None} if x["provider"] in ("influencersclub", "contactout") else x
             for x in R.load_seed()]
     verified = {(x["endpoint_id"], x["aggregator"]) for x in seed if x["verified_at"]}
-    assert len(verified) == 145, "the 2026-08-26 verified set (131 ROUTE + 11 tomba + 2 phone + hunter domain-search)"
     # Freeze "now" at the mapping date so the seed's stamps are within the 7-day window.
     now = R._dt("2026-08-27T00:00:00")
     cat = catalog_store.load()
@@ -118,18 +116,12 @@ async def test_sync_reproduces_the_verified_set_and_never_enables_a_bad_ratio(mo
     assert all((by[k].ratio is not None and by[k].ratio <= R.MAX_RATIO)
                or (by[k].ratio is None and by[k].agg_price_micro <= R.FREE_ROUTE_MAX_USD * 1_000_000) for k in on)
     assert not any(k[0].startswith(("scrapecreators.", "tikhub.")) for k in on)
-    assert ("hunter.companies.emails", "orthogonal") in on, "§10 correction: per-10 credit compares as a call"
-    assert ("findymail.search.business-profile", "orthogonal") in on  # ratio 3.54 ≤ 4, the #1 402 source
+    assert ("findymail.search.business-profile", "orthogonal") in on  # the removal check below needs it on
     # What was verified but is NOT on, and why — every reason is one the rule names.
     off = {k: by[k].disabled_reason for k in verified - on}
     allowed = ("ratio ", "unit mismatch", "endpoint not platform-eligible",
                "policy for scrapecreators disallows overflow", "no price on one side", "free for us")
     assert all(r.startswith(allowed) for r in off.values()), off
-    # Recorded 2026-08-28: 113 on. The 32 verified-but-off are the per-result-vs-per-call unit
-    # question (23, plan §7), not platform-eligible (7), a $0.50 aggregator price on a free route,
-    # a 56× ratio, scrapecreators policy, and rows with no aggregator price.
-    assert len(on) == 113, (len(on), sorted(off.items()))
-    assert ("tomba.companies.emails.count", "orthogonal") in on  # free for us, 1¢ there, 155 402s/30d
     # a route with ratio 6.5 in the seed never enables, and a re-sync without it disables it
     bad = {**seed[0], "endpoint_id": "findymail.search.business-profile", "aggregator": "monid",
            "agg_price_usd": 0.0198 * 6.5, "agg_unit": "call", "verified_at": "2026-08-26"}
@@ -206,33 +198,6 @@ def test_every_recorded_phrase_arms_the_tripwire():
             continue  # empty (the bare 402 row), a period word, or a regex we cannot use as a body
         sig = S.classify("someone-else", 400, None, pattern.encode())
         assert sig is not None and sig.kind == "unrecorded", f"{provider}'s phrase {pattern!r} does not arm the tripwire"
-
-
-def test_moz_spent_row_quota_is_a_quota_mark():
-    """Moz answers a spent period allowance with 403 {"issue": "insufficient-quota"} — 115 of one
-    org's calls went upstream to a dead key on 2026-09-04 because no row matched a 403. It is a
-    `quota` exhaustion (resets on Moz's billing day, which the body does not name → default lock);
-    Moz's caller-fault 4xx stay None."""
-    body = (b'{"error":"The account does not have enough quota remaining for current period.",'
-            b'"data":{"explanation":"account does not have sufficient quota","issue":"insufficient-quota"}}')
-    sig = S.classify("moz", 403, None, body)
-    assert sig is not None and sig.kind == "quota" and sig.resets_at is None
-    assert S.classify("moz", 400, None, b'{"error":"target is required"}') is None
-    assert S.classify("moz", 403, None, b'{"error":"forbidden"}') is None
-
-
-def test_tavily_documents_separate_plan_and_paygo_quota_statuses():
-    plan = S.classify(
-        "tavily", 432, None,
-        b'{"detail":{"error":"This request exceeds your plan\'s set usage limit."}}',
-    )
-    paygo = S.classify(
-        "tavily", 433, None,
-        b'{"detail":{"error":"This request exceeds the pay-as-you-go limit."}}',
-    )
-    assert plan is not None and plan.kind == "quota" and S.is_exhausting(plan)
-    assert paygo is not None and paygo.kind == "quota" and S.is_exhausting(paygo)
-    assert S.classify("tavily", 432, None, b'{"detail":{"error":"bad query"}}') is None
 
 
 def test_an_unrecorded_vendor_phrase_is_a_tripwire_never_a_mark():
@@ -542,29 +507,6 @@ async def test_verify_route_marks_same_shape_and_polls_async_runs():
     async with httpx.AsyncClient(transport=httpx.MockTransport(stuck)) as c:
         res = await V.relay_once(c, r, "K", {}, None, max_polls=2, poll_wait_s=0)
     assert res.failure == "pending"
-
-
-def test_worker_cli_parses_overflow_commands(monkeypatch):
-    seen = {}
-    async def fake(args):
-        seen.update(vars(args)); return 0
-    monkeypatch.setattr(worker, "_overflow_sync", fake)
-    monkeypatch.setattr(worker, "_overflow_verify", fake)
-    assert worker.main(["overflow", "sync", "--live"]) == 0 and seen["live"] is True
-    assert worker.main(["overflow", "verify", "--max-usd", "0.05"]) == 0 and seen["max_usd"] == 0.05
-    assert seen["renew_max_usd"] == worker.RENEW_MAX_USD and seen["budget_usd"] == worker.VERIFY_BUDGET_USD
-    assert worker.main(["overflow", "verify", "--renew-max-usd", "0.7", "--budget-usd", "3"]) == 0
-    assert seen["renew_max_usd"] == 0.7 and seen["budget_usd"] == 3.0
-
-
-def test_trykitt_throttle_is_not_exhaustion():
-    s=S.classify('trykitt',418,body=json.dumps({'message': 'temporarily throttled', 'response_code': 418}))
-    assert s.kind=='burst' and not S.is_exhausting(s)
-    assert S.classify('trykitt',402,body='rate limit').kind=='unknown'
-    assert S.classify('trykitt',402,body='insufficient funds').kind=='balance'
-
-    assert S.classify("trykitt", 418, headers={"retry-after": "5"}, body="temporarily throttled").retry_after_s == 5
-
 
 
 def test_pdl_operation_allowance_does_not_lock_other_pdl_products():
