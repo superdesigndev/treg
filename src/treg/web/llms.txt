@@ -315,7 +315,12 @@ Money notes for agents:
   routed calls it also bounds the whole waterfall (default $1 there).
 - A failed call (HTTP 4xx/5xx from the provider) is relayed unchanged and charged nothing; the
   CLI prints one stderr line with the status, whose answer it is, and the call id — and on a metered
-  success, `treg: charged $<usd> · call id <id>` (stdout is always the exact body). A `/call/`
+  success, `treg: charged $<usd> · call id <id>` (stdout is always the exact body). **A script that
+  parses the output uses `treg --json call …`**: stdout is then one line,
+  `{"result": <body>, "_treg": {"http_status", "call_id", "charged_micro"}}`, and stderr is silent,
+  so merging the two streams cannot break the parse (`--await` output is unchanged). Before a loop
+  over many inputs, run a few and check the parsed results: a parse bug discards answers already
+  paid for. A `/call/`
   may be answered from treg's archive of earlier answers to the exact same question while that
   answer is still fresh: the body is the provider's verbatim bytes, the response says
   `X-Treg-Cache: hit` with `X-Treg-Fetched-At` and `X-Treg-Age`. Your team's first call on a

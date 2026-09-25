@@ -282,8 +282,9 @@ uses this metadata, never the encrypted token's shape.
   `error_request` / `error_response` hold redacted, truncated failure evidence across platform,
   own-key and own-tool calls. Successes leave them empty. Captured provider headers use an
   allowlist covering retry/auth/rate-limit and request/trace identifiers. `/calls` neither fetches
-  nor exposes these wide fields; `GET /admin/errors` owns access and the 14-day retention purge
-  (replacing expired evidence with `<expired>`).
+  nor exposes these wide fields; `GET /admin/errors` owns read access (read-only) and the
+  `treg-worker admin purge-evidence` cron (`application/evidence_retention.py`) the 14-day
+  retention purge, replacing expired evidence with `<expired>`.
 
   Redaction in `application.call.evidence` is security-sensitive:
 
@@ -297,7 +298,8 @@ uses this metadata, never the encrypted token's shape.
 
   Unmetered uploads are buffered for evidence only with declared `Content-Length <= 64 KiB`.
   Failed streaming responses retain at most the first 8 KiB, replaying all bytes to the caller.
-  Purging stays on the admin path; request-session dependencies do not commit a lazy purge marker.
+  Purging never runs on a request: an admin page reading errors once blanked evidence
+  platform-wide on every load.
 
   `archive_key_hash` / `archive_content_hash` link eligible metered platform responses to
   `ArchiveKey` / `ArchiveSnapshot` for `GET /calls/{id}/result`. They are nullable, unindexed

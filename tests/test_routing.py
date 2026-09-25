@@ -2565,3 +2565,30 @@ def test_linkedin_url_lowercases_the_host_so_the_handle_derives():
     from treg.domain.catalog.routing import paths as P
     assert P.linkedin_url("LinkedIn.com/in/Patrick") == "https://linkedin.com/in/Patrick"
     assert P.linkedin_handle(P.linkedin_url("WWW.LinkedIn.com/in/Patrick")) == "Patrick"
+
+
+async def test_company_blind_search_provider_is_dropped_not_billed(clients: AsyncClient, platform_on, monkeypatch):
+    """`people.search` declares `scoping: [company_domain]`. A title-only provider asked for
+    `{company_domain, title}` answers with the same strangers for every company and bills them as
+    a hit, so it leaves the plan instead of ranking last — and still serves a title-only search."""
+    for p in ("LUSHA", "COMPANYENRICH"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "lusha,companyenrich")
+    get_settings.cache_clear()
+    cat = catalog_store.load()
+    for eid in cat.by_id["treg.people.search"]["routed_children"]:
+        if eid not in ("lusha.people.search", "companyenrich.people.search"):
+            monkeypatch.delitem(cat.adapters, eid, raising=False)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "lusha": [(200, {"results": [{"name": "Some CEO"}], "pagination": {"total": 1}})],
+        "companyenrich": [(200, {"items": [], "totalItems": 0})]}, seen))
+    r = await clients.post("/call/treg.people.search", json={"company_domain": "example.com", "title": "CEO"})
+    assert [s[0] for s in seen] == ["companyenrich"], seen
+    assert r.status_code == 200 and r.json()["_treg"]["outcome"] == "miss", r.text
+    assert any(d["endpoint_id"] == "lusha.people.search" and "company_domain" in d["why"]
+               for d in r.json()["_treg"]["dropped"]), r.json()["_treg"]
+    seen.clear()
+    r = await clients.post("/call/treg.people.search", json={"title": "CEO"})
+    assert [s[0] for s in seen] == ["lusha"] and r.json()["_treg"]["served_by"] == "lusha.people.search", r.text
+    get_settings.cache_clear()

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 import logging
@@ -10,15 +9,16 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
-from sqlalchemy import func, or_, update
+from sqlalchemy import func, or_
 from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import reconcile
+from ..application import evidence_retention
 from ..config import get_settings
 from ..infra import kv
-from ..infra.db import background_session_maker, get_admin_session
+from ..infra.db import get_admin_session
 from ..domain import money
 from ..models import ArchiveEndpointStat, ArchiveKey, ArchiveSnapshot, Bundle, CallRecord, LedgerEntry, Membership, Org, Referral, Secret, Tool, User
 from ..timeutil import as_naive as _as_naive
@@ -185,8 +185,8 @@ async def admin_calls(
              "method": c.method, "status": c.status_code, "at": c.created_at.isoformat()} for c in rows]
 
 
-_ERROR_EVIDENCE_TTL_DAYS = 14
-_ERROR_EVIDENCE_EXPIRED = "<expired>"
+_ERROR_EVIDENCE_TTL_DAYS = evidence_retention.ERROR_EVIDENCE_TTL_DAYS
+_ERROR_EVIDENCE_EXPIRED = evidence_retention.ERROR_EVIDENCE_EXPIRED
 
 
 @app.get("/admin/errors")
@@ -201,13 +201,11 @@ async def admin_errors(
     Superadmin-only and deliberately not mirrored on `/calls`: the rows hold customers' request
     content, so v1 keeps them behind the same door as every other cross-tenant view.
 
-    Ageing happens HERE rather than on the request path. There is no scheduler in this app by design
-    (see the comment above `_claim_idempotent`), and the obvious lazy hook — a marker written on the
-    request session — cannot work: `get_admin_session` never commits, so the marker would roll back and the
-    purge would then run on every single failed call. Doing it on this route costs one UPDATE to the
-    person who came to read errors, which is exactly who wants the stale ones gone.
+    Read-only. Ageing is the `treg-worker admin purge-evidence` cron's job
+    (application/evidence_retention.py); until it has run, a row older than the window is shown as
+    expired with no evidence, so a late schedule never widens what this view reveals.
     """
-    purged = await _purge_expired_error_evidence()
+    cutoff = evidence_retention.cutoff()
     since = _utcnow_naive() - timedelta(days=max(1, min(days, 90)))
     q = (select(CallRecord)
          .where(CallRecord.created_at >= since,
@@ -225,7 +223,6 @@ async def admin_errors(
         select(Org).where(Org.id.in_({c.org_id for c in rows if c.org_id is not None})))).scalars().all()}
     return {
         "since": since.isoformat(), "days": days, "retention_days": _ERROR_EVIDENCE_TTL_DAYS,
-        "expired_rows_purged": purged,
         "errors": [{
             "id": c.id, "call_ref": c.call_ref, "at": c.created_at.isoformat(),
             "org": omap[c.org_id].slug if c.org_id in omap else None,
@@ -238,51 +235,12 @@ async def admin_errors(
             # An aged-out row holds the sentinel, which is a STATE, not content. Returning it as the
             # request/response would have a reader treat the word `<expired>` as the provider's
             # answer; `expired` says the same thing without pretending to be evidence.
-            "request": None if c.error_request == _ERROR_EVIDENCE_EXPIRED else c.error_request,
-            "response": None if c.error_response == _ERROR_EVIDENCE_EXPIRED else c.error_response,
-            "expired": c.error_response == _ERROR_EVIDENCE_EXPIRED,
-        } for c in rows],
+            "request": None if expired else c.error_request,
+            "response": None if expired else c.error_response,
+            "expired": expired,
+        } for c in rows
+          for expired in (c.error_response == _ERROR_EVIDENCE_EXPIRED or c.created_at < cutoff,)],
     }
-
-
-_purge_lock = asyncio.Lock()
-
-
-async def _purge_expired_error_evidence() -> int:
-    """Blank the evidence columns past the retention window; returns how many rows were cleared.
-
-    An UPDATE, not a DELETE: `callrecord` is the audit trail and the rest of the row must survive.
-    The sentinel rather than NULL keeps "captured, then aged out" distinguishable from "never
-    captured" — without it an old failure and a successful call look identical. Runs on its own
-    session because the request's session is not committed for us, and on the BACKGROUND pool
-    rather than admin's: it is a retention sweep nobody is reading, and nesting a second admin
-    session inside an admin request would hold two of that pool's few slots at once.
-
-    Single-flighted: the sweep is idempotent and driven by whoever happens to open the errors page,
-    so N concurrent readers would otherwise run N identical bulk UPDATEs and hold N background
-    slots. One at a time makes it one entry in `db.BACKGROUND_CONSUMERS` instead of `admin`'s size.
-    """
-    cutoff = _utcnow_naive() - timedelta(days=_ERROR_EVIDENCE_TTL_DAYS)
-    try:
-        async with _purge_lock, background_session_maker() as db:
-            result = await db.execute(
-                update(CallRecord)
-                # `coalesce`, not a bare `!=`: SQL three-valued logic makes `error_response !=
-                # '<expired>'` UNKNOWN when that column is NULL, so a row carrying request-only
-                # evidence would never age out — excluded by the very predicate meant only to skip
-                # rows already purged.
-                .where(CallRecord.created_at < cutoff,
-                       or_(CallRecord.error_request.is_not(None),
-                           CallRecord.error_response.is_not(None)),
-                       or_(func.coalesce(CallRecord.error_request, "") != _ERROR_EVIDENCE_EXPIRED,
-                           func.coalesce(CallRecord.error_response, "") != _ERROR_EVIDENCE_EXPIRED))
-                .values(error_request=_ERROR_EVIDENCE_EXPIRED,
-                        error_response=_ERROR_EVIDENCE_EXPIRED))
-            await db.commit()
-            return int(result.rowcount or 0)
-    except Exception as exc:  # noqa: BLE001 — retention housekeeping must not break the view
-        logging.getLogger("treg").warning("error-evidence purge failed: %s", exc)
-        return 0
 
 
 @app.get("/admin/health")

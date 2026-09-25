@@ -125,6 +125,11 @@ Notes:
   to the balance — they take priority automatically). A 402 with `error: route_max_cost` is
   different: YOUR `X-Treg-Route-Max-Cost` header refused the call before anything was charged —
   ask for fewer rows/targets or raise the ceiling.
+- **Scripting many calls:** use `treg --json call …`. Stdout is one line,
+  `{"result": <provider body>, "_treg": {"http_status", "call_id", "charged_micro"}}`, and nothing
+  goes to stderr, so a script that merges the streams still parses every answer (`--await` output
+  is unchanged). Run a handful and check the parsed results before looping over the whole list: a
+  parse bug throws away answers that were already billed.
 - The real charge is the response header `X-Treg-Cost-Micro` (micro-USD), with `X-Treg-Call-Id`
   as the id to quote. On an asynchronous submission that header is the reserved ceiling; the CLI
   labels it as a reservation, and the terminal task settles the real charge. The catalog `~$/call`

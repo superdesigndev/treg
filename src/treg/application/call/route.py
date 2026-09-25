@@ -36,7 +36,7 @@ from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing.contracts import canonical_identity, declared_miss, miss_status
 from ...domain.catalog.routing.plan import (
-    MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank,
+    MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank, unscoped,
 )
 from .. import asynctasks as async_task_app
 from . import async_bridge
@@ -251,6 +251,14 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                        + " | ".join("{" + ", ".join(v) + "}" for v in contract.identity),
             "variants": [list(v) for v in contract.identity]})
     raw, dropped = candidates_for(contract, cat.for_capability(ep["capability"]), cat.adapters, identity)
+    scoped = []
+    for e, ad, v in raw:
+        if missing := unscoped(ad, contract, identity):
+            dropped.append({"endpoint_id": e["id"], "why": f"cannot scope by {', '.join(missing)}; "
+                            "it would answer the same for any value"})
+        else:
+            scoped.append((e, ad, v))
+    raw = scoped
     ids = [e["id"] for e, _, _ in raw]
     stats = await _observed_stats(ids)
     own: set[str] = set()

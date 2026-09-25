@@ -2236,12 +2236,8 @@ adapters:
     const: {queryParams.page: "1", queryParams.enrich: "false"}
     out: {people: items, count: totalResults}
     miss: "items == []"
-  companyenrich.people.search.scroll:
-    accepts: [[company_domain, title], [company_domain]]
-    in:  {company_domain: body.domains, title: body.positionQuery}
-    in_expr: {body.domains: "list(company_domain)", body.positionQuery: "list(title)", body.pageSize: limit}
-    out: {people: items, count: totalItems, next_cursor: nextCursor}
-    miss: "items == []"
+  # No adapter for companyenrich.people.search.scroll: its first page is the same query against the
+  # same index as companyenrich.people.search, so routing both billed one empty answer twice.
   crustdata.people.search:
     accepts: [[full_name]]
     in:  {full_name: body.filters.value}

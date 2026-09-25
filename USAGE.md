@@ -137,6 +137,7 @@ treg tool add google-ads --base-url https://googleads.googleapis.com \
 | `treg catalog search` | `"what you want to do"` | find endpoints by capability |
 | `treg catalog get` | `ENDPOINT_ID` | docs, parameters, **the price**, and how you would be served |
 | `treg call ENDPOINT_ID` | `--query K=V`, `--data STR` | call it |
+| `treg --json call ENDPOINT_ID` | same | for scripts: one JSON line `{"result": <body>, "_treg": {http_status, call_id, charged_micro}}` on stdout, nothing on stderr |
 | `treg call ENDPOINT_ID --await` | `--timeout N` (default 900) | a generation call (video/image): submit, poll the provider, print the final response |
 | `treg host FILE` | `--content-type T`, `--json` | host a reference image/audio/video at a public URL a vendor can fetch (30 MB, 7-day TTL, free); prints the URL for `image_urls` / `audio_urls` |
 | `treg catalog request` | `"what's missing"` | searched, not there? file it — requests steer what gets added next |

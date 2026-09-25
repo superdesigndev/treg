@@ -1708,6 +1708,11 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   admission-only contract: its adapters verify like any other (which is what the archive's
   `has_result_rules` reads), but no `treg.<capability>` row is ever generated from it. For a
   capability whose "children" are one provider's price tiers, not a choice treg should make.
+  `scoping` names identity keys that scope the answer rather than describe it (`people.search`:
+  `company_domain`). A candidate whose adapter never sends one the caller supplied is dropped from
+  the plan with the reason, not ranked down like an ignored filter: a title-only search asked for
+  one company's CEO returns title-matched strangers for any company and bills them as a hit. The
+  rule is per candidate, so `{q, company_domain}` also drops the `q`-only providers.
 - **Adapters** — `adapters.yaml`, one per endpoint: `accepts` (identity variants), `in` (contract
   field → `queryParams.x` / `body.x`), `const` (fixed provider params), `out` (core field →
   expression over the body), `miss`. The expression language (`domain/catalog/routing/paths.py`)

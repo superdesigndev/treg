@@ -37,8 +37,8 @@ _is_sqlite = _db_url.startswith("sqlite")
 #
 # `admin` is 3: one slot for a staff page left polling, one for a human using the dashboard, one
 # spare. Any handler that opens a SECOND session eats two, which is how `/admin/errors` ate the
-# whole pool when this was 2 — see `_purge_expired_error_evidence`, now on `background` and
-# single-flighted so concurrent readers cannot multiply it.
+# whole pool when this was 2 — its retention sweep then moved off the request path entirely, to the
+# `treg-worker admin purge-evidence` cron (application/evidence_retention.py).
 #
 # Sizes are PER PROCESS, the web service runs two uvicorn workers, and a rolling deploy runs two
 # instances, so `per_process × 2 × 2` is what must stay under the database plan's 103 ceiling —
@@ -57,7 +57,6 @@ BACKGROUND_CONSUMERS: dict[str, int] = {
     "archive.prune_worker": 1,    # holds one across a whole sweep
     "archive.refresh_worker": 1,
     "catalog observation refresh": 1,   # singleflight, one task per process
-    "admin evidence sweep": 1,    # single-flighted in routers/admin.py
     "api_keys last used": 1,      # throttled best-effort managed-key display metadata
 }
 

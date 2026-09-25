@@ -33,7 +33,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Multi-tenancy — orgs, memberships, invites, per-org scoping](architecture/multi-tenancy.md) | shipped | access.py, 0042_pinned_read_scope.py, test_pinned_read_scope.py, models.py, … |
 | [The proxy — faithful credential-injecting relay + tool resolution](architecture/proxy-model.md) | shipped | relay.py, ssrf.py, api.py, authorize.py, … |
 | [Discovery experiment — a relevance judge behind catalog search, measured on what the caller does next](architecture/search-experiment.md) | building | search_experiment.py, interleave.py, judge.py, 0041_searchlog.py, … |
-| [Super-admin — cross-tenant read + control](architecture/super-admin.md) | shipped | api.py, admin.py, access.py, config.py |
+| [Super-admin — cross-tenant read + control](architecture/super-admin.md) | shipped | api.py, admin.py, evidence_retention.py, access.py, … |
 
 ## Interfaces (API · CLI · skill)
 

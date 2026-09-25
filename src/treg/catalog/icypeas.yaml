@@ -420,6 +420,8 @@ endpoints:
       checked: '2026-08-20'
       confidence: documented
       note: "1 credit per found URL; a miss is free"
+    # A miss is HTTP 200 with a status other than FOUND; this is what settles it at zero.
+    expect: {json_path: status, equals: FOUND}
     verified: '2026-08-20'
     example_response: examples/icypeas.people.profile.url.json
     docs_url: https://api-doc.icypeas.com/scrape/user-profile-url-search
@@ -450,6 +452,8 @@ endpoints:
       checked: '2026-08-20'
       confidence: documented
       note: "1 credit per found URL; a miss is free"
+    # A miss is HTTP 200 with a status other than FOUND; this is what settles it at zero.
+    expect: {json_path: status, equals: FOUND}
     verified: '2026-08-20'
     example_response: examples/icypeas.companies.profile.url.json
     docs_url: https://api-doc.icypeas.com/scrape/company-profile-url-search
