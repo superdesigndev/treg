@@ -40,7 +40,7 @@ export default {
                      aria-hidden="true" @error="platLogoBad[platSlug]=true">
                 <span v-else class="pt-i">{{platInitial({label:platLabel, slug:platSlug})}}</span>
               </span>
-              <h1>{{platLabel}}</h1>
+              <h1>{{platLabel || '\u00a0'}}</h1>
             </div>
             <p class="sub plat-intro">Every endpoint treg knows for this platform, one ledger, filed by subject — jobs several
               providers do sit on a single row, so you can compare price and coverage before you spend a call.</p>

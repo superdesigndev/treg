@@ -31,6 +31,11 @@ export default async function boot(){
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
       if(['tools','orgs','activity','usage','admin','help','secrets','start','resources','connections','referrals'].includes(v)) this.go(v, true);
     });
+    // Catalog data does not depend on the session, so a view that shows it starts fetching now,
+    // alongside /meta and /auth/me, instead of after them (the shelves used to arrive last).
+    const catalogShelf=this.catalogFromPath(location.pathname)?.slug || this.platformFromHash();
+    if(this.catalogFromPath(location.pathname) || catalogShelf || location.hash==='#connections') this.loadPlatforms();
+    if(catalogShelf) this.prefetchPlatform(catalogShelf);
     // /search needs no session to draw, so it does not wait for one: the page paints now, and the
     // session (the top bar's buttons, a result clicked before sign-in) follows when /auth/me answers.
     if(this.catalogFromPath(location.pathname)?.view==='find'){ this.publicCatalog=true; this.view='find'; this.bootReady=true; }

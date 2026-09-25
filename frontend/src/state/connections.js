@@ -3,6 +3,7 @@ export default {
 // ---- connections (registry OAuth) ----
     async loadConnections(){
       this.connErr='';
+      this.loadPlatforms();  // fire-and-forget, and first: the catalog must neither hold up nor wait for the connect UI
       try{
         const [ps, cs]=await Promise.all([
           fetch('/oauth/providers').then(r=>r.json()).catch(()=>[]),
@@ -10,7 +11,6 @@ export default {
         ]);
         this.providers=ps||[]; this.connections=cs||[];
       }catch(e){ this.connErr=String(e.message||e); }
-      this.loadPlatforms();  // fire-and-forget: the catalog must never hold up the connect UI
     },
 authorizationMethodSpec(providerName, methodName){
       const provider=(this.providers||[]).find(item=>item.service===providerName);

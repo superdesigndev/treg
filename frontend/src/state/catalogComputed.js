@@ -57,8 +57,9 @@ mkTabs(){
       return out;
     },
 // A build without /catalog has no tiles to show, so it falls back to the integration shelves
-    // rather than opening on an empty tab.
-    mkTabActive(){ return this.platCategories.length ? this.mkTab : 'platform'; },
+    // rather than opening on an empty tab. Only once the shelves have answered: falling back while
+    // they load flashed the integration list on every visit before the tiles replaced it.
+    mkTabActive(){ return this.platCategories.length || !this.plats.settled ? this.mkTab : 'platform'; },
 // Shelves, with the long ones cut down to their featured tiles. A category of 14 platforms is a
     // wall you scroll past rather than read, so past PLAT_SHELF_MAX only the catalog's `featured`
     // ranks get a full tile and the tail collapses into one "See X, Y, and N more" row. Rank first,
@@ -99,7 +100,10 @@ mkTabs(){
 mkPlatforms(){ return this.plats.list.filter(pl=>(pl.providers||[]).includes(this.mkService)); },
 platRow(){ return this.plats.list.find(pl=>pl.slug===this.platSlug)||null; },
 platLabel(){ return (this.platData&&this.platData.platform&&this.platData.platform.label)
-      || (this.platRow&&this.platRow.label) || this.platSlug || 'Platform'; },
+      || (this.platRow&&this.platRow.label)
+      // The raw slug ("google-ads") only once nothing better can arrive: shown while loading, it
+      // read as a broken title that then corrected itself.
+      || (this.plats.settled && !this.platLoading ? this.platSlug || 'Platform' : ''); },
 platProviders(){  // providers with endpoints here, in catalog order
       const seen=[]; for(const g of (this.platData&&this.platData.capabilities||[])) for(const e of (g.endpoints||[])) if(!seen.includes(e.provider)) seen.push(e.provider);
       for(const e of (this.platData&&this.platData.extended||[])) if(!seen.includes(e.provider)) seen.push(e.provider);

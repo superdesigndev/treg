@@ -18,7 +18,9 @@
 <script src="/adtrack.js"></script>
 </head>
 <body>
-<div id="app"><p role="status">Loading treg…</p><p>If this page does not load, <a href="">reload</a> to get the latest version.</p></div>
+<!-- The same markup App.vue shows while it boots, so mounting swaps it for itself instead of
+     jumping from an unstyled line to a centred mark. The reload hint appears only if boot stalls. -->
+<div id="app"><main class="boot-status" aria-live="polite" aria-busy="true"><a href="/" class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span>treg</a><p role="status">Loading treg…</p><p class="boot-stuck">If this page does not load, <a href="">reload</a> to get the latest version.</p></main></div>
 <script src="/sitetrack.js"></script>
 <script src="/agent-setup.js"></script>
 <script type="module" src="/src/main.ts"></script>

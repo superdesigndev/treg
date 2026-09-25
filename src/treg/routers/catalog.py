@@ -78,13 +78,19 @@ def _platform_rows() -> list[dict]:
     return rows
 
 
+def _platforms_payload() -> dict:
+    """The `/catalog/platforms` body. Public catalog pages embed the same dict in their HTML, so the
+    app's first render already has the shelves instead of fetching them after boot."""
+    rows = _platform_rows()
+    names = {s: _provider_display(s) for s in sorted({s for r in rows for s in r["providers"]})}
+    return {"platforms": rows, "providers": names, "generated_from": "catalog"}
+
+
 @app.get("/catalog/platforms")
 async def catalog_platforms() -> dict:
     """Open: the platform shelves of the endpoint catalog, busiest first, and the display name of
     every vendor on them (the /search page's pile is one tile per vendor)."""
-    rows = _platform_rows()
-    names = {s: _provider_display(s) for s in sorted({s for r in rows for s in r["providers"]})}
-    return {"platforms": rows, "providers": names, "generated_from": "catalog"}
+    return _platforms_payload()
 
 
 @app.get("/catalog/platforms/{slug}")

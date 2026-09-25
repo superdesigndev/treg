@@ -13,7 +13,7 @@ export default { setup: useDashboard }
                everyone, team or not, so a partner without a team yet can still apply. -->
           <h1>{{refTab==='partner' ? 'Affiliate partner' : 'Refer a friend'}}</h1>
           <p class="sub" v-if="refTab==='partner'">Revenue share, paid in cash. By invitation.</p>
-          <p class="sub" v-else>They get {{money(ref.terms.referred_micro)}} when they add
+          <p class="sub" v-else :style="ref.loaded ? null : {visibility:'hidden'}">They get {{money(ref.terms.referred_micro)}} when they add
             {{money(ref.terms.min_topup_micro)}}. You get {{money(ref.terms.referrer_micro)}},
             {{ref.terms.hold_days}} days later.</p>
           <div class="tabs" style="max-width:720px">
