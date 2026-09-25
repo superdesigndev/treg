@@ -202,6 +202,7 @@ class Settings(BaseSettings):
     platform_key_sumble: str = ""  # Bearer; Pro monthly credits, optional vendor auto-top-up
     platform_key_moltsets: str = ""  # Bearer; shared subscription fair-use pools, no auto-top-up
     platform_key_openmart: str = ""  # Bearer; monthly subscription credits, no auto-top-up
+    platform_key_deeplead: str = ""  # Bearer; partner key priced per call in USD, invoiced monthly
     platform_key_harvestapi: str = ""  # X-API-Key; prepaid USD wallet
     platform_key_fetchinio: str = ""  # X-API-Key; subscription + PAYG credit balance
     platform_key_anyapi: str = ""  # X-API-Key; prepaid USD wallet, exact charge settles from costUsd
