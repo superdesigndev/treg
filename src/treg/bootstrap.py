@@ -531,12 +531,11 @@ def configure_archive_object_store(store) -> None:
 
 
 @asynccontextmanager
-async def _archive_object_store(app):
+async def archive_object_store(injected=None):
     from . import archive_bodies
     from .infra.object_store import open_r2
 
     enabled = archive_bodies.validate_configuration()
-    injected = getattr(app.state, "archive_object_store", None)
     opener = open_r2(get_settings()) if enabled and injected is None else nullcontext(injected)
     async with opener as store:
         configure_archive_object_store(store)
@@ -549,7 +548,7 @@ async def _archive_object_store(app):
 def _lifespan(role: AppRole):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        async with _archive_object_store(app):
+        async with archive_object_store(getattr(app.state, "archive_object_store", None)):
             await verify_db()
             if kv.configured() and not await kv.store().ping():
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it

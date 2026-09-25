@@ -639,10 +639,11 @@ async def _store(
         cache = (catalog_store.load().by_id.get(endpoint_id) or {}).get("cache")
         ignore_paths = cache.get("ignore_paths", []) if isinstance(cache, dict) else []
         ignored_matches = set()
+        initial_results = {}
         if plan.storage is not None and origin in ("caller", "refresh"):
             async with observation.wait(_get_sem(), "compare_sem_wait"):
                 with observation.measure("compare"):
-                    ignored_matches = await _ignored_matches(kh, body, ignore_paths)
+                    ignored_matches = await _ignored_matches(kh, body, ignore_paths, initial_results)
 
         # Same-key waiters must queue before taking a scarce database-write slot. Otherwise four
         # duplicate recordings can occupy the whole semaphore while only one touches the database.
@@ -662,7 +663,7 @@ async def _store(
                                 caller_body=caller_body, headers=headers, status_code=status_code,
                                 media_type=media_type, body=body, origin=origin,
                                 key_hash=kh, body_hash=ch, plan=plan, ignored_matches=ignored_matches,
-                                origin_org_id=origin_org_id, scope=scope)
+                                initial_results=initial_results, origin_org_id=origin_org_id, scope=scope)
                             stored, reason = plan.storage, plan.reason
                             break
                         except IntegrityError:
@@ -759,13 +760,15 @@ async def _change_compute(fn, *args):
 
 def _has_change_body(snapshot) -> bool:
     # Legacy rows may have a deferred body and no location marker: preserve their fallback.
-    # A loaded NULL with no carrier/location is known hash-only and needs no read.
-    return (snapshot.body_storage in ("both", "r2")
+    # R2 may hold backfilled bytes even after the legacy DB copy/location was pruned.
+    return (archive_bodies._r2_first("observation")
+            or snapshot.body_storage in ("both", "r2")
             or snapshot.body_of is not None
             or snapshot.__dict__.get("body", True) is not None)
 
 
-async def _ignored_matches(key_hash: str, body: bytes, paths: list[str]) -> set[int]:
+async def _ignored_matches(key_hash: str, body: bytes, paths: list[str],
+                           initial_results: dict | None = None) -> set[int]:
     """Pre-read at most latest/decisive bodies; the writer accepts only its actual baseline ID.
 
     A concurrent writer can invalidate this sample. That observation falls back to raw hashes,
@@ -774,6 +777,7 @@ async def _ignored_matches(key_hash: str, body: bytes, paths: list[str]) -> set[
     from sqlalchemy import select
     from .infra.db import background_session_maker
     from .models import ArchiveKey, ArchiveSnapshot
+    from .domain.catalog.results import classify, has_result_rules
 
     matches = set()
     try:
@@ -792,21 +796,33 @@ async def _ignored_matches(key_hash: str, body: bytes, paths: list[str]) -> set[
                     .options(*archive_bodies.read_options("observation")))).scalars().all()
                 raw_hash = content_hash(body)
                 matches.update(row.id for row in rows if row.content_hash == raw_hash)
-                pointers = [(row.id, await archive_bodies.pointer(s, row, "observation"))
+                initialize = (latest if initial_results is not None
+                              and archive_bodies._r2_first("initialization") and has_result_rules(key.endpoint_id)
+                              and (key.result_state is None or any(
+                                  row.id == latest and row.version != key.result_observed_version for row in rows))
+                              else None)
+                for row in rows:
+                    if row.id == initialize and row.content_hash == raw_hash:
+                        initial_results[row.id] = classify(key.endpoint_id, row.status_code, body)
+                pointers = [(row, await archive_bodies.pointer(s, row, "observation"))
                             for row in rows if row.content_hash != raw_hash and _has_change_body(row)]
             if not pointers:
                 return matches
             # New keys and raw-identical baselines need no JSON parsing or serialization.
             # Close the pointer session before any off-thread work or object I/O.
             new_hash = await _change_compute(_normalized_hash, body, paths)
-            if new_hash is None:
-                return matches
-            for snapshot_id, pointer in pointers:
-                previous = await archive_bodies.read(pointer, "observation")
+            for row, pointer in pointers:
+                if new_hash is None and row.id != initialize:
+                    continue
+                previous = await archive_bodies.read(
+                    pointer, "initialization" if row.id == initialize else "observation")
                 if previous is None:
                     change_outcomes["ignore_body_unavailable"] += 1
-                elif await _change_compute(_normalized_hash, previous, paths) == new_hash:
-                    matches.add(snapshot_id)
+                else:
+                    if row.id == initialize:
+                        initial_results[row.id] = classify(key.endpoint_id, row.status_code, previous)
+                    if new_hash is not None and await _change_compute(_normalized_hash, previous, paths) == new_hash:
+                        matches.add(row.id)
     except Exception:
         change_outcomes["ignore_comparison_failed"] += 1
     return matches
@@ -932,6 +948,7 @@ async def _store_locked(
     body_hash: str | None = None,
     plan: archive_bodies.WritePlan,
     ignored_matches: set[int] | None = None,
+    initial_results: dict | None = None,
     origin_org_id: int | None = None,
     scope: str = "",
 ) -> tuple[int, bool] | None:
@@ -986,9 +1003,12 @@ async def _store_locked(
         # as well, because that commit necessarily released the insert transaction's locks.
         key = await _lock_archive_key(s, key.id)
 
-        newest = (await s.execute(
-            select(ArchiveSnapshot).where(ArchiveSnapshot.key_id == key.id)
-            .order_by(ArchiveSnapshot.version.desc()).limit(1))).scalars().first()
+        newest_row = (await s.execute(
+            select(ArchiveSnapshot, ArchiveSnapshot.body.is_not(None))
+            .options(*archive_bodies.read_options("initialization"))
+            .where(ArchiveSnapshot.key_id == key.id)
+            .order_by(ArchiveSnapshot.version.desc()).limit(1))).first()
+        newest, newest_has_body = newest_row if newest_row else (None, False)
         new_key = newest is None            # first version ⇒ this recording created the key
         seen_before = (key.stable_seen, key.change_seen)
 
@@ -1001,7 +1021,7 @@ async def _store_locked(
             origin_org_id=origin_org_id)
         # Byte deduplication is independent of usefulness, including empty history.
         if newest is not None and newest.content_hash == ch:
-            carrier = newest.body_of or (newest.id if newest.body is not None else None)
+            carrier = newest.body_of or (newest.id if newest_has_body else None)
             if plan.keep_db and carrier is not None:
                 snap.body, snap.body_of = None, carrier
 
@@ -1015,15 +1035,26 @@ async def _store_locked(
             key.result_state = "unknown"
             key.result_snapshot_id = None
             if newest is not None:
-                previous_body = await _snapshot_body(s, newest)
-                if previous_body is not None:
-                    previous = classify(endpoint_id, newest.status_code, previous_body)
-                    if previous.state in ("found", "empty"):
-                        key.result_state = previous.state
-                        key.result_snapshot_id = newest.id
-                        baseline = newest
+                # Accept pre-read evidence only for the actual locked baseline. A deadline or
+                # race must not discard an existing DB baseline; retain the original DB-only
+                # initialization as a last fallback. Object I/O must never enter this lock.
+                previous = (initial_results or {}).get(newest.id)
+                if previous is None:
+                    if "body" not in newest.__dict__:
+                        await s.refresh(newest, ["body"])
+                    previous_body = await _snapshot_body(s, newest)
+                    if archive_bodies._r2_first("initialization"):
+                        change_outcomes["initialization_db_recovered" if previous_body is not None
+                                        else "initialization_db_unavailable"] += 1
+                    if previous_body is not None:
+                        previous = classify(endpoint_id, newest.status_code, previous_body)
+                if previous is not None and previous.state in ("found", "empty"):
+                    key.result_state = previous.state
+                    key.result_snapshot_id = newest.id
+                    baseline = newest
         elif key.result_snapshot_id is not None:
-            baseline = await s.get(ArchiveSnapshot, key.result_snapshot_id)
+            baseline = await s.get(ArchiveSnapshot, key.result_snapshot_id,
+                                   options=archive_bodies.read_options("initialization"))
             if baseline is not None and baseline.key_id != key.id:
                 baseline = None
 

@@ -58,9 +58,18 @@ async def _key():
         return (await s.execute(select(ArchiveKey))).scalar_one()
 
 
-async def test_positive_cache_preserves_bytes_billing_and_history(clients, cache_on, monkeypatch):
-    from treg import audit
+@pytest.mark.parametrize('read_source', ['db', 'r2', 'db_fallback'])
+async def test_positive_cache_preserves_bytes_billing_and_history(clients, cache_on, monkeypatch, read_source):
+    from treg import archive_bodies, audit
+    from tests.fake_object_store import MemoryObjectStore
+    objects = MemoryObjectStore()
+    monkeypatch.setattr(archive_bodies, '_store', objects)
+    if read_source != 'db':
+        for path in ('lookup', 'result'):
+            monkeypatch.setattr(get_settings(), 'archive_body_read_' + path, 'r2-first')
     first = await _call(clients, monkeypatch, FOUND)
+    if read_source == 'r2':
+        objects.objects[archive.content_hash(FOUND)] = FOUND  # Historical copy, original DB marker.
     second = await _call(clients, monkeypatch, EMPTY)
     assert second.headers['x-treg-cache'] == 'hit'
     assert first.content == second.content == FOUND
@@ -79,6 +88,7 @@ async def test_positive_cache_preserves_bytes_billing_and_history(clients, cache
         # The hit is this team's second call on the question: the repeat price.
         live, hit = sorted((r.cost_charged_micro for r in records), reverse=True)
         assert live > 0 and hit == live * 10 // 100
+    assert (objects.get_calls > 0) == (read_source != 'db')
 
 
 

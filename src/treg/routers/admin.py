@@ -461,26 +461,26 @@ async def admin_archive_body(
     key_hash: str, version: int,
     _: str = Depends(require_superadmin), db: AsyncSession = Depends(get_admin_session),
 ) -> dict:
-    """One stored answer's BYTES, for the panel's version viewer. Follows a dedup reference to
-    the row that carries the body; a hash-only version answers honestly that nothing was kept.
-    Superadmin like every /admin route — this is provider content held under a judged licence."""
+    """One authorized historical version through the common archive body reader."""
     from ..models import ArchiveKey as AK
     from ..models import ArchiveSnapshot as AS
+    from .. import archive_bodies
 
     key = (await db.execute(select(AK).where(AK.key_hash == key_hash))).scalars().one_or_none()
     if key is None:
         raise HTTPException(status_code=404, detail="no such key")
-    snap = (await db.execute(select(AS).where(AS.key_id == key.id, AS.version == version)
+    snap = (await db.execute(select(AS).options(*archive_bodies.read_options("admin"))
+                            .where(AS.key_id == key.id, AS.version == version)
                              )).scalars().one_or_none()
     if snap is None:
         raise HTTPException(status_code=404, detail="no such version")
-    from ..archive import _unpack as _archive_unpack
-    body = _archive_unpack(snap.body, snap.enc)
     carrier = None
-    if body is None and snap.body_of is not None:
-        ref = await db.get(AS, snap.body_of)
-        if ref is not None:
-            body, carrier = _archive_unpack(ref.body, ref.enc), ref.version
+    if snap.body_of is not None:
+        carrier = (await db.execute(select(AS.version).where(
+            AS.id == snap.body_of, AS.key_id == key.id))).scalar_one_or_none()
+    pointer = await archive_bodies.pointer(db, snap, "admin")
+    await db.close()
+    body = await archive_bodies.read(pointer, "admin")
     text = None
     if body is not None:
         try:
@@ -494,9 +494,7 @@ async def admin_archive_body(
             "carried_by_version": carrier,
             "body_text": text,
             "note": None if body is not None else
-            "body stored in object storage; this DB viewer does not fetch it"
-            if snap.body_storage in ("r2", "both") else
-            "hash-only: body bytes are unavailable (policy, size, pruning or storage failure)"}
+            "body bytes are unavailable (policy, size, pruning or storage failure)"}
 
 
 @app.get("/admin/archive/panel", response_class=HTMLResponse, include_in_schema=False)

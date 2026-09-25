@@ -485,7 +485,7 @@ module is off** (self-hosters and the test suite send nothing). `$groups: {team:
 browser's `posthog.group('team', slug)`. Every event also carries `build` (`TREG_BUILD`, else the
 commit variable the host exports, else the installed package version; `build_id`) and
 `archive_config` (a 12-hex digest of the archive settings that change what a call does:
-mode, serving allowlist and percentage, repeat price, age ceilings, body storage, change
+mode, serving allowlist and percentage, repeat price, age ceilings, body write and all three read modes, change
 observation; `archive_config_id`), and the lifespan emits one `service_started` per process with
 the role and those archive settings. They exist so an analysis can be bounded to one code version
 or one cache configuration instead of a remembered deploy time: a property that an older build

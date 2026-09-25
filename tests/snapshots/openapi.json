@@ -1652,7 +1652,7 @@
     },
     "/admin/archive/body": {
       "get": {
-        "description": "One stored answer's BYTES, for the panel's version viewer. Follows a dedup reference to\nthe row that carries the body; a hash-only version answers honestly that nothing was kept.\nSuperadmin like every /admin route — this is provider content held under a judged licence.",
+        "description": "One authorized historical version through the common archive body reader.",
         "operationId": "admin_archive_body_admin_archive_body_get",
         "parameters": [
           {
