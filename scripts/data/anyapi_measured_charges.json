@@ -1,45 +1,39 @@
 {
  "_comment": "Measured AnyAPI charges. Each row is the distribution of the exact USD AnyAPI billed for a successful, charged request over the trailing 60 days, exported from AnyAPI's own request ledger. Calls that were not charged (a miss no source could serve) are excluded, since treg reserves against a call it expects to succeed. Only SKUs with at least 5 charged calls in the window appear; the rest fall back to the live rate card's cheapest-source price.",
- "as_of": "2026-09-09",
+ "as_of": "2026-09-19",
  "skus": {
   "ahrefs.backlinks": {
-   "calls": 12,
+   "calls": 18,
    "max_usd": 0.0215,
    "p50_usd": 0.0215,
    "p90_usd": 0.0215
   },
   "ahrefs.keywords": {
-   "calls": 25,
+   "calls": 91,
    "max_usd": 0.02145,
    "p50_usd": 0.02145,
    "p90_usd": 0.02145
   },
   "ahrefs.overview": {
-   "calls": 580,
+   "calls": 592,
    "max_usd": 0.02145,
    "p50_usd": 0.02145,
    "p90_usd": 0.02145
   },
   "airbnb.search": {
-   "calls": 48,
-   "max_usd": 0.0316,
-   "p50_usd": 0.01329,
-   "p90_usd": 0.02484
+   "calls": 61,
+   "max_usd": 0.03309,
+   "p50_usd": 0.01989,
+   "p90_usd": 0.03309
   },
   "alibaba.search": {
-   "calls": 13,
+   "calls": 41,
    "max_usd": 0.0315,
-   "p50_usd": 0.00704,
-   "p90_usd": 0.0315
-  },
-  "amazon.asins": {
-   "calls": 5,
-   "max_usd": 0.00736,
-   "p50_usd": 0.00368,
-   "p90_usd": 0.00736
+   "p50_usd": 0.0044,
+   "p90_usd": 0.022
   },
   "amazon.product": {
-   "calls": 185,
+   "calls": 207,
    "max_usd": 0.00956,
    "p50_usd": 0.0018,
    "p90_usd": 0.0018
@@ -51,55 +45,55 @@
    "p90_usd": 0.018
   },
   "amazon.search": {
-   "calls": 260,
+   "calls": 337,
    "max_usd": 0.077,
    "p50_usd": 0.0009,
    "p90_usd": 0.0009
   },
   "apollo.organization_enrich": {
-   "calls": 114,
+   "calls": 154,
    "max_usd": 0.012,
    "p50_usd": 0.012,
    "p90_usd": 0.012
   },
   "apollo.organization_jobs": {
-   "calls": 52,
+   "calls": 59,
    "max_usd": 0.012,
    "p50_usd": 0.012,
    "p90_usd": 0.012
   },
   "apollo.organization_news": {
-   "calls": 24,
+   "calls": 25,
    "max_usd": 0.012,
    "p50_usd": 0.012,
    "p90_usd": 0.012
   },
   "apollo.organizations_bulk_enrich": {
-   "calls": 97,
+   "calls": 111,
    "max_usd": 0.06,
    "p50_usd": 0.06,
    "p90_usd": 0.06
   },
   "apollo.organizations_search": {
-   "calls": 66,
+   "calls": 124,
    "max_usd": 0.012,
    "p50_usd": 0.012,
    "p90_usd": 0.012
   },
   "apollo.people_search": {
-   "calls": 142,
+   "calls": 231,
    "max_usd": 0.01,
    "p50_usd": 0.01,
    "p90_usd": 0.01
   },
   "apollo.person_enrich": {
-   "calls": 477,
+   "calls": 569,
    "max_usd": 0.012,
    "p50_usd": 0.012,
    "p90_usd": 0.012
   },
   "appstore.reviews": {
-   "calls": 7,
+   "calls": 14,
    "max_usd": 0.018,
    "p50_usd": 0.0033,
    "p90_usd": 0.018
@@ -123,10 +117,16 @@
    "p90_usd": 0.0045
   },
   "chatgpt.search": {
-   "calls": 391,
-   "max_usd": 0.00426,
-   "p50_usd": 0.004,
-   "p90_usd": 0.004
+   "calls": 773,
+   "max_usd": 0.0048,
+   "p50_usd": 0.0036,
+   "p90_usd": 0.0048
+  },
+  "coinmarketcap.listings": {
+   "calls": 10,
+   "max_usd": 0.0495,
+   "p50_usd": 0.00198,
+   "p90_usd": 0.0099
   },
   "company_enrichment.prospeo": {
    "calls": 12,
@@ -140,58 +140,46 @@
    "p50_usd": 0.0024,
    "p90_usd": 0.0024
   },
-  "douyin.profile": {
+  "congress.trades": {
    "calls": 7,
-   "max_usd": 0.001,
-   "p50_usd": 0.001,
-   "p90_usd": 0.001
+   "max_usd": 0.05335,
+   "p50_usd": 0.01155,
+   "p90_usd": 0.05335
   },
   "douyin.search_videos": {
-   "calls": 23,
+   "calls": 37,
    "max_usd": 0.012,
    "p50_usd": 0.012,
    "p90_usd": 0.012
   },
-  "douyin.user_posts": {
-   "calls": 8,
-   "max_usd": 0.0012,
-   "p50_usd": 0.001,
-   "p90_usd": 0.0012
-  },
-  "douyin.video": {
-   "calls": 5,
-   "max_usd": 0.001,
-   "p50_usd": 0.001,
-   "p90_usd": 0.001
-  },
   "douyin.video_comments": {
-   "calls": 54,
+   "calls": 50,
    "max_usd": 0.0012,
    "p50_usd": 0.0012,
    "p90_usd": 0.0012
   },
   "ebay.search": {
-   "calls": 235,
+   "calls": 240,
    "max_usd": 0.0625,
    "p50_usd": 0.03795,
    "p90_usd": 0.03795
   },
   "ebay.sold_listings": {
-   "calls": 73,
-   "max_usd": 0.084,
+   "calls": 120,
+   "max_usd": 0.088,
    "p50_usd": 0.0588,
-   "p90_usd": 0.0616
+   "p90_usd": 0.084
   },
   "email.find": {
-   "calls": 685,
+   "calls": 909,
    "max_usd": 0.033,
    "p50_usd": 0.0221,
-   "p90_usd": 0.0231
+   "p90_usd": 0.0308
   },
   "email.verify": {
-   "calls": 2545,
+   "calls": 3534,
    "max_usd": 0.0066,
-   "p50_usd": 0.00084,
+   "p50_usd": 0.00088,
    "p90_usd": 0.0066
   },
   "email_finding.dropleads": {
@@ -201,8 +189,8 @@
    "p90_usd": 0.0312
   },
   "email_finding.hunter_domain": {
-   "calls": 18,
-   "max_usd": 0.108,
+   "calls": 65,
+   "max_usd": 0.18,
    "p50_usd": 0.072,
    "p90_usd": 0.108
   },
@@ -213,109 +201,121 @@
    "p90_usd": 0.0168
   },
   "email_verification.icypeas": {
-   "calls": 43,
+   "calls": 47,
    "max_usd": 0.0024,
    "p50_usd": 0.0024,
    "p90_usd": 0.0024
   },
   "facebook.ad_details": {
-   "calls": 19,
+   "calls": 27,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "facebook.ad_details_full": {
-   "calls": 5,
+   "calls": 12,
    "max_usd": 0.00462,
-   "p50_usd": 0.00441,
+   "p50_usd": 0.00462,
    "p90_usd": 0.00462
   },
   "facebook.ad_transcript": {
-   "calls": 112,
+   "calls": 205,
    "max_usd": 0.002,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
   "facebook.ads_search": {
-   "calls": 588,
+   "calls": 1487,
    "max_usd": 0.002,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
   "facebook.company_ads": {
-   "calls": 1063,
+   "calls": 1222,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
+  "facebook.events_search": {
+   "calls": 9,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
   "facebook.group_posts": {
-   "calls": 1738,
+   "calls": 2381,
    "max_usd": 0.0036,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "facebook.marketplace": {
-   "calls": 43,
+   "calls": 87,
    "max_usd": 0.002,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
   "facebook.marketplace_item": {
-   "calls": 101,
+   "calls": 437,
    "max_usd": 0.002,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
   "facebook.page_contact": {
-   "calls": 79,
+   "calls": 210,
    "max_usd": 0.011,
    "p50_usd": 0.002,
-   "p90_usd": 0.002
+   "p90_usd": 0.011
   },
   "facebook.post": {
-   "calls": 1352,
+   "calls": 1411,
    "max_usd": 0.0036,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "facebook.post_comments": {
-   "calls": 65,
+   "calls": 75,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "facebook.profile": {
-   "calls": 95,
+   "calls": 118,
    "max_usd": 0.0036,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "facebook.profile_events": {
-   "calls": 54,
+   "calls": 55,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "facebook.profile_posts": {
-   "calls": 1445,
+   "calls": 3982,
    "max_usd": 0.0036,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
+  "facebook.profile_reels": {
+   "calls": 29,
+   "max_usd": 0.002,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
   "facebook.search_companies": {
-   "calls": 99,
+   "calls": 157,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "facebook.search_pages": {
-   "calls": 73,
+   "calls": 104,
    "max_usd": 0.1221,
-   "p50_usd": 0.0495,
+   "p50_usd": 0.03585,
    "p90_usd": 0.1221
   },
   "facebook.search_posts": {
-   "calls": 443,
+   "calls": 813,
    "max_usd": 0.06606,
    "p50_usd": 0.03306,
    "p90_usd": 0.06606
@@ -333,19 +333,19 @@
    "p90_usd": 0.0045
   },
   "gemini.search": {
-   "calls": 33,
-   "max_usd": 0.004,
-   "p50_usd": 0.0036,
-   "p90_usd": 0.004
+   "calls": 53,
+   "max_usd": 0.0048,
+   "p50_usd": 0.004,
+   "p90_usd": 0.0048
   },
   "github.repository": {
-   "calls": 12,
+   "calls": 15,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "github.trending_repositories": {
-   "calls": 372,
+   "calls": 925,
    "max_usd": 0.002,
    "p50_usd": 0.0012,
    "p90_usd": 0.002
@@ -381,55 +381,61 @@
    "p90_usd": 0.002
   },
   "glassdoor.jobs": {
-   "calls": 39,
+   "calls": 46,
    "max_usd": 0.11,
-   "p50_usd": 0.05515,
-   "p90_usd": 0.11
+   "p50_usd": 0.0525,
+   "p90_usd": 0.105
   },
   "google.ai_mode": {
-   "calls": 8,
+   "calls": 193,
    "max_usd": 0.00336,
-   "p50_usd": 0.00126,
+   "p50_usd": 0.00336,
    "p90_usd": 0.00336
   },
   "google.ai_overview": {
-   "calls": 572,
-   "max_usd": 0.00336,
+   "calls": 579,
+   "max_usd": 0.0048,
    "p50_usd": 0.0018,
    "p90_usd": 0.0018
   },
   "google.autocomplete": {
-   "calls": 638,
+   "calls": 869,
    "max_usd": 0.00099,
    "p50_usd": 0.00099,
    "p90_usd": 0.00099
   },
   "google.lens": {
-   "calls": 12,
+   "calls": 15,
    "max_usd": 0.00297,
    "p50_usd": 0.00297,
    "p90_usd": 0.00297
   },
   "google.news": {
-   "calls": 742,
+   "calls": 1126,
    "max_usd": 0.00099,
    "p50_usd": 0.00099,
    "p90_usd": 0.00099
   },
   "google.search": {
-   "calls": 8527,
+   "calls": 27181,
    "max_usd": 0.00099,
-   "p50_usd": 0.00099,
+   "p50_usd": 0.0009,
    "p90_usd": 0.00099
   },
   "google.search_100": {
-   "calls": 209,
+   "calls": 220,
    "max_usd": 0.0018,
    "p50_usd": 0.0018,
    "p90_usd": 0.0018
   },
+  "google.videos": {
+   "calls": 119,
+   "max_usd": 0.00099,
+   "p50_usd": 0.00099,
+   "p90_usd": 0.00099
+  },
   "google_ads.ad_details": {
-   "calls": 21,
+   "calls": 34,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
@@ -441,343 +447,367 @@
    "p90_usd": 0.002
   },
   "google_ads.company_ads": {
-   "calls": 195,
+   "calls": 648,
    "max_usd": 0.002,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
   "google_ads.search": {
-   "calls": 35,
+   "calls": 108,
    "max_usd": 0.00721,
    "p50_usd": 0.00721,
    "p90_usd": 0.00721
   },
   "google_shopping.search": {
-   "calls": 22,
+   "calls": 30,
    "max_usd": 0.0638,
    "p50_usd": 0.018,
    "p90_usd": 0.0638
   },
   "hackernews.profile": {
-   "calls": 25,
+   "calls": 26,
    "max_usd": 0.0015,
    "p50_usd": 0.0015,
    "p90_usd": 0.0015
   },
   "hackernews.search": {
-   "calls": 381,
+   "calls": 508,
    "max_usd": 0.00325,
    "p50_usd": 0.0015,
    "p90_usd": 0.00325
   },
   "hackernews.story": {
-   "calls": 576,
+   "calls": 558,
    "max_usd": 0.00325,
    "p50_usd": 0.00325,
    "p90_usd": 0.00325
   },
   "hackernews.story_comments": {
-   "calls": 585,
+   "calls": 581,
    "max_usd": 0.00325,
    "p50_usd": 0.00325,
    "p90_usd": 0.00325
   },
   "indeed.jobs": {
-   "calls": 346,
+   "calls": 427,
    "max_usd": 0.00264,
-   "p50_usd": 0.00111,
-   "p90_usd": 0.00252
+   "p50_usd": 0.00142,
+   "p90_usd": 0.00264
+  },
+  "instagram.audio_reels": {
+   "calls": 5,
+   "max_usd": 0.002,
+   "p50_usd": 0.002,
+   "p90_usd": 0.002
   },
   "instagram.basic_profile": {
-   "calls": 440,
-   "max_usd": 0.002,
+   "calls": 2316,
+   "max_usd": 0.0015,
    "p50_usd": 0.0012,
    "p90_usd": 0.0012
   },
   "instagram.followers": {
-   "calls": 16,
+   "calls": 15,
    "max_usd": 0.018,
-   "p50_usd": 0.01625,
+   "p50_usd": 0.0015,
    "p90_usd": 0.018
   },
   "instagram.following": {
-   "calls": 8,
+   "calls": 7,
    "max_usd": 0.01625,
    "p50_usd": 0.0015,
    "p90_usd": 0.01625
   },
   "instagram.hashtag_analytics": {
-   "calls": 78,
+   "calls": 188,
    "max_usd": 0.00297,
    "p50_usd": 0.00297,
    "p90_usd": 0.00297
   },
   "instagram.hashtag_recent_posts": {
-   "calls": 103,
+   "calls": 275,
    "max_usd": 0.0024,
    "p50_usd": 0.0015,
    "p90_usd": 0.0024
   },
   "instagram.hashtag_top_posts": {
-   "calls": 72,
+   "calls": 98,
    "max_usd": 0.018,
    "p50_usd": 0.0015,
    "p90_usd": 0.0015
   },
   "instagram.media_transcript": {
-   "calls": 202,
+   "calls": 208,
    "max_usd": 0.036,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "instagram.post": {
-   "calls": 14584,
-   "max_usd": 0.0036,
+   "calls": 17691,
+   "max_usd": 0.004,
    "p50_usd": 0.0015,
    "p90_usd": 0.002
   },
   "instagram.post_comments": {
-   "calls": 9965,
-   "max_usd": 0.00325,
+   "calls": 46436,
+   "max_usd": 0.002,
    "p50_usd": 0.0012,
-   "p90_usd": 0.00144
+   "p90_usd": 0.0012
   },
   "instagram.profile": {
-   "calls": 7379,
+   "calls": 11269,
    "max_usd": 0.0024,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
   "instagram.profile_contact": {
-   "calls": 2379,
+   "calls": 3251,
    "max_usd": 0.00721,
    "p50_usd": 0.00721,
    "p90_usd": 0.00721
   },
   "instagram.reel_transcript": {
-   "calls": 80,
+   "calls": 126,
    "max_usd": 0.0308,
    "p50_usd": 0.0308,
    "p90_usd": 0.0308
   },
   "instagram.reels_search": {
-   "calls": 9055,
-   "max_usd": 0.002,
+   "calls": 10151,
+   "max_usd": 0.0024,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "instagram.search": {
-   "calls": 60,
+   "calls": 29,
    "max_usd": 0.0418,
-   "p50_usd": 0.00325,
-   "p90_usd": 0.0036
+   "p50_usd": 0.0036,
+   "p90_usd": 0.006
   },
   "instagram.search_hashtag": {
-   "calls": 2602,
+   "calls": 4055,
    "max_usd": 0.00312,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "instagram.search_profiles": {
-   "calls": 339,
+   "calls": 442,
    "max_usd": 0.0036,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
-  "instagram.tagged_posts": {
-   "calls": 50,
-   "max_usd": 0.018,
+  "instagram.similar_profiles": {
+   "calls": 150,
+   "max_usd": 0.027,
    "p50_usd": 0.0024,
    "p90_usd": 0.0024
   },
+  "instagram.stories_full": {
+   "calls": 6,
+   "max_usd": 0.0024,
+   "p50_usd": 0.0024,
+   "p90_usd": 0.0024
+  },
+  "instagram.tagged_posts": {
+   "calls": 68,
+   "max_usd": 0.018,
+   "p50_usd": 0.0015,
+   "p90_usd": 0.0024
+  },
   "instagram.trending_reels": {
-   "calls": 25,
+   "calls": 83,
+   "max_usd": 0.002,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.002
+  },
+  "instagram.user_highlights": {
+   "calls": 5,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "instagram.user_posts": {
-   "calls": 18163,
+   "calls": 19310,
    "max_usd": 0.0036,
    "p50_usd": 0.002,
    "p90_usd": 0.0024
   },
   "instagram.user_reels": {
-   "calls": 15155,
+   "calls": 26294,
    "max_usd": 0.0036,
    "p50_usd": 0.0015,
    "p90_usd": 0.002
   },
   "linkedin.ads": {
-   "calls": 50,
-   "max_usd": 0.01986,
+   "calls": 86,
+   "max_usd": 0.03306,
    "p50_usd": 0.0048,
    "p90_usd": 0.01656
   },
   "linkedin.ads_search": {
-   "calls": 32,
+   "calls": 50,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "linkedin.article": {
-   "calls": 5,
+   "calls": 6,
    "max_usd": 0.00569,
    "p50_usd": 0.00569,
    "p90_usd": 0.00569
   },
   "linkedin.company": {
-   "calls": 170,
+   "calls": 291,
    "max_usd": 0.0042,
-   "p50_usd": 0.0042,
+   "p50_usd": 0.00143,
    "p90_usd": 0.0042
   },
   "linkedin.company_employees": {
-   "calls": 322,
+   "calls": 473,
    "max_usd": 0.11,
-   "p50_usd": 0.042,
-   "p90_usd": 0.105
+   "p50_usd": 0.044,
+   "p90_usd": 0.11
   },
   "linkedin.company_posts": {
-   "calls": 230,
+   "calls": 374,
    "max_usd": 0.04941,
    "p50_usd": 0.005,
-   "p90_usd": 0.02046
+   "p90_usd": 0.01846
   },
   "linkedin.company_posts_thin": {
-   "calls": 55,
+   "calls": 64,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "linkedin.company_thin": {
-   "calls": 29,
+   "calls": 73,
    "max_usd": 0.002,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
   "linkedin.email": {
-   "calls": 726,
+   "calls": 933,
    "max_usd": 0.011,
    "p50_usd": 0.011,
    "p90_usd": 0.011
   },
   "linkedin.jobs": {
-   "calls": 510,
+   "calls": 593,
    "max_usd": 0.0286,
-   "p50_usd": 0.01155,
+   "p50_usd": 0.0121,
    "p90_usd": 0.0273
   },
   "linkedin.jobs_thin": {
-   "calls": 3655,
+   "calls": 5751,
    "max_usd": 0.0012,
    "p50_usd": 0.0005,
    "p90_usd": 0.0005
   },
   "linkedin.post": {
-   "calls": 42,
-   "max_usd": 0.002,
+   "calls": 66,
+   "max_usd": 0.00253,
    "p50_usd": 0.0009,
    "p90_usd": 0.0012
   },
   "linkedin.post_comments": {
-   "calls": 226,
+   "calls": 359,
    "max_usd": 0.1144,
    "p50_usd": 0.005,
-   "p90_usd": 0.00685
+   "p90_usd": 0.0066
   },
   "linkedin.post_reactions": {
-   "calls": 42,
+   "calls": 84,
    "max_usd": 0.108,
    "p50_usd": 0.005,
-   "p90_usd": 0.0084
+   "p90_usd": 0.0063
   },
   "linkedin.profile": {
-   "calls": 11950,
+   "calls": 13155,
    "max_usd": 0.0044,
    "p50_usd": 0.004,
    "p90_usd": 0.0044
   },
   "linkedin.profile_posts_full": {
-   "calls": 22,
+   "calls": 30,
    "max_usd": 0.01951,
    "p50_usd": 0.005,
    "p90_usd": 0.01951
   },
   "linkedin.profile_posts_thin": {
-   "calls": 119,
+   "calls": 127,
    "max_usd": 0.137,
    "p50_usd": 0.01644,
    "p90_usd": 0.0274
   },
   "linkedin.profile_thin": {
-   "calls": 122,
+   "calls": 339,
    "max_usd": 0.002,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
   "linkedin.search_companies": {
-   "calls": 242,
+   "calls": 449,
    "max_usd": 0.0891,
-   "p50_usd": 0.0055,
-   "p90_usd": 0.041
+   "p50_usd": 0.005,
+   "p90_usd": 0.0143
   },
   "linkedin.search_posts": {
-   "calls": 5040,
-   "max_usd": 0.004,
+   "calls": 6780,
+   "max_usd": 0.018,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "linkedin.search_posts_full": {
-   "calls": 6854,
+   "calls": 8176,
    "max_usd": 0.04941,
-   "p50_usd": 0.01144,
+   "p50_usd": 0.005,
    "p90_usd": 0.0143
   },
   "linkedin.search_profiles": {
-   "calls": 43,
+   "calls": 47,
    "max_usd": 0.189,
-   "p50_usd": 0.1848,
+   "p50_usd": 0.132,
    "p90_usd": 0.189
   },
   "linkedin.search_profiles_email": {
-   "calls": 79,
+   "calls": 88,
    "max_usd": 0.305,
    "p50_usd": 0.305,
    "p90_usd": 0.305
   },
   "linkedin.search_profiles_thin": {
-   "calls": 169,
+   "calls": 195,
    "max_usd": 0.036,
    "p50_usd": 0.036,
    "p90_usd": 0.036
   },
   "maps.contacts": {
-   "calls": 475,
+   "calls": 650,
    "max_usd": 0.09906,
    "p50_usd": 0.03966,
-   "p90_usd": 0.0946
+   "p90_usd": 0.09906
   },
   "maps.place": {
-   "calls": 1243,
+   "calls": 1497,
    "max_usd": 0.0088,
    "p50_usd": 0.00297,
    "p90_usd": 0.0084
   },
   "maps.reviews": {
-   "calls": 3937,
+   "calls": 3981,
    "max_usd": 0.04406,
    "p50_usd": 0.00048,
    "p90_usd": 0.00445
   },
   "maps.search": {
-   "calls": 1540,
+   "calls": 8455,
    "max_usd": 0.11566,
-   "p50_usd": 0.00297,
-   "p90_usd": 0.07734
+   "p50_usd": 0.00175,
+   "p90_usd": 0.00297
   },
   "people_search.quickenrich_company": {
-   "calls": 12,
+   "calls": 27,
    "max_usd": 0.0072,
    "p50_usd": 0.0072,
    "p90_usd": 0.0072
@@ -789,7 +819,7 @@
    "p90_usd": 0.0045
   },
   "perplexity.search": {
-   "calls": 299,
+   "calls": 398,
    "max_usd": 0.0111,
    "p50_usd": 0.0018,
    "p90_usd": 0.0111
@@ -801,7 +831,7 @@
    "p90_usd": 0.084
   },
   "person_enrichment.prospeo": {
-   "calls": 24,
+   "calls": 25,
    "max_usd": 0.066,
    "p50_usd": 0.066,
    "p90_usd": 0.066
@@ -813,81 +843,99 @@
    "p90_usd": 0.0072
   },
   "pinterest.search": {
-   "calls": 363,
+   "calls": 463,
    "max_usd": 0.0036,
    "p50_usd": 0.0036,
    "p90_usd": 0.0036
   },
+  "playstore.reviews": {
+   "calls": 10,
+   "max_usd": 0.0121,
+   "p50_usd": 0.0013,
+   "p90_usd": 0.0121
+  },
   "polymarket.markets": {
-   "calls": 9,
+   "calls": 11,
    "max_usd": 0.12458,
    "p50_usd": 0.12458,
    "p90_usd": 0.12458
   },
+  "realtor.search": {
+   "calls": 14,
+   "max_usd": 0.04675,
+   "p50_usd": 0.03685,
+   "p90_usd": 0.04675
+  },
+  "reddit.avatar": {
+   "calls": 11662,
+   "max_usd": 0.0012,
+   "p50_usd": 0.00038,
+   "p90_usd": 0.00038
+  },
   "reddit.post": {
-   "calls": 9542,
-   "max_usd": 0.00224,
-   "p50_usd": 0.0009,
-   "p90_usd": 0.00215
+   "calls": 22597,
+   "max_usd": 0.00225,
+   "p50_usd": 0.0005,
+   "p90_usd": 0.0009
   },
   "reddit.post_comments": {
-   "calls": 4598,
+   "calls": 13275,
    "max_usd": 0.018,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0006,
    "p90_usd": 0.002
   },
   "reddit.post_transcript": {
-   "calls": 35,
+   "calls": 36,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "reddit.profile": {
-   "calls": 188,
-   "max_usd": 0.0012,
+   "calls": 890,
+   "max_usd": 0.00225,
    "p50_usd": 0.0012,
-   "p90_usd": 0.0012
+   "p90_usd": 0.00225
   },
   "reddit.search": {
-   "calls": 6418,
+   "calls": 28095,
    "max_usd": 0.002,
-   "p50_usd": 0.0009,
-   "p90_usd": 0.0012
+   "p50_usd": 0.00038,
+   "p90_usd": 0.0009
   },
   "reddit.subreddit_details": {
-   "calls": 368,
+   "calls": 1145,
    "max_usd": 0.0036,
-   "p50_usd": 0.0012,
-   "p90_usd": 0.002
+   "p50_usd": 0.00038,
+   "p90_usd": 0.0012
   },
   "reddit.subreddit_posts": {
-   "calls": 2675,
+   "calls": 11770,
    "max_usd": 0.002,
-   "p50_usd": 0.0009,
-   "p90_usd": 0.002
+   "p50_usd": 0.00045,
+   "p90_usd": 0.0009
   },
   "reddit.subreddit_search": {
-   "calls": 3244,
+   "calls": 4426,
    "max_usd": 0.0036,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0009,
    "p90_usd": 0.002
   },
   "reddit.trending_posts": {
-   "calls": 10,
+   "calls": 12,
    "max_usd": 0.00036,
    "p50_usd": 0.00036,
    "p90_usd": 0.00036
   },
   "reddit.user_comments": {
-   "calls": 22,
+   "calls": 24,
    "max_usd": 0.0012,
    "p50_usd": 0.0012,
    "p90_usd": 0.0012
   },
   "reddit.user_posts": {
-   "calls": 16,
+   "calls": 18,
    "max_usd": 0.0012,
-   "p50_usd": 0.0012,
+   "p50_usd": 0.001,
    "p90_usd": 0.0012
   },
   "rednote.note": {
@@ -909,13 +957,13 @@
    "p90_usd": 0.012
   },
   "rednote.search": {
-   "calls": 366,
+   "calls": 199,
    "max_usd": 0.012,
    "p50_usd": 0.012,
    "p90_usd": 0.012
   },
   "rednote.search_users": {
-   "calls": 24,
+   "calls": 18,
    "max_usd": 0.012,
    "p50_usd": 0.012,
    "p90_usd": 0.012
@@ -927,91 +975,91 @@
    "p90_usd": 0.012
   },
   "semrush.keywords": {
-   "calls": 60,
+   "calls": 159,
    "max_usd": 0.0165,
-   "p50_usd": 0.0165,
+   "p50_usd": 0.00495,
    "p90_usd": 0.0165
   },
   "semrush.overview": {
-   "calls": 25,
+   "calls": 30,
    "max_usd": 0.0165,
    "p50_usd": 0.0158,
    "p90_usd": 0.0165
   },
   "seo.competitors_domain": {
-   "calls": 89,
+   "calls": 92,
    "max_usd": 0.03184,
    "p50_usd": 0.0188,
    "p90_usd": 0.03184
   },
   "seo.domain_rank_overview": {
-   "calls": 160,
+   "calls": 108,
    "max_usd": 0.0156,
    "p50_usd": 0.0156,
    "p90_usd": 0.0156
   },
   "seo.domains_by_technology": {
-   "calls": 40,
+   "calls": 43,
    "max_usd": 0.07464,
    "p50_usd": 0.0156,
    "p90_usd": 0.072
   },
   "seo.keyword_overview": {
-   "calls": 27,
+   "calls": 33,
    "max_usd": 0.0956,
    "p50_usd": 0.01688,
-   "p90_usd": 0.02376
+   "p90_usd": 0.02328
   },
   "seo.keyword_suggestions": {
-   "calls": 536,
+   "calls": 558,
    "max_usd": 0.06264,
    "p50_usd": 0.01832,
    "p90_usd": 0.0476
   },
   "seo.local_pack": {
-   "calls": 95,
+   "calls": 231,
    "max_usd": 0.0026,
    "p50_usd": 0.0024,
    "p90_usd": 0.0026
   },
   "seo.ranked_keywords": {
-   "calls": 31,
+   "calls": 34,
    "max_usd": 0.0956,
    "p50_usd": 0.022,
-   "p90_usd": 0.0252
+   "p90_usd": 0.03096
   },
   "seo.search_volume": {
-   "calls": 15,
+   "calls": 16,
    "max_usd": 0.117,
    "p50_usd": 0.117,
    "p90_usd": 0.117
   },
   "social.finder": {
-   "calls": 53,
+   "calls": 106,
    "max_usd": 0.0231,
    "p50_usd": 0.0033,
    "p90_usd": 0.0231
   },
   "substack.posts": {
-   "calls": 6,
+   "calls": 10,
    "max_usd": 0.0141,
    "p50_usd": 0.0141,
    "p90_usd": 0.0141
   },
   "threads.post": {
-   "calls": 7,
+   "calls": 8,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "threads.profile": {
-   "calls": 12,
+   "calls": 18,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "threads.search": {
-   "calls": 385,
+   "calls": 690,
    "max_usd": 0.0036,
    "p50_usd": 0.002,
    "p90_usd": 0.002
@@ -1023,127 +1071,151 @@
    "p90_usd": 0.002
   },
   "threads.user_posts": {
-   "calls": 7,
+   "calls": 10,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
+  },
+  "tiktok.ad_library_ad": {
+   "calls": 5,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
   },
   "tiktok.ad_library_search": {
-   "calls": 26,
+   "calls": 32,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
+  "tiktok.audience_demographics": {
+   "calls": 11,
+   "max_usd": 0.018,
+   "p50_usd": 0.018,
+   "p90_usd": 0.018
+  },
   "tiktok.followers": {
-   "calls": 9,
+   "calls": 11,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "tiktok.following": {
-   "calls": 110,
+   "calls": 207,
    "max_usd": 0.0036,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
   "tiktok.hashtag_videos": {
-   "calls": 185,
+   "calls": 200,
    "max_usd": 0.0036,
    "p50_usd": 0.00144,
    "p90_usd": 0.0036
   },
+  "tiktok.photos": {
+   "calls": 5,
+   "max_usd": 0.0012,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
   "tiktok.profile": {
-   "calls": 2526,
+   "calls": 7255,
    "max_usd": 0.002,
-   "p50_usd": 0.001,
-   "p90_usd": 0.001
+   "p50_usd": 0.0005,
+   "p90_usd": 0.0012
   },
   "tiktok.profile_contact": {
-   "calls": 10,
+   "calls": 50,
    "max_usd": 0.00187,
    "p50_usd": 0.00116,
    "p90_usd": 0.00116
   },
+  "tiktok.profile_region": {
+   "calls": 50,
+   "max_usd": 0.0036,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
   "tiktok.profile_videos": {
-   "calls": 2307,
+   "calls": 4369,
    "max_usd": 0.002,
    "p50_usd": 0.0012,
    "p90_usd": 0.0012
   },
   "tiktok.search_hashtag": {
-   "calls": 488,
+   "calls": 609,
    "max_usd": 0.0036,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "tiktok.search_keyword": {
-   "calls": 921,
-   "max_usd": 0.002,
+   "calls": 1500,
+   "max_usd": 0.0036,
    "p50_usd": 0.0012,
    "p90_usd": 0.0012
   },
   "tiktok.search_top": {
-   "calls": 1771,
+   "calls": 2242,
    "max_usd": 0.0036,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "tiktok.search_users": {
-   "calls": 507,
+   "calls": 400,
    "max_usd": 0.002,
    "p50_usd": 0.001,
    "p90_usd": 0.0012
   },
   "tiktok.top_ads_search": {
-   "calls": 137,
+   "calls": 138,
    "max_usd": 0.0012,
    "p50_usd": 0.0012,
    "p90_usd": 0.0012
   },
   "tiktok.trending_feed": {
-   "calls": 37,
+   "calls": 103,
    "max_usd": 0.002,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
   "tiktok.trending_hashtags": {
-   "calls": 34,
+   "calls": 36,
    "max_usd": 0.0358,
    "p50_usd": 0.0012,
-   "p90_usd": 0.0012
+   "p90_usd": 0.00573
   },
   "tiktok.video": {
-   "calls": 276,
+   "calls": 740,
    "max_usd": 0.002,
-   "p50_usd": 0.0009,
-   "p90_usd": 0.002
+   "p50_usd": 0.0005,
+   "p90_usd": 0.001
   },
   "tiktok.video_comments": {
-   "calls": 1873,
+   "calls": 3788,
    "max_usd": 0.002,
-   "p50_usd": 0.00144,
-   "p90_usd": 0.002
+   "p50_usd": 0.0012,
+   "p90_usd": 0.00144
   },
   "tiktok.video_download": {
-   "calls": 5,
+   "calls": 172,
    "max_usd": 0.0012,
-   "p50_usd": 0.0012,
+   "p50_usd": 0.0009,
    "p90_usd": 0.0012
   },
   "tiktok.video_transcript": {
-   "calls": 1005,
+   "calls": 725,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "tiktok.video_transcript_full": {
-   "calls": 6,
+   "calls": 14,
    "max_usd": 0.0176,
    "p50_usd": 0.0176,
    "p90_usd": 0.0176
   },
   "tiktok_shop.categories": {
-   "calls": 5,
+   "calls": 6,
    "max_usd": 0.0012,
    "p50_usd": 0.0012,
    "p90_usd": 0.0012
@@ -1155,298 +1227,262 @@
    "p90_usd": 0.0012
   },
   "tiktok_shop.product": {
-   "calls": 696,
+   "calls": 708,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "tiktok_shop.product_full": {
-   "calls": 13,
+   "calls": 25,
    "max_usd": 0.022,
-   "p50_usd": 0.021,
+   "p50_usd": 0.022,
    "p90_usd": 0.022
   },
+  "tiktok_shop.product_reviews": {
+   "calls": 13,
+   "max_usd": 0.002,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.002
+  },
   "tiktok_shop.search": {
-   "calls": 3758,
+   "calls": 10224,
    "max_usd": 0.002,
    "p50_usd": 0.0012,
    "p90_usd": 0.0012
   },
   "tiktok_shop.search_suggestions": {
-   "calls": 639,
+   "calls": 1357,
    "max_usd": 0.0012,
    "p50_usd": 0.0012,
    "p90_usd": 0.0012
   },
   "tripadvisor.reviews": {
-   "calls": 11,
+   "calls": 12,
    "max_usd": 0.011,
    "p50_usd": 0.003,
    "p90_usd": 0.0055
   },
   "tripadvisor.search": {
-   "calls": 5,
+   "calls": 6,
    "max_usd": 0.01381,
    "p50_usd": 0.003,
    "p90_usd": 0.01381
   },
   "trustpilot.reviews": {
-   "calls": 408,
+   "calls": 705,
    "max_usd": 0.165,
-   "p50_usd": 0.00011,
-   "p90_usd": 0.018
+   "p50_usd": 6e-05,
+   "p90_usd": 0.033
   },
   "twitter.article": {
-   "calls": 249,
+   "calls": 291,
    "max_usd": 0.00075,
    "p50_usd": 0.00075,
    "p90_usd": 0.00075
   },
   "twitter.followers": {
-   "calls": 78,
+   "calls": 74,
    "max_usd": 0.16,
    "p50_usd": 0.00075,
    "p90_usd": 0.00075
   },
   "twitter.following": {
-   "calls": 154,
+   "calls": 148,
    "max_usd": 0.04576,
    "p50_usd": 0.00075,
    "p90_usd": 0.00075
   },
   "twitter.profile": {
-   "calls": 16652,
-   "max_usd": 0.002,
-   "p50_usd": 0.00018,
-   "p90_usd": 0.00075
+   "calls": 20209,
+   "max_usd": 0.0012,
+   "p50_usd": 0.00022,
+   "p90_usd": 0.0003
   },
   "twitter.replies": {
-   "calls": 794,
+   "calls": 1713,
    "max_usd": 0.01181,
    "p50_usd": 0.0005,
-   "p90_usd": 0.0029
+   "p90_usd": 0.0009
   },
   "twitter.search": {
-   "calls": 24576,
+   "calls": 29261,
    "max_usd": 0.0154,
    "p50_usd": 0.00075,
    "p90_usd": 0.00075
   },
   "twitter.search_users": {
-   "calls": 36,
+   "calls": 143,
    "max_usd": 0.0009,
    "p50_usd": 0.00075,
    "p90_usd": 0.00075
   },
   "twitter.thread": {
-   "calls": 237,
+   "calls": 309,
    "max_usd": 0.005,
    "p50_usd": 0.005,
    "p90_usd": 0.005
   },
   "twitter.trends": {
-   "calls": 102,
+   "calls": 236,
    "max_usd": 0.00075,
    "p50_usd": 0.00075,
    "p90_usd": 0.00075
   },
   "twitter.tweet": {
-   "calls": 324,
+   "calls": 391,
    "max_usd": 0.002,
    "p50_usd": 0.0003,
    "p90_usd": 0.00075
   },
   "twitter.user_posts": {
-   "calls": 3309,
+   "calls": 4765,
    "max_usd": 0.00378,
-   "p50_usd": 0.00075,
+   "p50_usd": 0.0005,
    "p90_usd": 0.00075
   },
   "twitter.user_tweets": {
-   "calls": 8710,
+   "calls": 21264,
    "max_usd": 0.08568,
    "p50_usd": 0.0005,
    "p90_usd": 0.0005
   },
   "upwork.jobs": {
-   "calls": 17,
+   "calls": 32,
    "max_usd": 0.0825,
-   "p50_usd": 0.066,
+   "p50_usd": 0.0286,
    "p90_usd": 0.0825
   },
   "web.crawl": {
-   "calls": 23,
-   "max_usd": 0.0045,
-   "p50_usd": 0.0045,
-   "p90_usd": 0.0045
+   "calls": 24,
+   "max_usd": 0.00495,
+   "p50_usd": 0.00495,
+   "p90_usd": 0.00495
   },
   "web.map": {
-   "calls": 85,
+   "calls": 119,
    "max_usd": 0.001,
    "p50_usd": 0.001,
    "p90_usd": 0.001
   },
   "web.scrape": {
-   "calls": 14360,
+   "calls": 21353,
    "max_usd": 0.005,
    "p50_usd": 0.0007,
    "p90_usd": 0.0009
   },
   "web.screenshot": {
-   "calls": 36,
+   "calls": 11,
    "max_usd": 0.00174,
-   "p50_usd": 0.00158,
+   "p50_usd": 0.00174,
    "p90_usd": 0.00174
   },
-  "weibo.hot_search": {
-   "calls": 5,
-   "max_usd": 0.0015,
-   "p50_usd": 0.0015,
-   "p90_usd": 0.0015
-  },
-  "weibo.post": {
-   "calls": 5,
-   "max_usd": 0.001,
-   "p50_usd": 0.001,
-   "p90_usd": 0.001
-  },
-  "weibo.post_comments": {
-   "calls": 5,
-   "max_usd": 0.001,
-   "p50_usd": 0.001,
-   "p90_usd": 0.001
-  },
-  "weibo.profile": {
-   "calls": 5,
-   "max_usd": 0.001,
-   "p50_usd": 0.001,
-   "p90_usd": 0.001
-  },
   "weibo.search": {
-   "calls": 28,
+   "calls": 5,
    "max_usd": 0.0012,
-   "p50_usd": 0.001,
+   "p50_usd": 0.0012,
    "p90_usd": 0.0012
   },
-  "weibo.user_posts": {
-   "calls": 5,
-   "max_usd": 0.001,
-   "p50_usd": 0.001,
-   "p90_usd": 0.001
-  },
   "yahoo_finance.quote": {
-   "calls": 5,
+   "calls": 9,
    "max_usd": 0.00105,
-   "p50_usd": 0.001,
+   "p50_usd": 0.00105,
    "p90_usd": 0.00105
   },
   "yelp.search": {
-   "calls": 7,
+   "calls": 6,
    "max_usd": 0.0605,
    "p50_usd": 0.04437,
    "p90_usd": 0.0605
   },
   "youtube.channel": {
-   "calls": 549,
+   "calls": 990,
    "max_usd": 0.0036,
-   "p50_usd": 0.0009,
-   "p90_usd": 0.002
+   "p50_usd": 0.0005,
+   "p90_usd": 0.0012
+  },
+  "youtube.channel_contact": {
+   "calls": 136,
+   "max_usd": 0.132,
+   "p50_usd": 0.0718,
+   "p90_usd": 0.0718
   },
   "youtube.channel_shorts": {
-   "calls": 366,
+   "calls": 646,
    "max_usd": 0.0036,
    "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
   "youtube.channel_videos": {
-   "calls": 489,
+   "calls": 865,
    "max_usd": 0.002,
-   "p50_usd": 0.0009,
+   "p50_usd": 0.0005,
    "p90_usd": 0.0012
   },
   "youtube.search": {
-   "calls": 3091,
+   "calls": 12353,
    "max_usd": 0.0036,
-   "p50_usd": 0.0009,
-   "p90_usd": 0.002
+   "p50_usd": 0.0008,
+   "p90_usd": 0.0009
   },
   "youtube.search_hashtag": {
-   "calls": 13,
+   "calls": 16,
    "max_usd": 0.0036,
    "p50_usd": 0.002,
    "p90_usd": 0.0036
   },
-  "youtube.trending_shorts": {
-   "calls": 11,
+  "youtube.search_shorts": {
+   "calls": 17,
    "max_usd": 0.002,
-   "p50_usd": 0.002,
+   "p50_usd": 0.0012,
+   "p90_usd": 0.0012
+  },
+  "youtube.trending_shorts": {
+   "calls": 15,
+   "max_usd": 0.002,
+   "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
   "youtube.video": {
-   "calls": 6218,
+   "calls": 10739,
    "max_usd": 0.002,
    "p50_usd": 0.0012,
    "p90_usd": 0.00125
   },
   "youtube.video_comments": {
-   "calls": 6345,
+   "calls": 10186,
    "max_usd": 0.0036,
    "p50_usd": 0.0012,
    "p90_usd": 0.002
   },
   "youtube.video_sponsors": {
-   "calls": 348,
+   "calls": 349,
    "max_usd": 0.002,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "youtube.video_transcript": {
-   "calls": 1032,
+   "calls": 1196,
    "max_usd": 0.011,
    "p50_usd": 0.002,
    "p90_usd": 0.002
   },
   "youtube.video_transcript_full": {
-   "calls": 134,
+   "calls": 146,
    "max_usd": 0.00308,
    "p50_usd": 0.00308,
    "p90_usd": 0.00308
   },
-  "zhihu.answer": {
-   "calls": 11,
-   "max_usd": 0.001,
-   "p50_usd": 0.001,
-   "p90_usd": 0.001
-  },
-  "zhihu.profile": {
+  "zillow.property": {
    "calls": 5,
-   "max_usd": 0.001,
-   "p50_usd": 0.001,
-   "p90_usd": 0.001
-  },
-  "zhihu.question": {
-   "calls": 6,
-   "max_usd": 0.001,
-   "p50_usd": 0.001,
-   "p90_usd": 0.001
-  },
-  "zhihu.question_answers": {
-   "calls": 6,
-   "max_usd": 0.001,
-   "p50_usd": 0.001,
-   "p90_usd": 0.001
-  },
-  "zhihu.search_articles": {
-   "calls": 10,
-   "max_usd": 0.0012,
-   "p50_usd": 0.001,
-   "p90_usd": 0.001
+   "max_usd": 0.00252,
+   "p50_usd": 0.0011,
+   "p90_usd": 0.00252
   },
   "zillow.search": {
-   "calls": 5,
+   "calls": 12,
    "max_usd": 0.0065,
-   "p50_usd": 0.0009,
-   "p90_usd": 0.0065
+   "p50_usd": 0.0005,
+   "p90_usd": 0.00121
   }
  },
  "unit": "usd_per_call",

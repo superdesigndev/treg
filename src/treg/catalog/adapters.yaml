@@ -2624,6 +2624,13 @@ adapters:
     in_expr: {body.gl: "lower(country)", body.hl: language}
     out: {results: output.data.items, count: "len(output.data.items)"}
     miss: "coalesce(output.data.items, []) == []"
+  # maps.search requires a free-text `location`; the contract's `country` (default us) becomes its name.
+  anyapi.google.serp.maps:
+    accepts: [[q]]
+    in:  {q: body.query}
+    in_expr: {body.location: "country_name(country)", body.language: language}
+    out: {places: output.data.items, count: "len(output.data.items)"}
+    miss: "coalesce(output.data.items, []) == []"
   anyapi.google.serp.maps.place:
     accepts: [[q]]
     in:  {q: body.query}
