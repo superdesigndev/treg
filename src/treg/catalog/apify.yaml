@@ -30,8 +30,9 @@
 #
 # COST IS PER RESULT AND OPEN-ENDED. Pay-per-result actors bill each dataset item, and most have no
 # default cap — an unbounded run over a large advertiser can produce tens of thousands of rows and
-# bill for all of them. ALWAYS send resultsLimit/limit in the input AND `maxItems` (or
-# maxTotalChargeUsd) in the query string; maxItems is the only ceiling Apify enforces server-side.
+# bill for all of them. ALWAYS send resultsLimit/limit in the input AND `maxTotalChargeUsd` in the
+# query string: it is the spend cap Apify enforces on every billed event (`maxItems` binds only actors
+# that honour it), and treg's key requires it.
 # The per-result price varies by SUBSCRIPTION TIER (roughly $3.40–$5.80 per 1,000 for the Facebook
 # actor), so a value here is the observed STARTER-plan figure, not a universal quote — re-read
 # usageTotalUsd on your own plan before budgeting a large pull.
@@ -73,7 +74,7 @@ endpoints:
     test_request:
       queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 180}
       body: {startUrls: [{url: "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=project%20management"}], resultsLimit: 1, activeStatus: "active", isDetailsPerAd: false, onlyTotal: true, enrichWithEcommerceData: false}
-    cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: ad, source: observed, source_url: 'https://apify.com/pricing', checked: '2026-07-31', confidence: verified, note: 'pay-per-result: one result = one ad. OBSERVED 2026-07-31 on the STARTER plan — a run capped at maxItems=1 reported usageTotalUsd 0.005 in GET /actor-runs, matching the $5.00-per-1,000 list rate; the rate varies $3.40–$5.80 across subscription tiers, so this is the Starter figure. Charged on results produced even if the run is cut short — cap it with maxItems'}
+    cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: ad, source: observed, source_url: 'https://apify.com/pricing', checked: '2026-07-31', confidence: verified, note: 'pay-per-result: one result = one ad. OBSERVED 2026-07-31 on the STARTER plan — a run capped at maxItems=1 reported usageTotalUsd 0.005 in GET /actor-runs, matching the $5.00-per-1,000 list rate; the rate varies $3.40–$5.80 across subscription tiers, so this is the Starter figure. Charged on results produced even if the run is cut short — cap it with maxTotalChargeUsd'}
     verified: 2026-07-31
     example_response: examples/apify.meta-ads.library.search.json
     docs_url: https://apify.com/apify/facebook-ads-scraper
@@ -100,7 +101,7 @@ endpoints:
         start_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-06-01"}
         end_date: {type: string, required: false, note: "YYYY-MM-DD"}
         sort: {type: string, required: false}
-        limit: {type: integer, required: false, note: "results to return; pair it with maxItems", example: 50}
+        limit: {type: integer, required: false, note: "results to return; pair it with maxTotalChargeUsd", example: 50}
         offset: {type: integer, required: false, example: 0}
       bodyType: json
       note: "returns creative content, advertiser, dates, audience reach and targeting as TikTok discloses them in the Commercial Content Library. Community actor, not an official TikTok surface — the only route to this capability in the catalog, and the one most likely to break upstream, so check the actor's run history before relying on it"
@@ -147,7 +148,7 @@ endpoints:
     test_request:
       queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 180}
       body: {jobTitles: ["attorney"], locations: ["Miami, Florida"], maxItems: 1}
-    cost: {type: per_result, value: 0.001, call_fee: 0.001, currency: USD, per: 1, unit: result, source: docs, source_url: 'https://apify.com/harvestapi/linkedin-job-search', checked: '2026-08-20', confidence: documented, note: 'pay-per-event: $1.00 per 1,000 jobs published on the actor page, no platform usage charge on top; the flat $0.001 call_fee is the actor-start event (read live 2026-09-25 from pricingInfos). Charged per dataset item produced — cap every call with maxItems and read usageTotalUsd from GET /v2/actor-runs after a big pull'}
+    cost: {type: per_result, value: 0.001, call_fee: 0.001, currency: USD, per: 1, unit: result, source: docs, source_url: 'https://apify.com/harvestapi/linkedin-job-search', checked: '2026-08-20', confidence: documented, note: 'pay-per-event: $1.00 per 1,000 jobs published on the actor page, no platform usage charge on top; the flat $0.001 call_fee is the actor-start event (read live 2026-09-25 from pricingInfos). Charged per dataset item produced — cap every call with maxTotalChargeUsd and read usageTotalUsd from GET /v2/actor-runs after a big pull'}
     verified: 2026-08-20
     example_response: examples/apify.linkedin.search.jobs.json
     docs_url: https://apify.com/harvestapi/linkedin-job-search
