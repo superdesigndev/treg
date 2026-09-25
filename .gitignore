@@ -90,7 +90,7 @@ tests/screenshots/
 /src/treg/web/enrich-arena/insights.json
 
 # Frontend dependencies, build output and browser test artifacts.
-node_modules/
+node_modules
 /src/treg/web/dashboard/
 /frontend/test-results/
 /frontend/playwright-report/
