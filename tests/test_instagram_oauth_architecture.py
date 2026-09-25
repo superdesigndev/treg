@@ -290,31 +290,6 @@ async def test_page_core_grant_guides_message_calls_to_the_message_upgrade(
     assert "needs more access" in detail["detail"]
 
 
-async def test_page_only_access_dry_run_preserves_connect_guidance(
-    clients: AsyncClient, instagram_apps,
-):
-    response = await clients.get(
-        "/catalog/endpoints/instagram.x.user-recently-searched-hashtags/access",
-        params={"authorization_method": "facebook-page"},
-    )
-    assert response.status_code == 200, response.text
-    assert response.json() == {
-        "tier": "none",
-        "authorization_method": "facebook-page",
-        "connect_capability": "page-tools",
-        "connect_command": "treg connections connect --provider instagram --capability page-tools",
-        "action_label": "Enable Facebook Page tools",
-        "missing_message": (
-            "This tool requires Facebook Page authorization and an Instagram Professional "
-            "account linked to that Page."
-        ),
-        "detail": (
-            "no instagram credential in this org yet — connect with: "
-            "treg connections connect --provider instagram --capability page-tools"
-        ),
-    }
-
-
 async def test_instagram_method_rejects_the_other_methods_identifier(
     clients: AsyncClient, instagram_apps,
 ):

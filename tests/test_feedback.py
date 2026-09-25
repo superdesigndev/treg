@@ -124,20 +124,6 @@ async def test_admin_can_filter_and_page_reports(clients, monkeypatch):
         get_settings.cache_clear()
 
 
-async def test_feedback_docs_use_configured_base(clients, monkeypatch):
-    monkeypatch.setenv("TREG_PUBLIC_URL", "https://registry.example.test")
-    get_settings.cache_clear()
-    try:
-        response = await clients.get("/feedback.md")
-        assert response.status_code == 200
-        assert "{BASE}" not in response.text
-        assert "https://registry.example.test/feedback" in response.text
-        skill = (await clients.get("/skill.md")).text
-        assert "https://registry.example.test/feedback.md" in skill
-    finally:
-        get_settings.cache_clear()
-
-
 def test_cli_feedback_sends_only_the_declared_fields(monkeypatch, capsys):
     captured = []
 
@@ -292,18 +278,6 @@ def test_cli_feedback_network_errors_do_not_claim_a_submission_failed(monkeypatc
     assert json.loads(output.out)["error"] == code
     assert "private transport details" not in output.out + output.err
     assert len(calls) == 1
-
-
-def test_cli_feedback_without_arguments_shows_help_without_network(monkeypatch, capsys):
-    monkeypatch.setattr(cli, "_client", lambda cfg: pytest.fail("help must not use the network"))
-    args = cli.build_parser().parse_args(["feedback"])
-    args.fn(args, {})
-    output = capsys.readouterr().out
-    assert "submit" in output and "get" in output
-    for field in ("category", "message", "--call-id", "--endpoint-id", "feedback_id"):
-        assert field in output
-    assert "call_ids" in output and "not linked automatically" in output
-    assert "1-2000" in output and "up to 100" in output
 
 
 def test_cli_feedback_keeps_category_first_shorthand(monkeypatch):

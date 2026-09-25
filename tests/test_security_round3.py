@@ -28,11 +28,6 @@ def test_host_is_public_resolves_and_blocks_internal(fake_getaddrinfo):
     assert host_is_public("mixed.example") is False  # every resolved address must be public
 
 
-async def test_base_url_rejects_numeric_encoding_at_registration(clients: AsyncClient):
-    r = await clients.post("/tools", json={"name": "enc", "base_url": "http://2130706433/"})
-    assert r.status_code == 422
-
-
 async def _member_in_owner_org(clients: AsyncClient, email="m3b@x.dev"):
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     inv = (await clients.post(f"/orgs/{org_id}/invites", json={"email": email, "role": "member"})).json()

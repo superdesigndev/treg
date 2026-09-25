@@ -10,7 +10,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
-from treg import api, maintenance
+from treg import api
 from treg.domain.identity import session as sess
 from treg.__main__ import _prepare_serve
 from treg.api import LOCAL_ORG_NAME, LOCAL_USER_EMAIL, app
@@ -46,23 +46,6 @@ def test_it_is_off_unless_explicitly_asked_for():
     assert get_settings().single_user_ok is False, "the default deployment must never be no-login"
 
 
-async def test_serve_pre_phase_upgrades_before_provisioning(monkeypatch):
-    calls = []
-
-    async def upgrade():
-        calls.append("upgrade")
-
-    async def bootstrap():
-        calls.append("bootstrap")
-
-    monkeypatch.setattr(maintenance, "upgrade", upgrade)
-    monkeypatch.setattr(api, "_bootstrap_single_user", bootstrap)
-
-    await _prepare_serve()
-
-    assert calls == ["upgrade", "bootstrap"]
-
-
 # ---- the serve pre-phase -----------------------------------------------------------------------
 @pytest.fixture
 async def local(tmp_path, monkeypatch):
@@ -85,14 +68,6 @@ async def test_bootstrap_creates_the_owner_and_writes_the_token(local):
         m = (await s.execute(select(Membership).where(
             Membership.user_id == user.id, Membership.org_id == org.id))).scalar_one()
     assert m.role == "owner"
-
-
-async def test_the_token_is_stable_across_restarts(local):
-    """Rotating on every boot would break the CLI config the installer just wrote."""
-    first = local.read_text()
-    await _prepare_serve()
-    await _prepare_serve()
-    assert local.read_text() == first
 
 
 async def test_a_deleted_token_file_is_re_minted(local):

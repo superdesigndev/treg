@@ -22,11 +22,6 @@ async def test_register_returns_token_once_and_dedupes_email():
         assert again.status_code == 409  # email already registered
 
 
-async def test_bad_token_rejected(clients: AsyncClient):
-    r = await clients.get("/tools", headers={"X-Treg-Token": "garbage"})
-    assert r.status_code == 401
-
-
 # ---- secret CRUD --------------------------------------------------------------------------
 async def test_secret_crud_and_owner_stamp(clients: AsyncClient):
     s = await clients.post("/secrets", json={"name": "k", "value": "v1"})

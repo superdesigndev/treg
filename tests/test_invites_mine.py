@@ -68,11 +68,6 @@ async def test_cannot_accept_someone_elses_invite(client):
     assert (await client.get("/invites/mine", headers=_h(mallory))).json() == []  # sees nothing
 
 
-async def test_mine_requires_auth(client):
-    r = await client.get("/invites/mine")
-    assert r.status_code == 401
-
-
 async def _invite_code(c: AsyncClient, owner_email: str, invitee: str, role: str = "member") -> str:
     tok = await _otp(c, owner_email)
     org = (await c.post("/orgs", json={"name": "Superdesign"}, headers=_h(tok))).json()

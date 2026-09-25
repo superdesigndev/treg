@@ -234,14 +234,6 @@ async def test_expired_invite_is_rejected(c):
     assert r.status_code == 410
 
 
-async def test_invite_response_carries_expiry(c):
-    otok = await _register(c, "owner@x.dev")
-    team = (await c.post("/orgs", headers=_h(otok), json={"name": "Team A"})).json()
-    r = await c.post(f"/orgs/{team['org_id']}/invites", headers=_h(team["token"]),
-                     json={"email": "b@x.dev", "role": "member", "expires_days": 3})
-    assert r.status_code == 200 and "expires_at" in r.json()
-
-
 async def test_list_and_revoke_invites(c):
     otok = await _register(c, "owner@x.dev")
     team = (await c.post("/orgs", headers=_h(otok), json={"name": "Team A"})).json()

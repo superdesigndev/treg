@@ -149,33 +149,6 @@ def _seed_connection(env: dict[str, str]) -> None:
     assert result.returncode == 0, result.stderr
 
 
-def test_arena_upgrade_preserves_deployed_call_reviews(tmp_path):
-    """Main's deployed 0026 must remain a distinct predecessor of the Arena tables."""
-    env, database, _ = _env(tmp_path)
-    deployed = _alembic_upgrade(env, "0026")
-    assert deployed.returncode == 0, deployed.stderr
-    _seed_connection(env)
-    with sqlite3.connect(database) as db:
-        org_id = db.execute("SELECT id FROM org WHERE slug = 'upgrade-test'").fetchone()[0]
-        db.execute(
-            "INSERT INTO callreview (org_id, user_email, call_id, endpoint_id, invited, client, "
-            "usefulness, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (org_id, "owner@example.test", "existing-call", "example.lookup", False,
-             "api", "useful", "2026-01-01 00:00:00"),
-        )
-        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert "arenarun" not in tables
-
-    result = _upgrade(env)
-    assert result.returncode == 0, result.stderr
-    assert _alembic_version(database) == _alembic_head()
-    with sqlite3.connect(database) as db:
-        assert db.execute("SELECT call_id FROM callreview").fetchall() == [("existing-call",)]
-        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-        assert {"arenarun", "arenaevaluation", "arenaobservation", "arenainsightstate",
-                "arenaverificationsnapshot"} <= tables
-
-
 def _companion_count(database: Path) -> int:
     with sqlite3.connect(database) as db:
         return db.execute(

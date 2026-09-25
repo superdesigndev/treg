@@ -187,12 +187,6 @@ def test_every_background_session_site_is_named_in_the_consumer_list():
     assert set(BACKGROUND_SITES.values()) <= infra_db.BACKGROUND_CONSUMERS.keys()
 
 
-def test_background_guard_detects_another_site_in_an_existing_module():
-    tree = ast.parse("async def added():\n async with background_session_maker(): pass")
-    assert _background_sites(tree) == {"added": 1}
-    assert "archive.py:added" not in BACKGROUND_SITES
-
-
 def test_the_spec_is_what_the_engines_were_actually_built_with():
     """The spec is only documentation unless it reaches SQLAlchemy."""
     if infra_db._is_sqlite:

@@ -35,7 +35,9 @@ async def _mint(email: str, org_id: int, role: str) -> tuple[str, int]:
     async with session_maker() as s:
         u = (await s.execute(select(User).where(User.email == email))).scalar_one_or_none()
         if u is None:
-            u = User(email=email); s.add(u); await s.flush()
+            u = User(email=email)
+            s.add(u)
+            await s.flush()
         s.add(Membership(user_id=u.id, org_id=org_id, role=role, token_hash=crypto.hash_token(token)))
         await s.commit()
         uid = u.id
@@ -48,7 +50,10 @@ async def env():
     app.state.http = AsyncClient(transport=ASGITransport(app=make_upstream()), base_url="http://upstream")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
         async with session_maker() as s:
-            org = Org(name="Team", slug="team"); s.add(org); await s.commit(); await s.refresh(org)
+            org = Org(name="Team", slug="team")
+            s.add(org)
+            await s.commit()
+            await s.refresh(org)
             org_id = org.id
         owner, owner_uid = await _mint("owner@x.dev", org_id, "owner")
         member, member_uid = await _mint("m@x.dev", org_id, "member")
@@ -72,35 +77,25 @@ def _r(**kw) -> DenyRule:
                     method=kw.get("method", ""))
 
 
-def test_an_empty_field_means_any():
-    assert _deny_match([_r(method="DELETE")], "any.host", "/x", "DELETE") is not None
-    assert _deny_match([_r(method="DELETE")], "any.host", "/x", "GET") is None
-    assert _deny_match([_r(host="api.stripe.com")], "api.stripe.com", "/anything", "GET") is not None
-    assert _deny_match([_r(host="api.stripe.com")], "api.other.com", "/anything", "GET") is None
-
-
-def test_host_matching_is_case_insensitive():
-    assert _deny_match([_r(host="API.Stripe.com")], "api.stripe.com", "/", "GET") is not None
-
-
-def test_the_path_prefix_is_anchored_not_a_raw_string_prefix():
-    """`/v1/charges` must not be dodged by `/v1/chargesX`, the same trap `_resolve_call` guards."""
-    rule = [_r(path_prefix="/v1/charges")]
-    assert _deny_match(rule, "h", "/v1/charges", "GET") is not None
-    assert _deny_match(rule, "h", "/v1/charges/evt_1", "GET") is not None
-    assert _deny_match(rule, "h", "/v1/chargesX", "GET") is None
-
-
-def test_all_three_fields_must_match_together():
-    rule = [_r(host="h", path_prefix="/admin", method="DELETE")]
-    assert _deny_match(rule, "h", "/admin/users", "DELETE") is not None
-    assert _deny_match(rule, "h", "/admin/users", "GET") is None
-    assert _deny_match(rule, "other", "/admin/users", "DELETE") is None
-
-
-# ---- enforcement on the proxy ---------------------------------------------------------------
-async def test_no_rules_changes_nothing(env):
-    assert (await env.c.get("/call/alpha/ok", headers=_h(env.member))).status_code == 200
+@pytest.mark.parametrize(("rule", "host", "path", "method", "denied"), [
+    # an empty field means any
+    ({"method": "DELETE"}, "any.host", "/x", "DELETE", True),
+    ({"method": "DELETE"}, "any.host", "/x", "GET", False),
+    ({"host": "api.stripe.com"}, "api.stripe.com", "/anything", "GET", True),
+    ({"host": "api.stripe.com"}, "api.other.com", "/anything", "GET", False),
+    # host matching is case-insensitive
+    ({"host": "API.Stripe.com"}, "api.stripe.com", "/", "GET", True),
+    # `/v1/charges` must not be dodged by `/v1/chargesX`, the same trap `_resolve_call` guards
+    ({"path_prefix": "/v1/charges"}, "h", "/v1/charges", "GET", True),
+    ({"path_prefix": "/v1/charges"}, "h", "/v1/charges/evt_1", "GET", True),
+    ({"path_prefix": "/v1/charges"}, "h", "/v1/chargesX", "GET", False),
+    # all three fields must match together
+    ({"host": "h", "path_prefix": "/admin", "method": "DELETE"}, "h", "/admin/users", "DELETE", True),
+    ({"host": "h", "path_prefix": "/admin", "method": "DELETE"}, "h", "/admin/users", "GET", False),
+    ({"host": "h", "path_prefix": "/admin", "method": "DELETE"}, "other", "/admin/users", "DELETE", False),
+])
+def test_deny_match(rule, host, path, method, denied):
+    assert (_deny_match([_r(**rule)], host, path, method) is not None) is denied
 
 
 async def test_a_method_rule_blocks_that_method_only(env):
@@ -198,7 +193,10 @@ async def test_only_admins_manage_rules(env):
 async def test_another_orgs_rule_is_never_reachable(env):
     rule = await _rule(env, method="DELETE")
     async with session_maker() as s:
-        other = Org(name="Other", slug="other"); s.add(other); await s.commit(); await s.refresh(other)
+        other = Org(name="Other", slug="other")
+        s.add(other)
+        await s.commit()
+        await s.refresh(other)
         other_id = other.id
     tok, _ = await _mint("o@x.dev", other_id, "owner")
     r = await env.c.delete(f"/orgs/{other_id}/deny/{rule['id']}", headers=_h(tok))

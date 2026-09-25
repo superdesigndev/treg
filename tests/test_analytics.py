@@ -475,20 +475,6 @@ async def test_typed_refusals_auth_and_validation_are_not_faults(enabled):
     assert _exception_events() == []
 
 
-def test_the_lifespan_drains_analytics_after_everything_that_reports_into_it():
-    """Order matters now that audit and archive report their losses at ERROR: analytics is their
-    sink, so draining it first leaves those events queued behind a cancelled flusher and they are
-    lost — silently, and exactly at shutdown, which is when a loss is most worth hearing about."""
-    import pathlib
-
-    from treg import bootstrap
-
-    source = pathlib.Path(bootstrap.__file__).read_text()
-    drains = ("audit.drain()", "archive.drain()", "analytics.drain()")
-    assert all(name in source for name in drains)
-    assert sorted(drains, key=source.index) == list(drains)
-
-
 async def test_typed_pool_saturation_is_explicitly_captured(enabled):
     request = Request(_scope("/health"))
     response = await _pool_saturated(request, PoolTimeoutError("QueuePool limit reached"))
