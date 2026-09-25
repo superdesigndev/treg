@@ -268,22 +268,22 @@ endpoints:
     summary: "Search Lazada and return products with price, original price, currency, rating, review and sold counts, seller and location from one of six SEA country sites (SG, MY, VN, TH, PH, ID)"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "SERVER-SIDE result cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. Equals the number of product-result events billed", example: 40}
-        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 40}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
         memory: {type: integer, required: false, enum: [2048], note: "MB of run memory. treg's key requires 2048, which fixes the actor-start charge; your own key may set any size", example: 2048}
-        timeout: {type: integer, required: false, enum: [280], note: "run timeout in seconds. treg's key requires 280 so the run ends before Apify's 300-second synchronous wait; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 280}
+        timeout: {type: integer, required: false, enum: [180], note: "run timeout in seconds. treg's key requires 180 so the run ends before Apify's 300-second synchronous wait; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 180}
       body:
         search_terms: {type: "array[string]", required: true, note: "keywords to search, one per entry; each is paged until the run reaches max_results. An empty list stops the run with an input error before anything is charged", example: ["iphone 15 case"]}
         region: {type: string, required: false, note: "one of sg|my|vn|th|ph|id — decides which country site, the listing language and the currency of every price. Default sg. One run covers one country, so comparing markets means one run per region", example: "sg"}
         max_results: {type: integer, required: false, note: "total products across all search terms; default 40, min 1, max 4000. A single keyword usually runs out before 4000 — widen coverage with more terms, not a higher cap", example: 40}
         proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass one gateway URL per entry (http://user:pass@host:port) to route through your own provider instead"}
       bodyType: json
-      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries title, price, price_original, currency, rating, review_count, sold_count, seller_name, location, brand and product_url. Cap every call with maxItems: it is the enforced ceiling and equals the count of product-result events billed"
-    platform_request: {queryParams.memory: 2048, queryParams.timeout: 280}
+      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries title, price, price_original, currency, rating, review_count, sold_count, seller_name, location, brand and product_url. Cap every call with maxTotalChargeUsd, the spend limit Apify enforces; the body row limit sets how many rows run"
+    platform_request: {queryParams.memory: 2048, queryParams.timeout: 180}
     test_request:
-      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 280, memory: 2048}
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 180, memory: 2048}
       body: {search_terms: ["iphone 15 case"], region: "sg", max_results: 1}
-    cost: {type: per_result, value: 0.005, call_fee: 0.01, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~lazada-scraper', checked: '2026-09-23', confidence: documented, note: 'the flat $0.01 call_fee covers the run compute this actor bills to whoever runs it (observed 2026-09-25 at 2 GB: $0.0051 for 1 product in 69 s, $0.0054 for 40 in 57 s; the pinned 280 s timeout bounds it near $0.025). pay-per-event: one product-result event = one product, $0.005 — read live 2026-09-23 from the actor pricingInfos (eventPriceUsd 0.005, the sole event; apifyMarginPercentage 0.20). The caller pays this on their own Apify token. NOT self-observable from the owner meter: a maxItems=1 run 2026-09-23 (run FoMZQgBrce1dYgbik, HTTP 201, 1 product) reported usageTotalUsd 0.00588 of platform COMPUTE with chargedEventCounts null, because Apify does not bill an owner the per-result rental on their own actor. Charged per product produced even if the run is cut short — cap with maxItems'}
+    cost: {type: per_result, value: 0.005, call_fee: 0.015, currency: USD, per: 1, unit: result, source: rate_card_api, source_url: 'https://api.apify.com/v2/acts/herus13~lazada-scraper', checked: '2026-09-23', confidence: documented, note: 'the flat $0.015 call_fee covers the run compute this actor bills to whoever runs it, which maxTotalChargeUsd does not cap (observed 2026-09-25 at 2 GB: $0.0051 for 1 product in 69 s, $0.0054 for 40 in 57 s; the pinned 180 s timeout bounds it near $0.016). pay-per-event: one product-result event = one product, $0.005 — read live 2026-09-23 from the actor pricingInfos (eventPriceUsd 0.005, the sole event; apifyMarginPercentage 0.20). NOT self-observable from the owner meter: a maxItems=1 run 2026-09-23 (run FoMZQgBrce1dYgbik, HTTP 201, 1 product) reported usageTotalUsd 0.00588 of platform COMPUTE with chargedEventCounts null, because Apify does not bill an owner the per-result rental on their own actor. Charged per product produced even if the run is cut short — cap with maxTotalChargeUsd'}
     example_response: examples/apify.lazada.search.products.json
     docs_url: https://apify.com/herus13/lazada-scraper
 
@@ -297,8 +297,8 @@ endpoints:
     summary: "Scrape Google Maps for businesses matching a keyword in a place — name, address, phone, website, rating, review_count, categories, hours and coordinates, with email and social-profile enrichment from each business site included in the result price"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "SERVER-SIDE result cap — the only hard spend ceiling for a pay-per-result actor; set it on every call", example: 100}
-        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 100}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
         memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
         timeout: {type: integer, required: false, enum: [280], note: "run timeout in seconds. treg's key requires 280 so the run ends before Apify's 300-second synchronous wait; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 280}
       body:
@@ -316,7 +316,7 @@ endpoints:
         geo_split: {type: boolean, required: false, note: "split a wide area into a grid and search each cell to get past Google's ~120-per-view ceiling. Default false; turn on for anything wider than a city", example: false}
         proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
       bodyType: json
-      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries place_id, name, address, phone, website, rating, review_count, categories, hours, latitude, longitude, google_maps_url, and (when scrapeContacts is on) emails and social_links. Cap every call with maxItems: it is the enforced ceiling and equals the count of result events billed. Filters (placeMinimumStars, website, skipClosedPlaces) drop places before they are returned or charged"
+      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries place_id, name, address, phone, website, rating, review_count, categories, hours, latitude, longitude, google_maps_url, and (when scrapeContacts is on) emails and social_links. Cap every call with maxTotalChargeUsd, the spend limit Apify enforces; the body row limit sets how many rows run. Filters (placeMinimumStars, website, skipClosedPlaces) drop places before they are returned or charged"
     platform_request: {queryParams.memory: 1024, queryParams.timeout: 280}
     test_request:
       queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.08, timeout: 280}
@@ -335,18 +335,18 @@ endpoints:
     summary: "Scrape TikTok Shop products for a keyword across 10 storefronts (US, GB, VN, TH, PH, MY, SG, JP, MX, ID) — title, price, original_price, discount_percent, seller_name, rating, sold_count and full category_path per product"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "SERVER-SIDE result cap — the only hard spend ceiling for a pay-per-result actor; set it on every call", example: 100}
-        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 100}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
         memory: {type: integer, required: false, enum: [2048], note: "MB of run memory. treg's key requires 2048, which fixes the actor-start charge; your own key may set any size", example: 2048}
         timeout: {type: integer, required: false, enum: [280], note: "run timeout in seconds. treg's key requires 280 so the run ends before Apify's 300-second synchronous wait; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 280}
       body:
         search_terms: {type: "array[string]", required: true, note: "keywords to search, one per entry; each returns every matching product up to max_results", example: ["phone case"]}
         region: {type: string, required: false, note: "storefront to scrape — one of US|GB|VN|TH|PH|MY|SG|JP|MX|ID; decides the catalogue, listing language and price currency. Default US. Coverage is strongest on US and SEA storefronts", example: "US"}
-        max_results: {type: integer, required: false, note: "max products per search term, 1-500; default 100. You pay per product returned, so cap it or use maxItems", example: 100}
+        max_results: {type: integer, required: false, note: "max products per search term, 1-500; default 100. You pay per product returned, so cap it or set maxTotalChargeUsd", example: 100}
         scrape_product_details: {type: boolean, required: false, enum: [false], note: "true opens each product's detail page for the full field set — billed at the higher product-detail price, not the search price (see cost note). Default false", example: false}
         proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
       bodyType: json
-      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries product_id, title, price, original_price, discount_percent, currency, seller_name, seller_id, rating, review_count, sold_count, category_path, product_url and image URLs. Cap every call with maxItems: it is the enforced ceiling and equals the count of product-search-result events billed. The same actor also takes product_urls (per-product detail, billed product-detail) and category_urls (category browse); this entry is the keyword-search capability"
+      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries product_id, title, price, original_price, discount_percent, currency, seller_name, seller_id, rating, review_count, sold_count, category_path, product_url and image URLs. Cap every call with maxTotalChargeUsd, the spend limit Apify enforces; the body row limit sets how many rows run. The same actor also takes product_urls (per-product detail, billed product-detail) and category_urls (category browse); this entry is the keyword-search capability"
     body_allowlist: true
     platform_request: {queryParams.memory: 2048, queryParams.timeout: 280, body.scrape_product_details: false}
     test_request:
@@ -366,14 +366,14 @@ endpoints:
     summary: "Search Weibo posts by keyword or #topic# with no login — relevance (top, up to ~2,000 posts per keyword) or newest-first (latest, walks back in time without a depth ceiling), optionally within a Beijing-time date range; text, counts, images, video, topics and author per post"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "SERVER-SIDE row cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. It caps the whole run, across every keyword/user/post given", example: 50}
-        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
         memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
         timeout: {type: integer, required: false, enum: [280], note: "run timeout in seconds. treg's key requires 280 so the run ends before Apify's 300-second synchronous wait; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 280}
       body:
         mode: {type: string, required: true, note: "must be `search` for this entry — it selects the mode", example: "search"}
         keywords: {type: "array[string]", required: true, note: "search terms, one per entry — e.g. 咖啡 or #新能源# for a topic; a post matching two terms is returned once", example: ["咖啡"]}
-        max_items: {type: integer, required: false, note: "posts per keyword, 1-10000; default 50. You pay per post returned — cap it here or with maxItems", example: 50}
+        max_items: {type: integer, required: false, note: "posts per keyword, 1-10000; default 50. You pay per post returned — cap it here or with maxTotalChargeUsd", example: 50}
         search_type: {type: string, required: false, note: "top (default; relevance-ranked, ends after ~2,000 posts per keyword, often fewer) | latest (newest-first; keeps going back in time — use it, or a date range, for deep pulls)", example: "latest"}
         start_date: {type: string, required: false, note: "YYYY-MM-DD in Beijing time (or a full ISO timestamp); only posts on or after it", example: "2026-09-01"}
         end_date: {type: string, required: false, note: "YYYY-MM-DD in Beijing time, whole day inclusive; not before start_date", example: "2026-09-07"}
@@ -399,8 +399,8 @@ endpoints:
     summary: "Weibo's realtime hot-search board (热搜榜, about 50 entries) with no login — word, rank, heat, label, pinned flag and the search URL per entry"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "SERVER-SIDE row cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. It caps the whole run, across every keyword/user/post given", example: 50}
-        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
         memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
         timeout: {type: integer, required: false, enum: [280], note: "run timeout in seconds. treg's key requires 280 so the run ends before Apify's 300-second synchronous wait; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 280}
       body:
@@ -428,8 +428,8 @@ endpoints:
     summary: "A Weibo user's timeline, newest first, with no login — about 1,000 posts deep per user; same post fields as search"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "SERVER-SIDE row cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. It caps the whole run, across every keyword/user/post given", example: 50}
-        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
         memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
         timeout: {type: integer, required: false, enum: [280], note: "run timeout in seconds. treg's key requires 280 so the run ends before Apify's 300-second synchronous wait; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 280}
       body:
@@ -458,8 +458,8 @@ endpoints:
     summary: "A Weibo user's public profile with no login — screen name, description, followers/following/post counts, verification type and reason, member rank, location, company, labels and account creation date"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "SERVER-SIDE row cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. It caps the whole run, across every keyword/user/post given", example: 50}
-        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
         memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
         timeout: {type: integer, required: false, enum: [280], note: "run timeout in seconds. treg's key requires 280 so the run ends before Apify's 300-second synchronous wait; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 280}
       body:
@@ -487,8 +487,8 @@ endpoints:
     summary: "One or more Weibo posts by id, short code or URL with no login — FULL long text (search and timeline rows truncate long posts), counts including reads, images, video and topics"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "SERVER-SIDE row cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. It caps the whole run, across every keyword/user/post given", example: 50}
-        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
         memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
         timeout: {type: integer, required: false, enum: [280], note: "run timeout in seconds. treg's key requires 280 so the run ends before Apify's 300-second synchronous wait; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 280}
       body:
@@ -516,8 +516,8 @@ endpoints:
     summary: "Comments on Weibo posts with no login, hot-first or newest-first, optionally with each comment's reply thread — text, likes, reply count, floor, IP region and commenter per row"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "SERVER-SIDE row cap — the only hard spend ceiling for a pay-per-result actor; set it on every call. It caps the whole run, across every keyword/user/post given", example: 50}
-        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
         memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
         timeout: {type: integer, required: false, enum: [280], note: "run timeout in seconds. treg's key requires 280 so the run ends before Apify's 300-second synchronous wait; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 280}
       body:
