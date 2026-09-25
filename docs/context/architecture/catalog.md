@@ -1750,9 +1750,11 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   is the measured hit rate when ≥ 20 decided samples exist, else `ok_rate`, else 1.0 (flagged
   `unmeasured`). `build_plan` reads that evidence through bootstrap's shared process cache; cold or
   unavailable observations degrade to unmeasured ranking while the cache refreshes off the request
-  path. `X-Treg-Route-Prefer` / `-Exclude` override; exhausted providers (capacity view)
-  and providers with no key on the deployment are dropped and named in `dropped` (`needs {…}`
-  says which identity variant a dropped child wanted).
+  path. `X-Treg-Route-Prefer` / `-Exclude` override. An exhausted platform provider with an enabled
+  overflow route remains a candidate at the overflow route's price, so the ordinary child ladder can
+  skip the known-dry direct account and use the aggregator; without an enabled route it is dropped.
+  Providers with no key on the deployment are also dropped and named in `dropped` (`needs {…}` says
+  which identity variant a dropped child wanted).
 - **Execution** — `application/call/route.py`, entered from `service._execute_call` when the
   resolved catalog row is `kind: routed`. Each attempt is a **full child `execute_call`** on a
   `CallContext` whose `call_ref` is `{parent}:r{n}` — its hold id, ladder (tiers 1/2/4/overflow),

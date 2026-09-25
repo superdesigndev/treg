@@ -147,7 +147,9 @@ application imports the capacity domain inward (`resolve` â†’ `view`, `settle` â
 the domain never imports back; `application.call.overflow` composes the capacity domain, the
 aggregator envelopes and the money primitives, and the aggregator adapters stay pure envelope code;
 `routers.catalog` reads the capacity domain's `routes_view` for the overflow price disclosure (a read
-of the worker-owned table through the same in-process copy the call path uses, never a write); `application.call.route` composes the pure
+of the worker-owned table through the same in-process copy the call path uses, never a write);
+`application.call.route` reads both capacity views before planning so an exhausted provider with an
+enabled overflow route reaches the ordinary child ladder, and composes the pure
 `domain.catalog.routing` package (contracts, adapters, ranking) with the call use case itself. The
 aggregator envelopes live under `treg.infra.upstream.aggregators` and inherit the upstream contract
 (no HTTP adapters, no routers); the capacity domain's `verify` module may import them because they are
