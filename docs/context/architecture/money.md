@@ -1024,13 +1024,18 @@ the estimate for reconciliation. BYOK calls never enter this money path.
 
 ## Apify dataset-row settlement
 
-An Apify `per_result` row on the platform key requires `maxItems` from 1 to 200, the server-side
-row cap. `_marketplace_pricing` holds `cost.call_fee` plus `maxItems` rows, and `_observed_cost_micro`
-settles the rows run-sync returned plus the same fee: each row is one billed event, and the fee is
-the actor start or compute the run bills regardless of rows. Apify's `usageTotalUsd` trails a
-finished run by minutes, so it is not settlement evidence. A run that exceeds its own timeout
-answers 400 with no rows and settles at zero although Apify bills the rows it made; the 200-row
-cap bounds that loss. BYOK calls never enter this money path.
+An Apify `per_result` row on the platform key requires `maxTotalChargeUsd` (above 0, at most $1),
+the per-event spend cap Apify enforces; `maxItems` does not bind actors whose own input sets the row
+count. Only the run options `maxTotalChargeUsd`, `maxItems`, `memory` and `timeout` are accepted,
+each once and in plain ASCII, because a dataset-view option (`limit`, `offset`, `format`, `unwind`)
+would make the returned rows disagree with the events billed. `_marketplace_pricing` holds the cap
+plus `cost.call_fee`, the flat start or compute charge the cap does not cover. `_observed_cost_micro`
+settles the rows run-sync returned times the row price plus the fee; within one row of the hold the
+caller's cap was reached, and the hold is the bill, because a run stopping at its cap can bill an
+event it never pushed and a plan-tier price below the catalog's fits more rows under the cap.
+Apify's `usageTotalUsd` trails a finished run by minutes, so it is not settlement evidence. A run
+that exceeds its own timeout answers 400 with no rows and settles at zero although Apify bills up
+to the cap; the $1 ceiling bounds that loss. BYOK calls never enter this money path.
 
 ## Pinned attribution and replay reads
 

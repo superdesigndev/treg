@@ -807,11 +807,11 @@ def _marketplace_pricing(
             return size * credit, credit
         return estimate, credit
     if provider == "apify" and cost.get("type") == "per_result" and cost.get("usd"):
-        # Every returned row is one billed event and the run adds its flat call fee; the platform
-        # guard requires maxItems, Apify's server-side row cap, so this hold is the worst case.
-        raw = query.get("maxItems")
-        rows = int(raw) if raw is not None and str(raw).isdigit() else _PLATFORM_PAGE_DEFAULT
-        return (_usd_to_micro(float(cost.get("call_fee") or 0)) + rows * unit, unit)
+        # The platform guard requires maxTotalChargeUsd, which caps every event Apify bills; the
+        # flat call_fee adds what the cap does not cover (Lazada's run compute).
+        cap = _apify_charge_cap(query)
+        rows = unit * _PLATFORM_PAGE_DEFAULT if cap is None else _usd_to_micro(cap)
+        return _usd_to_micro(float(cost.get("call_fee") or 0)) + rows, unit
     if provider == "tomba" and endpoint_id == "tomba.companies.emails.list":
         # Tomba bills requested page slots in blocks of ten, with a ten-slot default.
         # A partial non-empty page still costs the full block; settlement frees empty pages.
@@ -1413,23 +1413,65 @@ def _request_body_document(ep: dict, body: bytes, headers) -> dict:
     return _strict_json_object(body, ep["id"])
 
 
-# ponytail: a run that outlives its timeout answers 400 with no rows while Apify still bills the rows
-# it made; this cap bounds that loss per call. Settling from the run itself would lift it.
-_APIFY_PLATFORM_MAX_ITEMS = 200
+# Apify runs bill per event, and only the run option maxTotalChargeUsd bounds those events: the
+# maxItems option does not bind actors whose own input sets the row count. A platform call must name
+# that cap, and may add only the run options below, each once; a dataset-view option (limit, offset,
+# format, unwind) would make the returned rows disagree with the events billed.
+# ponytail: a run that outlives its timeout answers 400 with no rows while Apify still bills up to
+# the cap; the ceiling below bounds that loss per call. Settling from the run itself would lift it.
+_APIFY_PLATFORM_MAX_CHARGE_USD = 1.0
+_APIFY_PLATFORM_QUERY = frozenset({"maxTotalChargeUsd", "maxItems", "memory", "timeout"})
+_ASCII_INT = re.compile(r"[0-9]+")
+_ASCII_DECIMAL = re.compile(r"[0-9]+(?:\.[0-9]+)?")
 
 
 def _query_value(raw: str, expected: object) -> object:
-    """Read a query string as the pinned value's type; an unreadable value never matches."""
-    try:
-        if isinstance(expected, bool):
-            return {"true": True, "false": False}.get(raw.lower())
-        if isinstance(expected, int):
-            return int(raw)
-        if isinstance(expected, float):
-            return float(raw)
-    except ValueError:
-        return None
+    """Read a query string as the pinned value's type. Only plain ASCII spellings count: `int()`
+    also accepts Unicode digits, signs, spaces and underscores that an upstream may not parse."""
+    if isinstance(expected, bool):
+        return {"true": True, "false": False}.get(raw)
+    if isinstance(expected, int):
+        return int(raw) if _ASCII_INT.fullmatch(raw) else None
+    if isinstance(expected, float):
+        return float(raw) if _ASCII_DECIMAL.fullmatch(raw) else None
     return raw
+
+
+def _apify_charge_cap(query) -> float | None:
+    """The single, plainly spelled maxTotalChargeUsd a platform Apify call carries, else None."""
+    values = [value for name, value in query.multi_items() if name == "maxTotalChargeUsd"] \
+        if query is not None else []
+    if len(values) != 1 or not _ASCII_DECIMAL.fullmatch(values[0]):
+        return None
+    cap = float(values[0])
+    return cap if 0 < cap <= _APIFY_PLATFORM_MAX_CHARGE_USD else None
+
+
+def _enforce_apify_run_options(ep: dict, query) -> None:
+    names = [name for name, _ in query.multi_items()] if query is not None else []
+    problem = None
+    if any(name not in _APIFY_PLATFORM_QUERY for name in names):
+        problem = "only maxTotalChargeUsd, maxItems, memory and timeout"
+    elif len(names) != len(set(names)):
+        problem = "each run option at most once"
+    elif _apify_charge_cap(query) is None:
+        problem = f"maxTotalChargeUsd above 0 and at most {_APIFY_PLATFORM_MAX_CHARGE_USD:g}"
+    elif query.get("maxItems") is not None and not (
+            _ASCII_INT.fullmatch(query.get("maxItems")) and int(query.get("maxItems")) >= 1):
+        problem = "maxItems as a positive integer"
+    if problem:
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400, detail={
+                "error": "catalog_parameter_invalid",
+                "endpoint_id": ep["id"],
+                "parameter": "queryParams",
+                "expected": problem,
+                "message": (
+                    f"Apify platform calls take {problem}; maxTotalChargeUsd is the spend cap Apify "
+                    "enforces and the hold. Connect your own key for larger runs"
+                ),
+            },
+        )
 
 
 def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -> None:
@@ -1477,20 +1519,7 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
             )
 
     if ep.get("provider") == "apify" and (ep.get("cost") or {}).get("type") == "per_result":
-        raw = query.get("maxItems") if query is not None else None
-        if raw is None or not str(raw).isdigit() or not 1 <= int(raw) <= _APIFY_PLATFORM_MAX_ITEMS:
-            raise ResolutionFailed(
-                "catalog_parameter_invalid", status_code=400, detail={
-                    "error": "catalog_parameter_invalid",
-                    "endpoint_id": ep["id"],
-                    "parameter": "queryParams.maxItems",
-                    "expected": f"an integer from 1 to {_APIFY_PLATFORM_MAX_ITEMS}",
-                    "message": (
-                        f"Apify platform calls require maxItems from 1 to {_APIFY_PLATFORM_MAX_ITEMS}, "
-                        "the row cap that bounds their bill; connect your own key for larger runs"
-                    ),
-                },
-            )
+        _enforce_apify_run_options(ep, query)
 
     input_schema = ep.get("input") or {}
     rules = ep.get("platform_request") or {}
