@@ -1029,14 +1029,16 @@ the per-event spend cap Apify enforces; `maxItems` does not bind actors whose ow
 count. Only the run options `maxTotalChargeUsd`, `maxItems`, `memory` and `timeout` are accepted,
 each once and in plain ASCII, because a dataset-view option (`limit`, `offset`, `format`, `unwind`)
 would make the returned rows disagree with the events billed. `_marketplace_pricing` holds the cap
-plus `cost.call_fee`, the flat start or compute charge the cap does not cover. `_observed_cost_micro`
+plus `cost.call_fee`, the flat per-run charge: a start event the cap already counts, or run compute
+it does not (Lazada). `_observed_cost_micro`
 settles the rows run-sync returned times the row price plus the fee; within two rows of the hold the
 caller's cap was reached, and the hold is the bill, because a run stops when its next event would
 pass the cap and can already have billed one event it never pushed and a plan-tier price below the catalog's fits more rows under the cap.
 Apify's `usageTotalUsd` trails a finished run by minutes, so it is not settlement evidence. A run
 that exceeds its own timeout, FAILS or is ABORTED answers 400 `run-failed` with no rows and releases,
 although Apify may have billed events up to the cap; so does an answer over the 8 MiB evidence limit.
-The $1 ceiling bounds each loss. That body names the run, so treg's Apify account must keep general
+So does a caller who disconnects mid-run: the hold releases while the run keeps billing. The $1
+ceiling bounds each loss. That body names the run, so treg's Apify account must keep general
 resource access Restricted: with public access anyone could read the unbilled run's dataset by id.
 Settling such a run from its own event counts would need a deferred settle; `usageTotalUsd` lags. `timeout` is required and at most 90 seconds (and
 30 under `call_timeout_s`), because a run still going when Apify's 300-second synchronous wait,
