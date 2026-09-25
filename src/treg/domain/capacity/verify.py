@@ -10,6 +10,7 @@ this module reads no settings itself.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -19,6 +20,20 @@ from ...timeutil import utcnow_naive
 from ...infra.upstream.aggregators import (AGGREGATOR_SIDE, VENDOR_DRY, VENDOR_REFUSAL, by_name,
                                             with_vendor_verdict)
 from . import signatures
+
+
+_SAFE_SHAPE_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,63}")
+_UUID_SHAPE_KEY = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
+)
+
+
+def _safe_shape_key(key) -> str:
+    """Keep ordinary schema field names; never persist identifier-shaped map keys."""
+    text = str(key)
+    if not _SAFE_SHAPE_KEY.fullmatch(text) or _UUID_SHAPE_KEY.fullmatch(text):
+        return "<identifier>"
+    return text
 
 
 def shape(obj, depth: int = 0):
@@ -36,6 +51,32 @@ def shapes_match(a: bytes, b: bytes) -> bool | None:
         return json.dumps(shape(json.loads(a)), sort_keys=True) == json.dumps(shape(json.loads(b)), sort_keys=True)
     except ValueError:
         return None
+
+
+def _shape_paths(value, path: str = "$") -> set[str]:
+    """PII-free structural paths for explaining a failed shape comparison."""
+    if isinstance(value, dict):
+        paths = {f"{path}:object"}
+        for key, child in value.items():
+            paths |= _shape_paths(child, f"{path}.{_safe_shape_key(key)}")
+        return paths
+    if isinstance(value, list):
+        return {f"{path}:list"} | (_shape_paths(value[0], f"{path}[]") if value else set())
+    return {f"{path}:leaf"}
+
+
+def shape_difference(a: bytes, b: bytes) -> str:
+    """Describe only structural differences; never include response values."""
+    try:
+        direct = _shape_paths(json.loads(a))
+        relay = _shape_paths(json.loads(b))
+    except ValueError:
+        return "non-JSON response"
+    direct_only = sorted(direct - relay)[:8]
+    relay_only = sorted(relay - direct)[:8]
+    if not direct_only and not relay_only:
+        return "difference is confined to redacted map keys"
+    return f"direct-only={direct_only or '-'}; relay-only={relay_only or '-'}"[:500]
 
 
 @dataclass
@@ -145,4 +186,5 @@ async def verify_route(client: httpx.AsyncClient, route, *, key: str, direct: tu
     same = shapes_match(dr.content, res.upstream_body)
     return Verification(route.endpoint_id, route.aggregator, dr.status_code, res.upstream_status, same,
                         res.cost_micro, now if same else None,
-                        note="" if same else f"direct {dr.status_code}, relay {res.upstream_status}, shape differs")
+                        note=("" if same else f"direct {dr.status_code}, relay {res.upstream_status}, "
+                              f"shape differs: {shape_difference(dr.content, res.upstream_body)}"))

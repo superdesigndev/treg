@@ -11,7 +11,7 @@
   "path": "/v1/company/enrichment/",
   "matched_at": "2026-08-26",
   "verified_at": null,
-  "single_result": false
+  "single_result": true
  },
  {
   "aggregator": "monid",

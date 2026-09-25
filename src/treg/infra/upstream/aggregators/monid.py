@@ -22,6 +22,13 @@ NAME = "monid"
 _INT = re.compile(r"-?\d{1,15}")
 _FLOAT = re.compile(r"-?\d+\.\d+")
 
+# Monid validates these query parameters against an array schema even though the vendor's native
+# GET API accepts one comma-separated query value. This is envelope adaptation only: the same
+# values reach the same vendor parameter, with no provider response modeling.
+_ARRAY_QUERY_PARAMS = {
+    ("akta", "/v1/company/enrichment"): frozenset({"sections"}),
+}
+
 
 def _typed(v):
     """Monid validates `input` against the vendor's JSON schema, so a numeric query value must be a
@@ -39,9 +46,22 @@ def _typed(v):
     return v
 
 
+def _query_params(route, query: list[tuple[str, str]] | dict) -> dict:
+    pairs = list(query.items() if isinstance(query, dict) else query)
+    arrays = _ARRAY_QUERY_PARAMS.get((route.agg_slug, route.agg_path.rstrip("/")), frozenset())
+    out: dict = {}
+    for key, value in pairs:
+        if key not in arrays:
+            out[key] = _typed(value)
+            continue
+        values = value if isinstance(value, list) else str(value).split(",")
+        out.setdefault(key, []).extend(_typed(v.strip()) for v in values if str(v).strip())
+    return out
+
+
 def build(route, key: str, query: list[tuple[str, str]] | dict, body: bytes | None,
           path_params: dict | None = None, *, params_as_body: bool = False) -> AggregatorRequest:
-    items = {k: _typed(v) for k, v in (query.items() if isinstance(query, dict) else query)}
+    items = _query_params(route, query)
     parsed: dict = {}
     if body:
         try:
