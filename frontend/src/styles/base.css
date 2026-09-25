@@ -427,7 +427,7 @@
   .exchip .m{color:var(--muted);margin-right:5px}
   .lbl{font-family:var(--sans);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin:2px 0 5px}
   /* ===== interactive tutorial (Help view) ===== */
-  .tut-head{display:flex;align-items:center;gap:12px;margin-bottom:20px} .tut-actions{margin-left:auto;display:flex;gap:6px}
+  .tut-head{display:flex;align-items:center;gap:12px;margin-bottom:20px} .tut-actions{margin-left:auto;display:flex;flex-wrap:wrap;gap:6px}
   .tut-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin:12px 0}
   .tut-cards.wide{grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
   .tut-cards .card h4{margin:0 0 5px;font-size:13px;color:var(--accent);font-family:var(--mono)}
