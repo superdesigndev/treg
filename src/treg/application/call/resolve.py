@@ -1428,6 +1428,7 @@ _APIFY_PLATFORM_MAX_TIMEOUT = 90
 
 
 def _apify_max_timeout() -> int:
+    # Catalog rows pin timeout 90, so call_timeout_s must stay >= 120 or those rows refuse every call.
     return max(1, min(_APIFY_PLATFORM_MAX_TIMEOUT, get_settings().call_timeout_s - 30))
 _APIFY_PLATFORM_QUERY = frozenset({"maxTotalChargeUsd", "maxItems", "memory", "timeout"})
 _ASCII_INT = re.compile(r"[0-9]+")
