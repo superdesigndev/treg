@@ -46,6 +46,14 @@ KINDS = ("data", "action", "account", "utility", "routed")
 DEFAULT_KIND = "data"
 HIDDEN_KINDS = frozenset({"account", "utility"})  # served, but never inflate the browse counts
 
+
+def browsable(ep: dict) -> bool:
+    """An endpoint the PUBLIC pages may count or list: hidden utility kinds out, and the
+    `kind: routed` meta-rows (PR #242) out with them - a routed row delegates to children that
+    are already on the page, so anywhere public it double-counts and surfaces a provider named
+    "treg", which the brand rules say must never appear as a vendor."""
+    return ep["kind"] not in HIDDEN_KINDS and ep.get("kind") != "routed"
+
 # How much the recorded PRICE is worth as evidence (cost.confidence). It is a claim about the
 # price, not about the endpoint: `verified: 2026-07-28` says the route answered, `confidence:
 # verified` says the money figure was confirmed against something re-checkable.
@@ -259,9 +267,20 @@ def load(*, refresh: bool = False, directory: Path | None = None) -> Catalog:
     return _CACHE
 
 
+class _Loader(yaml.SafeLoader):
+    """SafeLoader that keeps timestamps as the strings they were written as. The validator accepts
+    `checked: 2026-09-01` unquoted, and a `date` object in a served row breaks every plain
+    `json.dumps` of it (the /catalog/find stream did exactly that on the video-gen rows)."""
+
+
+_Loader.yaml_implicit_resolvers = {
+    ch: [(tag, rx) for tag, rx in rs if tag != "tag:yaml.org,2002:timestamp"]
+    for ch, rs in yaml.SafeLoader.yaml_implicit_resolvers.items()}
+
+
 def _read_yaml(path: Path) -> dict:
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data = yaml.load(path.read_text(encoding="utf-8"), Loader=_Loader)  # noqa: S506 - SafeLoader subclass
     except (OSError, yaml.YAMLError):
         return {}
     return data if isinstance(data, dict) else {}
@@ -473,7 +492,9 @@ def _load_routing(directory: Path, by_id: dict[str, dict]):
     from .routing.contracts import load_routing
 
     def _example(ep: dict):
-        name = ep.get("example_file")
+        # Async routing adapts the terminal poll document, not the submission acknowledgement.
+        # The ordinary example remains the public "what this endpoint returns immediately" body.
+        name = ep.get("terminal_example_file") if ep.get("async") else ep.get("example_file")
         if not name:
             return None
         try:
@@ -699,6 +720,7 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         "superseded_by": str(raw.get("superseded_by") or "").strip(),
         "docs_url": raw.get("docs_url") or "",
         "example_file": _example_file(raw, directory),
+        "terminal_example_file": _declared_example_file(raw.get("terminal_example_response"), directory),
     }
 
 
@@ -709,6 +731,12 @@ def _example_file(raw: dict, directory: Path) -> str | None:
     data file must never be able to point the server at an arbitrary path.
     """
     declared = raw.get("example_response") or f"{EXAMPLES_DIRNAME}/{raw['id']}.json"
+    return _declared_example_file(declared, directory)
+
+
+def _declared_example_file(declared: object, directory: Path) -> str | None:
+    if not declared:
+        return None
     name = Path(str(declared)).name
     if not name.endswith(".json"):
         return None

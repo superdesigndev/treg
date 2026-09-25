@@ -120,6 +120,19 @@ adapters:
     in: {linkedin_url: body.linkedin_url}
     out: {email: email}
     miss: "email == null"
+  wiza.people.email.find:
+    accepts: [[full_name, domain], [first_name, last_name, domain], [linkedin_url]]
+    in: {full_name: body.individual_reveal.full_name,
+         domain: body.individual_reveal.domain,
+         linkedin_url: body.individual_reveal.profile_url}
+    in_expr: {body.individual_reveal.full_name: "join(first_name, last_name)"}
+    const: {body.enrichment_level: partial,
+            body.email_options.accept_work: true,
+            body.email_options.accept_personal: false,
+            body.email_options.accept_generic: false}
+    out: {email: data.email, first_name: "split_first(data.name)",
+          last_name: "split_last(data.name)", verified: "data.email_status == 'valid'"}
+    miss: "data.email == null"
 
   # ---- instagram.user.profile ---------------------------------------------------------------
   tikhub.instagram.user.profile:
@@ -334,6 +347,17 @@ adapters:
     test_identity: {first_name: Jane, last_name: Doe, domain: lusha.com}
     out: {phone: "results[0].phones[0].number", line_type: "results[0].phones[0].type", country_code: "results[0].phones[0].countryIso2"}
     miss: "results[0].phones[0].number == null"
+  wiza.people.phone.find:
+    accepts: [[linkedin_url], [email], [full_name, domain], [first_name, last_name, domain]]
+    in: {linkedin_url: body.individual_reveal.profile_url,
+         email: body.individual_reveal.email,
+         full_name: body.individual_reveal.full_name,
+         domain: body.individual_reveal.domain}
+    in_expr: {body.individual_reveal.full_name: "join(first_name, last_name)"}
+    const: {body.enrichment_level: phone}
+    out: {phone: "coalesce(data.mobile_phone, data.phone_number, data.phones[0].number)",
+          line_type: "data.phones[0].type"}
+    miss: "coalesce(data.mobile_phone, data.phone_number, data.phones[0].number) == null"
 
   tomba.people.phone.verify:
     accepts: [[phone]]
@@ -2212,12 +2236,8 @@ adapters:
     const: {queryParams.page: "1", queryParams.enrich: "false"}
     out: {people: items, count: totalResults}
     miss: "items == []"
-  companyenrich.people.search.scroll:
-    accepts: [[company_domain, title], [company_domain]]
-    in:  {company_domain: body.domains, title: body.positionQuery}
-    in_expr: {body.domains: "list(company_domain)", body.positionQuery: "list(title)", body.pageSize: limit}
-    out: {people: items, count: totalItems, next_cursor: nextCursor}
-    miss: "items == []"
+  # No adapter for companyenrich.people.search.scroll: its first page is the same query against the
+  # same index as companyenrich.people.search, so routing both billed one empty answer twice.
   crustdata.people.search:
     accepts: [[full_name]]
     in:  {full_name: body.filters.value}
@@ -2651,6 +2671,19 @@ adapters:
     const: {body.fast_mode: true}
     out: {results: result.links, count: "len(result.links)"}
     miss: "coalesce(result.links, []) == []"
+  scrapegraphai.web.search:
+    accepts: [[q]]
+    in: {q: body.query}
+    in_expr: {body.numResults: limit}
+    const: {body.format: markdown, body.allowedTypes: [text/html]}
+    out: {results: results, count: "len(results)"}
+    miss: "coalesce(results, []) == []"
+  serper.web.search:
+    accepts: [[q]]
+    in: {q: body.q}
+    in_expr: {body.gl: "lower(country)", body.hl: language}
+    out: {results: organic, count: "len(organic)"}
+    miss: "coalesce(organic, []) == []"
 
   tinyfish.web.fetch:
     accepts: [[url]]
@@ -2672,6 +2705,13 @@ adapters:
     const: {body.formats: [markdown], body.max_age: 604800}
     out: {pages: "list(result)", count: "len(list(result))"}
     miss: "result == null"
+  scrapegraphai.web.scrape:
+    accepts: [[url]]
+    in: {url: body.url}
+    test_identity: {url: "https://example.com"}
+    const: {body.formats: [{type: markdown}], body.allowedTypes: [text/html]}
+    out: {pages: "results.markdown.data", count: "len(results.markdown.data)"}
+    miss: "coalesce(results.markdown.data, []) == []"
   tavily.web.extract:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
@@ -2685,6 +2725,12 @@ adapters:
     const: {queryParams.live: false}
     out: {pages: "list(.)", count: "len(list(.))"}
     miss: ". == null"
+  serper.web.extract:
+    accepts: [[url]]
+    in: {url: body.url}
+    const: {body.includeMarkdown: true}
+    out: {pages: "list(.)", count: "len(list(.))"}
+    miss: "coalesce(text, '') == ''"
 
   anyapi.web.map:
     accepts: [[url], [url, q]]
@@ -2713,6 +2759,55 @@ adapters:
     in_expr: {body.limit: limit}
     out: {pages: output.data.items, count: "len(output.data.items)"}
     miss: "coalesce(output.data.items, []) == []"
+
+  # ---- Fetchin LinkedIn reads ---------------------------------------------------------------
+  fetchinio.linkedin.user.profile:
+    accepts: [[linkedin_url], [linkedin_handle]]
+    in: {linkedin_url: queryParams.profileUrlOrUrn, linkedin_handle: queryParams.profileUrlOrUrn}
+    out: {full_name: "join(firstName, lastName)", first_name: firstName, last_name: lastName,
+          headline: title, location: location, followers: followerCount, connections: connectionsCount,
+          about: description, linkedin_url: url}
+    miss: "coalesce(firstName, lastName) == null"
+  fetchinio.linkedin.company.profile:
+    accepts: [[linkedin_url], [linkedin_handle]]
+    in: {linkedin_url: queryParams.companyUrlOrUrn, linkedin_handle: queryParams.companyUrlOrUrn}
+    out: {name: name, description: description, website: websiteUrl, followers: followerCount,
+          employees: "fmt('{0}', employeeCount)", location: "join(headquarter.city, headquarter.country)",
+          linkedin_url: url}
+    miss: "name == null"
+  fetchinio.linkedin.user.posts:
+    accepts: [[linkedin_url], [linkedin_handle]]
+    in: {linkedin_url: queryParams.profileUrlOrUrn, linkedin_handle: queryParams.profileUrlOrUrn}
+    in_expr: {queryParams.count: limit}
+    out: {posts: posts, next_cursor: paginationToken, has_more: hasMore}
+    miss: "posts == []"
+  fetchinio.linkedin.post.comments:
+    accepts: [[post_urn], [post_id]]
+    in: {post_urn: queryParams.postUrlOrUrn, post_id: queryParams.postUrlOrUrn}
+    in_expr: {queryParams.count: limit}
+    out: {comments: comments, count: "len(comments)", next_cursor: paginationToken}
+    miss: "comments == []"
+  fetchinio.linkedin.post.reactions:
+    accepts: [[post_urn], [post_id]]
+    in: {post_urn: queryParams.postUrlOrUrn, post_id: queryParams.postUrlOrUrn}
+    in_expr: {queryParams.count: limit}
+    out: {reactions: reactions, count: "len(reactions)"}
+    miss: "reactions == []"
+
+  # The posts contract needs multiple independently verified children before its synthetic route
+  # exists. These two established providers expose the same provider-native list contract.
+  aviato.linkedin.user.posts:
+    accepts: [[linkedin_handle]]
+    in: {linkedin_handle: queryParams.linkedinID}
+    in_expr: {queryParams.perPage: limit}
+    out: {posts: results, next_cursor: paginationToken, has_more: hasMoreResults}
+    miss: "results == []"
+  harvestapi.linkedin.user.posts:
+    accepts: [[linkedin_handle]]
+    in: {linkedin_handle: queryParams.profilePublicIdentifier}
+    const: {queryParams.page: "1"}
+    out: {posts: elements, next_cursor: paginationToken}
+    miss: "elements == []"
 
   # ---- influencers.club enrich tiers: cache result admission only (`routed: false` contracts) --
   # A hit is a platform block under `result`; an unknown creator is HTTP 400 and never recorded.

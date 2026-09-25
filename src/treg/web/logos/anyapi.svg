@@ -1,5 +1,13 @@
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="anyapi">
-  <!-- Neutral lettermark. Not the AnyAPI brand mark. -->
-  <rect width="24" height="24" rx="5" fill="#111827"/>
-  <text x="12" y="12" fill="#fff" font-family="ui-sans-serif,system-ui,Arial,sans-serif" font-size="13" font-weight="700" text-anchor="middle" dominant-baseline="central">A</text>
+<!-- Official vendor icon: https://getanyapi.com/favicon.svg ; retrieved 2026-09-24 -->
+<svg width="48" height="48" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="48" height="48" rx="12" fill="#1f4fe0"/>
+  <g transform="translate(-8.9 -3.5) scale(1.25)">
+    <path d="M26 6h12a4 4 0 0 1 4 4v12L27.7 36.3a2.4 2.4 0 0 1-3.4 0L11.7 23.7a2.4 2.4 0 0 1 .1-3.5Z" fill="#ffffff"/>
+    <circle cx="34" cy="13.5" r="2.9" fill="none" stroke="#1f4fe0" stroke-width="2.6"/>
+    <g stroke="#1f4fe0" stroke-width="3.1" stroke-linecap="round">
+      <line x1="24.5" y1="17" x2="24.5" y2="29"/>
+      <line x1="24.5" y1="17" x2="24.5" y2="29" transform="rotate(60 24.5 23)"/>
+      <line x1="24.5" y1="17" x2="24.5" y2="29" transform="rotate(120 24.5 23)"/>
+    </g>
+  </g>
 </svg>

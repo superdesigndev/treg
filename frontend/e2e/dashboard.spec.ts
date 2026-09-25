@@ -32,6 +32,10 @@ test('sign in, create team, switch pages, refresh and navigate back', async ({ p
   await page.locator('.rd-account-menu summary').click()
   await page.locator('.rd-account-menu').getByRole('button', { name: 'Billing', exact: true }).click()
   await expect(page).toHaveURL(/#orgs$/)
+  const referral = page.getByRole('link', { name: 'Refer a friend: Give $5, get $5', exact: true })
+  await expect(referral).toHaveText('Give $5, get $5')
+  await referral.click()
+  await expect(page).toHaveURL(/#referrals$/)
   expect(errors).toEqual([])
 })
 
@@ -156,13 +160,20 @@ test('the catalog search box answers a described job and lights the shelves', as
   await expect(page.getByRole('button', { name: /Search all tools for/ })).toBeVisible()   // a name filters, Enter still searches
   await box.fill('why is my blog losing google traffic')
   await expect(page.getByRole('button', { name: /Find tools for/ })).toBeVisible()   // a job, not a name
-  await expect(page.getByText(/No catalogued platforms/)).toHaveCount(0)
-  await box.press('Enter')
+  await expect(page.getByText(/No catalogued platforms|No platform is called that/)).toHaveCount(0)
+  // no Enter: the answer arrives once typing pauses
   await expect(page.getByText('Clicks, impressions, CTR & top queries')).toBeVisible()
   await expect(page.getByText(/1 tool for/)).toBeVisible()
   await expect(page.locator('.pt-card.find-hit')).toHaveCount(1)
   await page.getByRole('button', { name: 'Clear the search' }).click()
   await expect(page.locator('.pt-card.find-hit')).toHaveCount(0)
+  // a bare name is answered with what it offers: listed in the server's order, no fit to show
+  await mockFind(page, [{ ...consoleRow, p: null }], 'name')
+  await box.fill('search console')
+  await box.press('Enter')
+  await expect(page.getByText(/1 tool for/)).toBeVisible()
+  await expect(page.locator('.fa-row')).toHaveCount(1)
+  await expect(page.locator('.fa-row.weak, .fa-fit, .fa-sub')).toHaveCount(0)
   expect(errors).toEqual([])
 })
 
@@ -173,18 +184,24 @@ test('the public search page lands the fitting platforms in their cards', async 
   await page.goto('/search')
   await expect(page.getByRole('heading', { name: /What does your agent/ })).toBeVisible()
   await expect(page.locator('.sp-tile').first()).toBeVisible()
+  const example = await page.getByLabel('Describe the job').getAttribute('placeholder')
   await page.getByLabel('Describe the job').press('Enter')                          // empty: the placeholder is the query
-  await expect(page.getByLabel('Describe the job')).toHaveValue(/Find the emails of CTOs/)
-  await expect(page).toHaveURL(/\/search\?q=Find/)
+  await expect(page.getByLabel('Describe the job')).toHaveValue(example || '')
+  await expect(page).toHaveURL(/\/search\?q=./)
   await page.getByLabel('Describe the job').fill('why is my blog losing google traffic')
   await page.getByLabel('Describe the job').press('Enter')
   await expect(page.getByRole('button', { name: 'Google Search Console' })).toBeVisible()
   await expect(page).toHaveURL(/\/search\?q=why/)
-  await expect(page.locator('.sp-tile.landed')).toHaveCount(1)
+  await expect(page.locator('.sp-tile.landed')).toHaveCount(2)                     // the vendor's tile and its platform's
   await page.getByRole('button', { name: 'Google Search Console' }).click()          // signed out: sign in first
   await expect(page.getByRole('dialog', { name: 'Sign in' })).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('button', { name: 'Copy for your agent' })).toBeVisible()
+  await mockFind(page, [{ ...consoleRow, p: null }], 'name')
+  await page.getByLabel('Describe the job').fill('search console')
+  await page.getByLabel('Describe the job').press('Enter')
+  await expect(page.getByText('Tools for search console')).toBeVisible()
+  await expect(page.locator('.sp-fit')).toHaveCount(0)
   await mockFind(page, [], 'none')
   await page.getByLabel('Describe the job').fill('wire money to my landlord')
   await page.getByLabel('Describe the job').press('Enter')

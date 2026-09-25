@@ -211,7 +211,11 @@ async def meta() -> dict:
             # public ingestion key — only present when this deployment opts in (self-hosters send nothing)
             "posthog_key": s.posthog_key, "posthog_host": s.posthog_host.rstrip("/") if s.posthog_key else "",
             # public workspace id — only present when this deployment opts in (self-hosters load no widget)
-            "intercom_app_id": s.intercom_app_id}
+            "intercom_app_id": s.intercom_app_id,
+            # Config only, no database: lets the top-bar referral entry name the reward on every page
+            # without calling GET /referrals, which mints a code and runs the payout sweep.
+            "referral": {"referrer_micro": int(s.referral_referrer_micro),
+                         "referred_micro": int(s.referral_referred_micro)}}
 
 
 @app.get("/providers.json", include_in_schema=False)

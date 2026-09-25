@@ -24,7 +24,7 @@ from treg import oauth_providers as P
 def test_key_providers_are_offerable_without_deployment_credentials():
     """The user brings the key, so treg holds no app of its own — a key provider must be offerable,
     not shown as 'not configured' the way an unset OAuth provider is."""
-    for svc in ("anyapi", "apollo", "pdl", "akta", "hunter", "sumble", "moltsets", "openmart", "harvestapi", "dropleads", "quickenrich", "prospeo", "aiark", "wiza", "limadata", "getleadsio", "scrubby", "zerobounce", "datagma", "contactout", "millionverifier", "bounceban", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush",
+    for svc in ("anyapi", "apollo", "pdl", "akta", "hunter", "sumble", "moltsets", "openmart", "harvestapi", "fetchinio", "dropleads", "quickenrich", "prospeo", "aiark", "wiza", "limadata", "getleadsio", "scrubby", "zerobounce", "datagma", "contactout", "millionverifier", "bounceban", "trykitt", "crunchbase", "tikhub", "brightdata", "semrush",
                 "justoneapi", "dataforseo", "seranking", "moz", "majestic", "serpstat", "exa",
                 "cloro",
                 "lusha", "coresignal", "diffbot", "thecompaniesapi", "leadmagic", "fiber-ai",
@@ -32,7 +32,8 @@ def test_key_providers_are_offerable_without_deployment_credentials():
                 "icypeas", "leadsforge", "influencersclub", "crustdata", "aviato",
                 "spyfu", "apify", "meta-ad-library", "serpapi", "adyntel",
                 "coingecko", "polygon", "finnhub", "twelvedata", "fmp", "eodhd", "marketstack",
-                "tiingo", "financialdatasets", "tinyfish", "keenable", "olostep"):
+                "tiingo", "financialdatasets", "tinyfish", "keenable", "olostep",
+                "scrapegraphai", "serper"):
         p = P.get(svc)
         assert p is not None, svc
         assert p.auth_kind == "key", svc
@@ -119,6 +120,75 @@ def test_key_providers_appear_in_the_marketplace_listing():
     assert "Market data" in P.CATEGORY_ORDER
 
 
+def test_serper_registry_uses_free_account_probe_and_scopes_the_scrape_host(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SERPER", "PLATFORM-SERPER")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "serper")
+    settings = Settings(_env_file=None)
+    provider = P.get("serper")
+    assert provider is not None
+    assert provider.base_url == "https://google.serper.dev"
+    assert provider.probe_path == "/account"
+    assert provider.probe_method == "GET"
+    assert [(target.host, target.base_url) for target in provider.catalog_targets] == [
+        ("scrape.serper.dev", "https://scrape.serper.dev"),
+    ]
+    assert provider.extra_tools == (
+        {"suffix": "scrape", "base_url": "https://scrape.serper.dev"},
+    )
+    assert settings.platform_key_for("serper") == "PLATFORM-SERPER"
+    assert P.platform_bindings(provider) == [{
+        "platform_setting": "platform_key_serper",
+        "injector": "env",
+        "location": "header",
+        "name": "X-API-KEY",
+        "format": "{secret}",
+    }]
+
+
+def test_fetchin_registry_uses_free_subscription_probe_and_x_api_key(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FETCHINIO", "PLATFORM-FETCHIN")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "fetchinio")
+    provider = P.get("fetchinio")
+    assert provider is not None
+    assert provider.base_url == "https://api.fetchin.io"
+    assert provider.probe_path == "/api/v1/subscription"
+    assert provider.probe_method == "GET"
+    assert Settings(_env_file=None).platform_key_for("fetchinio") == "PLATFORM-FETCHIN"
+    assert P.platform_bindings(provider) == [{
+        "platform_setting": "platform_key_fetchinio",
+        "injector": "env",
+        "location": "header",
+        "name": "X-API-Key",
+        "format": "{secret}",
+    }]
+
+
+async def test_fetchin_connect_accepts_valid_key_and_rejects_bad_key(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/api/v1/subscription"
+        if request.headers["x-api-key"] == "bad":
+            return httpx.Response(401, json={"code": "INVALID_API_KEY"})
+        return httpx.Response(200, json={
+            "plan": "free", "active": True, "status": "free",
+            "creditsRemaining": 0, "creditsLimit": 1000, "creditsUsed": 1000,
+            "renewalDate": None, "rpsLimit": 5, "cancelAtPeriodEnd": False,
+        })
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post(
+            "/connections/token", json={"provider": "fetchinio", "token": "bad"})
+        assert bad.status_code == 422
+        good = await clients.post(
+            "/connections/token", json={"provider": "fetchinio", "token": "own-key"})
+        assert good.status_code == 200, good.text
+
+    tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "fetchinio")
+    assert tool["base_url"] == "https://api.fetchin.io"
+    assert tool["bindings"][0]["name"] == "X-API-Key"
+
+
 def test_paid_key_verification_probe_is_typed_and_unique():
     paid = {p.service: p.probe_cost_micro for p in P.REGISTRY.values() if p.probe_cost_micro}
     assert paid == {"keenable": 4_000, "trestleiq": 15_000}
@@ -163,6 +233,24 @@ def test_olostep_registry_uses_free_credit_probe_and_bearer_auth(monkeypatch):
         "location": "header",
         "name": "Authorization",
         "format": "Bearer {secret}",
+    }]
+
+
+def test_scrapegraphai_registry_uses_free_credit_probe_and_sgai_header(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SCRAPEGRAPHAI", "PLATFORM-SCRAPEGRAPHAI")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "scrapegraphai")
+    provider = P.get("scrapegraphai")
+    assert provider is not None
+    assert provider.base_url == "https://v2-api.scrapegraphai.com"
+    assert provider.probe_path == "/api/credits"
+    assert provider.probe_cost_micro == 0
+    assert Settings(_env_file=None).platform_key_for("scrapegraphai") == "PLATFORM-SCRAPEGRAPHAI"
+    assert P.platform_bindings(provider) == [{
+        "platform_setting": "platform_key_scrapegraphai",
+        "injector": "env",
+        "location": "header",
+        "name": "SGAI-APIKEY",
+        "format": "{secret}",
     }]
 
 

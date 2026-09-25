@@ -1,0 +1,43 @@
+{
+  "comments": [
+    {
+      "urn": "urn:li:comment:(activity:7508596155145043968,REDACTED)",
+      "text": "[redacted public comment]",
+      "createdAt": "2026-09-23T18:47:08.212Z",
+      "reactionCount": 8,
+      "author": {
+        "id": "urn:li:fsd_profile:REDACTED",
+        "name": "Example Person",
+        "headline": "[redacted]",
+        "profilePictureUrl": "https://example.com/profile-picture.jpg",
+        "profileUrl": "https://example.com/profile/redacted",
+        "publicId": "redacted",
+        "profileId": "REDACTED"
+      },
+      "replies": [
+        {
+          "urn": "urn:li:comment:(activity:7508596155145043968,REDACTED_REPLY)",
+          "text": "[redacted public reply]",
+          "createdAt": "2026-09-23T18:49:35.456Z",
+          "reactionCount": 2,
+          "author": {
+            "id": "urn:li:fsd_profile:REDACTED_REPLY_AUTHOR",
+            "name": "Example Person Two",
+            "headline": "[redacted]",
+            "profilePictureUrl": "https://example.com/profile-picture-2.jpg",
+            "profileUrl": "https://example.com/profile/redacted-2",
+            "publicId": "redacted-2",
+            "profileId": "REDACTED_REPLY_AUTHOR"
+          },
+          "replies": [],
+          "permalink": "https://www.linkedin.com/feed/update/urn:li:activity:7508596155145043968",
+          "pinned": false
+        }
+      ],
+      "permalink": "https://www.linkedin.com/feed/update/urn:li:activity:7508596155145043968",
+      "pinned": false
+    }
+  ],
+  "paginationToken": "REDACTED_CURSOR",
+  "hasMore": true
+}

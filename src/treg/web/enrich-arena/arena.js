@@ -89,9 +89,9 @@
         if(this.rejected(entry))return 'defeated';
         if(this.selected.includes(entry.id))return 'champion';
         if(entry.state==='running')return this.active?'fighting':'paused';
-        return ({hit:'won',miss:'defeated',error:'error',timeout:'error',interrupted:'paused',cancelled:'paused',skipped:'benched',not_attempted:'benched',queued:'waiting'})[entry.state]||'ready';
+        return ({hit:'won',miss:'defeated',error:'error',timeout:'error',pending:'pending',interrupted:'paused',cancelled:'paused',skipped:'benched',not_attempted:'benched',queued:'waiting'})[entry.state]||'ready';
       },
-      label(entry){return entry.batchLabel||({excluded:'Excluded',champion:'Winner',won:'Hit!',defeated:this.rejected(entry)?'Thumbs down':'No match',error:entry.state==='timeout'?'Timed out':'Error',paused:'Stopped',benched:'Not called',waiting:'Waiting',fighting:'Fighting…',ready:'Ready'})[this.state(entry)];}
+      label(entry){return entry.batchLabel||({excluded:'Excluded',champion:'Winner',won:'Hit!',defeated:this.rejected(entry)?'Thumbs down':'No match',error:entry.state==='timeout'?'Timed out':'Error',pending:'Processing',paused:'Stopped',benched:'Not called',waiting:'Waiting',fighting:'Fighting…',ready:'Ready'})[this.state(entry)];}
     }
   };
 
@@ -194,10 +194,10 @@
         return [...groups].map(([provider,results])=>{
           const hits=results.filter(r=>r.state==='hit'),kept=hits.filter(r=>this.ratingValue(r)!=='down');
           const attempted=results.filter(r=>!['not_attempted','skipped','queued'].includes(r.state));
-          const complete=results.every(r=>['hit','miss','error','timeout'].includes(r.state));
+          const complete=results.every(r=>['hit','miss','error','timeout','pending'].includes(r.state));
           const timings=kept.map(r=>r.duration_ms).filter(Number.isFinite).sort((a,b)=>a-b);
           const cost=results.every(r=>Number.isFinite(r.charged_micro))?results.reduce((sum,r)=>sum+r.charged_micro,0):null;
-          const state=results.some(r=>r.state==='running')?'running':results.some(r=>r.state==='queued')?'queued':kept.length?'hit':attempted.length?'miss':'not_attempted';
+          const state=results.some(r=>r.state==='running')?'running':results.some(r=>r.state==='queued')?'queued':results.some(r=>r.state==='pending')?'pending':kept.length?'hit':attempted.length?'miss':'not_attempted';
           const total=this.runEntries.length;
           return {id:provider,provider,state,total,complete,found:hits.length,kept:kept.length,attempted:attempted.length,
             up:results.filter(r=>this.ratingValue(r)==='up').length,down:results.filter(r=>this.ratingValue(r)==='down').length,
@@ -430,8 +430,8 @@
       },
       outcomeClass(r){return r.state==='hit'&&this.run?.capability==='people.email.verify'?'verdict-'+this.emailVerdict(r.output).tone:r.state;},
       verificationClass(r){const v=r.verification;return v?.state==='hit'&&v.capability!=='people.phone.verify'?'verdict-'+this.emailVerdict(v.output).tone:'';},
-      outcomeLabel(r){if(r.state==='hit')return this.run?.capability==='people.email.verify'?'Verdict: '+this.emailVerdict(r.output).label:this.run?.capability==='people.phone.verify'?'Verdict returned':'Found';return ({miss:'No match',error:'Error',timeout:'Timed out',not_attempted:'Not attempted',skipped:'Skipped',running:'Running',queued:'Queued',interrupted:'Interrupted',cancelled:'Cancelled'})[r.state]||r.state;},
-      emptyLabel(r){return ({miss:'No matching data returned.',error:r.upstream_status===402?'This vendor’s credits or lookup allowance are exhausted. Try another vendor.':'This service could not complete the lookup.',timeout:'This service did not finish within the deadline.',not_attempted:'',skipped:'This step was skipped.',queued:'Waiting for its turn.',running:'Looking for an answer…',cancelled:'The attempt was stopped.',interrupted:'No complete result was recorded.'})[r.state]??'No fields returned.';},
+      outcomeLabel(r){if(r.state==='hit')return this.run?.capability==='people.email.verify'?'Verdict: '+this.emailVerdict(r.output).label:this.run?.capability==='people.phone.verify'?'Verdict returned':'Found';return ({miss:'No match',error:'Error',timeout:'Timed out',pending:'Processing',not_attempted:'Not attempted',skipped:'Skipped',running:'Running',queued:'Queued',interrupted:'Interrupted',cancelled:'Cancelled'})[r.state]||r.state;},
+      emptyLabel(r){return ({miss:'No matching data returned.',error:r.upstream_status===402?'This vendor’s credits or lookup allowance are exhausted. Try another vendor.':'This service could not complete the lookup.',timeout:'This service did not finish within the deadline.',pending:'Still processing. No later waterfall service was called.',not_attempted:'',skipped:'This step was skipped.',queued:'Waiting for its turn.',running:'Looking for an answer…',cancelled:'The attempt was stopped.',interrupted:'No complete result was recorded.'})[r.state]??'No fields returned.';},
       timeLeft(r){return (r.started_ms||0)/this.timelineEnd*100;},timeWidth(r){return Math.max(.5,(r.duration_ms||0)/this.timelineEnd*100);},
       openVendorRequest(){
         if(this.requestBusy)return;

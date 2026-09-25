@@ -1,5 +1,2 @@
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="polygon">
-  <!-- Placeholder lettermark. Replace with the official polygon brand SVG. -->
-  <rect width="24" height="24" rx="5" fill="#5B21B6"/>
-  <text x="12" y="12" fill="#fff" font-family="ui-sans-serif,system-ui,Arial,sans-serif" font-size="13" font-weight="700" text-anchor="middle" dominant-baseline="central">P</text>
-</svg>
+<!-- Official vendor icon: https://massive.com/brands/favicon-massive.png ; retrieved 2026-09-24 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="polygon"><image width="64" height="64" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAACAElEQVR42u2bsU4CQRCG/9nj4hvAC1BgoQ9AS0FNAh0Se2MHttqZcDQW9IRcpwm9Ce29AAUUvADXaKhM4BgLogElx53mloOd6QgHYb7/29kNyRJ+VO6aL3gZ3ICoBHAeJ1E0BfOQMlZ31qPR1jubL7L1RRtELZxyMTu+a9/9ApBtLB7AdA8TivnFd+0aAKjv5E1pHgCIqtn6og0AlL/ls/l78AEDiyzrUs3fgicYWrwMbtR62htaRCV1OlvdnxzIKxheAkAACAABIAAEgAAQAAJAAAgAAWBkZf7z4Vnfivxs5XEFb8yRnm1VFJoVivzduUaQfgNaMRqK0/zRLIFigVA8p0jpn+wMaGlMNpUA9lkQd+0f5S6QNgu0AwizoHkAOIkB8CYcywLdw++gB6FdFoSl3xnwERowjm5BWPpJNp+4AU7Ijy8WKFL6zmCV3qPwfgsY3oS3mo2z7pNOX8sMCLXg/DCTXyuALwv2LYNd6Setv7ZdwNGgcqoBhFlwqOGn/RwQx4KORmO0AYhjga70tZ8EvXG60tcOIEqyOtMHAMpeLdM7ouVfYQEgAASAABAAAkAACAABIAAEgAAQAEkBoKm57dNUgXlobP/MQ0UZq2uuAdxXsx6NwOwYmL7ju7ZHG/eGn0FUNaT5V9+1y1u7gO/aNSNMWCdf3nl7HDDv+vwnl/y+/UScw4kAAAAASUVORK5CYII="/></svg>

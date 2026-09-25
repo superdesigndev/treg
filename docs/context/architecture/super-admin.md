@@ -4,6 +4,7 @@ status: shipped
 sources:
   - src/treg/api.py
   - src/treg/routers/admin.py
+  - src/treg/application/evidence_retention.py
   - src/treg/domain/identity/access.py
   - src/treg/config.py
 related:
@@ -60,10 +61,10 @@ endpoints are unaffected (they use `require_superadmin`).
   [data-model](data-model.md)). `tier` filters an exact marketplace tier; an empty value selects plain
   own tools. Superadmin and not org-admin
   because the rows hold customers' request content; `GET /calls` deliberately does **not** expose
-  these columns, and it defers them so they are not even fetched. This route also performs the
-  14-day retention pass (`_purge_expired_error_evidence`, blanking to `'<expired>'` on its own
-  committed session) — ageing lives here because there is no scheduler and the request path cannot
-  hold a lazy marker, `get_admin_session` never committing one.
+  these columns, and it defers them so they are not even fetched. The route is read-only: the
+  14-day retention purge (blanking both columns to `'<expired>'`) is the `treg-worker admin
+  purge-evidence` cron (`application/evidence_retention.py`), in bounded batches. A row past the
+  window is listed as `expired` with no evidence even before the cron reaches it.
 - **Reconciliation (Phase 5):** `admin_reconcile_drift|spend|repeats` (`?since_days=30`) — cross-org
   aggregates over platform-tier spend, so super-admin and not org-admin: price drift per endpoint,
   settled spend per provider (the invoice comparison), and the repeat-query rate. Query-time reports

@@ -1,0 +1,17 @@
+{
+  "reactions": [
+    {
+      "reactionType": "LIKE",
+      "actor": {
+        "urn": "urn:li:fsd_profile:REDACTED",
+        "name": "Example Person",
+        "headline": "[redacted]",
+        "profileUrl": "https://example.com/profile/redacted",
+        "profilePictureUrl": "https://example.com/profile-picture.jpg",
+        "publicId": "redacted",
+        "profileId": "REDACTED"
+      }
+    }
+  ],
+  "hasMore": true
+}

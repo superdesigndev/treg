@@ -1,6 +1,6 @@
 # Wiza API surface. The account-credit route stays internal for key verification and capacity.
-# Shared platform access is limited to synchronous calls with bounded cost and no account-scoped
-# job id. BYOK always wins and is never metered by treg.
+# Shared platform access is limited to bounded calls whose account-scoped resources are tied to
+# the creating team. BYOK always wins and is never metered by treg.
 provider: wiza
 source:
   docs: https://docs.wiza.co/
@@ -180,6 +180,127 @@ endpoints:
     verified: '2026-09-16'
     example_response: examples/wiza.meta.technologies.search.json
 
+  - id: wiza.people.email.find
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/individual_reveals
+    name: Find a work email
+    summary: Find a person's work email through a bounded asynchronous Wiza reveal.
+    async: &individual_reveal_async
+      id_from: data.id
+      poll:
+        endpoint: wiza.people.reveal.get
+        param: {in: pathParams, name: id}
+      status:
+        path: data.status
+        progress: [queued, resolving]
+        success: [finished]
+        failure: [failed]
+      result: {path: data}
+      interval: 2
+    input:
+      bodyType: json
+      body:
+        individual_reveal:
+          type: object
+          required: true
+          properties:
+            profile_url: {type: string, required: false}
+            email: {type: string, required: false}
+            full_name: {type: string, required: false}
+            company: {type: string, required: false}
+            domain: {type: string, required: false}
+        enrichment_level: {type: string, required: true, enum: [partial], example: partial}
+        email_options:
+          type: object
+          required: true
+          properties:
+            accept_work: {type: boolean, required: true, enum: [true]}
+            accept_personal: {type: boolean, required: true, enum: [false]}
+            accept_generic: {type: boolean, required: true, enum: [false]}
+    body_allowlist: true
+    platform_request:
+      body.enrichment_level: partial
+      body.email_options.accept_work: true
+      body.email_options.accept_personal: false
+      body.email_options.accept_generic: false
+    test_request:
+      body:
+        individual_reveal: {profile_url: https://www.linkedin.com/in/example}
+        enrichment_level: partial
+        email_options: {accept_work: true, accept_personal: false, accept_generic: false}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.enrichment_level: partial}, value: 3}
+      fallback: {value: 3, note: A matched profile plus a valid work email is at most three Wiza credits.}
+      currency: credit
+      unit: call
+      settle: usage
+      usage: {path: data.credits.api_credits.total, unit: credit}
+      source: observed
+      source_url: https://docs.wiza.co/using-the-api/credit-deduction-behavior
+      checked: '2026-09-16'
+      confidence: verified
+      note: Reserves three credits and settles the exact terminal credit total; a miss is free.
+    docs_url: https://docs.wiza.co/api-reference/individual-reveals/start-individual-reveal
+    verified: '2026-09-16'
+    example_response: examples/wiza.people.email.find.json
+    terminal_example_response: examples/wiza.people.email.find.terminal.json
+    cache: forbidden
+
+  - id: wiza.people.phone.find
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    domain: contacts
+    method: POST
+    path: /api/individual_reveals
+    name: Find a phone number
+    summary: Find a person's phone number through a bounded asynchronous Wiza reveal.
+    async: *individual_reveal_async
+    input:
+      bodyType: json
+      body:
+        individual_reveal:
+          type: object
+          required: true
+          properties:
+            profile_url: {type: string, required: false}
+            email: {type: string, required: false}
+            full_name: {type: string, required: false}
+            company: {type: string, required: false}
+            domain: {type: string, required: false}
+        enrichment_level: {type: string, required: true, enum: [phone], example: phone}
+    body_allowlist: true
+    platform_request: {body.enrichment_level: phone}
+    test_request:
+      body:
+        individual_reveal: {profile_url: https://www.linkedin.com/in/example}
+        enrichment_level: phone
+    cost:
+      type: per_success
+      table:
+        - {when: {body.enrichment_level: phone}, value: 6}
+      fallback: {value: 6, note: A matched profile plus a phone number is at most six Wiza credits.}
+      currency: credit
+      unit: call
+      settle: usage
+      usage: {path: data.credits.api_credits.total, unit: credit}
+      source: observed
+      source_url: https://docs.wiza.co/using-the-api/credit-deduction-behavior
+      checked: '2026-09-16'
+      confidence: verified
+      note: Reserves six credits and settles the exact terminal credit total; a miss is free.
+    docs_url: https://docs.wiza.co/api-reference/individual-reveals/start-individual-reveal
+    verified: '2026-09-16'
+    example_response: examples/wiza.people.phone.find.json
+    terminal_example_response: examples/wiza.people.phone.find.terminal.json
+    cache: forbidden
+
   - id: wiza.people.reveal.start
     capability: people.enrich
     platform: people
@@ -205,10 +326,11 @@ endpoints:
           note: Select work, personal and generic email types. If omitted, Wiza can return all types.
         callback_url: {type: string, required: false}
         reveal_options: {type: object, required: false}
-      note: Poll wiza.people.reveal.get with the returned id. Final charges are 1 credit for a matched profile, 2 for a valid email and 5 for a phone; full results can cost 7.
+      note: Poll wiza.people.reveal.get with the returned id. Final charges are 1 credit for a matched profile, 2 for a valid email and 5 for a phone; full results can cost 8.
+    async: *individual_reveal_async
     cost:
       type: per_success
-      value: 7
+      value: 8
       currency: credit
       per: 1
       unit: call
@@ -216,13 +338,14 @@ endpoints:
       source_url: https://docs.wiza.co/using-the-api/credit-deduction-behavior
       checked: '2026-09-16'
       confidence: verified
-      note: BYOK only. The final result reports the exact charge; the kickoff response does not. Seven credits is the verified full-result maximum.
+      note: BYOK only. The final result reports the exact charge; the kickoff response does not. Eight credits is the verified full-result maximum.
     docs_url: https://docs.wiza.co/api-reference/individual-reveals/start-individual-reveal
-    platform_blocked: Async result ownership and terminal settlement are not safe on a shared Wiza account. Use your own Wiza key.
+    platform_blocked: Generic reveal options remain BYOK-only; use the bounded email or phone find tool for shared-key access.
     untestable: The kickoff response is not the paid result. Live billing was verified by polling with BYOK evidence only.
     cache: forbidden
 
   - id: wiza.people.reveal.get
+    kind: utility
     capability: people.enrich
     platform: people
     scope: any_account
@@ -231,6 +354,9 @@ endpoints:
     path: /api/individual_reveals/{id}
     name: Get an individual reveal
     summary: Read the status, result and exact credit deduction for an individual reveal.
+    async: false
+    resource_ownership:
+      requires: {kind: "poll:wiza.people.reveal.get", param: id}
     input:
       pathParams:
         id: {type: integer, required: true, min: 1}
@@ -247,7 +373,6 @@ endpoints:
       confidence: verified
       note: Polling itself did not reduce the balance. The related kickoff job carries the reveal charge.
     docs_url: https://docs.wiza.co/api-reference/individual-reveals/get-individual-reveal
-    platform_blocked: Result ids belong to the connected Wiza account and lack a caller ownership token. Use your own Wiza key.
     untestable: Requires an id created by the caller's own Wiza account.
     cache: forbidden
 

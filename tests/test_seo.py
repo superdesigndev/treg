@@ -323,6 +323,27 @@ async def test_docs_does_not_advertise_the_admin_api(clients: AsyncClient):
     assert "/admin/orgs" not in (await clients.get("/docs")).text
 
 
+async def test_docs_teaches_the_header_the_rest_api_reads(clients: AsyncClient):
+    """REST reads only `X-Treg-Token`; a reader who copied the page's old Bearer curl got a 401.
+
+    The Bearer->401 assertion pins today's behavior so the copy stays true, not a security
+    contract: a change that makes REST accept Bearer must update these pages with it."""
+    text = (await clients.get("/docs")).text
+    assert 'curl -X POST -H "X-Treg-Token: $TREG_TOKEN"' in text
+    assert 'curl -H "Authorization: Bearer' not in text
+    assert "Bearer token auth" not in text
+    assert "with a Bearer token" not in (await clients.get("/tools/moz")).text
+    # The page's own example, as written, authenticates and is well-formed (a GET answered 400);
+    # the same call with Bearer instead is refused.
+    token = clients.headers.pop("X-Treg-Token")
+    clients.cookies.clear()
+    example, body = "/call/moz.web.url.metrics", {"targets": ["moz.com"]}
+    ok = await clients.post(example, json=body, headers={"X-Treg-Token": token})
+    assert ok.status_code not in (400, 401), ok.text
+    bearer = await clients.post(example, json=body, headers={"Authorization": f"Bearer {token}"})
+    assert bearer.status_code == 401 and bearer.json()["detail"] == "not authenticated"
+
+
 async def test_widening_head_did_not_leak_into_the_public_schema(clients: AsyncClient):
     """Adding HEAD to every GET route gave FastAPI a second operation per path — 58 duplicate
     entries in openapi.json, each with a duplicate operation id. Only the /call proxy, which

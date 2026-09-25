@@ -1,4 +1,2 @@
-<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Replicate">
-  <rect width="24" height="24" rx="5" fill="#111827"/>
-  <text x="12" y="12" fill="#fff" font-family="ui-sans-serif,system-ui,Arial,sans-serif" font-size="8" font-weight="700" text-anchor="middle" dominant-baseline="central">R</text>
-</svg>
+<!-- Official vendor icon: https://cdn.jsdelivr.net/npm/simple-icons@latest/icons/replicate.svg (CC0, brand hex #000000) ; retrieved 2026-09-24 -->
+<svg fill="#000000" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><title>Replicate</title><path d="M24 10.262v2.712h-9.518V24h-3.034V10.262zm0-5.131v2.717H8.755V24H5.722V5.131zM24 0v2.717H3.034V24H0V0z"/></svg>

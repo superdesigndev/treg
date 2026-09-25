@@ -28,6 +28,7 @@ from treg.application.call import evidence as call_evidence
 from treg.application.call import service as call_service
 from treg.application.call.types import ReservationFailed, UpstreamResponse
 from treg.routers import admin as admin_routes
+from treg.application import evidence_retention
 from treg.routers import call as call_routes
 from treg.config import get_settings
 from treg.infra.db import session_maker
@@ -509,6 +510,7 @@ async def test_expired_evidence_is_a_state_not_content(clients: AsyncClient, pla
         row.created_at = row.created_at - timedelta(days=admin_routes._ERROR_EVIDENCE_TTL_DAYS + 1)
         db.add(row)
         await db.commit()
+    await evidence_retention.purge()
     d = (await clients.get("/admin/errors?days=30", headers=ADMIN)).json()
     aged = [e for e in d["errors"] if e["expired"]]
     assert aged, "the row is still listed as a failure"
@@ -664,9 +666,67 @@ async def test_evidence_ages_out_but_the_audit_row_survives(clients: AsyncClient
         await db.commit()
         call_id, status = row.id, row.status_code
 
-    assert (await clients.get("/admin/errors", headers=ADMIN)).json()["expired_rows_purged"] == 1
+    result = await evidence_retention.purge()
+    assert result["purged"] == 1, "retention worker should blank one row"
+    assert result["error"] is None
     async with session_maker() as db:
         aged = await db.get(CallRecord, call_id)
         assert aged.error_response == admin_routes._ERROR_EVIDENCE_EXPIRED, "aged out, not silently NULL"
         assert aged.status_code == status, "the rest of the audit row is untouched"
         assert aged.endpoint_id == EP
+
+
+async def test_admin_errors_is_read_only_and_withholds_aged_evidence(clients: AsyncClient, platform_on,
+                                                                    monkeypatch):
+    """Reading errors changes nothing (it once blanked every aged row platform-wide on each load),
+    and a row past the window shows no evidence even before the purge cron has reached it."""
+    monkeypatch.setattr(call_service, "relay", _fake_relay(400, b'{"error":"stale failure"}'))
+    await clients.get(f"/call/{EP}?aweme_id=bad")
+    from treg import audit
+    await audit.drain()
+    async with session_maker() as db:
+        row = (await db.execute(
+            select(CallRecord).order_by(CallRecord.id.desc()).limit(1))).scalars().first()
+        row.created_at = row.created_at - timedelta(days=admin_routes._ERROR_EVIDENCE_TTL_DAYS + 1)
+        db.add(row)
+        await db.commit()
+        call_id, original = row.id, row.error_response
+
+    d = (await clients.get("/admin/errors?days=30", headers=ADMIN)).json()
+    listed = next(e for e in d["errors"] if e["id"] == call_id)
+    assert listed["expired"] is True and listed["response"] is None and listed["request"] is None
+    async with session_maker() as db:
+        assert (await db.get(CallRecord, call_id)).error_response == original, "a GET wrote nothing"
+
+
+async def test_purge_worker_blanks_in_bounded_batches(clients: AsyncClient, platform_on, monkeypatch):
+    """`treg-worker admin purge-evidence` end to end: each transaction touches at most
+    `--batch-size` rows, the run ends, and a failed run exits non-zero instead of looking green."""
+    from treg import audit, worker
+    monkeypatch.setattr(call_service, "relay", _fake_relay(400, b'{"error":"test failure"}'))
+    for _ in range(5):
+        await clients.get(f"/call/{EP}?aweme_id=test")
+    await audit.drain()
+    async with session_maker() as db:
+        rows = (await db.execute(
+            select(CallRecord).order_by(CallRecord.id.desc()).limit(5))).scalars().all()
+        for row in rows:
+            row.created_at = row.created_at - timedelta(days=admin_routes._ERROR_EVIDENCE_TTL_DAYS + 1)
+            db.add(row)
+        await db.commit()
+        ids = [row.id for row in rows]
+
+    assert await evidence_retention.purge(batch_size=2) == {"purged": 5, "batches": 3, "error": None}
+    async with session_maker() as db:
+        assert {(await db.get(CallRecord, i)).error_response for i in ids} == {
+            admin_routes._ERROR_EVIDENCE_EXPIRED}
+    assert await evidence_retention.purge(batch_size=2) == {"purged": 0, "batches": 1, "error": None}
+    with pytest.raises(ValueError):
+        await evidence_retention.purge(batch_size=0)
+    with pytest.raises(SystemExit):
+        worker.main(["admin", "purge-evidence", "--batch-size", "0"])
+
+    def broken():
+        raise RuntimeError("database unavailable")
+    result = await evidence_retention.purge(session_factory=broken)
+    assert result["error"] == "database unavailable" and result["purged"] == 0

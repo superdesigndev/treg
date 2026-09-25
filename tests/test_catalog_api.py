@@ -15,8 +15,19 @@ import shlex
 
 from httpx import AsyncClient
 
-from treg.domain.catalog import store as cs
 from treg import oauth_providers as P
+from treg.config import get_settings
+from treg.domain.catalog import store as cs
+from treg.domain.money import settlement
+
+
+def test_loaded_rows_are_plain_json(tmp_path):
+    """An unquoted `checked: 2026-09-01` is valid catalog data; the loader must keep it a string,
+    because /catalog/find streams rows with a plain `json.dumps` and a `date` there killed it."""
+    p = tmp_path / "x.yaml"
+    p.write_text("cost:\n  checked: 2026-09-01\n", encoding="utf-8")
+    assert cs._read_yaml(p)["cost"]["checked"] == "2026-09-01"
+    json.dumps(cs.load().endpoints)
 
 
 def test_tavily_surface_keeps_only_safe_synchronous_data_tools():
@@ -59,6 +70,64 @@ def test_tavily_surface_keeps_only_safe_synchronous_data_tools():
     ))
 
 
+def test_serper_surface_is_live_verified_bounded_and_platform_safe():
+    cat = cs.load(refresh=True)
+    rows = {ep["id"]: ep for ep in cat.for_provider("serper")}
+    assert set(rows) == {
+        "serper.web.search", "serper.web.extract",
+        "serper.google.serp.images", "serper.google.serp.videos",
+        "serper.google.serp.places", "serper.google.serp.news",
+        "serper.google.serp.shopping", "serper.google.serp.scholar",
+        "serper.google.serp.patents", "serper.google.serp.autocomplete",
+        "serper.google.serp.maps", "serper.google.serp.reviews",
+        "serper.google.serp.lens",
+    }
+    assert all(ep["scope"] == "any_account" and ep["body_allowlist"] for ep in rows.values())
+    assert all(ep["verified"] == "2026-09-24" and ep["example_file"] for ep in rows.values())
+    assert all(cat.platform_eligible(ep) for ep in rows.values())
+    assert all(ep["cost"]["reported_charge"] == {"path": "credits", "unit": "credit"}
+               for ep in rows.values())
+    assert not any("product-reviews" in eid or "search-full" in eid or "bing" in eid for eid in rows)
+    assert rows["serper.web.extract"]["host"] == "scrape.serper.dev"
+    assert cat.credit_rates["serper"] == 0.001
+    shown = {eid: cat.cost_view(ep["cost"], "serper") for eid, ep in rows.items()}
+    assert shown["serper.web.search"]["usd"] == 0.001
+    assert shown["serper.google.serp.images"]["usd_min"] == 0.001
+    assert shown["serper.google.serp.images"]["usd"] == 0.002
+    assert shown["serper.google.serp.shopping"]["usd"] == 0.002
+    assert shown["serper.google.serp.maps"]["usd"] == 0.003
+    assert shown["serper.google.serp.lens"]["usd"] == 0.003
+    assert shown["serper.web.extract"]["usd"] == 0.01
+
+
+def test_fetchin_surface_is_live_verified_bounded_and_platform_safe(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FETCHINIO", "PLATFORM-FETCHIN")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "fetchinio")
+    get_settings.cache_clear()
+    try:
+        cat = cs.load(refresh=True)
+        rows = {ep["id"]: ep for ep in cat.for_provider("fetchinio")}
+        assert set(rows) == {
+            "fetchinio.linkedin.user.profile",
+            "fetchinio.linkedin.company.profile",
+            "fetchinio.linkedin.user.posts",
+            "fetchinio.linkedin.user.reactions",
+            "fetchinio.linkedin.post.comments",
+            "fetchinio.linkedin.post.reactions",
+            "fetchinio.linkedin.post.engagement",
+        }
+        assert all(ep["method"] == "GET" and ep["strict_query"] for ep in rows.values())
+        assert all(ep["verified"] == "2026-09-24" and ep["example_file"]
+                   for ep in rows.values())
+        assert all(cat.platform_eligible(ep) for ep in rows.values())
+        shown = {eid: cat.cost_view(ep["cost"], "fetchinio") for eid, ep in rows.items()}
+        assert shown["fetchinio.linkedin.user.profile"]["usd"] == 0.0015
+        assert shown["fetchinio.linkedin.post.engagement"]["usd"] == 0.003
+        assert "fullProfile" not in rows["fetchinio.linkedin.user.profile"]["input"]["queryParams"]
+    finally:
+        get_settings.cache_clear()
+
+
 def test_olostep_surface_is_bounded_byok_and_platform_safe():
     cat = cs.load(refresh=True)
     rows = {ep["id"]: ep for ep in cat.for_provider("olostep")}
@@ -87,6 +156,33 @@ def test_olostep_surface_is_bounded_byok_and_platform_safe():
     results_owner = rows["olostep.web.crawl.results"]["resource_ownership"]["requires"]
     assert status_owner["kind"] == "poll:olostep.web.crawl.status"
     assert results_owner["kind"] == "fetch:olostep.web.crawl.results"
+
+
+def test_scrapegraphai_surface_separates_bounded_platform_calls_from_monitors():
+    cat = cs.load(refresh=True)
+    rows = {ep["id"]: ep for ep in cat.for_provider("scrapegraphai")}
+    assert len(rows) == 15
+    assert {eid for eid, ep in rows.items() if cat.platform_eligible(ep)} == {
+        "scrapegraphai.web.scrape",
+        "scrapegraphai.web.extract",
+        "scrapegraphai.web.search",
+        "scrapegraphai.web.search.extract",
+        "scrapegraphai.web.crawl",
+        "scrapegraphai.web.crawl.status",
+        "scrapegraphai.web.crawl.pages",
+    }
+    assert all(not cat.platform_eligible(ep) for eid, ep in rows.items() if ".monitor." in eid)
+    assert cat.credit_rates["scrapegraphai"] == 0.004
+    assert cat.cost_view(rows["scrapegraphai.web.scrape"]["cost"], "scrapegraphai")["usd"] == 0.004
+    crawl = rows["scrapegraphai.web.crawl"]
+    assert crawl["async"]["status"]["progress"] == ["running", "paused"]
+    basis = settlement.derive_basis(
+        crawl["cost"], request={"body": {"maxPages": 1}}, input_schema=crawl["input"],
+        unit_micro=4_000, terminal=True, response_estimate_micro=12_000,
+    )
+    assert basis["when"] == "terminal"
+    assert basis["reserve_micro"] == 12_000
+    assert basis["amount"]["kind"] == "table"
 
 
 def test_trestleiq_surface_is_three_direct_single_record_tools():
@@ -163,6 +259,9 @@ async def test_platforms_lists_the_curated_shelves_busiest_first(clients: AsyncC
 
     counts = [p["endpoints"] for p in body["platforms"]]
     assert counts == sorted(counts, reverse=True)
+    # every vendor on a shelf is named once, for the /search pile; treg's routed rows are not a vendor
+    assert set(body["providers"]) == {s for p in body["platforms"] for s in p["providers"]}
+    assert body["providers"]["dataforseo"] == "DataForSEO" and "treg" not in body["providers"]
 
 
 async def test_platform_listing_hides_taxonomy_entries_nobody_implements(clients: AsyncClient):

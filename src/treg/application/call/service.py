@@ -655,7 +655,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                            "credential_tier": "routed", **_tag_telemetry(meta)})
             raise
         request.state.call_audited = True
-        request.state.call_cost_micro = charged
+        routed_pending = response.status == 202 and routed._header(response, "X-Treg-Route-Outcome") == "pending"
+        request.state.call_cost_micro = None if routed_pending else charged
         if idem_key:
             try:
                 await _store_idempotent(idem_key, caller, status_code=response.status,
@@ -665,7 +666,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 await _finish_cancelled_call(request, None, call_ref)
                 raise
             request.state.idem_claim = None
-        _set_response_header(response, "X-Treg-Cost-Micro", str(charged))
+        if not routed_pending:
+            _set_response_header(response, "X-Treg-Cost-Micro", str(charged))
         _set_response_header(response, "X-Treg-Call-Id", call_ref)
         return response
     if ep is not None:

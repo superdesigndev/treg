@@ -842,22 +842,20 @@ a:hover{text-decoration-color:var(--muted)}
 /* ---- 3.7 the platform ledger ----
    ONE table per platform, filed into sticky domain sections. Two sticky layers stack under the
    57px top bar: the filter bar, then the section headings beneath it — so --lsec-top is the top
-   bar plus the bar's own height, and the bar's height is fixed by scrolling its chips instead of
-   wrapping them. */
-:root{--lbar-top:57px;--lsec-top:107px}
+   bar plus the bar's own height. The chips wrap, so that height is measured (PlatformPage.vue);
+   the default here only covers the first paint. */
+:root{--lbar-top:57px;--lsec-top:137px}
 .lbar{position:sticky;top:var(--lbar-top);z-index:6;background:var(--bg);
-  display:flex;align-items:center;gap:8px;padding:12px 0 9px;margin-top:8px}
-.lchips{display:flex;gap:6px;min-width:0;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;
-  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent);
-  mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent)}
-.lchips::-webkit-scrollbar{display:none}
+  display:flex;flex-direction:column;gap:10px;padding:12px 0 10px;margin-top:8px}
+.lctl{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.lchips{display:flex;flex-wrap:wrap;gap:6px}
 .lbar .mk-chip{padding:3px 11px;font-size:11.5px;white-space:nowrap;cursor:pointer}
 .lchk{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);
   cursor:pointer;user-select:none;white-space:nowrap}
-.lfind{flex:0 0 auto;width:190px;background:var(--surface);border:1px solid var(--line2);
+.lfind{flex:0 1 280px;min-width:0;background:var(--surface);border:1px solid var(--line2);
   border-radius:var(--rb);color:var(--ink);font-family:var(--sans);font-size:12.5px;padding:6px 11px}
 .lfind::placeholder{color:var(--muted2)}
-.lstat{margin:0 0 10px;font-size:11.5px;color:var(--muted2);font-variant-numeric:tabular-nums}
+.lstat{margin-left:auto;font-size:11.5px;color:var(--muted2);font-variant-numeric:tabular-nums;white-space:nowrap}
 .lclear{background:none;border:0;padding:0 0 0 6px;color:var(--muted);font:inherit;cursor:pointer;
   text-decoration:underline;text-underline-offset:2px}
 .lclear:hover{color:var(--ink)}
@@ -867,9 +865,17 @@ a:hover{text-decoration-color:var(--muted)}
 /* Fixed layout, so a nowrap path or `treg call` line inside an expanded row scrolls INSIDE its
    cell instead of widening the table past the page. */
 .ledger{overflow:visible;table-layout:fixed}
+/* The wrapper draws the one rounded frame. A collapsed table cannot round its own border, so a
+   second one on the table showed as a square frame inside the rounded one; and with nothing
+   clipping (the sticky headings need that), the last row's cells round their own corners so a
+   hover fill cannot square them off. */
+.lwrap .ledger{border:0;border-radius:0;background:none}
+.ledger tr:last-child td:first-child{border-bottom-left-radius:var(--r)}
+.ledger tr:last-child td:last-child{border-bottom-right-radius:var(--r)}
 .ledger th{padding:9px 12px 7px;font-size:10px;text-transform:uppercase;letter-spacing:.06em;
   white-space:nowrap;color:var(--muted2)}
-.lth-w{width:33%} .lth-p{width:170px} .lth-v{width:38px}
+.lth-w{width:33%} .lth-p{width:220px} .lth-v{width:72px;text-align:center}
+.ledger td.lver{text-align:center}
 .ledger td{padding:8px 12px;font-size:12.5px;vertical-align:top;border-bottom:1px solid var(--line)}
 .ledger tr:last-child td{border-bottom:0}
 .lsec td{position:sticky;top:var(--lsec-top);z-index:4;background:var(--panel2);padding:6px 12px;
@@ -894,19 +900,23 @@ a:hover{text-decoration-color:var(--muted)}
 /* DataForSEO's summaries are paragraphs. Two lines keeps the ledger scannable; the full text is
    one click away, in the expansion. */
 .lsum b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.lcar{flex:0 0 auto;display:inline-block;font-size:9px;line-height:2;color:var(--muted2);
+.lcar{flex:0 0 auto;display:inline-block;font-size:10px;line-height:1.8;color:var(--muted);
   transition:transform .15s var(--ease)}
 .lrow.open .lcar{transform:rotate(90deg)}
+.lrow:hover .lcar,.lrow.open .lcar{color:var(--ink)}
 .ln{margin-left:7px;font-size:11px;color:var(--muted2);white-space:nowrap}
 /* A merged row's providers, priced side by side — the comparison the merge exists to make. Short
    pills only (see `pillPrice`), so a six-provider row costs a second line at worst. */
-.lprovs{display:flex;flex-wrap:nowrap;overflow:hidden;gap:4px}
+/* Wraps rather than clips: a clipped strip cut the third pill in half and hid the +N chip. */
+.lprovs{display:flex;flex-wrap:wrap;gap:4px}
 .pchip.more{color:var(--muted2)}
 .pchip{display:inline-flex;align-items:center;gap:5px;background:var(--panel2);border-radius:7px;
   padding:2px 8px;font-size:11px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .pchip b{color:var(--ink);font-weight:500}
-.lpath{display:block;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:11px;color:var(--muted)}
+.lpath{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:11px;line-height:18px;color:var(--muted)}
+/* The access chip rides the text line, so it must not make its row taller than a plain one. */
+.lpath .chip{margin-right:8px;padding:0 8px;line-height:16px;font-family:var(--sans)}
 .lpath b{margin-right:7px;font-family:var(--sans);font-weight:500;color:var(--ink)}
 /* What KIND of plumbing an Actions row is — account (the provider's own records) or utility
    (a helper). Only ever rendered inside the Actions section, where the distinction is the only
@@ -915,7 +925,23 @@ a:hover{text-decoration-color:var(--muted)}
 .lprice{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .vmark{color:var(--green);font-weight:600}
-.xmark{color:var(--muted2)}
+/* Phone width: the shell turns every table into a horizontal scroller, but the ledger's overflow
+   stays visible for its sticky headings, so it pushed the whole page sideways instead. Here each
+   row stacks (title, then route, price and mark on one line), and nothing sticks: a wrapped chip
+   bar pinned to the top would cover half the screen. */
+@media(max-width:760px){
+  .lbar{position:static}
+  .ledger{display:block;white-space:normal}
+  .ledger thead{display:none}
+  .ledger tbody{display:block}
+  .ledger tr{display:grid;grid-template-columns:minmax(0,1fr) auto auto;border-bottom:1px solid var(--line)}
+  .ledger tr:last-child{border-bottom:0}
+  .ledger td,.ledger tr:last-child td{border-bottom:0;border-radius:0}
+  .ledger tr.lrow td:first-child,.lsec td,.cat-d td{grid-column:1/-1}
+  .ledger tr.lrow td:not(:first-child){padding-top:0}
+  .lsec td{position:static}
+  .lsum-i{max-width:none}
+}
 /* The expansion: one block per endpoint — a merged row shows its providers stacked, a single row
    shows the same block alone, so the two can never present the instruction differently. */
 /* Level two: one collapsed line per provider, and the detail under whichever one is opened. */
@@ -1052,3 +1078,13 @@ a:hover{text-decoration-color:var(--muted)}
 @media (prefers-reduced-motion:reduce){.cat-find,.pt-card{transition:none}}
 /* /search is one viewport tall and owns its own edges (pages/SearchPage.vue). */
 main.flush,.redesign main.flush{padding:0;max-width:none}
+
+/* Toasts (App.vue): a solid card over the page, bottom right, its main action last. */
+.app-toast{position:fixed;right:18px;bottom:calc(18px + env(safe-area-inset-bottom, 0px));z-index:200;
+  width:min(340px, calc(100vw - 36px));box-sizing:border-box;padding:14px 16px;display:flex;flex-direction:column;gap:12px;
+  background:var(--surface);color:var(--ink);border:1px solid var(--line2);border-radius:var(--r);box-shadow:var(--shadow-lg);
+  font-family:var(--sans);font-size:13.5px;line-height:1.45;animation:app-toast-in .22s var(--ease-out)}
+.app-toast p{margin:0}
+.app-toast-a{display:flex;justify-content:flex-end;gap:8px}
+@keyframes app-toast-in{from{opacity:0;transform:translateY(6px)}}
+@media (prefers-reduced-motion:reduce){.app-toast{animation:none}}

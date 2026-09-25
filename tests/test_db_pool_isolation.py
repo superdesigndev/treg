@@ -61,9 +61,8 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "worker.py": {API},
     # Runs only inside `treg-worker catalog stats`; same reasoning as `worker.py`.
     "application/catalog_stats.py": {API},
-    # Staff pages take their pool through `Depends(get_admin_session)`, not a maker import; the one
-    # maker here is the retention sweep, which is background work and must not nest inside a request.
-    "routers/admin.py": {BACKGROUND},
+    # Runs only inside `treg-worker admin purge-evidence`; same reasoning as `worker.py`.
+    "application/evidence_retention.py": {API},
     # Off-request writers.
     "audit.py": {BACKGROUND},
     "bootstrap.py": {BACKGROUND},
@@ -176,7 +175,6 @@ BACKGROUND_SITES = {
     "archive_bodies.py:_db_fallback": "archive._store/_touch",
     "archive.py:prune_once": "archive.prune_worker",
     "archive.py:refresh_once": "archive.refresh_worker",
-    "routers/admin.py:_purge_expired_error_evidence": "admin evidence sweep",
 }
 
 

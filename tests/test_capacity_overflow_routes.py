@@ -277,6 +277,7 @@ _UNRECORDED_SIGNATURE = {
     "getleadsio",  # promotional allocation was not exhausted; bare 402 remains the generic signal
     "keenable",  # funded request balance remains; documented bare 402 was not forced
     "olostep",  # funded credit balance remains; documented 402 was not forced
+    "scrapegraphai",  # trial credits remain; no provider-specific empty-balance body was forced
     "scrubby",  # funded account not exhausted; no provider-specific empty-balance body recorded
     "millionverifier",  # funded-account exhaustion not observed; trial still has credits
     "bounceban",  # verification credits remain; exhaustion was not forced and no overflow is claimed
@@ -286,9 +287,11 @@ _UNRECORDED_SIGNATURE = {
     "openmart",  # funded subscription was not exhausted; shared-key exhaustion was not forced
     # Bare 402 is already the generic balance signal; the real empty-Credits body was not forced.
     "financialdatasets",
+    "fetchinio",  # funded credits remain; documented generic 402 was not deliberately forced
     "fishaudio",  # shared-key serving stays disabled until the funded-account signatures are verified
     "minimax", "oceanio", "openrouter", "replicate", "scrapecreators", "seranking",
     "piapi",  # prepaid wallet exhaustion not observed ($50 funded 2026-09-14); no overflow route
+    "serper",  # funded credits remain; no provider-specific empty-balance response was forced
     "tinyfish",  # funded wallet remains; no provider-specific empty-wallet response was forced
     "trestleiq",  # funded wallet remains; documented 403/429 shapes do not identify empty balance
 

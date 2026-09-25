@@ -264,6 +264,15 @@ def tavily_platform_on(monkeypatch):
 
 
 @pytest.fixture
+def serper_platform_on(monkeypatch):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_SERPER", "PLATFORM-SERPER")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "serper")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture
 def olostep_platform_on(monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_OLOSTEP", "PLATFORM-OLOSTEP")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "olostep")
@@ -988,6 +997,54 @@ def test_openmart_settlement_rejects_undocumented_response_shapes():
                  cost_type="per_result", unit_micro=29_800)
     assert call_settle._observed_cost_micro(search, b'{"data":{}}') is None
     assert call_settle._observed_cost_micro(lookup, b'[]') is None
+
+
+@pytest.mark.parametrize(("reported", "expected"), [
+    (0, 0), (1, 1_000), ("2", 2_000), (3, 3_000), (6, 6_000), (10, 10_000),
+])
+def test_serper_settles_exact_reported_credits(reported, expected):
+    mk = _mk("serper", endpoint_id="serper.web.extract",
+             cost_type="per_call", reported_charge_unit_micro=1_000)
+    assert call_settle._observed_cost_micro(
+        mk, json.dumps({"credits": reported, "text": "served"}).encode()
+    ) == expected
+
+
+@pytest.mark.parametrize("reported", [None, True, -1, "bad", "NaN", "Infinity"])
+def test_serper_rejects_malformed_reported_credits(reported):
+    mk = _mk("serper", endpoint_id="serper.web.search",
+             cost_type="per_call", reported_charge_unit_micro=1_000)
+    assert call_settle._observed_cost_micro(
+        mk, json.dumps({"credits": reported, "organic": []}).encode()
+    ) is None
+
+
+async def test_serper_scrape_reserves_ceiling_and_settles_reported_credits(
+    clients, monkeypatch, serper_platform_on,
+):
+    def serve(request):
+        assert request.method == "POST" and request.url == "https://scrape.serper.dev/"
+        assert request.headers["x-api-key"] == "PLATFORM-SERPER"
+        assert json.loads(request.content) == {
+            "url": "https://example.com", "includeMarkdown": True,
+        }
+        return _dropleads_response(200, {
+            "text": "Example Domain", "markdown": "# Example Domain", "credits": 2,
+        })
+
+    before = await _balance(clients)
+    async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as upstream:
+        monkeypatch.setattr(A.app.state, "http", upstream)
+        response = await clients.post("/call/serper.web.extract", json={
+            "url": "https://example.com", "includeMarkdown": True,
+        })
+    assert response.status_code == 200, response.text
+    assert response.headers["x-treg-cost-micro"] == "2000"
+    assert before - await _balance(clients) == 2_000
+    telemetry = await _telemetry(clients)
+    assert telemetry["cost_estimated_micro"] == 10_000
+    assert telemetry["cost_observed_micro"] == 2_000
+    assert telemetry["cost_charged_micro"] == 2_000
 
 
 @pytest.mark.parametrize(("endpoint", "body", "expected"), [
@@ -4416,3 +4473,96 @@ async def test_trestleiq_missing_required_input_never_reaches_upstream(
     assert (await clients.get(f"/call/{endpoint}")).status_code == 400
     await clients.post("/secrets", json={"name": "trestleiq", "value": "OWN-TRESTLEIQ"})
     assert (await clients.get(f"/call/{endpoint}")).status_code == 400
+
+
+def _priced(endpoint_id: str, query: dict | None = None, body: dict | None = None, **kw):
+    """A MarketplaceCall priced the way resolve prices it: the reserve and the per-count unit come
+    from `_marketplace_pricing` over the real catalog row, never from a constant."""
+    catalog = catalog_store.load()
+    ep = catalog.by_id[endpoint_id]
+    cv = catalog.cost_view(ep["cost"], ep["provider"])
+    raw = json.dumps(body).encode() if body is not None else b""
+    estimate, unit = call_resolution._marketplace_pricing(
+        ep["provider"], endpoint_id, cv, call_resolution.QueryValues(tuple((query or {}).items())), raw)
+    mk = _mk(ep["provider"], endpoint_id=endpoint_id, cost_type=ep["cost"]["type"],
+             unit_micro=unit, estimate_micro=estimate, **kw)
+    return mk, estimate, _usd_to_micro_for_test(cv["usd"])
+
+
+def _usd_to_micro_for_test(usd) -> int:
+    return int(round(float(usd) * 1_000_000))
+
+
+@pytest.mark.parametrize(("endpoint_id", "query", "req", "body", "rows"), [
+    # CompanyEnrich: 2 credits per person returned, the 2-credit minimum on an empty page.
+    ("companyenrich.people.search", None, {"pageSize": 10}, b'{"items":[]}', 1),
+    ("companyenrich.people.search", None, {"pageSize": 10}, b'{"items":[{},{},{}]}', 3),
+    ("companyenrich.people.search", None, {"pageSize": 10}, b'{"totalItems":0}', None),
+    # Icypeas bulk: only FOUND rows bill, at the row's credits (10 per reverse-email hit).
+    ("icypeas.people.identity.resolve.bulk", None, {"data": [["a@x.io"], ["b@x.io"], ["c@x.io"]]},
+     b'{"data":[{"status":"FOUND"},{"status":"NOT_FOUND"},{"status":"FOUND"}]}', 2),
+    ("icypeas.profile.url.bulk", None, {"data": [["a"], ["b"]]}, b'{"data":[{"status":"NOT_FOUND"}]}', 0),
+    # Serpstat: an error envelope is free, rows bill with a 1-credit minimum, unknown shapes estimate.
+    ("serpstat.web.backlinks.list", None, {"params": {"size": 50}},
+     b'{"id":"1","error":{"code":-32600,"message":"Data not found"}}', 0),
+    ("serpstat.web.backlinks.list", None, {"params": {"size": 50}}, b'{"id":"1","result":{"data":[{},{}]}}', 2),
+    ("serpstat.web.backlinks.list", None, {"params": {"size": 50}}, b'{"id":"1","result":{"data":[]}}', 1),
+    ("serpstat.google.domain.overview", None, {"params": {"domains": ["a.com", "b.com"]}},
+     b'{"id":"1","result":{"a.com":{},"b.com":{}}}', None),
+    # TheCompaniesAPI search: one credit per company returned.
+    ("thecompaniesapi.companies.search", {"size": "10"}, None, b'{"companies":[]}', 0),
+    ("thecompaniesapi.companies.search", {"size": "10"}, None, b'{"companies":[{},{}]}', 2),
+    # Findymail employee search: one credit per contact, never above the hold.
+    ("findymail.search.employees", None, {"website": "x.io", "job_titles": ["CEO"], "count": 5}, b'[]', 0),
+])
+def test_per_result_search_settles_on_rows_returned_not_rows_requested(endpoint_id, query, req, body, rows):
+    """Each reserves the requested page; the body says how many rows the vendor billed. The unit
+    comes from the real pricing path, where a credit-priced row's unit is ONE credit."""
+    mk, estimate, per_row = _priced(endpoint_id, query, req)
+    observed = call_settle._observed_cost_micro(mk, body)
+    if rows is None:
+        assert observed is None
+    else:
+        assert observed == min(rows * per_row, estimate), (observed, per_row, estimate)
+
+
+def test_row_counts_never_bill_above_the_hold():
+    """A row whose catalog unit names an input entity reserves per thing asked about; counting
+    returned rows may lower that bill, never raise it."""
+    mk, estimate, _ = _priced("findymail.search.employees", None,
+                              {"website": "x.io", "job_titles": ["CEO"], "count": 5})
+    assert call_settle._observed_cost_micro(mk, json.dumps([{"name": str(i)} for i in range(5)]).encode()) == estimate
+    mk, estimate, _ = _priced("serpstat.google.domain.ranked_keywords", None,
+                              {"params": {"domain": "a.com", "se": "g_us", "size": 1000}})
+    assert call_settle._observed_cost_micro(
+        mk, json.dumps({"id": "1", "result": {"data": [{}] * 1000}}).encode()) == estimate
+
+
+def test_thecompaniesapi_simplified_is_free_only_where_declared():
+    mk, _, _ = _priced("thecompaniesapi.companies.search", {"size": "10", "simplified": "true"}, None,
+                       request_data={"queryParams": {"size": "10", "simplified": "true"}})
+    assert call_settle._observed_cost_micro(mk, b'{"companies":[{},{}]}') == 0
+    ep = catalog_store.load().by_id["thecompaniesapi.companies.email_pattern"]
+    assert "simplified" not in ((ep.get("input") or {}).get("queryParams") or {})
+    other = _mk("thecompaniesapi", endpoint_id=ep["id"], cost_type=ep["cost"]["type"], unit_micro=9_500,
+                request_data={"queryParams": {"simplified": "true"}})
+    assert call_settle._observed_cost_micro(other, b'{"pattern":"{first}"}') != 0
+
+
+def test_icypeas_profile_url_miss_settles_at_zero():
+    """No adapter reads these bodies, so the endpoint's `expect` rule is what makes a miss free."""
+    for endpoint in ("icypeas.people.profile.url", "icypeas.companies.profile.url"):
+        mk = _mk("icypeas", endpoint_id=endpoint, cost_type="per_success", unit_micro=3_800)
+        assert call_settle._observed_cost_micro(mk, b'{"success":true,"result":null,"status":"NOT_FOUND"}') == 0
+        assert call_settle._observed_cost_micro(
+            mk, b'{"success":true,"result":"https://www.linkedin.com/in/x","status":"FOUND"}') is None
+
+
+def test_icypeas_company_scrape_bills_the_company_rate():
+    body = {"type": "company", "data": ["https://www.linkedin.com/company/a", "https://www.linkedin.com/company/b"]}
+    mk, estimate, per_row = _priced("icypeas.scrape.bulk", None, body, request_data={"body": body})
+    found = b'{"data":[{"status":"FOUND"},{"status":"FOUND"}]}'
+    assert call_settle._observed_cost_micro(mk, found) == 2 * mk.unit_micro // 2  # 0.5 credit each
+    mk, _, _ = _priced("icypeas.scrape.bulk", None, {**body, "type": "profile"},
+                       request_data={"body": {**body, "type": "profile"}})
+    assert call_settle._observed_cost_micro(mk, found) == 3 * mk.unit_micro  # 1.5 credits each

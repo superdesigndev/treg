@@ -45,6 +45,16 @@ related:
 
 # Provider capacity
 
+Fetchin capacity is `credits / manual / api`. `collectors._fetchinio` calls the free internal
+`GET /api/v1/subscription` route with the platform `X-API-Key`, accepts only a finite nonnegative
+`creditsRemaining`, and retains plan status, PAYG remainder, renewal date and the account's reported
+RPS limit as informational notes. The route can be polled after quota exhaustion and remains
+internal capacity evidence rather than a catalog tool. The funded account reported 5 requests per
+second. Because combined post engagement consumes two rate-limit units and smoothing is not
+endpoint-weighted, the shared-key policy conservatively uses two calls per second; BYOK bypasses it.
+The account was not deliberately exhausted, so the documented generic HTTP 402 is acknowledged
+without a provider-specific empty-balance body or overflow route.
+
 TinyFish capacity is `cash / manual / api`. `collectors._tinyfish` calls the free internal
 `GET /v1/wallet` route with the platform `X-API-Key`, accepts only a finite nonnegative
 `available_balance`, and retains the response currency plus whether vendor auto-reload is enabled.
@@ -82,6 +92,22 @@ raising or enabling the separate PAYGO ceiling is an operator action, and treg a
 top-up. A controlled `/usage` burst did not reproduce its documented 10-per-10-minute 429, so the
 rate policy remains documentation-derived. The funded account was not deliberately exhausted;
 432/433 signatures are documentation-derived rather than live-observed.
+
+ScrapeGraphAI's internal collector calls the free `GET /api/credits` route with the platform
+`SGAI-APIKEY`. It accepts only a finite nonnegative `remaining` credit balance and retains the plan,
+used-credit count, and crawl/monitor job quotas as informational notes. The policy is
+`credits / subscription / api`: the API balance is exact and the shared account uses subscription
+funding. Shared-key smoothing uses the configured 500 requests per minute;
+live responses supplied no usable rate-limit headers. The credits route remains internal capacity
+evidence rather than a catalog tool, and no funding automation or exhaustion signature is inferred.
+
+Serper's internal collector calls `GET /account` with the platform `X-API-KEY`. It accepts only a
+finite nonnegative `balance` and records Serper's numeric `rateLimit` as an informational note. The
+policy is `credits / auto_recharge / api`: the API balance is exact, and vendor auto recharge was
+manually enabled and verified in the dashboard. The live shared account reports 50 requests per
+second, so shared-key smoothing uses 50 requests per second. The account route remains internal
+capacity evidence rather than a catalog tool. The funded account was not deliberately exhausted,
+so no provider-specific empty-balance signature or overflow route is claimed.
 
 TrestleIQ publishes no free balance or usage API. Capacity reports the wallet as Developer
 Portal-only and does not spend a validation query to read it. The policy records cash with vendor

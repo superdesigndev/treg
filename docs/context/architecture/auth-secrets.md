@@ -39,11 +39,28 @@ related:
 
 # Auth & secrets
 
+Fetchin uses a pasted `X-API-Key` at `https://api.fetchin.io`. Its free internal
+`GET /api/v1/subscription` probe rejects invalid credentials and accepts a valid account even when
+its credit balance is zero. `TREG_PLATFORM_KEY_FETCHINIO` supplies the optional shared binding;
+the own-key-first ladder keeps a team's credential unmetered. The same free route supplies capacity
+data and is not exposed as a catalog tool.
+
 Tavily uses a pasted Bearer key at `https://api.tavily.com`. Its free internal `GET /usage` probe
 rejects invalid credentials and validates both team-owned and optional platform credentials without
 exposing usage as a catalog tool. `TREG_PLATFORM_KEY_TAVILY` supplies the server-held fallback; the
 existing own-key-first ladder means a team's key always wins and remains unmetered. The public
 surface is limited to Search, Extract, Map, and Crawl.
+
+ScrapeGraphAI uses a pasted raw `SGAI-APIKEY` header at `https://v2-api.scrapegraphai.com`. Its free
+internal `GET /api/credits` probe rejects invalid credentials and validates team-owned and optional
+platform credentials while also supplying capacity data. `TREG_PLATFORM_KEY_SCRAPEGRAPHAI` supplies
+the server-held fallback; the existing own-key-first ladder keeps a team's credential unmetered.
+
+Serper uses a pasted raw `X-API-KEY` header at `https://google.serper.dev`. Its free internal
+`GET /account` probe validates team-owned and optional platform credentials while also supplying
+balance and rate-limit evidence. `CatalogTarget` approves `https://scrape.serper.dev` for the same
+credential without broadening the primary host. `TREG_PLATFORM_KEY_SERPER` supplies the server-held
+fallback; the existing own-key-first ladder keeps a team's credential unmetered.
 
 `ADYNTEL` is the first pasted-key provider whose two credentials ride in the JSON request body.
 The primary `api_key` and second `email` are ordinary declarative bindings with `location: json`;

@@ -1,7 +1,7 @@
 <script>
 import { useDashboard } from '../state/context'
 import FindAnswer from '../components/FindAnswer.vue'
-export default { components: { FindAnswer }, setup: useDashboard }
+export default { components: { FindAnswer }, setup: useDashboard, beforeUnmount(){ this.findUnschedule(); } }
 </script>
 
 <template>
@@ -17,13 +17,14 @@ export default { components: { FindAnswer }, setup: useDashboard }
               <button class="btn sm primary" @click="publicCatalog ? openSignin() : goByok()" title="Register your own provider key — your key wins over treg's and those calls are never metered"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>Bring your own key</button>
             </div>
           </div>
-          <!-- One box, two questions: a platform name filters the shelves as you type; a described
-               job (four words, or a question) is answered by the finder on Enter (state/find.js).
+          <!-- One box, two questions: a platform name filters the shelves as you type, and the finder
+               answers whatever is typed once typing pauses, or at once on Enter (state/find.js).
                Clearing the box is how you leave an answer. -->
           <div class="cat-find" v-if="plats.list.length">
             <svg class="cat-find-i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
             <input :ref="el => setElement('search', el)" v-model="q" aria-label="Search the catalog"
                    placeholder="Search a platform, or describe what your agent needs to do"
+                   @input="findSchedule($event.target.value)"
                    @keydown.enter="q.trim() && findRun(q)" @keydown.esc="q=''; findExit()">
             <button v-if="q" class="cat-find-x" type="button" aria-label="Clear the search" @click="q=''; findExit()">×</button>
           </div>
@@ -138,7 +139,7 @@ export default { components: { FindAnswer }, setup: useDashboard }
             </div>
             <!-- A query that names no platform is usually a JOB, not a typo: say what missed and offer
                  the finder, instead of implying the server has no catalog. -->
-            <p v-if="!platCatGroups.length && platNameQuery && plats.list.length" class="find-miss">
+            <p v-if="!platCatGroups.length && platNameQuery && plats.list.length && !findSoon" class="find-miss">
               No platform is called that.</p>
             <div v-else-if="!platCatGroups.length && !q.trim()" class="mk-empty">
               No catalogued platforms{{mkTabActive==='all'?'':' in '+mkTabActive}} on this server yet — the

@@ -632,6 +632,7 @@ def test_async_descriptor_rejects_a_retired_or_broken_poll_target():
 
 @pytest.mark.parametrize('rule', [
     {'path': 'billing.charge', 'unit': 'usd'},
+    {'path': 'billing.charge', 'unit': 'credit'},
     {'path': 'billing.charge', 'unit': 'credits'},
     {'path': '', 'unit': 'usd'},
     {'path': 'billing.charge', 'unit': 'usd', 'scale': 2},
@@ -640,8 +641,19 @@ def test_reported_charge_requires_supported_units_and_path(rule):
     cost = dict(catalog_store.load().by_id['trykitt.people.email.find']['cost'])
     cost['reported_charge'] = rule
     errors = []
-    validator.check_cost(cost, 'test', errors, [])
-    assert bool(errors) is (rule != {'path': 'billing.charge', 'unit': 'usd'})
+    validator.check_cost(cost, 'test', errors, [], provider='serper')
+    assert bool(errors) is (rule not in (
+        {'path': 'billing.charge', 'unit': 'usd'},
+        {'path': 'billing.charge', 'unit': 'credit'},
+    ))
+
+
+def test_reported_credit_charge_requires_a_provider_fx_rate():
+    cost = dict(catalog_store.load().by_id['trykitt.people.email.find']['cost'])
+    cost['reported_charge'] = {'path': 'billing.charge', 'unit': 'credit'}
+    errors = []
+    validator.check_cost(cost, 'test', errors, [], provider='no-such-provider')
+    assert any('needs a numeric fx.yaml credit_rates_usd entry' in error for error in errors)
 
 
 @pytest.mark.parametrize('rule,valid', [

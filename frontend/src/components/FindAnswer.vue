@@ -14,9 +14,6 @@ export default {
     nothing(){ return this.find.verdict==='none' || (this.find.verdict==='keyword' && !this.findGroups.length); },
   },
   watch: { 'find.q'(){ this.all=false; } },
-  methods: {
-    providers(g){ return [...new Set(g.rows.map(r=>r.provider))]; },
-  },
 }
 </script>
 
@@ -43,8 +40,8 @@ export default {
       <button class="fa-link" type="button" @click="findRequestTool()">Request a better tool</button></p>
 
     <ul class="fa-list">
-      <li v-for="g in shown" :key="g.key" class="fa-row" :class="{weak:findWeak(g)}">
-        <button class="fa-main" type="button" @click="findOpen(g)">
+      <li v-for="(g, i) in shown" :key="g.key" class="fa-row" :class="{weak:findWeak(g)}">
+        <button class="fa-main" type="button" @click="findOpen(g, i+1)">
           <span class="fa-logo" :class="{gen:platLogoBad[g.platform]}"
                 :style="platLogoBad[g.platform] ? {background:platTileBg(g.platform)} : null">
             <img v-if="!platLogoBad[g.platform]" :src="'/logos/platforms/'+g.platform+'.svg'" alt="" @error="platLogoBad[g.platform]=true">
@@ -52,9 +49,9 @@ export default {
           </span>
           <span class="fa-what"><b>{{g.label}}</b><small>{{platShort(g.platform_label)}}</small></span>
           <span class="fa-provs" :title="g.rows.map(r=>r.provider_display||r.provider).join(', ')">
-            <span class="fa-stack"><img v-for="p in providers(g).slice(0,3)" :key="p" :src="'/logos/'+p+'.svg'" alt=""
+            <span class="fa-stack"><img v-for="p in findProviders(g).slice(0,3)" :key="p" :src="'/logos/'+p+'.svg'" alt=""
                  @error="$event.target.style.visibility='hidden'"></span>
-            {{providers(g).length}} provider{{providers(g).length===1?'':'s'}}
+            {{findProviders(g).length}} provider{{findProviders(g).length===1?'':'s'}}
           </span>
           <span class="fa-price">{{findPrice(g)}}</span>
           <span v-if="g.p!=null" class="fa-fit" :title="'Fit for this job: '+Math.round(g.p*100)+'%'">

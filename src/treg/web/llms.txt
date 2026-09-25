@@ -240,6 +240,10 @@ apply a filter you sent, the answer says so in `X-Treg-Ignored-Filters` and `_tr
 (post-filter the rows, or say why they are off); send `X-Treg-Route-Strict-Filters: 1` to be refused
 with a 422 (nothing charged) instead of getting the looser answer. `catalog_get` on the routed id
 shows the ranked plan and prices before you spend.
+An async child is submitted and polled internally for up to 60 seconds. If it is still running,
+treg returns HTTP 202 with `_treg.outcome: pending`, its call reference and poll descriptor,
+`reserved_micro`, and `charged_micro: null`; do not retry or start another provider, because the
+existing task may still complete and charge.
 A found contact is not a confirmed one: an email or phone find is the provider's best match, and
 only `output.verified: true` means it checked the mailbox. Otherwise the answer carries
 `_treg.advice` naming the verify step (`treg.people.email.verify`, a fraction of a cent) — run it
@@ -311,7 +315,12 @@ Money notes for agents:
   routed calls it also bounds the whole waterfall (default $1 there).
 - A failed call (HTTP 4xx/5xx from the provider) is relayed unchanged and charged nothing; the
   CLI prints one stderr line with the status, whose answer it is, and the call id — and on a metered
-  success, `treg: charged $<usd> · call id <id>` (stdout is always the exact body). A `/call/`
+  success, `treg: charged $<usd> · call id <id>` (stdout is always the exact body). **A script that
+  parses the output uses `treg --json call …`**: stdout is then one line,
+  `{"result": <body>, "_treg": {"http_status", "call_id", "charged_micro"}}`, and stderr is silent,
+  so merging the two streams cannot break the parse (`--await` output is unchanged). Before a loop
+  over many inputs, run a few and check the parsed results: a parse bug discards answers already
+  paid for. A `/call/`
   may be answered from treg's archive of earlier answers to the exact same question while that
   answer is still fresh: the body is the provider's verbatim bytes, the response says
   `X-Treg-Cache: hit` with `X-Treg-Fetched-At` and `X-Treg-Age`. Your team's first call on a
@@ -419,8 +428,8 @@ Three human sign-in doors (email is the identity; the door just proves it):
 - **Invite code** - `treg org join <code> --email you@company.com` (creates you + joins a team).
 
 Agents/CI use a token directly: `treg login --token <token>`. A dashboard "API key" bakes in the
-team (so it needs no `X-Treg-Org` — it works as a bare bearer, including as an MCP `Authorization`
-header); a per-org token from `treg org create` / `treg org join` does too. Never share the upstream
+team, so it needs no `X-Treg-Org`: send it as `X-Treg-Token` (REST) or `Authorization: Bearer`
+(MCP); a per-org token from `treg org create` / `treg org join` does too. Never share the upstream
 key - share access.
 
 ## MCP — connect an assistant

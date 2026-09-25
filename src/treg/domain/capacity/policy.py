@@ -23,6 +23,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "dropleads": ("credits", "manual", "api"),
     "trykitt": ("cash", "manual", "api"),
     "harvestapi": ("cash", "auto_recharge", "api"),  # Owner will enable vendor auto top-up for production.
+    "fetchinio": ("credits", "manual", "api"),
     "dataforseo": ("cash", "auto_recharge", "api"),
     "tikhub": ("cash", "auto_recharge", "api"),
     "tinyfish": ("cash", "manual", "api"),
@@ -44,8 +45,13 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     # reads nor changes that setting, so the observation source remains manual.
     "trestleiq": ("cash", "auto_recharge", "manual"),
     "tavily": ("credits", "manual", "api"),
+    # The API supplies the exact credit balance; vendor auto recharge was manually enabled and
+    # verified in the Serper dashboard.
+    "serper": ("credits", "auto_recharge", "api"),
     "keenable": ("requests", "manual", "manual"),
     "olostep": ("credits", "manual", "api"),
+    # The shared account uses subscription funding; the API supplies its exact credit balance.
+    "scrapegraphai": ("credits", "subscription", "api"),
     "getleadsio": ("credits", "manual", "api"),
     "sumble": ("monthly_quota", "quota_reset", "api"),
     "moltsets": ("rolling_quota", "subscription", "api"),
@@ -90,6 +96,9 @@ _QUOTAS: dict[str, dict] = {
     "aiark": {"limit": 15000, "period": "billing", "resets_at_rule": "monthly subscription; date not reported by API"},
 }
 _RATE_LIMITS: dict[str, dict] = {
+    # The account reports 5 requests/s, but /post/engagement consumes two rate-limit units. The
+    # provider-wide limiter cannot weight one endpoint, so two calls/s is the safe shared-key pace.
+    "fetchinio": {"limit": 2, "window_s": 1, "source": "policy"},
     "adyntel": {"limit": 5, "window_s": 1, "source": "docs"},
     # Search's documented burst allowance is the strictest request-count limit shared by these
     # hosts. Fetch additionally meters URLs and Agent limits concurrency; upstream remains the
@@ -118,11 +127,17 @@ _RATE_LIMITS: dict[str, dict] = {
     # documented tier until the shared key's environment is verified. Crawl has the same 100/minute
     # ceiling on both tiers, so this provider-wide pace is safe for all four catalog tools.
     "tavily": {"limit": 100, "window_s": 60, "source": "docs"},
+    # GET /account reports 50 queries/s for the current shared account. Pace the platform key to
+    # that live account allowance; BYOK bypasses this limiter.
+    "serper": {"limit": 50, "window_s": 1, "source": "api"},
     "keenable": {"limit": 10, "window_s": 1, "source": "docs"},
     # Olostep publishes 429 guidance but no numeric general API ceiling, and successful live calls
     # returned no rate-limit headers. Smooth the shared key conservatively until the vendor supplies
     # a contract value or production traffic establishes a safer bound. BYOK bypasses this policy.
     "olostep": {"limit": 5, "window_s": 1, "source": "policy"},
+    # Deployment allowance supplied for the shared account. Live responses did not include usable
+    # rate headers, so keep the configured 500/min ceiling explicit instead of inferring from them.
+    "scrapegraphai": {"limit": 500, "window_s": 60, "source": "policy"},
     # Routing-friendly shared-key pace. The 5,000-request/5h rolling allowance is capacity, not a
     # burst rate; encoding it here would make the spacer add 3.6s before every routed attempt.
     "moltsets": {"limit": 10, "window_s": 1, "source": "policy"},

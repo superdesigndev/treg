@@ -35,7 +35,10 @@ Three layers, imports pointing inward:
 - **`infra/judge.py`** — TypeSafe's System One API (Jev). One request carries the query and every
   candidate as `state`, and one Noul question per candidate; the answer is a probability per row.
   It never raises: timeout, non-200, malformed body all return `probs=None` with a reason, and the
-  caller serves the baseline. Answers are cached in-process by (model, query, candidate ids).
+  caller serves the baseline. Answers are cached in-process by (model, query, candidate ids, and
+  any criteria or extra questions). A caller may attach Noul `criteria` to every candidate question
+  and add `extra` questions about the same state; the experiment passes neither, so its question
+  is unchanged while it runs.
 - **`application/search_experiment.py`** — the use case. Judges the candidates, builds the judged
   page with the SAME finishing steps the baseline had (evidence rerank, routed grouping, cut to the
   page — the MCP layer passes that function in), deals the caller an arm, decides what is shown, and
@@ -115,9 +118,20 @@ audience differs:
   the Search Console performance report only at 60).
 - **Streamed.** Two NDJSON events: `candidates` as soon as the recall is computed, `judged` when the
   judge answers. The pages animate the gap on the first event.
+- **A stricter question, and a name question.** Each candidate question carries `FIT_CRITERIA`,
+  whose `false` side includes "the task only names a product, company or platform": without it a
+  bare "google" scored 0.6+ against every Google endpoint and read as a weak answer. The same
+  request asks one extra Noul, whether `task` is only a name. Measured on hand-labelled queries,
+  the criteria left real fits level or slightly higher, and the name question put bare names at
+  0.9+ and short jobs ("backlinks", "tiktok ads") under 0.6.
 - **A verdict, not a page.** `strong` (a row at or over `high`), `closest` (kept rows, none strong),
-  `none` (nothing kept), or `keyword` when the judge abstained and the rows are the lexical page,
-  unjudged. Kept rows are best fit first (no `interleave.bucketed` lexical order inside a bucket),
+  `none` (nothing kept), `keyword` when the judge abstained and the rows are the lexical page,
+  unjudged, or `name`: no strong fit, and the query is a name (the judge's name probability at or
+  over `find_name_min`, or exactly a platform's name or slug). Its rows are what the name offers:
+  the platforms whose name contains it, the one it starts first, each cut to its first 40
+  endpoints; else a provider of that name's endpoints; unjudged. The event's `named` says which
+  (`platform` or `provider`), and /search groups the answer by it. A name the catalog does not carry
+  falls through to the judged verdict. Kept rows are best fit first (no `interleave.bucketed` lexical order inside a bucket),
   each with its fit and the catalog's own price shape; the event carries `high` so the pages draw
   the strong cut from the server's setting. The probability is shown to people; agents still never
   see it.

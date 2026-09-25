@@ -196,8 +196,10 @@ configured platform margin. Account reads and the excluded batch/file surface do
 Email inputs require a nonempty mailbox and dotted domain. Malformed domain/LinkedIn URLs,
 invalid ports, embedded credentials and non-web schemes return validation errors before pricing
 or charging, including malformed bracketed hosts that URL parsing would otherwise reject with an exception.
-Each provider contributes one eligible synchronous endpoint. Bulk jobs,
-asynchronous submissions and personal-email finders are excluded from the work-email task.
+Each provider contributes one eligible endpoint whose adapter verifies the task contract. Verified
+asynchronous submissions participate through the same planner and quote surfaces as synchronous
+providers; Arena handles submit, poll and terminal normalization internally. Bulk jobs and
+personal-email finders remain excluded from the work-email task.
 `?capability=people.email.find&mode=waterfall` opens a task/mode directly.
 
 ## Historical vendor insights
@@ -466,7 +468,9 @@ Arena never writes balances or holds. Own keys remain unmetered by treg. Aggrega
 disabled for these comparisons, and archive lookup is bypassed so runs measure fresh calls.
 
 Database sessions are short and closed before upstream requests. Attempt state and call references
-persist before dispatch. Each leg has a 90-second deadline and the run has a 240-second deadline.
+persist before dispatch. Synchronous legs have a 90-second deadline; an async leg may poll within
+the remaining 240-second per-entry run deadline. No database session remains open during polling
+waits or upstream I/O.
 Cancellation is polled between writes and interrupts in-flight tasks through the normal call
 cleanup. Shutdown drains Arena owners before closing the shared HTTP client. A process-lost run
 becomes interrupted after its persisted deadline; it is never automatically retried. Unknown
@@ -486,8 +490,13 @@ original intermittent failure. Audit/archive drains alone cannot release this re
 Waterfall uses ascending quoted prices, retaining planner order for ties, and the bounded error fallback policy. It stops
 at the first structural hit: the adapter supplies the contract's required fields. Found work email
 does not mean verified deliverability; phone found does not mean a live line. A negative mailbox
-verification verdict is a successful answer. Each step shows queued/running, found/no match,
-error/timeout, skipped/not attempted, timing, charge, and the reason for stopping or skipping.
+verification verdict is a successful answer. An async attempt that remains in progress, or whose
+foreground poll cannot prove a declared terminal state, is saved and shown as pending with its
+reservation and call reference. Pending stops only that entry's Waterfall; Battle may finish other
+explicitly selected providers concurrently. Only a declared terminal provider status permits the
+entry to advance. Terminal attempts show the actual settled charge, not the maximum reservation.
+Each step shows queued/running, pending, found/no match, error/timeout, skipped/not attempted,
+timing, charge, and the reason for stopping or skipping.
 
 ## Additional vendor calls and issue reports
 

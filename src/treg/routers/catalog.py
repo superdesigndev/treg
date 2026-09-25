@@ -47,8 +47,9 @@ def _platform_rows() -> list[dict]:
         # The census counts the BROWSE surface only: account/utility ("management") endpoints are
         # real inventory but they are not what a marketplace tile advertises, so they never inflate
         # the endpoint/capability/verified counts or the "from …" price. They still ship in the
-        # platform-detail list (with `kind` set) — see catalog_platform's ?include_hidden.
-        eps = [e for e in cat.for_platform(slug) if e["kind"] not in catalog_store.HIDDEN_KINDS]
+        # platform-detail list (with `kind` set) — see catalog_platform's ?include_hidden. Routed
+        # rows are out too (`browsable`): they double-count their children and are treg's, not a vendor's.
+        eps = [e for e in cat.for_platform(slug) if catalog_store.browsable(e)]
         if not eps:  # a taxonomy entry no provider implements (or only plumbing) is grid noise
             continue
         rows.append({
@@ -79,8 +80,11 @@ def _platform_rows() -> list[dict]:
 
 @app.get("/catalog/platforms")
 async def catalog_platforms() -> dict:
-    """Open: the platform shelves of the endpoint catalog, busiest first."""
-    return {"platforms": _platform_rows(), "generated_from": "catalog"}
+    """Open: the platform shelves of the endpoint catalog, busiest first, and the display name of
+    every vendor on them (the /search page's pile is one tile per vendor)."""
+    rows = _platform_rows()
+    names = {s: _provider_display(s) for s in sorted({s for r in rows for s in r["providers"]})}
+    return {"platforms": rows, "providers": names, "generated_from": "catalog"}
 
 
 @app.get("/catalog/platforms/{slug}")

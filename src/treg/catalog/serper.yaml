@@ -1,0 +1,405 @@
+provider: serper
+source:
+  docs: https://serper.dev/playground
+  openapi: null
+  curated: '2026-09-24'
+pricing_url: https://serper.dev/#pricing
+limits: "The current shared account reports 50 queries/second from GET /account. Mini-batch requests of up to 100 queries are intentionally excluded from catalog tools; a raw BYOK tool remains a faithful relay."
+cache: forbidden
+proposed_capabilities:
+  google.serp.images: "Get Google Images results for a keyword"
+  google.serp.videos: "Get Google Videos results for a keyword"
+  google.serp.shopping: "Get Google Shopping results for a keyword"
+  google.serp.scholar: "Get Google Scholar publications for a query"
+  google.serp.patents: "Get Google Patents results for a query"
+  google.serp.autocomplete: "Get Google query autocomplete suggestions"
+  google.serp.reviews: "Get Google place reviews by Google place identifier"
+  google.serp.lens: "Run a Google Lens reverse-image search from a public image URL"
+
+endpoints:
+  - id: serper.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search
+    body_allowlist: true
+    name: Search the open web with Google
+    summary: Search Google and return organic results plus answer boxes, knowledge panels, related questions, and related searches when present.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, example: "OpenAI API documentation"}
+        location: {type: string, required: false, note: "Canonical Google location name; discover supported values with Serper's public /locations route.", example: "New York, New York, United States"}
+        gl: {type: string, required: false, default: us, note: "Two-letter country code.", example: us}
+        hl: {type: string, required: false, default: en, note: "Google interface language code.", example: en}
+        tbs: {type: string, required: false, note: "Google advanced-search/date filter, for example qdr:w for the past week."}
+        page: {type: integer, required: false, default: 1, min: 1}
+        autocorrect: {type: boolean, required: false, default: true}
+      note: "Answers arrive primarily in organic. A successful HTTP 200 costs one credit even when organic is empty; HTTP failures are unbilled. Catalog calls accept one query, while Serper's array mini-batch remains available through a team's raw BYOK tool."
+    test_request: {body: {q: "OpenAI API documentation", gl: us, hl: en}}
+    cost: &one_credit
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://serper.dev/playground
+      checked: '2026-09-24'
+      confidence: verified
+      note: "One credit per successful response. Live response.credits and before/after GET /account balance deltas agreed; malformed and unauthorized requests used zero credits."
+      reported_charge: &reported_credits {path: credits, unit: credit}
+    verified: '2026-09-24'
+    example_response: examples/serper.web.search.json
+    docs_url: https://serper.dev/playground
+
+  - id: serper.google.serp.images
+    capability: google.serp.images
+    platform: google
+    domain: search
+    scope: any_account
+    method: POST
+    path: /images
+    body_allowlist: true
+    name: Search Google Images
+    summary: Search Google Images for image URLs, thumbnails, dimensions, source pages, and positions.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, example: "golden retriever"}
+        location: {type: string, required: false}
+        gl: {type: string, required: false, default: us, example: us}
+        hl: {type: string, required: false, default: en, example: en}
+        tbs: {type: string, required: false}
+        page: {type: integer, required: false, default: 1, min: 1}
+        num: {type: integer, required: false, default: 10, enum: [10, 100], note: "10 results cost 1 credit; 100 results cost 2 credits."}
+        autocorrect: {type: boolean, required: false, default: true}
+      note: "Answers arrive in images."
+    test_request: {body: {q: "golden retriever", gl: us, hl: en, num: 10}}
+    cost:
+      type: per_call
+      table:
+        - {when: {body.num: 10}, value: 1}
+        - {when: {body.num: 100}, value: 2}
+      fallback: {value: 2, note: "The catalog schema permits only Serper's 10-result and 100-result image pages; 100 results cost two credits."}
+      currency: credit
+      unit: call
+      source: observed
+      source_url: https://serper.dev/playground
+      checked: '2026-09-24'
+      confidence: verified
+      note: "Serper reports the exact credits in every successful response; treg reserves from num and settles that value."
+      reported_charge: *reported_credits
+    verified: '2026-09-24'
+    example_response: examples/serper.google.serp.images.json
+    docs_url: https://serper.dev/playground
+
+  - id: serper.google.serp.videos
+    capability: google.serp.videos
+    platform: google
+    domain: search
+    scope: any_account
+    method: POST
+    path: /videos
+    body_allowlist: true
+    name: Search Google Videos
+    summary: Search Google Videos for ranked video pages with thumbnails, duration, source, channel, and date.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, example: "OpenAI developer keynote"}
+        location: {type: string, required: false}
+        gl: {type: string, required: false, default: us, example: us}
+        hl: {type: string, required: false, default: en, example: en}
+        tbs: {type: string, required: false}
+        page: {type: integer, required: false, default: 1, min: 1}
+        autocorrect: {type: boolean, required: false, default: true}
+      note: "Answers arrive in videos."
+    test_request: {body: {q: "OpenAI developer keynote", gl: us, hl: en}}
+    cost: *one_credit
+    verified: '2026-09-24'
+    example_response: examples/serper.google.serp.videos.json
+    docs_url: https://serper.dev/playground
+
+  - id: serper.google.serp.places
+    capability: google.serp.local
+    platform: google
+    domain: search
+    scope: any_account
+    method: POST
+    path: /places
+    body_allowlist: true
+    name: Search Google Places
+    summary: Find local businesses and places with addresses, coordinates, ratings, categories, prices, and Google customer IDs.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, example: "coffee near Times Square"}
+        location: {type: string, required: false, example: "New York, New York, United States"}
+        gl: {type: string, required: false, default: us, example: us}
+        hl: {type: string, required: false, default: en, example: en}
+        page: {type: integer, required: false, default: 1, min: 1}
+        autocorrect: {type: boolean, required: false, default: true}
+      note: "Answers arrive in places. The returned cid can be used with serper.google.serp.reviews."
+    test_request: {body: {q: "coffee near Times Square", location: "New York, New York, United States", gl: us, hl: en}}
+    cost: *one_credit
+    verified: '2026-09-24'
+    example_response: examples/serper.google.serp.places.json
+    docs_url: https://serper.dev/playground
+
+  - id: serper.google.serp.news
+    capability: google.serp.news
+    platform: google
+    domain: search
+    scope: any_account
+    method: POST
+    path: /news
+    body_allowlist: true
+    name: Search Google News
+    summary: Search recent Google News results with source, date, snippet, image, and ranked article link.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, example: "OpenAI"}
+        location: {type: string, required: false}
+        gl: {type: string, required: false, default: us, example: us}
+        hl: {type: string, required: false, default: en, example: en}
+        tbs: {type: string, required: false, note: "Google date filter. A valid but over-restrictive value can return HTTP 200 with an empty news array and still costs one credit."}
+        page: {type: integer, required: false, default: 1, min: 1}
+        autocorrect: {type: boolean, required: false, default: true}
+      note: "Answers arrive in news."
+    test_request: {body: {q: "OpenAI", gl: us, hl: en}}
+    cost: *one_credit
+    verified: '2026-09-24'
+    example_response: examples/serper.google.serp.news.json
+    docs_url: https://serper.dev/playground
+
+  - id: serper.google.serp.shopping
+    capability: google.serp.shopping
+    platform: google
+    domain: search
+    scope: any_account
+    method: POST
+    path: /shopping
+    body_allowlist: true
+    name: Search Google Shopping
+    summary: Search Google Shopping for products, sellers, prices, ratings, images, offers, and product IDs.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, example: "wireless headphones"}
+        location: {type: string, required: false}
+        gl: {type: string, required: false, default: us, example: us}
+        hl: {type: string, required: false, default: en, example: en}
+        tbs: {type: string, required: false}
+        page: {type: integer, required: false, default: 1, min: 1}
+        num: {type: integer, required: false, default: 40, enum: [40]}
+        autocorrect: {type: boolean, required: false, default: true}
+      note: "Answers arrive in shopping. Serper's current playground fixes a shopping page at 40 results and charges two credits."
+    test_request: {body: {q: "wireless headphones", gl: us, hl: en, num: 40}}
+    cost:
+      <<: *one_credit
+      value: 2
+      note: "Two credits per successful 40-result Shopping response, confirmed by response.credits and the account balance delta."
+    verified: '2026-09-24'
+    example_response: examples/serper.google.serp.shopping.json
+    docs_url: https://serper.dev/playground
+
+  - id: serper.google.serp.scholar
+    capability: google.serp.scholar
+    platform: google
+    domain: search
+    scope: any_account
+    method: POST
+    path: /scholar
+    body_allowlist: true
+    name: Search Google Scholar
+    summary: Search Google Scholar for publications, authorship, year, citation counts, versions, cluster IDs, and PDF links.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, example: "attention is all you need"}
+        location: {type: string, required: false}
+        gl: {type: string, required: false, default: us, example: us}
+        hl: {type: string, required: false, default: en, example: en}
+        page: {type: integer, required: false, default: 1, min: 1}
+        autocorrect: {type: boolean, required: false, default: true}
+      note: "Answers arrive in organic; num is not accepted by Serper's current Scholar playground."
+    test_request: {body: {q: "attention is all you need", gl: us, hl: en}}
+    cost: *one_credit
+    verified: '2026-09-24'
+    example_response: examples/serper.google.serp.scholar.json
+    docs_url: https://serper.dev/playground
+
+  - id: serper.google.serp.patents
+    capability: google.serp.patents
+    platform: google
+    domain: search
+    scope: any_account
+    method: POST
+    path: /patents
+    body_allowlist: true
+    name: Search Google Patents
+    summary: Search Google Patents for filings, grants, inventors, assignees, publication numbers, figures, and PDFs.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, example: "transformer neural network"}
+        page: {type: integer, required: false, default: 1, min: 1}
+        autocorrect: {type: boolean, required: false, default: true}
+      note: "Answers arrive in organic. Serper's current Patents playground does not offer country or language parameters."
+    test_request: {body: {q: "transformer neural network"}}
+    cost: *one_credit
+    verified: '2026-09-24'
+    example_response: examples/serper.google.serp.patents.json
+    docs_url: https://serper.dev/playground
+
+  - id: serper.google.serp.autocomplete
+    capability: google.serp.autocomplete
+    platform: google
+    domain: search
+    scope: any_account
+    method: POST
+    path: /autocomplete
+    body_allowlist: true
+    name: Get Google autocomplete suggestions
+    summary: Expand a partial Google query into ranked autocomplete suggestions.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, example: "how to build an ai"}
+        location: {type: string, required: false}
+        gl: {type: string, required: false, default: us, example: us}
+        hl: {type: string, required: false, default: en, example: en}
+      note: "Answers arrive in suggestions as objects with a value field."
+    test_request: {body: {q: "how to build an ai", gl: us, hl: en}}
+    cost: *one_credit
+    verified: '2026-09-24'
+    example_response: examples/serper.google.serp.autocomplete.json
+    docs_url: https://serper.dev/playground
+
+  - id: serper.google.serp.maps
+    capability: google.serp.maps
+    platform: google
+    domain: search
+    scope: any_account
+    method: POST
+    path: /maps
+    body_allowlist: true
+    name: Search Google Maps
+    summary: Search Google Maps around a coordinate and zoom, or look up a place by Google place ID or customer ID.
+    input:
+      bodyType: json
+      body:
+        q: {type: string, required: true, example: "OpenAI San Francisco"}
+        ll: {type: string, required: false, note: "Map center and zoom as @latitude,longitude,zoomz.", example: "@37.7749,-122.4194,12z"}
+        placeId: {type: string, required: false}
+        cid: {type: string, required: false}
+        hl: {type: string, required: false, default: en, example: en}
+        page: {type: integer, required: false, default: 1, min: 1}
+      note: "Answers arrive in places. Keyword calls may return cid, fid, and placeId values suitable for the Reviews endpoint."
+    test_request: {body: {q: "OpenAI San Francisco", ll: "@37.7749,-122.4194,12z", hl: en}}
+    cost:
+      <<: *one_credit
+      value: 3
+      note: "Three credits per successful Maps response, confirmed by response.credits and the account balance delta."
+    verified: '2026-09-24'
+    example_response: examples/serper.google.serp.maps.json
+    docs_url: https://serper.dev/playground
+
+  - id: serper.google.serp.reviews
+    capability: google.serp.reviews
+    platform: google
+    domain: search
+    scope: any_account
+    method: POST
+    path: /reviews
+    body_allowlist: true
+    name: Get Google place reviews
+    summary: Read Google reviews for a place, with rating, date, text, author, likes, topics, and cursor pagination.
+    input:
+      bodyType: json
+      body:
+        cid: {type: string, required: false, note: "Google customer ID. Supply at least one of cid, fid, or placeId.", example: "855637193957362546"}
+        fid: {type: string, required: false, note: "Google feature ID. Supply at least one of cid, fid, or placeId."}
+        placeId: {type: string, required: false, note: "Google place ID. Supply at least one of cid, fid, or placeId."}
+        gl: {type: string, required: false, default: us, example: us}
+        hl: {type: string, required: false, default: en, example: en}
+        sortBy: {type: string, required: false, enum: [mostRelevant, newest, highestRating, lowestRating]}
+        topicId: {type: string, required: false}
+        nextPageToken: {type: string, required: false, note: "Opaque cursor from the preceding response."}
+      note: "This is Serper's only cursor-paginated stable endpoint and does not support mini-batch. The catalog schema cannot express one-of-required, so callers must supply cid, fid, or placeId; omitting all three produces an unbilled upstream error."
+    test_request: {body: {cid: "855637193957362546", hl: en}}
+    cost: *one_credit
+    verified: '2026-09-24'
+    example_response: examples/serper.google.serp.reviews.json
+    docs_url: https://serper.dev/playground
+
+  - id: serper.google.serp.lens
+    capability: google.serp.lens
+    platform: google
+    domain: search
+    scope: any_account
+    method: POST
+    path: /lens
+    body_allowlist: true
+    name: Reverse-search an image with Google Lens
+    summary: Submit a public image URL to Google Lens and receive matching and visually similar web results.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, note: "Publicly fetchable JPG or PNG image URL.", example: "https://upload.wikimedia.org/wikipedia/commons/3/3f/Fronalpstock_big.jpg"}
+        location: {type: string, required: false}
+        gl: {type: string, required: false, default: us, example: us}
+        hl: {type: string, required: false, default: en, example: en}
+        tbs: {type: string, required: false}
+      note: "Answers arrive in organic. Two valid public-image probes returned HTTP 200 with an empty organic array and credits: 3; an empty match set is therefore a paid, valid answer, not an error."
+    test_request: {body: {url: "https://upload.wikimedia.org/wikipedia/commons/3/3f/Fronalpstock_big.jpg", gl: us, hl: en}}
+    cost:
+      <<: *one_credit
+      value: 3
+      note: "Three credits per successful Lens response, including an empty match set; confirmed by response.credits and the account balance delta."
+    verified: '2026-09-24'
+    example_response: examples/serper.google.serp.lens.json
+    docs_url: https://serper.dev/playground
+
+  - id: serper.web.extract
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    host: scrape.serper.dev
+    path: /
+    body_allowlist: true
+    name: Extract a web page
+    summary: Fetch one public web page and return clean text plus optional Markdown, links, images, videos, and metadata.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        includeMarkdown: {type: boolean, required: false, default: false}
+        includeImages: {type: boolean, required: false, default: false}
+        includeLinks: {type: boolean, required: false, default: false}
+        includeVideos: {type: boolean, required: false, default: false}
+      note: "This endpoint uses scrape.serper.dev rather than google.serper.dev. Serper reports the exact charge in response.credits: most pages cost 2 credits, with harder pages costing 6 or 10."
+    test_request: {body: {url: "https://example.com", includeMarkdown: true, includeLinks: true}}
+    cost:
+      type: per_call
+      table:
+        - {when: {body.includeMarkdown: true}, value: 10}
+        - {when: {body.includeMarkdown: false}, value: 10}
+      fallback: {value: 10, note: "Serper documents 10 credits as the hardest-page ceiling; page difficulty is unknowable before relay, so every platform call reserves that ceiling."}
+      currency: credit
+      unit: call
+      source: observed
+      source_url: https://serper.dev/playground
+      checked: '2026-09-24'
+      confidence: verified
+      note: "Serper documents 2, 6, or 10 credits by scrape difficulty and returns the exact value in response.credits. treg reserves 10, settles the reported value, and releases the rest; the live example.com probe cost 2 credits."
+      reported_charge: *reported_credits
+    verified: '2026-09-24'
+    example_response: examples/serper.web.extract.json
+    docs_url: https://serper.dev/playground

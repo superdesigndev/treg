@@ -372,6 +372,16 @@ class _ImmutableStatic(StaticFiles):
         return response
 
 
+class _DayStatic(StaticFiles):
+    """Static files kept under stable names (vendor and platform logos): a day's cache, so a page
+    that shows every logo (/search) does not revalidate each one on every visit."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+
+
 def _route_key(route: APIRoute) -> RouteKey:
     return route.path, tuple(sorted(route.methods)), route.name
 
@@ -412,7 +422,7 @@ def _include_routes(app: FastAPI, routes: Sequence[APIRoute]) -> None:
 
 def _mount_static(app: FastAPI, api_module) -> None:
     if api_module._LOGO_DIR.exists():
-        app.mount("/logos", StaticFiles(directory=str(api_module._LOGO_DIR)), name="logos")
+        app.mount("/logos", _DayStatic(directory=str(api_module._LOGO_DIR)), name="logos")
     if api_module._MEDIA_DIR.exists():
         app.mount("/media", StaticFiles(directory=str(api_module._MEDIA_DIR)), name="media")
     if api_module._TOUR_DIR.exists():

@@ -25,12 +25,12 @@ def _on(monkeypatch, **over):
         monkeypatch.setattr(s, k, v, raising=False)
 
 
-def _fake_judge(probs_by_id, seen=None):
+def _fake_judge(probs_by_id, seen=None, name=0.0):
     async def fake(query, cands, **kw):
         if seen is not None:
             seen.append((query, [c["id"] for c in cands], kw))
         return judge_infra.Judgement(probs=[probs_by_id.get(c["id"], 0.0) for c in cands], ms=12,
-                                     tokens_in=100, tokens_out=5)
+                                     tokens_in=100, tokens_out=5, extra={"name": name})
     return fake
 
 
@@ -54,10 +54,11 @@ async def test_streams_candidates_then_the_judged_rows(clients, monkeypatch):
     assert first["event"] == "candidates"
     ids = [c["id"] for c in first["candidates"]]
     assert "tiingo.daily.prices" in ids and 0 < len(ids) <= 60
-    assert set(first["candidates"][0]) == {"id", "platform"}
+    assert set(first["candidates"][0]) == {"id", "platform", "provider"}
     # the judge read exactly the recall, with the find route's own timeout
     (query, judged_ids, kw), = seen
     assert query == JOB and judged_ids == ids and kw["timeout_s"] == get_settings().find_timeout_s
+    assert kw["criteria"] and set(kw["extra"]) == {"name"}   # what a fit means, and "is it a name?"
 
     assert second["event"] == "judged" and second["verdict"] == "strong" and second["read"] == len(ids)
     assert second["high"] == get_settings().search_judge_high
@@ -85,6 +86,45 @@ async def test_verdicts_at_each_cut(clients, monkeypatch):
     await audit.drain()
     async with session_maker() as s:
         assert [m.source for m in (await s.execute(select(SearchMiss))).scalars()] == ["web-find"]
+
+
+async def test_a_bare_name_is_answered_with_what_it_offers(clients, monkeypatch):
+    _on(monkeypatch)
+    # the judge reads "tiktok" as a name: the answer is the TikTok platforms, the one named first
+    monkeypatch.setattr(judge_infra, "judge", _fake_judge({}, name=0.96))
+    _, events = await _find(clients, "tiktok")
+    judged = events[1]
+    assert judged["verdict"] == "name" and judged["named"] == "platform" and judged["rows"][0]["platform"] == "tiktok"
+    assert all(row["p"] is None for row in judged["rows"])
+    assert {row["platform"] for row in judged["rows"]} >= {"tiktok", "tiktok-ads"}
+
+    # a provider's name, with no platform of that name, is that provider's endpoints
+    _, events = await _find(clients, "semrush")
+    assert events[1]["verdict"] == "name" and events[1]["named"] == "provider"
+    assert {r["provider"] for r in events[1]["rows"]} == {"semrush"}
+
+    # exactly a platform's name counts even when the judge is unsure
+    monkeypatch.setattr(judge_infra, "judge", _fake_judge({}, name=0.6))
+    _, events = await _find(clients, "google ads")
+    assert events[1]["verdict"] == "name" and {r["platform"] for r in events[1]["rows"]} == {"google-ads"}
+
+    # a name nothing in the catalog carries falls through to the judged verdict (and is a miss)
+    monkeypatch.setattr(judge_infra, "judge", _fake_judge({}, name=0.97))
+    _, events = await _find(clients, "zzqx-nothing")
+    assert events[1]["verdict"] == "none"
+    await audit.drain()
+    async with session_maker() as s:
+        logs = (await s.execute(select(SearchLog))).scalars().all()
+        misses = (await s.execute(select(SearchMiss))).scalars().all()
+    assert [m.query for m in misses] == ["zzqx-nothing"]
+    assert {tuple(x)[1] for x in logs[0].shown} == {"name"}
+
+
+async def test_a_strong_fit_wins_over_a_name(clients, monkeypatch):
+    _on(monkeypatch)
+    monkeypatch.setattr(judge_infra, "judge", _fake_judge({"tiingo.daily.prices": 0.9}, name=0.95))
+    _, events = await _find(clients, JOB)
+    assert events[1]["verdict"] == "strong"
 
 
 async def test_an_abstaining_judge_serves_the_keyword_page(clients, monkeypatch):

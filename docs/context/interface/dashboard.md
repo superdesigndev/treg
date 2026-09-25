@@ -866,7 +866,7 @@ stays in the price column, and the provider/endpoint counts live in the cell's t
 a second line of their own.
 
 **Merged rows expand in TWO levels.** Clicking one opens its providers as collapsed `.lsub` sub-rows —
-one line each: logo, name, `costShort`, ✓/·, the connected chip, and a truncated `METHOD path`.
+one line each: logo, name, `costShort`, a ✓ when verified, the connected chip, and a truncated `METHOD path`.
 Clicking a sub-row (`toggleEp` → `epOpen[e.id]`) opens **that** provider's instruction. Dropping six
 full parameter tables on one click buried the comparison the merge exists to make. A single row has
 nothing to compare, so it skips the middle level and renders its detail straight away — the SAME
@@ -875,12 +875,19 @@ the instruction differently. Inside a merged sub-row the detail drops the provid
 sub-row above already shows, and leads with the chips.
 
 **The filter bar is sticky** under the top bar, and the section headings stick under *it* (`--lbar-top` /
-`--lsec-top`); the domain chips **scroll** rather than wrap, because a bar that grew a second row as you
-filtered would push the headings out from under it. Text, `verified only` and the domain chips narrow the
+`--lsec-top`). The domain chips **wrap**: a scrolling strip with a hidden scrollbar cut its last chip in
+half and gave a mouse no way to reach the rest. So the bar's height varies with the platform and the
+filters, and `stickLedgerBar` (PlatformPage.vue) measures it and writes `--lsec-top` on the bar's parent;
+the redesign shell redeclares the variable on its own element, so a value on the document root never
+reached the headings. At phone width nothing sticks (a wrapped bar would cover half the screen) and each
+row stacks: title, then route, price and ✓ on one line, with the separator drawn on the row. Unverified
+rows show nothing in the Verified column. Text, `verified only` and the domain chips narrow the
 same row list (`platRowsPreDomain` → `platLedger`); a section with no surviving rows disappears rather
 than showing an empty heading, chip counts are taken after the other two filters so a chip never promises
-rows they have already removed, and a live `N rows · M endpoints` line counts both — a merged row stands
-for several endpoints. Both the wrapper and the table drop their `overflow` clip (an `overflow:hidden`
+rows they have already removed, and a live `N rows · M endpoints` line counts both when they differ — a
+merged row stands for several endpoints. Only the wrapper draws the rounded frame: a collapsed table cannot
+round its own border, so a second one showed as a square frame inside it, and the last row's cells round
+their own corners because nothing clips a hover fill. Both the wrapper and the table drop their `overflow` clip (an `overflow:hidden`
 ancestor is a scroll container, and a sticky heading inside one never escapes it) and the table is
 `table-layout:fixed`, so a nowrap path or `treg call` line scrolls **inside** its cell instead of widening
 the table past the page.
@@ -1016,11 +1023,15 @@ fit is its best provider's. The page never re-ranks providers.
 - **Catalog search** (`CatalogPage.vue`, `view==='connections'`, signed in or on the public
   catalog). A large box under the page title, not the corner search the other views use. A short
   query is a name and keeps the instant platform filter; four words or a question mark makes it a
-  job and shows **Find tools ↵** (`isJobQuery`). Enter renders `FindAnswer.vue` between the box and
+  job and shows **Find tools ↵** (`isJobQuery`). The finder runs by itself once typing pauses
+  (`findSchedule`, `FIND_DEBOUNCE_MS`), because people did not discover Enter; Enter runs it at once.
+  Typing again drops the previous answer so a name filters the shelves meanwhile, and "No platform
+  is called that" waits while a find is scheduled (`findSoon`). The answer renders `FindAnswer.vue` between the box and
   the tabs: one list, a row per job (platform, providers, lowest price, a fit bar), strong fits
   first and weaker ones after them in a lighter tone, with no bucket labels; **Copy** appears on
   hover, the row opens the platform. `closest` adds one line saying nothing fits closely; `none` is
-  a single sentence with Request a tool pre-filled. The shelves stay: platforms the answer landed on
+  a single sentence with Request a tool pre-filled. `name` (Enter on a bare platform or provider
+  name) lists what that name offers in the server's order, with no fit bars. The shelves stay: platforms the answer landed on
   sort first with a match count, the rest dim. Clearing the box (× or Esc) returns to browsing. A
   name that matches no platform says so and points at Enter, instead of the old "no catalogued
   platforms on this server" message; tab counts follow the name filter. The page title's catalog
@@ -1030,10 +1041,17 @@ fit is its best provider's. The page never re-ranks providers.
   (`LandingNavigation.vue`; "Open dashboard" for a member), the landing tokens, and the landing
   hero's glyph field (`/media/landing/hero-particles.js`, mounted through `window.tregMountField`
   and ticked by this page). One viewport tall, never scrolls; a long answer scrolls inside its
-  panel. Every platform is a tile in a Matter.js pile (`state/pile.ts`) on the floor of the page:
-  tiles can be picked up and thrown, the recall's platforms hop while the judge reads, the fitting
-  ones leave the physics world and fly to their answer cards, and the next search drops them back
-  in; × or Esc clears the answer the same way. An empty box submits its placeholder. Reduced motion
+  panel. Every platform and every vendor is a tile in a Matter.js pile (`state/pile.ts`) on the
+  floor of the page, keyed `p:`/`v:` since a slug can be both; the vendors come from
+  `/catalog/platforms`' `providers`. A platform tile opens its platform, a vendor tile its busiest
+  platform. Tiles can be picked up and thrown, the recall's platforms and vendors hop while the
+  judge reads, the fitting ones leave the physics world and fly to their answer cards, and the next
+  search drops them back in; × or Esc clears the answer the same way. A described job is answered
+  **by vendor** (so is a vendor's name, `named: provider`): one card per provider, the vendor's tile landing in the logo place and, on the
+  first card naming it, the platform's tile beside the platform name (later cards show a still
+  copy), with the vendor's jobs and prices. A bare name (`name`, titled "Tools for …") is answered
+  by platform: each platform's tile lands in its card's logo place, the cards list jobs with
+  provider counts, and the vendors on those platforms stay lit in the pile. An empty box submits its placeholder. Reduced motion
   settles the pile unseen and skips the flights. `?q=` runs a search on load and is what **Share**
   copies. Any result (a card, a job line, a tile) opens that platform in the dashboard: directly
   for a member; otherwise sign-in first, the destination kept in localStorage for ten minutes and
@@ -1041,6 +1059,16 @@ fit is its best provider's. The page never re-ranks providers.
   visitor on that platform rather than on Getting started. The server serves the new frontend here
   to every visitor while the rollout is enabled (there is no legacy view of this page) and 404s
   when the rollout switch forces legacy.
+
+**Analytics for finds** (PostHog through `track`, anonymous until sign-in, when the visitor's
+earlier events join the identified person): `search_opened` (`ref`: the landing's Tools link sends
+`?ref=landing-nav` or `landing-footer`, else the referring host), `catalog_find` (a find ran:
+`surface` search or catalog, `words`, `auto`), `search_answered` (`verdict`, `results`,
+`providers`, `top_fit`), `search_result_clicked` (`from` card, job or tile; `platform`,
+`provider`, `rank`, `signed_in`) and `search_copied` (`scope` all, job or share). The landing's
+Tools links also send `nav_clicked`. A cohort of people who performed `catalog_find`, followed
+through `signup_completed`, `tool_called` and `topup_completed`, is the search-to-conversion
+funnel.
 
 ## Code surfaces (every page)
 Snippet blocks (`.lc-codewrap` on Getting started, the in-app CLI tutorial's `.term` panes, the
@@ -1204,9 +1232,10 @@ them.
 
 ## The Referrals view
 
-`ReferralsPage.vue` renders the referrals view. The maintained Dashboard exposes a fixed
-`Refer a friend` link at the bottom left, leaving the bottom right for the support messenger.
-`dashboard.css` keeps this placement on desktop and mobile.
+`ReferralsPage.vue` renders the referrals view. The maintained Dashboard's entry is a pill in the
+top bar that names the offer ("Give $5, get $5") from `/meta.referral`, falling back to
+`Refer a friend` when either amount is zero or `/meta` has not loaded. Narrow screens show only
+its gift icon.
 
 **`'referrals'` must appear in BOTH view whitelists** — `viewFromHash()` and the `popstate` handler.
 `go('referrals')` works on click regardless of them; those two lists are what make the view survive

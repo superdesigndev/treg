@@ -1,4 +1,4 @@
-import { groupBest } from './find.js'
+import { jobGroups } from './find.js'
 
 export default {
   findActive(){ return this.find.phase!=='idle'; },
@@ -8,8 +8,7 @@ export default {
   // are its lines, and the card's fit is its best provider's. Inside a card the providers keep the
   // server's order (best fit first), so the page never re-ranks them.
   findGroups(){
-    return groupBest(this.find.rows, this.find.verdict, r=>(r.capability||r.id)+'|'+r.platform,
-      (r, key)=>({key, label:r.capability_description||r.name, platform:r.platform, platform_label:r.platform_label}), 'rows');
+    return jobGroups(this.find.rows);
   },
   findStrong(){ return this.findGroups.filter(g=>g.p!=null && g.p>=this.find.high); },
   // platform slug -> kept rows on it; drives the shelf highlight and the /search pile
@@ -19,4 +18,5 @@ export default {
     return n;
   },
   findCandidatePlatforms(){ return [...new Set(this.find.candidates.map(c=>c.platform).filter(Boolean))]; },
+  findCandidateVendors(){ return [...new Set(this.find.candidates.map(c=>c.provider).filter(Boolean))]; },
 }

@@ -21,6 +21,7 @@ from sqlmodel import select
 
 from .. import analytics, crypto
 from ..domain import arena as rules, money
+from . import asynctasks as async_task_app
 from ..domain.catalog import store as catalog_store
 from ..domain.catalog.routing.paths import country_name
 from ..domain.identity.access import Caller
@@ -28,7 +29,7 @@ from ..domain.identity import api_keys as managed_keys
 from ..infra.db import session_maker
 from ..models import ApiKey, ArenaEvaluation, ArenaRun, LedgerEntry, Membership, Org, User
 from ..timeutil import utcnow_naive as now
-from .call import route, service
+from .call import async_bridge, route, service
 from .call.resolve import _marketplace_pricing
 from .call.types import CallInput, CallerSnapshot, CallFailure
 
@@ -68,7 +69,7 @@ def public_tasks() -> list[dict]:
             for ep, adapter, accepted in candidates:
                 if not rules.supports_discovery(t.capability, {k: probe[k] for k in variant}, accepted) or route.ignored_filters(adapter, contract, identity):
                     continue
-                if ep["id"] in rules.EXCLUDED or ep.get("async") or ".bulk" in ep["id"]:
+                if ep["id"] in rules.EXCLUDED or ".bulk" in ep["id"]:
                     continue
                 provider = ep["provider"]
                 cv = cat.cost_view(ep.get("cost"), provider)
@@ -367,7 +368,7 @@ async def _plan_entry(cat, caller, capability, identity, providers):
             continue
         if requested is not None and p not in requested:
             continue
-        if ep["id"] in rules.EXCLUDED or ep.get("async") or ".bulk" in ep["id"] or p in seen:
+        if ep["id"] in rules.EXCLUDED or ".bulk" in ep["id"] or p in seen:
             continue
         query, body = c.adapter.to_upstream(plan.identity, c.variant)
         cv = cat.cost_view(ep.get("cost"), p)
@@ -620,7 +621,8 @@ async def _run(run_id, mode, capability, payload, caller, client, client_ip, onl
         await persist()
         response = None
         try:
-            async with asyncio.timeout(90):
+            timeout_s = max(1, _run_seconds(payload) - (time.monotonic() - started)) if ep.get("async") else 90
+            async with asyncio.timeout(timeout_s + 1):
                 response = await service.execute_call(context, client)
                 buf = bytearray()
                 oversized = False
@@ -635,21 +637,88 @@ async def _run(run_id, mode, capability, payload, caller, client, client_ip, onl
                     doc = json.loads(buf) if not oversized else None
                 except (ValueError, UnicodeDecodeError):
                     doc = None
+                async_outcome = ""
+                if ep.get("async") and 200 <= response.status < 300 and not oversized:
+                    descriptor = ep["async"]
+                    reserved = int(route._header(response, "X-Treg-Cost-Micro") or 0)
+                    kickoff = bytes(buf)
+                    poll_rule = descriptor.get("poll") or {}
+                    poll_ep = cat.by_id.get(poll_rule.get("endpoint"))
+
+                    async def poll_task(task_id: str, poll_number: int):
+                        if poll_ep is None:
+                            raise RuntimeError(f"async poll endpoint {poll_rule.get('endpoint')!r} is not catalogued")
+                        name = str((poll_rule.get("param") or {}).get("name") or "id")
+                        poll_headers = ((b"x-treg-client", b"enrich-arena"),
+                                        (b"cache-control", b"no-cache"))
+                        poll_context = service.create_call_context(CallInput(
+                            method=poll_ep["method"], raw_rest=poll_ep["id"], raw_headers=poll_headers,
+                            query_items=((name, task_id),), raw_query=urlencode({name: task_id}),
+                            body=route._Bytes(b""), caller=current, client_ip=client_ip))
+                        poll_response = await service.execute_call(poll_context, client)
+                        return poll_response, await route._read(poll_response)
+
+                    await response.close()
+                    response = None
+                    elapsed = time.monotonic() - began
+                    # Finish just before the run's hard deadline so the durable attempt can be
+                    # saved as pending instead of being cancelled while the worker keeps settling.
+                    wait_margin = min(2.0, timeout_s)
+                    waited = await async_bridge.await_terminal(
+                        descriptor, kickoff, poll_task,
+                        timeout_s=max(0, timeout_s - elapsed - wait_margin))
+                    # A task id means the provider accepted work that may still complete and
+                    # charge.  No non-terminal bridge outcome may advance a waterfall entry.
+                    if waited.outcome == "pending" or (
+                            waited.outcome == "error" and waited.task_id):
+                        a.update(
+                            state="pending", output={}, raw=doc, status=202,
+                            reserved_micro=reserved, charged_micro=None,
+                            task_id=waited.task_id,
+                            async_descriptor={"poll": descriptor.get("poll") or {},
+                                              "status": descriptor.get("status") or {}},
+                            detail="Service is still processing; later waterfall services were not called.")
+                        return
+                    if waited.outcome == "error":
+                        a.update(state="error", output={}, raw=doc,
+                                 status=waited.response.status if waited.response else None,
+                                 reserved_micro=reserved, charged_micro=None,
+                                 task_id=waited.task_id, async_uncertain=True,
+                                 detail=waited.detail or "Async polling failed.")
+                        return
+                    response = waited.response
+                    buf = bytearray(waited.raw)
+                    doc = waited.document
+                    async_outcome = waited.outcome
+                    views = await async_task_app.views_for(current.org_id, [context.call_ref])
+                    task_view = views.get(context.call_ref) or {}
+                    a["reserved_micro"] = task_view.get("reserved_micro", reserved)
+                    a["charged_micro"] = task_view.get("settled_micro")
+                    if a["charged_micro"] is None:
+                        a["charged_micro"] = 0 if a["tier"] != "platform" else reserved
                 if a.get("routed"):
                     meta = doc.get("_treg", {}) if isinstance(doc, dict) else {}
-                    outcome = "hit" if response.status < 400 and meta.get("outcome") == "hit" else "miss" if meta.get("outcome") == "miss" else "error"
+                    outcome = ("pending" if meta.get("outcome") == "pending" else
+                               "hit" if response.status < 400 and meta.get("outcome") == "hit" else
+                               "miss" if meta.get("outcome") == "miss" else "error")
                     output = doc.get("output", {}) if outcome == "hit" else {}
                     a["tried"] = meta.get("tried", [])
+                    if outcome == "pending":
+                        a.update(reserved_micro=meta.get("reserved_micro"), charged_micro=None,
+                                 task_id=(meta.get("async") or {}).get("task_id"))
                     if meta.get("provider"):
                         a["provider"] = meta["provider"]
                     if meta.get("served_by"):
                         a["served_by"] = meta["served_by"]
                 else:
                     outcome, output = rules.classify(cat.contracts[verification_task] if verification_task else contract, ad, ep, response.status, doc)
+                    if ep.get("async") and async_outcome == "failure":
+                        outcome, output = "miss", {}
                 raw_omitted = is_batch and len(json.dumps(doc, ensure_ascii=True)) > raw_limit
                 a.update(state=outcome, output=output,
                          raw=None if raw_omitted else doc, raw_omitted=doc is not None and raw_omitted,
-                         detail=("Response exceeded the Arena size limit." if oversized else
+                         detail=("Service is still processing; later waterfall services were not called." if outcome == "pending" else
+                                 "Response exceeded the Arena size limit." if oversized else
                                  "No matching result." if outcome == "miss" else
                                  f"Service returned HTTP {response.status}." if outcome == "error" else "Task data found."),
                          status=response.status)
@@ -741,6 +810,12 @@ async def _run(run_id, mode, capability, payload, caller, client, client_ip, onl
                 spent += v.get("charged_micro") if v.get("charged_micro") is not None else v.get("estimate_micro", 0)
                 if a["state"] == "hit":
                     stopped[entry] = "Stopped at the first result containing the task's required data."
+                    continue
+                if a["state"] == "pending":
+                    stopped[entry] = "Stopped while this asynchronous service is still processing."
+                    continue
+                if a.get("async_uncertain"):
+                    stopped[entry] = "Stopped because the asynchronous service may still be processing."
                     continue
                 if a.get("failure_kind") in route._GLOBAL_REFUSALS:
                     payload["stop_reason"] = "Stopped by the team's balance or usage policy."

@@ -1,0 +1,10 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Voice generation">
+  <!-- Not a brand: generated speech, drawn as the waveform every audio tool shows. -->
+  <g fill="#7B5CD6">
+    <rect x="2" y="10" width="2.4" height="4" rx="1.2" opacity=".55"/>
+    <rect x="6" y="7" width="2.4" height="10" rx="1.2"/>
+    <rect x="10" y="3" width="2.4" height="18" rx="1.2"/>
+    <rect x="14" y="6" width="2.4" height="12" rx="1.2"/>
+    <rect x="18" y="9" width="2.4" height="6" rx="1.2" opacity=".55"/>
+  </g>
+</svg>

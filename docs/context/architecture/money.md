@@ -14,6 +14,8 @@ sources:
   - src/treg/application/call/intake.py
   - src/treg/application/call/resolve.py
   - src/treg/application/call/service.py
+  - src/treg/application/call/async_bridge.py
+  - src/treg/application/call/route.py
   - src/treg/application/call/reserve.py
   - src/treg/application/call/settle.py
   - src/treg/catalog/tomba.yaml
@@ -249,6 +251,14 @@ response unchanged and cron retries. Only the winning finalizer archives termina
 An async status declared as `billed_failure` is still presented as failure by the CLI, but the
 worker settles its usage evidence and records the terminal outcome; this covers cancellation after
 billable work without manufacturing a successful result.
+
+Routed tools and Enrich Arena may wait for an async child through the shared async bridge. Every
+poll still uses the ordinary call path, so BYOK remains unmetered and platform polls enforce task
+ownership. Foreground polling and the worker may observe the same terminal response, but the task
+row lock lets only one close the original hold. A foreground timeout or inconclusive poll response
+returns a pending result with the reservation still open; the worker later settles or releases it.
+Terminal UI and routed results read the task's settled amount, while pending results expose only the
+maximum reservation.
 
 The worker selects due candidates, acquires provider/global concurrency slots, then atomically
 claims each still-due row. `attempts` fences stale workers from changing a newer claim's state.
@@ -508,7 +518,7 @@ Provider-specific calculation stays outside the faithful relay.
 
 | Evidence | Settlement behavior |
 |---|---|
-| Generic catalog-reported charge | A paid synchronous cost may name `reported_charge.path` with unit `usd`. A finite nonnegative response value, including zero, settles exactly; invalid or absent evidence falls through to the normal estimate/miss behavior |
+| Generic catalog-reported charge | A paid synchronous cost may name `reported_charge.path` with unit `usd` or provider `credit`. A finite nonnegative response value, including zero, settles exactly; credit conversion is frozen from `fx.yaml` when the call resolves, while invalid or absent evidence falls through to the normal estimate/miss behavior |
 | Tavily Search | Reserve one credit for Basic, Fast and Ultra-fast or two for Advanced and an auto-selected depth; an explicit Basic depth overrides automatic selection. Platform Search requires caller-supplied `include_usage: true` and settles finite nonnegative per-request `usage.credits`. Empty results remain a paid routing miss. Missing or malformed usage keeps the frozen reserve. BYOK is unmetered and need not request usage. The endpoint-specific rate table must be complete, positive and finite; catalog validation rejects bad declarations and runtime refuses the call before reserve or relay instead of pricing it at zero |
 | Tavily Extract | Reserve the requested URL count (bounded by the documented 20-URL maximum) at 0.2 credit per Basic or 0.4 per Advanced extraction. Settle that fractional allocation for each valid entry in `results`; `failed_results` and grouped `usage.credits` do not charge the caller. A documented empty results list is free; malformed evidence keeps the frozen reserve |
 | Tavily Map | Platform calls require an explicit integer `limit` from 1 to 20. Reserve that many pages at 0.1 credit each, or 0.2 when the caller supplied nonempty `instructions`; settle valid URL strings in `results` at the frozen per-page unit. Empty results are free, malformed evidence keeps the reserve, and grouped `usage.credits` is ignored |

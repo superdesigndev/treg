@@ -157,6 +157,84 @@ def test_tavily_routes_synchronous_web_tools_and_keeps_crawl_direct():
     assert cat.platform_eligible(cat.by_id["tavily.web.crawl"])
 
 
+def test_serper_routes_search_and_single_page_extract_only():
+    cat = catalog_store.load()
+    routed = {
+        "serper.web.search": "treg.web.search",
+        "serper.web.extract": "treg.web.extract",
+    }
+    for child, parent in routed.items():
+        assert cat.adapters[child].verified
+        assert child in cat.by_id[parent]["routed_children"]
+        assert cat.platform_eligible(cat.by_id[child])
+    direct = set(ep["id"] for ep in cat.for_provider("serper")) - set(routed)
+    assert not direct & set(cat.adapters)
+
+
+def test_fetchin_linkedin_adapters_are_verified_and_routed():
+    cat = catalog_store.load()
+    routed = {
+        "fetchinio.linkedin.user.profile": "treg.linkedin.user.profile",
+        "fetchinio.linkedin.company.profile": "treg.linkedin.company.profile",
+        "fetchinio.linkedin.user.posts": "treg.linkedin.user.posts",
+        "fetchinio.linkedin.post.comments": "treg.linkedin.post.comments",
+        "fetchinio.linkedin.post.reactions": "treg.linkedin.post.reactions",
+    }
+    for child, parent in routed.items():
+        assert cat.adapters[child].verified
+        assert not cat.adapters[child].verify_note
+        assert child in cat.by_id[parent]["routed_children"]
+
+    # The new posts route is genuinely comparative, not a synthetic one-provider wrapper.
+    assert {
+        "aviato.linkedin.user.posts",
+        "fetchinio.linkedin.user.posts",
+        "harvestapi.linkedin.user.posts",
+    } <= set(cat.by_id["treg.linkedin.user.posts"]["routed_children"])
+
+    # Fetchin has no provider-neutral contracts for these provider-native operations.
+    assert "fetchinio.linkedin.user.reactions" not in cat.adapters
+    assert "fetchinio.linkedin.post.engagement" not in cat.adapters
+
+    profile = cat.adapters["fetchinio.linkedin.user.profile"]
+    assert profile.is_miss({"id": "profile-id", "firstName": None, "lastName": None})
+    assert not profile.is_miss({"id": "profile-id", "firstName": "Ada", "lastName": None})
+
+
+async def test_fetchin_member_posts_route_uses_adapter_and_settles(
+    clients: AsyncClient, platform_on, monkeypatch,
+):
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FETCHINIO", "PLATFORM-FETCHINIO")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "fetchinio")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "fetchin.io": [(200, {
+            "posts": [{"id": "urn:li:activity:1", "text": "hello"}],
+            "paginationToken": "next-page",
+            "hasMore": True,
+        })],
+    }, seen))
+
+    before = await _balance(clients)
+    response = await clients.post(
+        "/call/treg.linkedin.user.posts",
+        json={"linkedin_handle": "satyanadella", "limit": 1},
+        headers={"X-Treg-Route-Prefer": "fetchinio"},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["_treg"]["served_by"] == "fetchinio.linkedin.user.posts"
+    assert data["output"]["posts"] == [{"id": "urn:li:activity:1", "text": "hello"}]
+    assert data["output"]["next_cursor"] == "next-page"
+    assert data["output"]["has_more"] is True
+    assert seen == [("fetchin.io", "GET", {
+        "profileUrlOrUrn": "https://www.linkedin.com/in/satyanadella", "count": "1",
+    }, None)]
+    assert before - await _balance(clients) == 1_500
+    get_settings.cache_clear()
+
+
 async def test_tavily_routed_empty_search_is_a_paid_miss_then_falls_through(
     clients, monkeypatch,
 ):
@@ -1394,7 +1472,7 @@ async def test_lusha_is_the_last_rung_of_the_phone_waterfall_and_settles_on_its_
     get_settings.cache_clear()
     routed = "treg.people.phone.find"
     plan = (await clients.get(f"/catalog/endpoints/{routed}")).json()["routing"]["plan"]
-    assert plan[-1]["endpoint_id"] == "lusha.people.phone.find" and len(plan) == 12, [c["endpoint_id"] for c in plan]
+    assert plan[-1]["endpoint_id"] == "lusha.people.phone.find" and len(plan) == 13, [c["endpoint_id"] for c in plan]
     def misses():
         return {"aviato": [(404, {"message": "Not Found"})], "tomba": [(200, {"data": {"e164_format": None}})],
                 "leadmagic": [(200, {"mobile_number": None, "credits_consumed": 0})],
@@ -2487,3 +2565,30 @@ def test_linkedin_url_lowercases_the_host_so_the_handle_derives():
     from treg.domain.catalog.routing import paths as P
     assert P.linkedin_url("LinkedIn.com/in/Patrick") == "https://linkedin.com/in/Patrick"
     assert P.linkedin_handle(P.linkedin_url("WWW.LinkedIn.com/in/Patrick")) == "Patrick"
+
+
+async def test_company_blind_search_provider_is_dropped_not_billed(clients: AsyncClient, platform_on, monkeypatch):
+    """`people.search` declares `scoping: [company_domain]`. A title-only provider asked for
+    `{company_domain, title}` answers with the same strangers for every company and bills them as
+    a hit, so it leaves the plan instead of ranking last — and still serves a title-only search."""
+    for p in ("LUSHA", "COMPANYENRICH"):
+        monkeypatch.setenv(f"TREG_PLATFORM_KEY_{p}", f"PLATFORM-{p}-KEY")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "lusha,companyenrich")
+    get_settings.cache_clear()
+    cat = catalog_store.load()
+    for eid in cat.by_id["treg.people.search"]["routed_children"]:
+        if eid not in ("lusha.people.search", "companyenrich.people.search"):
+            monkeypatch.delitem(cat.adapters, eid, raising=False)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({
+        "lusha": [(200, {"results": [{"name": "Some CEO"}], "pagination": {"total": 1}})],
+        "companyenrich": [(200, {"items": [], "totalItems": 0})]}, seen))
+    r = await clients.post("/call/treg.people.search", json={"company_domain": "example.com", "title": "CEO"})
+    assert [s[0] for s in seen] == ["companyenrich"], seen
+    assert r.status_code == 200 and r.json()["_treg"]["outcome"] == "miss", r.text
+    assert any(d["endpoint_id"] == "lusha.people.search" and "company_domain" in d["why"]
+               for d in r.json()["_treg"]["dropped"]), r.json()["_treg"]
+    seen.clear()
+    r = await clients.post("/call/treg.people.search", json={"title": "CEO"})
+    assert [s[0] for s in seen] == ["lusha"] and r.json()["_treg"]["served_by"] == "lusha.people.search", r.text
+    get_settings.cache_clear()

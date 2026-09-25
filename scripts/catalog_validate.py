@@ -702,8 +702,11 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
         if (not isinstance(reported, dict) or set(reported) != {"path", "unit"}
                 or not isinstance(reported.get("path"), str)
                 or not JSON_PATH.fullmatch(reported["path"])
-                or reported.get("unit") != "usd"):
-            fail(errors, where, "cost.reported_charge requires a JSON path and unit: usd")
+                or reported.get("unit") not in {"usd", "credit"}):
+            fail(errors, where, "cost.reported_charge requires a JSON path and unit: usd or credit")
+        if reported.get("unit") == "credit" and not _finite_number(_credit_rate(provider)):
+            fail(errors, where, "cost.reported_charge unit credit needs a numeric "
+                                "fx.yaml credit_rates_usd entry")
         if "settle" in cost or cost.get("type") == "free":
             fail(errors, where, "cost.reported_charge requires a paid price without cost.settle")
     if "display" in cost:
@@ -1110,10 +1113,15 @@ def main(argv: list[str]) -> int:
             if effective_async is not None:
                 check_async_descriptor(effective_async, where, str(service), endpoint_index,
                                        cost, errors)
+                terminal_ex = ep.get("terminal_example_response")
+                if terminal_ex is not None and not (CATALOG / str(terminal_ex)).is_file():
+                    fail(errors, where, f"terminal_example_response '{terminal_ex}' does not exist")
             elif isinstance(cost, dict) and cost.get("settle") == "usage":
                 # Usage evidence is read from the TERMINAL response by the worker; a synchronous
                 # response path has no consumer for it and would silently settle the reserve.
                 fail(errors, where, "cost.settle 'usage' requires an async descriptor")
+            elif ep.get("terminal_example_response") is not None:
+                fail(errors, where, "terminal_example_response requires an async descriptor")
             if ep.get("resource_ownership") is not None:
                 check_resource_ownership(ep["resource_ownership"], where, inp, errors)
             if ep.get("managed_resource") is not None:

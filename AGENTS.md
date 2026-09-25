@@ -105,7 +105,8 @@ agents then built against a constitution that was wrong.
 - **Table ownership.** One writer module per table; cross-domain reads are fine. Three recorded
   exceptions: only money writes `org.balance_micro`, the daily-spend counter (`spent_today_*`) and
   the auto-top-up fields; the call runtime may persist an OAuth token refresh into `secret`; audit
-  writes `callrecord`, domains only read it.
+  writes `callrecord`, domains only read it (`application/evidence_retention.py` also updates it,
+  blanking the two evidence columns past retention).
 - **Feedback handling.** This repo owns `FeedbackHandling` and `FeedbackHandlingEvent` models and
   migrations; the private admin service is their only runtime writer. Original reports remain
   owned by the feedback domain. See `docs/context/architecture/feedback.md`.

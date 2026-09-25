@@ -37,6 +37,10 @@ class Contract:
     # `treg.<capability>` row is ever generated from it, however many children verify. Used where
     # the "children" are one provider's price tiers, which are not a choice treg should make.
     routed: bool = True
+    # Identity keys that SCOPE the answer rather than describe it: an adapter with no place for one
+    # the caller sent answers about someone else entirely (a title-only search asked for the CEO of
+    # one company returns CEOs of any company), so the router drops it instead of ranking it down.
+    scoping: tuple[str, ...] = ()
 
     @property
     def required_output(self) -> tuple[str, ...]:
@@ -119,6 +123,11 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
         for v in c.get("identity") or []:
             if isinstance(v, dict):
                 types.update({k: str(t) for k, t in v.items()})
+        scoping = c.get("scoping") or []
+        if not isinstance(scoping, list) or any(k not in types for k in scoping):
+            # A typo'd key would silently scope nothing; failing the routing load instead makes
+            # every `treg.*` capability disappear, which test_routing notices at once.
+            raise ValueError(f"contract {cap}: scoping must list identity keys of the contract, got {scoping!r}")
         out[cap] = Contract(
             capability=cap, summary=str(c.get("summary") or ""), identity=_variants(c.get("identity")),
             identity_types=types, derive=dict(c.get("derive") or {}),
@@ -127,7 +136,8 @@ def parse_contracts(doc: dict) -> dict[str, Contract]:
             miss=str(c.get("miss") or ""), idempotent=bool(c.get("idempotent", True)),
             default_max_cost_usd=(float(c["default_max_cost_usd"]) if c.get("default_max_cost_usd") is not None else None),
             advice_unverified=str(c.get("advice_unverified") or ""),
-            routed=bool(c.get("routed", True)))
+            routed=bool(c.get("routed", True)),
+            scoping=tuple(str(k) for k in scoping))
     return out
 
 

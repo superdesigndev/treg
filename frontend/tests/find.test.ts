@@ -23,8 +23,8 @@ test('rows group by capability, best fit first, providers kept in server order',
   expect(strong).toHaveLength(2)
 })
 
-test('keyword fallback rows keep their order and carry no fit', () => {
-  const vm = { find: { verdict: 'keyword', rows: [row('z', 'b', null), row('y', 'a', null)] } }
+test.each(['keyword', 'name'])('unjudged %s rows keep their order and carry no fit', verdict => {
+  const vm = { find: { verdict, rows: [row('z', 'b', null), row('y', 'a', null)] } }
   const groups = findComputed.findGroups.call(vm)
   expect(groups.map(g => g.label)).toEqual(['b job', 'a job'])
   expect(findComputed.findStrong.call({ findGroups: groups, find: { high: 0.7 } })).toEqual([])

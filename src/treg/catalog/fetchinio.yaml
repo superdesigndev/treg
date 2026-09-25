@@ -1,0 +1,185 @@
+provider: fetchinio
+source:
+  docs: https://docs.fetchin.io/
+  openapi: https://docs.fetchin.io/api-reference/openapi.json
+  curated: '2026-09-24'
+limits: >-
+  The account reports 5 requests/second. Get Post Engagement consumes two rate-limit units;
+  treg conservatively paces the shared key at 2 calls/second because smoothing is provider-wide.
+  BYOK calls use the customer's account limit.
+pricing_url: https://fetchin.io/pricing/credits
+proposed_capabilities:
+  linkedin.post.engagement: List a post's comments and reactions together
+
+# Fetchin bills one credit for a successful page and also for a 404; every other failure is free.
+# treg reserves the documented call price but releases rejected responses without provider-reported
+# charge evidence, so the shared tier absorbs a billed 404 rather than charging a caller on inference.
+# `strict_query` bounds the curated shared-key surface. A team's raw Fetchin tool remains faithful.
+endpoints:
+  - id: fetchinio.linkedin.user.profile
+    capability: linkedin.user.profile
+    platform: linkedin
+    domain: contacts
+    scope: any_account
+    method: GET
+    path: /api/v1/profile
+    name: LinkedIn profile by URL, slug or URN
+    summary: Get detailed information about a professional profile.
+    strict_query: true
+    input:
+      queryParams:
+        profileUrlOrUrn: {type: string, required: true, example: williamhgates, note: "Profile URL, public identifier or profile URN."}
+      note: "This curated tool returns the standard one-credit profile. fullProfile=true is available through a team's raw BYOK tool but is not served on treg's shared key because its actual charge can be one or two credits without per-call charge evidence."
+    test_request: {queryParams: {profileUrlOrUrn: williamhgates}}
+    cost: &one_credit
+      type: per_call
+      value: 0.0015
+      currency: USD
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://fetchin.io/pricing/credits
+      checked: '2026-09-24'
+      confidence: verified
+      note: "One credit per successful call. Fetchin also bills one credit for a 404; without provider-reported charge evidence treg releases rejected responses and absorbs that upstream cost."
+    verified: '2026-09-24'
+    example_response: examples/fetchinio.linkedin.user.profile.json
+    miss: {status: 404, means: "The professional profile was not found; Fetchin bills one credit for this result."}
+    docs_url: https://docs.fetchin.io/api-reference/endpoint/get-profile
+
+  - id: fetchinio.linkedin.company.profile
+    capability: linkedin.company.profile
+    platform: linkedin
+    domain: companies
+    scope: any_account
+    method: GET
+    path: /api/v1/company
+    name: LinkedIn company by URL, slug or URN
+    summary: Get detailed information about a company or organization.
+    strict_query: true
+    input:
+      queryParams:
+        companyUrlOrUrn: {type: string, required: true, example: microsoft, note: "Company URL, public identifier or company URN."}
+    test_request: {queryParams: {companyUrlOrUrn: microsoft}}
+    cost: *one_credit
+    verified: '2026-09-24'
+    example_response: examples/fetchinio.linkedin.company.profile.json
+    miss: {status: 404, means: "The company was not found; Fetchin bills one credit for this result."}
+    docs_url: https://docs.fetchin.io/api-reference/endpoint/get-company
+
+  - id: fetchinio.linkedin.user.posts
+    capability: linkedin.user.posts
+    platform: linkedin
+    domain: content
+    scope: any_account
+    method: GET
+    path: /api/v1/posts
+    name: LinkedIn posts by member URL, slug or URN
+    summary: Fetch posts from a professional profile with engagement metrics.
+    strict_query: true
+    input: &profile_page_input
+      queryParams:
+        profileUrlOrUrn: {type: string, required: true, example: satyanadella, note: "Profile URL, public identifier or profile URN."}
+        count: {type: integer, required: false, default: 10, min: 1, max: 50}
+        paginationToken: {type: string, required: false, note: "Pass the token from the previous response unchanged."}
+      note: "Cursor-paginated. Keep paging while hasMore is true. The deprecated start offset is intentionally excluded because this endpoint rejects non-zero offsets."
+    test_request: {queryParams: {profileUrlOrUrn: satyanadella, count: 1}}
+    cost: *one_credit
+    verified: '2026-09-24'
+    example_response: examples/fetchinio.linkedin.user.posts.json
+    miss: {status: 404, means: "The professional profile was not found; Fetchin bills one credit for this result."}
+    docs_url: https://docs.fetchin.io/api-reference/endpoint/get-posts
+
+  - id: fetchinio.linkedin.user.reactions
+    capability: linkedin.user.reactions
+    platform: linkedin
+    domain: content
+    scope: any_account
+    method: GET
+    path: /api/v1/profile/reactions
+    name: LinkedIn posts reacted to by a member
+    summary: Fetch posts that a professional profile has reacted to.
+    strict_query: true
+    input: *profile_page_input
+    test_request: {queryParams: {profileUrlOrUrn: williamhgates, count: 1}}
+    cost: *one_credit
+    verified: '2026-09-24'
+    example_response: examples/fetchinio.linkedin.user.reactions.json
+    miss: {status: 404, means: "The professional profile was not found; Fetchin bills one credit for this result."}
+    docs_url: https://docs.fetchin.io/api-reference/endpoint/get-profile-reactions
+
+  - id: fetchinio.linkedin.post.comments
+    capability: linkedin.post.comments
+    platform: linkedin
+    domain: content
+    scope: any_account
+    method: GET
+    path: /api/v1/post/comments
+    name: LinkedIn post comments by URL or URN
+    summary: Fetch comments from a professional post with author information and replies.
+    strict_query: true
+    input:
+      queryParams:
+        postUrlOrUrn: {type: string, required: true, example: "urn:li:activity:7508596155145043968", note: "Post URL, activity URN or share URN."}
+        count: {type: integer, required: false, default: 100, min: 1, max: 100}
+        start: {type: integer, required: false, default: 0, min: 0}
+        paginationToken: {type: string, required: false, note: "Pass the token from the previous response unchanged when present."}
+      note: "Advance start by the number of comments returned and preserve paginationToken when the response supplies one. Keep paging while hasMore is true."
+    test_request: {queryParams: {postUrlOrUrn: "urn:li:activity:7508596155145043968", count: 1}}
+    cost: *one_credit
+    verified: '2026-09-24'
+    example_response: examples/fetchinio.linkedin.post.comments.json
+    miss: {status: 404, means: "The post was not found; Fetchin bills one credit for this result."}
+    docs_url: https://docs.fetchin.io/api-reference/endpoint/get-post-comments
+
+  - id: fetchinio.linkedin.post.reactions
+    capability: linkedin.post.reactions
+    platform: linkedin
+    domain: content
+    scope: any_account
+    method: GET
+    path: /api/v1/post/reactions
+    name: LinkedIn post reactions by URL or URN
+    summary: Fetch reactions on a professional post with reactor profile information.
+    strict_query: true
+    input:
+      queryParams:
+        postUrlOrUrn: {type: string, required: true, example: "urn:li:activity:7508596155145043968", note: "Post URL, activity URN or share URN."}
+        count: {type: integer, required: false, default: 100, min: 1, max: 100}
+        start: {type: integer, required: false, default: 0, min: 0}
+      note: "Offset-paginated. Advance start by the number of reactions returned while hasMore is true."
+    test_request: {queryParams: {postUrlOrUrn: "urn:li:activity:7508596155145043968", count: 1}}
+    cost: *one_credit
+    verified: '2026-09-24'
+    example_response: examples/fetchinio.linkedin.post.reactions.json
+    miss: {status: 404, means: "The post was not found; Fetchin bills one credit for this result."}
+    docs_url: https://docs.fetchin.io/api-reference/endpoint/get-post-reactions
+
+  - id: fetchinio.linkedin.post.engagement
+    capability: linkedin.post.engagement
+    platform: linkedin
+    domain: content
+    scope: any_account
+    method: GET
+    path: /api/v1/post/engagement
+    name: LinkedIn post comments and reactions together
+    summary: Fetch a post's comments and reactions in a single call.
+    strict_query: true
+    input:
+      queryParams:
+        postUrlOrUrn: {type: string, required: true, example: "urn:li:activity:7508596155145043968", note: "Post URL, activity URN or share URN."}
+        commentCount: {type: integer, required: false, default: 100, min: 1, max: 100}
+        commentStart: {type: integer, required: false, default: 0, min: 0}
+        commentPaginationToken: {type: string, required: false}
+        reactionCount: {type: integer, required: false, default: 100, min: 1, max: 100}
+        reactionStart: {type: integer, required: false, default: 0, min: 0}
+      note: "Returns both datasets atomically. The call consumes two credits and two rate-limit units."
+    test_request: {queryParams: {postUrlOrUrn: "urn:li:activity:7508596155145043968", commentCount: 1, reactionCount: 1}}
+    cost:
+      <<: *one_credit
+      value: 0.003
+      note: "Two credits per successful call. Fetchin bills one credit, not two, for a 404; without provider-reported charge evidence treg releases rejected responses and absorbs that upstream cost."
+    verified: '2026-09-24'
+    example_response: examples/fetchinio.linkedin.post.engagement.json
+    miss: {status: 404, means: "The post was not found; Fetchin bills one credit for this result."}
+    docs_url: https://docs.fetchin.io/api-reference/endpoint/get-post-engagement

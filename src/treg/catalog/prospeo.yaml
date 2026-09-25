@@ -196,6 +196,10 @@ endpoints:
       checked: '2026-09-16'
       confidence: verified
       note: One credit for a non-empty 25-result page; free=true deduplicated pages and no-result responses are free.
+    miss:
+      status: 400
+      when: "error_code == 'NO_RESULTS'"
+      means: "no people matched the search filters — a normal outcome (and free), not an API failure (400 with error_code NO_RESULTS; other 400 bodies are real request errors)"
     docs_url: https://prospeo.io/api-docs/search-person
     verified: '2026-09-16'
     example_response: examples/prospeo.people.search.json
@@ -226,6 +230,10 @@ endpoints:
     cost:
       <<: *search_cost
       source_url: https://prospeo.io/api-docs/search-company
+    miss:
+      status: 400
+      when: "error_code == 'NO_RESULTS'"
+      means: "no companies matched the search filters — a normal outcome (and free), not an API failure (400 with error_code NO_RESULTS; other 400 bodies are real request errors)"
     docs_url: https://prospeo.io/api-docs/search-company
     verified: '2026-09-16'
     example_response: examples/prospeo.companies.search.json

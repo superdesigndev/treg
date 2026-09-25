@@ -236,6 +236,7 @@ test('Fighters follow real attempt states and never label uncalled or failed ser
  const {components}=setup();const component=components.ArenaFighters;const fighter={active:true,selected:[]};
  for(const [name,fn] of Object.entries(component.methods))fighter[name]=fn.bind(fighter);
  assert.equal(fighter.state({state:'running'}),'fighting');assert.equal(fighter.state({state:'queued'}),'waiting');
+ assert.equal(fighter.state({state:'pending'}),'pending');assert.equal(fighter.label({state:'pending'}),'Processing');
  assert.equal(fighter.state({state:'hit'}),'won');assert.equal(fighter.state({state:'miss'}),'defeated');
  for(const state of ['error','timeout'])assert.equal(fighter.state({state}),'error');
  for(const state of ['skipped','not_attempted'])assert.equal(fighter.state({state}),'benched');
@@ -518,7 +519,7 @@ test('The final setup step shares dashboard examples and copies prompts without 
  const inputs=JSON.stringify(app.inputs);app.api=()=>assert.fail('The Try it out step must not call tools or start OAuth');
  app.showSetupExamples();assert.equal(app.setupStep,3);assert.equal(app.setupShowToken,false);
  assert.equal(components.TregTryItOut,runtime.TregAgentSetup.TryItOut);
- const examples=runtime.TregAgentSetup.examples;assert.equal(examples.length,4);
+ const examples=runtime.TregAgentSetup.examples;assert.equal(examples.length,6);
  let copied;runtime.navigator={clipboard:{async writeText(text){copied=text;}}};
  await app.copySetup(examples[0].prompt,examples[0].k);
  assert.equal(copied,examples[0].prompt);assert.equal(app.setupExampleCopied,examples[0].k);assert.equal(app.setupCopied,false);

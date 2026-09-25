@@ -1,0 +1,8 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Video generation">
+  <!-- Not a brand: generated video, drawn as a clapperboard with the AI sparkle (see ai-search.svg).
+       A clapperboard, not a play button: a red box with a triangle reads as YouTube. -->
+  <path fill="#C2477E" d="M2.2 10h15.6v8.4a2.4 2.4 0 0 1-2.4 2.4H4.6a2.4 2.4 0 0 1-2.4-2.4z"/>
+  <path fill="#C2477E" opacity=".55" d="M2.4 8.6l-.5-2.3a1.6 1.6 0 0 1 1.2-1.9l11.6-2.6a1.6 1.6 0 0 1 1.9 1.2l.5 2.3z"/>
+  <path fill="#fff" d="M5.4 7.9l2.2-3.1 2-.4-2.2 3.1zM10.5 6.8l2.2-3.1 2-.4-2.2 3.1z"/>
+  <path fill="#C2477E" opacity=".55" d="M19.8 11.6l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/>
+</svg>

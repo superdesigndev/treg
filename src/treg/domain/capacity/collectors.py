@@ -125,6 +125,24 @@ async def _tavily(c, key):
             "note": "Usage response did not contain a finite key or account limit"}
 
 
+async def _serper(c, key):
+    d = await _get(c, "https://google.serper.dev/account",
+                   headers={"X-API-KEY": key})
+    raw = d.get("balance") if isinstance(d, dict) else None
+    try:
+        balance = Decimal(str(raw)) if not isinstance(raw, bool) and raw is not None else None
+    except (InvalidOperation, ValueError):
+        balance = None
+    if balance is None or not balance.is_finite() or balance < 0:
+        raise ValueError("Serper account returned an invalid balance")
+    rate = d.get("rateLimit")
+    rate_note = (f"account rate limit {rate:g} queries/s"
+                 if isinstance(rate, (int, float)) and not isinstance(rate, bool)
+                 and math.isfinite(float(rate)) and rate >= 0
+                 else "account rate limit unavailable")
+    return {"value": float(balance), "unit": "credits", "note": rate_note}
+
+
 async def _olostep(c, key):
     # Free authenticated account read. `credits` is the authoritative sum of unexpired lots;
     # endpoint responses report their own `credits_consumed`, which settlement handles separately.
@@ -136,6 +154,26 @@ async def _olostep(c, key):
     state = "allowed" if allowed is True else "blocked" if allowed is False else "unknown"
     return {"value": d.get("credits"), "unit": "credits",
             "note": f"plan {plan}; usage {state}"}
+
+
+async def _scrapegraphai(c, key):
+    d = await _get(c, "https://v2-api.scrapegraphai.com/api/credits",
+                   headers={"SGAI-APIKEY": key})
+    raw = d.get("remaining") if isinstance(d, dict) else None
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)) \
+            or not math.isfinite(float(raw)) or raw < 0:
+        raise ValueError("ScrapeGraphAI returned no valid remaining-credit balance")
+    jobs = d.get("jobs") if isinstance(d.get("jobs"), dict) else {}
+    crawl, monitor = jobs.get("crawl") or {}, jobs.get("monitor") or {}
+    return {
+        "value": raw,
+        "unit": "credits",
+        "note": (
+            f"plan {d.get('plan') or 'unknown'}; used {d.get('used', '?')}; "
+            f"crawl jobs {crawl.get('used', '?')}/{crawl.get('limit', '?')}; "
+            f"monitors {monitor.get('used', '?')}/{monitor.get('limit', '?')}"
+        ),
+    }
 
 
 async def _scrapecreators(c, key):
@@ -251,6 +289,25 @@ async def _harvestapi(c, key):
             "note": "Prepaid wallet; usage.balance is remaining, user.totalBalance is not. "
                     "Starter: 5 concurrent requests and queue of 10; no RPM cap. "
                     "Auto top-up is managed in HarvestAPI."}
+
+
+async def _fetchinio(c, key):
+    d = await _get(c, "https://api.fetchin.io/api/v1/subscription",
+                   headers={"X-API-Key": key})
+    remaining = d.get("creditsRemaining") if isinstance(d, dict) else None
+    if type(remaining) not in (int, float) or not math.isfinite(remaining) or remaining < 0:
+        raise ValueError("Fetchin returned no valid remaining-credit balance")
+    rps = d.get("rpsLimit")
+    renewal = d.get("renewalDate")
+    payg = d.get("paygCreditsRemaining")
+    return {
+        "value": remaining,
+        "unit": "credits",
+        "note": (f"plan {d.get('plan', 'unknown')}, status {d.get('status', 'unknown')}; "
+                 f"PAYG {payg if type(payg) in (int, float) else 'unknown'}; "
+                 f"renews {renewal or 'not scheduled'}; "
+                 f"account limit {rps if type(rps) is int else 'unknown'} requests/s"),
+    }
 
 
 async def _dropleads(c, key):
@@ -742,13 +799,16 @@ BALANCE_ROUTES = {
     "tinyfish": _tinyfish,
     "fishaudio": _fishaudio,
     "tavily": _tavily,
+    "serper": _serper,
     "olostep": _olostep,
+    "scrapegraphai": _scrapegraphai,
     "scrapecreators": _scrapecreators,
     "serpapi": _serpapi,
     "moz": _moz,
     "seranking": _seranking,
     "hunter": _hunter,
     "harvestapi": _harvestapi,
+    "fetchinio": _fetchinio,
     "quickenrich": _quickenrich,
     "prospeo": _prospeo,
     "aiark": _aiark,

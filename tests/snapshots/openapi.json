@@ -1860,7 +1860,7 @@
     },
     "/admin/errors": {
       "get": {
-        "description": "Failed calls with the evidence to explain them — the caller's request and the provider's own\nanswer (see models.CallRecord.error_request).\n\nSuperadmin-only and deliberately not mirrored on `/calls`: the rows hold customers' request\ncontent, so v1 keeps them behind the same door as every other cross-tenant view.\n\nAgeing happens HERE rather than on the request path. There is no scheduler in this app by design\n(see the comment above `_claim_idempotent`), and the obvious lazy hook — a marker written on the\nrequest session — cannot work: `get_admin_session` never commits, so the marker would roll back and the\npurge would then run on every single failed call. Doing it on this route costs one UPDATE to the\nperson who came to read errors, which is exactly who wants the stale ones gone.",
+        "description": "Failed calls with the evidence to explain them — the caller's request and the provider's own\nanswer (see models.CallRecord.error_request).\n\nSuperadmin-only and deliberately not mirrored on `/calls`: the rows hold customers' request\ncontent, so v1 keeps them behind the same door as every other cross-tenant view.\n\nRead-only. Ageing is the `treg-worker admin purge-evidence` cron's job\n(application/evidence_retention.py); until it has run, a row older than the window is shown as\nexpired with no evidence, so a late schedule never widens what this view reveals.",
         "operationId": "admin_errors_admin_errors_get",
         "parameters": [
           {
@@ -5355,7 +5355,7 @@
     },
     "/catalog/platforms": {
       "get": {
-        "description": "Open: the platform shelves of the endpoint catalog, busiest first.",
+        "description": "Open: the platform shelves of the endpoint catalog, busiest first, and the display name of\nevery vendor on them (the /search page's pile is one tile per vendor).",
         "operationId": "catalog_platforms_catalog_platforms_get",
         "responses": {
           "200": {

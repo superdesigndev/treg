@@ -174,7 +174,7 @@ export class Pile {
 
 // Tile edge for a pile that fills about `share` of the page area's height: the tiles' area
 // (loosely packed) spread over the page width.
-export function tileSize(width: number, height: number, count: number, share = 0.3) {
+export function tileSize(width: number, height: number, count: number, share = 0.3, min = 22) {
   const s = Math.sqrt((share * height * 0.7 * width) / Math.max(1, count))
-  return Math.round(Math.max(22, Math.min(58, s)))
+  return Math.round(Math.max(min, Math.min(58, s)))
 }

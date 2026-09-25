@@ -1,0 +1,461 @@
+provider: scrapegraphai
+source:
+  docs: https://docs.scrapegraphai.com/api-reference/introduction
+  openapi: https://v2-api.scrapegraphai.com/api/openapi.json
+  curated: '2026-09-24'
+pricing_url: https://scrapegraphai.com/pricing
+limits: "The shared account is configured for 500 requests/minute, one concurrent crawl and one monitor. Live responses returned no usable X-RateLimit-* or Retry-After headers, so treg enforces the supplied 500 requests/minute ceiling directly. Platform extraction and search accept HTML only, and platform Crawl is fixed to one Markdown page so every hold is bounded. Monitor tools require the team's own key because scheduled ticks spend credits outside a foreground treg call."
+proposed_capabilities:
+  web.crawl.status: "Check a website crawl's progress and final state"
+  web.crawl.results: "List the pages produced by a website crawl"
+  web.monitor.create: "Create a scheduled web-page change monitor"
+  web.monitor.list: "List scheduled web-page monitors"
+  web.monitor.get: "Read one scheduled web-page monitor"
+  web.monitor.update: "Update a scheduled web-page monitor"
+  web.monitor.pause: "Pause a scheduled web-page monitor"
+  web.monitor.resume: "Resume a scheduled web-page monitor"
+  web.monitor.activity: "Read a scheduled monitor's tick activity"
+  web.monitor.delete: "Delete a scheduled web-page monitor"
+async:
+  id_from: id
+  poll:
+    endpoint: scrapegraphai.web.crawl.status
+    param: {in: pathParams, name: id}
+  status:
+    path: status
+    progress: [running, paused]
+    success: [completed]
+    failure: [failed, stopped]
+  result:
+    fetch: scrapegraphai.web.crawl.pages
+    fetch_param: {in: pathParams, name: id, value_from: id}
+  interval: 2
+
+endpoints:
+  - id: scrapegraphai.web.scrape
+    async: false
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /api/scrape
+    body_allowlist: true
+    name: Scrape one web page as Markdown
+    summary: Fetch one public HTML page and return clean Markdown.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        formats: {type: "array[object]", required: true, minItems: 1, maxItems: 1, enum: [{type: markdown}], example: [{type: markdown}], note: "This catalog tool fixes the only format to Markdown; use your own raw tool for multi-format, screenshot, JSON or branding requests."}
+        allowedTypes: {type: "array[string]", required: true, minItems: 1, maxItems: 1, enum: [text/html], example: [text/html], note: "HTML-only keeps PDF page billing out of the fixed one-credit platform price."}
+      note: "Custom headers, cookies, stealth, PDFs and additional formats are deliberately excluded from this bounded catalog tool. A raw BYOK tool retains the full upstream API."
+    test_request:
+      body: {url: "https://example.com", formats: [{type: markdown}], allowedTypes: [text/html]}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://scrapegraphai.com/pricing
+      checked: '2026-09-24'
+      confidence: verified
+      note: "A Markdown-only HTML scrape costs one credit. A live call reduced the account balance by exactly one credit; failed requests are documented as free."
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/scrape
+    example_response: examples/scrapegraphai.web.scrape.json
+
+  - id: scrapegraphai.web.extract
+    async: false
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /api/extract
+    body_allowlist: true
+    name: Extract structured data from one page
+    summary: Fetch one public HTML page and use a natural-language prompt to return structured JSON.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        prompt: {type: string, required: true, example: "Extract the page title and purpose."}
+        schema: {type: object, required: false, note: "Optional JSON Schema for the returned json field."}
+        mode: {type: string, required: false, default: normal, enum: [normal, reader, prune]}
+        allowedTypes: {type: "array[string]", required: true, minItems: 1, maxItems: 1, enum: [text/html], example: [text/html], note: "HTML-only keeps PDF page billing out of the fixed five-credit platform price."}
+      note: "Raw HTML/Markdown sources, custom fetch configuration and PDFs remain available through a team's raw BYOK tool."
+    test_request:
+      body:
+        url: "https://example.com"
+        prompt: "Extract the page title and purpose."
+        schema: {type: object, properties: {title: {type: string}, purpose: {type: string}}, required: [title]}
+        allowedTypes: [text/html]
+    cost:
+      type: per_success
+      value: 5
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://scrapegraphai.com/pricing
+      checked: '2026-09-24'
+      confidence: verified
+      note: "HTML extraction costs five credits without stealth. A live call reduced the balance by exactly five credits; failed requests are documented as free."
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/extract
+    example_response: examples/scrapegraphai.web.extract.json
+
+  - id: scrapegraphai.web.search
+    async: false
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /api/search
+    body_allowlist: true
+    name: Search the web with fetched page content
+    summary: Search the web and return the top HTML pages with Markdown content inline.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "ScrapeGraphAI pricing"}
+        numResults: {type: integer, required: true, min: 1, max: 20, example: 3}
+        format: {type: string, required: true, enum: [markdown], example: markdown}
+        timeRange: {type: string, required: false, enum: [past_hour, past_24_hours, past_week, past_month, past_year]}
+        locationGeoCode: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code."}
+        allowedTypes: {type: "array[string]", required: true, minItems: 1, maxItems: 1, enum: [text/html], example: [text/html]}
+      note: "This non-AI search excludes prompt/schema, custom fetch options and PDF processing. Use scrapegraphai.web.search.extract for one structured answer across results."
+    test_request:
+      body: {query: "ScrapeGraphAI pricing", numResults: 1, format: markdown, allowedTypes: [text/html]}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.format: markdown}, value: 2, times: body.numResults}
+      fallback: {value: 40, note: "The request schema caps platform calls at 20 results, two credits each."}
+      currency: credit
+      unit: result
+      source: observed
+      source_url: https://scrapegraphai.com/pricing
+      checked: '2026-09-24'
+      confidence: verified
+      note: "Search without a prompt costs two credits per requested result. A one-result live call returned one result and reduced the balance by exactly two credits."
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/search
+    example_response: examples/scrapegraphai.web.search.json
+
+  - id: scrapegraphai.web.search.extract
+    async: false
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /api/search
+    body_allowlist: true
+    name: Search the web and extract a structured answer
+    summary: Search HTML pages, return their Markdown, and run one AI extraction across the results.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "ScrapeGraphAI pricing"}
+        numResults: {type: integer, required: true, min: 1, max: 20, example: 1}
+        prompt: {type: string, required: true, example: "Return the listed one-time price of the smallest credit pack."}
+        schema: {type: object, required: false, note: "Optional JSON Schema for the top-level json field."}
+        format: {type: string, required: true, enum: [markdown], example: markdown}
+        timeRange: {type: string, required: false, enum: [past_hour, past_24_hours, past_week, past_month, past_year]}
+        locationGeoCode: {type: string, required: false, note: "ISO 3166-1 alpha-2 country code."}
+        allowedTypes: {type: "array[string]", required: true, minItems: 1, maxItems: 1, enum: [text/html], example: [text/html]}
+    test_request:
+      body:
+        query: "ScrapeGraphAI pricing"
+        numResults: 1
+        prompt: "Return the listed one-time price of the smallest credit pack."
+        schema: {type: object, properties: {price: {type: string}}, required: [price]}
+        format: markdown
+        allowedTypes: [text/html]
+    cost:
+      type: per_success
+      table:
+        - {when: {body.format: markdown}, value: 5, times: body.numResults}
+      fallback: {value: 100, note: "The request schema caps platform calls at 20 results, five credits each."}
+      currency: credit
+      unit: result
+      source: observed
+      source_url: https://scrapegraphai.com/pricing
+      checked: '2026-09-24'
+      confidence: verified
+      note: "Search with a prompt costs five credits per requested result. A one-result live call returned a structured answer and reduced the balance by exactly five credits."
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/search
+    example_response: examples/scrapegraphai.web.search.extract.json
+
+  - id: scrapegraphai.web.crawl
+    capability: web.crawl
+    platform: web
+    domain: crawl
+    scope: any_account
+    method: POST
+    path: /api/crawl
+    body_allowlist: true
+    name: Crawl one web page asynchronously
+    summary: Start a bounded one-page Markdown crawl and return its job id.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        formats: {type: "array[object]", required: true, minItems: 1, maxItems: 1, enum: [{type: markdown}], example: [{type: markdown}]}
+        maxPages: {type: integer, required: true, enum: [1], example: 1, note: "The bounded catalog tool crawls one page; use a raw BYOK tool for larger crawls."}
+        maxDepth: {type: integer, required: true, enum: [0], example: 0}
+        maxLinksPerPage: {type: integer, required: false, min: 1, example: 1}
+      note: "The shared-key route is deliberately fixed to one Markdown page: two startup credits plus one page credit. Larger, multi-format and proxied crawls remain available through a raw BYOK tool."
+    test_request:
+      body: {url: "https://example.com", formats: [{type: markdown}], maxPages: 1, maxDepth: 0, maxLinksPerPage: 1}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.maxPages: 1}, value: 3}
+      fallback: {value: 3, note: "The request schema fixes shared-key crawls to one Markdown page."}
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://scrapegraphai.com/pricing
+      checked: '2026-09-24'
+      confidence: verified
+      note: "A crawl costs two startup credits plus the selected scrape-format cost for each page. A completed one-page Markdown crawl reduced the balance by exactly three credits."
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/crawl/start
+    example_response: examples/scrapegraphai.web.crawl.json
+
+  - id: scrapegraphai.web.crawl.status
+    async: false
+    kind: utility
+    capability: web.crawl.status
+    platform: web
+    scope: any_account
+    method: GET
+    path: /api/crawl/{id}
+    name: Check a ScrapeGraphAI crawl
+    summary: Read an owned crawl's state and lightweight page metadata.
+    resource_ownership:
+      requires: {kind: "poll:scrapegraphai.web.crawl.status", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "b1e1f0cc-30a8-442a-b9ec-5c893b336c7f"}
+    test_request: {pathParams: {id: "b1e1f0cc-30a8-442a-b9ec-5c893b336c7f"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling an existing crawl consumes no credits and does not count toward the documented request limit."}
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/crawl/get-status
+    example_response: examples/scrapegraphai.web.crawl.status.json
+
+  - id: scrapegraphai.web.crawl.pages
+    async: false
+    kind: utility
+    capability: web.crawl.results
+    platform: web
+    scope: any_account
+    method: GET
+    path: /api/crawl/{id}/pages
+    name: Retrieve ScrapeGraphAI crawl pages
+    summary: Fetch owned crawl pages with each page's resolved scrape result.
+    resource_ownership:
+      requires: {kind: "fetch:scrapegraphai.web.crawl.pages", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "b1e1f0cc-30a8-442a-b9ec-5c893b336c7f"}
+      queryParams:
+        limit: {type: integer, required: false, default: 50, min: 1, max: 100}
+        cursor: {type: integer, required: false, default: 0, min: 0}
+      note: "Use pagination.nextCursor until it is null. The cursor is a zero-based list index, not an opaque token."
+    test_request:
+      pathParams: {id: "b1e1f0cc-30a8-442a-b9ec-5c893b336c7f"}
+      queryParams: {limit: 10, cursor: 0}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading pages from an existing crawl consumes no credits and does not count toward the documented request limit."}
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/crawl/pages
+    example_response: examples/scrapegraphai.web.crawl.pages.json
+
+  - id: scrapegraphai.web.monitor.create
+    async: false
+    capability: web.monitor.create
+    platform: web
+    domain: monitor
+    scope: own_account
+    method: POST
+    path: /api/monitor
+    name: Create a scheduled page monitor
+    summary: Schedule recurring page captures and change detection on the connected account.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        name: {type: string, required: true, example: "Homepage watch"}
+        interval: {type: string, required: true, example: "0 9 * * *", note: "Five-field cron expression in UTC."}
+        formats: {type: "array[object]", required: true, example: [{type: markdown}], note: "Same format-object shape as Scrape."}
+        webhookUrl: {type: string, required: false, format: uri}
+        fetchConfig: {type: object, required: false}
+      note: "BYOK only: every scheduled tick can spend credits later, outside the foreground treg call. The first tick runs immediately."
+    test_request:
+      body: {url: "https://example.com", name: "treg live verification", interval: "*/30 * * * *", formats: [{type: markdown}]}
+    cost:
+      type: per_success
+      value: 6
+      table_min: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://scrapegraphai.com/pricing
+      checked: '2026-09-24'
+      confidence: verified
+      note: "Each tick costs the selected format total, plus five credits when a change is detected. The live create triggered an immediate changed Markdown tick and used six credits. Future unchanged Markdown ticks cost one."
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/create
+    example_response: examples/scrapegraphai.web.monitor.create.json
+
+  - id: scrapegraphai.web.monitor.list
+    async: false
+    capability: web.monitor.list
+    platform: web
+    domain: monitor
+    scope: own_account
+    method: GET
+    path: /api/monitor
+    name: List page monitors
+    summary: List every scheduled monitor on the connected account.
+    input: {}
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Listing monitors consumes no credits."}
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
+    example_response: examples/scrapegraphai.web.monitor.list.json
+
+  - id: scrapegraphai.web.monitor.get
+    async: false
+    capability: web.monitor.get
+    platform: web
+    domain: monitor
+    scope: own_account
+    method: GET
+    path: /api/monitor/{id}
+    name: Get one page monitor
+    summary: Read one monitor's status, schedule and capture configuration.
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "ebecd261-4943-4b4f-be77-868fc3f9031b"}
+    test_request: {pathParams: {id: "ebecd261-4943-4b4f-be77-868fc3f9031b"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading a monitor consumes no credits."}
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
+    example_response: examples/scrapegraphai.web.monitor.get.json
+
+  - id: scrapegraphai.web.monitor.update
+    async: false
+    capability: web.monitor.update
+    platform: web
+    domain: monitor
+    scope: own_account
+    method: PATCH
+    path: /api/monitor/{id}
+    name: Update a page monitor
+    summary: Change a monitor's URL, name, schedule, formats, webhook or fetch configuration.
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "ebecd261-4943-4b4f-be77-868fc3f9031b"}
+      bodyType: json
+      body:
+        url: {type: string, required: false, format: uri}
+        name: {type: string, required: false}
+        interval: {type: string, required: false, example: "0 */6 * * *"}
+        formats: {type: "array[object]", required: false}
+        webhookUrl: {type: string, required: false, format: uri}
+        fetchConfig: {type: object, required: false}
+    test_request:
+      pathParams: {id: "ebecd261-4943-4b4f-be77-868fc3f9031b"}
+      body: {interval: "0 */6 * * *"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Updating monitor configuration consumes no credits; later ticks remain billable."}
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
+    example_response: examples/scrapegraphai.web.monitor.update.json
+
+  - id: scrapegraphai.web.monitor.pause
+    async: false
+    capability: web.monitor.pause
+    platform: web
+    domain: monitor
+    scope: own_account
+    method: POST
+    path: /api/monitor/{id}/pause
+    name: Pause a page monitor
+    summary: Stop future ticks while preserving the monitor and its activity.
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "ebecd261-4943-4b4f-be77-868fc3f9031b"}
+    test_request: {pathParams: {id: "ebecd261-4943-4b4f-be77-868fc3f9031b"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Pausing consumes no credits."}
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
+    example_response: examples/scrapegraphai.web.monitor.pause.json
+
+  - id: scrapegraphai.web.monitor.resume
+    async: false
+    capability: web.monitor.resume
+    platform: web
+    domain: monitor
+    scope: own_account
+    method: POST
+    path: /api/monitor/{id}/resume
+    name: Resume a page monitor
+    summary: Put a paused monitor back on its saved schedule.
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "ebecd261-4943-4b4f-be77-868fc3f9031b"}
+    test_request: {pathParams: {id: "ebecd261-4943-4b4f-be77-868fc3f9031b"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Resuming consumes no credits; subsequent ticks are billable."}
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
+    example_response: examples/scrapegraphai.web.monitor.resume.json
+
+  - id: scrapegraphai.web.monitor.activity
+    async: false
+    capability: web.monitor.activity
+    platform: web
+    domain: monitor
+    scope: own_account
+    method: GET
+    path: /api/monitor/{id}/activity
+    name: Read page-monitor activity
+    summary: Read recent ticks, completion states and per-format change diffs.
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "ebecd261-4943-4b4f-be77-868fc3f9031b"}
+      queryParams:
+        cursor: {type: string, required: false, note: "Pass nextCursor from the previous response to read older ticks."}
+    test_request: {pathParams: {id: "ebecd261-4943-4b4f-be77-868fc3f9031b"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading tick activity consumes no credits."}
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
+    example_response: examples/scrapegraphai.web.monitor.activity.json
+
+  - id: scrapegraphai.web.monitor.delete
+    async: false
+    capability: web.monitor.delete
+    platform: web
+    domain: monitor
+    scope: own_account
+    method: DELETE
+    path: /api/monitor/{id}
+    name: Delete a page monitor
+    summary: Permanently remove a monitor and its stored tick history.
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "ebecd261-4943-4b4f-be77-868fc3f9031b"}
+    test_request: {pathParams: {id: "ebecd261-4943-4b4f-be77-868fc3f9031b"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Deleting a monitor consumes no credits."}
+    verified: '2026-09-24'
+    docs_url: https://docs.scrapegraphai.com/api-reference/endpoint/monitor/manage
+    example_response: examples/scrapegraphai.web.monitor.delete.json

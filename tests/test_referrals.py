@@ -150,6 +150,14 @@ async def _ready_referrer(c: AsyncClient, monkeypatch, email="ann@superdesign.de
 
 
 # ---- the link ----------------------------------------------------------------------------------
+async def test_meta_names_the_configured_rewards(c, monkeypatch):
+    """The top-bar entry reads the offer from open /meta, so it must follow config, not a constant."""
+    monkeypatch.setattr(get_settings(), "referral_referrer_micro", 7_000_000)
+    monkeypatch.setattr(get_settings(), "referral_referred_micro", 3_000_000)
+    body = (await c.get("/meta")).json()
+    assert body["referral"] == {"referrer_micro": 7_000_000, "referred_micro": 3_000_000}
+
+
 async def test_ref_link_serves_the_landing_and_parks_the_code(c):
     """`/?ref=CODE` must show the PITCH. It used to fall through to the SPA, because the landing
     route treats any query string as the dashboard's — which would send a stranger who clicked a

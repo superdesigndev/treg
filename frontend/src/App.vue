@@ -253,14 +253,15 @@ export default { ...controller, components: { ...controller.components, TeamReso
     <CallDetailsDialog v-if="callView" />
     <TryEndpointDialog v-if="epTry" />
 
-    <!-- access reminder toast: fired when a new tool is registered while some members have customized access -->
-    <div v-if="newVersion" class="tut-notice" style="position:fixed;bottom:18px;right:18px;max-width:360px;z-index:200;box-shadow:0 6px 20px rgba(0,0,0,.25);background:var(--card)">
-      A new version of the dashboard is available.
-      <div style="margin-top:8px;display:flex;gap:8px"><button class="btn sm" @click="reloadApp()">Refresh now</button><button class="btn sm" @click="newVersion=false">Later</button></div>
+    <!-- Toasts, bottom right: a newer dashboard build is live, and the access reminder (fired when
+         a new tool is registered while some members have customized access). -->
+    <div v-if="newVersion" class="app-toast" role="status">
+      <p>A new version of the dashboard is available.</p>
+      <div class="app-toast-a"><button class="btn sm" @click="newVersion=false">Later</button><button class="btn sm primary" @click="reloadApp()">Refresh now</button></div>
     </div>
-    <div v-if="accessNote" class="tut-notice" style="position:fixed;bottom:18px;right:18px;max-width:360px;z-index:200;box-shadow:0 6px 20px rgba(0,0,0,.25);background:var(--card)">
-      {{accessNote}}
-      <div style="margin-top:8px;display:flex;gap:8px"><button class="btn sm" @click="go('org')">Open Team</button><button class="btn sm" @click="accessNote=''">Dismiss</button></div>
+    <div v-if="accessNote" class="app-toast" role="status">
+      <p>{{accessNote}}</p>
+      <div class="app-toast-a"><button class="btn sm" @click="accessNote=''">Dismiss</button><button class="btn sm primary" @click="go('org')">Open Team</button></div>
     </div>
   </template>
 

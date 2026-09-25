@@ -14,11 +14,24 @@ MAX_ERROR_FALLBACKS = 2
 MIN_HIT_SAMPLES = 50
 
 
+def _used_keys(adapter: Adapter) -> set[str]:
+    return set(adapter.in_map) | {n for e in (adapter.in_expr or {}).values() for n in re.findall(r"[A-Za-z_]\w*", e)}
+
+
 def ignored_filters(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> tuple[str, ...]:
     """Filters the caller supplied that this adapter has no place for — the provider will answer a
     LOOSER question than the one asked. Pure, and knowable before the call, so ranking can use it."""
-    used = set(adapter.in_map) | {n for e in (adapter.in_expr or {}).values() for n in re.findall(r"[A-Za-z_]\w*", e)}
+    used = _used_keys(adapter)
     return tuple(k for k in (contract.filters or ()) if identity.get(k) not in (None, "") and k not in used)
+
+
+def unscoped(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> tuple[str, ...]:
+    """The contract's `scoping` keys the caller supplied that this adapter never sends. Unlike an
+    ignored filter this is not a looser answer but a different question, so the candidate is
+    dropped, not ranked down: a `{title}`-only people search asked for `{company_domain, title}`
+    returns the same title-matched strangers for every company, and each one bills as a hit."""
+    used = _used_keys(adapter)
+    return tuple(k for k in contract.scoping if identity.get(k) not in (None, "") and k not in used)
 
 
 def cost_at(cost_view: dict | None, request: dict | None = None, adapter: Adapter | None = None) -> int | None:
