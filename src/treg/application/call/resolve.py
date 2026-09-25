@@ -1420,6 +1420,9 @@ def _request_body_document(ep: dict, body: bytes, headers) -> dict:
 # ponytail: a run that outlives its timeout answers 400 with no rows while Apify still bills up to
 # the cap; the ceiling below bounds that loss per call. Settling from the run itself would lift it.
 _APIFY_PLATFORM_MAX_CHARGE_USD = 1.0
+# A run must end before Apify's 300-second synchronous wait: past it Apify answers 408 while the run
+# keeps billing, and that answer releases unbilled.
+_APIFY_PLATFORM_MAX_TIMEOUT = 280
 _APIFY_PLATFORM_QUERY = frozenset({"maxTotalChargeUsd", "maxItems", "memory", "timeout"})
 _ASCII_INT = re.compile(r"[0-9]+")
 _ASCII_DECIMAL = re.compile(r"[0-9]+(?:\.[0-9]+)?")
@@ -1456,9 +1459,20 @@ def _enforce_apify_run_options(ep: dict, query) -> None:
         problem = "each run option at most once"
     elif _apify_charge_cap(query) is None:
         problem = f"maxTotalChargeUsd above 0 and at most {_APIFY_PLATFORM_MAX_CHARGE_USD:g}"
+    elif not (_ASCII_INT.fullmatch(query.get("timeout") or "")
+              and 1 <= int(query.get("timeout")) <= _APIFY_PLATFORM_MAX_TIMEOUT):
+        problem = f"timeout from 1 to {_APIFY_PLATFORM_MAX_TIMEOUT} seconds"
     elif query.get("maxItems") is not None and not (
             _ASCII_INT.fullmatch(query.get("maxItems")) and int(query.get("maxItems")) >= 1):
         problem = "maxItems as a positive integer"
+    else:
+        # Settlement bills the whole cap within two rows of it, so a smaller cap would bill an
+        # empty answer in full.
+        cost = ep.get("cost") or {}
+        floor = float(cost.get("call_fee") or 0) \
+            + 3 * float(cost.get("value") or 0) / float(cost.get("per") or 1)
+        if _apify_charge_cap(query) < floor:
+            problem = f"maxTotalChargeUsd of at least {floor:.6g} (the call fee plus three rows)"
     if problem:
         raise ResolutionFailed(
             "catalog_parameter_invalid", status_code=400, detail={

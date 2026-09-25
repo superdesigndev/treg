@@ -1035,7 +1035,10 @@ caller's cap was reached, and the hold is the bill, because a run stops when its
 pass the cap and can already have billed one event it never pushed and a plan-tier price below the catalog's fits more rows under the cap.
 Apify's `usageTotalUsd` trails a finished run by minutes, so it is not settlement evidence. A run
 that exceeds its own timeout answers 400 with no rows and settles at zero although Apify bills up
-to the cap; the $1 ceiling bounds that loss. BYOK calls never enter this money path.
+to the cap, and so does an answer over the 8 MiB evidence limit; the $1 ceiling bounds either loss.
+`timeout` is required and at most 280 seconds, because past Apify's 300-second synchronous wait the
+answer is a 408 while the run keeps billing. The cap must cover `call_fee` plus three rows, or the
+within-two-rows rule would bill an empty answer in full. BYOK calls never enter this money path.
 
 ## Pinned attribution and replay reads
 
