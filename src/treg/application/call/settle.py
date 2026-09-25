@@ -409,6 +409,8 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
       - fiber-ai: REPORTED in credits, `chargeInfo.creditsCharged` on every envelope, honoured
         for `method: charged-now` only (a poll repeats its job's charge). Error bodies carry no
         `chargeInfo`, which is what keeps a 400/404 on a `per_call` profile fetch unbilled.
+      - apify: DERIVED by counting the dataset rows a run-sync call returns, plus the row's flat
+        `call_fee` for the actor start or compute the run bills regardless of rows.
       - companyenrich / icypeas bulk / serpstat / thecompaniesapi search / findymail employees:
         DERIVED by counting the rows the vendor bills for, priced at the row's credits and capped
         at the hold (`_rows_billed_micro`): an empty answer never costs the requested page.
@@ -449,6 +451,13 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         doc = json.loads(body)
     except (ValueError, UnicodeDecodeError):
         return 0 if provider == "contactout" else None
+    if provider == "apify" and mk.cost_type == "per_result" and mk.unit_micro > 0:
+        # DERIVED: run-sync-get-dataset-items answers the bare dataset array, one billed event per
+        # row, and the run's start or compute charge is the catalog's flat `call_fee`. Apify's own
+        # usageTotalUsd trails a finished run by minutes, so the body is the only prompt evidence.
+        if not isinstance(doc, list):
+            return None
+        return len(doc) * mk.unit_micro + _usd_to_micro(float((cost or {}).get("call_fee") or 0))
     if provider == "openmart" and mk.cost_type == "per_result" and mk.unit_micro > 0:
         records = _openmart_record_count(mk.endpoint_id, doc)
         return None if records is None else _openmart_credits(records) * mk.unit_micro

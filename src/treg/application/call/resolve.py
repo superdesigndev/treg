@@ -806,6 +806,12 @@ def _marketplace_pricing(
             size = max(1, min(size, 100)) if type(size) is int else 100
             return size * credit, credit
         return estimate, credit
+    if provider == "apify" and cost.get("type") == "per_result" and cost.get("usd"):
+        # Every returned row is one billed event and the run adds its flat call fee; the platform
+        # guard requires maxItems, Apify's server-side row cap, so this hold is the worst case.
+        raw = query.get("maxItems")
+        rows = int(raw) if raw is not None and str(raw).isdigit() else _PLATFORM_PAGE_DEFAULT
+        return (_usd_to_micro(float(cost.get("call_fee") or 0)) + rows * unit, unit)
     if provider == "tomba" and endpoint_id == "tomba.companies.emails.list":
         # Tomba bills requested page slots in blocks of ten, with a ten-slot default.
         # A partial non-empty page still costs the full block; settlement frees empty pages.
@@ -1407,6 +1413,11 @@ def _request_body_document(ep: dict, body: bytes, headers) -> dict:
     return _strict_json_object(body, ep["id"])
 
 
+# ponytail: a run that outlives its timeout answers 400 with no rows while Apify still bills the rows
+# it made; this cap bounds that loss per call. Settling from the run itself would lift it.
+_APIFY_PLATFORM_MAX_ITEMS = 200
+
+
 def _query_value(raw: str, expected: object) -> object:
     """Read a query string as the pinned value's type; an unreadable value never matches."""
     try:
@@ -1461,6 +1472,22 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -
                     "message": (
                         "Tavily platform Map and Crawl calls require an explicit integer limit "
                         "from 1 to 20; connect your own key for the upstream range"
+                    ),
+                },
+            )
+
+    if ep.get("provider") == "apify" and (ep.get("cost") or {}).get("type") == "per_result":
+        raw = query.get("maxItems") if query is not None else None
+        if raw is None or not str(raw).isdigit() or not 1 <= int(raw) <= _APIFY_PLATFORM_MAX_ITEMS:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid",
+                    "endpoint_id": ep["id"],
+                    "parameter": "queryParams.maxItems",
+                    "expected": f"an integer from 1 to {_APIFY_PLATFORM_MAX_ITEMS}",
+                    "message": (
+                        f"Apify platform calls require maxItems from 1 to {_APIFY_PLATFORM_MAX_ITEMS}, "
+                        "the row cap that bounds their bill; connect your own key for larger runs"
                     ),
                 },
             )
