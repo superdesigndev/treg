@@ -17,7 +17,8 @@ from treg.domain.capacity import signatures as S
 from treg.domain.capacity import verify as V
 from treg.domain.capacity.policy import ensure_policies
 from treg.domain.catalog import store as catalog_store
-from treg.infra.upstream.aggregators import by_name, monid, orthogonal
+from treg.infra.upstream.aggregators import (VENDOR_DRY, VENDOR_REFUSAL, by_name, monid,
+                                              orthogonal, with_vendor_verdict)
 from treg.models import CapacityPolicy, OverflowRoute
 from treg.timeutil import utcnow_naive
 
@@ -381,11 +382,47 @@ def test_monid_build_and_parse_fixtures():
     done = monid.parse(200, json.dumps(pend["body"]).encode())
     assert done.ok and done.cost_micro == 12_000 and json.loads(done.upstream_body) == pend["body"]["output"]
     assert monid.parse(401, b"{}").failure == "aggregator_auth"
+    assert monid.parse(403, b'{"message":"invalid api key"}').failure == "aggregator_auth"
     assert monid.parse(402, b'{"message":"hit your account maximum"}').failure == "aggregator_balance"
     failed = {"runId": "r", "status": "FAILED", "message": "provider down", "providerResponse": {"httpStatus": 503}}
     res = monid.parse(200, json.dumps(failed).encode())
     assert res.failure is None and res.upstream_status == 503 and not res.ok
     assert by_name("monid") is monid and by_name("orthogonal") is orthogonal
+
+
+def test_monid_completed_vendor_403_is_not_an_aggregator_auth_failure():
+    fixture = _fixture("monid_contactout_quota_403")
+    relayed = monid.parse(fixture["status"], json.dumps(fixture["body"]).encode())
+
+    assert relayed.failure is None
+    assert relayed.upstream_status == fixture["expect"]["upstream_status"]
+    assert relayed.cost_micro == fixture["expect"]["cost_micro"]
+    assert json.loads(relayed.upstream_body)["message"].startswith("You're out of credits")
+
+    classified = with_vendor_verdict(relayed, "contactout")
+    assert classified.failure == fixture["expect"]["failure"] == VENDOR_DRY
+    assert classified.detail.startswith("quota:")
+
+    refused_doc = {
+        "runId": "run-refused", "status": "COMPLETED",
+        "providerResponse": {"httpStatus": 403, "error": {"message": "No access to endpoint"}},
+    }
+    refused = with_vendor_verdict(monid.parse(403, refused_doc), "contactout")
+    assert refused.failure == VENDOR_REFUSAL
+    assert "No access to endpoint" in refused.detail
+
+
+def test_monid_failed_run_keeps_zero_cost_and_error_detail():
+    failed = {
+        "runId": "run-failed", "status": "FAILED",
+        "providerResponse": {"httpStatus": 503, "error": {"message": "provider unavailable"}},
+    }
+    res = monid.parse(503, failed)
+
+    assert res.failure is None and res.upstream_status == 503
+    assert res.cost_micro == 0
+    assert res.detail == "provider unavailable"
+    assert json.loads(res.upstream_body) == failed["providerResponse"]["error"]
 
 
 def test_every_fixture_round_trips_through_its_adapter():
@@ -450,7 +487,8 @@ def test_verdict_disables_only_a_route_that_is_actually_wrong():
     assert V.verdict(_verification(direct_status=422, relay_status=404, same_shape=None, verified_at=None, direct_dry=True)) == "inconclusive"
     assert V.verdict(_verification(relay_status=None, same_shape=None, verified_at=None, failure="pending")) == "inconclusive"
     # the aggregator's side: key, account, host, envelope, its vendor pool
-    for failure in ("aggregator_auth", "aggregator_balance", "malformed", "unreachable", "vendor_dry"):
+    for failure in ("aggregator_auth", "aggregator_balance", "malformed", "unreachable",
+                    "vendor_dry", "vendor_refusal"):
         assert V.verdict(_verification(direct_status=None, relay_status=None, same_shape=None, verified_at=None,
                                        failure=failure)) == "aggregator", failure
     # this route is shown wrong: the direct leg proves the request, the relay does not match it

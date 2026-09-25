@@ -39,6 +39,12 @@ period-cap 429): the AGGREGATOR'S account for THIS vendor is dry. Not the route'
 whole aggregator's: the call path marks `overflow:<aggregator>:<provider>`, the verifier leaves
 the route as it is. Set by `with_vendor_verdict`, the one place a relayed body is read."""
 
+VENDOR_REFUSAL = "vendor_refusal"
+"""The aggregator successfully relayed a vendor-specific authentication or authorization refusal
+that is not a known capacity response. The call path temporarily marks only
+`overflow:<aggregator>:<provider>` so repeated calls do not hammer a dead vendor pool while every
+other provider through the aggregator remains available. The verifier leaves the route untouched."""
+
 
 def with_vendor_verdict(res: "AggregatorResult", provider: str) -> "AggregatorResult":
     """Fold the vendor's own capacity dialect into the result, so every consumer sees one
@@ -48,9 +54,12 @@ def with_vendor_verdict(res: "AggregatorResult", provider: str) -> "AggregatorRe
     if res.failure is not None or res.upstream_status is None:
         return res
     sig = signatures.classify(provider, res.upstream_status, None, res.upstream_body[:4096])
-    if not signatures.is_exhausting(sig):
-        return res
-    return replace(res, failure=VENDOR_DRY, detail=f"{sig.kind}: {sig.detail[:100]}")
+    if signatures.is_exhausting(sig):
+        return replace(res, failure=VENDOR_DRY, detail=f"{sig.kind}: {sig.detail[:100]}")
+    if res.upstream_status in (401, 403):
+        detail = res.upstream_body[:200].decode("utf-8", errors="replace")
+        return replace(res, failure=VENDOR_REFUSAL, detail=detail)
+    return res
 
 
 @dataclass(frozen=True)
@@ -64,6 +73,8 @@ class AggregatorResult:
                            call; no vendor call happened, nothing is charged, nothing is struck
       pending            - async run not finished; poll `poll_url`
       malformed          - not an envelope at all: non-JSON, a 5xx, a transport error
+      vendor_dry         - this aggregator's account for one vendor is out of capacity
+      vendor_refusal     - one vendor pool rejected authentication or authorization
     `cost_micro` is the aggregator's in-band charge for this call (0 on a miss), the number the
     caller pays. None when the envelope carried no price."""
     upstream_status: int | None

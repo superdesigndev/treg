@@ -16,7 +16,8 @@ from datetime import datetime
 import httpx
 
 from ...timeutil import utcnow_naive
-from ...infra.upstream.aggregators import AGGREGATOR_SIDE, VENDOR_DRY, by_name, with_vendor_verdict
+from ...infra.upstream.aggregators import (AGGREGATOR_SIDE, VENDOR_DRY, VENDOR_REFUSAL, by_name,
+                                            with_vendor_verdict)
 from . import signatures
 
 
@@ -67,7 +68,8 @@ def verdict(v: Verification) -> str:
     """What one verification means for its route (worker.py acts on it, nothing else decides):
       passed       - relay 2xx and the same shape as the direct call → stamp `last_verified_at`
       aggregator   - our key, the aggregator's account (its own refusal, or the vendor's
-                     out-of-credit answer relayed through it, VENDOR_DRY), its host or envelope
+                     out-of-credit answer relayed through it, VENDOR_DRY, or a vendor-specific
+                     authentication or authorization refusal, VENDOR_REFUSAL), its host or envelope
                      (AGGREGATOR_SIDE, unreachable) → the ROUTE is untouched
       failed       - the aggregator relayed and this route is shown wrong: a contract refusal, or
                      a direct 2xx beside a relay non-2xx / a 2xx of a different shape → disable
@@ -80,7 +82,7 @@ def verdict(v: Verification) -> str:
     Pure over the typed fields; the note is for people."""
     if v.passed:
         return "passed"
-    if v.failure in AGGREGATOR_SIDE or v.failure in (VENDOR_DRY, "unreachable"):
+    if v.failure in AGGREGATOR_SIDE or v.failure in (VENDOR_DRY, VENDOR_REFUSAL, "unreachable"):
         return "aggregator"
     if v.failure == "contract":
         return "failed"
