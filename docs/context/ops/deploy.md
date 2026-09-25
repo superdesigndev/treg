@@ -81,8 +81,8 @@ closed maintenance loop. Calling `maintenance.upgrade()` directly does not dispo
   metadata. It never creates tables, stamps versions or runs release tasks. Worker commands use the
   same check.
 - **Schema changes are revision-only.** An autogenerate drift guard requires Alembic head and
-  `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only for fast test isolation
-  and stamps that test schema directly at head.
+  `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
+  schema and stamps it directly at head.
 - **A missing encryption key fails loudly on a real database.** If `TREG_SECRET_KEY` is empty and
   `database_url` is not SQLite, `verify_db()` raises. On SQLite development it logs a warning.
 

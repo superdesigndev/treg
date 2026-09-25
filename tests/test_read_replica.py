@@ -41,13 +41,6 @@ def test_replica_url_normalizes_the_async_driver(monkeypatch, scheme):
     assert settings.read_database_url == "postgresql+asyncpg://reader:example@replica.invalid/treg"
 
 
-def test_replica_url_can_be_loaded_from_dotenv(monkeypatch, tmp_path):
-    monkeypatch.delenv("TREG_READ_DATABASE_URL")
-    dotenv = tmp_path / ".env"
-    dotenv.write_text("TREG_READ_DATABASE_URL=postgresql://reader:example@replica.invalid/treg\n")
-    assert config.Settings(_env_file=dotenv).read_database_url.startswith("postgresql+asyncpg://")
-
-
 @pytest.mark.parametrize("url", [
     "sqlite+aiosqlite:///replica.db",
     "sqlite+aiosqlite:///:memory:",

@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from functools import cache
 from importlib import import_module
 
-from sqlalchemy import event, inspect, text
+from sqlalchemy import bindparam, event, inspect, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlmodel import SQLModel
 
@@ -305,35 +305,63 @@ async def _stamp_test_schema(connection) -> None:
     )
 
 
+# The schema reset_db() last built. A test that alters the shared schema (a column, an index, a
+# dropped table) changes the fingerprint, and the next reset rebuilds instead of only deleting rows.
+_built_schema: tuple | None = None
+
+
+async def _schema_fingerprint(connection) -> tuple:
+    """Every column and index of the application tables, read in one catalog query."""
+    names = sorted(table.name for table in SQLModel.metadata.sorted_tables)
+    if _is_sqlite:
+        rows = await connection.execute(
+            text("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE tbl_name IN :names")
+            .bindparams(bindparam("names", expanding=True)),
+            {"names": names},
+        )
+    else:
+        rows = await connection.execute(
+            text(
+                "SELECT 'column', table_name, column_name, data_type || is_nullable "
+                "FROM information_schema.columns "
+                "WHERE table_schema = current_schema() AND table_name IN :names "
+                "UNION ALL SELECT 'index', tablename, indexname, indexdef FROM pg_indexes "
+                "WHERE schemaname = current_schema() AND tablename IN :names"
+            ).bindparams(bindparam("names", expanding=True)),
+            {"names": names},
+        )
+    return tuple(sorted(tuple(row) for row in rows))
+
+
 async def reset_db() -> None:
-    """Give each test a clean, head-stamped registry while preserving a Postgres schema."""
+    """Give each test a clean, head-stamped registry.
+
+    reset_db runs before every test, so it deletes the rows the previous test left behind instead
+    of rebuilding every table: an order of magnitude cheaper, and no DDL (a containerized Postgres
+    fed per-test DDL accumulates WAL until an unrelated commit stalls). The schema is rebuilt only
+    when it is not the one this function last built: a fresh database, or a test that altered it.
+    """
+    global _built_schema
     from .. import models  # noqa: F401 - populate SQLModel.metadata
 
     for engine in dict.fromkeys(_engines):  # de-duplicated: sqlite aliases all three to one
         await engine.dispose()
     async with _engine.begin() as connection:
-        if _is_sqlite:
+        if _built_schema is not None and await _schema_fingerprint(connection) == _built_schema:
+            # Children first, so foreign keys hold.
+            for table in reversed(SQLModel.metadata.sorted_tables):
+                await connection.execute(table.delete())
+            if not _is_sqlite:
+                # Rewind every sequence so ids restart at 1, as they do on an emptied sqlite table.
+                await connection.execute(text(
+                    "SELECT setval(c.oid, 1, false) FROM pg_class c "
+                    "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                    "WHERE c.relkind = 'S' AND n.nspname = current_schema()"
+                ))
+        else:
             await connection.run_sync(SQLModel.metadata.drop_all)
             await connection.run_sync(SQLModel.metadata.create_all)
-        else:
-            expected = {table.name for table in SQLModel.metadata.sorted_tables}
-            existing = await connection.run_sync(
-                lambda sync_connection: set(inspect(sync_connection).get_table_names())
-            )
-            if expected.issubset(existing):
-                # Rebuilding dozens of tables and indexes at every test boundary floods a
-                # containerized Postgres with DDL and WAL. TRUNCATE preserves the production-shaped
-                # schema while rows and identities reset.
-                quote = connection.dialect.identifier_preparer.quote
-                tables = ", ".join(quote(name) for name in sorted(expected))
-                await connection.execute(text(
-                    f"TRUNCATE TABLE {tables} RESTART IDENTITY CASCADE"
-                ))
-            else:
-                # Schema-specific tests may deliberately remove tables. Rebuild the complete current
-                # shape in that case; ordinary Postgres test boundaries take the TRUNCATE path.
-                await connection.run_sync(SQLModel.metadata.drop_all)
-                await connection.run_sync(SQLModel.metadata.create_all)
+            _built_schema = await _schema_fingerprint(connection)
 
         await _stamp_test_schema(connection)
 

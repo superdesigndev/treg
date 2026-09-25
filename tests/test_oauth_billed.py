@@ -19,7 +19,6 @@ from sqlalchemy import update
 
 from treg.application.call import resolve as call_resolution
 from treg.application.call import service as call_service
-from treg.routers import call as call_routes
 from treg import crypto
 from treg.config import get_settings
 from treg.infra.db import session_maker
@@ -170,24 +169,19 @@ async def test_unmatched_passthrough_gets_the_default_read_rate(
 
 
 # ---- writes ------------------------------------------------------------------------------------
-async def test_post_create_is_per_call(clients: AsyncClient, billed_on, monkeypatch):
+@pytest.mark.parametrize("text, reply, micro", [
+    ("Shipping something new today.", b'{"data": {"id": "1", "text": "hi"}}', CREATE_MICRO),
+    # $0.015 -> $0.20 when the text carries a URL - the single biggest mispricing risk, sniffed
+    # from the body at estimate time.
+    ("read this: https://example.com/post", b'{"data": {"id": "1"}}', CREATE_LINK_MICRO),
+])
+async def test_post_create_is_per_call_and_a_link_prices_13x(clients: AsyncClient, billed_on,
+                                                              monkeypatch, text, reply, micro):
     await _connect_x(clients)
-    monkeypatch.setattr(call_service, "relay", _stub_relay(201, b'{"data": {"id": "1", "text": "hi"}}'))
-    r = await clients.post("/call/x.x.post.create",
-                           json={"text": "Shipping something new today."})
+    monkeypatch.setattr(call_service, "relay", _stub_relay(201, reply))
+    r = await clients.post("/call/x.x.post.create", json={"text": text})
     assert r.status_code == 201, r.text
-    assert int(r.headers["x-treg-cost-micro"]) == CREATE_MICRO
-
-
-async def test_post_with_url_prices_13x(clients: AsyncClient, billed_on, monkeypatch):
-    """$0.015 → $0.20 when the text carries a URL — the single biggest mispricing risk, sniffed
-    from the body at estimate time."""
-    await _connect_x(clients)
-    monkeypatch.setattr(call_service, "relay", _stub_relay(201, b'{"data": {"id": "1"}}'))
-    r = await clients.post("/call/x.x.post.create",
-                           json={"text": "read this: https://example.com/post"})
-    assert r.status_code == 201, r.text
-    assert int(r.headers["x-treg-cost-micro"]) == CREATE_LINK_MICRO
+    assert int(r.headers["x-treg-cost-micro"]) == micro
 
 
 # ---- the money fences --------------------------------------------------------------------------

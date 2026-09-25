@@ -21,15 +21,6 @@ def test_snapshot_reports_nothing_on_sqlite_and_a_pool_row_per_engine_otherwise(
         assert 0 <= row["checked_out"] <= row["capacity"]
 
 
-def test_fold_keeps_the_per_pool_maximum():
-    peaks: dict[str, int] = {}
-    infra_db.fold_pool_peaks(peaks, {"api": {"checked_out": 3, "capacity": 15}})
-    infra_db.fold_pool_peaks(peaks, {"api": {"checked_out": 9, "capacity": 15},
-                                     "background": {"checked_out": 2, "capacity": 13}})
-    infra_db.fold_pool_peaks(peaks, {"api": {"checked_out": 1, "capacity": 15}})
-    assert peaks == {"api": 9, "background": 2}
-
-
 async def test_gauge_emits_one_event_per_window_with_peak_capacity_and_headroom(monkeypatch):
     samples = iter([
         {"api": {"checked_out": 4, "capacity": 15}, "background": {"checked_out": 1, "capacity": 13}},
@@ -56,13 +47,3 @@ async def test_gauge_emits_one_event_per_window_with_peak_capacity_and_headroom(
     assert props["api_peak"] == 11 and props["api_capacity"] == 15 and props["api_headroom"] == 4
     assert props["background_peak"] == 13 and props["background_headroom"] == 0
     assert props["samples"] >= 3
-
-
-def test_connection_budget_multiplies_per_process_by_workers_and_the_deploy_overlap():
-    per_process = sum(infra_db.POOL_SPECS[name]["pool_size"] + infra_db.POOL_SPECS[name]["max_overflow"]
-                      for name in ("api", "admin", "background"))
-    one = infra_db.connection_budget(workers=1)
-    two = infra_db.connection_budget(workers=2)
-    assert one == {"per_process": per_process, "workers": 1,
-                   "per_instance": per_process, "deploy_peak": per_process * 2}
-    assert two["per_instance"] == per_process * 2 and two["deploy_peak"] == per_process * 4

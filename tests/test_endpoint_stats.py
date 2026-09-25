@@ -40,16 +40,6 @@ async def _observed(ids, **kw):
         return await endpoint_stats.observed(db, ids, **kw)
 
 
-async def test_thin_evidence_publishes_the_count_and_nothing_else(clients: AsyncClient):
-    """Two calls behind a 100% success rate is noise dressed as evidence — and on a quiet endpoint
-    the number could expose one org's activity. Below the floor we say how thin it is, and stop."""
-    for _ in range(endpoint_stats.MIN_SAMPLES - 1):
-        await _record(EP, 200)
-    got = (await _observed([EP]))[EP]
-    assert got["samples"] == endpoint_stats.MIN_SAMPLES - 1
-    assert got["ok_rate"] is None and got["p50_ms"] is None
-
-
 async def test_a_caller_error_is_not_held_against_the_provider(clients: AsyncClient):
     """A 4xx usually means the caller sent bad parameters. Counting it against the endpoint would let
     one agent's mistake make a healthy provider look broken to everybody, so it is excluded."""
@@ -195,27 +185,24 @@ async def test_a_failed_refresh_still_answers_200_with_the_stale_value(
 
 
 # ---- the LAST OK column: measurement beats a stamp, and the two never look alike -------------
-def test_measured_last_ok_beats_the_verification_stamp():
-    """A real call is stronger evidence than a hand-run stamp, so it wins — and it prints bare,
-    while the stamp prints with a ✓ so nobody reads a dated claim as live traffic."""
+@pytest.mark.parametrize("entry,exact,contains,absent", [
+    # A real call is stronger evidence than a hand-run stamp, so it wins, and it prints bare.
+    ({"observed": {"last_ok_days": 3}, "verified": "2020-01-01"}, "3d", None, "\u2713"),
+    # The stamp prints with a check mark so nobody reads a dated claim as live traffic.
+    ({"observed": {"last_ok_days": None}, "verified": "2026-08-01"}, None, "\u2713", None),
+    # Nobody has called it AND nobody has verified it: it must not borrow confidence from a blank.
+    ({"observed": None, "verified": None}, None, "\u2014", None),
+    ({"observed": {"last_ok_days": 0}}, "today", None, None),
+])
+def test_last_ok_cell_prefers_measurement_over_the_stamp(entry, exact, contains, absent):
     from treg import cli
-    measured = cli._last_ok_cell({"observed": {"last_ok_days": 3}, "verified": "2020-01-01"})
-    assert measured == "3d" and "✓" not in measured
-
-    stamped = cli._last_ok_cell({"observed": {"last_ok_days": None}, "verified": "2026-08-01"})
-    assert "✓" in stamped                      # visibly a claim, not a measurement
-
-
-def test_last_ok_says_nothing_when_it_knows_nothing():
-    """An endpoint nobody has called AND nobody has verified is the one worth being wary of, so it
-    must not borrow confidence from a blank."""
-    from treg import cli
-    assert "—" in cli._last_ok_cell({"observed": None, "verified": None})
-
-
-def test_a_call_today_reads_as_today():
-    from treg import cli
-    assert cli._last_ok_cell({"observed": {"last_ok_days": 0}}) == "today"
+    cell = cli._last_ok_cell(entry)
+    if exact is not None:
+        assert cell == exact
+    if contains is not None:
+        assert contains in cell
+    if absent is not None:
+        assert absent not in cell
 
 
 async def test_last_ok_means_the_last_SUCCESS_not_the_last_attempt(clients: AsyncClient):

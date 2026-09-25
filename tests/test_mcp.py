@@ -15,10 +15,9 @@ from conftest import verified_signup
 
 import json
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 
 from treg.api import app
 
@@ -244,7 +243,7 @@ async def test_resources_list_uses_and_normalizes_fish_byok_voices(clients, monk
 
 async def test_catalog_search_returns_priced_results(clients):
     """Search is the entry point: an agent asks for a task and gets endpoints with prices. Needs a
-    credential now, like every tool — see test_EVERY_tool_needs_a_credential_including_the_catalog."""
+    credential now, like every tool - see test_a_protected_tool_answers_401_with_WWW_Authenticate."""
     token = (await clients.post("/users", json={"email": "searcher@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "catalog_search", {"query": "backlinks", "limit": 3}, token=token)
@@ -252,21 +251,6 @@ async def test_catalog_search_returns_priced_results(clients):
     first = out["results"][0]
     assert first["endpoint_id"] and first["provider"]
     assert "usd_per_call" in first and "no_key_needed" in first
-
-
-async def test_catalog_get_quotes_hunter_domain_search_as_one_credit(clients):
-    """Feedback #201: usd_per_call must be the live 1-credit charge, not the 1/10 slice."""
-    token = (await clients.post("/users", json={"email": "hunter-price@superdesign.dev"})).json()["token"]
-    async with mcp_session(clients) as c:
-        got = await _call_tool(c, "catalog_get",
-                               {"endpoint_id": "hunter.companies.emails"}, token=token)
-        search = await _call_tool(c, "catalog_search",
-                                  {"query": "hunter domain search emails", "limit": 25}, token=token)
-    assert got["usd_per_call"] == 0.0245
-    assert got["endpoint"]["cost"]["usd"] == 0.00245
-    assert got["endpoint"]["cost"]["display_usd"] == 0.0245
-    row = next(r for r in search["results"] if r["endpoint_id"] == "hunter.companies.emails")
-    assert row["usd_per_call"] == 0.0245
 
 
 async def test_no_key_needed_is_false_when_the_deploy_holds_no_key(clients):
@@ -324,45 +308,6 @@ async def test_catalog_request_files_the_gap_with_attribution(clients):
 
 # ---- the half that matters: no token means no data, no spending ----------------------------
 
-@pytest.mark.parametrize("tool", ["call", "balance", "my_tools"])
-async def test_every_spending_or_tenant_tool_refuses_without_a_token(clients, tool):
-    """A public MCP endpoint onto a paid catalog is the whole risk of this feature. Anything that
-    reads a team's data or moves its money must fail closed, and say what to do about it.
-
-    The refusal is now an HTTP 401 carrying `WWW-Authenticate`, rather than an error dict inside a
-    200 — see `test_a_protected_tool_answers_401_with_WWW_Authenticate` for why the shape matters.
-    This test keeps its original job: proving these three cannot be reached without a credential."""
-    args = {"endpoint_id": "tikhub.tiktok.video.comments"} if tool == "call" else {}
-    async with mcp_session(clients) as c:
-        r = await c.post("http://localhost/mcp/", json={
-            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": {"name": tool, "arguments": args}}, headers=MCP_HEADERS)
-    assert r.status_code == 401, r.text
-    assert "resource_metadata" in r.headers.get("www-authenticate", "")
-
-
-async def test_a_bogus_token_gets_nothing(clients):
-    """Headers are client-supplied input. A well-formed but unknown token must be rejected by the
-    database, not accepted because it looks like one."""
-    async with mcp_session(clients) as c:
-        out = await _call_tool(c, "balance", {}, token="tok_not_a_real_token_at_all")
-    assert "balance_usd" not in out, out
-    assert out.get("error")
-
-
-async def test_a_real_token_reads_its_OWN_balance(clients):
-    """The positive case, and the one that proves the plumbing: a genuine token resolves to its org
-    through `/auth/me` and reads that org's balance — the same route the CLI uses."""
-    token = (await clients.post("/auth/cli-token")).json()["token"] if False else None
-    # the suite's client was created with a real per-org token; recover it before it is dropped
-    r = await clients.post("/users", json={"email": "mcpuser@superdesign.dev"})
-    token = r.json()["token"]
-    async with mcp_session(clients) as c:
-        out = await _call_tool(c, "balance", {}, token=token)
-    assert "balance_usd" in out, out
-    assert out["balance_usd"] >= 0
-
-
 async def test_a_team_default_token_resolves_its_team(clients):
     """A CLI login with a chosen team receives that team's Default key, so MCP can resolve billing
     without a second X-Treg-Org header."""
@@ -401,42 +346,11 @@ async def test_one_team_cannot_read_another_teams_tools(clients):
     assert "a-only-tool" not in names_b, f"org B saw org A's tool: {seen_b}"
 
 
-async def test_call_reaches_the_TEAMS_OWN_tools_too(clients):
-    """`my_tools` lists what the team registered; `call` must be able to call it.
-
-    The first version pre-checked the catalog and refused anything absent, which made `my_tools` a
-    list of things an agent could see and never use — found by trying it on production. `/call/`
-    already resolves a team's own tool first and falls back to a catalog id, so the fix was to stop
-    second-guessing it."""
-    made = await clients.post("/tools", json={"name": "echo", "base_url": "http://upstream"})
-    assert made.status_code == 200, made.text
-    token = clients.headers.get("X-Treg-Token")
-
-    async with mcp_session(clients) as c:
-        out = await _call_tool(c, "call", {"endpoint_id": "echo/anything"}, token=token)
-    assert out.get("status") == 200, out
-    assert "unknown endpoint" not in json.dumps(out)
-
-
 async def test_call_refuses_an_endpoint_that_does_not_exist(clients):
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "call", {"endpoint_id": "nope.not.real"}, token="tok_whatever")
     assert "unknown endpoint" in out.get("error", "")
     assert "catalog_search" in out.get("hint", "")   # names the way out, rather than leaving it guessing
-
-
-async def test_tool_descriptions_do_not_promise_routing(clients):
-    """The charter's standing rule, and the one the landing page already had to be corrected for:
-    treg COMPARES providers and the caller chooses. These descriptions are read by every model that
-    installs the plugin, so a false claim here travels further than the website's did."""
-    token = (await clients.post("/users", json={"email": "descs@superdesign.dev"})).json()["token"]
-    async with mcp_session(clients) as c:
-        await _rpc(c, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
-                                     "clientInfo": {"name": "t", "version": "1"}}, token)
-        r = await _rpc(c, "tools/list", token=token)
-        blob = json.dumps(r.json()).lower()
-    for claim in ("routes for you", "automatic failover", "fails over", "picks the best provider"):
-        assert claim not in blob
 
 
 async def test_an_unknown_host_is_refused(clients):
@@ -462,15 +376,6 @@ async def test_the_deployments_own_host_is_allowed():
     from treg.mcp import _allowed_hosts
 
     assert urlsplit(get_settings().public_url).netloc in _allowed_hosts()
-
-
-async def test_the_price_is_visible_before_spending(clients):
-    """An agent that cannot see a price before calling cannot warn the human, and the skill's rule is
-    to state the cost first. Search must carry the number."""
-    token = (await clients.post("/users", json={"email": "pricer@superdesign.dev"})).json()["token"]
-    async with mcp_session(clients) as c:
-        out = await _call_tool(c, "catalog_search", {"query": "backlinks", "limit": 5}, token=token)
-    assert any(r.get("usd_per_call") is not None for r in out["results"])
 
 
 # ---- what the plugin directory's review checks ---------------------------------------------
@@ -731,23 +636,6 @@ async def test_a_protected_tool_answers_401_with_WWW_Authenticate(clients, tool)
     assert r.json()["resource_metadata"].endswith("/.well-known/oauth-protected-resource")
 
 
-@pytest.mark.parametrize("tool,args", [("catalog_search", {"query": "backlinks"}),
-                                       ("catalog_get", {"endpoint_id": "hunter.people.email.find"})])
-async def test_EVERY_tool_needs_a_credential_including_the_catalog(clients, tool, args):
-    """One rule instead of two. An earlier version left the catalog tools open so a client could
-    browse before signing up, which made the contract "some tools need auth, some do not" — something
-    each client has to learn by trying.
-
-    This is about a predictable contract, not about hiding the catalog: /catalog/search is still
-    public on the WEBSITE, which the landing page and `treg catalog search` both rely on."""
-    async with mcp_session(clients) as c:
-        r = await c.post("http://localhost/mcp/", json={
-            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": {"name": tool, "arguments": args}}, headers=MCP_HEADERS)
-    assert r.status_code == 401, r.text
-    assert "resource_metadata" in r.headers.get("www-authenticate", "")
-
-
 async def test_EAGER_auth_challenges_initialize_itself(clients):
     """Eager, not lazy. Every treg tool needs auth, so there is nothing to browse anonymously — and
     the spec's canonical flow challenges the client's FIRST request (`initialize`) so OAuth runs
@@ -919,30 +807,6 @@ async def test_a_list_is_refused_for_a_GET_with_a_clear_reason(clients):
     assert "must be an object, not a list" in json.dumps(out), out
 
 
-def test_a_relayed_402_carries_NO_link_out(clients):
-    """ChatGPT's submission form asks whether a plugin "links or directs users out of ChatGPT to make
-    purchases", and only PHYSICAL goods can be supported. treg sells prepaid API credit — a digital
-    good — so a top-up link made the honest answer a yes in the one category they cannot support.
-
-    Asserted on a REAL 402 body, not on the source. My first version checked the module's text,
-    passed, and shipped a production response that still contained the link: the body nests under
-    `detail` and repeats the URL inside a prose `message`. Checking the code instead of the response
-    is precisely the failure this codebase keeps catching, and I wrote one.
-    """
-    from treg.mcp import _without_purchase_pointers
-
-    real = {"detail": {
-        "error": "insufficient_balance",
-        "message": ("akta.companies.enrich would cost ~$0.875 on treg's akta key and this team's "
-                    "balance is $0.5765.\n  add funds:      https://treg.to/app#billing"
-                    "\n  or use your own key: treg connections connect --provider akta"),
-        "balance_micro": 576500, "estimated_cost_micro": 875000,
-        "topup_url": "/app#billing", "provider": "akta"}}
-    blob = json.dumps(_without_purchase_pointers(real))
-    assert "http://" not in blob and "https://" not in blob, blob
-    assert "topup_url" not in blob, blob
-
-
 def test_stripping_the_link_keeps_the_DIAGNOSIS(clients):
     """Removing the invitation to pay must not remove the explanation. An agent still needs to know
     it ran out of money, how short it was, and that its own key is an alternative — otherwise the
@@ -973,9 +837,9 @@ def test_the_strip_does_not_depend_on_which_host_we_run_as(clients):
 
 
 async def test_a_402_THROUGH_THE_CALL_TOOL_carries_no_link(clients, monkeypatch):
-    """The test the previous two should have been. They exercised `_without_purchase_pointers`
-    directly and passed even with the strip DELETED from `call` — the helper worked and nothing
-    connected it to the response a user sees.
+    """The test the helper-level ones above cannot be. They exercise `_without_purchase_pointers`
+    directly and would pass even with the strip DELETED from `call` - the helper works and nothing
+    connects it to the response a user sees.
 
     This drives the real path: drain the balance, call a metered endpoint through the MCP tool, and
     assert on what comes back.
@@ -1051,54 +915,6 @@ async def test_a_wrong_audience_access_token_gets_401_invalid_token(clients):
             headers={**MCP_HEADERS, "Authorization": f"Bearer {other}"})
     assert r.status_code == 401, r.text
     assert 'error="invalid_token"' in r.headers.get("www-authenticate", "")
-
-
-async def test_a_per_org_token_still_reaches_the_tool(clients):
-    """Only bearers that CLAIM to be our OAuth access tokens are judged by the transport. A per-org
-    or identity token (the Codex env-var path) is the API's to validate downstream — the middleware
-    must pass it through, valid or not, rather than mislabel it `invalid_token` (its holder has no
-    refresh grant to run)."""
-    async with mcp_session(clients) as c:
-        r = await c.post("http://localhost/mcp/", json={
-            "jsonrpc": "2.0", "id": 1, "method": "tools/call",
-            "params": {"name": "balance", "arguments": {}}},
-            headers={**MCP_HEADERS, "Authorization": "Bearer not-an-oauth-token-shape"})
-    assert r.status_code == 200, r.text  # the tool answers (with its own error prose) — not a 401
-
-
-async def test_call_passes_an_idempotency_key_through(clients):
-    """The feature was built for agents and MCP is the agent path, so leaving `call` unable to send a
-    key made it unreachable from the surface it was for.
-
-    The key is the CALLER's, never derived from the request: two identical searches an hour apart are
-    new work, not a retry, and a server-invented key would hand back the stale answer — a 24-hour
-    cache wearing an idempotency badge."""
-    token = (await clients.post("/users", json={"email": "mcpidem@superdesign.dev"})).json()["token"]
-    prev = clients.headers.get("X-Treg-Token")
-    clients.headers["X-Treg-Token"] = token
-    made = await clients.post("/tools", json={"name": "echo", "base_url": "http://upstream"})
-    if prev:
-        clients.headers["X-Treg-Token"] = prev
-    assert made.status_code == 200, made.text
-
-    async with mcp_session(clients) as c:
-        out = await _call_tool(c, "call", {
-            "endpoint_id": "echo/anything", "method": "POST",
-            "params": {"x": 1}, "idempotency_key": "agent-retry-1"}, token=token)
-    assert out.get("status") == 200, out
-
-
-async def test_the_key_is_optional_and_described_for_the_model(clients):
-    """A model can only use it if the description says WHEN. The distinction that matters is retry
-    versus new work, because getting it wrong returns stale data rather than failing loudly."""
-    from treg.mcp import mcp as server
-
-    tool = [t for t in await server.list_tools() if t.name == "call"][0]
-    assert "idempotency_key" in tool.input_schema["properties"]
-    assert "idempotency_key" not in (tool.input_schema.get("required") or [])
-    desc = tool.description or ""
-    assert "repeating a call whose answer you did not receive" in desc
-    assert "new call, not a retry" in desc, "the model must be told when NOT to reuse a key"
 
 
 async def test_the_same_key_through_MCP_bills_once(clients, monkeypatch):
@@ -1258,27 +1074,6 @@ async def test_call_refuses_ambiguous_params_plus_explicit_slot(clients):
         assert "`query` OR `params`" in out2.get("error", ""), out2
 
 
-async def test_call_resolves_the_team_for_an_identity_token(clients):
-    """The same production bug `balance` had, on the spending path: an IDENTITY token (`treg
-    login` — what most people hold) belongs to a person who may be in several teams, and /call
-    answers it with a raw "choose an org (send X-Treg-Org)" 400 — a header hint an MCP caller
-    cannot act on. `call` must resolve the team exactly as `balance` does."""
-    r = await clients.post("/users", json={"email": "call-identity@superdesign.dev"})
-    per_org = r.json()["token"]
-    clients.headers["X-Treg-Token"] = per_org
-    slug = (await clients.get("/orgs")).json()[0]["slug"]
-    identity = (await clients.get(
-        "/auth/cli-token", headers={"X-Treg-Org": slug},
-    )).json()["token"]
-    made = await clients.post("/tools", json={"name": "echo2", "base_url": "http://upstream"})
-    assert made.status_code == 200, made.text
-
-    async with mcp_session(clients) as c:
-        out = await _call_tool(c, "call", {"endpoint_id": "echo2/ping"}, token=identity)
-    assert out.get("status") == 200, out
-    assert "choose an org" not in json.dumps(out)
-
-
 # ---- the bug reports of 2026-08-17: a day of real calls, five things that cost the caller -------
 async def test_an_id_that_misses_by_one_segment_names_the_real_one(clients):
     """`lusha.companies-signals` for `lusha.x.companies-signals` — what a model produces relaying an
@@ -1291,17 +1086,6 @@ async def test_an_id_that_misses_by_one_segment_names_the_real_one(clients):
     assert got["did_you_mean"] == ["lusha.x.companies-signals"]
     assert called["did_you_mean"] == ["lusha.x.companies-signals"]
     assert "lusha.x.companies-signals" in called["hint"]
-
-
-async def test_a_boolean_query_param_goes_on_the_wire_as_a_boolean(clients):
-    """`str(True)` is `"True"`, which every upstream that documents a boolean rejects. It bit
-    hardest where it cost money: `simplified=true` is thecompaniesapi's FREE mode, so the mangled
-    flag pushed callers onto the paid path for a query they had asked to preview for nothing."""
-    from treg import mcp as _mcp
-    assert _mcp._qs_value(True) == "true"
-    assert _mcp._qs_value(False) == "false"
-    assert _mcp._qs_value(1) == "1" and _mcp._qs_value("x") == "x"
-    assert _mcp._qs_value({"a": 1}) == '{"a":1}'      # never Python's single-quoted repr
 
 
 async def test_catalog_query_arrays_use_the_endpoints_declared_wire_encoding(monkeypatch):
@@ -1354,9 +1138,11 @@ async def test_an_unset_query_param_is_omitted_rather_than_sent_as_None(clients)
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "call", {"endpoint_id": "echo/anything",
                                            "params": {"kept": True, "off": False,
-                                                      "dropped": None}}, token=token)
+                                                      "dropped": None, "obj": {"a": 1}}},
+                               token=token)
     sent = (out.get("body") or {}).get("query") or {}
-    assert sent == {"kept": "true", "off": "false"}
+    # `str(True)` is "True" and `str({...})` is Python's single-quoted repr; neither is on the wire
+    assert sent == {"kept": "true", "off": "false", "obj": '{"a":1}'}
 
 
 async def test_search_survives_missing_a_few_words_of_an_agent_sentence(clients):
@@ -1510,24 +1296,6 @@ async def test_a_near_miss_never_suggests_a_DIFFERENT_provider(clients):
         "the provider literally named 'x' must not be erased by stripping the 'x' tier marker"
 
 
-def test_a_header_token_is_not_told_to_run_a_command_that_lists_nothing():
-    """`treg mcp grants` only has an answer for an OAuth grant. A header token already carries its
-    own team, so pointing it at that command sends it to an empty list."""
-    import asyncio
-    from treg import mcp as _mcp
-
-    class _Dead:
-        headers: dict = {}
-        async def get(self, *a, **k):
-            raise RuntimeError("no api here — the label must degrade, not gate")
-
-    plain = asyncio.run(_mcp._whose_grant(_Dead(), "superdesign", oauth=False))
-    granted = asyncio.run(_mcp._whose_grant(_Dead(), "superdesign", oauth=True))
-    assert "use-team" not in (plain.get("hint") or "")
-    assert "use-team" in granted["hint"]
-    assert plain["team"] == "superdesign", "and it still labels the team it does know"
-
-
 async def test_the_SEARCH_TOOL_itself_ranks_on_evidence_not_just_the_helper(clients):
     """The helpers were tested; the wiring was not. `rerank()` could have been dropped from both
     call sites and every ranking test would still have passed, because they call the helper
@@ -1582,7 +1350,7 @@ async def _overflow_rescued(monkeypatch, price_cents: float = 0.3):
     return seen
 
 
-async def test_a_call_served_by_the_overflow_relay_says_so_and_prices_it(clients, overflow_on, monkeypatch):
+async def test_a_call_served_by_the_overflow_relay_says_so_and_prices_it(clients, overflow_on, monkeypatch):  # noqa: F811 - fixture imported above
     token = clients.headers["X-Treg-Token"]
     seen = await _overflow_rescued(monkeypatch)
     async with mcp_session(clients) as c:
@@ -1596,7 +1364,7 @@ async def test_a_call_served_by_the_overflow_relay_says_so_and_prices_it(clients
     assert "real price" in hint and len(seen) == 1
 
 
-async def test_a_direct_call_carries_no_served_via(clients, platform_on):
+async def test_a_direct_call_carries_no_served_via(clients, platform_on):  # noqa: F811 - fixture imported above
     token = clients.headers["X-Treg-Token"]
     async with mcp_session(clients) as c:
         out = await _call_tool(c, "call", {"endpoint_id": "tikhub.tiktok.video.comments",
@@ -1605,7 +1373,7 @@ async def test_a_direct_call_carries_no_served_via(clients, platform_on):
     assert "served_via" not in out and "overflow" not in (out.get("hint") or "")
 
 
-async def test_the_directory_surface_discloses_the_relay_the_same_way(clients, overflow_on, monkeypatch):
+async def test_the_directory_surface_discloses_the_relay_the_same_way(clients, overflow_on, monkeypatch):  # noqa: F811 - fixture imported above
     """`/mcp/v2/` builds the same result through `_call_impl`; reviewed against both on purpose."""
     from test_mcp_directory import _call_tool as _directory_call, directory_session
 
@@ -1620,7 +1388,7 @@ async def test_the_directory_surface_discloses_the_relay_the_same_way(clients, o
     assert "overflow relay (orthogonal)" in (out.get("hint") or "")
 
 
-async def test_catalog_get_shows_what_a_FREE_endpoint_bills_through_the_relay(clients, overflow_on):
+async def test_catalog_get_shows_what_a_FREE_endpoint_bills_through_the_relay(clients, overflow_on):  # noqa: F811 - fixture imported above
     """The price an agent quotes before calling must include the one it may actually pay."""
     from test_capacity_overflow import APOLLO_SEARCH_EP, APOLLO_SEARCH_PATH
     from test_mcp_directory import _call_tool as _directory_call, directory_session

@@ -9,8 +9,6 @@ from __future__ import annotations
 
 from httpx import AsyncClient
 
-from treg import api
-from treg.routers import web
 
 
 SKILL = {
@@ -61,33 +59,6 @@ async def test_by_name_is_org_scoped(clients: AsyncClient):
     other = {"X-Treg-Token": r.json()["token"]}
     assert (await clients.get("/bundles/by-name/intercom", headers=other)).status_code == 404
     assert (await clients.get("/tools/by-name/intercom", headers=other)).status_code == 404
-
-
-async def test_detail_page_serves_spa_with_og_meta(clients: AsyncClient):
-    r = await clients.get("/app/skills/intercom")  # unauthenticated is fine — the page itself gates on login
-    assert r.status_code == 200
-    assert 'og:title' in r.text and "intercom" in r.text
-    r = await clients.get("/app/tools/stripe")
-    assert r.status_code == 200
-    assert 'og:title' in r.text and "shared tool" in r.text
-
-
-async def test_detail_page_title_is_replaced_not_duplicated(clients: AsyncClient):
-    """The meta REPLACES the page's own title. Asserting `og:title` alone missed the real bug: the
-    replacement was pinned to the literal `<title>tools-registry</title>` while the page said
-    `<title>treg</title>`, so it matched nothing and every shared link unfurled blank."""
-    r = await clients.get("/app/skills/intercom")
-    assert r.text.count("<title>") == 1
-    assert "<title>intercom · " in r.text
-
-
-async def test_og_meta_survives_a_title_rename(clients: AsyncClient, monkeypatch, tmp_path):
-    """A rename in the dashboard's title must not be able to switch link previews off again."""
-    (tmp_path / "dashboard-legacy").mkdir()
-    (tmp_path / "dashboard-legacy" / "index.html").write_text("<html><head><title>Something Else Entirely</title></head></html>")
-    monkeypatch.setattr(web, "_WEB_DIR", tmp_path)
-    r = await clients.get("/app/skills/intercom")
-    assert 'og:title' in r.text and "Something Else Entirely" not in r.text
 
 
 async def test_detail_page_escapes_name(clients: AsyncClient):

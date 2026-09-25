@@ -9,6 +9,7 @@ its hint, in the API and over MCP.
 
 from __future__ import annotations
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
@@ -47,14 +48,9 @@ async def test_a_token_becomes_attribution_on_the_row(clients: AsyncClient):
     assert row.org_id is not None
 
 
-async def test_blank_capability_is_refused(clients: AsyncClient):
-    r = await clients.post("/tool-requests", json={"capability": "   "})
-    assert r.status_code == 422
-    assert await _fetch_rows() == []
-
-
-async def test_a_novel_capability_is_refused_when_too_long(clients: AsyncClient):
-    r = await clients.post("/tool-requests", json={"capability": "x" * 201})
+@pytest.mark.parametrize("capability", ["   ", "x" * 201], ids=["blank", "too-long"])
+async def test_a_blank_or_too_long_capability_is_refused(clients: AsyncClient, capability):
+    r = await clients.post("/tool-requests", json={"capability": capability})
     assert r.status_code == 422
     assert await _fetch_rows() == []
 

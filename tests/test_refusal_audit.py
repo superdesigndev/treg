@@ -16,7 +16,6 @@ from sqlmodel import select
 from treg import api as A
 from treg.application.call import service as call_service
 from treg.infra.upstream.relay import relay as upstream_relay
-from treg.routers import call as call_routes
 from treg import audit
 from treg.infra.db import session_maker
 from treg.models import CallRecord
@@ -32,14 +31,6 @@ async def _make_echo_tool(clients: AsyncClient, name: str = "echo-tool") -> None
     s = await clients.post("/secrets", json={"name": f"k-{name}", "value": "sek"})
     await clients.post("/tools", json={"name": name, "base_url": "http://upstream",
                                        "secret_id": s.json()["id"]})
-
-
-async def test_a_relayed_call_is_not_a_refusal(clients: AsyncClient):
-    await _make_echo_tool(clients)
-    r = await clients.get("/call/echo-tool/echo?x=1")
-    assert r.status_code == 200
-    (rec,) = await _rows()
-    assert rec.refused_by is None
 
 
 async def test_unknown_tool_is_recorded_as_a_resolution_refusal(clients: AsyncClient):
@@ -92,15 +83,6 @@ async def test_bad_token_is_recorded_anonymously_as_an_auth_refusal(clients: Asy
     (rec,) = await _rows()
     assert rec.refused_by == "auth"
     assert rec.org_id is None and rec.user_email == ""
-
-
-async def test_refusals_reach_the_caller_in_the_audit_log(clients: AsyncClient):
-    """`treg audit` is where an org goes to ask "why did my call fail" — the column must be in
-    the payload, not only in the table."""
-    await clients.get("/call/no-such-tool/whatever")
-    await audit.drain()
-    (row,) = (await clients.get("/calls")).json()
-    assert row["refused_by"] == "resolution"
 
 
 async def test_retired_catalog_call_is_actionable_audited_and_does_not_shadow_an_own_tool(

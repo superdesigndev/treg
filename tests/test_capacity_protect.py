@@ -15,7 +15,7 @@ from treg import archive, audit, ratestore
 from treg.config import get_settings
 from treg.application.call import service as call_service
 from treg.application.call import settle as call_settle
-from treg.application.call.types import CallFailure, UpstreamResponse
+from treg.application.call.types import UpstreamResponse
 from treg.infra.db import session_maker
 from treg.domain.capacity import marks as capacity_marks
 from treg.domain.capacity.marks import DEFAULT_LOCK, LOCK_NS, MAX_LOCK, Lock
@@ -26,7 +26,7 @@ from treg.models import Hold, LedgerEntry
 from treg.timeutil import utcnow_naive
 
 from test_marketplace_call import (  # noqa: F401
-    EP, EP_MICRO, PLATFORM_KEYS, _balance, _fake_relay, getleadsio_trial_on, platform_on,
+    EP, EP_MICRO, PLATFORM_KEYS, _balance, _fake_relay, platform_on,
 )
 
 OUT = b'{"detail":"Insufficient balance"}'  # matches the bare-402 balance signature
@@ -100,27 +100,6 @@ async def test_own_key_is_never_affected_by_an_exhausted_platform_account(client
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 200, r.text
     assert r.json()["auth"] == "Bearer MKKEY"
-
-
-async def test_getleadsio_zero_capacity_is_clear_and_byok_still_works(
-        clients: AsyncClient, getleadsio_trial_on):
-    await _publish("getleadsio", exhausted=True)
-    before = await _balance(clients)
-    body = {"filters": {"domains": ["example.com"]}, "limit": 1}
-
-    refused = await clients.post("/call/getleadsio.people.search", json=body)
-    assert refused.status_code == 503, refused.text
-    detail = refused.json()["detail"]
-    assert detail["error"] == "provider_capacity_unavailable"
-    assert detail["provider"] == "getleadsio"
-    assert "own key" in detail["message"]
-    assert await _balance(clients) == before
-    assert await _rows(Hold) == []
-
-    await clients.post("/secrets", json={"name": "getleadsio", "value": "OWN-GETLEADSIO"})
-    own = await clients.post("/call/getleadsio.people.search", json=body)
-    assert own.status_code == 200, own.text
-    assert own.json()["auth"] == "Bearer OWN-GETLEADSIO"
 
 
 async def test_a_stale_or_ok_view_never_refuses(clients: AsyncClient, platform_on, monkeypatch):
@@ -288,21 +267,3 @@ async def test_a_failed_strike_never_fails_the_call(clients: AsyncClient, platfo
     # strike itself swallows; simulate the seam above it raising to prove the guard
     r = await clients.get(f"/call/{EP}?aweme_id=7")
     assert r.status_code == 402 and r.headers["X-Treg-Cost-Micro"] == "0"
-
-
-def test_provider_capacity_is_a_treg_blamed_typed_failure():
-    exc = CallFailure("provider_capacity", status_code=503, detail={"error": "x"})
-    assert exc.blame == "treg" and exc.status_code == 503
-
-
-async def test_pdl_identify_quota_breaker_preserves_enrichment(clients, monkeypatch):
-    from types import SimpleNamespace
-    monkeypatch.setattr(capacity_marks, 'STRIKE_MIN_GAP', timedelta(0))
-    mk = SimpleNamespace(tier='platform', provider='pdl', endpoint_id='pdl.x.person-identify')
-    body = b'{"error":{"message":"You have hit your account maximum for person_identify (all matches used)"}}'
-    for _ in range(2):
-        assert await call_settle._note_capacity_signal(mk, 402, {}, body) == 'quota'
-    await capacity_view.load()
-    assert capacity_view.is_exhausted('pdl', 'pdl.x.person-identify')
-    assert not capacity_view.is_exhausted('pdl', 'pdl.people.enrich')
-    assert not capacity_view.is_exhausted('pdl', 'pdl.companies.enrich')

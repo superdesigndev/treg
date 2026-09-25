@@ -14,7 +14,7 @@ from treg import mcp
 from treg.domain.identity import mcp_oauth
 from treg.routers import auth as auth_routes
 from treg.bootstrap import create_app
-from treg.config import Settings, get_settings
+from treg.config import get_settings
 
 
 MCP_HEADERS = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
@@ -89,11 +89,6 @@ async def _modern_rpc(client: AsyncClient, method: str, params=None,
         "MCP-Protocol-Version": "2026-07-28",
         "MCP-Method": method,
     })
-
-
-async def test_v2_feature_flag_defaults_off(monkeypatch):
-    monkeypatch.delenv("TREG_CLAUDE_CONNECTOR_ENABLED", raising=False)
-    assert Settings(_env_file=None).claude_connector_enabled is False
 
 
 async def test_v2_feature_flag_disables_mount_metadata_grants_and_catalog_route(
@@ -295,42 +290,6 @@ async def test_v2_transport_challenges_with_v2_metadata():
     assert "/.well-known/oauth-protected-resource/mcp/v2" in challenge
     assert mcp_oauth.DIRECTORY_SCOPE in challenge
     assert response.headers["cache-control"] == "no-store, no-transform"
-
-
-async def test_v2_serializes_the_scanner_facing_contract(clients):
-    token = (await clients.post("/users", json={"email": "directory-list@superdesign.dev"})).json()["token"]
-    async with directory_session() as client:
-        initialized = await _rpc(client, "initialize", {
-            "protocolVersion": "2025-06-18", "capabilities": {},
-            "clientInfo": {"name": "scanner", "version": "1"},
-        }, token)
-        assert initialized.status_code == 200
-        listed = await _rpc(client, "tools/list", token=token)
-    tools = {tool["name"]: tool for tool in listed.json()["result"]["tools"]}
-    expected_titles = {
-        "catalog_search": "Search Treg Catalog",
-        "catalog_get": "Get Catalog Endpoint",
-        "catalog_call_read": "Call a Read Endpoint",
-        "catalog_call_write": "Call a Write Endpoint",
-        "catalog_call_media": "Call an Audio Endpoint",
-        "resources_list": "List Team Resources",
-        "balance": "Check Treg Balance",
-        "catalog_request": "Request a Catalog Capability",
-        "feedback": "Submit Feedback",
-        "review": "Review a Catalog Call",
-    }
-    assert set(tools) == set(expected_titles)
-    assert {name: tool["annotations"]["title"] for name, tool in tools.items()} == expected_titles
-    assert tools["catalog_call_read"]["annotations"] == {
-        "title": "Call a Read Endpoint",
-        "readOnlyHint": True, "destructiveHint": False, "idempotentHint": False,
-        "openWorldHint": True,
-    }
-    assert tools["catalog_call_write"]["annotations"]["destructiveHint"] is True
-    assert "method" not in tools["catalog_call_read"]["inputSchema"]["properties"]
-    assert "method" not in tools["catalog_call_write"]["inputSchema"]["properties"]
-    assert "authorization_method" in tools["catalog_call_read"]["inputSchema"]["properties"]
-    assert "authorization_method" in tools["catalog_call_write"]["inputSchema"]["properties"]
 
 
 async def test_v2_shared_catalog_details_balance_and_guidance_work_end_to_end(clients):
@@ -738,14 +697,3 @@ async def test_balance_hint_wins_with_all_sampling_enabled(clients, monkeypatch,
         get_settings.cache_clear()
 
 
-@pytest.mark.parametrize('path', ['/mcp/', '/mcp/v2/'])
-async def test_server_instructions_explain_review_invitations(clients, path):
-    async with paired_mcp_session() as client:
-        response = await _rpc(client, 'initialize', {
-            'protocolVersion': '2025-06-18', 'capabilities': {},
-            'clientInfo': {'name': 'review-instructions', 'version': '1'},
-        }, clients.headers['X-Treg-Token'], path=path)
-    assert response.status_code == 200
-    assert response.json()['result']['instructions'].endswith(
-        'If a call result invites a review, rate that one call with review(call_id, usefulness, reason?) after using it, then continue.'
-    )

@@ -32,15 +32,7 @@ async def test_a_pin_is_a_gate_not_a_hint(clients: AsyncClient):
     detail = blocked.json()["detail"]
     assert detail["error"] == "capability_pinned"
     assert detail["pinned_provider"] == PINNED
-    assert detail["use_endpoint"].startswith(PINNED)      # "use this instead", not just "no"
-
-
-async def test_the_suggested_endpoint_is_the_curated_one(clients: AsyncClient):
-    """`core` is the curated route for a job; `extended` is the bulk-ingested long tail. Suggesting
-    an obscure extended id when a core one exists reads as a broken suggestion."""
-    org = await _org_id(clients)
-    await clients.post(f"/orgs/{org}/pins", json={"capability": CAP, "provider": PINNED})
-    detail = (await clients.get(f"/call/{OTHER_EP}?uniqueId=tiktok")).json()["detail"]
+    # "use this instead", not just "no"; and the curated `core` id, not an obscure `extended` one
     assert detail["use_endpoint"] == "tikhub.tiktok.user.profile"
 
 
@@ -76,22 +68,16 @@ async def test_unpinning_returns_the_choice_to_the_caller(clients: AsyncClient):
     assert r.status_code != 403 or (r.json().get("detail") or {}).get("error") != "capability_pinned"
 
 
-async def test_members_can_read_the_pins_they_must_obey(clients: AsyncClient):
-    """An agent has to know what it may call; learning it by being refused is a wasted round-trip."""
-    org = await _org_id(clients)
-    await clients.post(f"/orgs/{org}/pins", json={"capability": CAP, "provider": PINNED})
-    r = await clients.get(f"/orgs/{org}/pins")
-    assert r.status_code == 200 and r.json()[0]["capability"] == CAP
-
-
 async def test_a_pin_is_scoped_to_one_org(clients: AsyncClient):
     """Another team's decision must never refuse your call."""
     org = await _org_id(clients)
     await clients.post(f"/orgs/{org}/pins", json={"capability": CAP, "provider": PINNED})
     r = await clients.post("/users", json={"email": "stranger@elsewhere.dev"})
     other = {"X-Treg-Token": r.json()["token"]}
-    assert (await clients.get(f"/call/{OTHER_EP}?uniqueId=tiktok", headers=other)).status_code != 403 \
-        or "capability_pinned" not in (await clients.get(f"/call/{OTHER_EP}", headers=other)).text
+    mine = await clients.get(f"/call/{OTHER_EP}?uniqueId=tiktok")
+    assert mine.json()["detail"]["error"] == "capability_pinned"
+    theirs = await clients.get(f"/call/{OTHER_EP}?uniqueId=tiktok", headers=other)
+    assert "capability_pinned" not in theirs.text
 
 
 async def test_a_pin_cannot_be_sidestepped_to_spend_TREGS_money(clients: AsyncClient):
@@ -123,7 +109,6 @@ async def test_a_capability_can_never_restructure_a_url(clients: AsyncClient):
     delete-org itself refuses to run without the slug it is about to destroy.
     """
     org = await _org_id(clients)
-    slug = next(o["slug"] for o in (await clients.get("/orgs")).json() if o["org_id"] == org)
 
     hit = await clients.delete(f"/orgs/{org}/pins/..")     # normalizes to DELETE /orgs/{org}
     assert hit.status_code == 422, "delete-org must refuse a request that does not name the team"

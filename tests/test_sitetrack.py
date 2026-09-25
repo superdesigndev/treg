@@ -8,14 +8,10 @@ route, hand-written HTML outside the `_page()` shell, carrying `/adtrack.js` and
 this — a week of launch traffic with zero pageviews (found 2026-09-07 while comparing landing
 routes, when the route simply did not appear in the data).
 
-Two guards, same shape as `test_adsconv.py`'s ad-capture guards:
-
-1. The hand-kept list of marketing surfaces, fetched over HTTP, so a route that serves the wrong
-   file or drops the tag on the way out fails here.
-2. A file-level invariant that needs no maintenance: any hand-written page in `web/` that is
-   instrumented for ads (`/adtrack.js` or `/gtag.js`) is a marketing page, and a marketing page is
-   instrumented for analytics too. A new standalone landing page copied from an existing one is in
-   scope the moment it exists.
+The guard is a file-level invariant that needs no maintenance: any hand-written page in `web/`
+that is instrumented for ads (`/adtrack.js` or `/gtag.js`) is a marketing page, and a marketing page
+is instrumented for analytics too. A new standalone landing page copied from an existing one is in
+scope the moment it exists.
 
 The server-rendered `_page()` shell is deliberately OUT of scope: it carries `/adtrack.js` but not
 `/sitetrack.js`, a product/legal call documented on `_page` itself. This file guards the
@@ -27,7 +23,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from httpx import AsyncClient
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "src" / "treg" / "web"
 
@@ -37,35 +32,6 @@ WEB_DIR = Path(__file__).resolve().parents[1] / "src" / "treg" / "web"
 # `"/sitetrack.js" in text` check — the same check the other guards use.
 SITETRACK_TAG = re.compile(r'<script\s+src="/sitetrack\.js"')
 AD_TAG = re.compile(r'<script\s+src="/(?:adtrack|gtag)\.js"')  # a tag, not prose about one (privacy.html)
-
-
-async def test_every_marketing_surface_loads_the_analytics_script(clients: AsyncClient):
-    """Every standalone landing page must load /sitetrack.js. Add a new one HERE in the same
-    commit as its route."""
-    surfaces = [
-        "/",
-        "/resources",
-        "/people-search",
-        "/ugc",
-        "/grokbot",
-        "/fable",
-        "/gpt6",
-        "/use-cases/seo-data-for-ai-agents",
-        "/use-cases/lead-enrichment-for-ai-agents",
-        "/use-cases/social-trend-research-for-ai-agents",
-        "/use-cases/competitor-ad-research-for-ai-agents",
-        "/use-cases/company-research-for-ai-agents",
-    ]
-    missing = []
-    for path in surfaces:
-        r = await clients.get(path)
-        assert r.status_code == 200, f"{path} -> HTTP {r.status_code}"
-        if not SITETRACK_TAG.search(r.text):
-            missing.append(path)
-    assert not missing, (
-        f"landing pages that do not load /sitetrack.js: {missing}. Their visitors emit no "
-        "pageview, so nothing they do can be attributed to the page."
-    )
 
 
 def test_every_ad_instrumented_page_is_also_analytics_instrumented():

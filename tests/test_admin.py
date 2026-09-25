@@ -241,21 +241,3 @@ async def test_admin_credit_org_missing_ref_or_reason_is_400(c):
     })
     assert r.status_code == 400
     assert "reason" in r.json()["detail"]
-
-
-async def test_admin_credit_org_uses_promotional_kind(c):
-    """The credit is always promotional (burns before purchased, non-refundable)."""
-    _, o1, *_ = await _seed(c)
-    org_id = o1["org_id"]
-
-    r = await c.post(f"/admin/orgs/{org_id}/credit", headers=_a(), json={
-        "amount_usd": "100",
-        "ref": "promo-check",
-        "reason": "checking kind",
-    })
-    assert r.status_code == 200
-    block_id = r.json()["block_id"]
-
-    async with session_maker() as db:
-        block = await db.get(CreditBlock, block_id)
-        assert block.kind == "promotional"

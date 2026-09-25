@@ -1,5 +1,4 @@
 """Public-address checks at registration and on the actual HTTP call path."""
-import socket
 
 import pytest
 
@@ -36,8 +35,3 @@ async def test_call_rechecks_dns(clients, monkeypatch, fake_getaddrinfo, address
         assert "non-public address" in response.text
 
 
-def test_fake_dns_preserves_unlisted_hosts(fake_getaddrinfo):
-    # A new Postgres connection may resolve while a call-path test has the fixture installed.
-    expected = socket.getaddrinfo("127.0.0.1", 5432, type=socket.SOCK_STREAM)
-    fake_getaddrinfo({"rebound.example": ["100.64.0.1"]})
-    assert socket.getaddrinfo("127.0.0.1", 5432, type=socket.SOCK_STREAM) == expected

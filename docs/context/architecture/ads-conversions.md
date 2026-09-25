@@ -192,19 +192,12 @@ moved to v25 on 2026-08-17 across every place a version is hard-coded (`oauth_pr
 for the full four-places-at-once list and the two-failure-modes note (a dead version returns a typed
 `UNSUPPORTED_VERSION`, not the HTML 404 a never-existent version returns).
 
-## Testing hazard: the shared test database
+## Testing: one database per test process
 
-The suite's default SQLite files live under `$TMPDIR/treg-tests/` (per-xdist-worker, out of the repo
-tree so file watchers stay quiet), and `reset_db()` (test-only) drops and recreates
-every table. Two pytest runs against the same file concurrently corrupt each other — one run's
-`reset_db()` mid-flight drops a table the other run is about to query — and the failure surfaces as a
-misleading `no such table` error that looks like a flake, not a concurrency bug. This cost this
-feature's development several hours and one conversation-round wrongly dismissing a real bug as a
-flake before the cause was found. Isolate a run with:
-
-```bash
-TREG_TEST_DB_URL="sqlite+aiosqlite:///./some-other.db" uv run --frozen python -m pytest -q
-```
+The suite's default SQLite files live under `$TMPDIR/treg-tests/`, one per test process (named by
+pid, removed at exit), out of the repo tree so file watchers stay quiet. Concurrent runs in one
+checkout therefore never share a file. Before this, two runs against one file wiped each other's
+tables mid-test and surfaced as a misleading `no such table` error that looked like a flake.
 
 ## Not built
 

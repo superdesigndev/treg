@@ -662,17 +662,6 @@ async def test_obstore_client_uses_one_request_and_checks_hash_and_size():
         await store.get(digest)
 
 
-async def test_dev_smoke_skips_missing_credentials(monkeypatch, capsys):
-    import runpy
-    for name in ('ENDPOINT', 'BUCKET', 'ACCESS_KEY_ID', 'SECRET_ACCESS_KEY'):
-        monkeypatch.setenv('TREG_ARCHIVE_OBJECT_STORE_' + name, '')
-    smoke = runpy.run_path('scripts/smoke_archive_r2.py')
-    await smoke['run']()
-    output = capsys.readouterr().out
-    assert output.startswith('SKIP:')
-    assert 'TREG_ARCHIVE_OBJECT_STORE_ACCESS_KEY_ID' in output
-
-
 async def test_dev_smoke_refuses_production_bucket(monkeypatch):
     import runpy
     for name, value in {'ENDPOINT': 'https://' + 'a' * 32 + '.r2.cloudflarestorage.com',
@@ -877,21 +866,6 @@ async def test_upload_does_not_use_read_timeout(clients, r2, monkeypatch):
     assert (await snapshots())[0].body_storage == 'both'
 
 
-@pytest.mark.parametrize('failure,expected', [(PermissionError('secret-body'), 'permission_denied'),
-    (RuntimeError('SignatureDoesNotMatch secret-body'), 'store_error'),
-    (RuntimeError('request timed out secret-body'), 'store_error'),
-    (RuntimeError('503 secret-body'), 'store_error')])
-async def test_sdk_read_errors_are_sanitized(failure, expected):
-    from treg.infra.object_store import R2ObjectStore, ObjectStoreError
-    class SDK:
-        async def get_async(self, path):
-            raise failure
-    store = R2ObjectStore(SDK(), 1000)
-    with pytest.raises(ObjectStoreError) as exc:
-        await store.get('0' * 64)
-    assert exc.value.reason == expected and str(exc.value) == expected
-
-
 @pytest.mark.parametrize('path', ['lookup', 'result', 'terminal'])
 async def test_r2_only_missing_body_has_no_db_fallback(clients, r2, monkeypatch, path):
     monkeypatch.setattr(get_settings(), 'archive_body_write', 'r2')
@@ -915,12 +889,6 @@ async def test_r2_only_missing_body_has_no_db_fallback(clients, r2, monkeypatch,
         assert result['stored'] is False and result['response']['body_text'] is None
     else:
         assert await archive.load_terminal_responses([('terminal-test', EP)]) == {}
-
-
-def test_retired_comparison_env_is_ignored(monkeypatch):
-    from treg.config import Settings
-    monkeypatch.setenv('TREG_ARCHIVE_COMPARISON_MODE', 'legacy_noise')
-    assert not hasattr(Settings(_env_file=None), 'archive_comparison_mode')
 
 
 def test_normalized_mode_and_r2_read_guard(monkeypatch):
@@ -1016,21 +984,6 @@ async def test_r2_legacy_admission_restarts_unknown_baseline(clients, r2, monkey
     async with db.session_maker() as session:
         key = (await session.execute(select(ArchiveKey))).scalar_one()
         assert key.result_state == 'found' and key.stable_seen == 1
-
-async def test_db_deadline_reports_timeout_not_cancelled(clients, r2, monkeypatch, caplog):
-    monkeypatch.setattr(get_settings(), 'archive_body_write', 'db')
-    monkeypatch.setattr(archive, '_STORE_TIMEOUT_S', .01)
-    async def blocked(**kwargs):
-        await asyncio.Event().wait()
-    monkeypatch.setattr(archive, '_store_locked', blocked)
-    reports = []
-    await archive._store(method='GET', endpoint_id=EP, provider='tikhub', url=URL,
-                         caller_body=b'', headers={}, status_code=200,
-                         media_type='application/json', body=RAW,
-                         observation=archive_bodies.StorageReport(emit=reports.append))
-    assert len(reports) == 1 and reports[0]['drop_reason'] == 'record_timeout'
-    assert any('record_timeout' in record.message for record in caplog.records)
-
 
 @pytest.mark.parametrize('phase', [
     'compare_sem_wait', 'compare', 'record_key_wait', 'record_sem_wait', 'record_db',

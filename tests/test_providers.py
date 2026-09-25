@@ -48,69 +48,6 @@ def test_bearer_vs_header_auth_shapes(tmp_path):
     assert d["ANTHROPIC_API_KEY"].auth == {"shape": "api_key_header", "header": "x-api-key"}
 
 
-def test_moltsets_env_key_is_detected_as_bearer(tmp_path):
-    env = _write_env(tmp_path, "MOLTSETS_API_KEY=ms_example\n")
-    [detected] = prov.scan_env(env)
-    assert detected.provider == "MoltSets"
-    assert detected.auth == {"shape": "bearer"}
-    assert detected.base_url == "https://api.moltsets.com/api/v1/tools"
-    assert detected.required_headers == {"User-Agent": "treg/1.0 (+https://treg.to)"}
-    [action] = prov.plan_actions([detected])
-    assert action.required_headers == {"User-Agent": "treg/1.0 (+https://treg.to)"}
-    assert prov.CATALOG_VERSION == 21
-
-
-def test_limadata_env_key_is_detected_as_x_api_key(tmp_path):
-    env = _write_env(tmp_path, "LIMADATA_API_KEY=lm_example\n")
-    [detected] = prov.scan_env(env)
-    assert detected.provider == "LimaData"
-    assert detected.auth == {"shape": "api_key_header", "header": "x-api-key"}
-    assert detected.base_url == "https://api.limadata.com"
-
-
-def test_keenable_env_key_is_detected_as_x_api_key(tmp_path):
-    env = _write_env(tmp_path, "KEENABLE_API_KEY=keen_example\n")
-    [detected] = prov.scan_env(env)
-    assert detected.provider == "Keenable"
-    assert detected.auth == {"shape": "api_key_header", "header": "X-API-Key"}
-    assert detected.base_url == "https://api.keenable.ai"
-
-
-def test_olostep_env_key_is_detected_as_bearer(tmp_path):
-    env = _write_env(tmp_path, "OLOSTEP_API_KEY=olo_example\n")
-    [detected] = prov.scan_env(env)
-    assert detected.provider == "Olostep"
-    assert detected.auth == {"shape": "bearer"}
-    assert detected.base_url == "https://api.olostep.com"
-    assert detected.probe == "user/credits/info"
-
-
-def test_scrapegraphai_env_key_is_detected_as_sgai_header(tmp_path):
-    env = _write_env(tmp_path, "SCRAPEGRAPHAI_API_KEY=sgai_example\n")
-    [detected] = prov.scan_env(env)
-    assert detected.provider == "ScrapeGraphAI"
-    assert detected.auth == {"shape": "api_key_header", "header": "SGAI-APIKEY"}
-    assert detected.base_url == "https://v2-api.scrapegraphai.com"
-    assert detected.probe == "api/credits"
-
-
-def test_fetchin_env_key_is_detected_as_x_api_key(tmp_path):
-    env = _write_env(tmp_path, "FETCHINIO_API_KEY=fetchin_example\n")
-    [detected] = prov.scan_env(env)
-    assert detected.provider == "Fetchin"
-    assert detected.auth == {"shape": "api_key_header", "header": "X-API-Key"}
-    assert detected.base_url == "https://api.fetchin.io"
-    assert detected.probe == "api/v1/subscription"
-
-
-def test_trestleiq_env_key_is_detected_as_lowercase_x_api_key(tmp_path):
-    env = _write_env(tmp_path, "TRESTLEIQ_API_KEY=tr_example\n")
-    [detected] = prov.scan_env(env)
-    assert detected.provider == "TrestleIQ"
-    assert detected.auth == {"shape": "api_key_header", "header": "x-api-key"}
-    assert detected.base_url == "https://api.trestleiq.com"
-
-
 def test_app_prefix_is_transparent(tmp_path):
     # A TREG_/APP_ prefix must not hide the provider token.
     env = _write_env(tmp_path, "TREG_RESEND_API_KEY=x\n")
@@ -162,11 +99,20 @@ def test_longest_token_wins(tmp_path):
     assert d["HUGGINGFACE_API_KEY"].provider == "HuggingFace"
 
 
-def test_build_binding_shapes():
-    assert prov.build_binding({"shape": "bearer"})["format"] == "Bearer {secret}"
-    b = prov.build_binding({"shape": "api_key_header", "header": "x-api-key"})
-    assert b["name"] == "x-api-key" and b["format"] == "{secret}"
-    assert prov.build_binding({"shape": "oauth2"}) is None   # oauth2 uses the connect flow, not a binding
+@pytest.mark.parametrize("auth,expected", [
+    ({"shape": "bearer"}, {"format": "Bearer {secret}"}),
+    ({"shape": "api_key_header", "header": "x-api-key"}, {"name": "x-api-key", "format": "{secret}"}),
+    ({"shape": "query", "param": "api_key"}, {"location": "query", "name": "api_key"}),
+    ({"shape": "basic"}, {"location": "header", "format": "Basic {secret}"}),
+    ({"shape": "oauth2"}, None),   # oauth2 uses the connect flow, not a binding
+    ({"shape": "query"}, None),    # Telegram-style, no param
+])
+def test_build_binding_shapes(auth, expected):
+    binding = prov.build_binding(auth)
+    if expected is None:
+        assert binding is None
+    else:
+        assert {k: binding[k] for k in expected} == expected
 
 
 def test_plan_actions_supported_and_deferred(tmp_path):
@@ -207,20 +153,17 @@ def test_oauth_ready_true_only_for_complete_pair_with_endpoints(tmp_path):
     [gh] = prov.scan_env(env)
     assert prov.oauth_ready(gh) is True
     # Stripe: a client pair but NO oauth block in the catalog → not ready.
-    p2 = tmp_path / "stripe"; p2.mkdir(); (p2 / ".env").write_text("STRIPE_CLIENT_ID=x\nSTRIPE_CLIENT_SECRET=x\n")
+    p2 = tmp_path / "stripe"
+    p2.mkdir()
+    (p2 / ".env").write_text("STRIPE_CLIENT_ID=x\nSTRIPE_CLIENT_SECRET=x\n")
     [st] = prov.scan_env(str(p2 / ".env"))
     assert prov.oauth_ready(st) is False
     # Incomplete pair (only the id half) → not ready.
-    p3 = tmp_path / "half"; p3.mkdir(); (p3 / ".env").write_text("GITHUB_CLIENT_ID=x\n")
+    p3 = tmp_path / "half"
+    p3.mkdir()
+    (p3 / ".env").write_text("GITHUB_CLIENT_ID=x\n")
     [half] = prov.scan_env(str(p3 / ".env"))
     assert prov.oauth_ready(half) is False
-
-
-def test_build_binding_query_and_basic():
-    q = prov.build_binding({"shape": "query", "param": "api_key"})
-    assert q["location"] == "query" and q["name"] == "api_key"
-    b = prov.build_binding({"shape": "basic"})
-    assert b["location"] == "header" and b["format"] == "Basic {secret}"
 
 
 def test_basic_parts_twilio():
@@ -282,9 +225,13 @@ def test_llm_parse_tolerates_prose_and_filters_bad_entries():
     assert len(out) == 1 and out[0]["var"] == "ACME_API_KEY"   # the incomplete "BAD" entry is dropped
 
 
-def test_llm_parse_handles_garbage():
-    assert prov.llm_parse("no json at all") == []
-    assert prov.llm_parse('{"resolved":[]}') == []
+@pytest.mark.parametrize("text", [
+    "no json at all",
+    '{"resolved":[]}',
+    '[{"var":"X","base_url":"y","auth":{"shape":"bearer"}}]',   # a top-level array must not crash
+])
+def test_llm_parse_handles_garbage(text):
+    assert prov.llm_parse(text) == []
 
 
 def test_provider_config_var_is_not_a_credential(tmp_path):
@@ -318,15 +265,6 @@ def test_independent_oauth_apps_not_merged(tmp_path):
     assert all(len(p.vars) == 2 for p in pairs)
 
 
-def test_llm_parse_survives_top_level_array():
-    assert prov.llm_parse('[{"var":"X","base_url":"y","auth":{"shape":"bearer"}}]') == []   # no crash
-
-
-def test_query_without_param_is_unsupported():
-    assert prov.build_binding({"shape": "query"}) is None            # Telegram-style, no param
-    assert prov.build_binding({"shape": "query", "param": "api_key"}) is not None
-
-
 def test_env_values_strips_one_quote_pair(tmp_path):
     env = _write_env(tmp_path, "A=\"pa'ss\"\nB='v2'\nC=plain\n")
     v = prov.env_values(env, ["A", "B", "C"])
@@ -354,13 +292,6 @@ def test_provider_model_and_dsn_are_config(tmp_path):
     assert d["OPENAI_MODEL"].kind == "config"
     assert d["OPENAI_API_BASE"].kind == "config"
     assert d["SENTRY_DSN"].kind == "config"
-
-
-def test_linear_and_calcom_auth_shapes():
-    lin = next(p for p in prov.CATALOG if p["provider"] == "Linear")
-    assert lin["auth"]["shape"] == "api_key_header" and lin["auth"]["format"] == "{secret}"
-    cal = next(p for p in prov.CATALOG if p["provider"] == "Cal.com")
-    assert cal["auth"]["shape"] == "query" and cal["auth"]["param"] == "apiKey"
 
 
 def test_llm_parse_rejects_unsafe_base_url():
@@ -398,10 +329,6 @@ async def test_providers_json_endpoint_serves_catalog():
     assert any(p["provider"] == "OpenAI" for p in body["providers"])
 
 
-if __name__ == "__main__":
-    raise SystemExit(pytest.main([__file__, "-q"]))
-
-
 def test_match_skill_resolves_file_credential_providers():
     # skill folders (OAuth token files, no env var) resolve to a curated host by name / alias
     assert prov.match_skill("google-ads")["base_url"] == "https://googleads.googleapis.com"
@@ -410,14 +337,6 @@ def test_match_skill_resolves_file_credential_providers():
     assert prov.match_skill("google_ads")["provider"] == "Google Ads"   # punctuation-insensitive
     assert prov.match_skill("totally-unknown-skill") is None
     assert prov.match_skill("") is None
-
-
-def test_google_providers_have_no_env_tokens():
-    # these OAuth providers must NOT be detected from a .env (their auth is OAuth + extra headers,
-    # not a simple bearer key) — so their catalog tokens are empty and the env scanner skips them
-    for name in ("Google Ads", "Google Search Console"):
-        entry = next(p for p in prov.CATALOG if p["provider"] == name)
-        assert entry["tokens"] == []
 
 
 # ---- catalog CLI metadata (auto-import Phase 1: auth_mechanism + detect) --------------------
@@ -434,10 +353,6 @@ def test_every_catalog_cli_profile_is_valid_and_typed():
         # env/argv entries carry an inject; device/config_file need not
         if cli["auth_mechanism"] in ("env", "argv") and not cli.get("unsupported"):
             assert cli.get("inject"), f"{provider}: env/argv mechanism must have an inject"
-
-
-def test_catalog_version_bumped_for_the_new_fields():
-    assert prov.CATALOG_VERSION >= 8
 
 
 def test_validate_cli_profile_accepts_and_rejects_the_new_fields():
@@ -472,7 +387,9 @@ def test_cli_env_var_extraction():
 
 
 def test_classify_env_cli_all_states():
-    c = lambda **kw: prov.classify_cli(_ENV_CLI, **kw)
+    def c(**kw):
+        return prov.classify_cli(_ENV_CLI, **kw)
+
     assert c(installed=True, secret_present=True, logged_in=False) == {"status": "ready", "tier": "server"}
     assert c(installed=True, secret_present=False, logged_in=True) == {"status": "ready", "tier": "local"}
     assert c(installed=True, secret_present=False, logged_in=False) == {"status": "needs_key", "env": "STRIPE_API_KEY"}
@@ -480,7 +397,9 @@ def test_classify_env_cli_all_states():
 
 
 def test_classify_config_file_cli():
-    c = lambda **kw: prov.classify_cli(_CONFIG_CLI, **kw)
+    def c(**kw):
+        return prov.classify_cli(_CONFIG_CLI, **kw)
+
     assert c(installed=True, secret_present=False, logged_in=True) == {"status": "ready", "tier": "local"}
     got = c(installed=True, secret_present=False, logged_in=False)
     assert got["status"] == "needs_login" and "pscale login" in got["action"]

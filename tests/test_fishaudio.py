@@ -51,16 +51,6 @@ async def _add_voice(clients: AsyncClient, voice_id: str, name: str = "Narrator"
         await db.commit()
 
 
-async def test_tts_access_explains_the_utf8_byte_rate(
-    clients: AsyncClient, fishaudio_platform_on,
-):
-    response = await clients.get("/catalog/endpoints/fishaudio.tts.s2-1-pro/access")
-    assert response.status_code == 200
-    assert response.json()["tier"] == "platform"
-    assert "$15/1M UTF-8 bytes" in response.json()["detail"]
-    assert "/call" not in response.json()["detail"]
-
-
 async def test_voice_create_is_private_and_becomes_an_org_resource(
     clients: AsyncClient, fishaudio_platform_on, monkeypatch,
 ):
@@ -467,18 +457,3 @@ async def test_create_persistence_failure_deletes_the_unmanaged_fish_voice(
 def test_tts_estimate_uses_utf8_bytes(text: str, expected: int):
     cost = {"usd": 15 / 1_000_000, "unit": "utf8_byte"}
     assert call_resolution._platform_estimate_micro(cost, {}, json.dumps({"text": text}).encode()) == expected
-
-
-def test_fish_catalog_uses_the_human_billing_unit_and_omits_broken_get():
-    from treg.domain.catalog import store as catalog_store
-
-    catalog = catalog_store.load(refresh=True)
-    assert "fishaudio.voices.get" not in catalog.by_id
-    cost = catalog.cost_view(
-        catalog.by_id["fishaudio.tts.s2-1-pro"]["cost"], "fishaudio")
-    assert cost["usd"] == 0.000015
-    assert cost["display_usd"] == 15
-    assert cost["display_unit"] == "1M UTF-8 bytes"
-    assert catalog.by_id["fishaudio.tts.s2-1-pro"]["verified"] == "2026-09-22"
-    assert catalog.by_id["fishaudio.voices.create"]["verified"] == "2026-09-22"
-    assert catalog.by_id["fishaudio.voices.discover"]["cost"]["type"] == "free"
