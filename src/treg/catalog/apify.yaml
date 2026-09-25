@@ -57,7 +57,7 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off. This route blocks until the actor finishes and Apify closes the connection at 300s regardless — use the async pair below for anything large", example: 120}
+        timeout: {type: integer, required: false, note: "treg's key requires 1-280 so the run ends before Apify's 300-second synchronous wait. seconds before the synchronous run is cut off. This route blocks until the actor finishes and Apify closes the connection at 300s regardless — use the async pair below for anything large", example: 120}
       body:
         startUrls: {type: array, required: true, note: "[{\"url\": \"…\"}] — either a Facebook Page URL or a full Meta Ad Library search URL (facebook.com/ads/library/?q=…&country=US)", example: [{"url": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=US&q=project%20management"}]}
         resultsLimit: {type: integer, required: false, note: "max ads PER URL; unlimited if omitted, which is how runs get expensive", example: 50}
@@ -91,7 +91,7 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        timeout: {type: integer, required: false, example: 120}
+        timeout: {type: integer, required: false, note: "treg's key requires 1-280 so the run ends before Apify's 300-second synchronous wait", example: 120}
       body:
         search: {type: string, required: true, note: "keyword or advertiser name to search the ad library for", example: "skincare"}
         adv_biz_ids: {type: string, required: false, note: "advertiser business id, to pin the search to one advertiser instead of a keyword"}
@@ -131,7 +131,7 @@ endpoints:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 25}
         maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
-        timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless", example: 120}
+        timeout: {type: integer, required: false, note: "treg's key requires 1-280 so the run ends before Apify's 300-second synchronous wait. seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless", example: 120}
       body:
         jobTitles: {type: "array[string]", required: true, note: "job-search queries; supports boolean operators. To list ALL of one company's openings, pass a broad query here and pin `company`", example: ["software engineer"]}
         company: {type: "array[string]", required: false, note: "restrict to these companies — names or LinkedIn company URLs", example: ["Netflix"]}

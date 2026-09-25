@@ -1011,9 +1011,14 @@ def test_apify_settlement_counts_rows_and_bills_the_cap_when_reached(monkeypatch
 
 
 @pytest.mark.parametrize(('items', 'hold'), [
-    ((('maxTotalChargeUsd', '0.04'),), 50_000),
+    ((('maxTotalChargeUsd', '0.04'), ('timeout', '60')), 50_000),
+    ((('maxTotalChargeUsd', '0.025'), ('timeout', '280')), 35_000),
     ((('maxTotalChargeUsd', '1'), ('maxItems', '3'), ('memory', '1024'), ('timeout', '280')),
      1_010_000),
+    ((('maxTotalChargeUsd', '0.024'), ('timeout', '60')), None),
+    ((('maxTotalChargeUsd', '0.04'),), None),
+    ((('maxTotalChargeUsd', '0.04'), ('timeout', '281')), None),
+    ((('maxTotalChargeUsd', '0.04'), ('timeout', '0')), None),
     ((), None),
     ((('maxItems', '1'),), None),
     ((('maxTotalChargeUsd', '0'),), None),
