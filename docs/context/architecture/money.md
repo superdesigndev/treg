@@ -1030,9 +1030,9 @@ count. Only the run options `maxTotalChargeUsd`, `maxItems`, `memory` and `timeo
 each once and in plain ASCII, because a dataset-view option (`limit`, `offset`, `format`, `unwind`)
 would make the returned rows disagree with the events billed. `_marketplace_pricing` holds the cap
 plus `cost.call_fee`, the flat start or compute charge the cap does not cover. `_observed_cost_micro`
-settles the rows run-sync returned times the row price plus the fee; within one row of the hold the
-caller's cap was reached, and the hold is the bill, because a run stopping at its cap can bill an
-event it never pushed and a plan-tier price below the catalog's fits more rows under the cap.
+settles the rows run-sync returned times the row price plus the fee; within two rows of the hold the
+caller's cap was reached, and the hold is the bill, because a run stops when its next event would
+pass the cap and can already have billed one event it never pushed and a plan-tier price below the catalog's fits more rows under the cap.
 Apify's `usageTotalUsd` trails a finished run by minutes, so it is not settlement evidence. A run
 that exceeds its own timeout answers 400 with no rows and settles at zero although Apify bills up
 to the cap; the $1 ceiling bounds that loss. BYOK calls never enter this money path.
