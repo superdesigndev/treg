@@ -54,8 +54,8 @@ endpoints:
     summary: "Scrape publicly running Facebook and Instagram ads for a page or Ad Library search"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "SERVER-SIDE result cap for pay-per-result actors — the only hard spend limit; set it on every call", example: 50}
-        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
         timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off. This route blocks until the actor finishes and Apify closes the connection at 300s regardless — use the async pair below for anything large", example: 120}
       body:
         startUrls: {type: array, required: true, note: "[{\"url\": \"…\"}] — either a Facebook Page URL or a full Meta Ad Library search URL (facebook.com/ads/library/?q=…&country=US)", example: [{"url": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=US&q=project%20management"}]}
@@ -66,12 +66,13 @@ endpoints:
         onlyAdsNewerThan: {type: string, required: false, note: "YYYY-MM-DD or a relative phrase like \"2 months\"", example: "2026-06-01"}
         onlyAdsOlderThan: {type: string, required: false}
         onlyTotal: {type: boolean, required: false, note: "true returns just the ad COUNT instead of the ads — one cheap result row when all you need is how much a competitor is running", example: false}
-        enrichWithEcommerceData: {type: boolean, required: false, note: "true follows landing pages for product names and prices"}
+        enrichWithEcommerceData: {type: boolean, required: false, enum: [false], note: "true follows landing pages for product names and prices and bills an extra ecommerce-enrichment event per ad; treg's key requires false, your own key may enable it", example: false}
       bodyType: json
       note: "the response is the dataset items array directly — no run envelope, no polling. Result count is what you pay for, so onlyTotal:true is the cheap probe before a full pull. Unofficial: this reads the Ad Library web UI, so field availability tracks whatever Meta currently renders"
+    platform_request: {body.enrichWithEcommerceData: false}
     test_request:
       queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 180}
-      body: {startUrls: [{url: "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=project%20management"}], resultsLimit: 1, activeStatus: "active", isDetailsPerAd: false, onlyTotal: true}
+      body: {startUrls: [{url: "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=project%20management"}], resultsLimit: 1, activeStatus: "active", isDetailsPerAd: false, onlyTotal: true, enrichWithEcommerceData: false}
     cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: ad, source: observed, source_url: 'https://apify.com/pricing', checked: '2026-07-31', confidence: verified, note: 'pay-per-result: one result = one ad. OBSERVED 2026-07-31 on the STARTER plan — a run capped at maxItems=1 reported usageTotalUsd 0.005 in GET /actor-runs, matching the $5.00-per-1,000 list rate; the rate varies $3.40–$5.80 across subscription tiers, so this is the Starter figure. Charged on results produced even if the run is cut short — cap it with maxItems'}
     verified: 2026-07-31
     example_response: examples/apify.meta-ads.library.search.json
@@ -87,7 +88,8 @@ endpoints:
     summary: "Scrape publicly running TikTok ads from TikTok's ad library by keyword or advertiser"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "server-side result cap; set it on every call", example: 50}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
         timeout: {type: integer, required: false, example: 120}
       body:
         search: {type: string, required: true, note: "keyword or advertiser name to search the ad library for", example: "skincare"}
@@ -126,8 +128,8 @@ endpoints:
     summary: "Scrape LinkedIn job postings by title, company, location or filters — the hiring-signal search that also answers 'what is this company hiring for' via the company filter"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "SERVER-SIDE result cap for pay-per-result actors — the only hard spend limit; set it on every call", example: 25}
-        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 0.05}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 25}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
         timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless", example: 120}
       body:
         jobTitles: {type: "array[string]", required: true, note: "job-search queries; supports boolean operators. To list ALL of one company's openings, pass a broad query here and pin `company`", example: ["software engineer"]}
@@ -138,14 +140,14 @@ endpoints:
         experienceLevel: {type: "array[string]", required: false, note: "Entry / Mid / Senior"}
         postedLimit: {type: string, required: false, note: "allowed values: 1h | 24h | week | month — labels like 'Past hour' are rejected", example: "24h"}
         sortBy: {type: string, required: false, note: "date | relevance"}
-        maxItems: {type: integer, required: false, note: "jobs per query; 0 means every available page (LinkedIn caps at 40 pages ≈ 1,000). Pair with the query-string maxItems, which is the enforced ceiling", example: 25}
+        maxItems: {type: integer, required: false, note: "jobs per query; 0 means every available page (LinkedIn caps at 40 pages ≈ 1,000). Pair with the query-string maxTotalChargeUsd, the spend cap Apify enforces", example: 25}
         page: {type: integer, required: false, note: "starting page, 25 jobs per page"}
       bodyType: json
       note: "the response is the dataset items array directly — no run envelope. Community actor scraping LinkedIn's public job search: no LinkedIn login needed, but expect the flakiness every LinkedIn scraper shows — retry before concluding a company has no openings"
     test_request:
       queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 180}
       body: {jobTitles: ["attorney"], locations: ["Miami, Florida"], maxItems: 1}
-    cost: {type: per_result, value: 0.001, currency: USD, per: 1, unit: result, source: docs, source_url: 'https://apify.com/harvestapi/linkedin-job-search', checked: '2026-08-20', confidence: documented, note: 'pay-per-event: $1.00 per 1,000 jobs published on the actor page, no platform usage charge on top. Charged per dataset item produced — cap every call with maxItems and read usageTotalUsd from GET /v2/actor-runs after a big pull'}
+    cost: {type: per_result, value: 0.001, call_fee: 0.001, currency: USD, per: 1, unit: result, source: docs, source_url: 'https://apify.com/harvestapi/linkedin-job-search', checked: '2026-08-20', confidence: documented, note: 'pay-per-event: $1.00 per 1,000 jobs published on the actor page, no platform usage charge on top; the flat $0.001 call_fee is the actor-start event (read live 2026-09-25 from pricingInfos). Charged per dataset item produced — cap every call with maxItems and read usageTotalUsd from GET /v2/actor-runs after a big pull'}
     verified: 2026-08-20
     example_response: examples/apify.linkedin.search.jobs.json
     docs_url: https://apify.com/harvestapi/linkedin-job-search
