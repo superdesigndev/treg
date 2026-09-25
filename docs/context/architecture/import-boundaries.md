@@ -62,8 +62,9 @@ archive body PUT chain because it persists the paid response outside any DB tran
 post-relay provider-resource register/rename/tombstone calls because shared-key resource ownership
 must be established or advanced by the call that receives the provider's successful response.
 
-The separate `test-postgres` job runs its database-sensitive subset serially against Postgres 16;
-it uses unbuffered Python output and a 15-minute job budget so a slow test remains diagnosable. The
+The separate `test-postgres` job runs its database-sensitive subset against Postgres 16, one
+database per xdist worker; it uses unbuffered Python output and a 15-minute job budget so a slow
+test remains diagnosable. The
 subset includes agent attribution, managed API-key lifecycle and concurrency, credential health,
 local-run reporting and ads-conversion coverage so naive-UTC assumptions are exercised by asyncpg
 rather than hidden by SQLite's permissive adapter.

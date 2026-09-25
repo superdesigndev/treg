@@ -44,7 +44,7 @@ require a frontend build, so CLI and background-worker development remains indep
    Commit messages follow Conventional Commits (`feat(scope): …`, `fix: …`, `docs: …`).
 3. Add or update tests; run `uv run --with pytest-xdist pytest -n auto -q` (all green).
    Serial `uv run --frozen python -m pytest -q` is for debugging one test or order.
-   The Postgres CI job must stay serial (`reset_db()` drops tables on a shared database).
+   Against Postgres, set `TREG_TEST_DB_URL`; each xdist worker creates its own database from it.
 4. If you changed a subsystem, update its fragment in `docs/context/` in the same PR.
 5. Open a PR. CI runs the tests + a secret scan; a maintainer reviews.
 

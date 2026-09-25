@@ -65,8 +65,7 @@ jobs:
         if: steps.docs.outputs.only != 'true'
         # -n auto: the suite is 2,700+ small independent tests — serial execution is what let a
         # throttled runner turn minutes into tens of minutes. xdist arrives via --with rather than
-        # the lockfile on purpose (local daily default uses the same --with). The Postgres job
-        # below must stay serial: workers would share one database while reset_db() drops tables.
+        # the lockfile on purpose (local daily default uses the same --with).
         run: uv run --with pytest-xdist pytest -n auto -v -o faulthandler_timeout=300
 
   test-postgres:
@@ -103,14 +102,14 @@ jobs:
         run: bash scripts/build-dashboard.sh
       - name: Install dependencies
         run: uv sync --locked
-      - name: Run Postgres tests serially
-        # Never add xdist here. Every worker would share this one database while reset_db() drops
-        # and recreates its tables, reproducing the 1,022-error cross-worker failure shape.
+      - name: Run Postgres tests
+        # Each xdist worker gets its own database (treg_test_gw0, ...; see tests/conftest.py), so
+        # reset_db() in one worker never empties another's tables.
         # -v + faulthandler: this job has twice been killed at its time limit with zero output on
-        # this runner while the identical list passes locally in 2 minutes. Per-test lines locate
-        # the stall; the fault handler dumps every thread's stack after 300s of one test.
+        # this runner while the identical list passes locally. Per-test lines locate the stall;
+        # the fault handler dumps every thread's stack after 300s of one test.
         run: >-
-          uv run --frozen python -m pytest -v -o faulthandler_timeout=300
+          uv run --frozen --with pytest-xdist python -m pytest -n auto -v -o faulthandler_timeout=300
           tests/callmatrix
           tests/test_team_limit.py
           tests/test_ledger.py
@@ -137,6 +136,8 @@ jobs:
           tests/test_health.py
           tests/test_localrun.py
           tests/test_orgs.py
+          tests/test_orgs_isolation.py
+          tests/test_orgs_mgmt.py
       - name: Dump Postgres activity on failure
         # Three CI-only hangs at archive drains were undiagnosable from Python stacks alone; this
         # shows the DATABASE's view: every session, its state (idle in transaction = a leaked or
@@ -146,10 +147,8 @@ jobs:
         env:
           PGPASSWORD: treg
         run: |
-          psql -h 127.0.0.1 -U treg -d treg_test -x -c "select pid, state, wait_event_type, wait_event, xact_start, state_change, left(query,140) as query from pg_stat_activity where datname='treg_test' order by xact_start nulls last;" || true
+          psql -h 127.0.0.1 -U treg -d treg_test -x -c "select datname, pid, state, wait_event_type, wait_event, xact_start, state_change, left(query,140) as query from pg_stat_activity where datname like 'treg_test%' order by xact_start nulls last;" || true
           psql -h 127.0.0.1 -U treg -d treg_test -c "select l.pid, l.locktype, l.mode, l.granted, a.state, left(a.query,90) as query from pg_locks l join pg_stat_activity a using(pid) where not l.granted;" || true
-          tests/test_orgs_isolation.py
-          tests/test_orgs_mgmt.py
 
   # RESTORED 2026-08-24. This job is a REQUIRED check on main, and the CI rewrite in 528383d
   # dropped it while keeping the requirement — so for three weeks every pull request waited on a
