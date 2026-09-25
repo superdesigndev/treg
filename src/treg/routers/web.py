@@ -2212,9 +2212,11 @@ async def hub_page(request: Request, tool_id: str, db: AsyncSession = Depends(ge
     from ..models import Org
     as_md = request.url.path.endswith(".md")
     raw = tool_id[:-3] if tool_id.endswith(".md") else tool_id
-    if not hub_app.enabled():
+    from .hub_gate import hub_visible
+    visible, reader = await hub_visible(request, db)
+    if not visible:
         raise HTTPException(status_code=404, detail="Not Found")
-    row = await hub_app.tool_for(db, raw)
+    row = await hub_app.tool_for(db, raw, caller_slug=reader)
     if row is None:
         if await hub_app.is_rejected(db, hub_app.split_id(raw)[0]):
             raise HTTPException(status_code=410, detail=(
@@ -3248,15 +3250,17 @@ async def dashboard_run_page(run_id: str):
 
 
 @app.get("/llms.txt", include_in_schema=False)
-async def llms_txt():
+async def llms_txt(request: Request, db: AsyncSession = Depends(get_session)):
     """Agent-readable overview (llms.txt convention) — an AI agent that fetches this learns the
     whole registry: the call protocol, discovery, auth, CLI, skills, and links to the tutorial/docs.
     The serving domain is templated in so links stay correct across deploys."""
     f = _WEB_DIR / "llms.txt"
     if not f.exists():
         raise HTTPException(status_code=404, detail="llms.txt not bundled")
+    from .hub_gate import hub_visible
+    hub_on = (await hub_visible(request, db))[0]
     base = get_settings().public_url.rstrip("/")
-    return PlainTextResponse(_fill_headline(_strip_routed(f.read_text(encoding="utf-8"))).replace("{BASE}", base),
+    return PlainTextResponse(_fill_headline(_strip_routed(f.read_text(encoding="utf-8"), hub_on)).replace("{BASE}", base),
                              media_type="text/plain; charset=utf-8")
 
 
@@ -3437,7 +3441,12 @@ def routed_discovery_on() -> bool:
     return str(get_settings().routed_discovery).strip().lower() not in ("off", "0", "false", "no")
 
 
-def _strip_routed(text: str) -> str:
+def _hub_app_visible(slug: str | None) -> bool:
+    from ..application import hub as hub_app
+    return hub_app.visible_to(slug)
+
+
+def _strip_routed(text: str, hub_on: bool | None = None) -> str:
     """Remove the `<!--routed-->…<!--/routed-->` blocks (and, when kept, just the markers), and the
     `<!--hub-->…<!--/hub-->` blocks the same way behind `hub_enabled`: an agent-facing file must
     never describe what this deployment has not switched on (AGENTS.md: do not document what is
@@ -3446,7 +3455,9 @@ def _strip_routed(text: str) -> str:
         text = text.replace("<!--routed-->\n", "").replace("\n<!--/routed-->", "")
     else:
         text = re.sub(r"<!--routed-->.*?<!--/routed-->\n?", "", text, flags=re.S)
-    if get_settings().hub_enabled:
+    # The hub sections follow the reader: while TREG_HUB_TEAMS limits the hub, only a reader acting
+    # for a listed team gets them (`hub_on`, from the route); with no reader, the public answer.
+    if hub_on if hub_on is not None else _hub_app_visible(None):
         return text.replace("<!--hub-->\n", "").replace("\n<!--/hub-->", "")
     return re.sub(r"<!--hub-->.*?<!--/hub-->\n?", "", text, flags=re.S)
 
@@ -3459,14 +3470,14 @@ def _fill_headline(text: str) -> str:
     return text.replace("{ENDPOINTS}", endpoints).replace("{PROVIDERS}", str(providers))
 
 
-def _serve_md(name: str) -> PlainTextResponse:
+def _serve_md(name: str, hub_on: bool | None = None) -> PlainTextResponse:
     """Serve a bundled markdown file as inline text (so "open in new tab" shows it, not a download),
     with the serving domain templated in. Backs the 'copy markdown' buttons on the docs pages."""
     f = _WEB_DIR / name
     if not f.exists():
         raise HTTPException(status_code=404, detail=f"{name} not bundled")
     base = get_settings().public_url.rstrip("/")
-    return PlainTextResponse(_fill_headline(_strip_routed(f.read_text(encoding="utf-8"))).replace("{BASE}", base),
+    return PlainTextResponse(_fill_headline(_strip_routed(f.read_text(encoding="utf-8"), hub_on)).replace("{BASE}", base),
                              media_type="text/plain; charset=utf-8")
 
 
@@ -3522,10 +3533,11 @@ async def integrate_md():
 
 
 @app.get("/skill.md", include_in_schema=False)
-async def skill_md():
+async def skill_md(request: Request, db: AsyncSession = Depends(get_session)):
     """The OFFICIAL treg Claude skill (3 personas), {BASE}-templated to this server.
     install.sh drops it into ~/.claude/skills/treg/ so agents learn treg at CLI install."""
-    return _serve_md("skill.md")
+    from .hub_gate import hub_visible
+    return _serve_md("skill.md", (await hub_visible(request, db))[0])
 
 
 @app.get("/skills/ugc/SKILL.md", include_in_schema=False)
@@ -4170,11 +4182,12 @@ async def well_known_skills_index():
 
 
 @app.get("/.well-known/skills/treg/SKILL.md", include_in_schema=False)
-async def well_known_skill_md():
+async def well_known_skill_md(request: Request, db: AsyncSession = Depends(get_session)):
     """The skill itself, at the path `index.json` promises. Deliberately the same `_serve_md` the
     canonical `/skill.md` uses, so `{BASE}` is templated to the serving host here too — a self-hosted
     registry advertises ITSELF, not treg.to."""
-    return _serve_md("skill.md")
+    from .hub_gate import hub_visible
+    return _serve_md("skill.md", (await hub_visible(request, db))[0])
 
 
 @app.get("/.well-known/skills/make-ugc/SKILL.md", include_in_schema=False)

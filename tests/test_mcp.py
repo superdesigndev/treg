@@ -119,9 +119,37 @@ async def test_the_server_lists_the_shared_tools(clients):
                                      "clientInfo": {"name": "t", "version": "1"}}, token)
         r = await _rpc(c, "tools/list", token=token)
         names = {t["name"] for t in r.json()["result"]["tools"]}
+    # The hub tools are listed only where the hub is on for the caller (test_hub_tools_are_listed_*).
     assert names == {"catalog_search", "catalog_get", "call", "call_media", "resources_list",
-                     "balance", "my_tools", "catalog_request", "feedback", "review",
-                     "hub_create", "hub_update", "hub_mine"}
+                     "balance", "my_tools", "catalog_request", "feedback", "review"}
+
+
+async def _tool_names(clients, token):
+    async with mcp_session(clients) as c:
+        await _rpc(c, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                     "clientInfo": {"name": "t", "version": "1"}}, token)
+        r = await _rpc(c, "tools/list", token=token)
+        return {t["name"] for t in r.json()["result"]["tools"]}
+
+
+async def test_hub_tools_are_listed_only_to_a_team_that_may_use_the_hub(clients, monkeypatch):
+    from treg.config import get_settings
+    hub = {"hub_create", "hub_update", "hub_mine"}
+    token = clients.headers["X-Treg-Token"]
+    me = (await clients.get("/orgs")).json()[0]["slug"]
+    other = (await clients.post("/users", json={"email": "hub-outsider@superdesign.dev"})).json()["token"]
+    try:
+        monkeypatch.setenv("TREG_HUB_ENABLED", "1")
+        get_settings.cache_clear()
+        assert hub <= await _tool_names(clients, other)                 # open to every team
+        monkeypatch.setenv("TREG_HUB_TEAMS", me)
+        get_settings.cache_clear()
+        assert hub <= await _tool_names(clients, token)                 # a listed team
+        assert not hub & await _tool_names(clients, other)              # everyone else
+    finally:
+        monkeypatch.delenv("TREG_HUB_TEAMS", raising=False)
+        monkeypatch.delenv("TREG_HUB_ENABLED", raising=False)
+        get_settings.cache_clear()
 
 
 async def test_call_media_returns_native_audio_with_structured_metadata(clients, monkeypatch):

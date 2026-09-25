@@ -41,6 +41,16 @@ def enabled_for(org_slug: str | None) -> bool:
     return not teams or (org_slug or "").lower() in teams
 
 
+def visible_to(org_slug: str | None) -> bool:
+    """May this reader see the hub at all? A reader with a team is judged by `enabled_for`. A reader
+    with no team (no token, or a public page) sees it only when the hub is open to every team: while
+    `TREG_HUB_TEAMS` limits it, search, catalog get, the share pages and the agent files show no
+    trace of it to anyone outside the list."""
+    if org_slug:
+        return enabled_for(org_slug)
+    return enabled() and not get_settings().hub_team_set
+
+
 def is_hub_id_shape(rest: str) -> bool:
     """`<team-slug>.<name>[@N]`: dotted, slash-free, not a URL. Whether it IS a hub tool is the
     database's answer (`tool_for`); this only says the call road may ask."""
@@ -88,7 +98,7 @@ async def _tool_for(db: AsyncSession, rest: str, *, live_only: bool = True,
     old version stays callable for OLD_VERSION_DAYS after a newer live one exists (round 4 q8)."""
     # The public views (catalog get, the share page) pass no caller and get the plain flag: a
     # contract is readable. A CALL names its caller's team and goes through the allow-list.
-    if not (enabled_for(caller_slug) if caller_slug is not None else enabled()) or not is_hub_id_shape(rest):
+    if not visible_to(caller_slug) or not is_hub_id_shape(rest):
         return None
     tool_id, pin = split_id(rest)
     if pin is None:
@@ -436,14 +446,15 @@ async def _apply_price(db: AsyncSession, row: HubTool, price_usd: float) -> HubT
     return row
 
 
-async def search_listed(db: AsyncSession, query: str, cat: Any) -> tuple[list[tuple[dict, float]], dict[str, dict]]:
+async def search_listed(db: AsyncSession, query: str, cat: Any, *,
+                        org_slug: str | None = None) -> tuple[list[tuple[dict, float]], dict[str, dict]]:
     """The listed live hub tools that match `query` (docs/hub-listing-decisions.md, decision 2):
     the newest live version of every tool with `listed` on, scored by `catalog_store.score_extra`
     (the catalog's own tokens, idf and gate, no boost). Returns `([(row, score)], stats)`; `stats`
     is keyed by id with the 30-day ok rate and sample count of runs by OTHERS, the same shape the
     evidence rerank reads for a catalog row. The row is the public contract: never the script, the
     maker's tools or a key."""
-    if not enabled() or not query.strip():
+    if not visible_to(org_slug) or not query.strip():
         return [], {}
     from datetime import timedelta
     from ...domain.catalog import store as catalog_store
@@ -596,12 +607,12 @@ async def decide_listing(db: AsyncSession, *, tool_id: str, approve: bool, reaso
     return lst
 
 
-async def capability_siblings(db: AsyncSession, capability: str, *, exclude: str = "") -> list[dict[str, Any]]:
+async def capability_siblings(db: AsyncSession, capability: str, *, exclude: str = "", org_slug: str | None = None) -> list[dict[str, Any]]:
     """The approved, live hub tools that do `capability`, as the sibling rows catalog_get shows
     beside that job's providers (docs/hub-listing-decisions.md round 3). Each carries the public
     contract's price and a seeded `observed` (`seeded_observed`), from runs by other teams in the
     last 30 days. Never routed to: an agent compares and picks (AGENTS.md non-negotiable 4)."""
-    if not enabled() or not capability:
+    if not visible_to(org_slug) or not capability:
         return []
     from datetime import timedelta
     from ...models import HubRun

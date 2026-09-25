@@ -312,15 +312,12 @@ def render(variant: str) -> str:
     #    setting, so it keeps the content — but the markers themselves must never ship, or the
     #    product's most-read page starts with visible HTML comments.
     out = out.replace("<!--routed-->\n", "").replace("\n<!--/routed-->", "")
-    # 5. `<!--hub-->` / `<!--/hub-->` delimit the tool-hub section. The SERVER strips it while that
-    #    deployment's `hub_enabled` is off, because the server knows its own state. A plugin is a
-    #    static file installed against ANY registry — treg.to, or someone's self-hosted one that may
-    #    well have the hub ON — so it always ships the hub text and lets the agent find out at run
-    #    time. The section itself carries the instruction for the off case: every `/hub/...` route
-    #    answers 404, which the agent reports as "this registry does not offer the hub" instead of
-    #    retrying. A plugin that omitted the section would instead hide a feature that works.
-    #    (Owner's decision, 2026-09-16. `--with-hub` is still accepted and now redundant.)
-    out = out.replace("<!--hub-->\n", "").replace("\n<!--/hub-->", "")
+    # 5. `<!--hub-->` / `<!--/hub-->` delimit the tool-hub section. A plugin is a static file that
+    #    every user of every agent installs, while the hub is open only to the teams in
+    #    TREG_HUB_TEAMS: so the plugin never carries it. A member of such a team gets the section
+    #    from the server itself (`treg skill bootstrap` signed in, or /skill.md with their key).
+    #    (Owner's decision, 2026-09-26; it replaces the 2026-09-16 one to always ship it.)
+    out = re.sub(r"<!--hub-->.*?<!--/hub-->\n?", "", out, flags=re.S)
     # `{ENDPOINTS}` / `{PROVIDERS}`: the server fills these per request from the loaded catalog; a
     # static plugin copy gets the numbers as of generation, refreshed with every release.
     endpoints, providers = catalog_store.headline_counts(catalog_store.load())
@@ -328,7 +325,7 @@ def render(variant: str) -> str:
     return out.replace("{BASE}", PUBLIC_BASE)
 
 
-# Accepted and ignored: the hub section always ships now (see the comment in the renderer).
+# Accepted and ignored: a plugin never ships the hub section now (see the comment in the renderer).
 WITH_HUB = "--with-hub" in sys.argv
 
 

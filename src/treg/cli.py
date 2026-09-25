@@ -3926,7 +3926,15 @@ def cmd_skill_bootstrap(args, cfg) -> None:
     it runs outside any project — with `--project` to target repo-local dirs instead."""
     base_url = (cfg.get("base_url") or "https://treg.to").rstrip("/")
     try:
-        resp = httpx.get(f"{base_url}/skill.md", timeout=15, follow_redirects=True)
+        # Signed in, the server answers for your team: sections for a feature limited to some teams
+        # (the tool hub, TREG_HUB_TEAMS) reach only a member of those teams.
+        headers = {}
+        token = os.environ.get("TREG_TOKEN") or cfg.get("token")
+        if token:
+            headers["X-Treg-Token"] = token
+            if org := _effective_org(cfg):
+                headers["X-Treg-Org"] = org
+        resp = httpx.get(f"{base_url}/skill.md", headers=headers, timeout=15, follow_redirects=True)
         resp.raise_for_status()
         recipe = resp.text
     except Exception as exc:  # noqa: BLE001 — network/HTTP; report and exit non-zero for install.sh

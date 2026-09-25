@@ -148,6 +148,51 @@ class _StaticSurfaceCapabilities:
         return result
 
 
+_HUB_TOOL_NAMES = frozenset({"hub_create", "hub_update", "hub_mine"})
+
+
+class _HubToolsGate:
+    """List the hub tools only to a caller who may use the hub: none while TREG_HUB_ENABLED is off,
+    and while TREG_HUB_TEAMS limits it, only to a caller acting for a listed team. A call to one
+    by anyone else already answers 404 (the /hub routes check the team); this keeps them out of
+    the list an agent reads."""
+
+    async def __call__(
+        self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
+    ) -> HandlerResult:
+        result = await call_next(ctx)
+        if ctx.method != "tools/list" or await self._visible(ctx):
+            return result
+        if isinstance(result, dict) and isinstance(result.get("tools"), list):
+            return {**result, "tools": [t for t in result["tools"]
+                                        if (t.get("name") if isinstance(t, dict) else getattr(t, "name", None))
+                                        not in _HUB_TOOL_NAMES]}
+        tools = getattr(result, "tools", None)
+        if isinstance(tools, list):
+            return result.model_copy(update={"tools": [t for t in tools if getattr(t, "name", None) not in _HUB_TOOL_NAMES]})
+        return result
+
+    @staticmethod
+    async def _visible(ctx: ServerRequestContext[Any, Any]) -> bool:
+        s = get_settings()
+        if not s.hub_enabled:
+            return False
+        if not s.hub_team_set:
+            return True
+        headers = getattr(getattr(ctx, "request", None), "headers", None) or {}
+        raw = headers.get("authorization") or headers.get("Authorization") or ""
+        token = raw.removeprefix("Bearer ").removeprefix("bearer ").strip()
+        if not token:
+            return False
+        from .application import hub as hub_app
+        try:
+            async with _api(token) as client:
+                _org_id, slug, _problem = await _resolve_org(client)
+        except Exception:  # noqa: BLE001 - an unknown team only hides the hub tools
+            return False
+        return hub_app.enabled_for(slug)
+
+
 # The catalog's size, quoted in the listing text a human reads in a connector directory. Generated,
 # never typed: see `catalog_store.headline_counts`.
 _ENDPOINTS, _PROVIDERS = catalog_store.headline_counts(catalog_store.load())
@@ -171,7 +216,7 @@ mcp = MCPServer(
         "If a call result invites a review, rate that one call with review(call_id, usefulness, "
         "reason?) after using it, then continue."
     ),
-    middleware=[_StaticSurfaceCapabilities()],
+    middleware=[_StaticSurfaceCapabilities(), _HubToolsGate()],
 )
 
 
@@ -670,8 +715,18 @@ async def _catalog_search_impl(
     # Listed hub tools ride in by score, no boost (docs/hub-listing-decisions.md, decision 2).
     from .application import hub as hub_app
     from .infra.db import session_maker
+    # While TREG_HUB_TEAMS limits the hub, only a caller acting for a listed team sees hub rows.
+    hub_slug = None
+    if get_settings().hub_enabled and get_settings().hub_team_set:
+        token = _bearer(ctx) if ctx is not None else ""
+        if token:
+            try:
+                async with _api(token) as client:
+                    _org_id, hub_slug, _problem = await _resolve_org(client)
+            except Exception:  # noqa: BLE001 - an unknown team only hides hub rows
+                hub_slug = None
     async with session_maker() as _s:
-        hub_ranked, hub_stats = await hub_app.search_listed(_s, query, cat)
+        hub_ranked, hub_stats = await hub_app.search_listed(_s, query, cat, org_slug=hub_slug)
     if hub_ranked:
         stats = {**stats, **hub_stats}
         ranked = catalog_store.merge_by_score(ranked, hub_ranked)

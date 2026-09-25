@@ -15,6 +15,7 @@ sources:
   - src/treg/routers/hub.py
   - src/treg/routers/catalog.py
   - src/treg/routers/web.py
+  - src/treg/routers/hub_gate.py
   - src/treg/application/call/service.py
   - src/treg/domain/money/__init__.py
   - src/treg/mcp.py
@@ -61,10 +62,14 @@ hub route answers 404, the call road never asks the hub, the agent files carry n
 the dashboard shows no Hub entry. With the flag on, `TREG_HUB_TEAMS` (a comma-separated list of
 team slugs, default empty) is the middle stage between off and open (owner, 2026-09-24): every
 gate that has a caller (`hub_app.enabled_for(slug)`: the hub router, `/call/` of a hub id) answers
-404 to a team outside the list, exactly as with the flag off, while the public contract (catalog
-get, catalog search, the share page, the agent files) keeps the plain flag and stays readable. An
-empty list means every team. The flag flips in production at the final merge, with the list set
-to the owner's team first.
+404 to a team outside the list, exactly as with the flag off. The open surfaces follow the READER
+(owner, 2026-09-26): catalog search and `catalog_search`, catalog get and its sibling rows, the
+share page, the hub sections of `/skill.md` and `/llms.txt`, and the MCP tools `hub_create`,
+`hub_update`, `hub_mine` (`mcp._HubToolsGate` on `tools/list`) resolve the key or session the
+request carries (`routers/hub_gate.reader_team`) and ask `hub_app.visible_to(slug)`; a reader with
+no team sees the hub only when the list is empty. `treg skill bootstrap` sends the key, so a listed
+team's agents get the hub sections. The static plugin files never carry them (`build_plugin.py`).
+An empty list means every team.
 
 ## Vocabulary
 

@@ -1285,23 +1285,43 @@ def test_enabled_for_is_the_flag_then_the_team_list(monkeypatch):
     get_settings.cache_clear()
 
 
-async def test_a_team_outside_the_list_sees_the_hub_as_off_but_can_read_a_contract(clients: AsyncClient, hub_on, monkeypatch):
-    """The listed team publishes and runs; a second team gets 404 on every hub route and on
-    /call/ of the tool, exactly as with the flag off. The public contract (catalog get, the share
-    page) stays readable: it describes the hub, it does not run it."""
+async def test_a_team_outside_the_list_sees_no_trace_of_the_hub(clients: AsyncClient, hub_on, monkeypatch):
+    """The listed team publishes, runs, finds and reads its tools. A second team, and a reader with
+    no key, see what they see with the flag off: 404 on every hub route, on /call/, on catalog get
+    and the share page; no hub row in search; no hub section in the agent files (owner, 2026-09-26)."""
     tool_id = await _publish_live(clients)                  # the test client's team is the maker
+    await clients.patch(f"/hub/tools/{tool_id}", json={"listed": True})
+    await _decide(clients, monkeypatch, tool_id, "approve")
     me = (await clients.get("/orgs")).json()[0]["slug"]
-    other = (await funded_user(clients, "outsider@example.com"))["token"]
+    other = {"X-Treg-Token": (await funded_user(clients, "outsider@example.com"))["token"]}
+    anon = AsyncClient(transport=clients._transport, base_url=str(clients.base_url))
     monkeypatch.setenv("TREG_HUB_TEAMS", me)
     get_settings.cache_clear()
     try:
+        async def found(**kw):
+            rows = (await clients.get("/catalog/search", params={"q": "leads-db"}, **kw)).json()["results"]
+            return tool_id in [r["id"] for r in rows]
+        # the listed team
         assert (await clients.get("/hub/tools/mine")).status_code == 200
-        r = await clients.get("/hub/tools/mine", headers={"X-Treg-Token": other})
-        assert r.status_code == 404, r.text
-        r = await clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers={"X-Treg-Token": other})
-        assert r.status_code == 404, r.text                    # the id is unknown to that team
+        assert await found()
         assert (await clients.get(f"/catalog/endpoints/{tool_id}")).status_code == 200
         assert (await clients.get(f"/hub/{tool_id}")).status_code == 200
+        assert "treg hub publish" in (await clients.get("/skill.md")).text
+        # another team
+        assert (await clients.get("/hub/tools/mine", headers=other)).status_code == 404
+        assert (await clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers=other)).status_code == 404
+        assert not await found(headers=other)
+        assert (await clients.get(f"/catalog/endpoints/{tool_id}", headers=other)).status_code == 404
+        assert (await clients.get(f"/hub/{tool_id}", headers=other)).status_code == 404
+        assert "treg hub publish" not in (await clients.get("/skill.md", headers=other)).text
+        # nobody signed in
+        async with anon:
+            assert (await anon.get(f"/hub/{tool_id}")).status_code == 404
+            assert (await anon.get(f"/catalog/endpoints/{tool_id}")).status_code == 404
+            assert tool_id not in [r["id"] for r in (await anon.get("/catalog/search", params={"q": "leads-db"})).json()["results"]]
+            assert "treg hub publish" not in (await anon.get("/skill.md")).text
+            assert "treg hub list" not in (await anon.get("/llms.txt")).text
+        assert "treg hub list" in (await clients.get("/llms.txt")).text
     finally:
         monkeypatch.delenv("TREG_HUB_TEAMS", raising=False)
         get_settings.cache_clear()
