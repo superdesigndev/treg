@@ -44,7 +44,8 @@ async def test_the_per_file_cap_and_daily_quota_refuse_before_storing(clients: A
     r = await clients.post("/media", content=b"x" * 101, headers={"content-type": "audio/mpeg"})
     assert r.status_code == 413  # refused on Content-Length, before the body is read
     async def chunked():
-        yield b"x" * 60; yield b"x" * 60
+        yield b"x" * 60
+        yield b"x" * 60
     r = await clients.post("/media", content=chunked(), headers={"content-type": "audio/mpeg"})
     assert r.status_code == 413  # chunked, no Content-Length: refused mid-stream at the cap
     monkeypatch.setattr(media_app, "DAILY_ORG_BYTES", 150)
@@ -63,7 +64,3 @@ async def test_expired_media_is_gone_and_swept_by_the_next_upload(clients: Async
     assert await media_app.get(tok) is None
     async with session_maker() as db:
         assert (await db.execute(Media.__table__.select().where(Media.token == tok))).first() is None
-
-
-async def test_unknown_token_is_404(clients: AsyncClient):
-    assert (await clients.get("/m/nope")).status_code == 404

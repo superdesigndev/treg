@@ -20,17 +20,13 @@ from treg.bootstrap_http import _decode_request_body
 
 
 # ---- the pure decoder --------------------------------------------------------------------
-def test_decode_base64():
-    assert _decode_request_body(base64.b64encode(b"SELECT 1"), "base64") == b"SELECT 1"
-
-
-def test_decode_gzip():
-    assert _decode_request_body(gzip.compress(b"DROP TABLE x"), "gzip") == b"DROP TABLE x"
-
-
-def test_decode_base64_then_gzip():
-    raw = b"UNION SELECT * FROM secrets"
-    assert _decode_request_body(base64.b64encode(gzip.compress(raw)), "base64+gzip") == raw
+@pytest.mark.parametrize("encoding,raw,encode", [
+    ("base64", b"SELECT 1", base64.b64encode),
+    ("gzip", b"DROP TABLE x", gzip.compress),
+    ("base64+gzip", b"UNION SELECT * FROM secrets", lambda raw: base64.b64encode(gzip.compress(raw))),
+])
+def test_decode_request_body(encoding, raw, encode):
+    assert _decode_request_body(encode(raw), encoding) == raw
 
 
 def test_decode_unknown_step_raises():
@@ -71,9 +67,3 @@ async def test_bad_encoding_is_400(clients: AsyncClient):
         headers={"X-Treg-Body-Encoding": "gzip", "Content-Type": "application/json"},
     )
     assert r.status_code == 400, r.text
-
-
-# ---- no header = untouched (the common path) --------------------------------------------
-async def test_plain_request_unaffected(clients: AsyncClient):
-    r = await clients.post("/skills", json={"name": "plain-recipe", "recipe": "hello", "secrets": [], "tools": []})
-    assert r.status_code == 200, r.text

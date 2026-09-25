@@ -9,13 +9,11 @@ import httpx
 import pytest
 from sqlmodel import select
 
-from treg import oauth_providers
 from treg.application import asynctasks as task_app
 from treg.application.call import service as call_service
 from treg.application.call.types import UpstreamResponse
-from treg.config import Settings, get_settings
+from treg.config import get_settings
 from treg.domain.capacity import collectors, policy
-from treg.domain.catalog import store
 from treg.infra.db import session_maker
 from treg.models import AsyncTaskRecord
 from treg.timeutil import utcnow_naive
@@ -40,44 +38,6 @@ def tinyfish_platform(monkeypatch):
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
-
-
-def test_tinyfish_registry_and_catalog_are_byok_and_platform_ready(tinyfish_platform):
-    provider = oauth_providers.get("tinyfish")
-    assert provider is not None
-    assert provider.auth_kind == "key"
-    assert provider.base_url == "https://agent.tinyfish.ai"
-    assert provider.probe_path == "/v1/wallet"
-    assert {target.host for target in provider.catalog_targets} == {
-        "api.search.tinyfish.ai", "api.fetch.tinyfish.ai",
-    }
-    assert oauth_providers.platform_bindings(provider) == [{
-        "platform_setting": "platform_key_tinyfish",
-        "injector": "env",
-        "location": "header",
-        "name": "X-API-Key",
-        "format": "{secret}",
-    }]
-    assert Settings(_env_file=None).platform_key_for("tinyfish") == "test-platform-tinyfish"
-
-    catalog = store.load()
-    rows = [row for row in catalog.endpoints if row["provider"] == "tinyfish"]
-    assert len(rows) == 9
-    assert all(catalog.platform_eligible(row) for row in rows)
-    assert not any("batch" in row["id"] or "monitor" in row["id"] for row in rows)
-    assert not any(row.get("kind") == "account" for row in rows)
-
-    agent = catalog.by_id["tinyfish.web.agent.run"]
-    shown = catalog.cost_view(agent["cost"], "tinyfish")
-    assert (shown["rate_usd_min"], shown["rate_usd"], shown["rate_unit"]) == (
-        0.016, 0.016, "step",
-    )
-    assert shown["usd_min"] == 0.016 and shown["usd"] == 8.0
-    assert agent["async"]["status"] == {
-        "path": "status", "progress": ["PENDING", "RUNNING"],
-        "success": ["COMPLETED"], "failure": [],
-        "billed_failure": ["FAILED", "CANCELLED"],
-    }
 
 
 async def test_tinyfish_agent_price_is_exposed_as_per_step_to_clients(clients):

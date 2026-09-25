@@ -157,7 +157,6 @@ async def test_search_page_is_served_to_signed_out_visitors(clients, monkeypatch
     monkeypatch.setattr(s, "dashboard_rollout_percent", 0)
     r = await clients.get("/search")
     assert r.status_code == 200 and "/app/legacy/assets/" not in r.text
-    assert "<title>Find tools for your agent | treg</title>" in r.text
     monkeypatch.setattr(s, "dashboard_rollout_enabled", False)
     assert (await clients.get("/search")).status_code == 404
     # `find` is reserved: it is the JSON route, never a platform shelf

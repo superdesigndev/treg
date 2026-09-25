@@ -92,7 +92,6 @@ sources:
   - src/treg/catalog/akta.extended.yaml
   - src/treg/catalog/dataforseo.yaml
   - src/treg/catalog/dataforseo.extended.yaml
-  - tests/test_dataforseo_constraints.py
   - src/treg/catalog/scrapecreators.yaml
   - src/treg/catalog/scrapecreators.extended.yaml
   - src/treg/catalog/serpapi.yaml
