@@ -35,12 +35,12 @@ async def _relayed_url(monkeypatch, query_items) -> httpx.URL:
 
 
 @pytest.mark.asyncio
-async def test_path_query_survives_with_no_caller_params(monkeypatch) -> None:
-    url = await _relayed_url(monkeypatch, ())
-    assert url.params.multi_items() == [("action", "initializeUpload")]
-
-
-@pytest.mark.asyncio
-async def test_caller_params_merge_onto_path_query_keeping_duplicates(monkeypatch) -> None:
-    url = await _relayed_url(monkeypatch, (("tag", "a"), ("tag", "b")))
-    assert url.params.multi_items() == [("action", "initializeUpload"), ("tag", "a"), ("tag", "b")]
+@pytest.mark.parametrize(("query_items", "expected"), [
+    ((), [("action", "initializeUpload")]),
+    ((("tag", "a"), ("tag", "b")), [("action", "initializeUpload"), ("tag", "a"), ("tag", "b")]),
+])
+async def test_caller_params_merge_onto_path_query_keeping_duplicates(
+    monkeypatch, query_items, expected,
+) -> None:
+    url = await _relayed_url(monkeypatch, query_items)
+    assert url.params.multi_items() == expected

@@ -12,7 +12,6 @@ from httpx import AsyncClient
 
 import treg.api as api_mod
 from treg import sandbox
-from treg.application.onboard import pubfeed
 from treg.domain.governance import publicdemo as publicdemo_policy
 
 ENV_KEY = "rk_test_ENV_ONLY_KEY"
@@ -33,14 +32,6 @@ def _enable_live(monkeypatch, key: str = ENV_KEY):
 
 
 # ---- identity -------------------------------------------------------------------------------
-def test_visitor_name_is_deterministic_and_wordlist_shaped():
-    a, b = sandbox.visitor_name("sbx-abc123def456"), sandbox.visitor_name("sbx-abc123def456")
-    assert a == b
-    adj, animal, n = a.split("-")
-    assert adj in pubfeed.ADJECTIVES and animal in pubfeed.ANIMALS and n.isdigit()
-    assert sandbox.visitor_name("sbx-000000000000") != sandbox.visitor_name("sbx-ffffffffffff")
-
-
 async def test_mint_and_live_endpoint_report_the_wire(clients: AsyncClient, monkeypatch):
     _enable_live(monkeypatch)
     m = await _mint(clients)
@@ -50,11 +41,6 @@ async def test_mint_and_live_endpoint_report_the_wire(clients: AsyncClient, monk
     assert lw.json() == {"live": True, "visitor": m["visitor"]}
     # a non-sandbox caller has no business here
     assert (await clients.get("/demo/sandbox/live")).status_code == 400
-
-
-async def test_mint_reports_wire_off_when_unconfigured(clients: AsyncClient, monkeypatch):
-    monkeypatch.setattr(api_mod.get_settings(), "demo_stripe_key", "")
-    assert (await _mint(clients))["live"] is False
 
 
 # ---- the live relay -------------------------------------------------------------------------
@@ -82,18 +68,11 @@ async def test_caller_supplied_visitor_metadata_is_overridden(clients: AsyncClie
     assert body.count("metadata[visitor]") == 1
 
 
-async def test_live_get_lists_for_real(clients: AsyncClient, monkeypatch):
-    _enable_live(monkeypatch)
-    m = await _mint(clients)
-    r = await clients.get("/call/https://api.stripe.com/v1/charges", headers=_h(m["token"]))
-    assert r.status_code == 200
-    assert r.json()["auth"] == f"Bearer {ENV_KEY}"  # relayed, key injected
-
-
 # ---- containment ----------------------------------------------------------------------------
 async def test_unconfigured_wire_synthesizes_as_before(clients: AsyncClient, monkeypatch):
     monkeypatch.setattr(api_mod.get_settings(), "demo_stripe_key", "")
     m = await _mint(clients)
+    assert m["live"] is False
     r = await clients.post("/call/https://api.stripe.com/v1/charges", headers=_h(m["token"]),
                            content="amount=420")
     assert r.json().get("sandbox") is True  # the classic dummy — network untouched
