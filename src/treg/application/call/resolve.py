@@ -1475,10 +1475,11 @@ def _enforce_apify_run_options(ep: dict, query) -> None:
         # Settlement bills the whole cap within two rows of it, so a smaller cap would bill an
         # empty answer in full.
         cost = ep.get("cost") or {}
-        floor = float(cost.get("call_fee") or 0) \
-            + 3 * float(cost.get("value") or 0) / float(cost.get("per") or 1)
-        if _apify_charge_cap(query) < floor:
-            problem = f"maxTotalChargeUsd of at least {floor:.6g} (the call fee plus three rows)"
+        floor = _usd_to_micro(float(cost.get("call_fee") or 0)) + 3 * _usd_to_micro(
+            float(cost.get("value") or 0) / float(cost.get("per") or 1))
+        if _usd_to_micro(_apify_charge_cap(query)) < floor:
+            problem = (f"maxTotalChargeUsd of at least {floor / 1_000_000:g} "
+                       "(the call fee plus three rows)")
     if problem:
         raise ResolutionFailed(
             "catalog_parameter_invalid", status_code=400, detail={
