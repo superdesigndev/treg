@@ -477,6 +477,11 @@ def test_shape_fingerprint_ignores_values_but_not_structure():
     assert V._safe_shape_key("acme.com") == "<identifier>"
     assert V._safe_shape_key("550e8400-e29b-41d4-a716-446655440000") == "<identifier>"
     assert V._safe_shape_key("title") == "title"
+    identifiers_only = V.shape_difference(
+        b'{"r":{"ada@acme.com":{"s":1}}}',
+        b'{"r":{"bob@other.com":{"s":1}}}',
+    )
+    assert identifiers_only == "difference is confined to redacted map keys"
 
 
 def test_shape_empty_vs_nonempty_list_differs_but_both_empty_match():

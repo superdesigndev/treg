@@ -9,7 +9,6 @@ this module reads no settings itself.
 
 from __future__ import annotations
 
-import ipaddress
 import json
 import re
 from dataclasses import dataclass
@@ -34,11 +33,7 @@ def _safe_shape_key(key) -> str:
     text = str(key)
     if not _SAFE_SHAPE_KEY.fullmatch(text) or _UUID_SHAPE_KEY.fullmatch(text):
         return "<identifier>"
-    try:
-        ipaddress.ip_address(text)
-    except ValueError:
-        return text
-    return "<identifier>"
+    return text
 
 
 def shape(obj, depth: int = 0):
@@ -79,6 +74,8 @@ def shape_difference(a: bytes, b: bytes) -> str:
         return "non-JSON response"
     direct_only = sorted(direct - relay)[:8]
     relay_only = sorted(relay - direct)[:8]
+    if not direct_only and not relay_only:
+        return "difference is confined to redacted map keys"
     return f"direct-only={direct_only or '-'}; relay-only={relay_only or '-'}"[:500]
 
 
