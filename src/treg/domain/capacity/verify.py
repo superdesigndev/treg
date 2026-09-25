@@ -38,6 +38,30 @@ def shapes_match(a: bytes, b: bytes) -> bool | None:
         return None
 
 
+def _shape_paths(value, path: str = "$") -> set[str]:
+    """PII-free structural paths for explaining a failed shape comparison."""
+    if isinstance(value, dict):
+        paths = {f"{path}:object"}
+        for key, child in value.items():
+            paths |= _shape_paths(child, f"{path}.{key}")
+        return paths
+    if isinstance(value, list):
+        return {f"{path}:list"} | (_shape_paths(value[0], f"{path}[]") if value else set())
+    return {f"{path}:leaf"}
+
+
+def shape_difference(a: bytes, b: bytes) -> str:
+    """Describe only structural differences; never include response values."""
+    try:
+        direct = _shape_paths(json.loads(a))
+        relay = _shape_paths(json.loads(b))
+    except ValueError:
+        return "non-JSON response"
+    direct_only = sorted(direct - relay)[:8]
+    relay_only = sorted(relay - direct)[:8]
+    return f"direct-only={direct_only or '-'}; relay-only={relay_only or '-'}"[:500]
+
+
 @dataclass
 class Verification:
     endpoint_id: str
@@ -145,4 +169,5 @@ async def verify_route(client: httpx.AsyncClient, route, *, key: str, direct: tu
     same = shapes_match(dr.content, res.upstream_body)
     return Verification(route.endpoint_id, route.aggregator, dr.status_code, res.upstream_status, same,
                         res.cost_micro, now if same else None,
-                        note="" if same else f"direct {dr.status_code}, relay {res.upstream_status}, shape differs")
+                        note=("" if same else f"direct {dr.status_code}, relay {res.upstream_status}, "
+                              f"shape differs: {shape_difference(dr.content, res.upstream_body)}"))

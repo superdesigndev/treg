@@ -397,6 +397,8 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
 - **`infra/upstream/aggregators/`** — the envelopes, and nothing else: `build()` wraps the
   vendor request (Orthogonal `POST /run {api, path, query, body}`; Monid `POST /run {provider,
   endpoint, input}`), `parse()` unwraps the vendor status + body + the real in-band charge, and
+  `build()` restores JSON scalar types that Monid validates and converts Akta enrichment's native
+  comma-separated `sections` query value to Monid's array-shaped envelope field, and
   names who to blame when the aggregator itself refused (`AGGREGATOR_SIDE` = `aggregator_auth`,
   `aggregator_balance`, `malformed` - the call path marks the aggregator unhealthy for everyone, the
   verifier leaves the route alone; `contract` - the aggregator's own per-request refusal, including
@@ -421,7 +423,9 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
 - **`verify.py`** + `treg-worker overflow verify` — the weekly re-verify: one cheap call per
   route through the aggregator (and, when we hold the vendor key, directly), compare the shape
   fingerprint (keys and list/leaf markers, values ignored), stamp `last_verified_at` or disable
-  with the reason. Two per-route price caps and one run budget: a route that is enabled or was
+  with the reason. A mismatch prints a bounded key-only structural diff, never response values, so
+  an operator can distinguish omitted metadata from an incompatible body without exposing PII.
+  Two per-route price caps and one run budget: a route that is enabled or was
   stamped before is a **renewal**, held to `--renew-max-usd` (default $1); a never-verified pair is
   **discovery**, visited only under `--all` and held to `--max-usd` (default 2¢). Renewals go first,
   oldest stamp first, so the route nearest its 7-day decay is reached before `--budget-usd`

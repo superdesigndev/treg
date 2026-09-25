@@ -159,6 +159,21 @@ async def test_verified_akta_news_monid_fallback_is_enabled_at_the_observed_defa
     assert row.ratio == 1
 
 
+async def test_akta_enrichment_monid_route_is_eligible_only_after_live_verification():
+    await reset_db()
+    candidate = next(x for x in R.load_seed()
+                     if x["endpoint_id"] == "akta.companies.enrich" and x["aggregator"] == "monid")
+    assert candidate["verified_at"] is None and candidate["single_result"] is True
+    candidate = {**candidate, "verified_at": "2026-09-25"}
+    async with session_maker() as db:
+        await ensure_policies(db, has_key=lambda p: True)
+        await R.apply_sync(db, [candidate], catalog=catalog_store.load(),
+                           now=R._dt("2026-09-25T12:00:00"))
+        await db.commit()
+        row = await db.get(OverflowRoute, ("akta.companies.enrich", "monid"))
+    assert row.enabled and row.agg_unit == "result" and row.single_result is True
+
+
 def test_route_for_orders_orthogonal_first():
     rs = [_route(aggregator="monid", enabled=True), _route(aggregator="orthogonal", enabled=True),
           _route(aggregator="orthogonal", endpoint_id="x", enabled=True), _route(aggregator="monid", enabled=False, endpoint_id="y")]
@@ -363,6 +378,11 @@ def test_monid_build_and_parse_fixtures():
     assert req.json == {"provider": "hunterio", "endpoint": "/domain-search",
                         "input": {"queryParams": {"domain": "stripe.com", "limit": 1, "score": 0.5, "raw": True, "id": "007a"},
                                   "body": {}, "pathParams": {}}}, "Monid validates JSON types: numeric strings become numbers (live 2026-08-28)"
+    akta = _route(aggregator="monid", agg_slug="akta", agg_path="/v1/company/enrichment")
+    req = monid.build(akta, "K", {"company": "canva.com", "sections": "location,technology"}, None)
+    assert req.json["input"]["queryParams"] == {
+        "company": "canva.com", "sections": ["location", "technology"],
+    }, "Monid's Akta schema models the vendor's comma-separated sections parameter as an array"
     alt = monid.build(r, "K", {"domain": "stripe.com"}, None, params_as_body=True)
     assert alt.json["input"] == {"queryParams": {}, "body": {"domain": "stripe.com"}, "pathParams": {}}
     ok = _fixture("monid_ok_sync")
@@ -445,6 +465,9 @@ def test_shape_fingerprint_ignores_values_but_not_structure():
     b = b'{"data":{"email":"b@y.io","score":1,"sources":[{"uri":"v"},{"uri":"w"}]}}'
     c = b'{"data":{"email":"b@y.io"}}'
     assert V.shapes_match(a, b) is True and V.shapes_match(a, c) is False and V.shapes_match(a, b"nope") is None
+    diff = V.shape_difference(a, c)
+    assert "$.data.score:leaf" in diff and "$.data.sources:list" in diff
+    assert "a@x.io" not in diff
 
 
 def test_shape_empty_vs_nonempty_list_differs_but_both_empty_match():
