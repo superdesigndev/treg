@@ -58,7 +58,7 @@ test('the hero does not flash a placeholder while the 3D module loads', async ({
   await expect(page.locator('.gateway-sculpture')).toHaveAttribute('data-model-state', 'ready', { timeout: 20000 })
 })
 
-test('landing renders its CDN-backed 3D scene and copies the serving-origin setup command', async ({ page, context }) => {
+test('landing renders its CDN-backed 3D scene', async ({ page }) => {
   test.setTimeout(120000)
   const errors: string[] = []
   const failedAssets: string[] = []
@@ -66,10 +66,20 @@ test('landing renders its CDN-backed 3D scene and copies the serving-origin setu
   page.on('response', response => {
     if ((response.url().includes('/media/landing/') || response.url().includes('cdn.jsdelivr.net/npm/')) && !response.ok()) failedAssets.push(response.url())
   })
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await page.goto('/')
   await expect(page.locator('.gateway-sculpture')).toHaveAttribute('data-model-state', 'ready', { timeout: 20000 })
-  await page.keyboard.press('Escape')
+  await expect(page.locator('.gateway-webgl')).toBeVisible()
+  expect(failedAssets).toEqual([])
+  expect(errors).toEqual([])
+})
+
+test('landing copies the serving-origin setup command and changes agent scenario', async ({ page, context }) => {
+  // Keep the interaction contract independent of software WebGL's continuous render loop.
+  // The preceding test covers the real CDN-backed scene with motion enabled.
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.goto('/')
+  await page.bringToFront()
   await expect(page.locator('html')).not.toHaveClass(/opening-stage/)
   // Record the short-lived announcement in the page, so a busy software WebGL renderer
   // cannot make the test runner miss it between protocol round trips.
@@ -83,8 +93,6 @@ test('landing renders its CDN-backed 3D scene and copies the serving-origin setu
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('set up treg - http://127.0.0.1:18791/llms.txt')
   await page.getByRole('button', { name: 'Next agent scenario' }).click()
   await expect(page.locator('#sc-tools button')).toHaveCount(6)
-  expect(failedAssets).toEqual([])
-  expect(errors).toEqual([])
 })
 
 test('landing email sign-in reaches the dashboard', async ({ page }) => {
