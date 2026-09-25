@@ -96,7 +96,7 @@ def test_match_catalogs_by_exact_host_method_path_with_prefix_folding():
 async def test_sync_reproduces_the_verified_set_and_never_enables_a_bad_ratio(monkeypatch):
     await reset_db()
     # Preserve the August baseline; September provider verifications are tested separately.
-    seed = [{**x, "verified_at": None} if x["provider"] in ("influencersclub", "contactout") else x
+    seed = [{**x, "verified_at": None} if x["provider"] in ("influencersclub", "contactout", "akta") else x
             for x in R.load_seed()]
     verified = {(x["endpoint_id"], x["aggregator"]) for x in seed if x["verified_at"]}
     # Freeze "now" at the mapping date so the seed's stamps are within the 7-day window.
@@ -140,6 +140,22 @@ async def test_sync_reproduces_the_verified_set_and_never_enables_a_bad_ratio(mo
     async with session_maker() as db:
         r3 = await R.apply_sync(db, seed, catalog=cat, now=now + timedelta(days=8))
         assert r3.enabled == 0
+
+
+async def test_verified_akta_news_monid_fallback_is_enabled_at_the_observed_default_price():
+    await reset_db()
+    candidate = next(x for x in R.load_seed()
+                     if x["endpoint_id"] == "akta.companies.news" and x["aggregator"] == "monid")
+    async with session_maker() as db:
+        await ensure_policies(db, has_key=lambda p: True)
+        await R.apply_sync(db, [candidate], catalog=catalog_store.load(),
+                           now=R._dt("2026-09-25T12:00:00"))
+        await db.commit()
+        row = await db.get(OverflowRoute, ("akta.companies.news", "monid"))
+    assert row.enabled
+    assert row.agg_price_micro == 10_000
+    assert row.agg_unit == "call"
+    assert row.ratio == 1
 
 
 def test_route_for_orders_orthogonal_first():
