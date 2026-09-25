@@ -994,13 +994,13 @@ def test_openmart_settlement_rounds_three_credits_per_ten_records(endpoint, body
     (b'[]', 10_000),
     (b'[{"mid":"1"}]', 15_000),
     (b'[{},{},{}]', 25_000),
-    (b'[' + b','.join([b'{}'] * 7) + b']', 45_000),
-    (b'[' + b','.join([b'{}'] * 8) + b']', 50_000),
+    (b'[' + b','.join([b'{}'] * 5) + b']', 35_000),
+    (b'[' + b','.join([b'{}'] * 6) + b']', 50_000),
     (b'[' + b','.join([b'{}'] * 50) + b']', 50_000),
     (b'{"error":{"type":"run-failed"}}', None),
 ])
 def test_apify_settlement_counts_rows_and_bills_the_cap_when_reached(monkeypatch, body, expected):
-    """Rows x price + call_fee, but a run within one row of its hold (maxTotalChargeUsd + fee)
+    """Rows x price + call_fee, but a run within two rows of its hold (maxTotalChargeUsd + fee)
     reached the caller's cap: it may have billed an event it never pushed, so the cap is the bill."""
     endpoint = {**catalog_store.load().by_id['apify.meta-ads.library.search']}
     endpoint['cost'] = {**endpoint['cost'], 'call_fee': 0.01}

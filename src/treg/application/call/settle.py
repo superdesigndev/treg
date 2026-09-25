@@ -458,10 +458,12 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         if not isinstance(doc, list):
             return None
         billed = len(doc) * mk.unit_micro + _usd_to_micro(float((cost or {}).get("call_fee") or 0))
-        # A run that stops at maxTotalChargeUsd may bill one event it never pushed as a row, and a
-        # plan-tier price below the catalog's fits more rows under the cap. Within one row of the
-        # hold, the caller's own cap was reached, and that cap is the bill.
-        return mk.estimate_micro if billed + mk.unit_micro > mk.estimate_micro else billed
+        # A run stops when its next event would pass maxTotalChargeUsd, and it may already have
+        # billed one event it never pushed as a row (seen live: 3 events, 2 rows), so a capped run
+        # lands within two rows of the hold; a plan-tier price below the catalog's lands there too.
+        # There the caller's own cap was reached, and that cap is the bill.
+        # ponytail: assumes at most one unpushed event per run; an actor that drops more under-bills.
+        return mk.estimate_micro if billed + 2 * mk.unit_micro >= mk.estimate_micro else billed
     if provider == "openmart" and mk.cost_type == "per_result" and mk.unit_micro > 0:
         records = _openmart_record_count(mk.endpoint_id, doc)
         return None if records is None else _openmart_credits(records) * mk.unit_micro
