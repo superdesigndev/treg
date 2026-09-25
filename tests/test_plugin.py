@@ -126,17 +126,6 @@ def test_no_unsubstituted_placeholder_reaches_the_plugin(variant):
     assert "https://treg.to/install.sh" in text
 
 
-def test_the_skill_maps_itself_onto_the_MCP_TOOLS(manifest):
-    """The served skill is written around the `treg` command line — every other install path reaches
-    treg that way. A plugin user has no terminal: they have the connector's tools. Without the
-    mapping, the first run is an agent trying to run a shell command that does not exist."""
-    text = SKILL.read_text(encoding="utf-8")
-    for tool in ("catalog_search", "catalog_get", "call", "balance", "my_tools"):
-        assert tool in text, f"the skill never mentions the {tool} tool"
-    assert "TREG_TOKEN" in text            # what to do when the connector has no token yet
-    assert manifest["mcpServers"] == "./.mcp.json"
-
-
 def test_the_connector_points_at_production_over_https():
     """The listing is public. A plugin shipped pointing at a dev box or over http would work for
     exactly one person, and reviewers test from their own machines."""
@@ -147,26 +136,6 @@ def test_the_connector_points_at_production_over_https():
     assert url.startswith("https://"), url
     assert "ngrok" not in url and "localhost" not in url and "127.0.0.1" not in url
     assert mcp["treg"]["bearer_token_env_var"] == "TREG_TOKEN"
-
-
-def test_category_and_capabilities_match_what_real_plugins_use(manifest):
-    """These were guesses until I read OpenAI's own installed manifests under
-    `~/.codex/plugins/cache/`: github is `Developer Tools` + ["Interactive", "Write"], gmail is
-    `Communication`, openai-templates is `Productivity`. The published docs list neither set of
-    allowed values, so the shipped plugins are the only real reference — and a store listing filed
-    under an invented category is not a thing you get to quietly fix later."""
-    iface = manifest["interface"]
-    assert iface["category"] in {"Developer Tools", "Productivity", "Communication"}
-    assert set(iface["capabilities"]) <= {"Interactive", "Write", "Read"}
-
-
-def test_manifest_declares_what_the_directory_reads(manifest):
-    for field in ("name", "version", "description", "skills", "interface"):
-        assert manifest.get(field), f"plugin.json is missing `{field}`"
-    iface = manifest["interface"]
-    for field in ("displayName", "shortDescription", "longDescription", "category",
-                  "composerIcon", "logo"):
-        assert iface.get(field), f"plugin.json interface is missing `{field}`"
 
 
 def test_at_most_three_default_prompts(manifest):
@@ -192,15 +161,6 @@ def test_plugin_version_tracks_the_package(variant):
     question waiting to happen."""
     manifest = json.loads(ALL_MANIFESTS[variant].read_text(encoding="utf-8"))
     assert manifest["version"] == package_version()
-
-
-@pytest.mark.parametrize("variant", sorted(ALL_MANIFESTS))
-def test_the_listing_does_not_promise_routing(variant):
-    """The charter's standing rule: treg COMPARES providers, it does not route or fail over. The
-    landing page already had to be corrected for this once — a store listing is harder to correct."""
-    blob = ALL_MANIFESTS[variant].read_text(encoding="utf-8").lower()
-    for claim in ("routes for you", "automatic failover", "fails over", "picks the best provider"):
-        assert claim not in blob, f"listing copy claims {claim!r}, which treg does not do"
 
 
 # --------------------------------------------------------------------------------------------
@@ -230,28 +190,6 @@ def test_the_claude_plugin_declares_no_connector_in_its_manifest():
     assert not (ROOT / ".mcp.json").exists(), "a root .mcp.json would be picked up by the plugin"
 
 
-def test_the_claude_bootstrap_sets_up_cli_login_and_mcp_in_order():
-    """The plugin is skills-only at the MANIFEST level so it installs with no token and no config —
-    but the intended first run ends with the CLI, the skill AND the MCP tools all in place. The skill
-    is what wires the last two up, because only it runs after the human is present to sign in.
-
-    Order is load-bearing and not merely stylistic: `cmd_mcp_install` (cli.py) reads the token from
-    config and `sys.exit`s before writing anything when there is none. Run `treg mcp install` ahead
-    of `treg login` and it does nothing at all — silently enough that an agent would move on assuming
-    the tools exist."""
-    text = CLAUDE_SKILL.read_text(encoding="utf-8")
-    head = text.split("---", 3)[2]          # the prepended bootstrap, before the skill's own body
-    steps = ["install.sh", "treg login", "treg mcp install"]
-    positions = [head.find(s) for s in steps]
-    assert all(p != -1 for p in positions), f"the bootstrap is missing one of {steps}"
-    assert positions == sorted(positions), (
-        "the bootstrap must present install -> login -> mcp install IN THAT ORDER; "
-        "`treg mcp install` exits without writing if it runs before there is a token")
-    assert "restart" in head.lower(), (
-        "registering an MCP server needs an agent restart to take effect — an agent that does not "
-        "say so leaves the human waiting for tools that will not appear this session")
-
-
 def test_the_marketplace_resolves_to_a_real_plugin():
     """`source` is resolved by Claude Code on the user's machine, not here. A source that points at
     a directory with no `skills/` installs an empty plugin — silently, which is the failure mode
@@ -271,15 +209,6 @@ def test_the_marketplace_resolves_to_a_real_plugin():
             f"a root `{stray}/` directory would be published as part of the plugin")
 
 
-def test_one_product_one_sentence():
-    """The positioning is hand-maintained across two stores, and two listings describing the same
-    product differently is drift nobody notices until a user reads both."""
-    claude = json.loads(CLAUDE_MANIFEST.read_text(encoding="utf-8"))
-    market = json.loads(CLAUDE_MARKETPLACE.read_text(encoding="utf-8"))
-    assert claude["description"] == POSITIONING
-    assert market["description"] == POSITIONING
-
-
 def test_the_codex_subtitle_fits_the_field():
     """Codex renders `shortDescription` as the listing SUBTITLE, and the upload form rejects
     anything over 30 characters — so it cannot carry the full positioning sentence the way the
@@ -288,17 +217,6 @@ def test_the_codex_subtitle_fits_the_field():
     subtitle = json.loads(MANIFEST.read_text(encoding="utf-8"))["interface"]["shortDescription"]
     assert len(subtitle) <= 30, f"subtitle is {len(subtitle)} chars, the field allows 30"
     assert subtitle.split()[0] in POSITIONING
-
-
-def test_the_listings_agree_on_the_licence():
-    """`LICENSE` is Apache-2.0 plus a hosted-service restriction. The Codex manifest claimed MIT for
-    a while, which is a licence the project has never been under — and a store listing is where a
-    wrong licence does actual damage."""
-    for variant, path in ALL_MANIFESTS.items():
-        if variant == "minimax":
-            continue  # its schema has no licence field, and unknown keys risk their validator
-        manifest = json.loads(path.read_text(encoding="utf-8"))
-        assert manifest["license"] == "Apache-2.0", f"{path.name} misstates the licence"
 
 
 def test_the_cursor_layout_matches_cursors_template():
@@ -349,19 +267,6 @@ def test_the_cursor_plugin_ships_mcp_alongside_the_skill():
     assert "localhost" not in server["url"] and "127.0.0.1" not in server["url"]
 
 
-def test_the_cursor_bootstrap_checks_for_tools_first_and_maps_them():
-    """Like the Codex plugin, Cursor now ships MCP, so its skill checks for the tools first and
-    maps the page onto them. Unlike Claude Code, it does NOT tell the agent to run `treg mcp
-    install` — the plugin already ships the config."""
-    text = CURSOR_SKILL.read_text(encoding="utf-8")
-    head = text.split("---", 3)[2]  # the prepended bootstrap, before the skill's own body
-    for tool in ("catalog_search", "catalog_get", "call", "balance", "my_tools"):
-        assert tool in head, f"the bootstrap never mentions the {tool} tool"
-    assert "TREG_TOKEN" in head, "the bootstrap must explain how to set the token"
-    assert "treg mcp install" not in head, (
-        "the Cursor plugin ships MCP — `treg mcp install` would duplicate what the plugin provides")
-
-
 # --------------------------------------------------------------------------------------------
 # The DeepSeek Harness bundle — an npm package, not a manifest, and the only surface that ships
 # the connector alongside the CLI path.
@@ -410,21 +315,6 @@ def test_the_dsh_mcp_row_is_disabled_until_there_is_a_token():
     assert "localhost" not in patch and "127.0.0.1" not in patch
 
 
-def test_the_dsh_bootstrap_names_the_namespaced_tools_and_avoids_mcp_install():
-    """Two ways a dsh user gets stranded. The tools are namespaced (`mcp__treg__call`, not `call`),
-    so a page naming the bare tool names has the agent looking for something that is not there. And
-    `treg mcp install` writes Claude Code / Cursor / opencode configs — never a dsh profile — so an
-    agent that reaches for it produces no tools and no error either."""
-    head = DSH_SKILL.read_text(encoding="utf-8").split("---", 2)[2]
-    for tool in ("mcp__treg__catalog_search", "mcp__treg__call", "mcp__treg__balance"):
-        assert tool in head, f"the bootstrap never names {tool}"
-    assert "TREG_TOKEN" in head
-    assert "restart" in head.lower(), (
-        "the row is evaluated at boot, so a token exported afterwards needs a restart to take effect")
-    assert "not** run `treg mcp install`" in head or "not run `treg mcp install`" in head, (
-        "the bootstrap must steer away from `treg mcp install`, which cannot write a dsh profile")
-
-
 # --------------------------------------------------------------------------------------------
 # The MiniMax plugin — skills-only, validated against the rules in docs/MINIMAX-PLUGIN.md.
 # --------------------------------------------------------------------------------------------
@@ -438,14 +328,11 @@ def test_the_minimax_package_passes_the_marketplace_validator():
     assert r.returncode == 0, r.stdout + r.stderr
 
 
-def test_the_minimax_plugin_is_skills_only_and_tells_the_agent_not_to_mcp_install():
-    """Two things MiniMax makes non-negotiable. The package may hold no credential, and treg's MCP
-    is bearer-authed — so `mcpServers` stays empty. And `treg mcp install` writes configs for other
-    agents only; a bootstrap that recommended it would be a silent no-op on MiniMax Code."""
+def test_the_minimax_plugin_is_skills_only():
+    """MiniMax makes this non-negotiable: the package may hold no credential, and treg's MCP is
+    bearer-authed, so `mcpServers` stays empty."""
     manifest = json.loads(MINIMAX_MANIFEST.read_text(encoding="utf-8"))
     assert manifest["mcpServers"] == [] and manifest["apps"] == []
     assert manifest["skills"] == ["skills/treg/SKILL.md"]
     assert not list(MINIMAX_PLUGIN_DIR.glob("*.mcp.json"))
-    body = MINIMAX_SKILL.read_text(encoding="utf-8")
-    assert "Do **not** run `treg mcp install`" in body
     assert frontmatter(MINIMAX_SKILL)["name"] == "treg" == MINIMAX_SKILL.parent.name

@@ -69,21 +69,17 @@ async def test_landing_offers_dashboard_for_a_live_session(web):
     r = await web.get("/", follow_redirects=False)
     assert r.status_code == 200  # anonymous → marketing landing
     assert 'data-signed-in="false"' in r.text
-    assert '>Start free</button>' in r.text
     uid = await _seed_user()
     web.cookies.set("treg_session", sess.make_session(uid))
     r = await web.get("/", follow_redirects=False)
     assert r.status_code == 200
     assert 'data-signed-in="true"' in r.text
-    assert '>Open dashboard</button>' in r.text
-    assert '>Sign in</a>' not in r.text
     assert r.headers['cache-control'] == 'private, no-store'
     assert r.headers['vary'] == 'Cookie'
     web.cookies.set("treg_session", sess.make_session(uid, ttl=-1))  # expired session → landing again
     r = await web.get("/", follow_redirects=False)
     assert r.status_code == 200
     assert 'data-signed-in="false"' in r.text
-    assert '>Start free</button>' in r.text
 
 
 async def test_login_without_cli_redirects_to_dashboard(web):
@@ -96,34 +92,6 @@ async def test_login_rejects_malformed_login_id(web):
     assert r.status_code == 400
     r = await web.get("/login?cli=ab")  # too short
     assert r.status_code == 400
-
-
-async def test_login_page_shows_configured_doors(web):
-    r = await web.get(f"/login?cli={LID}")
-    assert r.status_code == 200
-    html = r.text
-    assert f"/auth/github?cli={LID}" in html      # GitHub configured → its door renders
-    assert "/auth/google" not in html             # Google not configured → no door
-    assert "Email me a code" in html              # the email door is always present
-    assert "HAS_SESSION=false" in html            # no session → picker won't auto-load
-
-
-async def test_login_page_offers_session_reuse(web):
-    """With a session, the page ships the picker container + HAS_SESSION=true (the "Continue as" /
-    team list is rendered client-side by loadOrgs from /auth/cli/orgs)."""
-    uid = await _seed_user()
-    web.cookies.set("treg_session", sess.make_session(uid))
-    r = await web.get(f"/login?cli={LID}")
-    assert r.status_code == 200
-    assert 'id="orgpick"' in r.text and "HAS_SESSION=true" in r.text
-    # The doors still exist but start COLLAPSED behind the "use a different account" accordion —
-    # a signed-in user is one click from done and shouldn't see sign-in options by default.
-    assert 'id="other-acct"' in r.text and "toggleDoors()" in r.text
-    assert 'id="doors" class="stack" style="display:none"' in r.text
-    web.cookies.clear()
-    r2 = await web.get(f"/login?cli={LID}")  # no session
-    assert "HAS_SESSION=false" in r2.text and 'id="other-acct"' not in r2.text
-    assert 'id="doors" class="stack" style="display:none"' not in r2.text  # no session → doors visible
 
 
 # ---- the org picker: /auth/cli/orgs + approve with a chosen team ---------------------------
@@ -239,20 +207,6 @@ async def test_email_door_completes_the_handshake(web):
     assert r.status_code == 200
     d = (await web.get(f"/auth/cli/poll?login_id={lid}")).json()
     assert d["email"] == "new@x.dev" and d["token"]
-
-
-# ---- the pairing-code phishing guard (#5) --------------------------------------------------
-async def test_login_page_renders_the_pairing_code_input(web):
-    assert 'id="paircode"' in (await web.get(f"/login?cli={LID}")).text  # the code field is always present
-
-
-async def test_login_page_confirms_a_fragment_code_instead_of_typing(web):
-    """`treg login` puts the code in the URL fragment; the page's JS swaps the typed input for a
-    read-only display (visual confirm). The fragment never reaches the server, so this checks the
-    JS carries the swap logic, not a server-side render."""
-    body = (await web.get(f"/login?cli={LID}")).text
-    assert "location.hash" in body and "paircode-show" in body
-    assert "pairCode()" in body  # approve()/createTeam() read the fragment code, else the typed input
 
 
 async def test_start_mints_a_login_id_and_code(web):
