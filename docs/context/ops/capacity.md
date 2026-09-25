@@ -405,6 +405,9 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
   signature table - the one place a relayed body is read - is the aggregator's account for THIS
   vendor (a relayed 402, Apollo's 422, a period 429): the call path marks
   `overflow:<aggregator>:<provider>` only, so one vendor's cap never takes the others offline.
+  A valid Monid run envelope takes precedence over its outer HTTP status: Monid mirrors relayed
+  vendor 401/402/403 statuses, so only a refusal with no run id proves the Monid key or balance
+  failed; a completed run unwraps `providerResponse.error` for the vendor signature table.
   Deliberately not the direct path's strike ladder: the mark is immediate and a flat 15 min, because
   a relayed body carries no headers to tell a burst from a cap and the caller has already paid the
   aggregator's round trip;

@@ -89,23 +89,35 @@ def parse(status: int, body: bytes | dict) -> AggregatorResult:
         doc = body
     if not isinstance(doc, dict):
         return AggregatorResult(None, b"", None, "malformed", "monid: not an object")
-    if status in (401, 403):
-        return AggregatorResult(None, b"", None, "aggregator_auth", str(doc.get("message", ""))[:120])
-    if status == 402:
-        return AggregatorResult(None, b"", 0, "aggregator_balance", str(doc.get("message", ""))[:120])
-    if status == 400 and "runId" not in doc:
-        return AggregatorResult(None, b"", 0, "contract", str(doc.get("message", ""))[:160])
     run_id = doc.get("runId")
     state = str(doc.get("status") or "").upper()
+    # Monid mirrors the vendor's status on a completed run. A relayed vendor 401/402/403 therefore
+    # arrives as that outer HTTP status *with* a valid run envelope; it is not evidence that our
+    # Monid key or balance failed. Only a bare refusal, before Monid created a run, belongs to the
+    # aggregator. Live 2026-09-25: ContactOut's pool returned a completed 403/out-of-credits run;
+    # treating it as aggregator_auth locked every unrelated Monid route for 15 minutes.
+    if not run_id:
+        if status in (401, 403):
+            return AggregatorResult(None, b"", None, "aggregator_auth", str(doc.get("message", ""))[:120])
+        if status == 402:
+            return AggregatorResult(None, b"", 0, "aggregator_balance", str(doc.get("message", ""))[:120])
+        if status == 400:
+            return AggregatorResult(None, b"", 0, "contract", str(doc.get("message", ""))[:160])
     if state not in ("COMPLETED", "FAILED"):  # a 202 whose body is already terminal is terminal
         if run_id:
             return AggregatorResult(None, b"", None, "pending", state, poll_url=f"{BASE}/runs/{run_id}")
         return AggregatorResult(None, b"", None, "malformed", "monid: no run id")
-    upstream_status = (doc.get("providerResponse") or {}).get("httpStatus")
+    provider_response = doc.get("providerResponse") or {}
+    upstream_status = provider_response.get("httpStatus")
     if upstream_status is None:
         upstream_status = 200 if state == "COMPLETED" else 502
     cost = _cost_micro(doc)
     out = doc.get("output")
+    if out is None and provider_response.get("error") is not None:
+        # A completed vendor refusal has no output; Monid preserves its body here. Unwrap it so
+        # `with_vendor_verdict` can apply the vendor's capacity signature and scope the breaker to
+        # this vendor rather than the whole aggregator.
+        out = provider_response["error"]
     if state == "FAILED" and out is None:
         return AggregatorResult(int(upstream_status), _dump(doc.get("error") or doc.get("message") or {}),
                                 cost or 0, None, detail=str(doc.get("message") or "failed")[:120],
