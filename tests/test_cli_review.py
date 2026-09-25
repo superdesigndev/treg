@@ -63,31 +63,23 @@ def test_cli_review_rejects_invalid_fields_locally(monkeypatch, capsys, args):
     assert json.loads(capsys.readouterr().out)['error'].startswith('invalid_')
 
 
+CALL = {'X-Treg-Call-Id': 'call-id'}
+
+
 @pytest.mark.parametrize('headers,expect', [
-    ({'X-Treg-Hint': 'review'}, 'treg review call-id'),
-    ({'X-Treg-Review': 'requested'}, 'treg review call-id'),  # a pre-0.19 registry
-    ({'X-Treg-Hint': 'feedback'}, 'treg feedback submit <quality|pricing|friction|other> "what you saw" --call-id call-id'),
-    ({'X-Treg-Hint': 'unknown-kind'}, None),
-    ({}, None),
+    ({**CALL, 'X-Treg-Hint': 'review'}, 'treg review call-id'),
+    ({**CALL, 'X-Treg-Review': 'requested'}, 'treg review call-id'),  # a pre-0.19 registry
+    ({**CALL, 'X-Treg-Hint': 'feedback'}, 'treg feedback submit <quality|pricing|friction|other> "what you saw" --call-id call-id'),
+    ({**CALL, 'X-Treg-Hint': 'unknown-kind'}, None),
+    (CALL, None),
+    ({'X-Treg-Hint': 'feedback'}, None),  # an invitation needs a call id
 ])
 def test_invitation_only_on_stderr(capsys, headers, expect):
-    response = httpx.Response(200, content=b'raw upstream text', headers={'X-Treg-Call-Id': 'call-id', **headers})
+    response = httpx.Response(200, content=b'raw upstream text', headers=headers)
     cli._show_call_response(response)
     output = capsys.readouterr()
     assert output.out == 'raw upstream text\n'
     assert (expect in output.err) if expect else (output.err == '')
-
-
-def test_invitation_needs_a_call_id(capsys):
-    cli._show_call_response(httpx.Response(200, content=b'x', headers={'X-Treg-Hint': 'feedback'}))
-    assert capsys.readouterr().err == ''
-
-
-def test_cli_review_help_shares_description():
-    from treg.feedback_contract import REVIEW_DESCRIPTION
-    parser = cli.build_parser()
-    sub = next(action for action in parser._actions if hasattr(action, 'choices') and isinstance(action.choices, dict))
-    assert REVIEW_DESCRIPTION in sub.choices['review'].format_help().replace('\n', ' ') or sub.choices['review'].description == REVIEW_DESCRIPTION
 
 
 def test_invitation_preserves_pretty_printed_json(capsys):

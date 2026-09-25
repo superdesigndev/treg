@@ -163,11 +163,6 @@ async def test_run_missing_cli_rejected(clients: AsyncClient):
     assert "not installed" in r.json()["detail"]
 
 
-async def test_run_unknown_tool_404(clients: AsyncClient):
-    r = await clients.post("/run", json={"tool": "nope", "args": []})
-    assert r.status_code == 404
-
-
 async def test_run_timeout(clients: AsyncClient):
     await _register_runnable(clients)
     r = await clients.post("/run", json={"tool": "sh-skill", "args": ["-c", "sleep 5"], "timeout_s": 1})

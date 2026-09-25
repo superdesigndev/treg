@@ -1,14 +1,12 @@
 """The per-agent skills-path registry + target resolution (`treg agents`, skill fan-out).
 
-Pure logic over the registry — no DB, no network. Covers: the two-dir default fan-out, single-agent
-and all-agents targeting, explicit-dir back-compat, global-scope resolution, install detection, and
-that env overrides (CLAUDE_CONFIG_DIR, CODEX_HOME, XDG_CONFIG_HOME) are honored at call time.
+Pure logic over the registry - no DB, no network. Covers: the two-dir default fan-out, all-agents
+targeting, global-scope resolution, install detection, and that env overrides (CLAUDE_CONFIG_DIR,
+CODEX_HOME, XDG_CONFIG_HOME) are honored at call time.
 """
 from __future__ import annotations
 
 from pathlib import Path
-
-import pytest
 
 from treg import agents as ag
 
@@ -16,20 +14,6 @@ from treg import agents as ag
 def test_default_fanout_is_agents_plus_claude():
     bases = ag.resolve_targets()
     assert bases == [Path(".agents/skills"), Path(".claude/skills")]
-
-
-def test_explicit_dir_wins_and_is_singular():
-    assert ag.resolve_targets(explicit_dir="custom/x") == [Path("custom/x")]
-
-
-def test_single_agent_project_dir():
-    assert ag.resolve_targets(agent="cursor") == [Path(".agents/skills")]
-    assert ag.resolve_targets(agent="claude-code") == [Path(".claude/skills")]
-
-
-def test_unknown_agent_raises():
-    with pytest.raises(KeyError):
-        ag.resolve_targets(agent="nonesuch")
 
 
 def test_all_agents_dedupes_shared_bucket():

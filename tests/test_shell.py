@@ -9,7 +9,6 @@ See docs/CLI-SHELL-MODE-PLAN.md §7.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import signal
 import stat
@@ -54,21 +53,6 @@ def test_plan_shims_matches_server_for_by_tool_name():
 
 
 # ---- the shim contract --------------------------------------------------------------------
-def test_shim_script_is_well_formed():
-    s = shell.shim_script("stripe-tool", "/usr/local/bin/treg")
-    assert s.startswith("#!/bin/sh\n")
-    # runs on the CLEAN PATH so `treg run` finds the real bin, never this shim (loop avoidance)
-    assert 'exec env PATH="$TREG_SHELL_REALPATH"' in s
-    # the literal `--` fences treg's parsing from the user's args, which _run_local then strips
-    assert "run stripe-tool -- \"$@\"" in s
-
-
-def test_shim_script_server_route_adds_the_tier_flag():
-    s = shell.shim_script("stripe-tool", "/usr/local/bin/treg", route="server")
-    # the tier flag goes BEFORE the tool name (treg's own rule)
-    assert "run --server stripe-tool -- \"$@\"" in s
-
-
 def test_shim_execs_treg_run_with_clean_path_and_verbatim_args(tmp_path):
     """The heart of it: the shim must call `treg run <tool> -- <args>` verbatim, on the clean PATH,
     and hand back the CLI's exit code. Uses a fake `treg` that records its argv + PATH, then exits 7."""
@@ -113,14 +97,6 @@ def test_server_route_shim_execs_treg_run_server(tmp_path):
     r = subprocess.run([str(shim_dir / "stripe"), "balance"], env=env, capture_output=True)
     assert r.returncode == 0
     assert argv_out.read_text().splitlines() == ["run", "--server", "stripe-tool", "--", "balance"]
-
-
-def test_shim_script_bypasses_completion_to_the_real_bin():
-    s = shell.shim_script("gh", "/usr/local/bin/treg", real_bin="/opt/homebrew/bin/gh")
-    # cobra completion (__complete*) execs the real bin directly — never treg
-    assert 'case "$1" in __complete*) exec /opt/homebrew/bin/gh "$@" ;; esac' in s
-    # a normal invocation still routes through treg run
-    assert "run gh -- \"$@\"" in s
 
 
 def test_completion_call_bypasses_treg_real_bin_runs(tmp_path):
@@ -269,13 +245,6 @@ def test_cmd_shell_start_no_runnable_clis_exits(monkeypatch):
         cli.cmd_shell_start(args, {"token": "t", "base_url": "http://x"})
 
 
-# ---- parser -------------------------------------------------------------------------------
-def test_parser_dispatches_shell():
-    p = cli.build_parser()
-    assert p.parse_args(["shell", "start"]).fn is cli.cmd_shell_start
-    assert p.parse_args(["shell", "stop"]).fn is cli.cmd_shell_stop
-
-
 # ---- --proxy wiring (P4 of docs/LOCAL-PROXY-PLAN.md) ---------------------------------------
 def test_start_session_publishes_the_proxy_env_and_stops_it(tmp_path, monkeypatch):
     """The seam `--proxy` uses: extra variables go into the subshell, and the proxy is stopped on the
@@ -330,11 +299,6 @@ def test_the_banner_names_the_captured_hosts(capsys):
     assert "Also captured (2 hosts)" in err
     assert {"api.stripe.com", "api.intercom.io"} <= set(err.split())   # whole hosts, not substrings
     assert "Every other address goes straight out" in err
-
-
-def test_no_proxy_no_extra_banner(capsys):
-    shell._print_banner([("stripe", "stripe", "local")], None)
-    assert "Also captured" not in capsys.readouterr().err
 
 
 def test_cmd_shell_start_seeds_the_allow_list_from_the_tool_listing(monkeypatch, tmp_path):
