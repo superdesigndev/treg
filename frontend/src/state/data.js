@@ -6,6 +6,7 @@ export default function data(){
     return {
       elements: createElements(),
       bootReady: false, bootFailed: false,
+      bootStartedAt: performance.now(),  // ms since navigation: where the loader's animations already are (App.vue)
       sessionChecked: false,  // /auth/me has answered (a page drawn before boot finishes waits on this for sign-in state)
       theme: localStorage.getItem('treg-theme')||'light',
       mobileNav: false,  // mobile sidebar toggle

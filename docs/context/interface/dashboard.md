@@ -201,7 +201,12 @@ not a singleton, and this boundary is not yet a fully typed domain store. The Ty
 JSON transport and development configuration are checked with `vue-tsc` before every build.
 Initialization renders a neutral loading state until session and route resolution finish, with a
 retry on unexpected failure. `index.html` paints the same `.boot-status` markup before any script
-runs (its reload hint fades in only if boot stalls), so mounting swaps the screen for itself.
+runs, so mounting swaps the screen for itself. A fast boot shows only the page ground: the
+indicator fades in after a delay, on the page's own clock (`bootStartedAt`), so the node Vue swaps
+in does not restart it. `index.html` also starts
+`/meta` and `/auth/me` alongside the bundle download (`window.__tregBoot`, taken over by boot) and
+applies the saved theme before first paint. `loadAll` waits on one round trip per dependency step:
+`/orgs` with `/invites/mine`, then the bearer with the team's tools, health and skills.
 Catalog data does not wait for the session: boot starts the shelves (and a shelf's endpoints,
 through `prefetchPlatform`, which `loadPlatform` takes over) alongside `/meta` and `/auth/me`.
 **A view renders nothing it cannot yet know.** Empty states, zero figures and fallback views wait
