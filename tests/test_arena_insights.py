@@ -187,14 +187,14 @@ async def test_evidence_uses_exact_content_and_carrier_with_repeated_requests(cl
         await db.commit()
         records = (await db.execute(select(CallRecord).where(
             CallRecord.id.in_([first, repeated, missing, no_content])))).scalars().all()
-        evidence = await service._evidence(db, records)
-        assert evidence[first][2] == evidence[repeated][2] == answer
-        assert evidence[missing][2] is None
-        assert evidence[no_content][0]["domain"] == "example.test"
-        assert evidence[no_content][2] is None
-        # A batch containing request metadata but no response references is still valid.
-        metadata_only = await service._evidence(db, [r for r in records if r.id == no_content])
-        assert metadata_only == {no_content: evidence[no_content]}
+    evidence = await service._evidence(records)
+    assert evidence[first][2] == evidence[repeated][2] == answer
+    assert evidence[missing][2] is None
+    assert evidence[no_content][0]["domain"] == "example.test"
+    assert evidence[no_content][2] is None
+    # A batch containing request metadata but no response references is still valid.
+    metadata_only = await service._evidence([r for r in records if r.id == no_content])
+    assert metadata_only == {no_content: evidence[no_content]}
 
 
 @pytest.mark.parametrize("status",["valid","invalid"])
@@ -216,6 +216,23 @@ async def test_malformed_evidence_cannot_block_the_collection_cursor(clients, mo
         fact = (await db.execute(select(ArenaObservation))).scalar_one()
         assert fact.category == "unresolved_evidence"
     monkeypatch.setattr(rules, "classify_record", classify)
+
+
+@pytest.mark.parametrize('read_mode', ['db', 'r2-first'])
+async def test_corrupt_compressed_body_does_not_block_other_arena_evidence(clients, monkeypatch, read_mode):
+    from treg.config import get_settings
+    monkeypatch.setattr(get_settings(), 'archive_body_read_result', read_mode)
+    await record('broken', response={'data': {'email': 'broken@example.test'}})
+    async with session_maker() as db:
+        snap = (await db.execute(select(ArchiveSnapshot))).scalar_one()
+        snap.body, snap.enc = b'not a zlib stream', 'zlib'
+        db.add(snap)
+        await db.commit()
+    await record('healthy', response={'data': {'email': 'found@example.test'}})
+    assert not await service.collect_batch(session_maker)
+    snapshot = await service.public_snapshot(session_maker)
+    assert snapshot['status'] == 'ready'
+    assert snapshot['rows'][0]['hits'] == 1 and snapshot['rows'][0]['unresolved'] == 1
 
 
 def test_explicit_unknown_body_error_is_not_a_coverage_miss():

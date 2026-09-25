@@ -1977,8 +1977,8 @@ async def test_ignore_rechecks_baseline_after_concurrent_recording(clients, shad
     second = b'{"id":2,"value":1}'
     entered, release = asyncio.Event(), asyncio.Event()
     real = archive._ignored_matches
-    async def paused(kh, body, paths):
-        matches = await real(kh, body, paths)
+    async def paused(kh, body, paths, initial_results=None):
+        matches = await real(kh, body, paths, initial_results)
         if body == second:
             assert matches
             entered.set()

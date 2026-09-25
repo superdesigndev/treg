@@ -341,6 +341,8 @@ without importing the heavy database stack into the light `treg` CLI.
 - `treg-worker asynctasks settle` completes durable holds for asynchronous upstream operations.
 - `treg-worker arena insights` folds new audit rows into the rolling Arena aggregate
   (`--max-seconds`, default 110, bounds one pass; schedule it every two minutes).
+  It requires the archive object-store settings when R2 reads are enabled, opens the same client
+  lifecycle as the web service, and flushes read analytics before exiting.
 - `treg-worker catalog stats` folds new audit rows into per-endpoint, per-day reliability buckets
   (`--max-rows`, default 500,000, bounds one pass; schedule it every few minutes). The catalog keeps
   computing observations live until this command has caught up once, so it can be scheduled after

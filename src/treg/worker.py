@@ -252,9 +252,16 @@ async def _asynctasks_settle(args) -> int:
 async def _arena_insights(args) -> int:
     from .infra.db import verify_db
     from .application.arena_insights import drain
+    from .bootstrap import archive_object_store
+    from . import analytics
 
-    await verify_db()
-    result = await drain(max_seconds=args.max_seconds)
+    async with archive_object_store():
+        await verify_db()
+        analytics.capture_service_started("arena-worker")
+        try:
+            result = await drain(max_seconds=args.max_seconds)
+        finally:
+            await analytics.drain()
     print(json.dumps(result, sort_keys=True))
     return 1 if result["failed"] else 0
 

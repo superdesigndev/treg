@@ -266,8 +266,15 @@ database the money path depends on. In the worker process it uses the API pool, 
 there. The rewind that
 revisits ten minutes of evidence is constrained to the Arena's endpoints so it rides
 `ix_callrecord_endpoint_id_created_at` instead of walking the table.
-It reads 100 audit records per transaction, follows their exact archive key/content and optional body
-carrier, reclassifies stored responses with current Arena required-field rules, and upserts anonymous
+It reads a bounded batch of 100 audit records and their exact archive key/content pointers, closes
+its metadata session, then resolves bodies through `archive_bodies.read` with path `arena` and the
+result read switch. Object reads have concurrency eight and retain the existing decode-size cap.
+Invalid compressed DB bodies remain unresolved per record rather than stopping collection of
+other evidence, including when decompression occurs in the common reader's DB fallback.
+The worker uses `bootstrap.archive_object_store` for the client lifecycle and drains read telemetry
+before exiting. It reacquires the cursor row lock and validates cursor, cutoff and completion state
+before publishing; evidence from a superseded batch is discarded. Thus no cursor lock or DB
+connection is held across R2 I/O. It reclassifies responses with current required-field rules and upserts anonymous
 `ArenaObservation` facts. It never calls vendors or trusts `CallRecord.hit`. No money writes or proxy
 changes are involved. Evidence lookup deduplicates key/content pairs and finds each pair's newest
 matching snapshot through the existing `(key_id, version)` index. This avoids repeatedly scanning

@@ -145,6 +145,9 @@ def archive_config_id() -> str:
         "repeat_price_percent": s.archive_hit_repeat_price_percent,
         "serve_max_age_s": s.archive_serve_max_age_s,
         "body_write": s.archive_body_write,
+        "body_read_lookup": s.archive_body_read_lookup,
+        "body_read_result": s.archive_body_read_result,
+        "body_read_terminal": s.archive_body_read_terminal,
         "change_observation": s.archive_change_observation_enabled,
     }
     return hashlib.sha256(json.dumps(material, sort_keys=True, default=str).encode()).hexdigest()[:12]
@@ -192,6 +195,9 @@ def capture_service_started(role: str) -> None:
         "archive_serve_entries": len(served),
         "archive_hit_repeat_price_percent": s.archive_hit_repeat_price_percent,
         "archive_body_write": s.archive_body_write,
+        "archive_body_read_lookup": s.archive_body_read_lookup,
+        "archive_body_read_result": s.archive_body_read_result,
+        "archive_body_read_terminal": s.archive_body_read_terminal,
     })
 
 

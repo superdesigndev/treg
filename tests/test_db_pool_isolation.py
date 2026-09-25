@@ -68,8 +68,9 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "bootstrap.py": {BACKGROUND},
     # `lookup` is on the API pool inside a caller's /call/; every write here is background.
     "archive.py": {API, BACKGROUND},
-    # Request fallbacks use API; observation fallbacks share archive's background budget.
-    "archive_bodies.py": {API, BACKGROUND},
+    # Request fallbacks use API, the admin viewer keeps ADMIN, and observation/initialization
+    # share archive's background budget. R2 I/O holds none of these connections.
+    "archive_bodies.py": {API, ADMIN, BACKGROUND},
 }
 
 

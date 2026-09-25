@@ -199,15 +199,21 @@ error because a worker completion has no pending caller event to annotate.
 
 Readers use `archive_bodies.pointer` to collect R2 metadata inside
 a session (`defer(ArchiveSnapshot.body)` for R2-first), then close it before `archive_bodies.read`. When DB bytes are needed, including after an R2 failure, a new short DB
-session for fallback bytes. Terminal batches use at most eight simultaneous reads. This applies to lookup, call-result reads,
-and terminal-result reads, including the Activity routes' outer auth/query sessions. `r2-first`
-only tries R2 for a published `both`/`r2` location; missing objects, timeouts, errors and checksum
-mismatches fall back to DB. Lookup selects `result_snapshot_id` under the existing result-state
+session for fallback bytes. Terminal and Arena batches use at most eight simultaneous reads. This
+applies to lookup, call-result, terminal, admin and Arena reads, including outer request sessions.
+`r2-first` tries the selected snapshot's content hash independently of `body_storage`: historical
+backfills do not rewrite the original storage marker, and a pruned DB copy may still exist in R2.
+Missing objects, timeouts, errors and checksum mismatches fall back to the exact DB snapshot/carrier.
+A hash-only row does not promise an R2 object; an unsuccessful read returns unavailable, never a
+different version. Authorization, key scope and result selection precede body resolution.
+Lookup selects `result_snapshot_id` under the existing result-state
 and observed-version guards, then classifies the resolved body after closing the session. Unknown
 results retain the decisive snapshot; empty results invalidate serving without deleting history.
 Pruning protects the decisive snapshot and DB carriers of surviving versions. Eligible `both`
-rows lose DB bytes and become `r2`; their objects remain untouched. `db` does not contact R2, including for R2-only rows. The admin body
-viewer remains a DB-only diagnostic in this first delivery. Read switches should be enabled
+rows lose DB bytes and become `r2`; their objects remain untouched. `db` does not contact R2,
+including for R2-only rows. Admin and Arena follow the result read switch; comparison and lazy
+initialization follow lookup. Admin fallback uses the admin pool; observation/initialization use
+the background pool; Arena uses its worker session factory. Read switches should be enabled
 before any future R2-only write rollout. No serving allowlist, cohort or production setting is
 changed here.
 
@@ -220,9 +226,20 @@ All paths log bounded reasons without exception text, keys, bodies or credential
 `hash_mismatch` are ERROR. Oversized objects are also ERROR (`too_large`); other transport errors
 and an unavailable client are WARNING (`store_error`, `store_unavailable`). HTTP 429 is
 `rate_limited`, HTTP 5xx is `upstream_error`, both WARNING on read fallback. These same reason
-names appear on failed uploads. Logs include the exception class, never the exception text. Result and terminal
-reads use these logs because they have no `tool_called`. Existing per-path process counters remain;
+names appear on failed uploads. Logs include the exception class, never the exception text.
+A missing object with a NULL legacy storage marker logs at INFO: this also includes intentionally
+hash-only history, so absence is not proof of loss. Existing per-path process counters remain;
 additional bounded per-path/reason counters distinguish the failure classes.
+
+Every common-reader invocation emits one best-effort `archive_body_read` completion event from
+`finally`, including cancellation and DB fallback errors. It reports `path`, original `storage`
+(`legacy` for NULL), `read_mode`, final `source`, `outcome` (`r2`, `db`, `db_fallback`, `unavailable`,
+`db_error`, `cancelled`), `fallback_reason`, `r2_attempts`, `r2_retry_reason`, `r2_retry_recovered`,
+`r2_read_ms`, `db_read_ms`, `total_ms` and returned `bytes`. Timings cover the common reader, not
+the preceding metadata query; in DB mode the pointer may already hold bytes. The event contains
+no body, hash, URL, call or team identity and receives the normal build/config fingerprints.
+`read_<path>_<outcome>` process counters include successful reads as a denominator; fallback logs
+alone do not prove DB rescued a read. Analytics remains best effort, not evidence of full coverage.
 
 DB fallback requires a snapshot that still has DB bytes or a DB carrier, normally written during
 `db`, `both`, or a failed R2-only upload. Successful `r2` writes have no DB copy: an R2 read failure
@@ -713,14 +730,19 @@ carries only a bounded reason and the underlying exception class. The real-wheel
 Pruning still strips eligible DB bytes during double writing. A stripped `both` row becomes
 `r2`; its content hash and object remain intact, and logical retained-body statistics do not
 decrease. Existing deduplicated DB carriers and result baselines retain their protections.
-The admin DB body viewer identifies object-stored bodies without fetching them. Retired
+The admin body viewer uses the common reader and retains dedup carrier-version metadata. Retired
 `volatile_paths` remains in the schema but is no longer displayed.
 
-Known result-admission upgrade limit: when a historical R2-only row has no current
-`result_state`/observed-version metadata, the write path does not GET its old body to classify
-it. The baseline becomes unknown; the next decisive result establishes a new baseline without
-a stability comparison. Subsequent observations learn normally. This conservative loss of one
-learning interval avoids object I/O inside a write session or an extra speculative GET per write.
+For R2-first recording, `_ignored_matches` also preclassifies the latest snapshot when result
+state needs lazy initialization. Raw-identical bytes reuse the current response; otherwise this
+shares the precomparison read and deadline, with path `initialization`. `_store_locked` accepts
+that classification only for the actual newest snapshot under the key lock. If a race or the
+precomparison deadline leaves no classification, the writer retains the original DB-only lazy
+initialization for that exact newest snapshot/carrier. This preserves an existing decisive result
+when R2 is slow; no available body still means an unknown baseline. The `change_outcomes` counters
+`initialization_db_recovered` and `initialization_db_unavailable` report this last fallback outside
+the common reader. The writer selects body presence rather than loading blobs for deduplication,
+and never performs object I/O under its transaction.
 
 `WritePlan` is the single body-retention decision passed into the DB writer. DB retention is
 inferred from its storage location; failed eligible R2-only uploads become `db` plans. Each started
@@ -809,7 +831,8 @@ pool. It cannot enable R2 independently of the existing startup checks or rollba
 (default true). Declared ignore-path TTL comparison remains a separate decision mechanism.
 Both ignore comparison and change reporting share the recorder/touch semaphore budget of two,
 including fallback sessions and CPU work. No DB connection is held during object I/O. New bodies
-not retained by policy/size/storage and known hash-only previous snapshots skip observation.
+not retained by policy/size/storage skip observation. DB-mode reads also skip known hash-only
+previous snapshots; R2-first can recover a previous body's migrated object after DB pruning.
 Process-local `change_outcomes` counts `observed`, `body_unavailable`, `observation_failed`,
 `ignore_body_unavailable` and `ignore_comparison_failed`. `/admin/archive` exposes this mapping and
 `body_outcomes` (archive_bodies.outcomes), including on cached report responses; counters reset on
