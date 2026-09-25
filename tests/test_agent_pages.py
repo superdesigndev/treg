@@ -171,7 +171,8 @@ async def test_use_case_page_is_served_with_the_crawler_essentials(clients: Asyn
     html = r.text
     assert f'<link rel="canonical" href="{_base()}{USECASE}"/>' in html
     title = re.search(r"<title>(.*?)</title>", html).group(1)
-    assert "treg.to" in title and "providers" in title and "API" in title
+    # LP-style titles: buyer job + catalog-backed price, always ends with | treg.to
+    assert "treg.to" in title
     assert "noindex" not in html
 
 

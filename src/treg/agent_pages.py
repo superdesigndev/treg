@@ -430,14 +430,13 @@ USE_CASE_PAGES: dict[str, dict] = {
     "find-professional-emails": {
         "label": "Find professional emails",
         # The H1, in the buyer's words; the title is built from it plus live catalog numbers.
-        # H1 and title carry the words people type ("email finder", "linkedin email finder", "api");
-        # the buyer's-words label stays on the menu.
-        "sentence": "LinkedIn email finder and email finder API: work email from a name or URL",
-        "title": "LinkedIn Email Finder API: {n} providers | treg.to",
+        # LP-style first fold: short buyer-job headline, catalog-backed price, concrete constraint.
+        "sentence": "Get a work email from a name or LinkedIn URL",
+        "title": "Work Email Finder: from {cheapest} | treg.to",
         "lede": (
-            "LinkedIn email finder: give your agent a name and company domain, or a LinkedIn URL, "
-            "and get back a verified work address. {n} providers do this job. Pay per result, not "
-            "per seat. Every row below is callable through one treg.to key, at the provider's rate."),
+            "Give your agent a name and company domain, or a LinkedIn URL, and get the work email. "
+            "{n} providers through one treg.to key, from {cheapest} per found address. "
+            "No LinkedIn Sales Navigator seat required."),
         # What to type, per client. One URL, tabs on the page.
         # One prompt, the same in every client. Copy button on the page.
         "prompt": "Using treg, find the work email of the VP of Marketing at stripe.com. Show me "
@@ -758,13 +757,13 @@ AGENTS["cursor"] = {
 
 USE_CASE_PAGES["verify-an-email"] = {
     "label": "Verify an email before you send",
-    "sentence": "Email verification API: is this address deliverable, before you send",
-    "title": "Email verification API: {n} verifiers compared | treg.to",
+    # LP-style first fold: short buyer-job headline, catalog-backed price, concrete constraint.
+    "sentence": "Check if an email is deliverable before you send",
+    "title": "Email Verification: from {cheapest} | treg.to",
     "lede": (
-        "Hand your agent an address and get back a verdict: deliverable, undeliverable, or the "
-        "third bucket every verifier has and each one names differently. {n} providers do this "
-        "through one treg.to key, and what separates them is not accuracy claims. It is what they "
-        "charge for an answer of “unknown”, which on a real B2B list is about a fifth of it."),
+        "Hand your agent an address and know before you send: deliverable, dead, or catch-all. "
+        "{n} providers through one treg.to key, from {cheapest} per check. "
+        "No monthly seat, no minimum list size."),
     "prompt": "Using treg, verify these 40 addresses before I send. Show me the price first, then "
               "give me three lists: safe to send, do not send, and unknown with the reason.",
     "prompt_why": [
@@ -852,13 +851,13 @@ USE_CASE_PAGES["verify-an-email"] = {
 
 USE_CASE_PAGES["enrich-a-person"] = {
     "label": "Enrich a person from an email or LinkedIn URL",
-    "sentence": "Person enrichment API: a full profile from an email or LinkedIn URL",
-    "title": "Person enrichment API: {n} providers compared | treg.to",
+    # LP-style first fold: short buyer-job headline, catalog-backed price, concrete constraint.
+    "sentence": "Get a full profile from an email or LinkedIn URL",
+    "title": "Person Enrichment: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent an email address or a LinkedIn URL and get back the person: current title, "
-        "employer, seniority, location, work history. {n} providers do this through one treg.to "
-        "key, and they are not close on price. The same match costs {cheapest} at one and about "
-        "eighty times that at another, so what you are really choosing is how much a miss costs you."),
+        "Give your agent an email or LinkedIn URL and get the person: title, company, seniority, "
+        "location, work history. {n} providers through one treg.to key, from {cheapest} per match. "
+        "No annual contract required."),
     "prompt": "Using treg, enrich these 20 LinkedIn URLs into a table: name, current title, company, "
               "seniority, location. Show me the price first, and skip anyone whose profile does not resolve.",
     "prompt_why": [
@@ -4086,16 +4085,13 @@ USE_CASE_PAGES["transcripts-of-x-and-facebook-video-posts"] = {
 
 USE_CASE_PAGES["get-a-linkedin-profile"] = {
     "label": "Get a LinkedIn profile",
-    "sentence": "LinkedIn API and LinkedIn scraper: a person's profile by URL, headline, experience and education",
-    "title": "LinkedIn API: fetch a profile by URL, {n} providers | treg.to",
+    # LP-style first fold: short buyer-job headline, catalog-backed price, concrete constraint.
+    "sentence": "Fetch any LinkedIn profile by URL",
+    "title": "LinkedIn Profile by URL: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent a LinkedIn profile URL and get the profile back as data: name, "
-        "headline, location, current role, past roles and education. {n} providers answer "
-        "through one treg.to key, the cheapest of them a tenth of a cent a profile, each "
-        "at its own rate with no markup and none behind a monthly seat. No session cookie of yours, no browser "
-        "extension, no Sales Navigator subscription and no account of yours making the "
-        "request. LinkedIn's own row is here too and it is honest about what it is: it "
-        "returns the profile of the account you connected, and nobody else's."),
+        "Give your agent a LinkedIn profile URL and get the profile back as data: headline, roles, "
+        "education. {n} providers through one treg.to key, from {cheapest} per profile. "
+        "No account of yours, no browser extension, no Sales Navigator."),
     "prompt": "Using treg, fetch these 40 LinkedIn profile URLs from the cheapest verified "
               "provider, show me the price per profile first, then give me name, headline, "
               "current company and years in the current role as a table, and list the URLs "
@@ -4215,15 +4211,13 @@ USE_CASE_PAGES["get-a-linkedin-profile"] = {
 
 USE_CASE_PAGES["find-phone-numbers"] = {
     "label": "Find phone numbers",
-    "sentence": "Phone number lookup API: a prospect's mobile from a LinkedIn URL or work email",
-    "title": "Phone number lookup API: a mobile from a LinkedIn URL | treg.to",
+    # LP-style first fold: short buyer-job headline, catalog-backed price, concrete constraint.
+    "sentence": "Get a mobile number from a LinkedIn URL or email",
+    "title": "Phone Number Finder: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent a LinkedIn profile URL, a work email or a name and company, and get "
-        "a direct mobile number back where one exists. {n} providers answer through one "
-        "treg.to key, from {cheapest}, each at its own rate with no markup and none of them "
-        "behind a seat or an annual contract. This runs one way only: person to number. It is "
-        "not a reverse lookup, it will not tell you who owns a number you already have, and "
-        "no provider here finds a number for everyone you ask about."),
+        "Give your agent a LinkedIn URL or work email and get a direct mobile back. "
+        "{n} providers through one treg.to key, from {cheapest} per found number. "
+        "No seat license, no annual contract."),
     "prompt": "Using treg, find mobile numbers for these 25 LinkedIn URLs, show me the price "
               "per found number for each provider first, use the cheapest one, then give me a "
               "table of who was found and who was not, and do not guess a number for anyone "
@@ -5107,16 +5101,13 @@ WORKFLOWS["category-content-intel-tiktok-xiaohongshu"] = {
 
 USE_CASE_PAGES["company-email-format"] = {
     "label": "A company's email format",
-    "sentence": "Company email format finder: the pattern a domain uses, so a name becomes an address",
-    "title": "Company email format finder API, by domain | treg.to",
+    # LP-style first fold: short buyer-job headline, catalog-backed price, concrete constraint.
+    "sentence": "Get a company's email pattern by domain",
+    "title": "Company Email Format: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent a company domain and get back the address pattern the company uses, "
-        "such as first.last or f.last, with how confident the provider is in it. Two providers "
-        "answer through one treg.to key at their own rate with $0.000 added: The Companies API "
-        "bills only when a pattern comes back, Tomba bills the call and makes a repeat of the "
-        "same domain free for the rest of the month. A pattern is a rule, not a mailbox: it "
-        "tells you how to write an address, and the verify page tells you whether that "
-        "address exists."),
+        "Give your agent a domain and get the address pattern back: first.last, f.last, or whatever "
+        "the company uses. {n} providers through one treg.to key, from {cheapest} per pattern. "
+        "A pattern plus a name gives you a probable address to verify."),
     "prompt": "Using treg, get the email format for these 40 company domains, show me the "
               "price per domain for each provider first, then give me a table of domain, "
               "pattern, confidence and which provider answered, and leave the pattern blank "
