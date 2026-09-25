@@ -662,13 +662,15 @@ def test_reported_credit_charge_requires_a_provider_fx_rate():
     ({'body.realtime': False}, False),
     ({'body.missing': True}, False),
     ({'queryParams.realtime': True}, False),
+    ({'queryParams.memory': 1024}, True),
+    ({'queryParams.memory': '1024'}, False),
     ({}, False),
 ])
 def test_platform_request_requires_declared_fixed_body_value(rule, valid):
     errors = []
     validator.check_platform_request(rule, {'body': {
         'realtime': {'type': 'boolean', 'enum': [True]},
-    }}, 'test', errors)
+    }, 'queryParams': {'memory': {'type': 'integer', 'enum': [1024]}}}, 'test', errors)
     assert (not errors) is valid
 
 

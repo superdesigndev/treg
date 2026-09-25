@@ -1407,7 +1407,21 @@ def _request_body_document(ep: dict, body: bytes, headers) -> dict:
     return _strict_json_object(body, ep["id"])
 
 
-def _enforce_platform_request(ep: dict, body: bytes, headers=None) -> None:
+def _query_value(raw: str, expected: object) -> object:
+    """Read a query string as the pinned value's type; an unreadable value never matches."""
+    try:
+        if isinstance(expected, bool):
+            return {"true": True, "false": False}.get(raw.lower())
+        if isinstance(expected, int):
+            return int(raw)
+        if isinstance(expected, float):
+            return float(raw)
+    except ValueError:
+        return None
+    return raw
+
+
+def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -> None:
     """Check explicit platform constraints and fixed pricing selectors before reserve/relay.
 
     Catalog tables may price several rows on one upstream path. A table condition whose body field
@@ -1464,6 +1478,20 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None) -> None:
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                     "parameter": f"headers.{name}", "expected": expected,
                     "message": f"{ep['id']} requires header {name}: {expected}",
+                },
+            )
+    for path, expected in sorted(rules.items()):
+        if not str(path).startswith("queryParams."):
+            continue
+        name = str(path).split(".", 1)[1]
+        supplied = [value for key, value in query.multi_items() if key == name] \
+            if query is not None else []
+        if len(supplied) != 1 or _query_value(supplied[0], expected) != expected:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                    "parameter": f"queryParams.{name}", "expected": expected,
+                    "message": f"{ep['id']} requires query parameter {name}={expected}",
                 },
             )
     selectors: dict[str, object] = {
@@ -1979,7 +2007,7 @@ async def _resolve_marketplace_call(
     # request without inventing an Authorization or provider-key header.
     anonymous_cost = _anonymous_offer(ep, caller.org)
     if anonymous_cost is not None:
-        _enforce_platform_request(ep, body, request_headers)
+        _enforce_platform_request(ep, body, request_headers, query)
         virtual = Tool(
             org_id=caller.org_id, name=ep["id"], owner=caller.email,
             base_url=provider.base_url, host=_host_of(provider.base_url), bindings=[],
@@ -1996,7 +2024,7 @@ async def _resolve_marketplace_call(
     cost = _platform_offer(ep, provider, caller.org)
     async_owner_call_id = None
     if cost is not None:
-        _enforce_platform_request(ep, body, request_headers)
+        _enforce_platform_request(ep, body, request_headers, query)
         if service == "sumble":
             from . import sumble
             sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)

@@ -258,8 +258,8 @@ def check_platform_request(rule: object, input_schema: object, where: str,
     for path, value in rule.items():
         spec = fields.get(path) if isinstance(path, str) else None
         if (not isinstance(path, str)
-                or not path.startswith(("body.", "headers.")) or spec is None):
-            fail(errors, where, "platform_request must name a declared body or header field")
+                or not path.startswith(("body.", "headers.", "queryParams.")) or spec is None):
+            fail(errors, where, "platform_request must name a declared body, header or query field")
             continue
         allowed = spec.get("enum")
         if (not isinstance(allowed, list) or len(allowed) != 1

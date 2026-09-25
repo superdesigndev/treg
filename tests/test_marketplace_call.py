@@ -3347,6 +3347,25 @@ def test_platform_request_constraints_do_not_require_a_price_table(body, valid):
             call_resolution._enforce_platform_request(ep, body)
 
 
+@pytest.mark.parametrize('items,valid', [
+    ((('memory', '1024'), ('maxTotalChargeUsd', '1')), True),
+    ((('memory', '1024.0'), ('maxTotalChargeUsd', '1.0')), False),
+    ((('memory', '2048'), ('maxTotalChargeUsd', '1')), False),
+    ((('memory', '1024'), ('memory', '1024'), ('maxTotalChargeUsd', '1')), False),
+    ((('maxTotalChargeUsd', '1'),), False),
+    ((('memory', 'lots'), ('maxTotalChargeUsd', '1')), False),
+])
+def test_platform_request_pins_query_values_by_type(items, valid):
+    ep = {'id': 'example.run', 'platform_request': {
+        'queryParams.memory': 1024, 'queryParams.maxTotalChargeUsd': 1.0}}
+    query = call_resolution.QueryValues(items)
+    if valid:
+        call_resolution._enforce_platform_request(ep, b'', query=query)
+    else:
+        with pytest.raises(ResolutionFailed):
+            call_resolution._enforce_platform_request(ep, b'', query=query)
+
+
 @pytest.mark.parametrize('body,valid', [
     (b'{"model":"image-01","prompt":"A paper airplane."}', True),
     (json.dumps({
