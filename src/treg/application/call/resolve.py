@@ -1420,9 +1420,15 @@ def _request_body_document(ep: dict, body: bytes, headers) -> dict:
 # ponytail: a run that outlives its timeout answers 400 with no rows while Apify still bills up to
 # the cap; the ceiling below bounds that loss per call. Settling from the run itself would lift it.
 _APIFY_PLATFORM_MAX_CHARGE_USD = 1.0
-# A run must end before Apify's 300-second synchronous wait: past it Apify answers 408 while the run
-# keeps billing, and that answer releases unbilled.
-_APIFY_PLATFORM_MAX_TIMEOUT = 280
+# A run must end, and its rows arrive, before anyone stops waiting: past Apify's 300-second synchronous
+# wait it answers 408, past treg's upstream read timeout (call_timeout_s) or the MCP client's 120 s
+# the call fails, and each releases the hold unbilled while the run keeps billing. 90 s leaves room
+# for the container start and the dataset read under the shortest of those waits.
+_APIFY_PLATFORM_MAX_TIMEOUT = 90
+
+
+def _apify_max_timeout() -> int:
+    return max(1, min(_APIFY_PLATFORM_MAX_TIMEOUT, get_settings().call_timeout_s - 30))
 _APIFY_PLATFORM_QUERY = frozenset({"maxTotalChargeUsd", "maxItems", "memory", "timeout"})
 _ASCII_INT = re.compile(r"[0-9]+")
 _ASCII_DECIMAL = re.compile(r"[0-9]+(?:\.[0-9]+)?")
@@ -1460,8 +1466,8 @@ def _enforce_apify_run_options(ep: dict, query) -> None:
     elif _apify_charge_cap(query) is None:
         problem = f"maxTotalChargeUsd above 0 and at most {_APIFY_PLATFORM_MAX_CHARGE_USD:g}"
     elif not (_ASCII_INT.fullmatch(query.get("timeout") or "")
-              and 1 <= int(query.get("timeout")) <= _APIFY_PLATFORM_MAX_TIMEOUT):
-        problem = f"timeout from 1 to {_APIFY_PLATFORM_MAX_TIMEOUT} seconds"
+              and 1 <= int(query.get("timeout")) <= _apify_max_timeout()):
+        problem = f"timeout from 1 to {_apify_max_timeout()} seconds"
     elif query.get("maxItems") is not None and not (
             _ASCII_INT.fullmatch(query.get("maxItems")) and int(query.get("maxItems")) >= 1):
         problem = "maxItems as a positive integer"
