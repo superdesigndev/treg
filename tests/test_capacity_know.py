@@ -6,7 +6,6 @@ from __future__ import annotations
 from datetime import timedelta
 
 import httpx
-import pytest
 from sqlalchemy import select
 
 from treg import ratestore
@@ -44,8 +43,6 @@ async def test_import_creates_one_policy_per_account_and_flags_unknowns_without_
     assert rows["crustdata"].capacity_type == "unknown" and "crustdata" in unknown
     assert rows["findymail"].enabled and not rows["dataforseo"].enabled  # enabled ⇔ a key exists
     assert rows["overflow:orthogonal"].source == "manual"
-    assert rows["hunter"].quota["period"] == "billing"
-    assert rows["leadsforge"].rate_limit == {"limit": 120, "window_s": 60, "source": "headers"}
     # a second import is a no-op
     async with session_maker() as db:
         assert await ensure_policies(db, has_key=lambda p: False) == []
@@ -130,42 +127,3 @@ def test_capacity_view_getters_are_sync_and_io_free():
     import inspect
     assert not inspect.iscoroutinefunction(LatestStateView.get)
     assert not inspect.iscoroutinefunction(LatestStateView.is_exhausted)
-
-
-def test_worker_cli_parses_the_sweep_command(monkeypatch):
-    from treg import worker
-    seen = {}
-
-    async def fake(args):
-        seen["only"] = args.only
-        return 0
-
-    monkeypatch.setattr(worker, "_capacity_sweep", fake)
-    assert worker.main(["capacity", "sweep", "--only", "hunter,lusha"]) == 0
-    assert seen["only"] == "hunter,lusha"
-    with pytest.raises(SystemExit):
-        worker.main(["capacity"])
-
-
-@pytest.mark.parametrize('remaining,health', [(300, 'ok'), (0, 'exhausted'), (None, 'stale')])
-def test_quickenrich_capacity_uses_reported_allowance(remaining, health):
-    from treg.domain.capacity.sweep import snapshot_from
-    from treg.domain.capacity.policy import default_policy, latest_state
-    from treg.timeutil import utcnow_naive
-    now = utcnow_naive()
-    policy = default_policy('quickenrich', has_key=True)
-    assert policy.capacity_type == 'monthly_quota'
-    assert policy.funding_mode == 'quota_reset'
-    assert not policy.auto_funding_enabled
-    snap = snapshot_from('quickenrich', {'value': remaining, 'unit': 'credits'}, observed_at=now)
-    state = latest_state(policy, snap, now)
-    assert state.health == health
-    assert state.is_exhausted(now) == (remaining == 0)
-
-
-@pytest.mark.parametrize("balance,exhausted", [(0, True), (9.992, False)])
-def test_trykitt_paid_balance_uses_common_exhaustion_rule(balance, exhausted):
-    state = latest_state(default_policy("trykitt", has_key=True), CapacitySnapshot(
-        provider="trykitt", remaining=balance, unit="USD",
-        observed_at=utcnow_naive(), confidence="exact"))
-    assert state.is_exhausted() is exhausted

@@ -329,7 +329,9 @@ def present(payload: dict, *, mode: str, state: str, capability: str = "") -> di
         row = {"id": a["id"], "entry_index": a.get("entry_index", 0), "label": chr(65 + a["display_order"]), "state": a["state"],
                "output": safe_output(a.get("output", {}), capability=capability)}
         row.update({k: a.get(k) for k in ("provider", "endpoint_id", "tier", "estimate_micro",
-                   "charged_micro", "duration_ms", "started_ms", "detail", "raw", "raw_omitted", "cached", "call_ref", "report", "rating", "manual")})
+                   "charged_micro", "reserved_micro", "task_id", "async_descriptor",
+                   "duration_ms", "started_ms", "detail", "raw", "raw_omitted", "cached",
+                   "call_ref", "report", "rating", "manual")})
         # Distinguish the vendor's 402 from our team's balance/admission errors, including history.
         row["upstream_status"] = a.get("status") if not a.get("failure_kind") else None
         row["can_try"] = state in TERMINAL | {"running"} and a["state"] in {"not_attempted", "skipped"} and not a.get("call_ref") and not a.get("manual")

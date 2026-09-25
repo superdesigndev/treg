@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 
 import httpx
-import pytest
 
 from treg.application import search_experiment as se
 from treg.config import get_settings
@@ -89,6 +88,7 @@ async def test_judge_parses_probabilities_in_candidate_order_and_caches():
         body = json.loads(request.content)
         seen.append(body)
         assert body["model"] == "jev-latest" and set(body["questions"]) == {"c0", "c1"}
+        assert "criteria" not in body["questions"]["c0"]     # the experiment's question, unchanged
         assert body["state"]["candidates"][1]["i"] == 1
         return httpx.Response(200, json={"answers": {"c0": {"type": "noul", "noul": 0.12},
                                                      "c1": {"type": "noul", "noul": 0.93}},
@@ -99,6 +99,29 @@ async def test_judge_parses_probabilities_in_candidate_order_and_caches():
     again = await _judge(handler)
     assert again.probs == [0.12, 0.93] and again.cached
     assert len(seen) == 1                                    # the second answer came from the cache
+
+
+async def test_judge_sends_criteria_and_extra_questions_in_the_same_request():
+    judge_infra.clear_cache()
+    seen = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        seen.append(body)
+        return httpx.Response(200, json={"answers": {"c0": {"noul": 0.2}, "x_name": {"noul": 0.97}}})
+
+    cands = [{"id": "c0", "name": "", "summary": "", "capability": "", "platform": ""}]
+    kw = dict(api_key="k", model="jev-latest", url="https://judge.test/v1", timeout_s=1.0,
+              transport=_transport(handler))
+    crit = {"true": "fits", "false": "does not"}
+    v = await judge_infra.judge("google", cands, criteria=crit, extra={"name": {"type": "noul", "instructions": "a name"}}, **kw)
+    assert v.probs == [0.2] and v.extra == {"name": 0.97}
+    assert seen[0]["questions"]["c0"]["criteria"] == crit and "x_name" in seen[0]["questions"]
+    again = await judge_infra.judge("google", cands, criteria=crit, extra={"name": {"type": "noul", "instructions": "a name"}}, **kw)
+    assert again.cached and again.extra == {"name": 0.97}
+    # other questions are another answer: not served from that cache entry
+    await judge_infra.judge("google", cands, **kw)
+    assert len(seen) == 2
 
 
 async def test_judge_abstains_on_timeout_http_error_and_bad_body():

@@ -55,7 +55,8 @@ CONFIG_PATH = Path(os.environ["TREG_CONFIG"]).expanduser() if os.environ.get("TR
 # Per-invocation `--org <slug>` override (stripped from argv in main); overrides the active org.
 _ORG_OVERRIDE: str | None = None
 # Global `--json` (stripped in main): human-table commands emit the raw JSON instead — one stable
-# contract for agents/scripts. Commands that already print JSON are unaffected.
+# contract for agents/scripts. `call` prints one envelope, `{"result": <body>, "_treg": {...}}`,
+# and nothing on stderr: the charge line a script merged into stdout used to break its parse.
 _JSON_OVERRIDE: bool = False
 
 
@@ -215,7 +216,8 @@ class _RegistryClient(httpx.Client):
         retry.headers["x-treg-body-encoding"] = "base64"
         if "content-type" in request.headers:  # preserve JSON so the server still parses it after decode
             retry.headers["content-type"] = request.headers["content-type"]
-        print("  (edge WAF blocked the request body; retrying base64-encoded)", file=sys.stderr)
+        if not _JSON_OVERRIDE:  # `--json` promises a silent stderr
+            print("  (edge WAF blocked the request body; retrying base64-encoded)", file=sys.stderr)
         return super().send(retry, **kwargs)
 
 
@@ -2499,8 +2501,43 @@ def _print_raw_response(response: httpx.Response) -> None:
     sys.stdout.flush()
 
 
+def _call_envelope(response: httpx.Response, content_type: str) -> dict:
+    """`treg --json call`: the provider body under `result` (parsed JSON, text, or base64 for
+    binary) and what the charge and hint lines would have said under `_treg`, in integer micro-USD."""
+    headers = getattr(response, "headers", {}) or {}
+    if not content_type or content_type == "application/json" or content_type.endswith("+json"):
+        try:
+            result = response.json()
+        except ValueError:
+            result = response.text
+    elif content_type.startswith("text/"):
+        result = response.text
+    else:
+        import base64
+        result = {"base64": base64.b64encode(response.content).decode("ascii"), "content_type": content_type}
+    meta: dict = {"http_status": response.status_code}
+    if call_id := headers.get("X-Treg-Call-Id"):
+        meta["call_id"] = call_id
+    if (cost := headers.get("X-Treg-Cost-Micro")) is not None:
+        # An async submission's cost header is a hold pending settlement, not a charge.
+        meta["reserved_micro" if headers.get("X-Treg-Async") else "charged_micro"] = int(cost)
+    if headers.get("X-Treg-Idempotent-Replay"):
+        meta["replay"] = True
+    if headers.get("X-Treg-Async"):
+        meta["async"] = True
+    if kind := headers.get("X-Treg-Hint"):
+        meta["hint"] = kind
+    return {"result": result, "_treg": meta}
+
+
 def _show_call_response(response: httpx.Response) -> None:
     content_type = getattr(response, "headers", {}).get("content-type", "").partition(";")[0].strip().lower()
+    if _JSON_OVERRIDE:
+        print(json.dumps(_call_envelope(response, content_type), ensure_ascii=False, separators=(",", ":")))
+        sys.stdout.flush()
+        if response.status_code >= 400:
+            raise SystemExit(1)
+        return
     if content_type and content_type != "application/json" and not content_type.endswith("+json") \
             and not content_type.startswith("text/"):
         sys.stdout.buffer.write(response.content)
@@ -6088,7 +6125,7 @@ _GLOBAL_OPTS = [
     ("-h, --help", "Show this help and exit."),
     ("--version", "Print the treg version and exit."),
     ("--org <slug>", "Run any command in that team instead of the active one."),
-    ("--json", "Table-rendering commands (org ls, agents ls, catalog, …) print raw JSON instead."),
+    ("--json", "Table commands print raw JSON; `call` prints one {result, _treg} line, nothing on stderr."),
 ]
 
 

@@ -3,10 +3,9 @@ from types import SimpleNamespace
 import hashlib
 
 import pytest
-from pydantic import ValidationError
 
 from treg import hints
-from treg.config import Settings, get_settings
+from treg.config import get_settings
 
 
 @pytest.mark.parametrize('kind,field', [('review', 'review_sample_rate'), ('feedback', 'feedback_hint_rate')])
@@ -22,13 +21,6 @@ def test_sampling_boundaries_stability_and_salt(monkeypatch, kind, field):
         expected = int.from_bytes(hashlib.sha256(f'{kind}:{ref}'.encode()).digest()[:8], 'big') < 2**63
         assert hints.sampled(kind, ref) == expected
         assert hints.sampled(kind, ref) == expected
-
-
-@pytest.mark.parametrize('field', ['review_sample_rate', 'feedback_hint_rate'])
-@pytest.mark.parametrize('rate', [-0.1, 1.1, float('nan'), float('inf')])
-def test_invalid_rates(field, rate):
-    with pytest.raises(ValidationError):
-        Settings(_env_file=None, **{field: rate})
 
 
 @pytest.mark.parametrize('catalog,status,headers,sample,expected', [

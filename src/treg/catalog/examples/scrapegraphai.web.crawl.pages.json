@@ -1,0 +1,33 @@
+{
+  "data": [
+    {
+      "url": "https://example.com",
+      "depth": 0,
+      "links": [
+        "https://iana.org/domains/example"
+      ],
+      "title": "",
+      "status": "completed",
+      "parentUrl": null,
+      "contentType": "text/html",
+      "scrapeRefId": "1574c834-ce84-4207-b23a-2376f3735d42",
+      "scrape": {
+        "results": {
+          "markdown": {
+            "data": [
+              "# Example Domain\n\nThis domain is for use in documentation examples without needing permission. Avoid use in operations.\n\n[Learn more](https://iana.org/domains/example)\n"
+            ]
+          }
+        },
+        "metadata": {
+          "provider": "impit",
+          "contentType": "text/html"
+        }
+      }
+    }
+  ],
+  "pagination": {
+    "limit": 10,
+    "nextCursor": null
+  }
+}

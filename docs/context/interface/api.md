@@ -327,8 +327,8 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   itself ran that journal count - 2.8 s per call for a member with 110k rows that day.
 - **Super-admin (cross-tenant, `require_superadmin`):** `/admin/stats|orgs|orgs/{id}|users|tools|calls|
   errors|health` (reads - `errors` is failed calls across every credential tier with captured,
-  admin-only request/response evidence, supports a `tier` filter, and runs the 14-day retention pass;
-  see [super-admin](../architecture/super-admin.md))
+  admin-only request/response evidence, supports a `tier` filter, and withholds evidence past the
+  14-day retention window, which the `treg-worker admin purge-evidence` cron blanks; see [super-admin](../architecture/super-admin.md))
   + `/admin/users/{id}/superadmin|suspend`, `DELETE /admin/users/{id}`,
   `/admin/orgs/{id}/suspend`, `DELETE /admin/orgs/{id}` (Phase-2). See
   [super-admin](../architecture/super-admin.md).
@@ -389,7 +389,8 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
     virtual-memory cap crashes Go CLIs (gh/stripe/doctl) and `RLIMIT_NPROC` is per-uid, shared with the
     server. Full **filesystem/network** isolation needs a container deploy and is a planned follow-up.
 - **Meta:** `meta` (`GET /meta`, open) → `{public_url, github, google, app_version, treg_version,
-  posthog_key/posthog_host, intercom_app_id}` for the dashboard. The last three are the opt-in
+  posthog_key/posthog_host, intercom_app_id, referral}` for the dashboard. `referral` carries the
+  two configured reward amounts so the top-bar entry can name them without `GET /referrals`. The last three are the opt-in
   third-party keys (analytics, support chat): empty on a deployment that didn't set them, so
   self-hosted pages load neither PostHog nor the Intercom Messenger. `intercom_app_id` is paired
   server-side with `intercom_secret`, which never leaves the server: `_intercom_user_hash` (HMAC-SHA256
@@ -403,9 +404,10 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
 
   | Route | Contract |
   |---|---|
-  | `GET /catalog/platforms` | Non-empty platforms with capability/endpoint counts and providers, ordered by endpoint count |
+  | `GET /catalog/platforms` | Non-empty platforms with capability/endpoint counts and providers, ordered by endpoint count; `providers` names every browsable vendor |
   | `GET /catalog/platforms/{slug}` | Capabilities, extended endpoints, dashboard domain rows and provider metadata; unknown slug is 404 |
   | `GET /catalog/search?q=&limit=` | Ranked endpoint views, count/total and hints; default 25, maximum 100 |
+  | `GET /catalog/find?q=` | Find tools for a described job: NDJSON stream of `candidates` then `judged` (verdict + kept rows with probabilities; a bare platform or provider name gets verdict `name` and its endpoints, unjudged); rate limited per IP, 503 without a judge key |
   | `GET /catalog/endpoints/{id}` | Endpoint, provider, capability siblings, call template, inline example and next-step hints; `overflow_price_usd` / `overflow_price_unit` / `overflow_via` on the endpoint when the deployment can relay it |
   | `GET /catalog/examples/{id}` | Captured JSON, resolved through the catalog before constructing a file path |
   | `POST /tool-requests` | Open, rate-limited demand report with capped fields and optional caller attribution |

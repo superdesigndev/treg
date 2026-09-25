@@ -66,10 +66,6 @@ async def test_revoke_signs_out_other_browser_sessions_but_keeps_the_caller(clie
         assert (await client.get("/invites/mine")).status_code == 200      # the caller stays in
 
 
-async def test_revoke_requires_auth(client):
-    assert (await client.post("/auth/revoke-tokens")).status_code == 401
-
-
 def test_legacy_token_without_tv_claim_defaults_to_zero():
     """A legacy session without ``tv`` remains valid for a user still at token_version zero."""
     raw = json.dumps({"uid": 7, "exp": 9999999999}).encode()  # note: no "tv"

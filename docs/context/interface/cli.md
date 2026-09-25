@@ -75,7 +75,11 @@ epilog (a `mk()` helper + `_ex()` + `RawDescriptionHelpFormatter`), so `treg <cm
 `treg --version` / `treg version` print `cli_version()` (package metadata); `treg update` (`cmd_update`)
 re-runs the server's `install.sh` to upgrade the CLI in place. A global **`--json`** flag (stripped in
 `main` like `--org`) makes the human-table commands (`org ls`, `agents ls`, `catalog` in all its forms)
-emit raw JSON instead — one stable contract for agents; commands that already print JSON are unaffected.
+emit raw JSON instead — one stable contract for agents. On `call` (not `--await`) it prints one
+compact envelope, `{"result": <body>, "_treg": {http_status, call_id, charged_micro | reserved_micro,
+replay?, async?, hint?}}` (`_call_envelope`; text as a string, binary as base64), and suppresses the
+charge, hint and failure-diagnostic stderr lines: a script that merged the streams once discarded
+every result it had paid for. Exit status is unchanged (1 on HTTP >= 400).
 **`TREG_CONFIG`** points the CLI at an alternate config file (CI/agents/tests; default
 `~/.treg/config.json`). `org use` validates the slug against `/orgs`, then gets that membership's
 active Default key before it saves either value. If that exchange fails, the previous team and token
@@ -157,8 +161,7 @@ CONFIG                                           config · login · logout · on
 
 The order **is** the pitch: what you can do with no setup comes before what you have to register
 yourself, and `balance`/`topup` sit next to the thing that spends them rather than under team
-management. `test_help_is_grouped_and_hides_aliases` pins both the order and that `catalog` precedes
-`tool`, so a drift back to vault-first fails the suite.
+management.
 
 **Old → new.** Every one of these still parses and routes exactly as before — hidden, not removed:
 

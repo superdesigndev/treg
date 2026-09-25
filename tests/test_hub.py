@@ -1231,10 +1231,10 @@ async def test_the_public_log_hides_when_the_maker_switches_it_off(clients: Asyn
 # ---------------------------------------------------------------------------------------------
 # Phase 10.4: the dashboard's Listing tab carries the two switches.
 
-async def test_the_dashboard_carries_the_listing_tab(clients: AsyncClient, hub_on):
-    page = (await clients.get("/app")).text
-    for needle in ("Listed in the catalog", "Public run log on the share page", "setHubFlag('listed'", "setHubFlag('public_log'",
-                   "hub.tab==='listing'"):
+def test_the_dashboard_carries_the_listing_tab():
+    from pathlib import Path
+    page = (Path(__file__).parents[1] / "frontend/src/pages/HubPage.vue").read_text()
+    for needle in ("setHubFlag('listed'", "setHubFlag('public_log'", "hub.tab==='listing'", "hubListingWords(hub.tool)"):
         assert needle in page, needle
 
 

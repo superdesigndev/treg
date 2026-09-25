@@ -7,6 +7,7 @@
     treg-worker arena insights [--max-seconds 110]   # fold new audit rows into the Arena aggregate
     treg-worker catalog stats [--max-rows 500000]    # fold new audit rows into per-day endpoint stats
     treg-worker jev xboost [--posts 60] [--min-likes 150]   # the /jev launch-radar demo: X posts <24h -> jev
+    treg-worker admin purge-evidence [--batch-size 5000]  # blank expired error evidence past 14-day retention
 
 Not the light `treg` CLI: these need the server extra (DB, platform keys in the env) and make
 outbound calls to third parties, so they run as Render cron jobs with the server's env — never as
@@ -290,9 +291,16 @@ async def _hub_check(args) -> int:
 async def _arena_insights(args) -> int:
     from .infra.db import verify_db
     from .application.arena_insights import drain
+    from .bootstrap import archive_object_store
+    from . import analytics
 
-    await verify_db()
-    result = await drain(max_seconds=args.max_seconds)
+    async with archive_object_store():
+        await verify_db()
+        analytics.capture_service_started("arena-worker")
+        try:
+            result = await drain(max_seconds=args.max_seconds)
+        finally:
+            await analytics.drain()
     print(json.dumps(result, sort_keys=True))
     return 1 if result["failed"] else 0
 
@@ -325,6 +333,24 @@ async def _jev_xboost(args) -> int:
     print(json.dumps({k: run[k] for k in ("ran_at", "posts_found", "seconds", "costs", "calls")}, sort_keys=True),
           f"judged={len(run['posts'])}")
     return 0
+
+
+async def _admin_purge_evidence(args) -> int:
+    """Blank failed-call evidence past the 14-day retention window (application/evidence_retention)."""
+    from .application import evidence_retention
+    from .infra.db import verify_db
+
+    await verify_db()
+    result = await evidence_retention.purge(batch_size=args.batch_size)
+    print(json.dumps(result, sort_keys=True))
+    return 1 if result.get("error") else 0
+
+
+def _positive_int(value: str) -> int:
+    n = int(value)
+    if n < 1:
+        raise argparse.ArgumentTypeError("must be >= 1")
+    return n
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -381,6 +407,12 @@ def main(argv: list[str] | None = None) -> int:
     xb.add_argument("--posts", type=int, default=60, help="cap on posts judged, by views")
     xb.add_argument("--min-likes", type=int, default=150)
     xb.set_defaults(fn=_jev_xboost)
+    admin = sub.add_parser("admin", help="admin maintenance tasks")
+    adminsub = admin.add_subparsers(dest="cmd", required=True)
+    purge = adminsub.add_parser("purge-evidence", help="blank expired error evidence past the 14-day retention window")
+    purge.add_argument("--batch-size", type=_positive_int, default=5000,
+                       help="rows to update per transaction (default 5000)")
+    purge.set_defaults(fn=_admin_purge_evidence)
     args = ap.parse_args(argv)
     _need_server()
     return asyncio.run(args.fn(args))

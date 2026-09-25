@@ -30,14 +30,17 @@ import httpx
 from ... import audit
 from ...config import get_settings
 from ...infra.db import session_maker
+from ...domain.capacity.routes_view import view as overflow_routes_view
 from ...domain.capacity.view import view as capacity_view
 from ...domain.capacity.signatures import classify as classify_capacity
 from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing.contracts import canonical_identity, declared_miss, miss_status
 from ...domain.catalog.routing.plan import (
-    MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank,
+    MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank, unscoped,
 )
+from .. import asynctasks as async_task_app
+from . import async_bridge
 from .intake import _tag_telemetry
 from .resolve import _anonymous_offer, _host_of, _marketplace_secret
 from .settle import close_deferred
@@ -90,6 +93,7 @@ _GLOBAL_REFUSALS = frozenset({"insufficient_balance", "tag_spend_cap_reached",
 
 MAX_WEAK_FALLBACKS = 2   # extra providers asked after a thin-but-real answer (see min_results)
 CHEAP_RETRY_MICRO = 10_000  # ≤ 1¢: a per_call provider cheap enough to be asked after another's 4xx
+ROUTED_ASYNC_WAIT_SECONDS = 60
 
 
 def _free_on_failure(cand: Candidate) -> bool:
@@ -249,6 +253,14 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
                        + " | ".join("{" + ", ".join(v) + "}" for v in contract.identity),
             "variants": [list(v) for v in contract.identity]})
     raw, dropped = candidates_for(contract, cat.for_capability(ep["capability"]), cat.adapters, identity)
+    scoped = []
+    for e, ad, v in raw:
+        if missing := unscoped(ad, contract, identity):
+            dropped.append({"endpoint_id": e["id"], "why": f"cannot scope by {', '.join(missing)}; "
+                            "it would answer the same for any value"})
+        else:
+            scoped.append((e, ad, v))
+    raw = scoped
     ids = [e["id"] for e, _, _ in raw]
     stats = await _observed_stats(ids)
     own: set[str] = set()
@@ -286,10 +298,19 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             "platform"
         )
         cv = cat.cost_view(e.get("cost"), e["provider"])
+        direct_exhausted = tier == "platform" and capacity_view.is_exhausted(e["provider"], e["id"])
+        overflow_route = None
+        if (direct_exhausted and get_settings().overflow_mode == "on"
+                and not getattr(caller.org, "platform_overflow_disabled", False)):
+            overflow_route = next(iter(overflow_routes_view.for_endpoint(e["id"])), None)
         price = 0 if tier != "platform" else cost_at(cv, identity, ad)
+        if overflow_route is not None:
+            price = overflow_route.agg_price_micro
         c = Candidate(endpoint=e, adapter=ad, variant=v, tier=tier, price_micro=price, hit_rate=st.get("hit_rate"),
                       ok_rate=st.get("ok_rate"), p50_ms=st.get("p50_ms"), last_ok_days=st.get("last_ok_days"),
-                      exhausted=(tier == "platform" and capacity_view.is_exhausted(e["provider"], e["id"])),
+                      exhausted=direct_exhausted and overflow_route is None,
+                      note=(f"direct account exhausted; overflow via {overflow_route.aggregator}"
+                            if overflow_route is not None else ""),
                       ignored=ignored_filters(ad, contract, identity))
         if tier == "platform" and not cat.platform_eligible(e):
             dropped.append({"endpoint_id": e["id"], "why": "not platform-eligible and no own key"})
@@ -350,6 +371,18 @@ async def _read(response: UpstreamResponse) -> bytes:
     return b"".join(chunks)
 
 
+async def _async_cost(parent: CallContext, child_ref: str, fallback: int = 0) -> int:
+    """Read the original async task's terminal money truth; BYOK has no task row and costs zero."""
+    org_id = parent.input.caller.org_id
+    if org_id is None:
+        return fallback
+    views = await async_task_app.views_for(
+        org_id, [child_ref], pinned_tags=getattr(parent.meta, "tags", None))
+    view = views.get(child_ref) or {}
+    settled = view.get("settled_micro")
+    return int(settled) if settled is not None else fallback
+
+
 def _header(response: UpstreamResponse, name: str) -> str | None:
     wanted = name.lower().encode("latin-1")
     for k, v in response.raw_headers:
@@ -400,6 +433,9 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
     contract = catalog_store.load().contracts.get(ep["capability"])
     options = RouteOptions.from_headers(
         get_header, int(round(contract.default_max_cost_usd * 1_000_000)) if contract and contract.default_max_cost_usd else None)
+    await capacity_view.load()
+    if get_settings().overflow_mode != "off":
+        await overflow_routes_view.load()
     plan = await build_plan(ep, given, parent.input.caller, options)
     if not plan.candidates:
         # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
@@ -482,7 +518,78 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 break
             continue
         charged = int(_header(response, "X-Treg-Cost-Micro") or 0)
+        descriptor = cand.endpoint.get("async")
+        async_outcome = ""
+        if descriptor and 200 <= response.status < 300:
+            kickoff_raw = raw
+            reserved = charged
+            poll_rule = descriptor.get("poll") or {}
+            poll_ep = catalog_store.load().by_id.get(poll_rule.get("endpoint"))
+
+            async def poll_task(task_id: str, poll_number: int):
+                if poll_ep is None:
+                    raise RuntimeError(f"async poll endpoint {poll_rule.get('endpoint')!r} is not catalogued")
+                param = poll_rule.get("param") or {}
+                name = str(param.get("name") or "id")
+                poll_query = {name: task_id}
+                poll_child = CallContext(
+                    input=_child_input(parent, poll_ep, poll_query, {}, remaining),
+                    call_ref=f"{child.call_ref}:p{poll_number}", meta=parent.meta)
+                poll_response = await execute_child(poll_child, upstream_client)
+                return poll_response, await _read(poll_response)
+
+            waited = await async_bridge.await_terminal(
+                descriptor, kickoff_raw, poll_task, timeout_s=ROUTED_ASYNC_WAIT_SECONDS)
+            # Once submission produced a task id, only a declared terminal provider status can
+            # permit waterfall fallback.  A bridge error with an id is still an uncertain live
+            # task, so keep the hold/worker ownership and surface it as pending.
+            if waited.outcome == "pending" or (
+                    waited.outcome == "error" and waited.task_id):
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "pending",
+                                     202, 0, "provider is still processing", ignored=ignored))
+                async_view = {
+                    "task_id": waited.task_id,
+                    "poll": descriptor.get("poll") or {},
+                    "status": descriptor.get("status") or {},
+                }
+                body_out = {
+                    "output": {k: None for k in plan.contract.output},
+                    "raw": json.loads(kickoff_raw),
+                    "_treg": {
+                        "served_by": cand.endpoint["id"], "provider": cand.endpoint["provider"],
+                        "tier": cand.tier, "outcome": "pending", "tried": [t.view() for t in tried],
+                        "call_ref": child.call_ref, "async": async_view,
+                        "reserved_micro": reserved, "charged_micro": None,
+                        **({"dropped": plan.dropped} if plan.dropped else {}),
+                    },
+                }
+                _audit_parent(parent, ep, 202, spent, audit_client)
+                return _json(body_out, 202, {
+                    "X-Treg-Served-By": cand.endpoint["id"],
+                    "X-Treg-Providers-Tried": ",".join(t.provider for t in tried),
+                    "X-Treg-Route-Outcome": "pending",
+                    "X-Treg-Reserved-Micro": str(reserved),
+                    "X-Treg-Async": json.dumps(async_view, separators=(",", ":")),
+                    "X-Treg-Child-Call-Id": child.call_ref,
+                }), spent
+            if waited.response is not None:
+                response = waited.response
+            raw = waited.raw
+            async_outcome = waited.outcome
+            if waited.outcome == "error":
+                errors += 1
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error",
+                                     response.status if response else None, 0, waited.detail[:120]))
+                break
+            charged = await _async_cost(parent, child.call_ref, 0 if cand.tier != "platform" else reserved)
         spent += charged
+        if async_outcome == "failure":
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "miss",
+                                 response.status, charged, "asynchronous task failed", ignored=ignored))
+            if options.waterfall:
+                continue
+            winner = (cand, {}, {}, raw)
+            break
         if _declared_miss(cand.endpoint, response.status, raw):
             # The provider's declared "asked and answered: no result" status (`miss: {status, means}`
             # on the endpoint — aviato/hunter/leadmagic/… 404 a person they have no record of),

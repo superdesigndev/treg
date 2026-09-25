@@ -25,7 +25,7 @@ log = logging.getLogger("treg.judge")
 
 _CACHE_MAX = 5000
 _CACHE_TTL_S = 3600.0
-_cache: "OrderedDict[str, tuple[float, list[float]]]" = OrderedDict()
+_cache: "OrderedDict[str, tuple[float, tuple[list[float], dict[str, float]]]]" = OrderedDict()
 
 
 @dataclass(frozen=True)
@@ -36,6 +36,7 @@ class Judgement:
     tokens_out: int | None = None
     error: str | None = None        # timeout | http_<status> | <ExceptionType>; None when answered
     cached: bool = False
+    extra: dict[str, float] | None = None   # answers to the caller's `extra` questions; None = abstained
 
 
 def candidate_view(ep: dict, capability_text: str) -> dict:
@@ -49,17 +50,21 @@ def candidate_view(ep: dict, capability_text: str) -> dict:
     }
 
 
-def _question(i: int) -> dict:
-    return {"type": "noul", "instructions": (
+def _question(i: int, criteria: dict | None = None) -> dict:
+    q = {"type": "noul", "instructions": (
         f"Calling the API endpoint `candidates[{i}]` would directly accomplish, or be a necessary "
         f"step of, the task described in `task`, on the platform or data source the task implies.")}
+    if criteria:
+        q["criteria"] = criteria
+    return q
 
 
-def _cache_key(model: str, query: str, ids: list[str]) -> str:
-    return hashlib.sha256(json.dumps([model, query.strip().lower(), ids]).encode()).hexdigest()
+def _cache_key(model: str, query: str, ids: list[str], criteria: dict | None, extra: dict | None) -> str:
+    return hashlib.sha256(json.dumps([model, query.strip().lower(), ids, criteria, extra],
+                                     sort_keys=True).encode()).hexdigest()
 
 
-def _cache_get(key: str) -> list[float] | None:
+def _cache_get(key: str) -> tuple[list[float], dict[str, float]] | None:
     hit = _cache.get(key)
     if hit is None:
         return None
@@ -71,8 +76,8 @@ def _cache_get(key: str) -> list[float] | None:
     return probs
 
 
-def _cache_put(key: str, probs: list[float]) -> None:
-    _cache[key] = (time.monotonic(), probs)
+def _cache_put(key: str, answer: tuple[list[float], dict[str, float]]) -> None:
+    _cache[key] = (time.monotonic(), answer)
     _cache.move_to_end(key)
     while len(_cache) > _CACHE_MAX:
         _cache.popitem(last=False)
@@ -83,19 +88,26 @@ def clear_cache() -> None:
 
 
 async def judge(query: str, candidates: list[dict], *, api_key: str, model: str, url: str,
-                timeout_s: float, transport: httpx.AsyncBaseTransport | None = None) -> Judgement:
-    """Probabilities that each candidate accomplishes `query`. Never raises."""
+                timeout_s: float, criteria: dict | None = None, extra: dict[str, dict] | None = None,
+                transport: httpx.AsyncBaseTransport | None = None) -> Judgement:
+    """Probabilities that each candidate accomplishes `query`. Never raises.
+
+    `criteria` (Noul `true`/`false` descriptions) is attached to every candidate question. `extra`
+    maps ids to further questions about the same state (the query alone, say); they ride in the same
+    request and come back as `Judgement.extra`. Neither changes what a caller passing none sends."""
     if not candidates:
-        return Judgement(probs=[], ms=0)
+        return Judgement(probs=[], ms=0, extra={})
     ids = [c["id"] for c in candidates]
-    key = _cache_key(model, query, ids)
+    key = _cache_key(model, query, ids, criteria, extra)
     cached = _cache_get(key)
     if cached is not None:
-        return Judgement(probs=cached, ms=0, cached=True)
+        return Judgement(probs=cached[0], ms=0, cached=True, extra=cached[1])
+    questions = {f"c{i}": _question(i, criteria) for i in range(len(candidates))}
+    questions.update({f"x_{k}": q for k, q in (extra or {}).items()})
     body = {
         "state": {"task": query, "candidates": [{"i": i, **c} for i, c in enumerate(candidates)]},
         "model": model,
-        "questions": {f"c{i}": _question(i) for i in range(len(candidates))},
+        "questions": questions,
     }
     t0 = time.perf_counter()
     try:
@@ -107,10 +119,11 @@ async def judge(query: str, candidates: list[dict], *, api_key: str, model: str,
         data = r.json()
         answers = data.get("answers") or {}
         probs = [float(answers[f"c{i}"]["noul"]) for i in range(len(candidates))]
+        extras = {k: float(answers[f"x_{k}"]["noul"]) for k in (extra or {})}
         usage = data.get("usage") or {}
-        _cache_put(key, probs)
+        _cache_put(key, (probs, extras))
         return Judgement(probs=probs, ms=ms, tokens_in=usage.get("input_tokens"),
-                         tokens_out=usage.get("output_tokens"))
+                         tokens_out=usage.get("output_tokens"), extra=extras)
     except httpx.TimeoutException:
         return Judgement(probs=None, ms=int((time.perf_counter() - t0) * 1000), error="timeout")
     except Exception as exc:  # noqa: BLE001 — an abstaining judge, never a failed search

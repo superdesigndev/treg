@@ -187,10 +187,7 @@ def _app_version() -> str:
     if _app_version_cache is None or _app_version_cache[0] != mtime:
         digest = hashlib.sha256(index.read_bytes()).hexdigest()[:12]
         _app_version_cache = (mtime, digest)
-    settings = get_settings()
-    rollout = (settings.dashboard_rollout_enabled, settings.dashboard_rollout_percent,
-               sorted(settings.dashboard_rollout_user_ids))
-    return hashlib.sha256(f"{_app_version_cache[1]}:{rollout}".encode()).hexdigest()[:12]
+    return _app_version_cache[1]
 
 
 @app.get("/meta")
@@ -212,7 +209,11 @@ async def meta() -> dict:
             # public ingestion key — only present when this deployment opts in (self-hosters send nothing)
             "posthog_key": s.posthog_key, "posthog_host": s.posthog_host.rstrip("/") if s.posthog_key else "",
             # public workspace id — only present when this deployment opts in (self-hosters load no widget)
-            "intercom_app_id": s.intercom_app_id}
+            "intercom_app_id": s.intercom_app_id,
+            # Config only, no database: lets the top-bar referral entry name the reward on every page
+            # without calling GET /referrals, which mints a code and runs the payout sweep.
+            "referral": {"referrer_micro": int(s.referral_referrer_micro),
+                         "referred_micro": int(s.referral_referred_micro)}}
 
 
 @app.get("/providers.json", include_in_schema=False)

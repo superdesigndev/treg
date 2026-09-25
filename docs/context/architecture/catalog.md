@@ -2,6 +2,15 @@
 title: Endpoint catalog — what you can DO with a connected key, and which provider should do it
 status: shipped
 sources:
+  - src/treg/catalog/fetchinio.yaml
+  - src/treg/web/logos/fetchinio.svg
+  - src/treg/catalog/examples/fetchinio.linkedin.user.profile.json
+  - src/treg/catalog/examples/fetchinio.linkedin.company.profile.json
+  - src/treg/catalog/examples/fetchinio.linkedin.user.posts.json
+  - src/treg/catalog/examples/fetchinio.linkedin.user.reactions.json
+  - src/treg/catalog/examples/fetchinio.linkedin.post.comments.json
+  - src/treg/catalog/examples/fetchinio.linkedin.post.reactions.json
+  - src/treg/catalog/examples/fetchinio.linkedin.post.engagement.json
   - src/treg/catalog/fishaudio.yaml
   - src/treg/catalog/examples/fishaudio.tts.s2-1-pro.json
   - src/treg/catalog/examples/fishaudio.voices.create.json
@@ -50,8 +59,15 @@ sources:
   - src/treg/domain/catalog/routing/paths.py
   - src/treg/domain/catalog/routing/plan.py
   - src/treg/domain/catalog/routing/synthetic.py
+  - src/treg/application/call/async_bridge.py
   - src/treg/application/call/route.py
+  - src/treg/catalog/wiza.yaml
+  - src/treg/catalog/examples/wiza.people.email.find.json
+  - src/treg/catalog/examples/wiza.people.email.find.terminal.json
+  - src/treg/catalog/examples/wiza.people.phone.find.json
+  - src/treg/catalog/examples/wiza.people.phone.find.terminal.json
   - tests/test_routing.py
+  - tests/test_wiza.py
   - .github/workflows/catalog-drift.yml
   - scripts/catalog_drift.py
   - scripts/catalog_ingest.py
@@ -76,7 +92,6 @@ sources:
   - src/treg/catalog/akta.extended.yaml
   - src/treg/catalog/dataforseo.yaml
   - src/treg/catalog/dataforseo.extended.yaml
-  - tests/test_dataforseo_constraints.py
   - src/treg/catalog/scrapecreators.yaml
   - src/treg/catalog/scrapecreators.extended.yaml
   - src/treg/catalog/serpapi.yaml
@@ -111,6 +126,31 @@ related:
 ---
 
 # Endpoint catalog — platform-grouped operations per provider
+
+## Fetchin
+
+`fetchinio.yaml` curates Fetchin's seven public LinkedIn data routes: profile, company, member
+posts and reactions, post comments and reactions, and the combined engagement read. All seven are
+strict-query GET tools and are available through BYOK or the platform key; the normal own-key-first
+ladder keeps a team's credential unmetered. `GET /api/v1/subscription` is deliberately internal:
+it is the free connection probe and capacity collector rather than an account-kind catalog tool.
+Verified adapters add profile, company, member posts, post comments and post reactions to their
+provider-neutral LinkedIn routes. The member-posts contract compares Fetchin with Aviato and
+HarvestAPI; member reactions and combined engagement remain direct Fetchin tools because no shared
+contracts describe those provider-native operations.
+
+Live balance deltas on 2026-09-24 confirmed one credit for every ordinary successful route and two
+for combined engagement. The shared account's acquired PAYG replacement rate is $1.50 per 1,000
+credits, so the rows are $0.0015 and $0.003 per call. Fetchin also bills one credit for a 404 while
+every other failure is free. Its response contains no per-call charge evidence, and treg's generic
+settlement rule never charges a rejected response on an estimate; the shared tier therefore absorbs
+that upstream 404 cost. `fullProfile=true` can cost either one or two credits without reporting
+which happened, so the strict curated profile row excludes it. A team's raw BYOK tool remains a
+faithful relay and can still request it.
+
+The examples were captured from public-figure and company fixtures. Comment and reaction actors,
+their text, cursors and profile identifiers are replaced with reserved synthetic values before
+commit; only the public test post identifier remains.
 
 ## Fish Audio v1
 
@@ -471,6 +511,11 @@ in one axis differs in poll target, status vocabulary and result location togeth
 against v1), so a field-wise merge only produced descriptors nobody had written down. `catalog_store`
 serves the effective descriptor on the normalized endpoint. An explicit endpoint `async: false` opts
 a utility or synchronous endpoint out of the provider default; absence means inherit.
+
+An async endpoint may also declare `terminal_example_response`. Its ordinary `example_response`
+remains the submission response shown by the catalog, while adapter verification uses the terminal
+fixture returned by the poll endpoint. This lets an async tool join a routed capability without
+pretending that its kickoff body is the final enrichment result.
 
 **Poll mode in practice.** Every listed provider polls a static catalog id (`poll.endpoint`), which
 the CLI reaches through `/call/<id>` on any credential tier. Replicate offers both `urls.get` and the
@@ -900,8 +945,9 @@ and state the break-even volume, and `fee_usd_month` must be present as data (th
 and edited by hand. The full ladder: docs/SHARED-PLAN-PRICING-PLAN.md; the billing side (429 never
 billable, the recovery report): architecture/money.md.
 
-For synchronous providers that disclose the exact USD charge in the response, a paid cost may
-declare `reported_charge: {path: ..., unit: usd}`. The catalog estimate still reserves a safe
+For synchronous providers that disclose the exact charge in the response, a paid cost may declare
+`reported_charge: {path: ..., unit: usd}` or use `unit: credit` when the provider has an `fx.yaml`
+credit rate. The catalog estimate still reserves a safe
 ceiling. A finite nonnegative response value settles the call at that amount; missing, invalid, or
 non-finite evidence falls back to the normal estimate/miss rules. `reported_charge` is generic
 catalog metadata, not a provider-specific billing branch, and cannot be combined with `cost.settle`.
@@ -1662,6 +1708,11 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   admission-only contract: its adapters verify like any other (which is what the archive's
   `has_result_rules` reads), but no `treg.<capability>` row is ever generated from it. For a
   capability whose "children" are one provider's price tiers, not a choice treg should make.
+  `scoping` names identity keys that scope the answer rather than describe it (`people.search`:
+  `company_domain`). A candidate whose adapter never sends one the caller supplied is dropped from
+  the plan with the reason, not ranked down like an ignored filter: a title-only search asked for
+  one company's CEO returns title-matched strangers for any company and bills them as a hit. The
+  rule is per candidate, so `{q, company_domain}` also drops the `q`-only providers.
 - **Adapters** — `adapters.yaml`, one per endpoint: `accepts` (identity variants), `in` (contract
   field → `queryParams.x` / `body.x`), `const` (fixed provider params), `out` (core field →
   expression over the body), `miss`. The expression language (`domain/catalog/routing/paths.py`)
@@ -1702,9 +1753,11 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   is the measured hit rate when ≥ 20 decided samples exist, else `ok_rate`, else 1.0 (flagged
   `unmeasured`). `build_plan` reads that evidence through bootstrap's shared process cache; cold or
   unavailable observations degrade to unmeasured ranking while the cache refreshes off the request
-  path. `X-Treg-Route-Prefer` / `-Exclude` override; exhausted providers (capacity view)
-  and providers with no key on the deployment are dropped and named in `dropped` (`needs {…}`
-  says which identity variant a dropped child wanted).
+  path. `X-Treg-Route-Prefer` / `-Exclude` override. An exhausted platform provider with an enabled
+  overflow route remains a candidate at the overflow route's price, so the ordinary child ladder can
+  skip the known-dry direct account and use the aggregator; without an enabled route it is dropped.
+  Providers with no key on the deployment are also dropped and named in `dropped` (`needs {…}` says
+  which identity variant a dropped child wanted).
 - **Execution** — `application/call/route.py`, entered from `service._execute_call` when the
   resolved catalog row is `kind: routed`. Each attempt is a **full child `execute_call`** on a
   `CallContext` whose `call_ref` is `{parent}:r{n}` — its hold id, ladder (tiers 1/2/4/overflow),
@@ -1760,6 +1813,14 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   the idempotency label (a success replays without touching a provider; a failure now costs
   nothing, so it is not stored and a retry with the same key tries again) and writes one audit row
   (`credential_tier: routed`) beside the children's.
+  An async child uses the shared async bridge to submit once and poll through ordinary authenticated
+  child calls. The final poll response, not the kickoff response, is passed to the adapter. Routed
+  execution waits for up to 60 seconds. If the task is still processing, or a foreground poll
+  cannot prove a declared terminal state, it returns HTTP 202 with `_treg.outcome: pending`, the
+  provider and endpoint, child call reference, poll descriptor, `reserved_micro`, and
+  `charged_micro: null`. A pending attempt stops that waterfall because the child may still complete
+  and charge; the existing async worker owns eventual settlement. Only declared terminal misses and
+  failures may continue under the normal bounded fallback rules.
 - **Hit rate** — `CallRecord.hit` (nullable, alembic `0009`, last column) is the adapter's verdict
   written at settle; `stats.observed` publishes `hit_rate`/`hit_samples` (floor 20) and, for
   per-success endpoints, reads historical rows too (a 2xx with `cost_observed_micro == 0` is a miss).

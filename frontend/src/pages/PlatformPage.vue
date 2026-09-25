@@ -1,6 +1,27 @@
 <script>
 import { useDashboard } from '../state/context'
-export default { setup: useDashboard }
+
+// The ledger's section headings stick right under the filter bar, so their offset is the bar's
+// live height. Written on the bar's parent, which also holds the table: the redesign shell
+// redeclares --lsec-top on its own element, so a value on the document root never reached them.
+let barObserver = null
+let barHost = null
+function stickLedgerBar(el) {
+  barObserver?.disconnect()
+  barHost?.style.removeProperty('--lsec-top')
+  barObserver = barHost = null
+  if (!el) return
+  barHost = el.parentElement
+  barObserver = new ResizeObserver(() => {
+    barHost.style.setProperty('--lsec-top', `calc(var(--lbar-top) + ${el.offsetHeight}px)`)
+  })
+  barObserver.observe(el)
+}
+
+export default {
+  // Added onto the bindings, never spread: each binding is a live getter onto the shared state.
+  setup() { return Object.assign(useDashboard(), { stickLedgerBar }) },
+}
 </script>
 
 <template>
@@ -19,7 +40,7 @@ export default { setup: useDashboard }
                      aria-hidden="true" @error="platLogoBad[platSlug]=true">
                 <span v-else class="pt-i">{{platInitial({label:platLabel, slug:platSlug})}}</span>
               </span>
-              <h1>{{platLabel}}</h1>
+              <h1>{{platLabel || '\u00a0'}}</h1>
             </div>
             <p class="sub plat-intro">Every endpoint treg knows for this platform, one ledger, filed by subject — jobs several
               providers do sit on a single row, so you can compare price and coverage before you spend a call.</p>
@@ -42,25 +63,31 @@ export default { setup: useDashboard }
                  MERGED rows come first — a job several providers do, on one comparable line —
                  then the endpoints only one provider offers, each led by its own summary, because
                  "Get Showcase Product List" says more than the capability id ever could. -->
-            <div class="lbar">
-              <!-- The chips scroll rather than wrap: a bar that grows a second row as you filter
-                   would shift the sticky section headings out from under it. -->
+            <!-- The bar is sticky and its chips WRAP: a scrolling strip with a hidden scrollbar cut the
+                 last chip in half and left mouse users no way to reach the rest. Wrapping makes its
+                 height vary with the platform and the filter, so the section headings that stick
+                 under it read the measured height (`stickLedgerBar`) instead of assuming one row. -->
+            <div class="lbar" :ref="stickLedgerBar">
+              <div class="lctl">
+                <input class="lfind" v-model="platQ" placeholder="Filter, e.g. comments" aria-label="Filter this platform's tools">
+                <label class="lchk"><input type="checkbox" v-model="platVerifiedOnly"> verified only</label>
+                <!-- Two numbers only when they differ: a merged row is several endpoints, and that
+                     is the one case where the row count understates the catalog. -->
+                <span class="lstat">{{platStats.rows}} row{{platStats.rows===1?'':'s'}}<template
+                      v-if="platStats.eps!==platStats.rows"> · {{platStats.eps}} endpoint{{platStats.eps===1?'':'s'}}</template><span
+                      v-if="platDomain || platQ || platVerifiedOnly"> · filtered <button class="lclear" @click="platClearFilters">clear</button></span></span>
+              </div>
               <div class="lchips">
                 <button class="mk-chip" :class="{on:!platDomain}" @click="platDomain=''">All <span>{{platBrowseCount}}</span></button>
                 <button v-for="d in platDomainTabs" :key="d.domain" class="mk-chip"
                         :class="{on:platDomain===d.domain}"
                         @click="platDomain = platDomain===d.domain ? '' : d.domain">{{d.domain}} <span>{{d.n}}</span></button>
               </div>
-              <label class="lchk"><input type="checkbox" v-model="platVerifiedOnly"> verified only</label>
-              <input class="lfind" v-model="platQ" placeholder="filter… e.g. comments, showcase">
             </div>
-            <!-- Two numbers, because a merged row is several endpoints: what you are scrolling
-                 through, and how much of the catalog that actually is. -->
-            <div class="lstat">{{platStats.rows}} row{{platStats.rows===1?'':'s'}} · {{platStats.eps}} endpoint{{platStats.eps===1?'':'s'}}<span
-                  v-if="platDomain || platQ || platVerifiedOnly"> · filtered <button class="lclear" @click="platClearFilters">clear</button></span></div>
 
             <div class="ttable-wrap lwrap" v-if="platLedger.length"><table class="ledger">
-              <thead><tr><th class="lth-w">What it does</th><th>Providers / route</th><th class="lth-p">Price</th><th class="lth-v">✓</th></tr></thead>
+              <thead><tr><th class="lth-w">What it does</th><th>Providers / route</th><th class="lth-p">Price</th><th class="lth-v"
+                  title="Called for real against the live API, and the response captured">Verified</th></tr></thead>
               <!-- A row, its section heading and its expanded detail are all table rows, so each
                    level rides a wrapper tag — a tbody per group would strip the row separators. -->
               <template v-for="sec in platLedger" :key="sec.domain">
@@ -111,8 +138,7 @@ export default { setup: useDashboard }
                     </td>
                     <td class="lprice" :title="r.priceTitle">{{r.price}}<span
                           v-if="r.priceNative" class="cost-nat">({{r.priceNative}})</span></td>
-                    <td><span v-if="r.verified" class="vmark" title="Called for real against the live API, and the response captured">✓</span><span
-                          v-else class="xmark" title="Documented, but treg has not called it with a live key yet">·</span></td>
+                    <td class="lver"><span v-if="r.verified" class="vmark" title="Called for real against the live API, and the response captured">✓</span></td>
                   </tr>
                   <tr v-if="platOpen[r.key]" :key="r.key+'::d'" class="cat-d">
                     <td colspan="4">
@@ -131,7 +157,6 @@ export default { setup: useDashboard }
                           <span class="chip">{{endpointAccessLabel(e)}}</span>
                           <span class="lsub-price" :title="costTitle(e.cost)">{{costShort(e.cost)}}</span>
                           <span v-if="e.verified" class="vmark" :title="'Called for real on '+e.verified">✓</span>
-                          <span v-else class="xmark" title="Documented, but treg has not called it with a live key yet">·</span>
                           <span v-if="catEndpointConnected(e)" class="chip go" title="You have a connected account with an authorization method that can call this"><span class="godot"></span>connected</span>
                           <span class="lsub-path mono"><span class="cat-m">{{e.method}}</span>{{e.path}}</span>
                         </button>

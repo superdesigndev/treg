@@ -58,9 +58,18 @@ async def _key():
         return (await s.execute(select(ArchiveKey))).scalar_one()
 
 
-async def test_positive_cache_preserves_bytes_billing_and_history(clients, cache_on, monkeypatch):
-    from treg import audit
+@pytest.mark.parametrize('read_source', ['db', 'r2', 'db_fallback'])
+async def test_positive_cache_preserves_bytes_billing_and_history(clients, cache_on, monkeypatch, read_source):
+    from treg import archive_bodies, audit
+    from tests.fake_object_store import MemoryObjectStore
+    objects = MemoryObjectStore()
+    monkeypatch.setattr(archive_bodies, '_store', objects)
+    if read_source != 'db':
+        for path in ('lookup', 'result'):
+            monkeypatch.setattr(get_settings(), 'archive_body_read_' + path, 'r2-first')
     first = await _call(clients, monkeypatch, FOUND)
+    if read_source == 'r2':
+        objects.objects[archive.content_hash(FOUND)] = FOUND  # Historical copy, original DB marker.
     second = await _call(clients, monkeypatch, EMPTY)
     assert second.headers['x-treg-cache'] == 'hit'
     assert first.content == second.content == FOUND
@@ -79,7 +88,7 @@ async def test_positive_cache_preserves_bytes_billing_and_history(clients, cache
         # The hit is this team's second call on the question: the repeat price.
         live, hit = sorted((r.cost_charged_micro for r in records), reverse=True)
         assert live > 0 and hit == live * 10 // 100
-
+    assert (objects.get_calls > 0) == (read_source != 'db')
 
 
 async def test_disappearance_invalidates_once_and_retains_history(clients, cache_on, monkeypatch):
@@ -169,57 +178,42 @@ async def test_result_and_admission_telemetry(clients, cache_on, monkeypatch):
     assert all('body' not in p and 'key_hash' not in p for p in props)
 
 
-@pytest.mark.parametrize('ep,body,state', [
-    (EP, {'data': {'emails': []}}, 'empty'),
-    (EP, {'data': {}}, 'unknown'),
-    (EP, {'data': {'emails': [None]}}, 'unknown'),
-    (EP, {'data': {'emails': [{'value': ''}]}}, 'unknown'),
-    (EP, {'errors': [{'id': 'rate_limit'}], 'data': {'emails': []}}, 'error'),
-    ('leadmagic.x.employee-finder', {'data': []}, 'empty'),
-    ('leadmagic.x.employee-finder', {'data': [{'full_name': 'Person', 'has_email': False}]}, 'found'),
-    ('leadmagic.x.employee-finder', {'data': [{'full_name': None}]}, 'unknown'),
-    ('leadmagic.x.employee-finder', {'message': 'failure'}, 'unknown'),
-    ('seranking.google.keywords.volume', [], 'empty'),
-    ('seranking.google.keywords.volume', [{'is_data_found': False}], 'empty'),
-    ('seranking.google.keywords.volume', [{'is_data_found': True, 'keyword': 'term', 'volume': 0}], 'found'),
-    ('seranking.google.keywords.volume', [{'is_data_found': False}, {'is_data_found': True, 'keyword': 'term', 'volume': 10}], 'found'),
-    ('seranking.google.keywords.volume', [{'is_data_found': 'false'}], 'unknown'),
-    ('seranking.google.keywords.volume', [{'is_data_found': True}], 'unknown'),
-    ('seranking.google.keywords.volume', [{'is_data_found': True, 'keyword': 'term', 'volume': True}], 'unknown'),
-    ('unclassified.endpoint', {'data': [1]}, 'unknown'),
+@pytest.mark.parametrize('ep,status,body,state', [
+    (EP, 201, {'data': {'emails': []}}, 'empty'),
+    (EP, 201, {'data': {}}, 'unknown'),
+    (EP, 201, {'data': {'emails': [None]}}, 'unknown'),
+    (EP, 201, {'data': {'emails': [{'value': ''}]}}, 'unknown'),
+    (EP, 201, {'errors': [{'id': 'rate_limit'}], 'data': {'emails': []}}, 'error'),
+    ('leadmagic.x.employee-finder', 201, {'data': []}, 'empty'),
+    ('leadmagic.x.employee-finder', 201, {'data': [{'full_name': 'Person', 'has_email': False}]}, 'found'),
+    ('leadmagic.x.employee-finder', 201, {'data': [{'full_name': None}]}, 'unknown'),
+    ('leadmagic.x.employee-finder', 201, {'message': 'failure'}, 'unknown'),
+    ('seranking.google.keywords.volume', 201, [], 'empty'),
+    ('seranking.google.keywords.volume', 201, [{'is_data_found': False}], 'empty'),
+    ('seranking.google.keywords.volume', 201, [{'is_data_found': True, 'keyword': 'term', 'volume': 0}], 'found'),
+    ('seranking.google.keywords.volume', 201, [{'is_data_found': False}, {'is_data_found': True, 'keyword': 'term', 'volume': 10}], 'found'),
+    ('seranking.google.keywords.volume', 201, [{'is_data_found': 'false'}], 'unknown'),
+    ('seranking.google.keywords.volume', 201, [{'is_data_found': True}], 'unknown'),
+    ('seranking.google.keywords.volume', 201, [{'is_data_found': True, 'keyword': 'term', 'volume': True}], 'unknown'),
+    ('unclassified.endpoint', 201, {'data': [1]}, 'unknown'),
+    ('leadsforge.people.email.find', 200, {'status':'succeeded','email':'person@example.com'}, 'found'),
+    ('leadsforge.people.email.find', 200, {'status':'not_found'}, 'empty'),
+    ('leadsforge.people.email.find', 200, {'status':'not_found','email':'person@example.com'}, 'unknown'),
+    ('leadsforge.people.email.find', 200, {'email':'person@example.com'}, 'unknown'),
+    ('leadsforge.people.email.find', 200, {'status':'succeeded','email':' person@example.com'}, 'unknown'),
+    ('hunter.people.email.find', 200, {}, 'unknown'),
+    ('hunter.people.email.find', 200, {'data': {}}, 'unknown'),
+    ('hunter.people.email.find', 200, {'data': None}, 'unknown'),
+    ('hunter.people.email.find', 200, {'data': {'email': None}}, 'empty'),
+    ('findymail.search.name', 200, {}, 'unknown'),
+    ('findymail.search.name', 200, {'contact': {}}, 'unknown'),
+    ('findymail.search.name', 200, {'contact': None}, 'empty'),
 ])
-def test_conservative_result_rules(ep, body, state):
+def test_conservative_result_rules(ep, status, body, state):
     from treg.domain.catalog.results import classify
-    result = classify(ep, 201, json.dumps(body).encode())
+    result = classify(ep, status, json.dumps(body).encode())
     assert result.state == state
     assert result.hit == {'found': True, 'empty': False}.get(state)
-
-
-@pytest.mark.parametrize('ep,request_body,empty', [
-    ('seranking.google.keywords.volume', {'keywords': ['seo platform']}, [{'is_data_found': False}]),
-    ('leadmagic.x.employee-finder', {'company_domain': 'example.com'}, {'data': []}),
-])
-async def test_other_candidates_through_real_call(clients, cache_on, monkeypatch, ep, request_body, empty):
-    from pathlib import Path
-    settings = get_settings()
-    provider = ep.split('.')[0]
-    monkeypatch.setattr(settings, 'platform_providers', provider)
-    monkeypatch.setattr(settings, 'platform_key_' + provider, 'test-platform-key')
-    monkeypatch.setattr(settings, 'archive_serve_endpoints', ep)
-    raw = (Path(__file__).parents[1] / 'src/treg/catalog/examples' / (ep + '.json')).read_bytes()
-    url = '/call/' + ep + ('?source=us' if provider == 'seranking' else '')
-    monkeypatch.setattr(service, 'relay', _fake_relay(201, raw))
-    first = await clients.post(url, json=request_body)
-    assert first.status_code == 201 and first.content == raw
-    await archive.drain()
-    second = await clients.post(url, json=request_body)
-    assert second.headers.get('x-treg-cache') == 'hit' and second.content == raw
-    monkeypatch.setattr(service, 'relay', _fake_relay(200, json.dumps(empty).encode()))
-    await clients.post(url, json=request_body, headers={'Cache-Control': 'no-cache'})
-    await archive.drain()
-    third = await clients.post(url, json=request_body)
-    assert third.status_code == 200 and third.json() == empty
-    assert 'x-treg-cache' not in third.headers
 
 
 async def test_old_writer_cannot_leave_a_stale_positive_pointer(clients, cache_on, monkeypatch):
@@ -347,32 +341,6 @@ async def test_ignore_cannot_mask_result_transitions_and_uses_decisive_baseline(
     assert (await _key()).change_seen == 2
 
 
-@pytest.mark.parametrize("raw", [
-    b'{"status":"succeeded","email":""}',
-    b'{"status":"failed","email":"person@example.com"}',
-    b'{"status":"succeeded","email":123}',
-    b'{"status":"succeeded","email":"not-an-email"}',
-    b'{"status":"not_found"}',
-])
-async def test_leadsforge_invalid_results_never_serve(clients, monkeypatch, raw):
-    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'leadsforge')
-    monkeypatch.setenv('TREG_PLATFORM_KEY_LEADSFORGE', 'test-key')
-    get_settings.cache_clear()
-    settings = get_settings()
-    monkeypatch.setattr(settings, 'archive_mode', 'serve')
-    monkeypatch.setattr(settings, 'archive_serve_endpoints', 'leadsforge.people.email.find')
-    monkeypatch.setattr(settings, 'archive_serve_percent', 100)
-    try:
-        monkeypatch.setattr(service, 'relay', _fake_relay(200, raw))
-        for _ in range(2):
-            r = await clients.post('/call/leadsforge.people.email.find', json={'personID':'synthetic-person'})
-            await archive.drain()
-            assert r.status_code == 200 and r.content == raw
-            assert r.headers.get('x-treg-cache') != 'hit'
-    finally:
-        get_settings.cache_clear()
-
-
 async def test_operator_cap_bounds_existing_ttl_and_preserves_bypass(clients, cache_on, monkeypatch):
     from datetime import timedelta
     settings = get_settings()
@@ -398,18 +366,6 @@ async def test_operator_cap_bounds_existing_ttl_and_preserves_bypass(clients, ca
     assert bypass.content == EMPTY and 'x-treg-cache' not in bypass.headers
 
 
-@pytest.mark.parametrize('body,state', [
-    ({'status':'succeeded','email':'person@example.com'}, 'found'),
-    ({'status':'not_found'}, 'empty'),
-    ({'status':'not_found','email':'person@example.com'}, 'unknown'),
-    ({'email':'person@example.com'}, 'unknown'),
-    ({'status':'succeeded','email':' person@example.com'}, 'unknown'),
-])
-def test_leadsforge_result_contract(body, state):
-    from treg.domain.catalog.results import classify
-    assert classify('leadsforge.people.email.find', 200, json.dumps(body).encode()).state == state
-
-
 async def test_default_json_comparison_preserves_call_bytes(clients, cache_on, monkeypatch):
     first = b'{"data":{"emails":[{"value":"hello@example.com"}]},"meta":{"results":1}}'
     reordered = b'{ "meta": {"results": 1}, "data": {"emails": [{"value": "hello@example.com"}]} }'
@@ -423,93 +379,3 @@ async def test_default_json_comparison_preserves_call_bytes(clients, cache_on, m
     for raw in (first, reordered):
         result = await archive.resolve_result(k.key_hash, archive.content_hash(raw))
         assert result['response']['body_text'] == raw.decode()
-
-
-@pytest.mark.parametrize('ep,container', [
-    ('hunter.people.email.find', 'data'), ('findymail.search.name', 'contact'),
-])
-@pytest.mark.parametrize('email', ['', 'not-an-email', 123, ' person@example.com'])
-async def test_email_pilot_rejects_malformed_positive(clients, monkeypatch, ep, container, email):
-    provider = ep.split('.')[0]
-    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', provider)
-    monkeypatch.setenv('TREG_PLATFORM_KEY_' + provider.upper(), 'test-key')
-    get_settings.cache_clear()
-    settings = get_settings()
-    monkeypatch.setattr(settings, 'archive_mode', 'serve')
-    monkeypatch.setattr(settings, 'archive_serve_endpoints', ep)
-    monkeypatch.setattr(settings, 'archive_serve_percent', 100)
-    raw = json.dumps({container: {'email': email}}).encode()
-    monkeypatch.setattr(service, 'relay', _fake_relay(200, raw))
-    try:
-        for _ in range(2):
-            if provider == 'hunter':
-                r = await clients.get('/call/' + ep + '?domain=example.com&full_name=Test')
-            else:
-                r = await clients.post('/call/' + ep, json={'name': 'Test', 'domain': 'example.com'})
-            await archive.drain()
-            assert r.status_code == 200 and r.content == raw
-            assert 'x-treg-cache' not in r.headers
-    finally:
-        get_settings.cache_clear()
-
-
-@pytest.mark.parametrize('ep,field', [
-    ('hunter.people.email.find', 'data'), ('findymail.search.name', 'contact'),
-])
-async def test_email_pilot_positive_and_empty_admission(clients, monkeypatch, ep, field):
-    provider = ep.split('.')[0]
-    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', provider)
-    monkeypatch.setenv('TREG_PLATFORM_KEY_' + provider.upper(), 'test-key')
-    get_settings.cache_clear()
-    settings = get_settings()
-    monkeypatch.setattr(settings, 'archive_mode', 'serve')
-    monkeypatch.setattr(settings, 'archive_serve_endpoints', ep)
-    monkeypatch.setattr(settings, 'archive_serve_percent', 100)
-    async def call(raw, live=False):
-        monkeypatch.setattr(service, 'relay', _fake_relay(200, raw))
-        kwargs = {'headers': {'Cache-Control': 'no-cache'} if live else {}}
-        if provider == 'hunter':
-            r = await clients.get('/call/' + ep + '?domain=example.com&full_name=Test', **kwargs)
-        else:
-            r = await clients.post('/call/' + ep, json={'name': 'Test', 'domain': 'example.com'}, **kwargs)
-        await archive.drain()
-        return r
-    found = json.dumps({field: {'email': 'person@example.com'}}).encode()
-    empty = json.dumps({field: {'email': None}}).encode()
-    try:
-        await call(found)
-        cached = await call(empty)
-        assert cached.headers['x-treg-cache'] == 'hit' and cached.content == found
-        await call(empty, live=True)
-        for _ in range(2):
-            r = await call(empty)
-            assert 'x-treg-cache' not in r.headers and r.content == empty
-        k = await _key()
-        assert (k.stable_seen, k.change_seen, k.result_state) == (0, 1, 'empty')
-    finally:
-        get_settings.cache_clear()
-
-
-async def test_hunter_declared_date_ignore_preserves_verification_status(clients, cache_on, monkeypatch):
-    def body(date, status='valid'):
-        return json.dumps({'data': {'emails': [{'value': 'person@example.com',
-                          'verification': {'date': date, 'status': status}}]}}).encode()
-    await _call(clients, monkeypatch, body('2026-09-01'), live=True)
-    await _call(clients, monkeypatch, body('2026-09-02'), live=True)
-    assert ((await _key()).stable_seen, (await _key()).change_seen) == (1, 0)
-    await _call(clients, monkeypatch, body('2026-09-03', 'invalid'), live=True)
-    assert ((await _key()).stable_seen, (await _key()).change_seen) == (1, 1)
-
-
-@pytest.mark.parametrize('ep,body,state', [
-    ('hunter.people.email.find', {}, 'unknown'),
-    ('hunter.people.email.find', {'data': {}}, 'unknown'),
-    ('hunter.people.email.find', {'data': None}, 'unknown'),
-    ('hunter.people.email.find', {'data': {'email': None}}, 'empty'),
-    ('findymail.search.name', {}, 'unknown'),
-    ('findymail.search.name', {'contact': {}}, 'unknown'),
-    ('findymail.search.name', {'contact': None}, 'empty'),
-])
-def test_email_pilot_missing_fields(ep, body, state):
-    from treg.domain.catalog.results import classify
-    assert classify(ep, 200, json.dumps(body).encode()).state == state

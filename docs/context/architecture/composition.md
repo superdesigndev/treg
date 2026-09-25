@@ -53,6 +53,8 @@ verification, then owns the asynchronous client until archive and analytics drai
 conditional resource setup does no object I/O at startup and adds no worker. Tests can supply
 `create_app(..., archive_object_store=...)`; `configure_archive_object_store` is the shared
 in-memory injection seam. See [archive](archive.md) for switches and queue behavior.
+The same `archive_object_store` context owns the client for the Arena insights worker; that command
+does not start a web lifespan or its background tasks.
 
 For every role, the factory wires the Catalog observation port to one process-local
 `CachedEndpointObservationReader` backed by short `background_session_maker` reads — the cache never

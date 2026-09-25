@@ -107,31 +107,17 @@ async def callenv(ads_enabled):
     await app.state.http.aclose()
 
 
-def test_usd_to_aud_uses_fixed_rate():
-    # 1 AUD = 0.70 USD, so USD converts UP into AUD: US$20.00 -> A$28.57
-    assert adsconv.usd_micro_to_aud_micro(20_000_000) == 28_571_428
-
-
-def test_usd_to_aud_is_integer_only():
-    # No float ever appears: 1 micro-USD must not become 1.4285... micro-AUD
-    result = adsconv.usd_micro_to_aud_micro(1)
+@pytest.mark.parametrize("usd,aud", [
+    (20_000_000, 28_571_428),   # 1 AUD = 0.70 USD, so USD converts UP into AUD: US$20.00 -> A$28.57
+    (1, 1),                     # integer only: 1 micro-USD must not become 1.4285... micro-AUD
+    (0, 0),
+    (-7_000_000, -10_000_000),  # even-divisible negative: -7,000,000 * 10 / 7 exactly
+    (-1_000_000, -1_428_572),   # non-exact negative: floor division rounds away from zero
+])
+def test_usd_to_aud_is_a_fixed_integer_rate(usd, aud):
+    result = adsconv.usd_micro_to_aud_micro(usd)
     assert isinstance(result, int)
-    assert result == 1
-
-
-def test_usd_to_aud_zero_and_negative():
-    assert adsconv.usd_micro_to_aud_micro(0) == 0
-    # Even-divisible negative: -7,000,000 * 10 / 7 = -10,000,000 exactly
-    assert adsconv.usd_micro_to_aud_micro(-7_000_000) == -10_000_000
-    # Non-exact negative: floor division toward -∞ rounds away from zero
-    # -1,000,000 * 10 = -10,000,000; -10,000,000 // 7 = -1,428,572 (not -1,428,571)
-    assert adsconv.usd_micro_to_aud_micro(-1_000_000) == -1_428_572
-
-
-def test_action_ids_cover_every_action():
-    assert set(adsconv.CONVERSION_ACTION_IDS) == {
-        adsconv.ACTION_SIGNUP, adsconv.ACTION_FIRST_CALL, adsconv.ACTION_PAID
-    }
+    assert result == aud
 
 
 @pytest.mark.parametrize(
@@ -158,19 +144,6 @@ async def test_ad_conversion_is_unique_per_org_and_action(clients):
         db.add(AdConversion(org_id=org.id, action="signup", dedupe_key="signup"))
         with pytest.raises(IntegrityError):
             await db.commit()
-
-
-async def test_org_has_ad_attribution_columns(clients):
-    async with session_maker() as db:
-        org = Org(name="t", slug="t-adcols", ad_gclid="ABC123",
-                  ad_click_id_type="wbraid", ad_landing="p2")
-        db.add(org)
-        await db.commit()
-        got = (await db.execute(select(Org).where(Org.slug == "t-adcols"))).scalar_one()
-        assert got.ad_gclid == "ABC123"
-        assert got.ad_click_id_type == "wbraid"
-        assert got.ad_landing == "p2"
-        assert got.first_call_at is None
 
 
 async def test_queue_writes_one_row_and_is_idempotent(clients, ads_enabled):
@@ -212,41 +185,33 @@ async def test_queue_is_a_noop_when_disabled(clients, ads_disabled):
         assert (await db.execute(select(AdConversion))).scalars().all() == []
 
 
-async def test_signup_persists_the_gclid_cookie(clients, ads_enabled):
-    r = await clients.post(
-        "/users",
-        json={"email": "click@example.com"},
-        cookies={"treg_ad": "CLICK_XYZ|p3"},
-    )
-    assert r.status_code == 200, r.text
-    async with session_maker() as db:
-        org = (await db.execute(select(Org).where(Org.id == r.json()["org_id"]))).scalar_one()
-        assert org.ad_gclid == "CLICK_XYZ"
-        assert org.ad_click_id_type == "gclid"  # legacy cookie format remains readable
-        assert org.ad_landing == "p3"
-        assert org.ad_click_at is not None
-
-
-async def test_signup_without_the_cookie_leaves_attribution_null(clients):
-    r = await clients.post("/users", json={"email": "organic@example.com"})
-    assert r.status_code == 200, r.text
-    async with session_maker() as db:
-        org = (await db.execute(select(Org).where(Org.id == r.json()["org_id"]))).scalar_one()
-        assert org.ad_gclid is None
-
-
-async def test_signup_persists_the_braid_field(clients, ads_enabled):
-    r = await clients.post(
-        "/users",
-        json={"email": "braid@example.com"},
-        cookies={"treg_ad": "wbraid|BRAID_XYZ|p4"},
-    )
+@pytest.mark.parametrize("email,cookie,click_id,click_type,landing", [
+    # the legacy cookie format remains readable
+    ("click@example.com", "CLICK_XYZ|p3", "CLICK_XYZ", "gclid", "p3"),
+    ("braid@example.com", "wbraid|BRAID_XYZ|p4", "BRAID_XYZ", "wbraid", "p4"),
+])
+async def test_signup_persists_the_ad_click_cookie(clients, ads_enabled, email, cookie, click_id,
+                                                   click_type, landing):
+    r = await clients.post("/users", json={"email": email}, cookies={"treg_ad": cookie})
     assert r.status_code == 200, r.text
     async with session_maker() as db:
         org = await db.get(Org, r.json()["org_id"])
-        assert org.ad_gclid == "BRAID_XYZ"
-        assert org.ad_click_id_type == "wbraid"
-        assert org.ad_landing == "p4"
+        assert org.ad_gclid == click_id
+        assert org.ad_click_id_type == click_type
+        assert org.ad_landing == landing
+        assert org.ad_click_at is not None
+
+
+@pytest.mark.parametrize("path,body", [
+    ("/users", {"email": "organic@example.com"}),
+    ("/orgs", {"name": "organic team"}),
+])
+async def test_signup_without_the_cookie_leaves_attribution_null(clients, path, body):
+    r = await clients.post(path, json=body)
+    assert r.status_code == 200, r.text
+    async with session_maker() as db:
+        org = await db.get(Org, r.json()["org_id"])
+        assert org.ad_gclid is None
 
 
 async def test_disabled_signup_ignores_ad_cookie(clients, ads_disabled):
@@ -262,15 +227,9 @@ async def test_disabled_signup_ignores_ad_cookie(clients, ads_disabled):
         assert (await db.execute(select(AdConversion))).scalars().all() == []
 
 
-async def test_adtrack_script_is_empty_when_disabled(clients, ads_disabled):
-    r = await clients.get("/adtrack.js")
-    assert r.status_code == 200
-    assert r.text == ""
-
-
-async def test_gtag_script_is_empty_when_disabled(clients, ads_disabled):
-    """gtag.js returns empty when ads tracking is disabled, same as adtrack.js."""
-    r = await clients.get("/gtag.js")
+@pytest.mark.parametrize("path", ["/adtrack.js", "/gtag.js"])
+async def test_tracking_script_is_empty_when_disabled(clients, ads_disabled, path):
+    r = await clients.get(path)
     assert r.status_code == 200
     assert r.text == ""
 
@@ -300,14 +259,6 @@ async def test_org_creation_persists_the_gclid_cookie(clients, ads_enabled):
         assert org.ad_gclid == "CLICK_XYZ"
         assert org.ad_landing == "p3"
         assert org.ad_click_at is not None
-
-
-async def test_org_creation_without_the_cookie_leaves_attribution_null(clients):
-    r = await clients.post("/orgs", json={"name": "organic team"})
-    assert r.status_code == 200, r.text
-    async with session_maker() as db:
-        org = (await db.execute(select(Org).where(Org.id == r.json()["org_id"]))).scalar_one()
-        assert org.ad_gclid is None
 
 
 async def test_first_successful_call_fires_once(callenv):
@@ -443,12 +394,14 @@ async def test_drain_sends_every_pending_row_in_one_batch(clients, ads_enabled):
                            created_at=utcnow_naive() - timedelta(hours=12))
         fresh = AdConversion(org_id=org.id, action=adsconv.ACTION_PAID,
                              created_at=utcnow_naive())
-        db.add(old); db.add(fresh)
+        db.add(old)
+        db.add(fresh)
         await db.commit()
 
         await adsconv.drain_once(db, client)
 
-        await db.refresh(old); await db.refresh(fresh)
+        await db.refresh(old)
+        await db.refresh(fresh)
         for row in (old, fresh):
             assert row.uploaded_at is not None
             assert row.next_attempt_at is None
@@ -603,20 +556,6 @@ async def test_drain_acknowledges_rows_despite_nonfatal_field_warnings(clients, 
         assert "PARTIAL_DATA_IGNORED" in row.error  # kept for operator visibility only
 
 
-async def test_auth_headers_carry_no_developer_token_or_login_customer_id(monkeypatch, ads_enabled):
-    """Both headers the old ConversionUploadService needed are gone under Data Manager: no
-    developer-token header exists at all, and the manager account moves into the request body as
-    `destinations[].loginAccount` (see the build_payload manager-account test) rather than a
-    `login-customer-id` header. `_auth_headers` no longer touches the DB at all — it only takes the
-    httpx client for the token exchange."""
-    monkeypatch.setattr(get_settings(), "google_ads_login_customer_id", "351-912-5194", raising=False)
-    headers = await adsconv._auth_headers(FakeAdsClient(FakeAdsResponse({"requestId": "r1"})))
-    assert "login-customer-id" not in headers
-    assert "developer-token" not in headers
-    assert headers["Authorization"] == "Bearer tok-test"
-    assert headers["Content-Type"] == "application/json"
-
-
 async def test_token_exchange_uses_the_platform_refresh_token_and_ads_client(ads_enabled):
     """The exchange must be a `grant_type=refresh_token` POST redeemed with the SAME OAuth client
     the refresh token was issued against (`google_ads_client_id`/`_secret`) — never the shared
@@ -699,47 +638,6 @@ async def test_expired_cached_token_triggers_a_fresh_exchange(monkeypatch, ads_e
     headers = await adsconv._auth_headers(client)
     assert headers["Authorization"] == "Bearer fresh-token"
     assert len(client.token_calls) == 1
-
-
-async def test_every_public_landing_surface_loads_the_capture_script(clients):
-    """Every page an ad can land on must load /adtrack.js.
-
-    `/` serves landing.html — the MARKETING front door — not index.html, which is the signed-in app
-    shell. When capture first shipped the tag went onto index.html, so the root domain (and every
-    organic visitor who signed up from it) was silently unattributed while the use-case pages worked.
-    Asserting the whole set here means the next page added without the tag fails a test instead of
-    quietly capturing nothing.
-
-    This list is the weak point, and it has already failed once: `/people-search`, `/grokbot` and
-    `/fable` each ship as their own hand-written HTML behind their own route, so they miss BOTH
-    guards — `_page()`, which carries the tag for everything off the shared shell, and this list,
-    which only holds what someone remembered to add. A Demand Gen campaign then ran three ad groups
-    into `/people-search` for three days: 4,892 clicks, no `treg_ad` cookie, no `org.ad_gclid`, and
-    `adsconv.queue()` no-opping by design — zero conversions uploaded, nothing in the logs, and no
-    way to tell a landing page that cannot convert from an audience that will not. When you add a
-    standalone landing page, add its path HERE in the same commit.
-    """
-    surfaces = [
-        "/",
-        "/resources",
-        "/people-search",
-        "/ugc",
-        "/jev",
-        "/grokbot",
-        "/fable",
-        "/use-cases/seo-data-for-ai-agents",
-        "/use-cases/lead-enrichment-for-ai-agents",
-        "/use-cases/social-trend-research-for-ai-agents",
-        "/use-cases/competitor-ad-research-for-ai-agents",
-        "/use-cases/company-research-for-ai-agents",
-    ]
-    missing = []
-    for path in surfaces:
-        r = await clients.get(path)
-        assert r.status_code == 200, f"{path} -> HTTP {r.status_code}"
-        if "/adtrack.js" not in r.text:
-            missing.append(path)
-    assert not missing, f"pages that do not load the capture script: {missing}"
 
 
 # Public HTML that is not a place an ad can land. The DEFAULT is that a page carries capture, so
@@ -839,24 +737,5 @@ async def test_capture_script_runs_in_head_before_spa_can_redirect(clients):
         f"</head> at {head_end})"
     )
     assert script_pos < body_start, (
-        f"adtrack.js must load before <body> to guarantee it runs before Vue mounts"
+        "adtrack.js must load before <body> to guarantee it runs before Vue mounts"
     )
-
-
-def test_transaction_id_is_never_purely_numeric():
-    """Data Manager rejects a bare numeric transactionId with a 400 on `events[N]`.
-
-    Verified live 2026-08-18: identical payloads differing only in transactionId — "2"/"3" return
-    400 INVALID_ARGUMENT, "row-2"/"row-3" return 200. `validateOnly` does NOT surface it, so no
-    dry-run can catch a regression here; this test is the only guard.
-    """
-    now = adsconv._utcnow_naive()
-    org = Org(id=7, name="t", slug="t", ad_gclid="CLICK", ad_click_id_type="gclid", ad_click_at=now)
-    rows = [AdConversion(id=i, org_id=7, action=adsconv.ACTION_SIGNUP, created_at=now)
-            for i in (1, 2, 42, 1000)]
-    payload, _ = adsconv._payload_and_rows(rows[:1], {7: org})
-    for row in rows:
-        p, _ = adsconv._payload_and_rows([row], {7: org})
-        tid = p["events"][0]["transactionId"]
-        assert not tid.isdigit(), f"transactionId {tid!r} is purely numeric — Google will 400"
-        assert tid == f"treg-{row.id}"

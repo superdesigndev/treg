@@ -330,6 +330,7 @@ class MarketplaceCall:
     # is metered anyway. Set by `_billed_marketplace` after the bound secrets are known.
     billed_oauth: bool = False
     unit_micro: int = 0             # RAW per-resource price for a per_result settle-by-count
+    reported_charge_unit_micro: int = 0  # RAW value of one response-reported provider credit
     # treg's own account is marked exhausted AND an overflow route is enabled: skip the direct
     # attempt (no hold, no vendor 402) and go straight to the child cycle (plan §4 ladder).
     skip_direct: bool = False
@@ -1918,6 +1919,11 @@ async def _resolve_marketplace_call(
         # Freeze a provider-native meter just like a credit rate so a later rate-card edit cannot
         # re-price a task already in flight.
         usage_unit_micro = _usd_to_micro(cat.unit_rates.get(service, {}).get(usage_unit))
+    reported_charge_unit_micro = 0
+    if (raw_cost.get("reported_charge") or {}).get("unit") == "credit":
+        # Freeze one provider credit's replacement cost so a later fx edit cannot re-price a call
+        # already in flight. USD reported charges use their fixed micro-USD conversion directly.
+        reported_charge_unit_micro = _usd_to_micro(cat.credit_rates.get(service))
     basis = settlement_basis.derive_basis(
         raw_cost, request=request_data, input_schema=ep.get("input") or {},
         unit_micro=unit_micro, terminal=bool(ep.get("async")),
@@ -1943,7 +1949,7 @@ async def _resolve_marketplace_call(
         # The per-ROW price, carried on every tier (settle only reads it on metered calls):
         # a `per_result` settle that can't count rows can only ever bill the estimate,
         # which is how 6,000 delivered Bright Data records once billed as one (2026-08-24).
-        unit_micro=info_unit,
+        unit_micro=info_unit, reported_charge_unit_micro=reported_charge_unit_micro,
         settlement_basis=basis, request_data=request_data,
         async_descriptor=ep.get("async"), resource_ownership=ep.get("resource_ownership"),
         managed_resource=ep.get("managed_resource"),

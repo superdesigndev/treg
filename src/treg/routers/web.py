@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from functools import lru_cache
-import hashlib
 import html as _html
 import html as html_mod
 import json
@@ -28,58 +27,16 @@ from ..infra.db import get_session
 from ..models import User
 from ..domain.catalog import stats as endpoint_stats
 from .catalog import (_endpoint_observation_reader, _observed_or_empty, _platform_rows,
-                      _provider_display, catalog_platform)
+                      _provider_display, catalog_platform,
+                      _platforms_payload)
 from ..domain.identity.access import _user_from_session
 from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _take_oauth_return
 from .signup_cookies import _remember_referral
 
 
-def _dashboard_bucket(user_id: int) -> int:
-    return int.from_bytes(hashlib.sha256(f"dashboard-v2:{user_id}".encode()).digest()[:8], "big") % 100
-
-
-def _dashboard_assignment(user: User) -> str:
-    """Why this account gets its frontend: `off`, `allowlist` or `bucket`."""
+def _dashboard_index() -> Path:
+    """The compiled Dashboard's index. Local frontend development swaps in Vite's source entry."""
     settings = get_settings()
-    if not settings.dashboard_rollout_enabled:
-        return "off"
-    return "allowlist" if user.id in settings.dashboard_rollout_user_ids else "bucket"
-
-
-def _new_dashboard(user: User | None) -> bool:
-    if user is None:
-        return False
-    assignment = _dashboard_assignment(user)
-    if assignment != "bucket":
-        return assignment == "allowlist"
-    return _dashboard_bucket(user.id) < get_settings().dashboard_rollout_percent
-
-
-def _record_dashboard_served(user: User, new: bool) -> None:
-    """Tell product analytics which frontend this account was served.
-
-    The bucket alone cannot say when an account switched (the percentage moves) or whether it
-    ever opened the Dashboard, and PostHog persons carry no user ID to recompute it from. The
-    person property lets any funnel break down by frontend; the event dates each exposure.
-    """
-    variant = "new" if new else "legacy"
-    bucket = _dashboard_bucket(user.id)
-    analytics.capture(user.email, "dashboard_served", {
-        "variant": variant,
-        "assignment": _dashboard_assignment(user),
-        "bucket": bucket,
-        "rollout_percent": get_settings().dashboard_rollout_percent,
-        "$set": {"dashboard_variant": variant, "dashboard_bucket": bucket},
-    })
-
-
-def _dashboard_index(user: User | None = None) -> Path:
-    settings = get_settings()
-    new = _new_dashboard(user)
-    if user is not None:
-        _record_dashboard_served(user, new)
-    if not new:
-        return _WEB_DIR / "dashboard-legacy" / "index.html"
     if settings.frontend_dev:
         host = urlsplit(settings.public_url).hostname
         if "sqlite" not in settings.database_url or host not in {"localhost", "127.0.0.1", "::1"}:
@@ -131,7 +88,7 @@ app = catalog_pages_router
 # `/catalog/<slug>` is registered after the JSON routes so /catalog/platforms, /catalog/search,
 # /catalog/endpoints/… and /catalog/examples/… keep matching first. Registration order alone is a
 # thin guarantee, so the reserved names are also refused explicitly below.
-_CATALOG_RESERVED = {"platforms", "search", "endpoints", "examples"}
+_CATALOG_RESERVED = {"platforms", "search", "find", "endpoints", "examples"}
 
 _GH = "https://github.com/superdesigndev/treg"
 
@@ -304,7 +261,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 
 
 def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
-                      prerender: str, user: User | None = None) -> HTMLResponse:
+                      prerender: str) -> HTMLResponse:
     """Serve the dashboard SPA at a PUBLIC catalog URL, with the head a crawler needs.
 
     The public catalog is not a second implementation of the marketplace — it IS the marketplace.
@@ -318,14 +275,15 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
     1. **The head.** The SPA ships one bare `<title>treg</title>`. Every catalog URL needs its own
        title, description, canonical, og/twitter card and JSON-LD, so they are substituted in here —
        the same trick `_spa_with_og` uses for shared skill/tool links.
-    2. **A no-JS fallback.** Vue compiles `#app`'s own innerHTML as its template, so prerendered
-       markup cannot go inside it. `#prerender` is therefore a SIBLING, removed by the app on boot.
-       It is deliberately plainer than the Vue view — the ledger's row-merging is a chain of
-       client-side computeds, and reproducing it server-side would recreate exactly the duplicate
-       implementation this design avoids. It carries the TEXT (names, summaries, providers, prices),
-       which is what a crawler that does not run scripts is here for.
+    2. **A no-JS fallback.** Vue replaces `#app`'s content on mount, so prerendered markup cannot
+       go inside it. `#prerender` is therefore a SIBLING, removed by the app on boot. It carries the
+       TEXT (names, summaries, providers, prices) for readers that run no script (most AI crawlers
+       and agent fetchers), and is visually hidden: shown to people, a plain list that the app then
+       swapped for its own layout read as a second, older page flashing past.
+    3. **The shelves.** The `/catalog/platforms` body rides along as JSON (`#catalog-platforms`), so
+       the app's first render already has every platform instead of fetching them after boot.
     """
-    index = _dashboard_index(user)
+    index = _dashboard_index()
     if not index.exists():
         return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
     base = get_settings().public_url.rstrip("/")
@@ -371,34 +329,23 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
                          flags=re.IGNORECASE | re.DOTALL)
     if not hits:
         html = html.replace("<head>", "<head>\n" + meta, 1)
+    shelves = json.dumps(_platforms_payload(), separators=(",", ":")).replace("<", "\\u003c")
     marker = '<div id="app"'
     if marker in html:
-        html = html.replace(marker, f'<div id="prerender">{prerender}</div>\n{marker}', 1)
+        html = html.replace(marker, f'{_PRERENDER_HIDDEN}<div id="prerender">{prerender}</div>\n'
+                            f'<script id="catalog-platforms" type="application/json">{shelves}</script>\n'
+                            f'{marker}', 1)
     return HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
 
 
-# The fallback's own skin. Scoped to #prerender and written against the dashboard's OWN tokens
-# (already defined in index.html), so it reads as the same product for the moment it is on screen.
-_PRERENDER_CSS = """<style>
-#prerender{max-width:1100px;margin:0 auto;padding:38px 26px 60px;font-family:var(--sans,system-ui);
-  color:var(--ink,#1a1a1a)}
-#prerender h1{font-size:30px;letter-spacing:-.01em;margin:0 0 8px}
-#prerender .lede{color:var(--muted,#7c7c7c);margin:0 0 20px;max-width:64ch}
-#prerender h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;
-  color:var(--muted2,#989898);margin:26px 0 10px;padding-bottom:8px;
-  border-bottom:1px solid var(--line,#26262322)}
-#prerender ul{list-style:none;margin:0;padding:0}
-#prerender li{padding:9px 0;border-bottom:1px solid var(--line,#26262322)}
-#prerender li b{font-weight:600}
-#prerender li i{font-style:normal;color:var(--muted,#7c7c7c);display:block;font-size:13.5px}
-#prerender .m{font-family:var(--mono,ui-monospace);font-size:11.5px;
-  color:var(--muted2,#989898);margin-top:3px;display:block}
-#prerender a{color:var(--teal,#1a7da6);text-decoration:none}
-</style>"""
+# Crawler-only: kept in the document for readers that run no script, but never painted. The
+# page's own markup still styles the text (the `h1`/`ul` structure is what a crawler reads).
+_PRERENDER_HIDDEN = ("<style>#prerender{position:absolute;width:1px;height:1px;overflow:hidden;"
+                     "clip-path:inset(50%);white-space:nowrap}</style>")
 
 
 @app.get("/catalog", include_in_schema=False)
-async def catalog_index(treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
+async def catalog_index():
     """The catalog index — the marketplace's Catalog view, on a public, indexable URL."""
     base = get_settings().public_url.rstrip("/")
     rows = _platform_rows()
@@ -407,7 +354,7 @@ async def catalog_index(treg_session: str = Cookie(default=""), db: AsyncSession
     # this page would quietly contradict the number on the landing.
     cat = catalog_store.load()
     total_eps = len(cat.endpoints)
-    providers = sorted({e["provider"] for e in cat.endpoints})
+    providers = sorted({e["provider"] for e in cat.endpoints if e["kind"] != "routed"})   # treg is no vendor
 
     cats: dict[str, list[dict]] = {}
     for row in rows:
@@ -433,8 +380,7 @@ async def catalog_index(treg_session: str = Cookie(default=""), db: AsyncSession
     prov_links = " · ".join(
         f'<a href="/tools/{_esc_html(r["service"])}">{_esc_html(r["display"])}</a>'
         for r in prov_rows)
-    prerender = (_PRERENDER_CSS
-                 + "<h1>The tool catalog</h1>"
+    prerender = ("<h1>The tool catalog</h1>"
                  + f'<p class="lede">{total_eps:,} endpoints across {len(rows)} platforms and '
                    f"{len(providers)} providers — every tool your agent can call through one key, "
                    "priced up front and billed per call, with no provider signup.</p>"
@@ -468,11 +414,32 @@ async def catalog_index(treg_session: str = Cookie(default=""), db: AsyncSession
         f"Tool catalog — {total_eps:,} API endpoints your agent can call | treg",
         f"Browse {total_eps:,} endpoints across {len(rows)} platforms and {len(providers)} providers "
         "— SEO, social, enrichment, ads and scraping data. One key, priced per call, no provider signup.",
-        "/catalog", ld, prerender, await _user_from_session(treg_session, db))
+        "/catalog", ld, prerender)
+
+
+@app.get("/search", include_in_schema=False)
+async def search_page():
+    """Find tools by describing the job: the Dashboard's public find view over `/catalog/find`."""
+    rows = _platform_rows()
+    # Until the page's script runs, a visitor sees the page's own ground and nothing else: a
+    # different first screen that swaps out would read as a loading step. The words are for readers
+    # that never run the script, so they are visually hidden rather than drawn.
+    prerender = ('<style>#prerender{position:fixed;inset:0;z-index:100;background:#f4f4f1;'
+                 'width:auto;height:auto;clip-path:none}'
+                 '#prerender>div{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}</style>'
+                 "<div><h1>What does your agent need to do?</h1>"
+                 '<p>Describe the job in plain words and see which tools in the treg catalog can do it, '
+                 f'across {len(rows)} platforms. Prefer to browse? <a href="/catalog">The catalog</a> '
+                 "lists every platform.</p></div>")
+    return _spa_catalog_page(
+        "Find tools for your agent | treg",
+        "Describe the job in plain words and see which tools in the treg catalog can do it, "
+        "priced per call, callable through one key.",
+        "/search", [], prerender)
 
 
 @app.get("/catalog/{slug}", include_in_schema=False)
-async def catalog_page(slug: str, treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
+async def catalog_page(slug: str):
     """One platform shelf — the marketplace's platform view, on a public, indexable URL."""
     if slug in _CATALOG_RESERVED:
         raise HTTPException(status_code=404, detail=f"unknown platform {slug!r}")
@@ -508,8 +475,7 @@ async def catalog_page(slug: str, treg_session: str = Cookie(default=""), db: As
         blocks.append(f'<h2>{_esc_html(cap["description"] or cap["id"])}</h2><ul>{"".join(lis)}</ul>')
 
     provs = ", ".join(p["display_name"] for p in detail["providers"].values())
-    prerender = (_PRERENDER_CSS
-                 + f'<p class="m"><a href="/catalog">← Catalog</a> · {_esc_html(category)}</p>'
+    prerender = (f'<p class="m"><a href="/catalog">← Catalog</a> · {_esc_html(category)}</p>'
                  + f"<h1>{_esc_html(label)}</h1>"
                  + f'<p class="lede">{_esc_html(summary)} {len(eps)} endpoints from '
                    f"{_esc_html(provs)}"
@@ -539,7 +505,7 @@ async def catalog_page(slug: str, treg_session: str = Cookie(default=""), db: As
     # "{platform} api pricing" is the non-brand phrasing that reaches the site (GSC), so the shelf
     # title leads with it; the brand is treg.to and the copy carries no em-dash.
     return _spa_catalog_page(f"{label} API pricing: {len(eps)} endpoints priced per call | treg.to",
-                             desc[:300], f"/catalog/{slug}", ld, prerender, await _user_from_session(treg_session, db))
+                             desc[:300], f"/catalog/{slug}", ld, prerender)
 
 
 # --------------------------------------------------------------------------- /agents/<agent>
@@ -552,12 +518,7 @@ def _hosted() -> bool:
     return host in PUBLIC_HOST_ALIASES
 
 
-def _pub(e: dict) -> bool:
-    """An endpoint the PUBLIC pages may count or list: hidden utility kinds out, and the
-    `kind: routed` meta-rows (PR #242) out with them — a routed row delegates to children that
-    are already on the page, so anywhere public it double-counts and surfaces a provider named
-    "treg", which the brand rules say must never appear as a vendor."""
-    return e["kind"] not in catalog_store.HIDDEN_KINDS and e.get("kind") != "routed"
+_pub = catalog_store.browsable
 
 
 def _catalog_census() -> tuple[int, int]:
@@ -2626,7 +2587,7 @@ async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
         f"<code>{_esc_html(base)}/mcp</code> (HTTP transport).</p></div>"
         f'<div class="card"><h4>CLI</h4><p><code>curl -fsSL {_esc_html(base)}/install.sh | sh</code></p></div>'
         '<div class="card"><h4>Plain HTTP</h4><p>LangChain, CrewAI or any code: '
-        "<code>/call/&lt;tool-id&gt;</code> with a Bearer token. No SDK.</p></div>"
+        "<code>/call/&lt;tool-id&gt;</code> + <code>X-Treg-Token: &lt;token&gt;</code>. No SDK.</p></div>"
         "</div></div></section>")
 
     prompt = (f"Using treg, {task_lines[0]}. Show me the price first." if task_lines
@@ -3019,8 +2980,8 @@ _DOCS_INTRO = """
 response. treg injects the credential server-side and relays the answer verbatim. Nothing here
 models a provider's API, which is why an upstream change does not break us and why the caller never
 holds a secret.</p>
-<pre class="call">curl -H "Authorization: Bearer $TREG_TOKEN" \\
-  "{BASE}/call/moz.web.url.metrics"</pre>
+<pre class="call">curl -X POST -H "X-Treg-Token: $TREG_TOKEN" -H "content-type: application/json" \\
+  -d '{"targets":["moz.com"]}' "{BASE}/call/moz.web.url.metrics"</pre>
 <p>Prefix any catalogued endpoint id with <code>/call/</code>. If your team has its own key for that
 provider, treg uses it and the call is <b>not metered</b>; otherwise eligible endpoints are served on
 treg's key and metered against your prepaid balance at the provider's own rate.</p>
@@ -3039,8 +3000,10 @@ endpoint is at <code>{BASE}/mcp</code>. An interactive console for everything be
 <a href="/docs/api">/docs/api</a>.</p>
 
 <h2>Endpoints</h2>
-<p>Authenticated requests carry <code>Authorization: Bearer &lt;token&gt;</code> (or
-<code>X-Treg-Token</code>). The catalog routes are open and need no token.</p>
+<p>Authenticated requests carry <code>X-Treg-Token: &lt;token&gt;</code>. <code>Authorization: Bearer</code>
+authenticates only the MCP endpoint; REST ignores it (<code>401 not authenticated</code>), and
+<code>/call/</code> relays it to the provider like any other header, so never put your treg token there.
+The catalog routes need no token.</p>
 """
 
 
@@ -3092,7 +3055,7 @@ async def docs_page():
   real request to any of {n_endpoints} catalogued provider endpoints through <code>/call/</code>.</p>
   <div class="facts">
     <span>base <b>{_esc_html(base)}</b></span>
-    <span><b>Bearer</b> token auth</span>
+    <span><b>X-Treg-Token</b> header auth</span>
     <span><a href="/openapi.json">openapi.json</a></span>
     <span><a href="/docs/api">interactive console</a></span>
   </div>
@@ -3181,11 +3144,6 @@ def _dashboard_asset(directory: Path, name: str) -> FileResponse:
     return FileResponse(asset, headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
-@app.get("/app/legacy/assets/{path:path}", include_in_schema=False)
-async def legacy_dashboard_asset(path: str):
-    return _dashboard_asset(_WEB_DIR / "dashboard-legacy" / "assets", path)
-
-
 @app.get("/app/ui/assets/{name}", include_in_schema=False)
 async def dashboard_asset(name: str):
     return _dashboard_asset(_WEB_DIR / "dashboard" / "assets", name)
@@ -3214,7 +3172,7 @@ async def dashboard(
     if signed_in and (resume := _resume_parked_authorization(request)) is not None:
         return resume
     owner = await _local_owner(db) if not signed_in else None
-    index = _dashboard_index(signed_in or owner)
+    index = _dashboard_index()
     if not index.exists():
         raise HTTPException(503, "Dashboard not bundled")
     resp = HTMLResponse(_dashboard_document(index), headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
@@ -3226,11 +3184,11 @@ async def dashboard(
     return resp
 
 
-def _spa_with_og(kind: str, name: str, user: User | None = None):
+def _spa_with_og(kind: str, name: str):
     """Serve the SPA at a shareable detail path (/app/skills/x, /app/tools/x) with per-resource
     og/twitter meta so link unfurls show what was shared. The meta echoes only the URL's own
-    name segment. Session lookup selects the frontend but never exposes resource contents."""
-    index = _dashboard_index(user)
+    name segment and never exposes resource contents."""
+    index = _dashboard_index()
     if not index.exists():
         return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
     label = {"skills": "skill", "runs": "run"}.get(kind, "tool")
@@ -3274,13 +3232,13 @@ async def dashboard_marketplace(
 
 
 @app.get("/app/skills/{name}", include_in_schema=False)
-async def dashboard_skill_page(name: str, treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
-    return _spa_with_og("skills", name, await _user_from_session(treg_session, db))
+async def dashboard_skill_page(name: str):
+    return _spa_with_og("skills", name)
 
 
 @app.get("/app/tools/{name}", include_in_schema=False)
-async def dashboard_tool_page(name: str, treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
-    return _spa_with_og("tools", name, await _user_from_session(treg_session, db))
+async def dashboard_tool_page(name: str):
+    return _spa_with_og("tools", name)
 
 
 @app.get("/app/runs/{run_id}", include_in_schema=False)

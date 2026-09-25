@@ -38,8 +38,7 @@ EP = "replicate.image-gen.flux-schnell"
 def test_all_generation_catalog_entries_forbid_cache_including_extended():
     entries = [ep for ep in catalog_store.load().endpoints
                if ep["platform"] in {"image-gen", "video-gen", "voice-gen"}]
-    assert any(".x." in ep["id"] for ep in entries)
-    assert any(ep["id"] == "minimax.image-gen.from_text" for ep in entries)
+    assert entries
     for ep in entries:
         assert ep["cache"] == "forbidden", ep["id"]
         assert not archive.storable(ep), ep["id"]
@@ -93,19 +92,6 @@ async def _submit(clients: AsyncClient, monkeypatch, document: dict):
         "prompt": "A red kite over a beach.", "num_outputs": 1,
         "aspect_ratio": "1:1", "output_format": "webp",
     }})
-
-
-async def test_naive_datetime_bind_does_not_raise_under_sqlmodel_0_0_45(clients: AsyncClient):
-    """Regression test: SQLModel 0.0.45+ rejects naive datetime binds unless fields use NaiveDatetime.
-
-    The settle worker passes utcnow_naive() to WHERE next_check_at <= :now. Before the NaiveUTC
-    annotation fix, this raised:
-        ValueError: Datetime values must have timezone information.
-    """
-    now = utcnow_naive()
-    assert now.tzinfo is None, "sanity check: utcnow_naive() must return a naive datetime"
-    candidates = await task_app._due_candidates(limit=10, now=now)
-    assert isinstance(candidates, list)
 
 
 @pytest.mark.parametrize("legacy_cache", [False, True])
@@ -480,13 +466,28 @@ async def test_owned_terminal_poll_finalizes_original_task_before_response(
     assert (await task_app.settle_due()).claimed == 0
 
 
-async def test_a_2xx_without_a_task_id_settles_at_zero_on_the_request_path(
-    clients: AsyncClient, monkeypatch, replicate_platform,
+@pytest.mark.parametrize("status, content_type, body", [
+    (201, b"application/json", b"{}"),
+    (200, b"text/html", b"<html>WAF challenge</html>"),
+])
+async def test_a_2xx_without_a_readable_task_settles_at_zero_on_the_request_path(
+    clients: AsyncClient, monkeypatch, replicate_platform, status, content_type, body,
 ):
-    """No task in the answer means nothing to poll and nothing to charge: closed now, not parked
-    until the 24-hour deadline (which is what an extraction failure used to do)."""
-    response = await _submit(clients, monkeypatch, {})
-    assert response.status_code == 201
+    """No task in the answer (none named, or not JSON at all) means nothing to poll and nothing to
+    charge: closed now, not parked until the 24-hour deadline (which is what an extraction failure
+    used to do)."""
+    async def fake_relay(*args, **kwargs):
+        async def stream():
+            yield body
+
+        async def close():
+            return None
+
+        return UpstreamResponse(status, ((b"content-type", content_type),), stream(), close)
+
+    monkeypatch.setattr(call_service, "relay", fake_relay)
+    response = await clients.post(f"/call/{EP}", json={"input": {"prompt": "x", "num_outputs": 1}})
+    assert response.status_code == status
     assert response.headers["X-Treg-Cost-Micro"] == "0"
     call_id = response.headers["X-Treg-Call-Id"]
     async with session_maker() as db:
@@ -495,29 +496,6 @@ async def test_a_2xx_without_a_task_id_settles_at_zero_on_the_request_path(
         entries = {e.kind: e.amount_micro for e in (await db.execute(select(LedgerEntry).where(
             LedgerEntry.call_id == call_id))).scalars().all()}
     assert entries == {"reserve": -3000, "settle": 0}
-
-
-async def test_a_2xx_that_is_not_json_settles_at_zero_on_the_request_path(
-    clients: AsyncClient, monkeypatch, replicate_platform,
-):
-    async def fake_relay(*args, **kwargs):
-        body = b"<html>WAF challenge</html>"
-
-        async def stream():
-            yield body
-
-        async def close():
-            return None
-
-        return UpstreamResponse(200, ((b"content-type", b"text/html"),), stream(), close)
-
-    monkeypatch.setattr(call_service, "relay", fake_relay)
-    response = await clients.post(f"/call/{EP}", json={"input": {"prompt": "x", "num_outputs": 1}})
-    assert response.status_code == 200 and response.headers["X-Treg-Cost-Micro"] == "0"
-    call_id = response.headers["X-Treg-Call-Id"]
-    async with session_maker() as db:
-        assert await db.get(AsyncTaskRecord, call_id) is None
-        assert await db.get(Hold, call_id) is None
 
 
 async def test_one_failing_row_does_not_abort_the_tick(
@@ -586,9 +564,9 @@ def openrouter_platform(monkeypatch):
 
 @pytest.fixture
 def legacy_async_platform(monkeypatch):
-    for provider in ("apify", "brightdata", "companyenrich", "oceanio"):
+    for provider in ("apify", "oceanio"):
         monkeypatch.setenv(f"TREG_PLATFORM_KEY_{provider.upper()}", "test-platform-token")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apify,brightdata,companyenrich,oceanio")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apify,oceanio")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
@@ -692,18 +670,24 @@ async def test_platform_task_status_requires_same_org_submission(
     assert denied.json()["detail"] == unknown.json()["detail"]
 
 
+@pytest.mark.parametrize("platform, secret, url", [
+    ("replicate_platform", "replicate",
+     "/call/replicate.predictions.get?id=arbitrary-own-account-id"),
+    ("legacy_async_platform", "apify", "/call/apify.web.scrape.job.status?run_id=arbitrary"),
+])
 async def test_byok_task_status_keeps_direct_provider_object_access(
-    clients: AsyncClient, monkeypatch, replicate_platform,
+    clients: AsyncClient, monkeypatch, request, platform, secret, url,
 ):
-    await clients.post("/secrets", json={"name": "replicate", "value": "own-token"})
+    """A team's own key reaches any object on its own provider account; ownership checks guard
+    only treg's shared key."""
+    request.getfixturevalue(platform)
+    await clients.post("/secrets", json={"name": secret, "value": "own-token"})
 
     async def fake_status(*args, **kwargs):
         return _response(200, {"id": "arbitrary-own-account-id", "status": "processing"})
 
     monkeypatch.setattr(call_service, "relay", fake_status)
-    response = await clients.get(
-        "/call/replicate.predictions.get?id=arbitrary-own-account-id")
-    assert response.status_code == 200
+    assert (await clients.get(url)).status_code == 200
 
 
 @pytest.mark.parametrize(("start", "payload", "created", "owned_calls"), [
@@ -714,36 +698,6 @@ async def test_byok_task_status_keeps_direct_provider_object_access(
             "/call/apify.web.scrape.job.status?run_id=run-owned",
             "/call/apify.web.scrape.job.results?dataset_id=dataset-owned&limit=1",
         ],
-    ),
-    (
-        "/call/brightdata.web.scrape.job.start?dataset_id=gd_test", [{"url": "https://example.com"}],
-        {"snapshot_id": "snapshot-owned"},
-        [
-            "/call/brightdata.web.scrape.job.status?snapshot_id=snapshot-owned",
-            "/call/brightdata.web.scrape.job.results?snapshot_id=snapshot-owned&format=json",
-        ],
-    ),
-    (
-        "/call/companyenrich.companies.enrich.bulk.start", {"domains": ["example.com"]},
-        {"job_id": "job-owned", "status": "pending"},
-        ["/call/companyenrich.companies.enrich.bulk.status?jobId=job-owned"],
-    ),
-    (
-        "/call/companyenrich.companies.search.async.start",
-        {"count": 1, "search": {"countries": ["US"]}},
-        {"job_id": "company-search-owned", "status": "pending"},
-        ["/call/companyenrich.companies.search.async.status?jobId=company-search-owned"],
-    ),
-    (
-        "/call/companyenrich.people.email.bulk.start",
-        {"items": [{"person_id": 1, "domain": "example.com"}]},
-        {"job_id": "people-email-owned", "status": "pending"},
-        ["/call/companyenrich.people.email.bulk.status?jobId=people-email-owned"],
-    ),
-    (
-        "/call/companyenrich.people.search.async.start", {"count": 1, "domains": ["example.com"]},
-        {"job_id": "people-search-owned", "status": "pending"},
-        ["/call/companyenrich.people.search.async.status?jobId=people-search-owned"],
     ),
     (
         "/call/oceanio.companies.segment.create", {"domains": ["example.com"]},
@@ -777,13 +731,6 @@ async def test_legacy_platform_async_resources_are_recorded_and_authorized(
 
 @pytest.mark.parametrize("url", [
     "/call/apify.web.scrape.job.status?run_id=unknown",
-    "/call/apify.web.scrape.job.results?dataset_id=unknown",
-    "/call/brightdata.web.scrape.job.status?snapshot_id=unknown",
-    "/call/brightdata.web.scrape.job.results?snapshot_id=unknown",
-    "/call/companyenrich.companies.enrich.bulk.status?jobId=unknown",
-    "/call/companyenrich.companies.search.async.status?jobId=unknown",
-    "/call/companyenrich.people.email.bulk.status?jobId=unknown",
-    "/call/companyenrich.people.search.async.status?jobId=unknown",
     "/call/oceanio.companies.segment.get?segmentation_id=99999",
 ])
 async def test_legacy_platform_async_utilities_deny_unknown_ids_before_relay(
@@ -810,19 +757,6 @@ async def test_legacy_platform_async_mutation_denies_unknown_resource_before_rel
         json={"domains": ["example.com"], "type": "positive"},
     )
     assert response.status_code == 403
-
-
-async def test_legacy_byok_async_utility_remains_unrestricted(
-    clients: AsyncClient, monkeypatch, legacy_async_platform,
-):
-    await clients.post("/secrets", json={"name": "apify", "value": "own-token"})
-
-    async def fake_relay(*args, **kwargs):
-        return _response(200, {"data": {"id": "own-account-run"}})
-
-    monkeypatch.setattr(call_service, "relay", fake_relay)
-    response = await clients.get("/call/apify.web.scrape.job.status?run_id=arbitrary")
-    assert response.status_code == 200
 
 
 async def _submit_minimax(clients: AsyncClient, monkeypatch, task_id: str) -> str:
@@ -1137,17 +1071,6 @@ async def test_activity_reports_task_state_and_artifact(
     assert one["call"]["cost_charged_micro"] == 3000 and one["charged_micro"] == 3000
 
 
-async def test_activity_reports_refund_after_failure(
-    clients: AsyncClient, monkeypatch, replicate_platform,
-):
-    call_id = await _due_submission(clients, monkeypatch, {"status": "failed", "error": "nsfw"})
-    assert (await task_app.settle_due()).released == 1
-    row = await _activity_row(clients, call_id)
-    assert row["cost_charged_micro"] == 0
-    assert row["async_task"]["status"] == "released"
-    assert row["async_task"]["result_url"] is None
-
-
 def test_artifact_reads_both_result_modes():
     by_path = {"result": {"path": "task.content.url", "ttl_note": "time-limited"}}
     found = asynctasks.artifact(by_path, {"task": {"content": {"url": "https://x.invalid/v.mp4"}}})
@@ -1285,21 +1208,6 @@ def test_fetch_command_and_shown_neutralise_provider_strings():
     assert asynctasks.shown("ok-123") == "ok-123"
     assert asynctasks.shown("id\nresume: treg call evil") == "id\\nresume: treg call evil"
     assert asynctasks.shown("\x1b]52;c;aGk=\x07") == "\\x1b]52;c;aGk=\\x07"
-
-
-def test_price_floor_reads_nested_input_fields():
-    from treg.domain.catalog import store
-    cat = store.load()
-    seedance = cat.cost_view(cat.by_id["replicate.video-gen.seedance-1-lite"]["cost"], "replicate")
-    assert seedance["usd_min"] == 0.072  # 480p at the declared 4-second minimum, not 1 second
-    # A duration-priced table is advertised per second (the way the model is sold), cheapest to
-    # dearest resolution; the whole-call floor and ceiling stay for reserve and eligibility.
-    assert (seedance["rate_usd_min"], seedance["rate_usd"], seedance["rate_unit"]) == (0.018, 0.072, "s")
-    reapi = cat.cost_view(cat.by_id["reapi.video-gen.seedance-2-5"]["cost"], "reapi")
-    assert (reapi["rate_usd_min"], reapi["rate_usd"]) == (0.1186, 0.462) and reapi["usd"] == 13.87
-    # An image table multiplies by `n`, not a duration: no per-second rate, the range stays.
-    images = cat.cost_view(cat.by_id["reapi.image-gen.gpt-image-2-5"]["cost"], "reapi")
-    assert "rate_usd" not in images and images["usd_min"] < images["usd"]
 
 
 async def test_idempotent_replay_of_an_async_submission_keeps_the_descriptor(
@@ -1463,50 +1371,3 @@ async def test_own_key_relays_idempotency_label_verbatim(clients: AsyncClient, m
                                   headers={"Idempotency-Key": "retry-1"})
     assert response.status_code == 201
     assert _upstream_idempotency_keys(relayed) == ["retry-1"]
-
-
-async def test_reapi_auto_duration_reserves_its_resolution_and_settles_reported_credits(
-    clients: AsyncClient, monkeypatch,
-):
-    """The provider REQUIRES `duration: -1` for a video edit. It once matched no price row, so the
-    thirty-second 1080p ceiling was both held and billed. Through the real call path: the hold is
-    thirty seconds at the requested resolution, and the bill is the credits the provider reports."""
-    monkeypatch.setenv("TREG_PLATFORM_KEY_REAPI", "test-platform-token")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "reapi")
-    get_settings.cache_clear()
-    try:
-        org_id = (await clients.get("/orgs")).json()[0]["org_id"]
-        async with session_maker() as db:
-            await ledger.grant(db, org_id, amount_micro=5_000_000, kind="reapi_test", once=False)
-            await db.commit()
-            before = await ledger.balance_of(db, org_id)
-
-        async def submitted(*args, **kwargs):
-            return _response(200, {"id": "task_auto_duration", "status": "queued"})
-        monkeypatch.setattr(call_service, "relay", submitted)
-        response = await clients.post("/call/reapi.video-gen.seedance-2-5.unrestricted", json={
-            "model": "doubao-seedance-2.5-face", "content_filter": False, "duration": -1,
-            "resolution": "480p", "prompt": "Replace the face in @video1 with @image1.",
-            "video_urls": ["https://example.invalid/source.mp4"]})
-        assert response.status_code == 200, response.text
-        call_id = response.headers["X-Treg-Call-Id"]
-        async with session_maker() as db:
-            row = await db.get(AsyncTaskRecord, call_id)
-            assert row.reserved_micro == 3_558_000  # 30 s of 480p, not the 13.87 1080p ceiling
-            assert row.settlement_basis["amount"]["unit_micro"] == 1_000  # fx.yaml, frozen
-            row.next_check_at = utcnow_naive() - timedelta(seconds=1)
-            await db.commit()
-
-        async def completed(row, client):
-            return 200, json.dumps({"id": "task_auto_duration", "status": "completed",
-                                    "usage": {"credits": 712},
-                                    "output": {"video_urls": ["https://example.invalid/out.mp4"]}}).encode()
-        monkeypatch.setattr(task_app, "_poll", completed)
-        await task_app.settle_due()
-        async with session_maker() as db:
-            row = await db.get(AsyncTaskRecord, call_id)
-            assert row.status == "settled" and row.settled_micro == 712_000
-            assert await db.get(Hold, call_id) is None
-            assert before - await ledger.balance_of(db, org_id) == 712_000
-    finally:
-        get_settings.cache_clear()

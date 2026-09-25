@@ -1,5 +1,6 @@
 import { createElements } from './context'
 import { LS } from './constants.js'
+import { FIND_EMPTY } from './find.js'
 export default function data(){
     let cfg={active:null,orgs:{}}; try{ cfg=JSON.parse(localStorage.getItem(LS))||cfg; }catch(e){}
     return {
@@ -9,6 +10,8 @@ export default function data(){
       run:{loading:false, data:null, err:''},
       elements: createElements(),
       bootReady: false, bootFailed: false,
+      bootStartedAt: performance.now(),  // ms since navigation: where the loader's animations already are (App.vue)
+      sessionChecked: false,  // /auth/me has answered (a page drawn before boot finishes waits on this for sign-in state)
       theme: localStorage.getItem('treg-theme')||'light',
       mobileNav: false,  // mobile sidebar toggle
       // True when this load is a PUBLIC catalog URL (/catalog, /catalog/<slug>). The catalog API is
@@ -21,7 +24,7 @@ export default function data(){
       inviteSel:{}, inviteLinkOrg:null, inviteErr:'',  // multi-select accept: checked ids, the org_id the clicked email link was for, partial-failure note
       tut:{i:0, panel:null}, tutCopied:false, tourI:0, helpMode:null, xtut:{i:0},
       newOrg:false, newOrgName:'', orgBusy:false, orgErr:'', orgMsg:'',
-      orgMembers:[], orgInvites:[], inviteEmail:'', inviteRole:'member', lastInvite:null,
+      orgMembers:[], orgMembersLoaded:false, orgInvites:[], inviteEmail:'', inviteRole:'member', lastInvite:null,
       editAccess:null, accessDraft:{}, inviteCustomize:false, inviteLocalRun:true, inviteToolSel:{}, accessNote:'',
       // agents (machine identities), projects (sub-scope) and deny rules (policy)
       orgTab:'members', showInvite:false, showAddAgent:false,
@@ -47,10 +50,10 @@ export default function data(){
       budgets:[], budDims:[], budDim:'', budVal:'', budDaily:'', budBusy:false, budErr:'',
       bhist:{items:[],loading:false,ok:true},   // past top-ups + their invoice/receipt links; ok=false means Stripe was unreachable, amounts are still right
       // Referral program. Seeded with the same SHAPE the API returns (terms/totals/cap present and
-      // zeroed) so the template can read ref.terms.hold_days on the very first paint — a v-if on
-      // `loading` guards the table, but the subtitle above it renders immediately.
+      // zeroed) so the template can read ref.terms.hold_days on the very first paint. `loaded` keeps
+      // the subtitle invisible until the real terms arrive; it used to read "$0.00 … 0 days later".
       refTab:'friend',  // 'friend' | 'partner' — the fork at the top of the Referrals view
-      ref:{loading:false,eligible:false,code:'',link:'',credit_org:null,referrals:[],
+      ref:{loading:false,loaded:false,eligible:false,code:'',link:'',credit_org:null,referrals:[],
            terms:{referrer_micro:0,referred_micro:0,min_topup_micro:0,hold_days:0},
            totals:{signed_up:0,topped_up:0,earned_micro:0,pending_micro:0},cap:{paid:0,limit:0}},
       refCopied:false,
@@ -68,10 +71,13 @@ export default function data(){
       // Marketplace tab bar: 'all' + one key per catalog category, plus 'platform' for the
       // original integration shelves. Data-first is the default view.
       mkTab:'all',
-      platLogoBad:{},  // platform slug → we have no /logos/platforms/<slug>.svg, so draw the initial tile
+      platLogoBad:{},  // platform slug (or `v:`+vendor) → no /logos/platforms/<slug>.svg (/logos/<vendor>.svg), so draw the initial tile
       // Endpoint catalog (GET /catalog/*): the platform axis of the marketplace. Everything here is
       // optional — a server without the catalog routes just renders no platform shelf.
-      plats:{list:[], loaded:false, loading:false},
+      platPrefetch:null,  // {slug, request}: see prefetchPlatform
+      plats:{list:[], providers:{}, loaded:false, loading:false, settled:false},  // settled: answered, even if it failed
+      // Find tools for a job (state/find.js): phase idle | recall | reading | done | error
+      find:{...FIND_EMPTY}, findCopied:'', findSoon:false,
       platSlug:null, platData:null, platErr:'', platLoading:false,
       platShelfOpen:{},    // category → its featured shelf has been expanded to the full tile list
       // The ledger's filter bar. All three narrow the SAME row list, and a section with no
@@ -108,7 +114,7 @@ export default function data(){
       onboarded:true,  // first-run onboarding done (server flag; gates the welcome modal)
       welcome:{on:false, step:0, name:'', agent:'openclaw', moreOpen:false, busy:false, err:''},  // first-run: name your team → pick your agent → setup line
       emptyTab:'agent',
-      tools:[], health:{}, calls:[], runs:[], adminStats:null, adminOrgs:[], adminUsers:[],
+      tools:[], health:{}, calls:[], runs:[], callsLoaded:false, adminStats:null, adminOrgs:[], adminUsers:[],
       admHub:{on:false, state:'requested', rows:[], reason:{}, cap:{}, busy:null, updates:[]},  // hub listing review (superadmin)
       adminBusy:false, confirmAdmUser:null, confirmAdmOrg:null,
       proxy: location.origin, copyTool:null, snippetTab:'cURL', snippetTabs:['cURL','CLI','Claude Code','Python','Node'], copied:false,

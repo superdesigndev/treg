@@ -150,7 +150,8 @@ Out of balance is an HTTP **402** carrying `balance_micro`, `estimated_cost_micr
 so an agent can act on it without reading prose.
 
 **Enrich Arena** lives at `/enrich-arena`, outside the dashboard. Compare enrichment answers with each vendor’s cost and speed,
-vote for the best answer in one click, or watch a sequential waterfall. Browsing is
+vote for the best answer in one click, or watch a sequential waterfall. Capability-compatible
+async providers participate too; Arena handles submit and polling internally. Browsing is
 public; submitting requires login, and billable attempts use your team's credits. See the
 [Arena guide](docs/context/interface/enrich-arena.md).
 

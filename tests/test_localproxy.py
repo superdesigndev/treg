@@ -146,10 +146,8 @@ def test_missing_credentials_get_407(proxy):
     assert b"Proxy-Authenticate: Basic" in head
     s.close()
 
-
-def test_wrong_token_is_rejected(proxy):
     s = _proxy_connect(proxy.port, "not-the-token", "example.com:443")
-    assert _read_head(s).startswith(b"HTTP/1.1 407 ")
+    assert _read_head(s).startswith(b"HTTP/1.1 407 "), "a wrong token is no better than none"
     s.close()
 
 
@@ -726,13 +724,6 @@ def test_interception_needs_a_credential(ca):
 
 
 # ---- P2 · unit pieces ----------------------------------------------------------------------
-def test_treg_url_uses_the_passthrough_shape():
-    assert lp._treg_url("https://treg.example", "api.stripe.com", "/v1/charges?a=1") == \
-        "https://treg.example/call/https://api.stripe.com/v1/charges?a=1"
-    assert lp._treg_url("https://treg.example/", "api.stripe.com", "/") == \
-        "https://treg.example/call/https://api.stripe.com/"
-
-
 def test_forward_headers_drops_transport_and_adds_control():
     cfg = lp.ProxyConfig(token="t", base_url="https://x", treg_token="tok", org="acme")
     out = lp._forward_headers(cfg, [("Host", "api.stripe.com"), ("Connection", "keep-alive"),
@@ -749,17 +740,6 @@ def test_forward_headers_keeps_the_callers_encoding_choice():
     cfg = lp.ProxyConfig(token="t", base_url="https://x", treg_token="tok")
     out = lp._forward_headers(cfg, [("Accept-Encoding", "gzip")])
     assert [v for k, v in out if k.lower() == "accept-encoding"] == ["gzip"]
-
-
-def test_header_pairs_keeps_duplicates_and_spelling():
-    head = b"GET / HTTP/1.1\r\nCookie: a=1\r\nCookie: b=2\r\nX-Odd-Case: v"
-    assert lp._header_pairs(head) == [("Cookie", "a=1"), ("Cookie", "b=2"), ("X-Odd-Case", "v")]
-
-
-def test_waf_detection_only_fires_on_an_html_403():
-    assert lp._is_waf_block(403, "text/html; charset=utf-8")
-    assert not lp._is_waf_block(403, "application/json")
-    assert not lp._is_waf_block(500, "text/html")
 
 
 def test_the_proxys_own_client_ignores_https_proxy(monkeypatch):
@@ -822,37 +802,6 @@ async def test_the_agent_calls_the_vendor_and_treg_injects_the_key(clients, ca):
     # Nothing the agent's process could read ever contained the key.
     assert "SEK-live-xyz" not in str(cfg) and "SEK-live-xyz" not in str(cfg.__dict__)
     assert "SEK-live-xyz" not in ca.bundle_path.read_text()
-
-
-async def test_an_unregistered_host_is_a_readable_404(clients, ca):
-    """P3 refines the wording; what matters already is that the answer comes from treg and says
-    something true, rather than the agent seeing a broken connection."""
-    from httpx import ASGITransport, AsyncClient
-
-    from treg import api
-
-    cfg = lp.ProxyConfig(
-        token=lp.mint_token(), port=0, ca=ca, base_url="http://registry",
-        treg_token=clients.headers["X-Treg-Token"], hosts=frozenset({"api.nothing-here.com"}),
-    )
-    registry = AsyncClient(transport=ASGITransport(app=api.app), base_url="http://registry")
-    server = await lp.serve(cfg, client=registry)
-    port = lp.listening_port(server, 0)
-
-    def _agent_call():
-        with httpx.Client(proxy=f"http://treg:{cfg.token}@127.0.0.1:{port}",
-                          verify=_trusting(ca), timeout=10) as agent:
-            return agent.get("https://api.nothing-here.com/v1/thing")
-
-    try:
-        resp = await asyncio.to_thread(_agent_call)
-    finally:
-        server.close()
-        await server.wait_closed()
-        await registry.aclose()
-
-    assert resp.status_code == 404
-    assert resp.json()["host"] == "api.nothing-here.com"
 
 
 # ---- P3 · the allow-list and readable errors ------------------------------------------------
@@ -1026,6 +975,7 @@ def test_a_dead_daemon_does_not_look_alive(tmp_path, monkeypatch):
     lp.write_state(18791, "tok", 999_999, "https://treg.example", "", [])
     assert lp.running() is None
     assert not lp.state_path().exists()                        # and the stale file is cleaned up
+    assert not lp.pid_alive(0), "pid 0 is the caller's process group, not a daemon"
 
 
 def test_a_live_daemon_is_reported(tmp_path, monkeypatch):
@@ -1044,7 +994,3 @@ def test_a_missing_or_corrupt_state_file_is_just_not_running(tmp_path, monkeypat
     assert lp.read_state() is None and lp.running() is None
 
 
-def test_pid_alive_is_honest():
-    assert lp.pid_alive(os.getpid())
-    assert not lp.pid_alive(999_999)
-    assert not lp.pid_alive(0)

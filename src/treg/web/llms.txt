@@ -256,6 +256,10 @@ apply a filter you sent, the answer says so in `X-Treg-Ignored-Filters` and `_tr
 (post-filter the rows, or say why they are off); send `X-Treg-Route-Strict-Filters: 1` to be refused
 with a 422 (nothing charged) instead of getting the looser answer. `catalog_get` on the routed id
 shows the ranked plan and prices before you spend.
+An async child is submitted and polled internally for up to 60 seconds. If it is still running,
+treg returns HTTP 202 with `_treg.outcome: pending`, its call reference and poll descriptor,
+`reserved_micro`, and `charged_micro: null`; do not retry or start another provider, because the
+existing task may still complete and charge.
 A found contact is not a confirmed one: an email or phone find is the provider's best match, and
 only `output.verified: true` means it checked the mailbox. Otherwise the answer carries
 `_treg.advice` naming the verify step (`treg.people.email.verify`, a fraction of a cent) — run it
@@ -330,7 +334,12 @@ Money notes for agents:
   routed calls it also bounds the whole waterfall (default $1 there).
 - A failed call (HTTP 4xx/5xx from the provider) is relayed unchanged and charged nothing; the
   CLI prints one stderr line with the status, whose answer it is, and the call id — and on a metered
-  success, `treg: charged $<usd> · call id <id>` (stdout is always the exact body). A `/call/`
+  success, `treg: charged $<usd> · call id <id>` (stdout is always the exact body). **A script that
+  parses the output uses `treg --json call …`**: stdout is then one line,
+  `{"result": <body>, "_treg": {"http_status", "call_id", "charged_micro"}}`, and stderr is silent,
+  so merging the two streams cannot break the parse (`--await` output is unchanged). Before a loop
+  over many inputs, run a few and check the parsed results: a parse bug discards answers already
+  paid for. A `/call/`
   may be answered from treg's archive of earlier answers to the exact same question while that
   answer is still fresh: the body is the provider's verbatim bytes, the response says
   `X-Treg-Cache: hit` with `X-Treg-Fetched-At` and `X-Treg-Age`. Your team's first call on a
@@ -502,8 +511,8 @@ Three human sign-in doors (email is the identity; the door just proves it):
 - **Invite code** - `treg org join <code> --email you@company.com` (creates you + joins a team).
 
 Agents/CI use a token directly: `treg login --token <token>`. A dashboard "API key" bakes in the
-team (so it needs no `X-Treg-Org` — it works as a bare bearer, including as an MCP `Authorization`
-header); a per-org token from `treg org create` / `treg org join` does too. Never share the upstream
+team, so it needs no `X-Treg-Org`: send it as `X-Treg-Token` (REST) or `Authorization: Bearer`
+(MCP); a per-org token from `treg org create` / `treg org join` does too. Never share the upstream
 key - share access.
 
 ## MCP — connect an assistant
@@ -726,11 +735,27 @@ skills` restrict it (`--dir` sets the location).
    `skill add`, or `POST {BASE}/skills`) — create a minimal SKILL.md (with frontmatter) if
    none exists. Bare `secret add` + `tool add` only when a recipe adds nothing, and never
    leave a secret unbound to a tool.
-7. **Asked to "set up treg"?** The human has already authorized the whole flow — if your
-   runtime asks permission for shell commands, request `treg` ONCE and work straight through;
-   do not stop between steps. The flow: install (`curl -fsSL {BASE}/install.sh | sh`), sign
-   in (`treg login`, or `treg login --token <token>` + `treg org use <team>` if they gave you
-   one), then verify quietly: `treg balance` and one `treg catalog search`.
+7. **Asked to "set up treg"?** Identify your surface FIRST — the right setup differs, and the
+   wrong one cannot work:
+   - **Hosted assistant** (claude.ai, ChatGPT — even if you have a code sandbox or analysis
+     tool: it runs in the provider's cloud, not on the human's machine): do NOT install
+     anything. Tell the human to add `{BASE}/mcp/` as a custom connector and complete the OAuth
+     consent, then stop. Once they do you have `catalog_search`, `catalog_get`, `call`,
+     `call_media`, `resources_list`, `balance`, `my_tools`, `catalog_request`, `feedback` and
+     `review`.
+   - **Local coding agent** (Claude Code, Cursor, Codex on the user's machine): the human has
+     already authorized the whole flow — if your runtime asks permission for shell commands,
+     request `treg` ONCE and work straight through; do not stop between steps. The flow:
+     install (`curl -fsSL {BASE}/install.sh | sh`), sign in (`treg login`, or
+     `treg login --token <token>` + `treg org use <team>` if they gave you one), then verify
+     quietly: `treg balance` and one `treg catalog search`.
+   - **Sandboxed agent** (cloud container, restricted egress): try the installer. If `{BASE}`
+     is unreachable — a proxy `403` on `CONNECT`, a DNS failure, or a timeout — you are behind
+     an egress allowlist. Do not retry and do not try alternate hosts. Tell the human that
+     `{BASE}` is blocked by the environment's network policy, and offer the ways past it: if
+     their client supports MCP connectors, add `{BASE}/mcp/` as one (no install needed);
+     otherwise run the install on a machine with normal network access, or have an admin
+     allowlist its host on port 443. Then stop.
 8. **Report the outcome as a doorway, not an install log.** Nobody signed up to read which
    Python version uv picked. Open with ONE line about what they just gained, e.g.:
 

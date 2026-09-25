@@ -1,0 +1,152 @@
+{
+  "id": "urn:li:fsd_profile:ACoAAA8BYqEBCGLg_vT_ca6mMEqkpp9nVffJ3hc",
+  "firstName": "Bill",
+  "lastName": "Gates",
+  "title": "Chair, Gates Foundation and Founder, Breakthrough Energy",
+  "profilePictureUrl": "https://media.licdn.com/dms/image/v2/D5603AQF-RYZP55jmXA/profile-displayphoto-shrink_800_800/B56ZRi8g.aGsAc-/0/1736826818808?e=1792022400&v=beta&t=1otpeUHFqTW0G_QCpc0xiDQ7ZpNyCL8hHAudzbpkn7s",
+  "location": "Seattle, Washington, United States",
+  "coverImageUrl": "https://media.licdn.com/dms/image/v2/D5616AQEjhPbTCeblYg/profile-displaybackgroundimage-shrink_350_1400/B56ZcytR5SGsAg-/0/1748902420393?e=1792022400&v=beta&t=elSwrc6aIKSyxOvUpMZcawV8du6NoYdB-GSa7O4BeM4",
+  "publicIdentifier": "williamhgates",
+  "url": "https://www.linkedin.com/in/williamhgates/",
+  "profileId": "ACoAAA8BYqEBCGLg_vT_ca6mMEqkpp9nVffJ3hc",
+  "geoLocationName": "Seattle, Washington, United States",
+  "geoCountryName": "United States",
+  "connectionType": "OUT_OF_NETWORK",
+  "creator": true,
+  "influencer": true,
+  "premium": true,
+  "isVerified": true,
+  "geoUrn": "urn:li:fsd_geo:104116203",
+  "creatorInfo": {
+    "hashTags": [
+      "#books",
+      "#climatechange",
+      "… 3 more item(s) truncated"
+    ],
+    "website": "https://gatesnot.es/AI"
+  },
+  "memberId": "251749025",
+  "openToWork": false,
+  "hiring": false,
+  "inRemembrance": false,
+  "followerCount": 40675676,
+  "connectionsCount": 8,
+  "countryCode": "US",
+  "jobTitle": "Co-chair",
+  "companyName": "Gates Foundation",
+  "companyPublicId": "gates-foundation",
+  "companyLinkedinUrl": "https://www.linkedin.com/company/gates-foundation/",
+  "currentPosition": {
+    "positionUrn": "urn:li:fsd_profilePosition:(ACoAAA8BYqEBCGLg_vT_ca6mMEqkpp9nVffJ3hc,392598211)",
+    "name": "Gates Foundation",
+    "companyId": "8736",
+    "companyUrn": "urn:li:fsd_company:8736",
+    "publicIdentifier": "gates-foundation",
+    "url": "https://www.linkedin.com/company/gates-foundation/",
+    "title": "Co-chair"
+  },
+  "currentSchool": null,
+  "openProfile": false,
+  "description": "Chair of the Gates Foundation. Founder of Breakthrough Energy. Co-founder of Microsoft. Voracious reader. Avid traveler. Active blogger.",
+  "languages": [],
+  "certifications": [],
+  "volunteerCauses": [],
+  "skills": [],
+  "experiences": [
+    {
+      "name": "Gates Foundation",
+      "jobTitle": "Co-chair",
+      "description": "",
+      "dateRange": "2000 - Present",
+      "current": true,
+      "ongoing": true,
+      "positionUrn": "urn:li:fsd_profilePosition:(ACoAAA8BYqEBCGLg_vT_ca6mMEqkpp9nVffJ3hc,392598211)",
+      "timePeriod": {
+        "startDate": {
+          "year": 2000
+        },
+        "endDate": null
+      },
+      "totalDuration": "26 yrs 9 mos",
+      "company": {
+        "url": "https://www.linkedin.com/company/gates-foundation/",
+        "name": "Gates Foundation",
+        "logo": "https://media.licdn.com/dms/image/v2/D560BAQEgMqqFTd40Tg/company-logo_400_400/company-logo_400_400/0/1736784969376/bill__melinda_gates_foundation_logo?e=1792022400&v=beta&t=ZOmZb8U4UmBFK_-FgD4W0QIs7ooPX5-yIbEoGfCWJ2k",
+        "companyId": "8736",
+        "urn": "urn:li:fsd_company:8736"
+      }
+    },
+    {
+      "name": "Breakthrough Energy",
+      "jobTitle": "Founder",
+      "description": "",
+      "dateRange": "2015 - Present",
+      "current": false,
+      "ongoing": true,
+      "positionUrn": "urn:li:fsd_profilePosition:(ACoAAA8BYqEBCGLg_vT_ca6mMEqkpp9nVffJ3hc,1836104012)",
+      "timePeriod": {
+        "startDate": {
+          "year": 2015
+        },
+        "endDate": null
+      },
+      "totalDuration": "11 yrs 9 mos",
+      "company": {
+        "url": "https://www.linkedin.com/company/breakthrough-energy/",
+        "name": "Breakthrough Energy",
+        "logo": "https://media.licdn.com/dms/image/v2/D560BAQFRMYiQN7-2kA/company-logo_400_400/B56ZoI4SGPI0AY-/0/1761085563539/breakthrough_energy_logo?e=1792022400&v=beta&t=jDN0F3I2HjkxgmjsQbZuPozBPuWd9AgSLgfNE79gH9Y",
+        "companyId": "19141006",
+        "urn": "urn:li:fsd_company:19141006"
+      }
+    },
+    "… 1 more item(s) truncated"
+  ],
+  "educations": [
+    {
+      "name": "Harvard University",
+      "description": "",
+      "dateRange": "1973 - 1975",
+      "current": false,
+      "ongoing": false,
+      "educationUrn": "urn:li:fsd_profileEducation:(ACoAAA8BYqEBCGLg_vT_ca6mMEqkpp9nVffJ3hc,157656829)",
+      "schoolLogo": "https://media.licdn.com/dms/image/v2/C4E0BAQF5t62bcL0e9g/company-logo_400_400/company-logo_400_400/0/1631318058235?e=1792022400&v=beta&t=Y7QGnHo-Y5q7Ba1PgB4tSByP0AvT802Q6yMq5QT_zuw",
+      "schoolUrl": "https://www.linkedin.com/school/harvard-university/",
+      "timePeriod": {
+        "startDate": {
+          "year": 1973
+        },
+        "endDate": {
+          "year": 1975
+        }
+      }
+    },
+    {
+      "name": "Lakeside School",
+      "description": "",
+      "dateRange": "",
+      "current": false,
+      "ongoing": false,
+      "educationUrn": "urn:li:fsd_profileEducation:(ACoAAA8BYqEBCGLg_vT_ca6mMEqkpp9nVffJ3hc,157676006)",
+      "schoolLogo": "https://media.licdn.com/dms/image/v2/D560BAQGFmOQmzpxg9A/company-logo_400_400/company-logo_400_400/0/1683732883164/lakeside_school_logo?e=1792022400&v=beta&t=_YmtMjtysWB_FbWth4hvQC0fYH8FWNPeAn8zfMcZ9mk",
+      "schoolUrl": "https://www.linkedin.com/school/lakeside-school/"
+    }
+  ],
+  "joinDate": {
+    "month": 5,
+    "year": 2013
+  },
+  "recommendations": [],
+  "recommendationsGiven": [],
+  "testScores": [],
+  "publications": [],
+  "projects": [],
+  "patents": [],
+  "honors": [],
+  "organizations": [],
+  "courses": [],
+  "volunteerExperiences": [],
+  "industry": "Philanthropy",
+  "industryUrn": "urn:li:fsd_industry:131",
+  "primaryLocale": "en_US",
+  "entityType": "Person"
+}

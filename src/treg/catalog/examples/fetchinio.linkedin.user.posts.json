@@ -1,0 +1,50 @@
+{
+  "posts": [
+    {
+      "id": "urn:li:activity:7508596155145043968",
+      "shareUrn": "urn:li:share:7508596154448900096",
+      "content": "A milestone in our quantum journey. We’re delivering our Majorana-2 tech to DARPA for on-site testing and evaluation at our new research center in Maryland.",
+      "date": "2026-09-23T18:40:26.357Z",
+      "reactionCount": 603,
+      "commentCount": 63,
+      "sharesCount": 26,
+      "imageUrl": null,
+      "videoUrl": null,
+      "carouselPdfUrl": null,
+      "profile": {
+        "urn": "urn:li:fsd_profile:ACoAAAEkwwAB9KEc2TrQgOLEQ-vzRyZeCDyc6DQ",
+        "name": "Satya Nadella",
+        "headline": "Chairman and CEO at Microsoft",
+        "url": "https://www.linkedin.com/in/satyanadella?miniProfileUrn=urn%3Ali%3Afsd_profile%3AACoAAAEkwwAB9KEc2TrQgOLEQ-vzRyZeCDyc6DQ",
+        "imageUrl": "https://media.licdn.com/dms/image/v2/C5603AQHHUuOSlRVA1w/profile-displayphoto-shrink_800_800/profile-displayphoto-shrink_800_800/0/1579726625483?e=1792022400&v=beta&t=cPVil1UzesHDTD2feKfzupGmFWv4Lv21E5hOUgEkwGs"
+      },
+      "postType": "text",
+      "shareUrl": "https://www.linkedin.com/posts/satyanadella_quantum-has-the-potential-to-transform-every-activity-7508596155145043968-smXw?utm_source=social_share_send&utm_medium=member_desktop_web&rcm=ACoAAGwRVQcB4d954-8r2ILkBhsxfVTAAuO43a0",
+      "reactionsByType": {
+        "like": 534,
+        "appreciation": 6,
+        "empathy": 26,
+        "interest": 4,
+        "praise": 33
+      },
+      "images": [],
+      "video": null,
+      "authorProfileId": "ACoAAAEkwwAB9KEc2TrQgOLEQ-vzRyZeCDyc6DQ",
+      "authorType": "Person",
+      "resharedPostUrn": "urn:li:activity:7508567568748589057",
+      "permissions": {
+        "canReact": true,
+        "canPostComments": true,
+        "canShare": true,
+        "commentingDisabled": false,
+        "allowedCommentersScope": "ALL",
+        "shareAudience": "PUBLIC",
+        "isActivity": false,
+        "rootShare": false
+      }
+    }
+  ],
+  "paginationToken": "dXJuOmxpOmFjdGl2aXR5Ojc1MDg1OTYxNTUxNDUwNDM5NjgtMTc5MDE4ODgyNjM1Nw==",
+  "hasMore": true,
+  "pageSize": 1
+}

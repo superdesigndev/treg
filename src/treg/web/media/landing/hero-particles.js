@@ -1,6 +1,7 @@
 /* Original Treg implementation of a travelling glyph field + cursor trail.
    One GPU point draw, no textures/video, no full-screen per-pixel trail loop. */
-(function mountField(hero,closing=false,benefits=false){
+(()=>{
+function mountField(hero,closing=false,benefits=false){
  if(!hero)return;
  const canvas=document.createElement('canvas');canvas.className=benefits?'benefit-particles':closing?'ending-particles':'hero-particles';canvas.setAttribute('aria-hidden','true');hero.prepend(canvas);
  const gl=canvas.getContext('webgl',{alpha:true,antialias:false,depth:false,stencil:false,premultipliedAlpha:true,powerPreference:'low-power'});
@@ -235,4 +236,10 @@
  if(benefits){window.tregBenefitParticles=api;}
  else if(closing){window.tregEndingParticles=api;hero.classList.add('has-particles');}
  else{window.tregParticles=api;mountField(document.querySelector('.ending-layer'),true);mountField(document.querySelector('.bens'),false,true);}
-})(document.querySelector('.hero'));
+ return api;
+}
+// The dashboard's /search page mounts the same hero field on its own page area (and drives `tick`
+// from its own frame loop), so the two first screens share one implementation.
+window.tregMountField=mountField;
+mountField(document.querySelector('.hero'));
+})();

@@ -56,6 +56,12 @@ sources:
   - frontend/src/state/boot.js
   - frontend/src/state/catalog.js
   - frontend/src/state/catalogComputed.js
+  - frontend/src/state/find.js
+  - frontend/src/state/findComputed.js
+  - frontend/src/state/pile.ts
+  - frontend/src/components/FindAnswer.vue
+  - frontend/src/pages/SearchPage.vue
+  - frontend/src/components/LandingNavigation.vue
   - frontend/src/state/connections.js
   - frontend/src/state/constants.js
   - frontend/src/state/context.ts
@@ -93,8 +99,6 @@ sources:
   - src/treg/web/tour/tour.js
   - src/treg/web/tour/index.html
   - src/treg/api.py
-  - tests/test_dashboard_rollout.py
-  - src/treg/web/dashboard-legacy/README.md
   - src/treg/routers/web.py
   - src/treg/domain/identity/session.py
   - src/treg/routers/api_keys.py
@@ -196,32 +200,29 @@ per-application state available to extracted components during this incremental 
 not a singleton, and this boundary is not yet a fully typed domain store. The TypeScript entry,
 JSON transport and development configuration are checked with `vue-tsc` before every build.
 Initialization renders a neutral loading state until session and route resolution finish, with a
-retry on unexpected failure. Signed-out arrivals get a focused sign-in entry or shared-link gate;
+retry on unexpected failure. `index.html` paints the same `.boot-status` markup before any script
+runs, so mounting swaps the screen for itself. A fast boot shows only the page ground: the
+indicator fades in after a delay, on the page's own clock (`bootStartedAt`), so the node Vue swaps
+in does not restart it. `index.html` also starts
+`/meta` and `/auth/me` alongside the bundle download (`window.__tregBoot`, taken over by boot) and
+applies the saved theme before first paint. `loadAll` waits on one round trip per dependency step:
+`/orgs` with `/invites/mine`, then the bearer with the team's tools, health and skills.
+Catalog data does not wait for the session: boot starts the shelves (and a shelf's endpoints,
+through `prefetchPlatform`, which `loadPlatform` takes over) alongside `/meta` and `/auth/me`.
+**A view renders nothing it cannot yet know.** Empty states, zero figures and fallback views wait
+for their data to answer (`plats.settled`, `callsLoaded`, `orgMembersLoaded`, `ref.loaded`); text
+whose values are still loading keeps its space invisibly rather than showing zeros. Signed-out arrivals get a focused sign-in entry or shared-link gate;
 the obsolete embedded marketing page is removed. The public landing page remains at `/`.
 History navigation retains existing hashes, catalog URLs and shared links in `state/navigation.js`,
 `state/catalog.js`, `state/details.js` and `state/boot.js`.
 Mainline Team resources and Fish Audio upload, voice-management and audio-preview flows live
 in `TeamResourcesPage.vue`, `FishVoiceDialog.vue`, `TryEndpointDialog.vue` and their state modules.
 
-`_new_dashboard` selects the compiled entry by verified session user ID: the master rollout switch
-must be on, then an ID allowlist or a stable SHA-256 bucket below the configured percentage selects
-new. Defaults are off and zero percent. Anonymous and token-only browser entries retain the frozen
-`dashboard-legacy/index.html`, whose Vue/onboarding/tutorial JavaScript has revision-qualified legacy asset
-URLs. No query parameter, team selection or analytics service controls assignment. All dashboard,
-shared-link and catalog entries use this decision and `private, no-store` plus `Vary: Cookie`.
-Environment changes require restarting Web processes. Existing tabs switch on reload; the version
-stamp also incorporates rollout settings to offer a refresh when assignment policy changes.
-Every signed-in selection emits `dashboard_served` (variant, assignment, bucket, percentage) and
-sets the `dashboard_variant` and `dashboard_bucket` person properties. Analytics only observes the
-decision: PostHog persons carry no user ID to recompute the bucket from, and the bucket alone cannot
-date an account's switch when the percentage moves.
-
-The legacy snapshot is deprecated and scheduled for removal after rollout, not a second maintained
-Dashboard. New features and routine fixes belong only in `frontend/`; normal main-branch syncs must
-not refresh the frozen artifact. `frontend/README.md` owns the retirement checklist: migrate
-anonymous and token-only entries as well as signed-in accounts, then remove the snapshot, legacy
-asset route, selection settings and obsolete rollout plumbing. A 100% account rollout alone does
-not retire legacy.
+`_dashboard_index` returns the one compiled entry for every Dashboard, shared-link and catalog
+request, signed in or not, so those pages no longer look up the session to choose a frontend. They
+are served `private, no-store` with `Vary: Cookie`. The frozen legacy snapshot and its percentage
+rollout were retired once every visitor was on this app; rollback is a deploy of the previous build.
+The version stamp in `/meta` is the bundle hash, so an open tab offers a refresh after a deploy.
 
 `GET /app` serves the selected document same-origin from the Python package, preserving local
 sign-in and parked OAuth authorization. Catalog and shared-link handlers modify that same document's
@@ -238,7 +239,7 @@ and Vite, using a local-only development entry for hot updates. See `CONTRIBUTIN
 
 Vue is pinned in the npm lockfile and bundled from the same origin, so a blocked CDN cannot
 prevent startup. The shared onboarding widgets in `/agent-setup.js` still serve both Dashboard and
-Arena; their templates use Vue's bundled compiler. The global Vue runtime for standalone pages and the legacy snapshot is
+Arena; their templates use Vue's bundled compiler. The global Vue runtime for the standalone Arena page is
 copied from the npm package at build time, with its license; generated copies are not committed. Agent icons and Google Fonts remain optional external presentation assets.
 The unmounted entry displays a loading message and a reload link rather than hiding a raw template.
 The authenticated redesign follows the root `design.md`.
@@ -283,8 +284,9 @@ user. On narrow screens navigation scrolls in a second row; team switching and o
 remain available. The public catalog and logged-out landing retain their separate shells.
 
 The authenticated wrapper's `.redesign` class scopes `media/redesign/dashboard.css`, served through
-the existing `/media` mount. It uses Google Sans Flex for interface text, Geist Pixel for page titles,
-and DM Mono for commands and balances, with light and dark semantic colors. Getting started uses
+the existing `/media` mount. It uses the system UI font for interface text, Geist Pixel for page titles,
+and DM Mono for commands and balances (the only two web fonts, bundled from pinned `@fontsource`
+packages; see `design.md`), with light and dark semantic colors. Getting started uses
 an approximately 1080px centered column, a split agent-preview/setup card, image-backed prompt cards,
 and the existing optional Build on treg and manual setup flows. On mobile the setup card and prompt
 grid stack. Images are copied from the pinned designer repository; provenance is in
@@ -634,7 +636,9 @@ selected account stamps a runnable containers-list path into the provisioned too
 platform logo assets both carry the Google Tag Manager mark, so the catalog tile, platform header,
 provider page, and expanded endpoint rows resolve to the same identity.
 The tab bar itself is `v-if`'d on `plats.list.length` and `mkTabActive` collapses to `'platform'` when
-the catalog is absent, so a build that predates `/catalog` renders exactly the old marketplace.
+the catalog is absent, so a build that predates `/catalog` renders exactly the old marketplace. It
+collapses only once `plats.settled` (the request answered, even with a failure): falling back while
+the shelves loaded flashed the integration list on every visit.
 
 The catalog page's header carries a **Request a tool** button (`reqAsk` modal): a short form —
 what's missing, an optional note, a contact field only when signed out (`!me`) — POSTed to
@@ -860,7 +864,7 @@ stays in the price column, and the provider/endpoint counts live in the cell's t
 a second line of their own.
 
 **Merged rows expand in TWO levels.** Clicking one opens its providers as collapsed `.lsub` sub-rows —
-one line each: logo, name, `costShort`, ✓/·, the connected chip, and a truncated `METHOD path`.
+one line each: logo, name, `costShort`, a ✓ when verified, the connected chip, and a truncated `METHOD path`.
 Clicking a sub-row (`toggleEp` → `epOpen[e.id]`) opens **that** provider's instruction. Dropping six
 full parameter tables on one click buried the comparison the merge exists to make. A single row has
 nothing to compare, so it skips the middle level and renders its detail straight away — the SAME
@@ -869,12 +873,19 @@ the instruction differently. Inside a merged sub-row the detail drops the provid
 sub-row above already shows, and leads with the chips.
 
 **The filter bar is sticky** under the top bar, and the section headings stick under *it* (`--lbar-top` /
-`--lsec-top`); the domain chips **scroll** rather than wrap, because a bar that grew a second row as you
-filtered would push the headings out from under it. Text, `verified only` and the domain chips narrow the
+`--lsec-top`). The domain chips **wrap**: a scrolling strip with a hidden scrollbar cut its last chip in
+half and gave a mouse no way to reach the rest. So the bar's height varies with the platform and the
+filters, and `stickLedgerBar` (PlatformPage.vue) measures it and writes `--lsec-top` on the bar's parent;
+the redesign shell redeclares the variable on its own element, so a value on the document root never
+reached the headings. At phone width nothing sticks (a wrapped bar would cover half the screen) and each
+row stacks: title, then route, price and ✓ on one line, with the separator drawn on the row. Unverified
+rows show nothing in the Verified column. Text, `verified only` and the domain chips narrow the
 same row list (`platRowsPreDomain` → `platLedger`); a section with no surviving rows disappears rather
 than showing an empty heading, chip counts are taken after the other two filters so a chip never promises
-rows they have already removed, and a live `N rows · M endpoints` line counts both — a merged row stands
-for several endpoints. Both the wrapper and the table drop their `overflow` clip (an `overflow:hidden`
+rows they have already removed, and a live `N rows · M endpoints` line counts both when they differ — a
+merged row stands for several endpoints. Only the wrapper draws the rounded frame: a collapsed table cannot
+round its own border, so a second one showed as a square frame inside it, and the last row's cells round
+their own corners because nothing clips a hover fill. Both the wrapper and the table drop their `overflow` clip (an `overflow:hidden`
 ancestor is a scroll container, and a sticky heading inside one never escapes it) and the table is
 `table-layout:fixed`, so a nowrap path or `treg call` line scrolls **inside** its cell instead of widening
 the table past the page.
@@ -998,6 +1009,63 @@ registry loads. Browser tests in `frontend/e2e/` cover navigation and interactio
 CSS classes or template source spelling. `tests/test_catalog_api.py` locks the server half: the section order, the
 merged/single split, the domain resolution ladder, and a delivery-mode path segment never becoming a
 subject.
+
+## Find tools for a job (Catalog search box, `/search`)
+
+Both surfaces read `GET /catalog/find` (see `architecture/search-experiment.md`) through
+`state/find.js`, which parses the NDJSON stream, aborts a superseded request, and keeps one `find`
+state (`idle | recall | reading | done | error`). `state/findComputed.js` groups the judged rows by
+capability: the job is the card, its providers are the lines in the server's order, and the card's
+fit is its best provider's. The page never re-ranks providers.
+
+- **Catalog search** (`CatalogPage.vue`, `view==='connections'`, signed in or on the public
+  catalog). A large box under the page title, not the corner search the other views use. A short
+  query is a name and keeps the instant platform filter; four words or a question mark makes it a
+  job and shows **Find tools ↵** (`isJobQuery`). The finder runs by itself once typing pauses
+  (`findSchedule`, `FIND_DEBOUNCE_MS`), because people did not discover Enter; Enter runs it at once.
+  Typing again drops the previous answer so a name filters the shelves meanwhile, and "No platform
+  is called that" waits while a find is scheduled (`findSoon`). The answer renders `FindAnswer.vue` between the box and
+  the tabs: one list, a row per job (platform, providers, lowest price, a fit bar), strong fits
+  first and weaker ones after them in a lighter tone, with no bucket labels; **Copy** appears on
+  hover, the row opens the platform. `closest` adds one line saying nothing fits closely; `none` is
+  a single sentence with Request a tool pre-filled. `name` (Enter on a bare platform or provider
+  name) lists what that name offers in the server's order, with no fit bars. The shelves stay: platforms the answer landed on
+  sort first with a match count, the rest dim. Clearing the box (× or Esc) returns to browsing. A
+  name that matches no platform says so and points at Enter, instead of the old "no catalogued
+  platforms on this server" message; tab counts follow the name filter. The page title's catalog
+  size is computed from `/catalog/platforms` (`toolCountText`), never hard-coded.
+- **`/search`** (`SearchPage.vue`, a public view like `/catalog`, public for members too). It
+  looks like the landing page's first screen, not the dashboard: the landing top bar
+  (`LandingNavigation.vue`; "Open dashboard" for a member), the landing tokens, and the landing
+  hero's glyph field (`/media/landing/hero-particles.js`, mounted through `window.tregMountField`
+  and ticked by this page). One viewport tall, never scrolls; a long answer scrolls inside its
+  panel. Every platform and every vendor is a tile in a Matter.js pile (`state/pile.ts`) on the
+  floor of the page, keyed `p:`/`v:` since a slug can be both; the vendors come from
+  `/catalog/platforms`' `providers`. A platform tile opens its platform, a vendor tile its busiest
+  platform. Tiles can be picked up and thrown, the recall's platforms and vendors hop while the
+  judge reads, the fitting ones leave the physics world and fly to their answer cards, and the next
+  search drops them back in; × or Esc clears the answer the same way. A described job is answered
+  **by vendor** (so is a vendor's name, `named: provider`): one card per provider, the vendor's tile landing in the logo place and, on the
+  first card naming it, the platform's tile beside the platform name (later cards show a still
+  copy), with the vendor's jobs and prices. A bare name (`name`, titled "Tools for …") is answered
+  by platform: each platform's tile lands in its card's logo place, the cards list jobs with
+  provider counts, and the vendors on those platforms stay lit in the pile. An empty box submits its placeholder. Reduced motion
+  settles the pile unseen and skips the flights. `?q=` runs a search on load and is what **Share**
+  copies. Any result (a card, a job line, a tile) opens that platform in the dashboard: directly
+  for a member; otherwise sign-in first, the destination kept in localStorage for ten minutes and
+  resumed by boot (`findResume`) however sign-in returns, and first-run onboarding leaves a
+  visitor on that platform rather than on Getting started. The server serves this page to every
+  visitor.
+
+**Analytics for finds** (PostHog through `track`, anonymous until sign-in, when the visitor's
+earlier events join the identified person): `search_opened` (`ref`: the landing's Tools link sends
+`?ref=landing-nav` or `landing-footer`, else the referring host), `catalog_find` (a find ran:
+`surface` search or catalog, `words`, `auto`), `search_answered` (`verdict`, `results`,
+`providers`, `top_fit`), `search_result_clicked` (`from` card, job or tile; `platform`,
+`provider`, `rank`, `signed_in`) and `search_copied` (`scope` all, job or share). The landing's
+Tools links also send `nav_clicked`. A cohort of people who performed `catalog_find`, followed
+through `signup_completed`, `tool_called` and `topup_completed`, is the search-to-conversion
+funnel.
 
 ## Code surfaces (every page)
 Snippet blocks (`.lc-codewrap` on Getting started, the in-app CLI tutorial's `.term` panes, the
@@ -1161,9 +1229,10 @@ them.
 
 ## The Referrals view
 
-`ReferralsPage.vue` renders the referrals view. The maintained Dashboard exposes a fixed
-`Refer a friend` link at the bottom left, leaving the bottom right for the support messenger.
-`dashboard.css` keeps this placement on desktop and mobile.
+`ReferralsPage.vue` renders the referrals view. The maintained Dashboard's entry is a pill in the
+top bar that names the offer ("Give $5, get $5") from `/meta.referral`, falling back to
+`Refer a friend` when either amount is zero or `/meta` has not loaded. Narrow screens show only
+its gift icon.
 
 **`'referrals'` must appear in BOTH view whitelists** — `viewFromHash()` and the `popstate` handler.
 `go('referrals')` works on click regardless of them; those two lists are what make the view survive

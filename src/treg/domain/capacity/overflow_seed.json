@@ -11,7 +11,7 @@
   "path": "/v1/company/enrichment/",
   "matched_at": "2026-08-26",
   "verified_at": null,
-  "single_result": false
+  "single_result": true
  },
  {
   "aggregator": "monid",
@@ -31,15 +31,15 @@
   "aggregator": "monid",
   "agg_slug": "akta",
   "agg_path": "/v1/news",
-  "agg_price_usd": 0.0005,
-  "agg_unit": "result",
+  "agg_price_usd": 0.01,
+  "agg_unit": "call",
   "endpoint_id": "akta.companies.news",
   "provider": "akta",
   "method": "GET",
   "path": "/v1/news/",
-  "matched_at": "2026-08-26",
-  "verified_at": null,
-  "single_result": true
+  "matched_at": "2026-09-25",
+  "verified_at": "2026-09-25",
+  "single_result": false
  },
  {
   "aggregator": "monid",

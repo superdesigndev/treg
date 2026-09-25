@@ -1,6 +1,6 @@
 <script>
 import { useDashboard } from '../state/context'
-export default { setup: useDashboard }
+export default { setup: useDashboard, mounted(){ this.loadPlatforms() } }  // the catalog size in the copy
 </script>
 
 <template>
@@ -66,7 +66,7 @@ export default { setup: useDashboard }
           <p v-if="!loading && !hasAnyTools" class="sub">Nothing here{{q?' matches "'+q+'"':' yet'}}.<template v-if="!q && isPersonal(activeOrg) && myOrgs.some(o=>!isPersonal(o))"> This is your <b>personal</b> space - your team's tools live under another org. <a href="#" @click.prevent="jumpToTeam()">Switch to a team →</a></template></p>
           <div v-if="!loading && !hasAnyTools && !q && canRegister" style="margin-top:14px">
           <div style="max-width:660px;border:1px solid var(--line);border-radius:16px;padding:20px 22px;background:var(--panel2)">
-            <h3 style="margin:0 0 6px;font-size:15px">Nothing of your own yet — but you can already call 2,800+ tools</h3>
+            <h3 style="margin:0 0 6px;font-size:15px">Nothing of your own yet — but you can already call {{toolCountText||'thousands of'}} tools</h3>
             <p class="sub" style="margin:0 0 12px">New verified accounts get <b>$1.00 of free credit once</b> when creating an eligible team, so the catalog works before you register anything: find a tool by what it does, see the price, call it. <a href="#" @click.prevent="go('connections')">Browse the catalog →</a><br>When you're ready to add your <i>own</i> keys and skills — your <span class="mono">.env</span> and skill folders — load them here and they become callable tools for the whole team.</p>
             <div class="seg" style="margin-bottom:10px">
               <button :class="{on:emptyTab==='agent'}" @click="emptyTab='agent'">Agent instruction</button>

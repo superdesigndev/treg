@@ -203,6 +203,7 @@ class Settings(BaseSettings):
     platform_key_moltsets: str = ""  # Bearer; shared subscription fair-use pools, no auto-top-up
     platform_key_openmart: str = ""  # Bearer; monthly subscription credits, no auto-top-up
     platform_key_harvestapi: str = ""  # X-API-Key; prepaid USD wallet
+    platform_key_fetchinio: str = ""  # X-API-Key; subscription + PAYG credit balance
     platform_key_anyapi: str = ""  # X-API-Key; prepaid USD wallet, exact charge settles from costUsd
     platform_key_dropleads: str = ""  # X-API-Key; PAYG credits priced in fx.yaml
     platform_key_quickenrich: str = ""  # Bearer; monthly subscription credits, not auto-top-up
@@ -254,8 +255,10 @@ class Settings(BaseSettings):
     platform_key_aviato: str = ""     # Bearer key; $10 auto-top-up buys 1,000 credits
     platform_key_exa: str = ""        # x-api-key; dollar-metered ($7/1k searches, $1/1k pages); settles from costDollars.total
     platform_key_tavily: str = ""     # Bearer; Search reports per-call usage, other tools settle returned successes
+    platform_key_serper: str = ""     # X-API-KEY; prepaid Google search credits, exact charge in response.credits
     platform_key_keenable: str = ""   # X-API-Key; $4/1,000-request package, 10 requests/s per organization
     platform_key_olostep: str = ""    # Bearer; prepaid credits, platform price $0.002/credit
+    platform_key_scrapegraphai: str = ""  # SGAI-APIKEY; credit balance and bounded v2 web tools
     platform_key_cloro: str = ""      # Bearer key (sk_live_…); Hobby metered rate $0.0004/credit; settles from X-Credits-Charged
     platform_key_minimax: str = ""    # Bearer key for MiniMax voice, image and video generation
     platform_key_fishaudio: str = ""  # Bearer key for Fish Audio speech and private voices
@@ -319,6 +322,21 @@ class Settings(BaseSettings):
     # Past this the search answers from the baseline alone; the row records `judge_error=timeout`.
     # Measured at 30 candidates: about 1.2-1.5 s per answer on a quiet day, so 1.5 sits on the edge.
     typesafe_timeout_s: float = 2.5
+    # "Find tools for a job" (application.catalog_find): the same judge served to PEOPLE on the
+    # dashboard's Catalog page and the public /search page. Its recall is wider than the MCP
+    # experiment's: the judge scores a request's candidates in parallel, so 60 costs no more wall
+    # time than 30 and lets rows the lexical order ranks low (a Search Console report for "why is
+    # my blog losing traffic") reach the judge at all. A person is waiting on a page that animates
+    # the wait, so the timeout is looser than an agent's search. Rate limits bound anonymous use.
+    find_candidates: int = 60
+    find_timeout_s: float = 6.0
+    # The judge's probability that a find query is only a name ("google", "semrush") at or above
+    # which, with no strong fit, the answer is what that platform or provider offers.
+    find_name_min: float = 0.8
+    # The Catalog box searches by itself when typing pauses, so one person exploring runs several
+    # finds a minute; the per-deployment cap is what bounds the bill.
+    find_max_per_ip_hour: int = 120
+    find_max_per_hour: int = 3000
     # DEFAULT per-org, per-UTC-day limit on tier-4 spend, for a team that has not set its own
     # `Org.daily_cap_micro`. 0 = no default limit. A team may set its own figure to anything,
     # including 0 for no limit — the limit is the team's protection against a runaway agent
@@ -570,9 +588,6 @@ class Settings(BaseSettings):
     # response, which is an unauthenticated account-takeover vector in prod — so it defaults OFF and
     # must be explicitly enabled (TREG_EMAIL_DEV_MODE=true) for local testing without a mail sender.
     email_dev_mode: bool = False
-    dashboard_rollout_enabled: bool = False
-    dashboard_rollout_percent: int = Field(default=0, ge=0, le=100)
-    dashboard_rollout_user_ids: set[PositiveInt] = Field(default_factory=set)
     frontend_dev: bool = False  # Local SQLite development only; use Vite module scripts.
 
     # The WHOLE email-domain blocklist (TREG_BLOCKED_EMAIL_DOMAINS), comma-separated:

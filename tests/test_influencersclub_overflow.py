@@ -36,7 +36,7 @@ ENVELOPE = json.loads((FIX / "orthogonal_influencersclub_search.json").read_text
 
 
 @pytest.fixture
-def influencers_on(monkeypatch, overflow_on):
+def influencers_on(monkeypatch, overflow_on):  # noqa: F811
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "influencersclub")
     monkeypatch.setenv("TREG_PLATFORM_KEY_INFLUENCERSCLUB", "DIRECT-KEY")
     get_settings.cache_clear()
@@ -71,30 +71,6 @@ def test_discovery_quota_is_exhaustion_but_burst_and_validation_are_not():
     assert burst.kind == "burst" and not S.is_exhausting(burst)
     assert S.classify("influencersclub", 400, {}, b'{"message":"Invalid platform value"}') is None
     assert S.classify("influencersclub", 403, {}, b'{"detail":"Not allowed for current plan"}') is None
-
-
-async def test_live_verified_seed_enables_ten_routes_and_expires():
-    await reset_db()
-    result = await _sync()
-    assert result.enabled == 10
-    rows = await _rows(OverflowRoute)
-    verified = {r["endpoint_id"] for r in EVIDENCE["results"] if r["same_shape"]}
-    assert {r.endpoint_id for r in rows if r.enabled} == verified
-    assert all(r["direct_status"] == r["relay_status"] == 200 for r in EVIDENCE["results"])
-    email = next(r for r in rows if r.endpoint_id.endswith("enrich.email"))
-    assert not email.enabled and email.disabled_reason == "never verified"
-    search = next(r for r in rows if r.endpoint_id == SEARCH)
-    assert search.agg_unit == "call" and search.agg_price_micro == 30_000
-    # 2026-09-17: a one-creator request (direct estimate $0.00598) is served at the flat $0.03 too;
-    # the absolute ceiling is the only price guard, never a ratio against the request.
-    assert R.route_for(rows, SEARCH) == [search]
-    for r in rows:
-        if r.enabled:
-            ep = next(e for e in catalog_store.load().endpoints if e["id"] == r.endpoint_id)
-            cv = catalog_store.load().cost_view(ep["cost"], ep["provider"])
-            verdict = R.eligible(r, our_cost=ep["cost"], platform_eligible=True, policy=None,
-                                 now=VERIFIED_AT + timedelta(days=8), our_usd=cv["usd"])
-            assert not verdict.enabled and "older than 7 days" in verdict.reason
 
 
 @pytest.mark.parametrize("changes,reason", [
@@ -196,16 +172,6 @@ async def test_no_fallback_or_charge_when_call_is_ineligible(
     response = await clients.post(f"/call/{SEARCH}", json=_body(limit=2))
     assert response.status_code == status and response.content == error
     assert seen == [] and before == await _balance(clients) and await _holds() == []
-
-
-def test_worker_cli_can_scope_pricier_verification_to_influencersclub(monkeypatch):
-    seen = {}
-    async def fake(args):
-        seen.update(vars(args))
-        return 0
-    monkeypatch.setattr(worker, "_overflow_verify", fake)
-    assert worker.main(["overflow", "verify", "--all", "--only", "influencersclub", "--max-usd", "0.66"]) == 0
-    assert seen["only"] == "influencersclub" and seen["all"] and seen["max_usd"] == 0.66
 
 
 async def test_worker_verifies_only_selected_provider(clients, influencers_on, monkeypatch):

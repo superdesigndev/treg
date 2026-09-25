@@ -1,3 +1,4 @@
+import { isJobQuery } from './find.js'
 export default {
 mkProvider(){ return this.providers.find(p=>p.service===this.mkService)||null; },
 mkConns(){ return this.connections.filter(c=>c.provider===this.mkService); },
@@ -34,15 +35,31 @@ mkNeedsCred(){ return this.mkConns.filter(c=>c.extra_credential_note); },
       const rest=Object.keys(by).filter(c=>!order.includes(c)).sort();
       return known.concat(rest).map(c=>({category:c, hint:hints[c]||'', items:by[c]}));
     },
+// The catalog's size as a headline ("3,300+"), from the platform shelves already loaded: rounded
+    // down to the hundred so it never overstates, and empty until the list arrives so no stale
+    // number is ever shown.
+    toolCountText(){
+      const n=this.plats.list.reduce((a,p)=>a+(p.endpoints||0),0);
+      return n>=100 ? (Math.floor(n/100)*100).toLocaleString('en-US')+'+' : '';
+    },
+// The platform-name filter the Catalog search box applies, lowercased; '' for none. A sentence is
+    // a job, not a name (the finder answers it), and a find answer lights shelves instead of
+    // filtering them, so neither filters anything.
+    platNameQuery(){ return this.findActive || isJobQuery(this.q) ? '' : this.q.trim().toLowerCase(); },
 mkTabs(){
-      const out=[{key:'all', label:'All', n:this.platCategories.reduce((a,g)=>a+g.items.length,0)}];
-      for(const g of this.platCategories) out.push({key:g.category, label:g.category, n:g.items.length});
+      // With a name filter typed, each tab counts what it would SHOW; a tab reading "Social 33" over
+      // an empty result made the filter look broken.
+      const q=this.platNameQuery;
+      const n=g=>q ? g.items.filter(p=>this.platNameHit(p, q)).length : g.items.length;
+      const out=[{key:'all', label:'All', n:this.platCategories.reduce((a,g)=>a+n(g),0)}];
+      for(const g of this.platCategories) out.push({key:g.category, label:g.category, n:n(g)});
       out.push({key:'platform', label:'Platform', n:this.providers.length});
       return out;
     },
 // A build without /catalog has no tiles to show, so it falls back to the integration shelves
-    // rather than opening on an empty tab.
-    mkTabActive(){ return this.platCategories.length ? this.mkTab : 'platform'; },
+    // rather than opening on an empty tab. Only once the shelves have answered: falling back while
+    // they load flashed the integration list on every visit before the tiles replaced it.
+    mkTabActive(){ return this.platCategories.length || !this.plats.settled ? this.mkTab : 'platform'; },
 // Shelves, with the long ones cut down to their featured tiles. A category of 14 platforms is a
     // wall you scroll past rather than read, so past PLAT_SHELF_MAX only the catalog's `featured`
     // ranks get a full tile and the tail collapses into one "See X, Y, and N more" row. Rank first,
@@ -52,9 +69,18 @@ mkTabs(){
         : this.platCategories.filter(g=>g.category===this.mkTabActive);
       // The top-nav search reaches here too: with a query, every match shows (no featured collapse —
       // a hit hidden behind "N more" reads as no hit) and empty shelves drop away.
-      const q=this.q.trim().toLowerCase();
+      // A find answer (state/find.js) owns the box while it is showing: the sentence is not a name
+      // to filter by, so every shelf stays, platforms the answer landed on first and uncollapsed.
+      if(this.findActive){
+        const hits=this.findHits;
+        if(!Object.keys(hits).length) return groups.map(g=>({...g, rest:[], total:g.items.length}));
+        return groups.map(g=>{ const items=[...g.items].sort((a,b)=>(hits[b.slug]||0)-(hits[a.slug]||0) || (b.endpoints||0)-(a.endpoints||0));
+          return {...g, items, rest:[], total:items.length, hits:items.filter(p=>hits[p.slug]).length}; })
+          .sort((a,b)=>b.hits-a.hits);
+      }
+      const q=this.platNameQuery;
       if(q){
-        const hit=p=>((p.label||'')+' '+(p.slug||'')+' '+(p.providers||[]).join(' ')).toLowerCase().includes(q);
+        const hit=p=>this.platNameHit(p, q);
         return groups.map(g=>{ const items=g.items.filter(hit)
             .sort((a,b)=>(b.endpoints||0)-(a.endpoints||0));
           return {...g, items, rest:[], total:items.length}; }).filter(g=>g.items.length);
@@ -74,7 +100,10 @@ mkTabs(){
 mkPlatforms(){ return this.plats.list.filter(pl=>(pl.providers||[]).includes(this.mkService)); },
 platRow(){ return this.plats.list.find(pl=>pl.slug===this.platSlug)||null; },
 platLabel(){ return (this.platData&&this.platData.platform&&this.platData.platform.label)
-      || (this.platRow&&this.platRow.label) || this.platSlug || 'Platform'; },
+      || (this.platRow&&this.platRow.label)
+      // The raw slug ("google-ads") only once nothing better can arrive: shown while loading, it
+      // read as a broken title that then corrected itself.
+      || (this.plats.settled && !this.platLoading ? this.platSlug || 'Platform' : ''); },
 platProviders(){  // providers with endpoints here, in catalog order
       const seen=[]; for(const g of (this.platData&&this.platData.capabilities||[])) for(const e of (g.endpoints||[])) if(!seen.includes(e.provider)) seen.push(e.provider);
       for(const e of (this.platData&&this.platData.extended||[])) if(!seen.includes(e.provider)) seen.push(e.provider);

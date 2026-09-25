@@ -94,7 +94,7 @@ tests/screenshots/
 # ArcTerm writes this local backup beside CLAUDE.md; it is not project content.
 CLAUDE.md.arcterm-bak
 # Frontend dependencies, build output and browser test artifacts.
-node_modules/
+node_modules
 /src/treg/web/dashboard/
 /frontend/test-results/
 /frontend/playwright-report/
@@ -102,4 +102,3 @@ node_modules/
 # Global Vue runtime copied from the npm lockfile during the frontend build.
 /src/treg/web/vendor/*.js
 /src/treg/web/vendor/LICENSE
-/src/treg/web/dashboard-legacy/assets/*/vendor/

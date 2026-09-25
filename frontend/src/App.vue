@@ -16,9 +16,11 @@ import ReferralsPage from './pages/ReferralsPage.vue'
 import HelpPage from './pages/HelpPage.vue'
 import HubPage from './pages/HubPage.vue'
 import HubRunPage from './pages/HubRunPage.vue'
+import SearchPage from './pages/SearchPage.vue'
 import SignedOutPage from './components/SignedOutPage.vue'
 import BrandMark from './components/BrandMark.vue'
 import PublicNavigation from './components/PublicNavigation.vue'
+import LandingNavigation from './components/LandingNavigation.vue'
 import DashboardNavigation from './components/DashboardNavigation.vue'
 import ConnectTokenDialog from './dialogs/ConnectTokenDialog.vue'
 import TopUpDialog from './dialogs/TopUpDialog.vue'
@@ -38,18 +40,20 @@ import RunToolDialog from './dialogs/RunToolDialog.vue'
 import CallDetailsDialog from './dialogs/CallDetailsDialog.vue'
 import TryEndpointDialog from './dialogs/TryEndpointDialog.vue'
 import SignInDialog from './components/SignInDialog.vue'
-export default { ...controller, components: { ...controller.components, TeamResourcesPage, FishVoiceDialog, CatalogPage, ProviderPage, PlatformPage, ToolsPage, DetailPage, SecretsPage, TeamPage, ActivityPage, AdminPage, GettingStartedPage, ReferralsPage, HelpPage, HubPage, HubRunPage, SignedOutPage, BrandMark, PublicNavigation, DashboardNavigation, ConnectTokenDialog, TopUpDialog, AgentGuideDialog, ConnectionMethodDialog, ResourcePickerDialog, ExtraCredentialDialog, EditToolDialog, AcceptInvitesDialog, WelcomeDialog, CopyToolDialog, ImportSkillDialog, RequestToolDialog, ShareDialog, RecipeDialog, RunToolDialog, CallDetailsDialog, TryEndpointDialog, SignInDialog } }
+export default { ...controller, components: { ...controller.components, TeamResourcesPage, FishVoiceDialog, CatalogPage, ProviderPage, PlatformPage, ToolsPage, DetailPage, SecretsPage, TeamPage, ActivityPage, AdminPage, GettingStartedPage, ReferralsPage, HelpPage, SearchPage, HubPage, HubRunPage, SignedOutPage, BrandMark, PublicNavigation, LandingNavigation, DashboardNavigation, ConnectTokenDialog, TopUpDialog, AgentGuideDialog, ConnectionMethodDialog, ResourcePickerDialog, ExtraCredentialDialog, EditToolDialog, AcceptInvitesDialog, WelcomeDialog, CopyToolDialog, ImportSkillDialog, RequestToolDialog, ShareDialog, RecipeDialog, RunToolDialog, CallDetailsDialog, TryEndpointDialog, SignInDialog } }
 </script>
 
 <template>
 <div>
-<main v-if="!bootReady || bootFailed" class="boot-status" aria-live="polite" :aria-busy="!bootReady">
+<main v-if="bootFailed" class="boot-status" aria-live="polite">
   <a href="/" class="brand"><BrandMark/>treg</a>
-  <template v-if="bootFailed">
-    <p role="alert">The dashboard couldn't load. Please try again.</p>
-    <button class="btn" @click="reloadApp()">Try again</button>
-  </template>
-  <p v-else role="status">Loading treg…</p>
+  <p role="alert">The dashboard couldn't load. Please try again.</p>
+  <button class="btn" @click="reloadApp()">Try again</button>
+</main>
+<!-- Continues index.html's loader on the page's own clock, so mounting does not restart it. -->
+<main v-else-if="!bootReady" class="boot-status" aria-busy="true" :style="{'--boot-t': -Math.round(bootStartedAt)+'ms'}">
+  <span class="boot-bar" aria-hidden="true"></span>
+  <p role="status" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap">Loading treg…</p>
 </main>
 <div v-else :class="{redesign:authed && !publicCatalog}">
   <!-- Focused sign-in entry after session initialization. -->
@@ -61,14 +65,17 @@ export default { ...controller, components: { ...controller.components, TeamReso
          (org switcher, global tool search, member nav) is furniture for a job they have not started.
          They get the marketing site's nav instead, so /catalog reads as part of treg.to rather than
          as a dashboard someone forgot to lock. -->
-    <PublicNavigation v-if="publicCatalog" />
+    <LandingNavigation v-if="view==='find'" />
+    <PublicNavigation v-else-if="publicCatalog" />
     <DashboardNavigation v-else />
     <img v-if="authed && !publicCatalog && view==='start'" class="rd-background" src="/media/redesign/ascii-background.jpg" alt="" aria-hidden="true">
     <div v-if="startCopyError" class="rd-copy-error" role="alert">{{startCopyError}}<br><button class="btn sm" @click="startCopyError=''">Dismiss</button></div>
     <span class="rd-sr-only" role="status">{{startCopied ? 'Copied to clipboard' : ''}}</span>
     <div class="layout" :class="{solo:publicCatalog}">
-      <main id="maincontent" tabindex="-1">
-        <div v-if="!publicCatalog && (view==='tools'||view==='resources'||view==='connections')" class="rd-view-search search"><img src="/media/redesign/search.svg" alt=""><input :ref="el => setElement('search', el)" v-model="q" :placeholder="view==='connections'?'Search the catalog…':view==='resources'?'Search team resources…':'Search your own tools…'" aria-label="Search"></div>
+      <main id="maincontent" tabindex="-1" :class="{flush:view==='find'}">
+        <!-- The Catalog page has its own, larger search (CatalogPage.vue): there it also finds tools
+             for a described job. -->
+        <div v-if="!publicCatalog && (view==='tools'||view==='resources')" class="rd-view-search search"><img src="/media/redesign/search.svg" alt=""><input :ref="el => setElement('search', el)" v-model="q" :placeholder="view==='resources'?'Search team resources…':'Search your own tools…'" aria-label="Search"></div>
         <div v-if="err" class="banner">{{err}}</div>
         <div v-if="pendingInvites.length" class="banner" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span>You've been invited:</span>
@@ -80,6 +87,9 @@ export default { ...controller, components: { ...controller.components, TeamReso
 
         <!-- TOOLS -->
         <CatalogPage v-if="view==='connections'" />
+
+        <!-- FIND: /search, a described job answered over the platform pile -->
+        <SearchPage v-if="view==='find'" />
 
         <!-- MARKETPLACE: one integration -->
         <ProviderPage v-if="view==='provider' && mkProvider" />
@@ -249,14 +259,15 @@ export default { ...controller, components: { ...controller.components, TeamReso
     <CallDetailsDialog v-if="callView" />
     <TryEndpointDialog v-if="epTry" />
 
-    <!-- access reminder toast: fired when a new tool is registered while some members have customized access -->
-    <div v-if="newVersion" class="tut-notice" style="position:fixed;bottom:18px;right:18px;max-width:360px;z-index:200;box-shadow:0 6px 20px rgba(0,0,0,.25);background:var(--card)">
-      A new version of the dashboard is available.
-      <div style="margin-top:8px;display:flex;gap:8px"><button class="btn sm" @click="reloadApp()">Refresh now</button><button class="btn sm" @click="newVersion=false">Later</button></div>
+    <!-- Toasts, bottom right: a newer dashboard build is live, and the access reminder (fired when
+         a new tool is registered while some members have customized access). -->
+    <div v-if="newVersion" class="app-toast" role="status">
+      <p>A new version of the dashboard is available.</p>
+      <div class="app-toast-a"><button class="btn sm" @click="newVersion=false">Later</button><button class="btn sm primary" @click="reloadApp()">Refresh now</button></div>
     </div>
-    <div v-if="accessNote" class="tut-notice" style="position:fixed;bottom:18px;right:18px;max-width:360px;z-index:200;box-shadow:0 6px 20px rgba(0,0,0,.25);background:var(--card)">
-      {{accessNote}}
-      <div style="margin-top:8px;display:flex;gap:8px"><button class="btn sm" @click="go('org')">Open Team</button><button class="btn sm" @click="accessNote=''">Dismiss</button></div>
+    <div v-if="accessNote" class="app-toast" role="status">
+      <p>{{accessNote}}</p>
+      <div class="app-toast-a"><button class="btn sm" @click="accessNote=''">Dismiss</button><button class="btn sm primary" @click="go('org')">Open Team</button></div>
     </div>
   </template>
 
@@ -269,7 +280,3 @@ export default { ...controller, components: { ...controller.components, TeamReso
 </div>
 </template>
 
-<style scoped>
-.boot-status { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: var(--muted); }
-.boot-status .brand { color: var(--text); text-decoration: none; }
-</style>

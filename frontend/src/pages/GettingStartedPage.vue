@@ -1,6 +1,6 @@
 <script>
 import { useDashboard } from '../state/context'
-export default { setup: useDashboard }
+export default { setup: useDashboard, mounted(){ this.loadPlatforms() } }  // the catalog size in the copy
 </script>
 
 <template>
@@ -91,7 +91,7 @@ treg catalog, then open a PR.</pre>
             </div>
 
             <div v-show="buildTab==='platform'" class="rd-build-panel">
-              <p class="sub">Give <i>your</i> users 2,800+ tools without owning the keys — and bill each of your customers for what they used. Covers the call methods (HTTP, MCP, CLI), per-customer tagging, spend limits and invoicing.</p>
+              <p class="sub">Give <i>your</i> users {{toolCountText||'thousands of'}} tools without owning the keys — and bill each of your customers for what they used. Covers the call methods (HTTP, MCP, CLI), per-customer tagging, spend limits and invoicing.</p>
               <div class="lc-codewrap" style="margin-top:8px">
                 <button class="lc-cp" @click="copyStart('Read '+proxy+'/integrate.md and integrate treg into our product, including per-customer usage tracking and billing.','intg')">{{startCopied==='intg'?'✓ copied':'copy'}}</button>
                 <pre>Read <span class="hl-str">{{proxy}}/integrate.md</span> and integrate treg into our
@@ -110,7 +110,7 @@ product, including per-customer usage tracking and billing.</pre>
 
           <!-- TAB · Access the catalog — agent instruction first, then the manual CLI walkthrough -->
           <div v-show="startTab==='access'" style="max-width:720px">
-            <p class="sub">2,800+ catalogued endpoints: SEO and backlinks, social and trends, people and company enrichment, ads. Find one by what it <i>does</i>, see its price, call it — no provider signup. New verified accounts get <b>$1.00 free credit once</b> on an eligible team, covering hundreds of calls.</p>
+            <p class="sub">{{toolCountText ? toolCountText+' catalogued endpoints' : 'Catalogued endpoints'}}: SEO and backlinks, social and trends, people and company enrichment, ads. Find one by what it <i>does</i>, see its price, call it — no provider signup. New verified accounts get <b>$1.00 free credit once</b> on an eligible team, covering hundreds of calls.</p>
 
             <div class="lbl" style="margin-top:16px">▸ Set up with your agent <span class="muted" style="font-weight:400">— paste &amp; go</span></div>
             <p class="sub">One line, token included — your agent reads llms.txt and does the rest: installs the CLI, signs in as you, and makes its first call.</p>

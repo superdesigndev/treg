@@ -1,3 +1,4 @@
+import { markRaw } from 'vue'
 
 export default {
 // ---- endpoint catalog (/catalog/*) ----
@@ -5,10 +6,16 @@ export default {
     // server that predates these routes shows no platform shelf rather than an error.
     async loadPlatforms(){
       if(this.plats.loaded || this.plats.loading) return;
+      // Public catalog pages carry the same body inline (routers/web.py `_spa_catalog_page`), so
+      // their first render already has the shelves; read it once and fall back to the request.
+      const inline=document.getElementById('catalog-platforms');
+      if(inline){ inline.remove();
+        try{ const d=JSON.parse(inline.textContent); this.plats.list=d.platforms||[]; this.plats.providers=d.providers||{}; this.plats.loaded=this.plats.settled=true; return; }
+        catch(e){} }
       this.plats.loading=true;
-      try{ const d=await this.api('/catalog/platforms'); this.plats.list=(d&&d.platforms)||[]; this.plats.loaded=true; }
+      try{ const d=await this.api('/catalog/platforms'); this.plats.list=(d&&d.platforms)||[]; this.plats.providers=(d&&d.providers)||{}; this.plats.loaded=true; }
       catch(e){ this.plats.list=[]; }
-      finally{ this.plats.loading=false; } },
+      finally{ this.plats.loading=false; this.plats.settled=true; } },
 // Platform pages are hash routes (/app#platform/<slug>): unlike /app/marketplace/<service> there
     // is no server route to serve the SPA on a hard reload of a /app/platforms/<slug> path.
     platformFromHash(){ const m=/^#platform\/(.+)$/.exec(location.hash||''); return m?decodeURIComponent(m[1]):null; },
@@ -17,6 +24,7 @@ export default {
     // Same Vue views as the signed-in marketplace — this is one UI, not a second implementation.
     catalogFromPath(p){
       if(p==='/catalog' || p==='/catalog/') return {view:'connections', slug:null};
+      if(p==='/search' || p==='/search/') return {view:'find', slug:null};
       const m=/^\/catalog\/([^/]+)\/?$/.exec(p||'');
       return m ? {view:'platform', slug:decodeURIComponent(m[1])} : null;
     },
@@ -26,6 +34,10 @@ export default {
     viewFromHash(){ let v=(location.hash||'').replace('#','');
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
       return ['tools','orgs','activity','usage','admin','help','secrets','start','resources','connections','referrals','hub'].includes(v)?v:null; },
+// Land on a public catalog URL (see catalogFromPath): the finder page, a platform shelf, or the index.
+    openCatalogRoute(r){
+      if(r.view==='find'){ this.view='find'; this.loadPlatforms(); return; }
+      if(r.slug) this.openPlatform(r.slug, true); else this.go('connections', true); },
 openPlatform(slug, fromPop){ this.resetConfirms();
       this.detail=null; this.platSlug=slug; this.view='platform'; this.platOpen={}; this.epOpen={}; this.epTab={}; this.platEx={}; this.platActionsOpen=false;
       this.platClearFilters(); this.platCopied='';
@@ -40,12 +52,20 @@ openPlatform(slug, fromPop){ this.resetConfirms();
       if(!this.publicCatalog && !this.providers.length) this.loadConnections();
       this.loadPlatform();
       window.scrollTo(0,0); },
+// Start a shelf's request before boot has resolved the session, so it is already in flight when
+    // the view opens. `loadPlatform` takes it over instead of asking again.
+    prefetchPlatform(slug){
+      const request=this.api('/catalog/platforms/'+encodeURIComponent(slug)+'?include_hidden=1');
+      request.catch(()=>{});   // loadPlatform reports the failure; an unclaimed prefetch just drops it
+      this.platPrefetch=markRaw({slug, request}); },
 async loadPlatform(){ if(!this.platSlug) return;
       this.platErr=''; this.platLoading=true; this.platData=null;
+      const pre=this.platPrefetch; this.platPrefetch=null;
       // include_hidden=1: pull the account/utility endpoints too. They render behind a per-section
       // "N management endpoints" expander rather than in the main ledger — the page decides that,
       // client-side, off each endpoint's `kind` (see platRowsAll / platLedger).
-      try{ this.platData=await this.api('/catalog/platforms/'+encodeURIComponent(this.platSlug)+'?include_hidden=1'); }
+      try{ this.platData=await (pre && pre.slug===this.platSlug ? pre.request
+        : this.api('/catalog/platforms/'+encodeURIComponent(this.platSlug)+'?include_hidden=1')); }
       catch(e){ this.platErr = e.status===404
         ? 'No catalog for this platform on this server yet.'
         : 'Could not load the endpoint catalog'+(e.detail?': '+e.detail:'.'); }
@@ -53,7 +73,9 @@ async loadPlatform(){ if(!this.platSlug) return;
 // Tile furniture. Catalog labels carry a parenthetical or an em-dash gloss ("Google Search
     // (SERPs, keyword data)") that reads as noise under a logo — the tile shows the name, the
     // title attribute keeps the whole thing.
-    platShort(label){ return String(label||'').split(' — ')[0].split(' (')[0].trim(); },
+    // The name filter behind the Catalog search box, shared by the shelves and the tab counts.
+    platNameHit(p, q){ return ((p.label||'')+' '+(p.slug||'')+' '+(p.providers||[]).join(' ')).toLowerCase().includes(q); },
+platShort(label){ return String(label||'').split(' — ')[0].split(' (')[0].trim(); },
 platInitial(pl){ return (this.platShort(pl.label)||pl.slug||'?').slice(0,1).toUpperCase(); },
 // Deterministic hue from the slug: an undrawn platform keeps the same colour across reloads
     // and differs from its neighbours, with no colour table to maintain.
@@ -259,7 +281,7 @@ mkOauth(service){ const p=this.providers.find(x=>x.service===service); return !!
     // every provider on a public shelf would render as its bare slug.
     provName(service){ const p=this.providers.find(x=>x.service===service); if(p) return p.display_name;
       const c=(this.platData&&this.platData.providers||{})[service];
-      return (c&&c.display_name) || service; },
+      return (c&&c.display_name) || this.plats.providers[service] || service; },
 // Provider-wide facts, served once per provider on the platform response rather than copied
     // onto every row.
     provFact(service, key){ const p=(this.platData&&this.platData.providers||{})[service]; return (p&&p[key])||''; },

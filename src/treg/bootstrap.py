@@ -67,10 +67,12 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/catalog/platforms', ('GET',), 'catalog_platforms'),
     ('/catalog/platforms/{slug}', ('GET',), 'catalog_platform'),
     ('/catalog/search', ('GET',), 'catalog_search'),
+    ('/catalog/find', ('GET',), 'catalog_find'),
     ('/catalog/endpoints/{endpoint_id}', ('GET',), 'catalog_endpoint'),
     ('/catalog/examples/{endpoint_id}', ('GET',), 'catalog_example'),
     ('/catalog', ('GET',), 'catalog_index'),
     ('/catalog/{slug}', ('GET',), 'catalog_page'),
+    ('/search', ('GET',), 'search_page'),
     ('/agents', ('GET',), 'agents_hub'),
     ('/agents/{agent}', ('GET',), 'agent_page'),
     ('/agents/{agent}.md', ('GET',), 'agent_page'),
@@ -126,7 +128,6 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/auth/invite-signin', ('POST',), 'auth_invite_signin_confirm'),
     ('/', ('GET',), 'landing'),
     ('/app', ('GET',), 'dashboard'),
-    ('/app/legacy/assets/{path:path}', ('GET',), 'legacy_dashboard_asset'),
     ('/app/ui/assets/{name}', ('GET',), 'dashboard_asset'),
     ('/app/marketplace/{service}', ('GET',), 'dashboard_marketplace'),
     ('/app/skills/{name}', ('GET',), 'dashboard_skill_page'),
@@ -387,6 +388,16 @@ class _ImmutableStatic(StaticFiles):
         return response
 
 
+class _DayStatic(StaticFiles):
+    """Static files kept under stable names (vendor and platform logos): a day's cache, so a page
+    that shows every logo (/search) does not revalidate each one on every visit."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "public, max-age=86400"
+        return response
+
+
 def _route_key(route: APIRoute) -> RouteKey:
     return route.path, tuple(sorted(route.methods)), route.name
 
@@ -427,7 +438,7 @@ def _include_routes(app: FastAPI, routes: Sequence[APIRoute]) -> None:
 
 def _mount_static(app: FastAPI, api_module) -> None:
     if api_module._LOGO_DIR.exists():
-        app.mount("/logos", StaticFiles(directory=str(api_module._LOGO_DIR)), name="logos")
+        app.mount("/logos", _DayStatic(directory=str(api_module._LOGO_DIR)), name="logos")
     if api_module._MEDIA_DIR.exists():
         app.mount("/media", StaticFiles(directory=str(api_module._MEDIA_DIR)), name="media")
     if api_module._TOUR_DIR.exists():
@@ -536,12 +547,11 @@ def configure_archive_object_store(store) -> None:
 
 
 @asynccontextmanager
-async def _archive_object_store(app):
+async def archive_object_store(injected=None):
     from . import archive_bodies
     from .infra.object_store import open_r2
 
     enabled = archive_bodies.validate_configuration()
-    injected = getattr(app.state, "archive_object_store", None)
     opener = open_r2(get_settings()) if enabled and injected is None else nullcontext(injected)
     async with opener as store:
         configure_archive_object_store(store)
@@ -554,7 +564,7 @@ async def _archive_object_store(app):
 def _lifespan(role: AppRole):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        async with _archive_object_store(app):
+        async with archive_object_store(getattr(app.state, "archive_object_store", None)):
             await verify_db()
             if kv.configured() and not await kv.store().ping():
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it

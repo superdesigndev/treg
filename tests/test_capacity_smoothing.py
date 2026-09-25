@@ -88,15 +88,6 @@ async def test_burst_429_with_a_short_retry_after_is_re_sent_once_on_the_same_ho
         assert (await db.execute(select(Hold))).scalars().all() == [], "one hold, closed once"
 
 
-async def test_still_429_after_the_retry_is_relayed_as_is(clients: AsyncClient, platform_on, monkeypatch):
-    seen = []
-    monkeypatch.setattr(call_service, "relay", _relay_script(
-        [(429, ((b"retry-after", b"0"),), b"x"), (429, ((b"retry-after", b"0"),), b"y")], seen))
-    r = await clients.get(f"/call/{EP}?aweme_id=7")
-    assert r.status_code == 429 and len(seen) == 2 and r.text == "y"
-    assert r.headers["X-Treg-Cost-Micro"] == "0"
-
-
 async def test_tool_called_reads_a_vendor_429_as_the_vendors_burst(
     clients: AsyncClient, platform_on, monkeypatch, posthog_events,
 ):
@@ -105,7 +96,8 @@ async def test_tool_called_reads_a_vendor_429_as_the_vendors_burst(
     monkeypatch.setattr(call_service, "relay", _relay_script(
         [(429, ((b"retry-after", b"0"),), b"x"), (429, ((b"retry-after", b"0"),), b"y")], seen))
     r = await clients.get(f"/call/{EP}?aweme_id=7", headers={"User-Agent": "Python-urllib/3.12"})
-    assert r.status_code == 429
+    assert r.status_code == 429 and len(seen) == 2 and r.text == "y"
+    assert r.headers["X-Treg-Cost-Micro"] == "0"
     (e,) = await posthog_events()
     p = e["properties"]
     assert p["outcome"] == "vendor_error" and p["refused_by"] is None
@@ -161,18 +153,17 @@ async def test_own_key_calls_are_never_smoothed(clients: AsyncClient, platform_o
     assert len(seen) == 2 and time.monotonic() - t0 < 1.0, "no bucket wait, no re-send on an org's own key"
 
 
-async def test_concurrent_platform_calls_over_the_limit_relay_no_429_and_hold_no_db(
+async def test_concurrent_platform_calls_over_the_limit_relay_no_429(
     clients: AsyncClient, platform_on, monkeypatch,
 ):
     """The leadsforge case (plan §6), scaled to a 2-per-second limit so the test runs in seconds:
     five calls at once, a provider that counts calls per window (as providers do) and 429s the
-    third in any second → the bucket spaces them, the provider sees no burst, added latency stays
-    ≤ 2 s, and no DB connection is held while a call waits or relays."""
+    third in any second → the bucket spaces them, the provider sees no burst, and added latency
+    stays ≤ 2 s. The pool counter is process-wide, so concurrent siblings in their DB phase make it
+    nonzero here; test_a_smoothed_call_holds_no_db_connection_while_it_waits proves the discipline."""
     await _publish_rate("tikhub", 2, 1.0)
     stamps: list[float] = []
-    pool_seen = []
     async def provider(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False):
-        pool_seen.append(_engine.pool.checkedout())
         now = time.monotonic()
         stamps.append(now)
         status = 429 if sum(1 for t in stamps if now - t < 0.9) > 2 else 200
@@ -184,7 +175,6 @@ async def test_concurrent_platform_calls_over_the_limit_relay_no_429_and_hold_no
     monkeypatch.setattr(call_service, "relay", provider)
     assert (await clients.get(f"/call/{EP}?aweme_id=99")).status_code == 200  # warm the process (see below)
     stamps.clear()
-    pool_seen.clear()
     limiter.reset()
     t0 = time.monotonic()
     rs = await asyncio.gather(*(clients.get(f"/call/{EP}?aweme_id={i}") for i in range(4)))

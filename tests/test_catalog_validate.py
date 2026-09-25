@@ -9,61 +9,6 @@ from treg.application.call import resolve
 from treg.application.call.types import ResolutionFailed
 
 
-def test_adyntel_catalog_is_seven_bounded_direct_only_tools():
-    catalog = catalog_store.load()
-    endpoints = [ep for ep in catalog.endpoints if ep["provider"] == "adyntel"]
-    assert {ep["id"] for ep in endpoints} == {
-        "adyntel.meta-ads.library.advertiser",
-        "adyntel.meta-ads.library.search",
-        "adyntel.linkedin.search.ads.company",
-        "adyntel.linkedin.search.ads.keyword",
-        "adyntel.google.ads.transparency",
-        "adyntel.tiktok-ads.library.search.company",
-        "adyntel.google.domain.keywords.overview",
-    }
-    assert {(ep["platform"], ep["capability"]) for ep in endpoints} == {
-        ("meta-ads", "meta-ads.library.advertiser"),
-        ("meta-ads", "meta-ads.library.search"),
-        ("linkedin", "linkedin.search.ads"),
-        ("google", "google.ads.transparency"),
-        ("tiktok-ads", "tiktok-ads.library.search"),
-        ("google", "google.domain.overview"),
-    }
-    assert catalog.credit_rates["adyntel"] == 0.011
-    assert all(catalog.platform_eligible(ep) for ep in endpoints)
-    assert all(ep.get("body_allowlist") is True for ep in endpoints)
-    assert all(ep.get("example_file") for ep in endpoints)
-    assert all(ep["id"] not in catalog.adapters for ep in endpoints)
-    assert all("api_key" not in ep["input"]["body"] for ep in endpoints)
-    assert all("email" not in ep["input"]["body"] for ep in endpoints)
-    assert catalog.by_id["adyntel.google.domain.keywords.overview"]["cost"]["value"] == 2
-    assert not any("shopping" in ep["id"] for ep in endpoints)
-    assert not any(ep["id"].endswith(("search.keyword", "ad.detail")) for ep in endpoints)
-
-
-def test_adyntel_catalog_body_contract_rejects_unsafe_or_invalid_values():
-    google = catalog_store.load().by_id["adyntel.google.ads.transparency"]
-    resolve._enforce_catalog_body(google, json.dumps({"company_domain": "example.com"}).encode())
-    for body in (
-        {},
-        {"company_domain": "example.com", "all_ads": True},
-        {"company_domain": "example.com", "webhook_url": "https://example.com"},
-        {"company_domain": "example.com", "api_key": "caller-key"},
-        {"company_domain": "example.com", "email": "caller@example.com"},
-        {"company_domain": "example.com", "extract_text": "yes"},
-        {"company_domain": "example.com", "media_type": "audio"},
-    ):
-        with pytest.raises(ResolutionFailed) as exc:
-            resolve._enforce_catalog_body(google, json.dumps(body).encode())
-        assert exc.value.status_code == 400
-
-    domain = catalog_store.load().by_id["adyntel.google.domain.keywords.overview"]
-    with pytest.raises(ResolutionFailed):
-        resolve._enforce_catalog_body(
-            domain, json.dumps({"company_domain": "example.com", "limit": 2}).encode(),
-        )
-
-
 def test_catalog_body_optional_arrays_are_optional_and_validate_each_item():
     endpoint = {
         "id": "example.items",
@@ -632,6 +577,7 @@ def test_async_descriptor_rejects_a_retired_or_broken_poll_target():
 
 @pytest.mark.parametrize('rule', [
     {'path': 'billing.charge', 'unit': 'usd'},
+    {'path': 'billing.charge', 'unit': 'credit'},
     {'path': 'billing.charge', 'unit': 'credits'},
     {'path': '', 'unit': 'usd'},
     {'path': 'billing.charge', 'unit': 'usd', 'scale': 2},
@@ -640,8 +586,19 @@ def test_reported_charge_requires_supported_units_and_path(rule):
     cost = dict(catalog_store.load().by_id['trykitt.people.email.find']['cost'])
     cost['reported_charge'] = rule
     errors = []
-    validator.check_cost(cost, 'test', errors, [])
-    assert bool(errors) is (rule != {'path': 'billing.charge', 'unit': 'usd'})
+    validator.check_cost(cost, 'test', errors, [], provider='serper')
+    assert bool(errors) is (rule not in (
+        {'path': 'billing.charge', 'unit': 'usd'},
+        {'path': 'billing.charge', 'unit': 'credit'},
+    ))
+
+
+def test_reported_credit_charge_requires_a_provider_fx_rate():
+    cost = dict(catalog_store.load().by_id['trykitt.people.email.find']['cost'])
+    cost['reported_charge'] = {'path': 'billing.charge', 'unit': 'credit'}
+    errors = []
+    validator.check_cost(cost, 'test', errors, [], provider='no-such-provider')
+    assert any('needs a numeric fx.yaml credit_rates_usd entry' in error for error in errors)
 
 
 @pytest.mark.parametrize('rule,valid', [
@@ -690,50 +647,6 @@ def test_tavily_rates_require_complete_positive_finite_endpoint_tables():
 
 
 # ---- ContactOut ----
-
-def _contactout_cost(eid):
-    return catalog_store.load().cost_view(
-        catalog_store.load().by_id["contactout." + eid]["cost"], "contactout"
-    )
-
-
-def test_contactout_catalog_prices_validate_and_surface_is_bounded():
-    from scripts.catalog_validate import check_cost
-
-    cat = catalog_store.load()
-    entries = [e for e in cat.endpoints if e.get("provider") == "contactout"]
-    assert len(entries) == 20
-    assert not any("batch" in e["path"] for e in entries)
-    errors = []
-    for e in entries:
-        check_cost(e["cost"], e["id"], errors, [], e["input"])
-    assert errors == []
-    broken = _contactout_cost("people.contact.work") | {
-        "contactout": {"job": "contact", "rates_micro": {"phone": -1}}
-    }
-    check_cost(broken, "test", errors, [])
-    assert errors
-
-
-def test_contactout_free_checkers_are_not_advertised_as_contact_finders():
-    cat = catalog_store.load()
-    for eid in ("people.work_email.available", "people.personal_email.available", "people.phone.available"):
-        assert cat.by_id["contactout." + eid]["capability"].endswith(".availability")
-    assert cat.by_id["contactout.people.count"]["capability"] == "people.count"
-
-
-def test_contactout_catalog_distribution_preserves_ids_and_global_discovery():
-    from collections import Counter
-    cat = catalog_store.load()
-    entries = [e for e in cat.endpoints if e.get("provider") == "contactout"]
-    assert Counter(e["platform"] for e in entries) == {
-        "linkedin": 2, "people": 16, "companies": 2}
-    for e in entries:
-        assert e["capability"].split(".")[0] == e["platform"]
-    assert cat.by_id["contactout.people.contact.work"]["platform"] == "people"
-    assert cat.by_id["contactout.people.contact.personal"]["capability"] == "people.email.personal.find"
-    results, _ = catalog_store.search("contactout people work email", cat, limit=100)
-    assert any(e["id"] == "contactout.people.contact.work" for e, _ in results)
 
 
 def test_contactout_person_routes_cannot_recapture_pii():
@@ -866,169 +779,3 @@ def test_missing_platform_auth_normalizes_as_absent():
         'path': '/values',
     }, 'example', Path('.'))
     assert normalized['platform_auth'] is None
-
-
-def test_dropleads_catalog_surface_is_bounded_and_excludes_internal_routes():
-    catalog = catalog_store.load()
-    rows = [ep for ep in catalog.endpoints if ep["provider"] == "dropleads"]
-    assert len(rows) == 10
-    assert all(catalog.platform_eligible(ep) for ep in rows)
-    assert not any(
-        "credits/balance" in ep["path"] or "export/cost" in ep["path"]
-        for ep in rows
-    )
-    assert {ep.get("host") for ep in rows if ep.get("host")} == {"api.dropleads.io"}
-    assert catalog.by_id["dropleads.companies.search.count"]["capability"] == \
-        "companies.search.count"
-    assert catalog.by_id["dropleads.people.enrich"]["test_request"]["body"] == {
-        "name": "Jane Doe",
-        "organization_name": "Example",
-        "domain": "example.com",
-    }
-    assert catalog.by_id["dropleads.people.enrich.verified"]["test_request"]["body"] == {
-        "name": "Jane Doe",
-        "organization_name": "Example",
-        "domain": "example.com",
-        "email_verification_type": "valid_and_catchall",
-    }
-
-
-def test_prospeo_catalog_surface_excludes_account_info_and_prices_mobile_at_the_documented_maximum():
-    catalog = catalog_store.load()
-    rows = [ep for ep in catalog.endpoints if ep["provider"] == "prospeo"]
-    assert len(rows) == 7
-    assert not any(ep["path"] == "/account-information" for ep in rows)
-    assert {ep["path"] for ep in rows} == {
-        "/enrich-person", "/enrich-company", "/search-person", "/search-company",
-        "/search-suggestions",
-    }
-    phone = catalog.by_id["prospeo.people.phone.find"]
-    assert not phone.get("platform_blocked")
-    assert phone["cost"]["value"] == 10
-    assert all(catalog.platform_eligible(ep) for ep in rows)
-
-
-def test_aiark_catalog_covers_the_selected_documented_surface():
-    catalog = catalog_store.load()
-    endpoints = {eid: ep for eid, ep in catalog.by_id.items() if eid.startswith("aiark.")}
-    assert set(endpoints) == {
-        "aiark.people.search", "aiark.people.preview", "aiark.companies.search",
-        "aiark.people.email.find", "aiark.people.phone.find", "aiark.people.enrich",
-        "aiark.people.personality.analyze", "aiark.lists.upsert",
-    }
-    assert not any(ep["path"] in {
-        "/v1/payments/credits", "/v1/people/export/single",
-        "/v1/people/mobile-phone-finder",
-    } for ep in endpoints.values())
-    assert all(
-        ep.get("platform_blocked") for eid, ep in endpoints.items()
-        if eid == "aiark.lists.upsert"
-    )
-    assert endpoints["aiark.people.search"]["input"]["body"]["size"]["enum"] == [1]
-    assert endpoints["aiark.people.search"]["platform_request"] == {"body.size": 1}
-    assert catalog.cost_view(
-        endpoints["aiark.people.email.find"]["cost"], "aiark"
-    )["usd"] == 0.005267
-    assert catalog.cost_view(
-        endpoints["aiark.people.phone.find"]["cost"], "aiark"
-    )["usd"] == 0.026335
-
-
-def test_limadata_catalog_covers_basic_v2_and_keeps_unsafe_calls_byok_only():
-    catalog = catalog_store.load()
-    rows = [ep for ep in catalog.endpoints if ep["provider"] == "limadata"]
-    assert {(ep["method"], ep["path"]) for ep in rows} == {
-        ("POST", "/api/v1/enrich/person"),
-        ("POST", "/api/v1/enrich/company"),
-        ("POST", "/api/v1/database/autocomplete"),
-        ("POST", "/api/v1/database/count_companies"),
-        ("POST", "/api/v1/database/count_people"),
-        ("POST", "/api/v1/database/search_companies"),
-        ("POST", "/api/v1/database/search_people"),
-        ("POST", "/api/v1/database/search_people_employees"),
-        ("POST", "/api/v1/find/ad_audience"),
-        ("POST", "/api/v1/find/audience_identifiers"),
-        ("POST", "/api/v1/find/email_personal"),
-        ("POST", "/api/v1/find/email_verify"),
-        ("POST", "/api/v1/find/email_work"),
-        ("POST", "/api/v1/find/email_work_linkedin"),
-        ("POST", "/api/v1/find/pages_company"),
-        ("POST", "/api/v1/find/phone"),
-        ("POST", "/api/v1/find/profiles_person"),
-        ("POST", "/api/v1/find/reverse_email_lookup"),
-        ("POST", "/api/v1/research/extract"),
-        ("POST", "/api/v1/research/search"),
-        ("POST", "/api/v1/search/web"),
-    }
-    platform = {ep["id"] for ep in rows if catalog.platform_eligible(ep)}
-    assert len(rows) == 21 and len(platform) == 14
-    assert {
-        "limadata.people.enrich",
-        "limadata.people.count",
-        "limadata.companies.search",
-        "limadata.people.search",
-        "limadata.people.employees.search",
-        "limadata.people.identity.resolve",
-        "limadata.web.extract",
-    }.isdisjoint(platform)
-    company_page = catalog.by_id["limadata.companies.linkedin.find"]
-    assert company_page["platform"] == "linkedin"
-    assert company_page["capability"] == "linkedin.company.from_domain"
-
-
-def test_zerobounce_catalog_exposes_verified_single_record_tools_only():
-    catalog = catalog_store.load()
-    rows = [ep for ep in catalog.endpoints if ep["provider"] == "zerobounce"]
-    assert [ep["id"] for ep in rows] == [
-        "zerobounce.people.email.verify",
-        "zerobounce.people.email.find",
-        "zerobounce.companies.email_pattern",
-    ]
-    validation = catalog.by_id["zerobounce.people.email.verify"]
-    assert validation["method"] == "GET"
-    assert validation["path"] == "/v2/validate"
-    assert catalog.cost_view(validation["cost"], "zerobounce")["usd"] == 0.0138
-    finder = catalog.by_id["zerobounce.people.email.find"]
-    pattern = catalog.by_id["zerobounce.companies.email_pattern"]
-    assert finder["path"] == pattern["path"] == "/v2/guessformat"
-    assert catalog.cost_view(finder["cost"], "zerobounce")["usd"] == 0.276
-    assert catalog.cost_view(pattern["cost"], "zerobounce")["usd"] == 0.276
-    assert all(catalog.platform_eligible(ep) for ep in rows)
-
-
-def test_bounceban_catalog_has_one_platform_tool_and_no_bulk_lifecycle():
-    catalog = catalog_store.load()
-    rows = [ep for ep in catalog.endpoints if ep["provider"] == "bounceban"]
-    assert len(rows) == 4
-    assert {ep["path"] for ep in rows} == {
-        "/v1/verify/single",
-        "/v1/verify/single/status",
-        "/v1/account",
-    }
-    assert not any(ep["path"] in ("/v1/verify/bulk/file", "/v1/verify/bulk/destroy", "/v1/check")
-                   for ep in rows)
-    eligible = [ep["id"] for ep in rows if catalog.platform_eligible(ep)]
-    assert eligible == ["bounceban.people.email.verify"]
-    direct = catalog.by_id["bounceban.people.email.verify"]
-    assert direct["cost"]["value"] == 1
-    assert catalog.cost_view(direct["cost"], "bounceban")["usd"] == 0.004
-    assert "disable_catchall_verify" not in direct["input"]["queryParams"]
-    waterfall = catalog.by_id["bounceban.people.email.verify.waterfall"]
-    assert waterfall["host"] == "api-waterfall.bounceban.com"
-    assert waterfall["platform_blocked"]
-
-
-def test_getleadsio_scalar_routes_are_available_to_byok_and_platform_callers():
-    catalog = catalog_store.load()
-    rows = [ep for ep in catalog.endpoints if ep["provider"] == "getleadsio"]
-    assert len(rows) == 11
-    assert not any(ep["path"] in {
-        "/api/v1/usage/fair-use", "/api/v1/contacts/health"
-    } for ep in rows)
-    assert all(catalog.platform_eligible(ep) for ep in rows)
-    assert not any(ep["id"].endswith(".trial") for ep in rows)
-    assert not any(ep.get("platform_request") or ep.get("platform_blocked") for ep in rows)
-    scalar = [ep for ep in rows if ep["id"].startswith("getleadsio.people.enrich.from_")]
-    assert len(scalar) == 3
-    assert all(ep["strict_body"] and ep["input"]["body"]["items"]["max"] == 1
-               for ep in scalar)

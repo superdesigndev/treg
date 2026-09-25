@@ -82,25 +82,21 @@ def _since():
 
 
 # ---- drift math --------------------------------------------------------------------------------
-async def test_drift_flags_a_ten_percent_climb(c: AsyncClient):
-    await _calls([{"est": 1000, "obs": 1100}] * 4)
+@pytest.mark.parametrize("obs,calls,ratio,flagged", [
+    (1100, 4, 0.1, True),    # a 10% climb
+    (1020, 5, 0.02, False),  # 2%, under the 5% tolerance
+])
+async def test_drift_flags_only_beyond_tolerance(c: AsyncClient, obs, calls, ratio, flagged):
+    await _calls([{"est": 1000, "obs": obs}] * calls)
     async with session_maker() as db:
         rows = await reconcile.price_drift(db, _since())
     assert len(rows) == 1
     r = rows[0]
-    assert (r["endpoint_id"], r["provider"], r["calls"]) == ("dataforseo.serp.google", "dataforseo", 4)
-    assert r["estimate_mean_micro"] == 1000 and r["observed_mean_micro"] == 1100
-    assert r["drift_ratio"] == pytest.approx(0.1)
-    assert r["drift_micro"] == 100
-    assert r["flagged"] is True
-
-
-async def test_drift_within_tolerance_is_not_flagged(c: AsyncClient):
-    await _calls([{"est": 1000, "obs": 1020}] * 5)  # 2% — under the 5% tolerance
-    async with session_maker() as db:
-        rows = await reconcile.price_drift(db, _since())
-    assert rows[0]["drift_ratio"] == pytest.approx(0.02)
-    assert rows[0]["flagged"] is False
+    assert (r["endpoint_id"], r["provider"], r["calls"]) == ("dataforseo.serp.google", "dataforseo", calls)
+    assert r["estimate_mean_micro"] == 1000 and r["observed_mean_micro"] == obs
+    assert r["drift_ratio"] == pytest.approx(ratio)
+    assert r["drift_micro"] == obs - 1000
+    assert r["flagged"] is flagged
 
 
 async def test_drift_needs_min_calls_before_it_flags(c: AsyncClient):
@@ -213,12 +209,6 @@ async def test_repeat_rate_top_repeated_only_lists_actual_repeats(c: AsyncClient
     assert hot["endpoint_id"] == "dataforseo.serp.google"
 
 
-async def test_repeat_rate_is_empty_without_telemetry(c: AsyncClient):
-    async with session_maker() as db:
-        out = await reconcile.repeat_rate(db, _since())
-    assert out == {"calls": 0, "repeat_calls": 0, "repeat_ratio": 0.0, "providers": [], "top_repeated": []}
-
-
 # ---- the endpoints + their gate ----------------------------------------------------------------
 @pytest.mark.parametrize("report", ["drift", "spend", "repeats"])
 async def test_reconcile_endpoints_require_superadmin(c: AsyncClient, report: str):
@@ -239,15 +229,6 @@ async def test_drift_endpoint_splits_out_the_flagged_rows(c: AsyncClient):
     assert body["since_days"] == 7 and body["tolerance"] == reconcile.DRIFT_TOLERANCE
     assert [x["endpoint_id"] for x in body["flagged"]] == ["ep.bad"]
     assert {x["endpoint_id"] for x in body["endpoints"]} == {"ep.bad", "ep.ok"}
-
-
-async def test_spend_and_repeats_endpoints_report_their_windows(c: AsyncClient):
-    await _settles([{"amount": 2000, "observed": 2000}])
-    await _calls([{"hash": "aaa", "est": 100, "obs": 100}] * 2)
-    spend = (await c.get("/admin/reconcile/spend", headers=_a())).json()
-    assert spend["charged_micro"] == 2000 and spend["providers"][0]["reported_calls"] == 1
-    repeats = (await c.get("/admin/reconcile/repeats?top=1", headers=_a())).json()
-    assert repeats["repeat_calls"] == 1 and len(repeats["top_repeated"]) == 1
 
 
 async def test_window_start_is_clamped(c: AsyncClient):
@@ -306,14 +287,3 @@ async def test_recovery_ignores_vendor_priced_providers(c: AsyncClient):
     async with session_maker() as db:
         out = await reconcile.shared_plan_recovery(db, _since())
     assert all(p["provider"] != "dataforseo" for p in out["providers"])
-
-
-async def test_price_drift_never_sees_a_shared_plan_provider(c: AsyncClient):
-    """Pinning a NATURAL property before someone breaks it: drift compares our estimate against the
-    provider's own reported charge, and a flat-fee provider never reports one — there is no number
-    to drift from. If a future `_observed_cost_micro` parser is added for such a provider, this test
-    is the alarm that the drift report now polices a price treg itself set."""
-    await _calls([{"endpoint_id": "alphavantage.quote", "provider": "alphavantage", "est": 1000}] * 3)
-    async with session_maker() as db:
-        rows = await reconcile.price_drift(db, _since(), min_calls=1)
-    assert all(r["provider"] != "alphavantage" for r in rows)

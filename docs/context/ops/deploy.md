@@ -81,8 +81,8 @@ closed maintenance loop. Calling `maintenance.upgrade()` directly does not dispo
   metadata. It never creates tables, stamps versions or runs release tasks. Worker commands use the
   same check.
 - **Schema changes are revision-only.** An autogenerate drift guard requires Alembic head and
-  `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only for fast test isolation
-  and stamps that test schema directly at head.
+  `SQLModel.metadata` to match exactly. `reset_db()` uses `create_all` only to build a missing test
+  schema and stamps it directly at head.
 - **A missing encryption key fails loudly on a real database.** If `TREG_SECRET_KEY` is empty and
   `database_url` is not SQLite, `verify_db()` raises. On SQLite development it logs a warning.
 
@@ -233,16 +233,12 @@ database is local SQLite. Hosted deployments must still leave it false.
 
 ## Web service and generic Render example
 
-The redesigned homepage ships to all homepage visitors independently of Dashboard rollout.
-Its rollback requires a code rollback/revert; the Dashboard master switch does not change it.
+The redesigned homepage ships to all homepage visitors; its rollback, like the Dashboard's, is a
+code revert or a deploy of the previous build.
 
-`GET /app` selects either the frozen legacy artifact or the Vite-built Vue application.
-The rollout defaults to legacy. Set `TREG_DASHBOARD_ROLLOUT_ENABLED=true` with a JSON array in
-`TREG_DASHBOARD_ROLLOUT_USER_IDS` for an account allowlist, then increase
-`TREG_DASHBOARD_ROLLOUT_PERCENT` from zero. Disabling the master switch forces legacy, including
-allowlisted accounts. Environment changes require restarting Web processes, not rebuilding assets.
-Both frontends ship together; anonymous catalog/sign-in entries remain legacy even at 100%.
-See `frontend/README.md` for the full rollout and retirement contract.
+`GET /app`, the catalog pages and shared links all serve the Vite-built Vue application. There is
+no frontend switch to configure; a Dashboard rollback is a deploy of the previous build. See
+`frontend/README.md`.
 The frontend is authored in `frontend/` within the same repository. `GET /` retains the existing
 landing behavior. Dashboard assets, tutorials, agent files and installer assets ship with the wheel.
 Hosted-page MP4 demos remain in Git checkout deployments but are excluded from published wheels and
@@ -340,14 +336,20 @@ without importing the heavy database stack into the light `treg` CLI.
 - `treg-worker asynctasks settle` completes durable holds for asynchronous upstream operations.
 - `treg-worker arena insights` folds new audit rows into the rolling Arena aggregate
   (`--max-seconds`, default 110, bounds one pass; schedule it every two minutes).
+  It requires the archive object-store settings when R2 reads are enabled, opens the same client
+  lifecycle as the web service, and flushes read analytics before exiting.
 - `treg-worker catalog stats` folds new audit rows into per-endpoint, per-day reliability buckets
+  (`--max-rows`, default 500,000, bounds one pass; schedule it every few minutes). The catalog keeps
+  computing observations live until this command has caught up once, so it can be scheduled after
+  the application deploys, and a self-hosted registry that never schedules it loses nothing.
 - `treg-worker jev xboost` runs the `/jev` launch-radar demo once a day: it calls treg's own `/call/` API
   with `TREG_JEV_TREG_TOKEN` (a member token of the demo team, so the spend is an ordinary bill) and jev
   through the Vercel AI Gateway (`TREG_AI_GATEWAY_API_KEY`), and stores the run under Ephemeral for the page.
   Both variables also belong on the web service, which needs them for the visitor judge endpoint.
-  (`--max-rows`, default 500,000, bounds one pass; schedule it every few minutes). The catalog keeps
-  computing observations live until this command has caught up once, so it can be scheduled after
-  the application deploys, and a self-hosted registry that never schedules it loses nothing.
+- `treg-worker admin purge-evidence` blanks failed-call evidence past the 14-day retention window
+  (`--batch-size`, default 5000, rows per transaction; schedule it daily). `GET /admin/errors` is
+  read-only and already withholds evidence past the window, so an unscheduled purge keeps the old
+  bytes in the database but never shows them.
 
 The two analytics commands exist so that no web process aggregates the audit table beside the
 money path; `callrecord` is read only through the persisted cursors they own. Workers call

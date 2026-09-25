@@ -33,7 +33,21 @@ export default async function boot(){
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
       if(['tools','orgs','activity','usage','admin','help','secrets','start','resources','connections','referrals','hub'].includes(v)) this.go(v, true);
     });
-    this.meta = await fetch('/meta',{headers:{'ngrok-skip-browser-warning':'1'}}).then(r=>r.json()).catch(()=>this.meta);
+    // Catalog data does not depend on the session, so a view that shows it starts fetching now,
+    // alongside /meta and /auth/me, instead of after them (the shelves used to arrive last).
+    const catalogShelf=this.catalogFromPath(location.pathname)?.slug || this.platformFromHash();
+    if(this.catalogFromPath(location.pathname) || catalogShelf || location.hash==='#connections') this.loadPlatforms();
+    if(catalogShelf) this.prefetchPlatform(catalogShelf);
+    // /search needs no session to draw, so it does not wait for one: the page paints now, and the
+    // session (the top bar's buttons, a result clicked before sign-in) follows when /auth/me answers.
+    if(this.catalogFromPath(location.pathname)?.view==='find'){ this.publicCatalog=true; this.view='find'; this.bootReady=true; }
+    // /meta and /auth/me do not depend on each other or on the bundle, so index.html starts both
+    // before this code has even downloaded; a boot without them (tests, a remount) starts its own.
+    const early=window.__tregBoot||{}; delete window.__tregBoot;
+    const headers={'ngrok-skip-browser-warning':'1'};
+    const metaReq=early.meta||fetch('/meta',{headers}).then(r=>r.json());
+    const meReq=early.me||fetch('/auth/me',{credentials:'include',headers}).then(r=>r.ok?r.json():null);
+    this.meta = await metaReq.catch(()=>this.meta);
     this.proxy = this.meta.public_url || location.origin;
     this.initAnalytics();
     // deploy detection: long-lived tabs learn about a new bundle on tab focus + a slow poll,
@@ -66,17 +80,21 @@ export default async function boot(){
         if(route||mkRoute) history.replaceState(null,'',stashed);
       } }
     this._restoreAgent();
-    const me = await fetch('/auth/me',{credentials:'include',headers:{'ngrok-skip-browser-warning':'1'}}).then(r=>r.ok?r.json():null).catch(()=>null);
+    const me = await meReq.catch(()=>null);
+    this.sessionChecked=true;
     if(me){ this.sessionMode=true; this.me=me.email; this.isAdmin=!!me.is_superadmin; this.onboarded=!!me.onboarded; this.icHash=me.intercom_user_hash||''; await this.loadAll(); this.analyticsIdentify(); this.initIntercom();
       // Share-born arrival (/app/skills/x?invite_org=N from the invite email): accept silently and
       // enter that team — the emailed "Sign in & accept" click was the consent. Otherwise the normal
       // first-run / invite-banner flow.
+      // A result clicked on /search before sign-in: continue to it now.
+      if(this.findResume()){ this.maybeOnboard(); return; }
       if(mkRoute){ this.maybeOnboard(); this.openProvider(mkRoute, true); return; }
       if(runRoute){ this.maybeOnboard(); this.openRun(runRoute, true); return; }
       // Signed in on a /catalog URL: the same views, but as a member — so `publicCatalog` is
       // dropped and the shell comes back in full (vault, activity, try-it).
-      if(catRoute){ this.publicCatalog=false; this.maybeOnboard();
-        if(catRoute.slug) this.openPlatform(catRoute.slug, true); else this.go('connections', true);
+      // /search stays a public page for members too: it is a place to ask, not a dashboard view.
+      if(catRoute){ this.publicCatalog=catRoute.view==='find'; if(catRoute.view!=='find') this.maybeOnboard();
+        this.openCatalogRoute(catRoute);
         return; }
       const pfRoute=this.platformFromHash();
       if(pfRoute){ this.maybeOnboard(); this.openPlatform(pfRoute, true); return; }
@@ -94,8 +112,8 @@ export default async function boot(){
       // A token holder on a /catalog URL is a member, not a public visitor: same treatment as the
       // session branch. Without this the route falls through to viewFromHash() — which is null for
       // a path route — and a shelf link lands on Getting started instead.
-      if(catRoute){ this.publicCatalog=false;
-        if(catRoute.slug) this.openPlatform(catRoute.slug, true); else this.go('connections', true);
+      if(catRoute){ this.publicCatalog=catRoute.view==='find';
+        this.openCatalogRoute(catRoute);
         return; }
       const pfTok=this.platformFromHash();
       if(runRoute){ this.openRun(runRoute, true); return; }
@@ -113,7 +131,7 @@ export default async function boot(){
       // Platform tab (the provider shelf) fills for a signed-out visitor too — only /connections
       // needs a session, and its failure is caught. Without this the tab reads "Platform 0" and
       // renders blank in an incognito window.
-      if(catRoute.slug) this.openPlatform(catRoute.slug, true); else { this.view='connections'; this.loadConnections(); }
+      if(catRoute.view==='find'){ this.view='find'; this.loadPlatforms(); } else if(catRoute.slug) this.openPlatform(catRoute.slug, true); else { this.view='connections'; this.loadConnections(); }
       return; }
     if(!inv && !linkOrg && !route && !qs.get('invite_expired') && !ref && !oauthSignin){ location.replace('/'); return; }  // logged-out plain visit → the marketing landing owns the front door. `ref` is a use-case page's CTA (/app?ref=p1), so keep that attribution while opening sign-in in place.
     if(route){ this.shareGate=route; this.demo.signin=true; }  // shared link while logged out: the focused gate (no sandbox mint, no tour); after sign-in the boot lands on it (email verify reloads in place; OAuth restores via the treg-next stash)

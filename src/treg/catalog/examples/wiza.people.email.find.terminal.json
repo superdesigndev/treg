@@ -1,0 +1,17 @@
+{
+  "data": {
+    "id": 910001,
+    "status": "finished",
+    "name": "Jane Example",
+    "email": "jane@example.com",
+    "email_status": "valid",
+    "credits": {
+      "api_credits": {
+        "total": 3,
+        "profile": 1,
+        "email": 2,
+        "phone": 0
+      }
+    }
+  }
+}

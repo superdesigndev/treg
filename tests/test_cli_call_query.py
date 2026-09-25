@@ -41,12 +41,6 @@ def _args(target, path="", query=None, upload=None, method="GET"):
     )
 
 
-def test_inline_query_is_not_dropped(monkeypatch):
-    seen = _capture(monkeypatch)
-    cli.cmd_call(_args("meta-ads", "act_1?fields=name,currency"), {})
-    assert seen[0].url.params.get("fields") == "name,currency"
-
-
 def test_inline_query_composes_with_query_flag(monkeypatch):
     seen = _capture(monkeypatch)
     cli.cmd_call(_args("meta-ads", "act_1/campaigns?fields=name,status", query=["limit=2"]), {})

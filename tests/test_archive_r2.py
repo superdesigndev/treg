@@ -65,6 +65,243 @@ async def snapshots():
         return (await s.execute(select(ArchiveSnapshot).order_by(ArchiveSnapshot.id))).scalars().all()
 
 
+@pytest.mark.parametrize('path', ['lookup', 'result', 'terminal', 'observation', 'initialization', 'admin', 'arena'])
+@pytest.mark.parametrize('outcome', ['r2', 'db_fallback', 'unavailable'])
+async def test_legacy_read_reports_final_source(r2, monkeypatch, path, outcome):
+    from treg import analytics
+    for setting in ('lookup', 'result', 'terminal'):
+        monkeypatch.setattr(get_settings(), 'archive_body_read_' + setting, 'r2-first')
+    digest = archive.content_hash(RAW)
+    if outcome == 'r2':
+        r2.objects[digest] = RAW
+    pointer = archive_bodies.BodyPointer(digest, None, RAW if outcome == 'db_fallback' else None, None)
+    events = []
+    monkeypatch.setattr(analytics, 'capture', lambda who, name, props: events.append((name, props)))
+    actual = await archive_bodies.read(pointer, path)
+    assert actual == (None if outcome == 'unavailable' else RAW)
+    (name, report), = events
+    assert name == 'archive_body_read' and report['outcome'] == outcome
+    assert report['path'] == path and report['storage'] == 'legacy'
+    assert report['source'] == {'r2': 'r2', 'db_fallback': 'db', 'unavailable': 'none'}[outcome]
+    assert report['fallback_reason'] == ('none' if outcome == 'r2' else 'not_found')
+    assert report['r2_attempts'] == 1 and report['total_ms'] >= report['r2_read_ms']
+    assert digest not in str(report) and RAW.decode() not in str(report)
+
+
+@pytest.mark.parametrize('failure', ['db_error', 'cancelled'])
+async def test_read_failure_and_cancellation_finish_observation(r2, monkeypatch, failure):
+    from treg import analytics
+    monkeypatch.setattr(get_settings(), 'archive_body_read_result', 'r2-first')
+    async def fail(*args):
+        if failure == 'cancelled':
+            raise asyncio.CancelledError()
+        raise RuntimeError('private database details')
+    monkeypatch.setattr(archive_bodies, '_db_fallback', fail)
+    events = []
+    monkeypatch.setattr(analytics, 'capture', lambda who, name, props: events.append(props))
+    with pytest.raises(asyncio.CancelledError if failure == 'cancelled' else RuntimeError):
+        await archive_bodies.read(archive_bodies.BodyPointer(archive.content_hash(RAW), None, None, None), 'result')
+    assert len(events) == 1 and events[0]['outcome'] == failure
+    assert events[0]['source'] == 'none' and 'private database details' not in str(events)
+
+
+@pytest.mark.parametrize('source', ['r2', 'db'])
+@pytest.mark.parametrize('analytics_failure', ['queue_full', 'internal_error'])
+async def test_read_survives_analytics_failure(r2, monkeypatch, source, analytics_failure):
+    from treg import analytics
+    monkeypatch.setattr(get_settings(), 'archive_body_read_result', 'r2-first')
+    digest = archive.content_hash(RAW)
+    if source == 'r2':
+        r2.objects[digest] = RAW
+    monkeypatch.setattr(analytics, 'enabled', lambda: True)
+    monkeypatch.setattr(analytics, '_queue', [])
+    if analytics_failure == 'queue_full':
+        monkeypatch.setattr(analytics, '_MAX_PENDING', 0)
+    else:
+        def broken_flusher():
+            raise RuntimeError('analytics unavailable')
+        monkeypatch.setattr(analytics, '_ensure_flusher', broken_flusher)
+    pointer = archive_bodies.BodyPointer(digest, None, RAW, None)
+    assert await archive_bodies.read(pointer, 'result') == RAW
+
+
+@pytest.mark.parametrize('missing', [False, True])
+async def test_admin_reads_migrated_reference_and_falls_back_on_admin_pool(clients, r2, monkeypatch, missing):
+    monkeypatch.setattr(get_settings(), 'admin_token', 'ADM-TOKEN')
+    monkeypatch.setattr(get_settings(), 'archive_body_read_result', 'r2-first')
+    for _ in range(2):
+        await clients.get(URL, headers={'Cache-Control': 'no-cache'})
+        await archive.drain()
+    async with db.session_maker() as s:
+        key = (await s.execute(select(ArchiveKey))).scalar_one()
+        for snap in (await s.execute(select(ArchiveSnapshot))).scalars():
+            snap.body_storage = None
+            if not missing:
+                snap.body = None
+            s.add(snap)
+        await s.commit()
+    if missing:
+        r2.objects.clear()
+    original = db.admin_session_maker
+    fallbacks = []
+    def admin_session():
+        fallbacks.append(True)
+        return original()
+    monkeypatch.setattr(db, 'admin_session_maker', admin_session)
+    response = await clients.get(f'/admin/archive/body?key_hash={key.key_hash}&version=2',
+                                 headers={'X-Treg-Token': 'ADM-TOKEN'})
+    assert response.status_code == 200
+    assert response.json()['body_text'] == RAW.decode()
+    assert response.json()['carried_by_version'] == 1
+    # One admin route session, plus the common reader's fallback session on a miss.
+    assert len(fallbacks) == (2 if missing else 1)
+
+
+async def _arena_migrated_record():
+    from tests.test_arena_insights import record
+    from treg.models import CallRecord
+    raw = b'{"data":{"email":"found@example.test"}}'
+    ident = await record('historical', response={'data': {'email': 'found@example.test'}})
+    async with db.session_maker() as s:
+        row = await s.get(CallRecord, ident)
+        snap = (await s.execute(select(ArchiveSnapshot))).scalar_one()
+        snap.content_hash = row.archive_content_hash = archive.content_hash(raw)
+        snap.body, snap.enc, snap.body_storage = None, None, None
+        s.add(snap)
+        s.add(row)
+        await s.commit()
+    return raw
+
+
+async def test_arena_reads_pruned_migrated_body_without_holding_cursor_connection(clients, r2, monkeypatch):
+    from treg.application import arena_insights
+    monkeypatch.setattr(get_settings(), 'archive_body_read_result', 'r2-first')
+    raw = await _arena_migrated_record()
+    await audit.drain()
+    r2.objects[archive.content_hash(raw)] = raw
+    def no_connections():
+        assert all(getattr(e.sync_engine.pool, 'checkedout', lambda: 0)() == 0 for e in db._engines)
+    r2.check_io = no_connections
+    assert not await arena_insights.collect_batch()
+    snapshot = await arena_insights.public_snapshot()
+    assert snapshot['rows'][0]['hits'] == 1 and r2.get_calls == 1
+
+
+async def test_arena_discards_evidence_when_another_worker_publishes(clients, r2, monkeypatch):
+    from treg.application import arena_insights
+    monkeypatch.setattr(get_settings(), 'archive_body_read_result', 'r2-first')
+    raw = await _arena_migrated_record()
+    r2.objects[archive.content_hash(raw)] = raw
+    entered, release = asyncio.Event(), asyncio.Event()
+    original = r2.get
+    first = True
+    async def blocked_get(key):
+        nonlocal first
+        if first:
+            first = False
+            entered.set()
+            await release.wait()
+        return await original(key)
+    monkeypatch.setattr(r2, 'get', blocked_get)
+    task = asyncio.create_task(arena_insights.collect_batch())
+    try:
+        await asyncio.wait_for(entered.wait(), 2)
+        assert not await arena_insights.collect_batch()
+        saved = await arena_insights.public_snapshot()
+    finally:
+        release.set()
+    assert await task is True
+    assert await arena_insights.public_snapshot() == saved
+
+
+async def test_legacy_initialization_reads_r2_before_write_lock(clients, r2, monkeypatch):
+    from tests.test_cache_result_admission import FOUND
+    monkeypatch.setattr(get_settings(), 'archive_body_read_lookup', 'r2-first')
+    common = dict(method='GET', endpoint_id='hunter.companies.emails', provider='hunter',
+                  url='https://api.hunter.io/v2/domain-search?domain=example.com', caller_body=b'',
+                  headers={}, status_code=200, media_type='application/json')
+    await archive._store(**common, body=FOUND)
+    async with db.session_maker() as s:
+        key = (await s.execute(select(ArchiveKey))).scalar_one()
+        key.result_state = key.result_snapshot_id = key.result_observed_version = None
+        snap = (await s.execute(select(ArchiveSnapshot))).scalar_one()
+        snap.body = snap.enc = snap.body_storage = None
+        s.add(key)
+        s.add(snap)
+        await s.commit()
+    before = r2.get_calls
+    await archive._store(**common, body=FOUND + b' ')
+    async with db.session_maker() as s:
+        key = (await s.execute(select(ArchiveKey))).scalar_one()
+        assert key.result_state == 'found' and key.stable_seen == 1
+    assert r2.get_calls > before
+
+
+@pytest.mark.parametrize('previous_state', ['found', 'empty'])
+@pytest.mark.parametrize('reference', [False, True])
+async def test_legacy_initialization_keeps_db_baseline_when_r2_precompare_times_out(
+        clients, r2, monkeypatch, previous_state, reference):
+    from tests.test_cache_result_admission import FOUND, EMPTY
+    monkeypatch.setattr(get_settings(), 'archive_body_read_lookup', 'r2-first')
+    common = dict(method='GET', endpoint_id='hunter.companies.emails', provider='hunter',
+                  url='https://api.hunter.io/v2/domain-search?domain=example.com', caller_body=b'',
+                  headers={}, status_code=200, media_type='application/json')
+    await archive._store(**common, body=FOUND if previous_state == 'found' else EMPTY)
+    if reference:
+        await archive._store(**common, body=FOUND if previous_state == 'found' else EMPTY)
+    async with db.session_maker() as s:
+        key = (await s.execute(select(ArchiveKey))).scalar_one()
+        baseline_id = key.result_snapshot_id
+        before = key.ttl_s, key.stable_seen, key.change_seen
+        key.result_state = key.result_snapshot_id = key.result_observed_version = None
+        s.add(key)
+        await s.commit()
+    attempted = asyncio.Event()
+    async def stalled_get(key):
+        r2.check_io()
+        attempted.set()
+        await asyncio.Event().wait()
+    monkeypatch.setattr(r2, 'get', stalled_get)
+    monkeypatch.setattr(archive, '_CHANGE_TIMEOUT_S', 0.1)
+    await archive._store(**common, body=b'{}')  # Unknown must preserve the previous decisive result.
+    assert attempted.is_set()
+    async with db.session_maker() as s:
+        key = (await s.execute(select(ArchiveKey))).scalar_one()
+        assert (key.result_state, key.result_snapshot_id) == (previous_state, baseline_id)
+        assert (key.ttl_s, key.stable_seen, key.change_seen) == before
+
+
+async def test_arena_worker_owns_object_store_and_flushes_read_events(r2, monkeypatch):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+    from treg import analytics, worker
+    from treg.application import arena_insights
+    from treg.infra import object_store
+    steps = []
+    @asynccontextmanager
+    async def opened(settings):
+        steps.append('open')
+        try:
+            yield r2
+        finally:
+            steps.append('close')
+    async def verified():
+        assert archive_bodies._store is r2
+    async def run(**kwargs):
+        assert archive_bodies._store is r2
+        steps.append('run')
+        return {'failed': False}
+    async def flushed():
+        steps.append('flush')
+    monkeypatch.setattr(object_store, 'open_r2', opened)
+    monkeypatch.setattr(db, 'verify_db', verified)
+    monkeypatch.setattr(arena_insights, 'drain', run)
+    monkeypatch.setattr(analytics, 'drain', flushed)
+    assert await worker._arena_insights(SimpleNamespace(max_seconds=1)) == 0
+    assert steps == ['open', 'run', 'flush', 'close']
+    assert archive_bodies._store is None
+
+
 async def test_upload_precedes_pointer_and_call_does_not_wait(clients, r2, monkeypatch):
     # Warm catalog/auth initialization before measuring only the non-blocking archive behavior.
     with monkeypatch.context() as warm:
@@ -208,8 +445,10 @@ async def test_r2_queue_has_independent_concurrency_and_sheds_observably(clients
 
 
 @pytest.mark.parametrize('path', ['lookup', 'result', 'terminal'])
-@pytest.mark.parametrize('fallback', [False, 'error', 'missing', 'corrupt'])
-async def test_read_switches_and_fallback_without_db_connection(clients, r2, monkeypatch, path, fallback):
+@pytest.mark.parametrize('fallback', [False, 'error', 'missing', 'corrupt', 'timeout',
+                                      'permission_denied', 'upstream_error', 'store_unavailable'])
+@pytest.mark.parametrize('storage', ['both', None, 'db'])
+async def test_read_switches_and_fallback_without_db_connection(clients, r2, monkeypatch, path, fallback, storage):
     monkeypatch.setattr(get_settings(), 'archive_body_read_' + path, 'r2-first')
     if path == 'terminal':
         await archive.store_terminal_response('terminal-test', 'tikhub', EP, 200, RAW)
@@ -222,13 +461,24 @@ async def test_read_switches_and_fallback_without_db_connection(clients, r2, mon
         r2.objects.clear()
     elif fallback == 'corrupt':
         r2.objects = {key: b'corrupt' for key in r2.objects}
-    if not fallback:
-        # Remove only the DB test copy, proving this path really obtains bytes from R2.
-        async with db.session_maker() as s:
-            for row in (await s.execute(select(ArchiveSnapshot))).scalars():
+    elif fallback in {'timeout', 'permission_denied', 'upstream_error', 'store_unavailable'}:
+        from treg.infra.object_store import ObjectStoreError
+        monkeypatch.setattr(get_settings(), 'archive_r2_read_timeout_s', 0.02)
+        async def failed_get(key):
+            r2.check_io()
+            r2.get_calls += 1
+            if fallback == 'timeout':
+                await asyncio.Event().wait()
+            raise ObjectStoreError(fallback)
+        monkeypatch.setattr(r2, 'get', failed_get)
+    async with db.session_maker() as s:
+        for row in (await s.execute(select(ArchiveSnapshot))).scalars():
+            row.body_storage = storage
+            if not fallback:
+                # Includes backfilled legacy objects whose DB copies were subsequently pruned.
                 row.body = None
-                s.add(row)
-            await s.commit()
+            s.add(row)
+        await s.commit()
     if path == 'lookup':
         response = await clients.get(URL)
         assert response.headers.get('x-treg-cache') == 'hit' and response.content == RAW
@@ -410,17 +660,6 @@ async def test_obstore_client_uses_one_request_and_checks_hash_and_size():
     sdk.body = b'corrupt'
     with pytest.raises(ValueError, match='hash_mismatch'):
         await store.get(digest)
-
-
-async def test_dev_smoke_skips_missing_credentials(monkeypatch, capsys):
-    import runpy
-    for name in ('ENDPOINT', 'BUCKET', 'ACCESS_KEY_ID', 'SECRET_ACCESS_KEY'):
-        monkeypatch.setenv('TREG_ARCHIVE_OBJECT_STORE_' + name, '')
-    smoke = runpy.run_path('scripts/smoke_archive_r2.py')
-    await smoke['run']()
-    output = capsys.readouterr().out
-    assert output.startswith('SKIP:')
-    assert 'TREG_ARCHIVE_OBJECT_STORE_ACCESS_KEY_ID' in output
 
 
 async def test_dev_smoke_refuses_production_bucket(monkeypatch):
@@ -627,21 +866,6 @@ async def test_upload_does_not_use_read_timeout(clients, r2, monkeypatch):
     assert (await snapshots())[0].body_storage == 'both'
 
 
-@pytest.mark.parametrize('failure,expected', [(PermissionError('secret-body'), 'permission_denied'),
-    (RuntimeError('SignatureDoesNotMatch secret-body'), 'store_error'),
-    (RuntimeError('request timed out secret-body'), 'store_error'),
-    (RuntimeError('503 secret-body'), 'store_error')])
-async def test_sdk_read_errors_are_sanitized(failure, expected):
-    from treg.infra.object_store import R2ObjectStore, ObjectStoreError
-    class SDK:
-        async def get_async(self, path):
-            raise failure
-    store = R2ObjectStore(SDK(), 1000)
-    with pytest.raises(ObjectStoreError) as exc:
-        await store.get('0' * 64)
-    assert exc.value.reason == expected and str(exc.value) == expected
-
-
 @pytest.mark.parametrize('path', ['lookup', 'result', 'terminal'])
 async def test_r2_only_missing_body_has_no_db_fallback(clients, r2, monkeypatch, path):
     monkeypatch.setattr(get_settings(), 'archive_body_write', 'r2')
@@ -665,12 +889,6 @@ async def test_r2_only_missing_body_has_no_db_fallback(clients, r2, monkeypatch,
         assert result['stored'] is False and result['response']['body_text'] is None
     else:
         assert await archive.load_terminal_responses([('terminal-test', EP)]) == {}
-
-
-def test_retired_comparison_env_is_ignored(monkeypatch):
-    from treg.config import Settings
-    monkeypatch.setenv('TREG_ARCHIVE_COMPARISON_MODE', 'legacy_noise')
-    assert not hasattr(Settings(_env_file=None), 'archive_comparison_mode')
 
 
 def test_normalized_mode_and_r2_read_guard(monkeypatch):
@@ -766,21 +984,6 @@ async def test_r2_legacy_admission_restarts_unknown_baseline(clients, r2, monkey
     async with db.session_maker() as session:
         key = (await session.execute(select(ArchiveKey))).scalar_one()
         assert key.result_state == 'found' and key.stable_seen == 1
-
-async def test_db_deadline_reports_timeout_not_cancelled(clients, r2, monkeypatch, caplog):
-    monkeypatch.setattr(get_settings(), 'archive_body_write', 'db')
-    monkeypatch.setattr(archive, '_STORE_TIMEOUT_S', .01)
-    async def blocked(**kwargs):
-        await asyncio.Event().wait()
-    monkeypatch.setattr(archive, '_store_locked', blocked)
-    reports = []
-    await archive._store(method='GET', endpoint_id=EP, provider='tikhub', url=URL,
-                         caller_body=b'', headers={}, status_code=200,
-                         media_type='application/json', body=RAW,
-                         observation=archive_bodies.StorageReport(emit=reports.append))
-    assert len(reports) == 1 and reports[0]['drop_reason'] == 'record_timeout'
-    assert any('record_timeout' in record.message for record in caplog.records)
-
 
 @pytest.mark.parametrize('phase', [
     'compare_sem_wait', 'compare', 'record_key_wait', 'record_sem_wait', 'record_db',

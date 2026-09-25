@@ -7,9 +7,20 @@
 <!-- The dashboard is an authenticated app: every view needs a session and supports shared deep links. Nothing here is indexable, and a crawler that got in would index a sign-in prompt. -->
 <meta name="robots" content="noindex, follow"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,wght@6..144,400..700&family=Geist+Pixel&family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;450;500;600&display=swap" rel="stylesheet">
+<!-- Boot's first two requests start here, alongside the bundle download, instead of after it
+     (boot.js picks them up), and the saved theme applies before the first paint, not after mount. -->
+<script>
+(function(){
+  var h={'ngrok-skip-browser-warning':'1'};
+  window.__tregBoot={
+    meta:fetch('/meta',{headers:h}).then(function(r){return r.json()}),
+    me:fetch('/auth/me',{credentials:'include',headers:h}).then(function(r){return r.ok?r.json():null})
+  };
+  // boot.js attaches its own handlers; these only keep an unused promise from logging a rejection.
+  window.__tregBoot.meta.catch(function(){}); window.__tregBoot.me.catch(function(){});
+  try{ document.documentElement.dataset.theme=localStorage.getItem('treg-theme')||'light'; }catch(e){}
+})();
+</script>
 
 
 
@@ -18,7 +29,11 @@
 <script src="/adtrack.js"></script>
 </head>
 <body>
-<div id="app"><p role="status">Loading treg…</p><p>If this page does not load, <a href="">reload</a> to get the latest version.</p></div>
+<!-- The same markup App.vue shows while it boots, so mounting swaps it for itself. Nothing is
+     visible for the first moments; a thin bar fades in at the top only if boot is slow
+     (base.css, .boot-status). The status line hides itself inline: in development the stylesheet
+     arrives with the script, after this markup has painted. -->
+<div id="app"><main class="boot-status" aria-busy="true"><span class="boot-bar" aria-hidden="true"></span><p role="status" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap">Loading treg…</p></main></div>
 <script src="/sitetrack.js"></script>
 <script src="/agent-setup.js"></script>
 <script type="module" src="/src/main.ts"></script>

@@ -1,0 +1,7 @@
+<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Image generation">
+  <!-- Not a brand: generated images, drawn as a picture frame with the AI sparkle (see ai-search.svg). -->
+  <rect x="1.8" y="5.5" width="16.4" height="14" rx="3" fill="#2A9D8F"/>
+  <circle cx="7" cy="10" r="1.7" fill="#fff"/>
+  <path fill="#fff" d="M3.8 17.6l4.4-4.6 2.6 2.6 2.6-3.4 3 5.4z"/>
+  <path fill="#2A9D8F" opacity=".55" d="M19.6 1.6l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z"/>
+</svg>

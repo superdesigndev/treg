@@ -43,7 +43,7 @@ for _v in TREG_HUB_ENABLED; do
 done
 # This script's own three come LAST so they always win: the dev stack keeps its own sqlite database
 # and its OTP dev mode whatever the caller's shell says.
-SERVER_ENV="${PASSTHROUGH# } TREG_EMAIL_DEV_MODE=true TREG_DASHBOARD_ROLLOUT_ENABLED=${TREG_DASHBOARD_ROLLOUT_ENABLED:-true} TREG_DASHBOARD_ROLLOUT_PERCENT=${TREG_DASHBOARD_ROLLOUT_PERCENT:-100} TREG_FRONTEND_DEV=${TREG_FRONTEND_DEV:-true} TREG_PUBLIC_URL=http://localhost:$PORT TREG_CONNECT_DEMO_ENABLED=true TREG_DATABASE_URL=sqlite+aiosqlite:///$DEV_DB"
+SERVER_ENV="${PASSTHROUGH# } TREG_EMAIL_DEV_MODE=true TREG_FRONTEND_DEV=${TREG_FRONTEND_DEV:-true} TREG_PUBLIC_URL=http://localhost:$PORT TREG_CONNECT_DEMO_ENABLED=true TREG_DATABASE_URL=sqlite+aiosqlite:///$DEV_DB"
 SERVER_CMD="cd $ROOT && set -a && . $DEV_KEYS && set +a && env $SERVER_ENV uv run python -m treg --reload"
 
 ensure_dev_keys() {

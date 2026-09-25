@@ -1858,7 +1858,7 @@
     },
     "/admin/archive/body": {
       "get": {
-        "description": "One stored answer's BYTES, for the panel's version viewer. Follows a dedup reference to\nthe row that carries the body; a hash-only version answers honestly that nothing was kept.\nSuperadmin like every /admin route — this is provider content held under a judged licence.",
+        "description": "One authorized historical version through the common archive body reader.",
         "operationId": "admin_archive_body_admin_archive_body_get",
         "parameters": [
           {
@@ -2066,7 +2066,7 @@
     },
     "/admin/errors": {
       "get": {
-        "description": "Failed calls with the evidence to explain them — the caller's request and the provider's own\nanswer (see models.CallRecord.error_request).\n\nSuperadmin-only and deliberately not mirrored on `/calls`: the rows hold customers' request\ncontent, so v1 keeps them behind the same door as every other cross-tenant view.\n\nAgeing happens HERE rather than on the request path. There is no scheduler in this app by design\n(see the comment above `_claim_idempotent`), and the obvious lazy hook — a marker written on the\nrequest session — cannot work: `get_admin_session` never commits, so the marker would roll back and the\npurge would then run on every single failed call. Doing it on this route costs one UPDATE to the\nperson who came to read errors, which is exactly who wants the stale ones gone.",
+        "description": "Failed calls with the evidence to explain them — the caller's request and the provider's own\nanswer (see models.CallRecord.error_request).\n\nSuperadmin-only and deliberately not mirrored on `/calls`: the rows hold customers' request\ncontent, so v1 keeps them behind the same door as every other cross-tenant view.\n\nRead-only. Ageing is the `treg-worker admin purge-evidence` cron's job\n(application/evidence_retention.py); until it has run, a row older than the window is shown as\nexpired with no evidence, so a late schedule never widens what this view reveals.",
         "operationId": "admin_errors_admin_errors_get",
         "parameters": [
           {
@@ -5785,9 +5785,48 @@
         "summary": "Catalog Endpoint"
       }
     },
+    "/catalog/find": {
+      "get": {
+        "description": "Open, rate limited: find the endpoints that can do a described JOB (application.catalog_find).\n\nStreams newline-delimited JSON, two events: `candidates` (the lexical recall, immediately) and\n`judged` (the relevance judge's kept rows and a verdict, when it answers). The pages that call\nthis animate the gap between them. Agents keep `/catalog/search` and MCP `catalog_search`.",
+        "operationId": "catalog_find_catalog_find_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Catalog Find"
+      }
+    },
     "/catalog/platforms": {
       "get": {
-        "description": "Open: the platform shelves of the endpoint catalog, busiest first.",
+        "description": "Open: the platform shelves of the endpoint catalog, busiest first, and the display name of\nevery vendor on them (the /search page's pile is one tile per vendor).",
         "operationId": "catalog_platforms_catalog_platforms_get",
         "responses": {
           "200": {

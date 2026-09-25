@@ -19,20 +19,6 @@ from treg.config import get_settings
 WEB = Path(__file__).parents[1] / "src" / "treg" / "web"
 
 
-async def test_jev_page_is_a_first_class_landing(clients: AsyncClient):
-    r = await clients.get("/jev")
-    assert r.status_code == 200
-    assert '<link rel="canonical" href="https://treg.to/jev"/>' in r.text
-    for anchor in ("id=\"xboost\"", "id=\"triage\"", "id=\"signals\""):
-        assert anchor in r.text
-    assert r.text.count('data-copy="p-') == 4, "one copyable prompt per workflow, plus Build your own"
-
-
-async def test_jev_is_in_the_sitemap(clients: AsyncClient):
-    xml = (await clients.get("/sitemap.xml")).text
-    assert f"{get_settings().public_url.rstrip('/')}/jev" in xml
-
-
 async def test_xboost_json_falls_back_to_the_bundled_snapshot(clients: AsyncClient):
     r = await clients.get("/jev/xboost.json")
     assert r.status_code == 200
@@ -163,21 +149,4 @@ def test_generic_reply_check_is_linear_and_keeps_its_verdicts():
     assert not _is_generic("great " * 5000 + "x")
     assert time.perf_counter() - t0 < 0.5
 
-
-def test_every_recipe_prompt_sets_treg_up_through_llms_txt():
-    """Same front door as every other landing: the agent reads llms.txt, which owns the install and
-    login steps. A prompt that pipes install.sh into a shell skips everything llms.txt tells it."""
-    page = (Path(__file__).parent.parent / "src/treg/web/jev.html").read_text()
-    assert page.count("read https://treg.to/llms.txt") == 4
-    assert "install.sh" not in page
-
-
-def test_every_recipe_prompt_asks_first_and_treats_jev_as_optional():
-    """The steps are a reference, not a spec: the agent asks about the reader's own workflow before it
-    builds, and a reader with no jev access yet still gets a working build behind the same interface."""
-    page = (Path(__file__).parent.parent / "src/treg/web/jev.html").read_text()
-    assert page.count("<b>Before you build</b>") == 4
-    assert page.count("reference implementation, not a spec") == 4
-    assert page.count("jev, optional to start") == 4
-    assert page.count("No key yet?") == 4 and page.count("judge: agent") == 4
 

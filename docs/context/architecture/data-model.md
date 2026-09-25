@@ -282,8 +282,9 @@ uses this metadata, never the encrypted token's shape.
   `error_request` / `error_response` hold redacted, truncated failure evidence across platform,
   own-key and own-tool calls. Successes leave them empty. Captured provider headers use an
   allowlist covering retry/auth/rate-limit and request/trace identifiers. `/calls` neither fetches
-  nor exposes these wide fields; `GET /admin/errors` owns access and the 14-day retention purge
-  (replacing expired evidence with `<expired>`).
+  nor exposes these wide fields; `GET /admin/errors` owns read access (read-only) and the
+  `treg-worker admin purge-evidence` cron (`application/evidence_retention.py`) the 14-day
+  retention purge, replacing expired evidence with `<expired>`.
 
   Redaction in `application.call.evidence` is security-sensitive:
 
@@ -297,7 +298,8 @@ uses this metadata, never the encrypted token's shape.
 
   Unmetered uploads are buffered for evidence only with declared `Content-Length <= 64 KiB`.
   Failed streaming responses retain at most the first 8 KiB, replaying all bytes to the caller.
-  Purging stays on the admin path; request-session dependencies do not commit a lazy purge marker.
+  Purging never runs on a request: an admin page reading errors once blanked evidence
+  platform-wide on every load.
 
   `archive_key_hash` / `archive_content_hash` link eligible metered platform responses to
   `ArchiveKey` / `ArchiveSnapshot` for `GET /calls/{id}/result`. They are nullable, unindexed
@@ -411,9 +413,11 @@ session is committed before the relay so none of them ever waits on it, see
 later server loop cannot inherit connections bound to the closed loop. `verify_db()` is the read-only
 lifespan and worker guard: it keeps the missing-Fernet-key refusal, requires a stamp at head, refuses a
 known older revision, and warns but serves on an unknown-newer revision for additive-era rollback.
-`reset_db()` is test-only: it disposes every loop-bound pool, recreates the SQLite schema or truncates
-application tables on Postgres, then writes the Alembic head stamp. Avoiding per-test Alembic runs and
-Postgres DDL keeps the suite fast without weakening the autogenerate drift guard. `get_session()` and
+`reset_db()` is test-only: it disposes every loop-bound pool, deletes every application row (and
+rewinds Postgres sequences), then writes the Alembic head stamp. It rebuilds the schema only when its
+column-and-index fingerprint differs from the one it last built: a fresh database, or a test that
+altered the shared schema. Avoiding per-test Alembic runs and DDL keeps the suite fast without weakening the
+autogenerate drift guard. `get_session()` and
 `get_admin_session()` are the FastAPI dependencies. SQLite locally (`aiosqlite`), Postgres on Render, same code. **Timestamps are
 naive UTC:** `_now()` (the `created_at` default) drops tzinfo because the columns are `TIMESTAMP WITHOUT
 TIME ZONE` and asyncpg rejects tz-aware values on Postgres; the app compares naive UTC throughout.
@@ -483,7 +487,7 @@ module is off** (self-hosters and the test suite send nothing). `$groups: {team:
 browser's `posthog.group('team', slug)`. Every event also carries `build` (`TREG_BUILD`, else the
 commit variable the host exports, else the installed package version; `build_id`) and
 `archive_config` (a 12-hex digest of the archive settings that change what a call does:
-mode, serving allowlist and percentage, repeat price, age ceilings, body storage, change
+mode, serving allowlist and percentage, repeat price, age ceilings, body write and all three read modes, change
 observation; `archive_config_id`), and the lifespan emits one `service_started` per process with
 the role and those archive settings. They exist so an analysis can be bounded to one code version
 or one cache configuration instead of a remembered deploy time: a property that an older build

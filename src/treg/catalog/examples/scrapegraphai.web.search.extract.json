@@ -1,0 +1,35 @@
+{
+  "id": "3776b9b9-3a3f-492b-832f-66f36e614705",
+  "results": [
+    {
+      "url": "https://scrapegraphai.com/pricing",
+      "title": "Pricing",
+      "content": "// Choose the plan that fits your needs\n\n# Simple, transparent pricing  \nwith no hidden fees.\n\nMonthlyYearly\n\nFree Plan\n\nFor getting started\n\n$00/mo\n\nfree plan\n\n  * 500 API credits, one-time\n  * 10 requests/min\n  * 1 monitor\n  * 1 concurrent crawl\n\n\n\n[Start Free](https://scrapegraphai.com/signup)\n\nStarter Plan\n\nFor individuals\n\n$2020/mo\n\nbilled **monthly**\n\n  * 10,000 API credits per month\n  * 100 requests/min\n  * 5 monitors\n  * 3 concurrent crawls\n\n\n\n[Get Started!](https://scrapegraphai.com/sig… [4672 chars total]",
+      "metadata": {
+        "contentType": "text/html"
+      }
+    }
+  ],
+  "json": {
+    "price": "$5"
+  },
+  "raw": null,
+  "usage": {
+    "promptTokens": 1533,
+    "completionTokens": 133
+  },
+  "metadata": {
+    "search": {},
+    "pages": {
+      "requested": 1,
+      "scraped": 1
+    },
+    "chunker": {
+      "chunks": [
+        {
+          "size": 1180
+        }
+      ]
+    }
+  }
+}

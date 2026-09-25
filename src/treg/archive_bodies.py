@@ -299,8 +299,9 @@ class BodyPointer:
 
 
 def _r2_first(path: str) -> bool:
-    # Observation shares lookup's rollout/rollback switch; it never enables R2 independently.
-    path = "lookup" if path == "observation" else path
+    # Auxiliary readers share existing rollout switches; none enables R2 independently.
+    path = {"observation": "lookup", "initialization": "lookup",
+            "admin": "result", "arena": "result"}.get(path, path)
     return getattr(get_settings(), "archive_body_read_" + path) == "r2-first"
 
 
@@ -319,67 +320,119 @@ async def pointer(session, snapshot, path):
     return BodyPointer(snapshot.content_hash, snapshot.body_storage, body, None)
 
 
-async def _db_fallback(pointer, path):
-    from .infra.db import session_maker, background_session_maker
+async def _db_fallback(pointer, path, *, session_factory=None):
+    from .infra.db import session_maker, background_session_maker, admin_session_maker
     from .models import ArchiveSnapshot
     from .archive import _snapshot_body, _unpack
     if pointer.snapshot_id is None:
         return _unpack(pointer.body, pointer.enc)
-    maker = background_session_maker if path == "observation" else session_maker
+    if session_factory is not None:
+        maker = session_factory
+    elif path in {"observation", "initialization"}:
+        maker = background_session_maker
+    elif path == "admin":
+        maker = admin_session_maker
+    else:
+        maker = session_maker
     async with maker() as session:
         row = await session.get(ArchiveSnapshot, pointer.snapshot_id)
         return await _snapshot_body(session, row) if row is not None else None
 
 
-async def read(pointer: BodyPointer, path: str, *, diagnostics: dict | None = None) -> bytes | None:
-    """Call only after closing every DB session owned by the request."""
-    reason, elapsed, error_type = "none", 0.0, "none"
-    attempts, retry_reason, retry_recovered = 0, "none", False
-    def observed(body, source):
-        if diagnostics is not None:
-            diagnostics.update(cache_body_source=source, cache_body_fallback_reason=reason,
-                               cache_r2_read_ms=elapsed, cache_r2_attempts=attempts,
-                               cache_r2_retry_reason=retry_reason,
-                               cache_r2_retry_recovered=retry_recovered)
-        return body
+async def read(pointer: BodyPointer, path: str, *, diagnostics: dict | None = None,
+               session_factory=None) -> bytes | None:
+    """Read an already-authorized snapshot, with no DB connection held during object I/O.
 
-    if (_r2_first(path)
-            and pointer.storage in ("both", "r2")):
-        started = time.monotonic()
-        total_timeout = get_settings().archive_r2_read_timeout_s
-        attempt_timeout = min(_READ_ATTEMPT_MAX_S, total_timeout / _READ_ATTEMPTS)
+    Storage labels describe the original write, not later hash-addressed backfills. R2-first
+    probes every selected hash, including legacy rows whose DB copy was subsequently pruned.
+    Missing objects still use the original snapshot/carrier; never substitute another answer.
+    """
+    from . import analytics
+
+    started = time.monotonic()
+    storage = pointer.storage if pointer.storage in ("db", "both", "r2") else "legacy"
+    report = dict(path=path, storage=storage, source="none",
+                  read_mode="r2-first" if _r2_first(path) else "db", outcome="unavailable",
+                  fallback_reason="none", r2_attempts=0, r2_retry_reason="none",
+                  r2_retry_recovered=False, r2_read_ms=0.0, db_read_ms=0.0, bytes=0)
+    try:
+        if _r2_first(path):
+            body = await _read_object(pointer, path, report)
+            if body is not None:
+                report.update(source="r2", outcome="r2", bytes=len(body))
+                return body
+        db_started = time.monotonic()
+        try:
+            body = (await _db_fallback(pointer, path) if session_factory is None else
+                    await _db_fallback(pointer, path, session_factory=session_factory))
+        except Exception:
+            report["outcome"] = "db_error"
+            raise
+        finally:
+            report["db_read_ms"] = round((time.monotonic() - db_started) * 1000, 3)
+        if body is not None:
+            report.update(source="db", outcome="db_fallback" if report["r2_attempts"] else "db",
+                          bytes=len(body))
+        return body
+    except asyncio.CancelledError:
+        report["outcome"] = "cancelled"
+        raise
+    finally:
+        report["total_ms"] = round((time.monotonic() - started) * 1000, 3)
+        outcomes["read_" + path + "_" + report["outcome"]] += 1
+        if diagnostics is not None:
+            diagnostics.update(cache_body_source=report["source"],
+                               cache_body_fallback_reason=report["fallback_reason"],
+                               cache_r2_read_ms=report["r2_read_ms"],
+                               cache_r2_attempts=report["r2_attempts"],
+                               cache_r2_retry_reason=report["r2_retry_reason"],
+                               cache_r2_retry_recovered=report["r2_retry_recovered"])
+        # Best-effort, bounded fields only. A completed fallback event records whether DB actually
+        # rescued the read; failure logs alone cannot provide this or a success denominator.
+        analytics.capture("archive", "archive_body_read", report)
+
+
+async def _read_object(pointer, path, report):
+    started = time.monotonic()
+    reason, error_type = "none", "none"
+    total_timeout = get_settings().archive_r2_read_timeout_s
+    deadline = asyncio.get_running_loop().time() + total_timeout
+    attempt_timeout = min(_READ_ATTEMPT_MAX_S, total_timeout / _READ_ATTEMPTS)
+    try:
         for attempt in range(1, _READ_ATTEMPTS + 1):
-            attempts = attempt
+            report["r2_attempts"] = attempt
             try:
-                async with asyncio.timeout(attempt_timeout):
+                async with asyncio.timeout_at(min(deadline, asyncio.get_running_loop().time() + attempt_timeout)):
                     if _store is None:
                         raise ObjectStoreError("store_unavailable")
                     body = await _store.get(pointer.content_hash)
                 if body is None:
                     reason = "not_found"
                     break
-                reason = "none"
-                elapsed = round((time.monotonic() - started) * 1000, 3)
-                retry_recovered = retry_reason != "none"
-                if retry_recovered:
+                report["r2_retry_recovered"] = report["r2_retry_reason"] != "none"
+                if report["r2_retry_recovered"]:
                     outcomes["read_retry_recovered_" + path] += 1
-                return observed(body, "r2")
+                return body
             except Exception as exc:
                 reason, error_type = failure_reason(exc), exception_name(exc)
             if reason not in _RETRYABLE_FAILURES or attempt == _READ_ATTEMPTS:
                 break
-            retry_reason = reason
+            report["r2_retry_reason"] = reason
             outcomes["read_retry_" + path] += 1
             outcomes["read_retry_" + path + "_" + reason] += 1
             delay = min(random.uniform(0.05, 0.1), total_timeout * 0.05)
-            await asyncio.sleep(delay)
-        elapsed = round((time.monotonic() - started) * 1000, 3)
+            await asyncio.sleep(min(delay, max(0, deadline - asyncio.get_running_loop().time())))
+        report["fallback_reason"] = reason
         if reason in {"not_found", "hash_mismatch"}:
             _uploaded.pop(pointer.content_hash, None)
         outcomes["read_fallback_" + path] += 1
         outcomes["read_fallback_" + path + "_" + reason] += 1
         level = logging.ERROR if reason in {"permission_denied", "hash_mismatch", "too_large"} else logging.WARNING
+        # NULL markers include intentionally hash-only history; a miss is not proof of loss.
+        if reason == "not_found" and pointer.storage is None:
+            level = logging.INFO
         _log.log(level, "archive R2 read fallback path=%s reason=%s elapsed_ms=%s exception_type=%s",
-                 path, reason, elapsed, error_type)
-    body = await _db_fallback(pointer, path)
-    return observed(body, "db" if body is not None else "none")
+                 path, reason, round((time.monotonic() - started) * 1000, 3), error_type)
+        return None
+    finally:
+        report["r2_read_ms"] = round((time.monotonic() - started) * 1000, 3)

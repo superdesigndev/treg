@@ -1415,6 +1415,23 @@ HARVESTAPI = OAuthProvider(
     probe_path="/users/my-api-user",  # Internal only; live bad key 401, valid key 200.
 )
 
+FETCHINIO = OAuthProvider(
+    service="fetchinio", display_name="Fetchin", auth_kind="key",
+    token_label="API key", token_placeholder="your Fetchin API key",
+    token_header="X-API-Key", token_format="{secret}",
+    setup_url="https://fetchin.io/dashboard",
+    setup_action_label="Get your Fetchin API key",
+    setup_steps=("Sign in to Fetchin and open the API keys section.",
+                 "Create or copy an API key and paste it here."),
+    setup_note=("LinkedIn profile, company, post and engagement calls consume account credits. "
+                "Connection verification reads the free subscription endpoint."),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Retrieve public LinkedIn profiles, companies, posts, comments and reactions.",
+    base_url="https://api.fetchin.io", docs_url="https://docs.fetchin.io/",
+    probe_path="/api/v1/subscription",
+)
+
 DROPLEADS = OAuthProvider(
     service="dropleads", display_name="Dropleads", auth_kind="key",
     token_label="API key", token_placeholder="your Dropleads API key",
@@ -2483,6 +2500,39 @@ TAVILY = OAuthProvider(
     probe_path="/usage",
 )
 
+SERPER = OAuthProvider(
+    service="serper",
+    display_name="Serper",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Serper API key",
+    token_header="X-API-KEY",
+    token_format="{secret}",
+    setup_url="https://serper.dev/api-keys",
+    setup_action_label="Get your Serper API key",
+    setup_steps=(
+        "Sign in to Serper and open API keys.",
+        "Create or copy an API key and paste it here.",
+    ),
+    setup_note=(
+        "Search calls spend Serper credits. treg checks the free Account endpoint when you "
+        "connect the key; the separate Webpage tool uses the same key on Serper's scrape host."
+    ),
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Search Google result verticals and extract a web page as text or Markdown.",
+    base_url="https://google.serper.dev",
+    catalog_targets=(
+        CatalogTarget(host="scrape.serper.dev", base_url="https://scrape.serper.dev"),
+    ),
+    extra_tools=(
+        {"suffix": "scrape", "base_url": "https://scrape.serper.dev"},
+    ),
+    docs_url="https://serper.dev/playground",
+    probe_path="/account",
+)
+
 KEENABLE = OAuthProvider(
     service="keenable",
     display_name="Keenable",
@@ -2538,6 +2588,34 @@ OLOSTEP = OAuthProvider(
     base_url="https://api.olostep.com",
     docs_url="https://docs.olostep.com/",
     probe_path="/user/credits/info",
+)
+
+SCRAPEGRAPHAI = OAuthProvider(
+    service="scrapegraphai",
+    display_name="ScrapeGraphAI",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="sgai-…",
+    token_header="SGAI-APIKEY",
+    token_format="{secret}",
+    setup_url="https://scrapegraphai.com/dashboard",
+    setup_action_label="Get your ScrapeGraphAI API key",
+    setup_steps=(
+        "Sign in to ScrapeGraphAI and open the dashboard.",
+        "Create or copy an API key and paste it here.",
+    ),
+    setup_note=(
+        "Scrape, Extract, Search and Crawl spend API credits. treg checks the free Credits "
+        "endpoint when you connect the key."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Scrape and extract pages, search the web, crawl sites, and monitor pages for changes.",
+    base_url="https://v2-api.scrapegraphai.com",
+    docs_url="https://docs.scrapegraphai.com/api-reference/introduction",
+    probe_path="/api/credits",
 )
 
 CLORO = OAuthProvider(
@@ -3492,7 +3570,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
@@ -3501,7 +3579,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
-        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, TAVILY, KEENABLE, OLOSTEP, CLORO,
+        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, TAVILY, KEENABLE, OLOSTEP,
+        SCRAPEGRAPHAI, SERPER, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,

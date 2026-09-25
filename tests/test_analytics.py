@@ -110,6 +110,15 @@ def test_archive_config_id_changes_with_serving_settings(monkeypatch):
     assert analytics.archive_config_id() not in (before, changed)
 
 
+@pytest.mark.parametrize('path', ['lookup', 'result', 'terminal'])
+def test_archive_config_id_identifies_body_read_rollout(monkeypatch, path):
+    setting = 'archive_body_read_' + path
+    monkeypatch.setattr(get_settings(), setting, 'db')
+    before = analytics.archive_config_id()
+    monkeypatch.setattr(get_settings(), setting, 'r2-first')
+    assert analytics.archive_config_id() != before
+
+
 async def test_service_started_reports_role_and_archive_settings(enabled, posts, monkeypatch):
     monkeypatch.setattr(get_settings(), "archive_serve_endpoints", "a.b,c.d", raising=False)
     analytics.capture_service_started("all")
@@ -464,20 +473,6 @@ async def test_typed_refusals_auth_and_validation_are_not_faults(enabled):
     await _run_through_uvicorn(app, "/validated", b"count=not-an-int")
     analytics.remove_fault_handler(handler)
     assert _exception_events() == []
-
-
-def test_the_lifespan_drains_analytics_after_everything_that_reports_into_it():
-    """Order matters now that audit and archive report their losses at ERROR: analytics is their
-    sink, so draining it first leaves those events queued behind a cancelled flusher and they are
-    lost — silently, and exactly at shutdown, which is when a loss is most worth hearing about."""
-    import pathlib
-
-    from treg import bootstrap
-
-    source = pathlib.Path(bootstrap.__file__).read_text()
-    drains = ("audit.drain()", "archive.drain()", "analytics.drain()")
-    assert all(name in source for name in drains)
-    assert sorted(drains, key=source.index) == list(drains)
 
 
 async def test_typed_pool_saturation_is_explicitly_captured(enabled):

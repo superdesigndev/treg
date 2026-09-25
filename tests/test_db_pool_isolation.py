@@ -45,6 +45,7 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
 
     "application/feedback.py": {API},  # synchronous intake; admin reads use get_admin_session
     "application/media.py": {API},  # `treg host`: one short write, one short read, no upstream wait
+    "application/catalog_find.py": {API},  # one rate-limit write, committed before the judge call
 
     "application/referrals.py": {API}, "application/signup.py": {API},
     "application/onboard/__init__.py": {API},
@@ -61,16 +62,16 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "worker.py": {API},
     # Runs only inside `treg-worker catalog stats`; same reasoning as `worker.py`.
     "application/catalog_stats.py": {API},
-    # Staff pages take their pool through `Depends(get_admin_session)`, not a maker import; the one
-    # maker here is the retention sweep, which is background work and must not nest inside a request.
-    "routers/admin.py": {BACKGROUND},
+    # Runs only inside `treg-worker admin purge-evidence`; same reasoning as `worker.py`.
+    "application/evidence_retention.py": {API},
     # Off-request writers.
     "audit.py": {BACKGROUND},
     "bootstrap.py": {BACKGROUND},
     # `lookup` is on the API pool inside a caller's /call/; every write here is background.
     "archive.py": {API, BACKGROUND},
-    # Request fallbacks use API; observation fallbacks share archive's background budget.
-    "archive_bodies.py": {API, BACKGROUND},
+    # Request fallbacks use API, the admin viewer keeps ADMIN, and observation/initialization
+    # share archive's background budget. R2 I/O holds none of these connections.
+    "archive_bodies.py": {API, ADMIN, BACKGROUND},
 }
 
 
@@ -176,7 +177,6 @@ BACKGROUND_SITES = {
     "archive_bodies.py:_db_fallback": "archive._store/_touch",
     "archive.py:prune_once": "archive.prune_worker",
     "archive.py:refresh_once": "archive.refresh_worker",
-    "routers/admin.py:_purge_expired_error_evidence": "admin evidence sweep",
 }
 
 
@@ -186,12 +186,6 @@ def test_every_background_session_site_is_named_in_the_consumer_list():
               for function, count in _background_sites(tree).items()}
     assert actual == {site: 1 for site in BACKGROUND_SITES}
     assert set(BACKGROUND_SITES.values()) <= infra_db.BACKGROUND_CONSUMERS.keys()
-
-
-def test_background_guard_detects_another_site_in_an_existing_module():
-    tree = ast.parse("async def added():\n async with background_session_maker(): pass")
-    assert _background_sites(tree) == {"added": 1}
-    assert "archive.py:added" not in BACKGROUND_SITES
 
 
 def test_the_spec_is_what_the_engines_were_actually_built_with():

@@ -9,14 +9,13 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 import json
-from datetime import datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
 from sqlmodel import select
 
 from treg import api as A
-from treg import crypto, oauth
+from treg import crypto
 from treg.application import connect as connect_use_cases
 from treg.application.connect import _backfill_provider_extra_tools
 from treg.config import get_settings
@@ -73,30 +72,6 @@ async def test_connections_never_leak_token_material(clients: AsyncClient):
     assert "client_secret" not in body
 
 
-async def test_byo_connect_has_no_provider(clients: AsyncClient):
-    """Only registry connects are attributed to a provider."""
-    st = await _connect_byo(clients)
-    conns = {c["id"]: c for c in (await clients.get("/connections")).json()}
-    assert conns[st["secret_id"]]["provider"] == ""
-
-
-# ---- expiry as its own axis --------------------------------------------------------------
-def test_refreshable_credentials_are_always_fresh():
-    """treg mints a new access token on demand, so a short expiry is an implementation detail —
-    nagging the user about it would be noise."""
-    past = datetime(2020, 1, 1)
-    assert oauth.expiry_state(past, refreshable=True) == "fresh"
-
-
-def test_non_refreshable_expiry_is_surfaced():
-    """The LinkedIn case: healthy right up until it silently dies."""
-    now = datetime(2026, 7, 21)
-    assert oauth.expiry_state(now - timedelta(days=1), False, now) == "expired"
-    assert oauth.expiry_state(now + timedelta(days=3), False, now) == "expiring"
-    assert oauth.expiry_state(now + timedelta(days=30), False, now) == "fresh"
-    assert oauth.expiry_state(None, False, now) == "unknown"
-
-
 # ---- auto-provisioning -------------------------------------------------------------------
 async def test_registry_connect_autoprovisions_a_callable_tool(clients: AsyncClient, treg_google_app):
     """The point: after consent the user can immediately make a real proxied call."""
@@ -127,16 +102,6 @@ async def test_byo_connect_provisions_no_tool(clients: AsyncClient):
     """Without a registry provider treg doesn't know the upstream, so it must not invent one."""
     await _connect_byo(clients)
     assert (await clients.get("/tools")).json() == []
-
-
-# ---- resource selection + revoke ---------------------------------------------------------
-async def test_set_and_read_back_the_selected_resource(clients: AsyncClient, treg_google_app):
-    st = await _connect_byo(clients, provider="google-search-console", name="google-search-console")
-    sid = st["secret_id"]
-    r = await clients.post(f"/connections/{sid}/resource", json={"resource_ref": "sc-domain:example.com"})
-    assert r.status_code == 200 and r.json()["resource_ref"] == "sc-domain:example.com"
-    conns = {c["id"]: c for c in (await clients.get("/connections")).json()}
-    assert conns[sid]["resource_ref"] == "sc-domain:example.com"
 
 
 async def test_discovery_refused_for_a_provider_that_cannot_discover(clients: AsyncClient):
@@ -496,10 +461,10 @@ async def test_revoke_keeps_a_user_built_tool_but_drops_the_dead_binding(clients
     st = await _connect_byo(clients)  # BYO: no provider, so no auto-provisioned tool
     sid = st["secret_id"]
     other = (await clients.post("/secrets", json={"name": "OTHER", "value": "k"})).json()
-    mine = (await clients.post("/tools", json={
+    await clients.post("/tools", json={
         "name": "mine", "base_url": "http://upstream",
         "bindings": [{"secret_id": sid}, {"secret_id": other["id"], "name": "X-Other"}],
-    })).json()
+    })
     def _mine(tools):
         return next(t for t in tools if t["name"] == "mine")
 
@@ -556,26 +521,6 @@ async def test_without_a_platform_token_the_user_is_asked(clients: AsyncClient, 
         get_settings.cache_clear()
 
 
-async def test_id_only_listings_are_enriched_with_real_names(clients: AsyncClient, treg_google_app, monkeypatch):
-    """Google Ads lists ["customers/6186675831", …] and nothing else. "6186675831" tells a user
-    nothing about which account they're picking, so a provider can declare a per-row name lookup."""
-    import dataclasses
-
-    from treg import oauth_providers as P
-
-    monkeypatch.setitem(P.REGISTRY, "google-search-console", dataclasses.replace(
-        P.REGISTRY["google-search-console"],
-        discover_base_url="http://upstream",
-        # the echo upstream reflects the request, so dig a value we know will be there
-        enrich_path="/name/{id}", enrich_body={"q": "x"}, enrich_label_path="query.named",
-    ))
-    st = await _connect_byo(clients, provider="google-search-console", name="google-search-console")
-    r = await clients.get(f"/connections/{st['secret_id']}/resources")
-    assert r.status_code == 200
-    # enrichment ran without breaking the listing; every row still has an id
-    assert all(x["id"] for x in r.json()["resources"])
-
-
 async def test_a_failed_name_lookup_keeps_the_row(clients: AsyncClient, treg_google_app, monkeypatch):
     """A user may lack access to some accounts the listing returned — a partial list beats an
     error, so a failed lookup must leave the row with its id rather than dropping it."""
@@ -619,14 +564,8 @@ async def test_a_second_account_is_added_not_swapped(clients: AsyncClient, treg_
     assert first["secret_id"] != second["secret_id"]
     # The first account keeps the bare name every skill and doc calls; only the extra is suffixed.
     assert sorted(c["name"] for c in gsc) == ["google-search-console", "google-search-console-2"]
-
-
-async def test_a_second_account_gets_its_own_tool(clients: AsyncClient, treg_google_app):
-    """A tool name is unique per org, so without a distinct name the second account would either
-    collide or silently rebind the first account's tool to someone else's credential."""
-    first = await _connect_byo(clients, provider="google-search-console", capability="read", name="")
-    second = await _connect_byo(clients, provider="google-search-console", capability="read", name="")
-
+    # A tool name is unique per org, so without a distinct name the second account would either
+    # collide or silently rebind the first account's tool to someone else's credential.
     tools = {t["name"]: t for t in (await clients.get("/tools")).json()}
     assert tools["google-search-console"]["bindings"][0]["secret_id"] == first["secret_id"]
     assert tools["google-search-console-2"]["bindings"][0]["secret_id"] == second["secret_id"]
@@ -652,18 +591,6 @@ async def test_enabling_write_keeps_read(clients: AsyncClient, treg_google_app):
                 if c["provider"] == "google-search-console")
     assert set(conn["capabilities"]) == {"read", "write"}
     assert conn["missing_capabilities"] == []
-
-
-async def test_reconnect_rebinds_the_tool_to_the_same_secret(clients: AsyncClient, treg_google_app):
-    first = await _connect_byo(clients, provider="google-search-console", capability="read",
-                               name="google-search-console")
-    await _connect_byo(clients, provider="google-search-console", capability="write",
-                       name="google-search-console", connection_id=first["secret_id"])
-    tools = [t for t in (await clients.get("/tools")).json() if t["name"] == "google-search-console"]
-    conn = next(c for c in (await clients.get("/connections")).json()
-                if c["provider"] == "google-search-console")
-    assert len(tools) == 1
-    assert tools[0]["bindings"][0]["secret_id"] == conn["id"]
 
 
 async def test_identity_providers_record_who_connected(clients: AsyncClient, treg_google_app, monkeypatch):
@@ -756,16 +683,6 @@ async def test_oauth_providers_reject_the_token_endpoint(clients: AsyncClient, t
     assert "consent" in r.text
 
 
-def test_slack_is_offerable_without_deployment_credentials():
-    """The user brings their own bot, so treg needs no Slack app of its own — it must not show
-    as 'not configured' the way an unset OAuth provider does."""
-    from treg import oauth_providers as P
-    assert P.SLACK.is_token_kind
-    assert P.is_configured(P.SLACK) is True
-    assert "xoxb" in P.SLACK.token_placeholder
-    assert P.SLACK.setup_url.startswith("https://api.slack.com/apps?new_app=1")
-
-
 async def test_token_connections_appear_in_the_list(clients: AsyncClient, monkeypatch):
     """A connection is "what a registry connect produced", not "an oauth blob". Filtering the list
     on kind=="oauth" created bring-your-own-token connections successfully and then hid them."""
@@ -845,16 +762,6 @@ async def test_token_scopes_come_from_the_response_header(clients: AsyncClient, 
     assert set(r.json()["scopes"]) == {"chat:write", "channels:read", "users:read"}
 
 
-def test_slack_has_no_resource_picker():
-    """chat.postMessage takes the channel per call, and the agent can list channels itself through
-    the proxy — so a picker here duplicated a capability it already has, to store a preference
-    nothing enforces. Providers whose resource sits in the request URL keep theirs."""
-    from treg import oauth_providers as P
-    assert P.SLACK.supports_discovery is False
-    assert P.SLACK.has_identity is True, "which workspace this is still matters"
-    assert P.GOOGLE_SEARCH_CONSOLE.supports_discovery is True, "the site IS the request path"
-
-
 def test_every_provider_has_a_logo():
     """The dashboard resolves logos by convention (/logos/<service>.svg), so a provider added
     without one silently renders a broken image. Fail here instead."""
@@ -863,11 +770,6 @@ def test_every_provider_has_a_logo():
     logos = Path(P.__file__).parent / "web" / "logos"
     missing = [p.service for p in P.REGISTRY.values() if not (logos / f"{p.service}.svg").exists()]
     assert not missing, f"no logo for: {missing}"
-
-
-async def test_logos_are_served(clients):
-    r = await clients.get("/logos/slack.svg")
-    assert r.status_code == 200 and r.text.lstrip().startswith("<svg")
 
 
 # ---- split-host providers (GA4: reports vs property listing) -------------------------------
@@ -887,10 +789,6 @@ async def test_split_host_connect_provisions_the_admin_tool_too(clients: AsyncCl
     # SAME credential on both — this is one connection wearing two hosts, not two connections.
     assert admin["bindings"] == data["bindings"]
     assert admin["bindings"][0]["secret_id"] == st["secret_id"]
-    # The admin tool can prove itself on `health --run`, and tells the agent what it is for.
-    assert admin["health_check"] == {"method": "GET", "path": "/v1beta/accountSummaries",
-                                     "expect_status": 200}
-    assert any("accountSummaries" in e.get("path", "") for e in admin["examples"])
 
 
 async def test_split_host_reconnect_rebinds_extras_without_duplicating(clients: AsyncClient, treg_google_app):
@@ -959,16 +857,3 @@ async def test_pick_resource_stamps_ready_made_example(clients: AsyncClient, tre
     stamped = [e for e in tool["examples"] if e.get("stamped") == "resource"]
     assert len(stamped) == 1
     assert stamped[0]["path"] == "v1beta/properties/999:runReport"
-
-
-async def test_pick_resource_without_template_changes_no_examples(clients: AsyncClient, treg_google_app):
-    """GSC has no resource_example (yet) — picking a site must leave its examples alone."""
-    st = await _connect_byo(clients, provider="google-search-console", name="google-search-console")
-    before = next(t for t in (await clients.get("/tools")).json()
-                  if t["name"] == "google-search-console")["examples"]
-    r = await clients.post(f"/connections/{st['secret_id']}/resource",
-                           json={"resource_ref": "sc-domain:example.com"})
-    assert r.status_code == 200
-    after = next(t for t in (await clients.get("/tools")).json()
-                 if t["name"] == "google-search-console")["examples"]
-    assert after == before

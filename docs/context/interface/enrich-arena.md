@@ -13,8 +13,6 @@ sources:
   - src/treg/web/enrich-arena.html
   - src/treg/web/enrich-arena/arena.js
   - src/treg/web/enrich-arena/bench.js
-  - tests/js/arena-bench.test.cjs
-  - tests/js/arena-template.test.cjs
   - src/treg/web/enrich-arena/arena.css
   - src/treg/web/agent-setup.js
   - src/treg/application/arena_verification_insights.py
@@ -40,7 +38,6 @@ sources:
   - src/treg/web/logos/tomba.svg
   - src/treg/web/sitetrack.js
   - tests/test_enrich_arena.py
-  - tests/js/enrich-arena.test.cjs
 related:
   - architecture/catalog.md
   - architecture/money.md
@@ -196,8 +193,10 @@ configured platform margin. Account reads and the excluded batch/file surface do
 Email inputs require a nonempty mailbox and dotted domain. Malformed domain/LinkedIn URLs,
 invalid ports, embedded credentials and non-web schemes return validation errors before pricing
 or charging, including malformed bracketed hosts that URL parsing would otherwise reject with an exception.
-Each provider contributes one eligible synchronous endpoint. Bulk jobs,
-asynchronous submissions and personal-email finders are excluded from the work-email task.
+Each provider contributes one eligible endpoint whose adapter verifies the task contract. Verified
+asynchronous submissions participate through the same planner and quote surfaces as synchronous
+providers; Arena handles submit, poll and terminal normalization internally. Bulk jobs and
+personal-email finders remain excluded from the work-email task.
 `?capability=people.email.find&mode=waterfall` opens a task/mode directly.
 
 ## Historical vendor insights
@@ -264,8 +263,15 @@ database the money path depends on. In the worker process it uses the API pool, 
 there. The rewind that
 revisits ten minutes of evidence is constrained to the Arena's endpoints so it rides
 `ix_callrecord_endpoint_id_created_at` instead of walking the table.
-It reads 100 audit records per transaction, follows their exact archive key/content and optional body
-carrier, reclassifies stored responses with current Arena required-field rules, and upserts anonymous
+It reads a bounded batch of 100 audit records and their exact archive key/content pointers, closes
+its metadata session, then resolves bodies through `archive_bodies.read` with path `arena` and the
+result read switch. Object reads have concurrency eight and retain the existing decode-size cap.
+Invalid compressed DB bodies remain unresolved per record rather than stopping collection of
+other evidence, including when decompression occurs in the common reader's DB fallback.
+The worker uses `bootstrap.archive_object_store` for the client lifecycle and drains read telemetry
+before exiting. It reacquires the cursor row lock and validates cursor, cutoff and completion state
+before publishing; evidence from a superseded batch is discarded. Thus no cursor lock or DB
+connection is held across R2 I/O. It reclassifies responses with current required-field rules and upserts anonymous
 `ArenaObservation` facts. It never calls vendors or trusts `CallRecord.hit`. No money writes or proxy
 changes are involved. Evidence lookup deduplicates key/content pairs and finds each pair's newest
 matching snapshot through the existing `(key_id, version)` index. This avoids repeatedly scanning
@@ -466,7 +472,9 @@ Arena never writes balances or holds. Own keys remain unmetered by treg. Aggrega
 disabled for these comparisons, and archive lookup is bypassed so runs measure fresh calls.
 
 Database sessions are short and closed before upstream requests. Attempt state and call references
-persist before dispatch. Each leg has a 90-second deadline and the run has a 240-second deadline.
+persist before dispatch. Synchronous legs have a 90-second deadline; an async leg may poll within
+the remaining 240-second per-entry run deadline. No database session remains open during polling
+waits or upstream I/O.
 Cancellation is polled between writes and interrupts in-flight tasks through the normal call
 cleanup. Shutdown drains Arena owners before closing the shared HTTP client. A process-lost run
 becomes interrupted after its persisted deadline; it is never automatically retried. Unknown
@@ -486,8 +494,13 @@ original intermittent failure. Audit/archive drains alone cannot release this re
 Waterfall uses ascending quoted prices, retaining planner order for ties, and the bounded error fallback policy. It stops
 at the first structural hit: the adapter supplies the contract's required fields. Found work email
 does not mean verified deliverability; phone found does not mean a live line. A negative mailbox
-verification verdict is a successful answer. Each step shows queued/running, found/no match,
-error/timeout, skipped/not attempted, timing, charge, and the reason for stopping or skipping.
+verification verdict is a successful answer. An async attempt that remains in progress, or whose
+foreground poll cannot prove a declared terminal state, is saved and shown as pending with its
+reservation and call reference. Pending stops only that entry's Waterfall; Battle may finish other
+explicitly selected providers concurrently. Only a declared terminal provider status permits the
+entry to advance. Terminal attempts show the actual settled charge, not the maximum reservation.
+Each step shows queued/running, pending, found/no match, error/timeout, skipped/not attempted,
+timing, charge, and the reason for stopping or skipping.
 
 ## Additional vendor calls and issue reports
 
@@ -582,9 +595,6 @@ paid execution; the dataplane's `/call/` contract is unchanged.
 Alembic revision `0027` creates `arenarun` and `arenaevaluation`. Run `python -m treg upgrade`
 before serving the new release. Tests cover auth/private access, aggregate admission, direct billing,
 own keys, cancellation, duplicate start/vote, attributed progress/results and pre-charge name validation, waterfall progression and OAuth return.
-
-Frontend billing-flow checks: `node --test tests/js/enrich-arena.test.cjs` exercises inline pricing,
-price invalidation, login gating, duplicate clicks, quote expiry and the correct-team top-up link.
 
 ### Conversion tracking
 
@@ -718,10 +728,6 @@ original LessieAI benchmark. The original repository's current figures differ fr
 the page discloses that difference and does not manufacture an overall score or describe these
 numbers as individual vendor hit rates or email-verification accuracy. The new charts update when
 the existing landing source changes. No paid benchmark execution is triggered by viewing them.
-
-`tests/js/arena-template.test.cjs` compiles the shared page and component templates using the
-bundled Vue runtime. This catches malformed template expressions that method-only tests miss,
-including the nested footer interpolation that previously prevented all Arena views from mounting.
 
 ## Published verification pilot
 

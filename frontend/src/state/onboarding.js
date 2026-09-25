@@ -63,7 +63,10 @@ async welcomeCreate(){ const name=(this.welcome.name||'').trim(); if(!name){ thi
         this.welcome.step=1; }  // stay in the modal: pick your agent → get the setup line
       catch(e){ this.welcome.err='Could not create the team: '+(e.detail||e.status); }
       finally{ this.welcome.busy=false; } },
-welcomeFinish(){ this.track('onboarding_finished',{agent:this.welcome.agent, step:this.welcome.step}); this.welcome.on=false; this.go('start');
+welcomeFinish(){ this.track('onboarding_finished',{agent:this.welcome.agent, step:this.welcome.step}); this.welcome.on=false;
+      // Someone who signed up on the way to a platform (a /search result) stays on it; otherwise
+      // Getting started, where the setup line lives.
+      if(this.view!=='platform') this.go('start');
       this.orgMsg='Team created. Send your agent the setup line any time — it lives on Getting started.'; },
 agentIcon(icon){ if(icon.startsWith('/')) return icon;  // bundled under /logos — same mark in both themes
       return 'https://unpkg.com/@lobehub/icons-static-png@latest/'+(this.theme==='dark'?'dark':'light')+'/'+icon+'.png'; },

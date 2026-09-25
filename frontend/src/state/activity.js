@@ -50,5 +50,6 @@ pretty(text){ try{ return JSON.stringify(JSON.parse(text), null, 2); }catch(e){ 
 isVideoUrl(u){ try{ return /\.(mp4|webm|mov|m4v)$/i.test(new URL(u).pathname); }catch(e){ return /\.(mp4|webm|mov|m4v)(\?|$)/i.test(u||''); } },
 fmtBytes(n){ if(n==null) return '—'; if(n<1024) return n+' B'; if(n<1048576) return (n/1024).toFixed(1)+' KB'; return (n/1048576).toFixed(2)+' MB'; },
 async copyCallBody(){ const t=this.callView&&this.callView.response&&this.callView.response.body_text; if(!t) return; if(await this.toClipboard(t)){ this.callCopied='Copied'; setTimeout(()=>{ this.callCopied=''; },1400); } },
-async loadCalls(){ try{ if(!this.apiKeys.length)await this.loadApiKeys(); const q='?limit=100'+(this.activityKey?'&api_key_id='+encodeURIComponent(this.activityKey):''); const [calls,runs]=await Promise.all([this.api('/calls'+q), this.api('/runs'+q).catch(()=>[])]); this.calls=calls; this.runs=runs; }catch(e){ this.err='Failed to load activity.'; } }
+async loadCalls(){ try{ if(!this.apiKeys.length)await this.loadApiKeys(); const q='?limit=100'+(this.activityKey?'&api_key_id='+encodeURIComponent(this.activityKey):''); const [calls,runs]=await Promise.all([this.api('/calls'+q), this.api('/runs'+q).catch(()=>[])]); this.calls=calls; this.runs=runs; }catch(e){ this.err='Failed to load activity.'; }
+      finally{ this.callsLoaded=true; } }  // the empty-state line waits for this, not for the page's global `loading`
 }

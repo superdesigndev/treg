@@ -105,7 +105,8 @@ agents then built against a constitution that was wrong.
 - **Table ownership.** One writer module per table; cross-domain reads are fine. Three recorded
   exceptions: only money writes `org.balance_micro`, the daily-spend counter (`spent_today_*`) and
   the auto-top-up fields; the call runtime may persist an OAuth token refresh into `secret`; audit
-  writes `callrecord`, domains only read it.
+  writes `callrecord`, domains only read it (`application/evidence_retention.py` also updates it,
+  blanking the two evidence columns past retention).
 - **Feedback handling.** This repo owns `FeedbackHandling` and `FeedbackHandlingEvent` models and
   migrations; the private admin service is their only runtime writer. Original reports remain
   owned by the feedback domain. See `docs/context/architecture/feedback.md`.
@@ -157,9 +158,9 @@ uv run lint-imports                            # the import-linter contracts (CI
 scripts/dev-local.sh up                        # live dev stack on :18790 with its own sqlite DB
 ```
 
-xdist is pulled via `--with`, not the lockfile — same as CI. The Postgres CI job
-(`test-postgres`) must stay serial: every worker would share one database while
-`reset_db()` drops tables.
+xdist is pulled via `--with`, not the lockfile — same as CI. Every test process gets its own
+database (a sqlite file per pid; under `TREG_TEST_DB_URL`, a Postgres database per xdist worker),
+so parallel runs and side-by-side runs never share one.
 
 - **Dependencies change through `uv add` or `uv lock`, never by hand.** `pyproject.toml` pins
   `required-version` so an old uv refuses to run instead of rewriting `uv.lock`; CI uses `--locked`.
@@ -167,11 +168,6 @@ xdist is pulled via `--with`, not the lockfile — same as CI. The Postgres CI j
   `[server]` extra, the certificate authority is `[proxy]`. Never import a heavy dependency at the
   top of a CLI-path module; the "Lightweight CLI modules" import-linter contract lists them and
   fails the build.
-- **Frontend rollout.** `frontend/README.md` documents account assignment and rollback.
-  `src/treg/web/dashboard-legacy/` is **deprecated**, retained only for temporary rollout and
-  rollback. Never hand-edit it or mirror new features/fixes into it; `frontend/` is the only
-  maintained Dashboard source. Follow the retirement checklist in `frontend/README.md` to remove
-  it after rollout, including anonymous entries that still use legacy at 100%.
 - **The dashboard** lives in `frontend/` (Vue components, TypeScript entry/transport, Vite).
   Build with `bash scripts/build-dashboard.sh`; generated assets in `src/treg/web/dashboard/`
   ship with Python. Run `npm --prefix frontend test` and `npm --prefix frontend run test:e2e`.

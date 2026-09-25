@@ -9,6 +9,7 @@ aggregate.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -19,9 +20,9 @@ from datetime import timedelta
 from urllib.parse import parse_qs, urlsplit
 
 from sqlalchemy import Integer, String, case, column, delete, func, select, values
-from sqlalchemy.orm import aliased
 
 from ..domain import arena, arena_insights as rules
+from .. import archive_bodies
 from ..domain.catalog import store
 from ..infra.db import session_maker
 from ..models import ArenaInsightState, ArenaObservation, ArchiveKey, ArchiveSnapshot, CallRecord
@@ -99,31 +100,24 @@ def _decode(raw, enc):
         return None
 
 
-async def _evidence(db, records):
-    keys = {r.archive_key_hash for r in records if r.archive_key_hash}
-    if not keys:
-        return {}
-    # Read request metadata separately so explicit 404s can still be classified without a body.
-    ak = (await db.execute(select(ArchiveKey).where(ArchiveKey.key_hash.in_(keys)))).scalars().all()
-    keymap = {k.key_hash: k for k in ak}
-    pairs = sorted({(keymap[r.archive_key_hash].id, r.archive_content_hash) for r in records
-                    if r.archive_key_hash in keymap and r.archive_content_hash})
-    # Only the newest carrier for each exact key/content pair; never substitute the latest answer.
-    carrier = aliased(ArchiveSnapshot)
-    snaps = []
-    if pairs:
-        # Look up each request's newest matching version through the existing (key_id, version)
-        # index. A large OR over key/content pairs can repeatedly scan the global content index
-        # for common responses (e.g. identical verifier verdicts) before intersecting by key.
-        wanted = values(column("key_id", Integer), column("content_hash", String)).data(pairs).cte("wanted")
-        latest = (select(ArchiveSnapshot.id).where(ArchiveSnapshot.key_id == wanted.c.key_id,
-            ArchiveSnapshot.content_hash == wanted.c.content_hash).order_by(ArchiveSnapshot.version.desc())
-            .limit(1).correlate(wanted).scalar_subquery())
-        snaps = (await db.execute(select(ArchiveSnapshot, carrier.body, carrier.enc)
-            .outerjoin(carrier, carrier.id == ArchiveSnapshot.body_of)
-            .where(ArchiveSnapshot.id.in_(select(latest).select_from(wanted))))).all()
-    bodies = {(s.key_id, s.content_hash): _decode(s.body if s.body is not None else body,
-               s.enc if s.body is not None else enc) for s, body, enc in snaps}
+async def _evidence(records, session_factory=session_maker):
+    # Metadata and exact-version selection use a short session. Neither the cursor lock nor
+    # another request-owned connection may survive across object reads, including DB fallback.
+    async with session_factory() as db:
+        keymap, pointers = await _evidence_pointers(db, records)
+    semaphore = asyncio.Semaphore(8)
+    async def load(pair, pointer):
+        async with semaphore:
+            try:
+                raw = await archive_bodies.read(pointer, "arena", session_factory=session_factory)
+            except zlib.error:
+                # Decompression now happens in the common reader. Preserve _decode's previous
+                # per-record handling so one corrupt DB body cannot stop the entire collector.
+                raw = None
+            return pair, _decode(raw, None)
+    async with asyncio.TaskGroup() as group:
+        tasks = [group.create_task(load(pair, pointer)) for pair, pointer in pointers.items()]
+    bodies = dict(task.result() for task in tasks)
     result = {}
     for r in records:
         k = keymap.get(r.archive_key_hash)
@@ -133,6 +127,39 @@ async def _evidence(db, records):
         body = _decode(k.req_body, None) if k.req_body else {}
         result[r.id] = (query, body or {}, bodies.get((k.id, r.archive_content_hash)))
     return result
+
+
+async def _evidence_pointers(db, records):
+    keys = {r.archive_key_hash for r in records if r.archive_key_hash}
+    if not keys:
+        return {}, {}
+    # Read request metadata separately so explicit 404s can still be classified without a body.
+    ak = (await db.execute(select(ArchiveKey).where(ArchiveKey.key_hash.in_(keys)))).scalars().all()
+    keymap = {k.key_hash: k for k in ak}
+    pairs = sorted({(keymap[r.archive_key_hash].id, r.archive_content_hash) for r in records
+                    if r.archive_key_hash in keymap and r.archive_content_hash})
+    # Only the newest carrier for each exact key/content pair; never substitute the latest answer.
+    snaps = []
+    if pairs:
+        # Look up each request's newest matching version through the existing (key_id, version)
+        # index. A large OR over key/content pairs can repeatedly scan the global content index
+        # for common responses (e.g. identical verifier verdicts) before intersecting by key.
+        wanted = values(column("key_id", Integer), column("content_hash", String)).data(pairs).cte("wanted")
+        latest = (select(ArchiveSnapshot.id).where(ArchiveSnapshot.key_id == wanted.c.key_id,
+            ArchiveSnapshot.content_hash == wanted.c.content_hash).order_by(ArchiveSnapshot.version.desc())
+            .limit(1).correlate(wanted).scalar_subquery())
+        snaps = (await db.execute(select(ArchiveSnapshot).options(*archive_bodies.read_options("arena"))
+            .where(ArchiveSnapshot.id.in_(select(latest).select_from(wanted))))).scalars().all()
+    pointers = {}
+    for snap in snaps:
+        if snap.size_bytes > MAX_BODY_BYTES:
+            continue
+        try:
+            pointers[snap.key_id, snap.content_hash] = await archive_bodies.pointer(db, snap, "arena")
+        except zlib.error:
+            # In DB mode the pointer loads/decompresses bytes before releasing this session.
+            continue
+    return keymap, pointers
 
 
 async def _aggregate(db, version, until):
@@ -183,7 +210,7 @@ async def _aggregate(db, version, until):
 
 
 async def collect_batch(session_factory=session_maker):
-    """One bounded transaction; the cursor row lock serializes overlapping runs. Returns True on backlog.
+    """Read evidence outside transactions; validate the sampled cursor before publishing a batch.
 
     Runs inside the `treg-worker` process, whose only pool is the API one (nothing else shares it
     there); it is never awaited by a request handler.
@@ -203,10 +230,22 @@ async def collect_batch(session_factory=session_maker):
             state.scan_until = current - timedelta(seconds=60)
             state.updated_at = None
         until = state.scan_until
-        records = (await db.execute(select(CallRecord).where(CallRecord.id > state.cursor,
+        cursor = state.cursor
+        await db.commit()
+
+    async with session_factory() as db:
+        records = (await db.execute(select(CallRecord).where(CallRecord.id > cursor,
             CallRecord.created_at >= until - timedelta(days=WINDOW_DAYS), CallRecord.created_at < until,
             CallRecord.endpoint_id.in_(endpoints)).order_by(CallRecord.id).limit(BATCH_SIZE))).scalars().all()
-        evidence = await _evidence(db, records)
+    evidence = await _evidence(records, session_factory)
+
+    async with session_factory() as db:
+        state = (await db.execute(select(ArenaInsightState).where(
+            ArenaInsightState.id == version).with_for_update())).scalar_one()
+        # Another worker may have published while this batch fetched R2. Its cursor/cycle wins;
+        # discard our speculative evidence instead of skipping records or overwriting the snapshot.
+        if state.cursor != cursor or state.scan_until != until or state.updated_at is not None:
+            return True
         observations = []
         for record in records:
             ep = endpoints[record.endpoint_id]

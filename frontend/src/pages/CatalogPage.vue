@@ -1,12 +1,13 @@
 <script>
 import { useDashboard } from '../state/context'
-export default { setup: useDashboard }
+import FindAnswer from '../components/FindAnswer.vue'
+export default { components: { FindAnswer }, setup: useDashboard, beforeUnmount(){ this.findUnschedule(); } }
 </script>
 
 <template>
 
           <div class="tut-head">
-            <div><h1>2,800+ tools for agents</h1><p class="sub" style="margin:0">Connect an account once. treg holds the credential server-side and injects it on every call — nothing lands on your machine.</p></div>
+            <div><h1>{{toolCountText ? toolCountText+' tools' : 'Tools'}} for agents</h1><p class="sub" style="margin:0">Connect an account once. treg holds the credential server-side and injects it on every call — nothing lands on your machine.</p></div>
             <!-- (The balance pill lives in the side nav, above the account block.) -->
             <div class="tut-actions">
               <button class="btn sm" @click="openToolRequest()" title="Missing a tool or provider? Tell us — requests steer what gets added next"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="9" y1="10" x2="15" y2="10"/></svg>Request a tool</button>
@@ -16,6 +17,25 @@ export default { setup: useDashboard }
               <button class="btn sm primary" @click="publicCatalog ? openSignin() : goByok()" title="Register your own provider key — your key wins over treg's and those calls are never metered"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777Zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>Bring your own key</button>
             </div>
           </div>
+          <!-- One box, two questions: a platform name filters the shelves as you type, and the finder
+               answers whatever is typed once typing pauses, or at once on Enter (state/find.js).
+               Clearing the box is how you leave an answer. -->
+          <div class="cat-find" v-if="plats.list.length">
+            <svg class="cat-find-i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <input :ref="el => setElement('search', el)" v-model="q" aria-label="Search the catalog"
+                   placeholder="Search a platform, or describe what your agent needs to do"
+                   @input="findSchedule($event.target.value)"
+                   @keydown.enter="q.trim() && findRun(q)" @keydown.esc="q=''; findExit()">
+            <button v-if="q" class="cat-find-x" type="button" aria-label="Clear the search" @click="q=''; findExit()">×</button>
+          </div>
+          <!-- A sentence is a job, not a name: say so where the eye already is, as one clickable row. -->
+          <!-- Enter searches every tool for whatever is typed. A name still filters the shelves as you
+               type, so for a short query the row is quieter; for a sentence it is the main action. -->
+          <button v-if="plats.list.length && q.trim() && !findActive" class="cat-find-suggest" :class="{quiet:!findIsJob(q)}" type="button" @click="findRun(q)">
+            <span class="cat-find-suggest-i" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+            <span class="cat-find-suggest-t">{{findIsJob(q) ? 'Find tools for' : 'Search all tools for'}} <b>“{{q.trim()}}”</b></span>
+            <kbd>Enter</kbd>
+          </button>
           <div v-if="connErr" class="banner" style="margin-top:12px">{{connErr}}</div>
           <div v-for="c in needSecondCred" :key="'n'+c.id" class="banner" style="margin-top:12px">
             <div><b>{{c.name}}</b> is connected, but can't call the API on its own yet. {{c.extra_credential_note}}</div>
@@ -39,6 +59,10 @@ export default { setup: useDashboard }
                but the last asks WHICH DATA you want (platform tiles, grouped by category), while
                "Platform" is the original integration shelf — which ACCOUNT you hold. Data-first is
                the default because that is the question an agent actually arrives with. -->
+          <!-- A described job (the search box's Enter, see state/find.js) is answered here, above the
+               shelves rather than instead of them: the shelves stay, lit where the answer landed. -->
+          <FindAnswer v-if="findActive" />
+
           <div class="mk-tabs-wrap" v-if="plats.list.length">
             <div class="mk-tabs" role="tablist" aria-label="Catalog">
               <button v-for="t in mkTabs" :key="t.key" role="tab" :aria-selected="mkTabActive===t.key"
@@ -60,8 +84,10 @@ export default { setup: useDashboard }
                      what the name and category already said. The summary survives as the hover
                      title, so nothing is lost for the one visitor who wants it. -->
                 <button v-for="pl in g.items" :key="pl.slug" class="pt-card"
+                        :class="{'find-hit':findHits[pl.slug], 'find-dim':find.phase==='done' && findGroups.length && !findHits[pl.slug]}"
                         :title="pl.summary ? pl.label+' — '+pl.summary : pl.label"
                         :aria-label="'Open '+pl.label" @click="openPlatform(pl.slug)">
+                  <span v-if="findHits[pl.slug]" class="pt-find">{{findHits[pl.slug]}} match{{findHits[pl.slug]===1?'':'es'}}</span>
                   <div class="pt-top">
                     <!-- A platform's OWN mark, not its providers': the card is the platform. Anything
                          we haven't drawn falls back to a generated initial tile, not a broken image. -->
@@ -111,7 +137,11 @@ export default { setup: useDashboard }
                 <span class="pt-more-a" aria-hidden="true">→</span>
               </button>
             </div>
-            <div v-if="!platCatGroups.length" class="mk-empty">
+            <!-- A query that names no platform is usually a JOB, not a typo: say what missed and offer
+                 the finder, instead of implying the server has no catalog. -->
+            <p v-if="!platCatGroups.length && platNameQuery && plats.list.length && !findSoon" class="find-miss">
+              No platform is called that.</p>
+            <div v-else-if="plats.settled && !platCatGroups.length && !q.trim()" class="mk-empty">
               No catalogued platforms{{mkTabActive==='all'?'':' in '+mkTabActive}} on this server yet — the
               <b>Platform</b> tab lists every integration you can connect.
             </div>
