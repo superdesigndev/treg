@@ -365,7 +365,8 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
   parameterized locations have no mapped fallback.
 - **Mark scope on a failed child** (`overflow.py`): only `aggregator_auth` and `aggregator_balance`
   mark `overflow:<aggregator>` for every provider. Everything else - the aggregator's account for
-  the vendor being dry, and a `malformed` answer (a 5xx, a transport timeout, a non-envelope) - marks
+  the vendor being dry, a vendor-specific authentication or authorization refusal, and a
+  `malformed` answer (a 5xx, a transport timeout, a non-envelope) - marks
   `overflow:<aggregator>:<provider>`. On 2026-09-17 one Orthogonal Apollo relay answering
   "timeout of 30000ms exceeded" marked the whole aggregator and refused every other provider's
   fallback for 15 minutes, including 62 Influencers Club `similar` calls from one team. A dead
@@ -405,6 +406,9 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
   signature table - the one place a relayed body is read - is the aggregator's account for THIS
   vendor (a relayed 402, Apollo's 422, a period 429): the call path marks
   `overflow:<aggregator>:<provider>` only, so one vendor's cap never takes the others offline.
+  An otherwise unrecognized relayed vendor 401/403 becomes `VENDOR_REFUSAL` and uses that same
+  provider-scoped mark: repeated calls pause briefly without treating the aggregator as globally
+  unavailable.
   A valid Monid run envelope takes precedence over its outer HTTP status: Monid mirrors relayed
   vendor 401/402/403 statuses, so only a refusal with no run id proves the Monid key or balance
   failed; a completed run unwraps `providerResponse.error` for the vendor signature table.

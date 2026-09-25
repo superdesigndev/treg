@@ -94,8 +94,7 @@ def parse(status: int, body: bytes | dict) -> AggregatorResult:
     # Monid mirrors the vendor's status on a completed run. A relayed vendor 401/402/403 therefore
     # arrives as that outer HTTP status *with* a valid run envelope; it is not evidence that our
     # Monid key or balance failed. Only a bare refusal, before Monid created a run, belongs to the
-    # aggregator. Live 2026-09-25: ContactOut's pool returned a completed 403/out-of-credits run;
-    # treating it as aggregator_auth locked every unrelated Monid route for 15 minutes.
+    # aggregator. Treating such a response as aggregator_auth would lock unrelated routes.
     if not run_id:
         if status in (401, 403):
             return AggregatorResult(None, b"", None, "aggregator_auth", str(doc.get("message", ""))[:120])
@@ -118,9 +117,12 @@ def parse(status: int, body: bytes | dict) -> AggregatorResult:
         # `with_vendor_verdict` can apply the vendor's capacity signature and scope the breaker to
         # this vendor rather than the whole aggregator.
         out = provider_response["error"]
-    if state == "FAILED" and out is None:
-        return AggregatorResult(int(upstream_status), _dump(doc.get("error") or doc.get("message") or {}),
-                                cost or 0, None, detail=str(doc.get("message") or "failed")[:120],
-                                extra={"run_id": run_id})
+    if state == "FAILED":
+        failure_body = out if out is not None else doc.get("error") or doc.get("message") or {}
+        detail = doc.get("message")
+        if not detail and isinstance(failure_body, dict):
+            detail = failure_body.get("message") or failure_body.get("error")
+        return AggregatorResult(int(upstream_status), _dump(failure_body), cost or 0, None,
+                                detail=str(detail or "failed")[:120], extra={"run_id": run_id})
     return AggregatorResult(int(upstream_status), _dump(out) if out is not None else b"", cost, None,
                             extra={"run_id": run_id, "result_count": doc.get("resultCount")})

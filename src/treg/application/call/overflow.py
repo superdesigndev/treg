@@ -38,8 +38,9 @@ from ...domain.capacity import signatures as capacity_signatures
 from ...domain.capacity.routes_view import view as routes_view
 from ...domain.capacity.verify import shape
 from ...domain.capacity.view import view as capacity_view
-from ...infra.upstream.aggregators import (AGGREGATOR_SIDE, VENDOR_DRY, AggregatorRequest, AggregatorResult,
-                                            by_name, with_vendor_verdict)
+from ...infra.upstream.aggregators import (AGGREGATOR_SIDE, VENDOR_DRY, VENDOR_REFUSAL,
+                                            AggregatorRequest, AggregatorResult, by_name,
+                                            with_vendor_verdict)
 from ...timeutil import utcnow_naive
 from .resolve import MarketplaceCall
 from .reserve import _platform_reserve
@@ -285,11 +286,11 @@ async def _maybe_overflow_attempt(
     delta = (budget.actual_micro - budget.direct_micro
              if budget.actual_micro is not None else None)
     # --- decide ---
-    if res.failure in AGGREGATOR_SIDE or res.failure == VENDOR_DRY:
+    if res.failure in AGGREGATOR_SIDE or res.failure in (VENDOR_DRY, VENDOR_REFUSAL):
         why_agg = res.failure
         # The aggregator's key or account being out is out for everyone. Everything else is scoped
-        # to THIS vendor: its account for the vendor being dry (a relayed 402 / Apollo 422 / period
-        # 429), and a `malformed` answer too - a 5xx or transport timeout on one vendor's relay
+        # to THIS vendor: its account for the vendor being dry, a vendor-specific refusal, and a
+        # `malformed` answer too - a 5xx or transport timeout on one vendor's relay
         # ("timeout of 30000ms exceeded" on apollo, 2026-09-17) took influencers.club and every
         # other provider's fallback offline for 15 minutes. A dead aggregator host still ends up
         # marked, one provider at a time.

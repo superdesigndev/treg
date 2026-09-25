@@ -574,10 +574,15 @@ APOLLO_ROUTE = dict(endpoint_id=APOLLO_SEARCH, provider="apollo", method="POST",
     (APOLLO_ROUTE, (422, APOLLO_OUT_OF_CREDITS),
      (429, {"success": False, "error": "Upstream returned status 429",
             "data": {"error": "You have exceeded the rate limit per day"}, "priceCents": 0})),
+    # The aggregator is reachable and authenticated, but this vendor pool refuses access. Brake
+    # only this pair so it is not retried on every call while unrelated pools remain available.
+    ({"price_micro": 3_000}, (402, b'{"detail":"nope"}'),
+     (403, {"success": False, "error": "Upstream returned status 403",
+            "data": {"message": "No access to endpoint"}, "priceCents": 0})),
     # A plain 5xx on one vendor's relay.
     ({"price_micro": 3_000}, (402, b'{"detail":"nope"}'),
      (503, {"success": False, "error": "upstream gateway timeout"})),
-], ids=["malformed-relay", "vendor-period-quota", "orthogonal-5xx"])
+], ids=["malformed-relay", "vendor-period-quota", "vendor-refusal", "orthogonal-5xx"])
 async def test_a_failed_relay_marks_the_aggregator_for_that_vendor_only(
         clients: AsyncClient, overflow_on, monkeypatch, route, vendor, answer):
     """Only the aggregator's own key or account is out for everyone: the child is released, the

@@ -17,7 +17,8 @@ from treg.domain.capacity import signatures as S
 from treg.domain.capacity import verify as V
 from treg.domain.capacity.policy import ensure_policies
 from treg.domain.catalog import store as catalog_store
-from treg.infra.upstream.aggregators import VENDOR_DRY, by_name, monid, orthogonal, with_vendor_verdict
+from treg.infra.upstream.aggregators import (VENDOR_DRY, VENDOR_REFUSAL, by_name, monid,
+                                              orthogonal, with_vendor_verdict)
 from treg.models import CapacityPolicy, OverflowRoute
 from treg.timeutil import utcnow_naive
 
@@ -402,6 +403,27 @@ def test_monid_completed_vendor_403_is_not_an_aggregator_auth_failure():
     assert classified.failure == fixture["expect"]["failure"] == VENDOR_DRY
     assert classified.detail.startswith("quota:")
 
+    refused_doc = {
+        "runId": "run-refused", "status": "COMPLETED",
+        "providerResponse": {"httpStatus": 403, "error": {"message": "No access to endpoint"}},
+    }
+    refused = with_vendor_verdict(monid.parse(403, refused_doc), "contactout")
+    assert refused.failure == VENDOR_REFUSAL
+    assert "No access to endpoint" in refused.detail
+
+
+def test_monid_failed_run_keeps_zero_cost_and_error_detail():
+    failed = {
+        "runId": "run-failed", "status": "FAILED",
+        "providerResponse": {"httpStatus": 503, "error": {"message": "provider unavailable"}},
+    }
+    res = monid.parse(503, failed)
+
+    assert res.failure is None and res.upstream_status == 503
+    assert res.cost_micro == 0
+    assert res.detail == "provider unavailable"
+    assert json.loads(res.upstream_body) == failed["providerResponse"]["error"]
+
 
 def test_every_fixture_round_trips_through_its_adapter():
     for path in FIX.glob("*.json"):
@@ -465,7 +487,8 @@ def test_verdict_disables_only_a_route_that_is_actually_wrong():
     assert V.verdict(_verification(direct_status=422, relay_status=404, same_shape=None, verified_at=None, direct_dry=True)) == "inconclusive"
     assert V.verdict(_verification(relay_status=None, same_shape=None, verified_at=None, failure="pending")) == "inconclusive"
     # the aggregator's side: key, account, host, envelope, its vendor pool
-    for failure in ("aggregator_auth", "aggregator_balance", "malformed", "unreachable", "vendor_dry"):
+    for failure in ("aggregator_auth", "aggregator_balance", "malformed", "unreachable",
+                    "vendor_dry", "vendor_refusal"):
         assert V.verdict(_verification(direct_status=None, relay_status=None, same_shape=None, verified_at=None,
                                        failure=failure)) == "aggregator", failure
     # this route is shown wrong: the direct leg proves the request, the relay does not match it

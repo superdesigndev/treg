@@ -942,7 +942,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # phase ends here; the child places its own hold and the aggregator answers with none open.
         await db.commit()
         pending = _audit(503, charged_micro=0, refused_by="capacity",
-                         error_response="treg: own account exhausted — served via overflow",
+                         error_response="treg: own account exhausted — trying overflow",
                          defer_analytics=True)
         try:
             outcome = await overflow_cycle.maybe_overflow(
