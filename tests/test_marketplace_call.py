@@ -990,6 +990,43 @@ def test_openmart_settlement_rounds_three_credits_per_ten_records(endpoint, body
     assert call_settle._observed_cost_micro(mk, body) == credits * 29_800
 
 
+@pytest.mark.parametrize(("body", "expected"), [
+    (b'[]', 10_000),
+    (b'[{"mid":"1"}]', 15_000),
+    (b'[{},{},{}]', 25_000),
+    (b'{"error":{"type":"run-failed"}}', None),
+])
+def test_apify_settlement_counts_dataset_rows_plus_call_fee(monkeypatch, body, expected):
+    endpoint = {**catalog_store.load().by_id['apify.meta-ads.library.search']}
+    endpoint['cost'] = {**endpoint['cost'], 'call_fee': 0.01}
+    monkeypatch.setitem(catalog_store.load().by_id, endpoint['id'], endpoint)
+    mk = _mk('apify', endpoint_id=endpoint['id'], cost_type='per_result', unit_micro=5_000)
+    assert call_settle._observed_cost_micro(mk, body) == expected
+
+
+@pytest.mark.parametrize(('items', 'hold'), [
+    ((('maxItems', '1'),), 15_000),
+    ((('maxItems', '200'),), 1_010_000),
+    ((), None),
+    ((('maxItems', '0'),), None),
+    ((('maxItems', '201'),), None),
+    ((('maxItems', 'ten'),), None),
+])
+def test_apify_platform_hold_is_call_fee_plus_max_items(items, hold):
+    ep = {**catalog_store.load().by_id['apify.meta-ads.library.search']}
+    cost = {**catalog_store.load().cost_view(ep['cost'], 'apify'), 'call_fee': 0.01}
+    ep['cost'] = cost
+    query = call_resolution.QueryValues(items)
+    if hold is None:
+        with pytest.raises(ResolutionFailed) as exc:
+            call_resolution._enforce_platform_request(ep, b'{}', query=query)
+        assert exc.value.detail['parameter'] == 'queryParams.maxItems'
+        return
+    call_resolution._enforce_platform_request(ep, b'{}', query=query)
+    assert call_resolution._marketplace_pricing('apify', ep['id'], cost, query, b'{}') \
+        == (hold, 5_000)
+
+
 def test_openmart_settlement_rejects_undocumented_response_shapes():
     search = _mk("openmart", endpoint_id="openmart.businesses.search",
                  cost_type="per_result", unit_micro=29_800)
@@ -3345,6 +3382,25 @@ def test_platform_request_constraints_do_not_require_a_price_table(body, valid):
     else:
         with pytest.raises(ResolutionFailed):
             call_resolution._enforce_platform_request(ep, body)
+
+
+@pytest.mark.parametrize('items,valid', [
+    ((('memory', '1024'), ('maxTotalChargeUsd', '1')), True),
+    ((('memory', '1024.0'), ('maxTotalChargeUsd', '1.0')), False),
+    ((('memory', '2048'), ('maxTotalChargeUsd', '1')), False),
+    ((('memory', '1024'), ('memory', '1024'), ('maxTotalChargeUsd', '1')), False),
+    ((('maxTotalChargeUsd', '1'),), False),
+    ((('memory', 'lots'), ('maxTotalChargeUsd', '1')), False),
+])
+def test_platform_request_pins_query_values_by_type(items, valid):
+    ep = {'id': 'example.run', 'platform_request': {
+        'queryParams.memory': 1024, 'queryParams.maxTotalChargeUsd': 1.0}}
+    query = call_resolution.QueryValues(items)
+    if valid:
+        call_resolution._enforce_platform_request(ep, b'', query=query)
+    else:
+        with pytest.raises(ResolutionFailed):
+            call_resolution._enforce_platform_request(ep, b'', query=query)
 
 
 @pytest.mark.parametrize('body,valid', [

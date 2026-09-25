@@ -953,7 +953,10 @@ ceiling. A finite nonnegative response value settles the call at that amount; mi
 non-finite evidence falls back to the normal estimate/miss rules. `reported_charge` is generic
 catalog metadata, not a provider-specific billing branch, and cannot be combined with `cost.settle`.
 
-`platform_request` fixes exact body values needed only on the shared credential. Provider-specific
+`platform_request` fixes exact body, header or query values needed only on the shared credential.
+A `queryParams.*` pin must appear exactly once and is read as the pinned value's type, so a run
+option such as a spend cap or memory size can bound what one call costs. An Apify `per_result` price may add
+`call_fee`, the flat per-run charge settled with its counted rows (money.md, Apify dataset-row settlement). Provider-specific
 request guards bound shapes whose billing formulas need more context than an exact selector:
 Openmart requires its explicit 1-25 record count, while Tavily Map and Crawl require an explicit
 integer limit from 1 to 20. Resolution applies these only after selecting the platform offer and

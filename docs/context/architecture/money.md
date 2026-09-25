@@ -1022,6 +1022,16 @@ single enrichments from endpoint-specific success evidence plus `free_enrichment
 `free` and the result list, and suggestions at zero. Non-finite or malformed numeric evidence keeps
 the estimate for reconciliation. BYOK calls never enter this money path.
 
+## Apify dataset-row settlement
+
+An Apify `per_result` row on the platform key requires `maxItems` from 1 to 200, the server-side
+row cap. `_marketplace_pricing` holds `cost.call_fee` plus `maxItems` rows, and `_observed_cost_micro`
+settles the rows run-sync returned plus the same fee: each row is one billed event, and the fee is
+the actor start or compute the run bills regardless of rows. Apify's `usageTotalUsd` trails a
+finished run by minutes, so it is not settlement evidence. A run that exceeds its own timeout
+answers 400 with no rows and settles at zero although Apify bills the rows it made; the 200-row
+cap bounds that loss. BYOK calls never enter this money path.
+
 ## Pinned attribution and replay reads
 
 `reserve_in_transaction` writes `meta.tags` from its authoritative `tags` argument, overriding any
