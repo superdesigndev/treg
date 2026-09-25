@@ -423,8 +423,9 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
 - **`verify.py`** + `treg-worker overflow verify` — the weekly re-verify: one cheap call per
   route through the aggregator (and, when we hold the vendor key, directly), compare the shape
   fingerprint (keys and list/leaf markers, values ignored), stamp `last_verified_at` or disable
-  with the reason. A mismatch prints a bounded key-only structural diff, never response values, so
-  an operator can distinguish omitted metadata from an incompatible body without exposing PII.
+  with the reason. A mismatch prints a bounded key-only structural diff, never response values;
+  identifier-shaped map keys are replaced before logging or persistence, so an operator can
+  distinguish omitted metadata from an incompatible body without exposing PII.
   Two per-route price caps and one run budget: a route that is enabled or was
   stamped before is a **renewal**, held to `--renew-max-usd` (default $1); a never-verified pair is
   **discovery**, visited only under `--all` and held to `--max-usd` (default 2¢). Renewals go first,

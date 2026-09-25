@@ -9,7 +9,9 @@ this module reads no settings itself.
 
 from __future__ import annotations
 
+import ipaddress
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -19,6 +21,24 @@ from ...timeutil import utcnow_naive
 from ...infra.upstream.aggregators import (AGGREGATOR_SIDE, VENDOR_DRY, VENDOR_REFUSAL, by_name,
                                             with_vendor_verdict)
 from . import signatures
+
+
+_SAFE_SHAPE_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_-]{0,63}")
+_UUID_SHAPE_KEY = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
+)
+
+
+def _safe_shape_key(key) -> str:
+    """Keep ordinary schema field names; never persist identifier-shaped map keys."""
+    text = str(key)
+    if not _SAFE_SHAPE_KEY.fullmatch(text) or _UUID_SHAPE_KEY.fullmatch(text):
+        return "<identifier>"
+    try:
+        ipaddress.ip_address(text)
+    except ValueError:
+        return text
+    return "<identifier>"
 
 
 def shape(obj, depth: int = 0):
@@ -43,7 +63,7 @@ def _shape_paths(value, path: str = "$") -> set[str]:
     if isinstance(value, dict):
         paths = {f"{path}:object"}
         for key, child in value.items():
-            paths |= _shape_paths(child, f"{path}.{key}")
+            paths |= _shape_paths(child, f"{path}.{_safe_shape_key(key)}")
         return paths
     if isinstance(value, list):
         return {f"{path}:list"} | (_shape_paths(value[0], f"{path}[]") if value else set())

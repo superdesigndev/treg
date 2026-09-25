@@ -468,6 +468,15 @@ def test_shape_fingerprint_ignores_values_but_not_structure():
     diff = V.shape_difference(a, c)
     assert "$.data.score:leaf" in diff and "$.data.sources:list" in diff
     assert "a@x.io" not in diff
+    keyed = V.shape_difference(
+        b'{"results":{"ada@acme.com":{"score":1,"title":"x"}}}',
+        b'{"results":{"ada@acme.com":{"score":1}}}',
+    )
+    assert "ada@acme.com" not in keyed
+    assert "$.results.<identifier>.title:leaf" in keyed
+    assert V._safe_shape_key("acme.com") == "<identifier>"
+    assert V._safe_shape_key("550e8400-e29b-41d4-a716-446655440000") == "<identifier>"
+    assert V._safe_shape_key("title") == "title"
 
 
 def test_shape_empty_vs_nonempty_list_differs_but_both_empty_match():
