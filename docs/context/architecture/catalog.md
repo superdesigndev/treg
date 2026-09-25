@@ -1777,12 +1777,15 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   2026-08-28: the endpoint's job is to find the thing, and misses on the per-success children are
   free); `X-Treg-Route-Waterfall: 0` stops at the first miss. Every attempt is settled at its real
   price and `X-Treg-Route-Max-Cost` (default $1) bounds the sum before each reserve (a candidate
-  that would breach it is `skipped`). Quota-row quotes scale with the requested row count, just
-  like per-result quotes. Each child also receives the remaining ceiling after actual earlier
-  charges; the shared reservation gate checks the resolved estimate including margin, even when
-  the advisory quote was too low or the child uses overflow. A budget refusal skips that candidate
-  without using the provider-error retry allowance; if every candidate is skipped, return 402
-  `route_max_cost`. A retained weak answer keeps its own outcome when later candidates are skipped.
+  that would breach it is `skipped`). Before iteration, a pre-check finds the cheapest platform-tier
+  candidate BY RAW PRICE (not by ranking order, which uses `expected_cost_per_hit`) and returns 402
+  early when even that cheapest exceeds the cap — so a caller whose budget fits a cheaper provider
+  never sees a false 402 just because a more expensive provider ranked first due to better hit rate.
+  Quota-row quotes scale with the requested row count, just like per-result quotes. Each child also
+  receives the remaining ceiling after actual earlier charges; the shared reservation gate checks
+  the resolved estimate including margin, even when the advisory quote was too low or the child
+  uses overflow. A budget refusal skips that candidate without using the provider-error retry
+  allowance; if every candidate is skipped, return 402 `route_max_cost`. A retained weak answer keeps its own outcome when later candidates are skipped.
   When the waterfall ends with some candidates skipped due to max-cost, the response includes
   `_treg.capped: true` and `X-Treg-Route-Capped: true` — a partial miss is distinguishable from an
   exhaustive one, so callers can raise their budget if needed (feedback #131, 2026-09).

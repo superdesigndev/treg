@@ -1572,6 +1572,87 @@ async def test_capped_signal_when_max_cost_truncates_waterfall(clients: AsyncCli
     assert skipped, f"Expected some providers skipped due to cost: {treg['tried']}"
 
 
+async def test_max_cost_precheck_finds_actual_cheapest_not_first_ranked(clients: AsyncClient, enrichment_with_quickenrich_on, monkeypatch):
+    """Feedback #735–831: When ranking puts an expensive candidate first (due to better hit_rate
+    making its expected_cost_per_hit lower), the pre-check must still find the actual cheapest
+    candidate by raw price_micro. Without this fix, the router rejects with 402 even though a
+    cheaper candidate exists that fits under the cap.
+
+    Scenario: candidate A ranks first (better hit_rate → lower expected_cost_per_hit), but
+    candidate B is cheaper by raw price. Max-cost is between B's price and A's price.
+    Expected: B is tried and succeeds.
+    Bug before fix: 402 because pre-check only looked at A (ranked first)."""
+    from dataclasses import replace
+    routed = "treg.people.phone.find"
+    build_orig = call_route.build_plan
+
+    async def build_with_reordered_ranking(*args, **kwargs):
+        plan = await build_orig(*args, **kwargs)
+        # Simulate ranking where a more expensive candidate ranks first due to better hit_rate.
+        # Find quickenrich (cheapest) and another provider, swap their positions so the expensive
+        # one is first in the ranked list — mimicking what happens when hit_rate affects ranking.
+        qe_idx = next((i for i, c in enumerate(plan.candidates) if "quickenrich" in c.endpoint["id"]), None)
+        if qe_idx is not None and qe_idx > 0:
+            # Already in position > 0, the expensive one is first — that's our test scenario
+            pass
+        elif qe_idx == 0 and len(plan.candidates) > 1:
+            # QuickEnrich is first; swap with a more expensive one to simulate ranking by hit_rate
+            expensive_idx = next((i for i, c in enumerate(plan.candidates)
+                                  if c.tier == "platform" and (c.price_micro or 0) > (plan.candidates[0].price_micro or 0)), None)
+            if expensive_idx is not None:
+                plan.candidates[0], plan.candidates[expensive_idx] = plan.candidates[expensive_idx], plan.candidates[0]
+        return plan
+
+    monkeypatch.setattr(call_route, "build_plan", build_with_reordered_ranking)
+    seen = []
+    hit = {'success': True, 'data': {'employee_phone': '+15550100100', 'employee_phone_type': 'mobile'},
+           'meta': {'credits_used': 1}}
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({'quickenrich': [(200, hit)]}, seen))
+
+    # max_cost=$0.01 is above QuickEnrich (~$0.0048) but may be below the first-ranked candidate
+    r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/example"},
+                           headers={"X-Treg-Route-Max-Cost": "0.01"})
+    # Before the fix: 402 because pre-check only looked at first-ranked (expensive) candidate
+    # After the fix: 200 because pre-check finds actual cheapest (QuickEnrich) which fits
+    assert r.status_code == 200, f"Should find cheapest candidate even if not ranked first: {r.text}"
+    # QuickEnrich should be the one that answered (the expensive one was skipped)
+    assert "quickenrich" in r.json()["_treg"]["served_by"], r.json()
+
+
+async def test_max_cost_error_names_actual_cheapest_candidate(clients: AsyncClient, enrichment_with_quickenrich_on, monkeypatch):
+    """When max-cost is below even the cheapest candidate, the 402 error must name the actual
+    cheapest by raw price, not the first-ranked candidate (which might be more expensive due
+    to ranking by expected_cost_per_hit). Regression for feedback #735–831."""
+    from dataclasses import replace
+    routed = "treg.people.phone.find"
+    build_orig = call_route.build_plan
+
+    async def build_with_reordered_ranking(*args, **kwargs):
+        plan = await build_orig(*args, **kwargs)
+        # Put an expensive candidate first in ranking to test that error still names the cheapest
+        qe_idx = next((i for i, c in enumerate(plan.candidates) if "quickenrich" in c.endpoint["id"]), None)
+        if qe_idx == 0 and len(plan.candidates) > 1:
+            expensive_idx = next((i for i, c in enumerate(plan.candidates)
+                                  if c.tier == "platform" and (c.price_micro or 0) > (plan.candidates[0].price_micro or 0)), None)
+            if expensive_idx is not None:
+                plan.candidates[0], plan.candidates[expensive_idx] = plan.candidates[expensive_idx], plan.candidates[0]
+        return plan
+
+    monkeypatch.setattr(call_route, "build_plan", build_with_reordered_ranking)
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider({}, seen))
+
+    # $0.001 is below QuickEnrich's $0.0048 - should fail with 402 naming QuickEnrich
+    r = await clients.post(f"/call/{routed}", json={"linkedin_url": "https://www.linkedin.com/in/example"},
+                           headers={"X-Treg-Route-Max-Cost": "0.001"})
+    assert r.status_code == 402, r.text
+    d = r.json()["detail"]
+    assert d["error"] == "route_max_cost"
+    # The error must name the actual cheapest (QuickEnrich), not the first-ranked expensive one
+    assert "quickenrich" in d["message"].lower(), f"Error should name QuickEnrich as cheapest: {d['message']}"
+    assert seen == [], "No provider should be called when max-cost is below the cheapest"
+
+
 async def test_strict_filters_refuses_a_looser_answer_instead_of_billing_it(clients: AsyncClient, enrichment_on, monkeypatch):
     """voice-ai-outbound, 2026-09-03: `{full_name, country: GT}` went to a candidate that ignored
     the country and was billed for people in New York. Opt-in, the caller is refused instead —

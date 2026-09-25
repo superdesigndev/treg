@@ -397,12 +397,22 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
                         f"no provider for {ep['id']} can honour every filter you sent for this identity "
                         f"(X-Treg-Route-Strict-Filters): " + "; ".join(f"{d['endpoint_id']} {d['why']}" for d in strict_drop)
                         + ". Send an identity a filter-aware provider accepts, or drop the header to accept a looser answer")})
-    first = plan.candidates[0]
-    if options.max_cost_micro is not None and (first.price_micro or 0) > options.max_cost_micro:
+    # Find the actual cheapest candidate by raw price_micro, not by ranking order.
+    # Ranking is by expected_cost_per_hit (price / hit_rate), so a candidate with better hit_rate
+    # can rank first while a different candidate is cheaper by raw price. Own keys (tier
+    # tool/credential/anonymous) are free (price_micro=0); only platform-tier candidates are priced.
+    # If even the cheapest priced candidate exceeds max-cost, reject early with 402.
+    # Note: include price_micro=0 (free platform candidates) by checking `is not None`, not truthiness.
+    cheapest = min(
+        (c for c in plan.candidates if c.tier == "platform" and c.price_micro is not None),
+        key=lambda c: c.price_micro,
+        default=None
+    )
+    if cheapest is not None and options.max_cost_micro is not None and cheapest.price_micro > options.max_cost_micro:
         raise ResolutionFailed("route_max_cost", status_code=402, detail={
             "error": "route_max_cost", "endpoint_id": ep["id"], "max_cost_micro": options.max_cost_micro,
-            "cheapest_micro": first.price_micro, "plan": plan.view()["plan"],
-            "message": f"the cheapest candidate ({first.endpoint['id']}) costs more than {MAX_COST_HEADER}"})
+            "cheapest_micro": cheapest.price_micro, "plan": plan.view()["plan"],
+            "message": f"the cheapest candidate ({cheapest.endpoint['id']}) costs more than {MAX_COST_HEADER}"})
     tried: list[Attempt] = []
     spent = 0
     errors = 0
