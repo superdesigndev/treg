@@ -2121,6 +2121,10 @@ async def test_contactout_routed_verification_preserves_verdict_and_is_free(
 async def test_contactout_verifier_missing_verdict_and_embedded_errors_fall_back(
     clients, enrichment_on, monkeypatch, payload,
 ):
+    """When ContactOut returns an unusable response (empty/missing verdict or API error), the router
+    falls back to the next cheapest provider (Tomba). The customer is charged Tomba's rate (~$0.009),
+    NOT ContactOut's free rate. This documents why customers see ~$0.01 charges on the routed
+    treg.people.email.verify endpoint even though ContactOut's direct endpoint is free."""
     monkeypatch.setenv("TREG_PLATFORM_KEY_CONTACTOUT", "PLATFORM-TEST")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "contactout,tomba")
     get_settings.cache_clear()
@@ -2129,11 +2133,18 @@ async def test_contactout_verifier_missing_verdict_and_embedded_errors_fall_back
         "contactout": [(200, payload)],
         "tomba": [(200, {"data": {"email": {"status": "invalid", "score": 0}}})],
     }, seen))
+    before = await _balance(clients)
     response = await clients.post("/call/treg.people.email.verify", json={"email": "person@example.test"})
     assert response.status_code == 200, response.text
     assert [r[0] for r in seen] == ["contactout", "tomba"]
-    assert response.json()["_treg"]["served_by"] == "tomba.people.email.verify"
-    assert response.json()["output"]["status"] == "invalid"
+    data = response.json()
+    assert data["_treg"]["served_by"] == "tomba.people.email.verify"
+    assert data["output"]["status"] == "invalid"
+    # ContactOut miss costs $0, Tomba hit costs 1 credit @ $0.0089 = 8,900 micro-USD
+    assert data["_treg"]["charged_micro"] == 8_900
+    assert [t["charged_micro"] for t in data["_treg"]["tried"]] == [0, 8_900]
+    assert int(response.headers["X-Treg-Cost-Micro"]) == 8_900
+    assert before - await _balance(clients) == 8_900, "only Tomba charged; ContactOut miss was free"
 
 
 async def test_own_verifier_key_precedes_free_contactout_platform_candidate(
