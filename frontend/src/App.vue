@@ -274,7 +274,3 @@ export default { ...controller, components: { ...controller.components, TeamReso
 </div>
 </template>
 
-<style scoped>
-.boot-status { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: var(--muted); }
-.boot-status .brand { color: var(--text); text-decoration: none; }
-</style>

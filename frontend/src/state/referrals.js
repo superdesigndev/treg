@@ -9,7 +9,7 @@ export default {
       // One call: GET mints the code if this is the first visit (asking for the page IS the lazy
       // trigger), so there is no POST-then-GET round trip and no window where `link` is empty.
       const out=await this.api('/referrals').catch(()=>null);
-      if(out) this.ref={...out, loading:false}; else this.ref={...this.ref, loading:false}; },
+      if(out) this.ref={...out, loading:false, loaded:true}; else this.ref={...this.ref, loading:false}; },
 // How much extra THIS preset earns a referred team, or 0. Guarded on the offer existing, so a
     // team that arrived on its own sees the buttons exactly as before.
     refPresetBonus(usd){ const o=this.billing&&this.billing.referral_offer;

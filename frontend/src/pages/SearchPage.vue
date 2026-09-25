@@ -298,7 +298,7 @@ export default {
 <div class="sp" :class="{answered:find.phase==='done' && cards.length}" ref="stage">
   <section class="sp-top">
     <div v-if="find.phase==='idle' || findBusy" class="sp-hero" :class="{quiet:findBusy}">
-      <span class="sp-count">{{platforms.length}} platforms · {{vendors.length}} providers<template v-if="toolCountText"> · {{toolCountText}} tools</template></span>
+      <span class="sp-count" :style="plats.settled ? null : {visibility:'hidden'}">{{platforms.length}} platforms · {{vendors.length}} providers<template v-if="toolCountText"> · {{toolCountText}} tools</template></span>
       <h1 class="hero-h1">What does your agent<br><span>need to do?</span></h1>
     </div>
 

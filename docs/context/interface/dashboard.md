@@ -200,7 +200,13 @@ per-application state available to extracted components during this incremental 
 not a singleton, and this boundary is not yet a fully typed domain store. The TypeScript entry,
 JSON transport and development configuration are checked with `vue-tsc` before every build.
 Initialization renders a neutral loading state until session and route resolution finish, with a
-retry on unexpected failure. Signed-out arrivals get a focused sign-in entry or shared-link gate;
+retry on unexpected failure. `index.html` paints the same `.boot-status` markup before any script
+runs (its reload hint fades in only if boot stalls), so mounting swaps the screen for itself.
+Catalog data does not wait for the session: boot starts the shelves (and a shelf's endpoints,
+through `prefetchPlatform`, which `loadPlatform` takes over) alongside `/meta` and `/auth/me`.
+**A view renders nothing it cannot yet know.** Empty states, zero figures and fallback views wait
+for their data to answer (`plats.settled`, `callsLoaded`, `orgMembersLoaded`, `ref.loaded`); text
+whose values are still loading keeps its space invisibly rather than showing zeros. Signed-out arrivals get a focused sign-in entry or shared-link gate;
 the obsolete embedded marketing page is removed. The public landing page remains at `/`.
 History navigation retains existing hashes, catalog URLs and shared links in `state/navigation.js`,
 `state/catalog.js`, `state/details.js` and `state/boot.js`.
@@ -624,7 +630,9 @@ selected account stamps a runnable containers-list path into the provisioned too
 platform logo assets both carry the Google Tag Manager mark, so the catalog tile, platform header,
 provider page, and expanded endpoint rows resolve to the same identity.
 The tab bar itself is `v-if`'d on `plats.list.length` and `mkTabActive` collapses to `'platform'` when
-the catalog is absent, so a build that predates `/catalog` renders exactly the old marketplace.
+the catalog is absent, so a build that predates `/catalog` renders exactly the old marketplace. It
+collapses only once `plats.settled` (the request answered, even with a failure): falling back while
+the shelves loaded flashed the integration list on every visit.
 
 The catalog page's header carries a **Request a tool** button (`reqAsk` modal): a short form —
 what's missing, an optional note, a contact field only when signed out (`!me`) — POSTed to

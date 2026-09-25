@@ -64,6 +64,8 @@ export default { setup: useDashboard }
               <p class="sub" style="margin:-2px 0 8px;font-size:12px"><b>Tools</b> = which endpoints/CLIs a member may call or run. <b>Local run</b> = may run CLIs on their own machine (off = server only). The owner always has full access.</p>
               <table>
                 <tr><th>Email</th><th>Role</th><th style="text-align:right">Today</th><th>Daily cap</th><th>Tools</th><th>Local run</th><th></th></tr>
+                <!-- An empty roster under its header read as "no members" until the request answered. -->
+                <tr v-if="!orgMembersLoaded"><td colspan="7" class="muted">Loading members…</td></tr>
                 <template v-for="m in rosterMembers" :key="m.key">
                 <tr v-if="m.is_observed">
                   <td><span style="opacity:.45">↳</span> <b>{{m.client}}</b> <span class="chip" title="seen in this member\'s traffic — the runtime reports itself; attribution, not authentication">detected</span>

@@ -1088,3 +1088,11 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
 .app-toast-a{display:flex;justify-content:flex-end;gap:8px}
 @keyframes app-toast-in{from{opacity:0;transform:translateY(6px)}}
 @media (prefers-reduced-motion:reduce){.app-toast{animation:none}}
+
+/* The boot screen: index.html paints it before any script runs and App.vue renders the same
+   markup until boot resolves, so the handover is invisible. Global, not scoped, for that reason. */
+.boot-status{min-height:70vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;color:var(--muted)}
+.boot-status .brand{color:var(--text);text-decoration:none}
+.boot-status p{margin:0}
+.boot-stuck{opacity:0;animation:boot-stuck-in .3s 8s forwards}
+@keyframes boot-stuck-in{to{opacity:1}}

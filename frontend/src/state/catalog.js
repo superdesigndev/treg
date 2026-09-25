@@ -1,3 +1,4 @@
+import { markRaw } from 'vue'
 
 export default {
 // ---- endpoint catalog (/catalog/*) ----
@@ -5,10 +6,16 @@ export default {
     // server that predates these routes shows no platform shelf rather than an error.
     async loadPlatforms(){
       if(this.plats.loaded || this.plats.loading) return;
+      // Public catalog pages carry the same body inline (routers/web.py `_spa_catalog_page`), so
+      // their first render already has the shelves; read it once and fall back to the request.
+      const inline=document.getElementById('catalog-platforms');
+      if(inline){ inline.remove();
+        try{ const d=JSON.parse(inline.textContent); this.plats.list=d.platforms||[]; this.plats.providers=d.providers||{}; this.plats.loaded=this.plats.settled=true; return; }
+        catch(e){} }
       this.plats.loading=true;
       try{ const d=await this.api('/catalog/platforms'); this.plats.list=(d&&d.platforms)||[]; this.plats.providers=(d&&d.providers)||{}; this.plats.loaded=true; }
       catch(e){ this.plats.list=[]; }
-      finally{ this.plats.loading=false; } },
+      finally{ this.plats.loading=false; this.plats.settled=true; } },
 // Platform pages are hash routes (/app#platform/<slug>): unlike /app/marketplace/<service> there
     // is no server route to serve the SPA on a hard reload of a /app/platforms/<slug> path.
     platformFromHash(){ const m=/^#platform\/(.+)$/.exec(location.hash||''); return m?decodeURIComponent(m[1]):null; },
@@ -45,12 +52,20 @@ openPlatform(slug, fromPop){ this.resetConfirms();
       if(!this.publicCatalog && !this.providers.length) this.loadConnections();
       this.loadPlatform();
       window.scrollTo(0,0); },
+// Start a shelf's request before boot has resolved the session, so it is already in flight when
+    // the view opens. `loadPlatform` takes it over instead of asking again.
+    prefetchPlatform(slug){
+      const request=this.api('/catalog/platforms/'+encodeURIComponent(slug)+'?include_hidden=1');
+      request.catch(()=>{});   // loadPlatform reports the failure; an unclaimed prefetch just drops it
+      this.platPrefetch=markRaw({slug, request}); },
 async loadPlatform(){ if(!this.platSlug) return;
       this.platErr=''; this.platLoading=true; this.platData=null;
+      const pre=this.platPrefetch; this.platPrefetch=null;
       // include_hidden=1: pull the account/utility endpoints too. They render behind a per-section
       // "N management endpoints" expander rather than in the main ledger — the page decides that,
       // client-side, off each endpoint's `kind` (see platRowsAll / platLedger).
-      try{ this.platData=await this.api('/catalog/platforms/'+encodeURIComponent(this.platSlug)+'?include_hidden=1'); }
+      try{ this.platData=await (pre && pre.slug===this.platSlug ? pre.request
+        : this.api('/catalog/platforms/'+encodeURIComponent(this.platSlug)+'?include_hidden=1')); }
       catch(e){ this.platErr = e.status===404
         ? 'No catalog for this platform on this server yet.'
         : 'Could not load the endpoint catalog'+(e.detail?': '+e.detail:'.'); }

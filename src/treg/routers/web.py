@@ -26,7 +26,8 @@ from ..infra.db import get_session
 from ..models import User
 from ..domain.catalog import stats as endpoint_stats
 from .catalog import (_endpoint_observation_reader, _observed_or_empty, _platform_rows,
-                      _provider_display, catalog_platform)
+                      _provider_display, catalog_platform,
+                      _platforms_payload)
 from ..domain.identity.access import _user_from_session
 from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _take_oauth_return
 from .signup_cookies import _remember_referral
@@ -273,12 +274,13 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
     1. **The head.** The SPA ships one bare `<title>treg</title>`. Every catalog URL needs its own
        title, description, canonical, og/twitter card and JSON-LD, so they are substituted in here —
        the same trick `_spa_with_og` uses for shared skill/tool links.
-    2. **A no-JS fallback.** Vue compiles `#app`'s own innerHTML as its template, so prerendered
-       markup cannot go inside it. `#prerender` is therefore a SIBLING, removed by the app on boot.
-       It is deliberately plainer than the Vue view — the ledger's row-merging is a chain of
-       client-side computeds, and reproducing it server-side would recreate exactly the duplicate
-       implementation this design avoids. It carries the TEXT (names, summaries, providers, prices),
-       which is what a crawler that does not run scripts is here for.
+    2. **A no-JS fallback.** Vue replaces `#app`'s content on mount, so prerendered markup cannot
+       go inside it. `#prerender` is therefore a SIBLING, removed by the app on boot. It carries the
+       TEXT (names, summaries, providers, prices) for readers that run no script (most AI crawlers
+       and agent fetchers), and is visually hidden: shown to people, a plain list that the app then
+       swapped for its own layout read as a second, older page flashing past.
+    3. **The shelves.** The `/catalog/platforms` body rides along as JSON (`#catalog-platforms`), so
+       the app's first render already has every platform instead of fetching them after boot.
     """
     index = _dashboard_index()
     if not index.exists():
@@ -326,30 +328,19 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
                          flags=re.IGNORECASE | re.DOTALL)
     if not hits:
         html = html.replace("<head>", "<head>\n" + meta, 1)
+    shelves = json.dumps(_platforms_payload(), separators=(",", ":")).replace("<", "\\u003c")
     marker = '<div id="app"'
     if marker in html:
-        html = html.replace(marker, f'<div id="prerender">{prerender}</div>\n{marker}', 1)
+        html = html.replace(marker, f'{_PRERENDER_HIDDEN}<div id="prerender">{prerender}</div>\n'
+                            f'<script id="catalog-platforms" type="application/json">{shelves}</script>\n'
+                            f'{marker}', 1)
     return HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
 
 
-# The fallback's own skin. Scoped to #prerender and written against the dashboard's OWN tokens
-# (already defined in index.html), so it reads as the same product for the moment it is on screen.
-_PRERENDER_CSS = """<style>
-#prerender{max-width:1100px;margin:0 auto;padding:38px 26px 60px;font-family:var(--sans,system-ui);
-  color:var(--ink,#1a1a1a)}
-#prerender h1{font-size:30px;letter-spacing:-.01em;margin:0 0 8px}
-#prerender .lede{color:var(--muted,#7c7c7c);margin:0 0 20px;max-width:64ch}
-#prerender h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;
-  color:var(--muted2,#989898);margin:26px 0 10px;padding-bottom:8px;
-  border-bottom:1px solid var(--line,#26262322)}
-#prerender ul{list-style:none;margin:0;padding:0}
-#prerender li{padding:9px 0;border-bottom:1px solid var(--line,#26262322)}
-#prerender li b{font-weight:600}
-#prerender li i{font-style:normal;color:var(--muted,#7c7c7c);display:block;font-size:13.5px}
-#prerender .m{font-family:var(--mono,ui-monospace);font-size:11.5px;
-  color:var(--muted2,#989898);margin-top:3px;display:block}
-#prerender a{color:var(--teal,#1a7da6);text-decoration:none}
-</style>"""
+# Crawler-only: kept in the document for readers that run no script, but never painted. The
+# page's own markup still styles the text (the `h1`/`ul` structure is what a crawler reads).
+_PRERENDER_HIDDEN = ("<style>#prerender{position:absolute;width:1px;height:1px;overflow:hidden;"
+                     "clip-path:inset(50%);white-space:nowrap}</style>")
 
 
 @app.get("/catalog", include_in_schema=False)
@@ -388,8 +379,7 @@ async def catalog_index():
     prov_links = " · ".join(
         f'<a href="/tools/{_esc_html(r["service"])}">{_esc_html(r["display"])}</a>'
         for r in prov_rows)
-    prerender = (_PRERENDER_CSS
-                 + "<h1>The tool catalog</h1>"
+    prerender = ("<h1>The tool catalog</h1>"
                  + f'<p class="lede">{total_eps:,} endpoints across {len(rows)} platforms and '
                    f"{len(providers)} providers — every tool your agent can call through one key, "
                    "priced up front and billed per call, with no provider signup.</p>"
@@ -433,7 +423,8 @@ async def search_page():
     # Until the page's script runs, a visitor sees the page's own ground and nothing else: a
     # different first screen that swaps out would read as a loading step. The words are for readers
     # that never run the script, so they are visually hidden rather than drawn.
-    prerender = ('<style>#prerender{position:fixed;inset:0;z-index:100;background:#f4f4f1}'
+    prerender = ('<style>#prerender{position:fixed;inset:0;z-index:100;background:#f4f4f1;'
+                 'width:auto;height:auto;clip-path:none}'
                  '#prerender>div{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}</style>'
                  "<div><h1>What does your agent need to do?</h1>"
                  '<p>Describe the job in plain words and see which tools in the treg catalog can do it, '
@@ -483,8 +474,7 @@ async def catalog_page(slug: str):
         blocks.append(f'<h2>{_esc_html(cap["description"] or cap["id"])}</h2><ul>{"".join(lis)}</ul>')
 
     provs = ", ".join(p["display_name"] for p in detail["providers"].values())
-    prerender = (_PRERENDER_CSS
-                 + f'<p class="m"><a href="/catalog">← Catalog</a> · {_esc_html(category)}</p>'
+    prerender = (f'<p class="m"><a href="/catalog">← Catalog</a> · {_esc_html(category)}</p>'
                  + f"<h1>{_esc_html(label)}</h1>"
                  + f'<p class="lede">{_esc_html(summary)} {len(eps)} endpoints from '
                    f"{_esc_html(provs)}"

@@ -13,21 +13,21 @@ async createOrg(){ const name=(this.newOrgName||'').trim(); if(!name){ this.orgE
         if(!this.sessionMode && o.token){ this.cfg.orgs[o.org]={token:o.token, role:o.role, name:o.name, org_id:o.org_id}; this.save(); }
         this.newOrg=false; this.newOrgName=''; await this.loadAll(); this.switchOrg({slug:o.org}); }
       catch(e){ this.orgErr='Could not create: '+(e.detail||e.status); } finally{ this.orgBusy=false; } },
-async loadOrgAdmin(){ this.orgMembers=[]; this.orgInvites=[]; this.lastInvite=null;
+async loadOrgAdmin(){ this.orgMembers=[]; this.orgMembersLoaded=false; this.orgInvites=[]; this.lastInvite=null;
       if(!this.canAdmin && !['keys','danger'].includes(this.orgTab)) this.orgTab='keys';
       this.orgErr=''; this.confirmDel=''; this.confirmLeave=false; this.confirmRemove=null;
       if(!this.activeOrgId) return; const id=this.activeOrgId;
       await this.loadApiKeys();
       if(!this.canAdmin) return;
       this.agentErr=''; this.confirmAgent=null;
-      try{ this.orgMembers=await this.api('/orgs/'+id+'/members'); this.orgInvites=await this.api('/orgs/'+id+'/invites');
+      try{ this.orgMembers=await this.api('/orgs/'+id+'/members'); this.orgMembersLoaded=true; this.orgInvites=await this.api('/orgs/'+id+'/invites');
            this.projects=await this.api('/orgs/'+id+'/projects'); this.denyRules=await this.api('/orgs/'+id+'/deny');
            this.cliDeny=await this.api('/orgs/'+id+'/policy/cli-deny').catch(()=>[]);
            // agents live in the same roster now (an agent IS a membership)
            this.agents=await this.api('/orgs/'+id+'/agents').catch(()=>[]);
            const sel={}; this.projects.forEach(p=>{ sel[p.id]=true; }); this.agentProjSel=sel;
            this.observedAgents=await this.api('/orgs/'+id+'/agents/observed').catch(()=>[]); }
-      catch(e){ this.orgErr='Load team failed: '+(e.detail||e.status); } },
+      catch(e){ this.orgMembersLoaded=true; this.orgErr='Load team failed: '+(e.detail||e.status); } },
 async loadMyUsage(){ if(!this.activeOrgId){ this.myUsage=null; return; }
       this.myUsage=await this.api('/usage/me').catch(()=>null); },
 // the caller's own used/cap (any member)
