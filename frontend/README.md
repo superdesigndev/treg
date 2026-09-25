@@ -71,9 +71,11 @@ Production defaults to the frozen legacy Dashboard frontend. Configure the Web s
 - `TREG_DASHBOARD_ROLLOUT_PERCENT=0` starts with only the allowlist. Increase toward 100 to
   include stable account buckets; email changes, team switches and browser changes do not reshuffle them.
 
-Anonymous visitors (including the public catalog and token-only browsers) stay on legacy.
-The one exception is `/search`, which exists only in this frontend: it is served to every visitor
-while rollout is enabled and returns 404 when rollout is disabled.
+Anonymous visitors (including the public catalog, shared links and token-only browsers) have no
+account bucket, so they follow only the full rollout: they get this frontend at 100% and legacy
+below it or when rollout is disabled. The one exception is `/search`, which exists only in this
+frontend: it is served to every visitor while rollout is enabled and returns 404 when rollout is
+disabled.
 After browser sign-in, the reload selects the account's frontend. All dashboard, catalog and
 shared-link entries use the same selection and private, no-store HTML. Frontend selection grants
 no API permissions. Legacy JavaScript is frozen under its own revision-qualified asset URLs.
@@ -87,12 +89,10 @@ to rehearse production settings.
 ## Retire the deprecated Dashboard
 
 Legacy is temporary, not a permanently supported version. Remove it in a follow-up change once
-the new Dashboard is validated at full account rollout and the release no longer needs the frozen
-fallback. Setting the percentage to 100 is not retirement: anonymous and token-only visitors still
-use legacy under the current policy.
+the new Dashboard is validated at full rollout and the release no longer needs the frozen
+fallback. At 100% every Dashboard entry, anonymous catalog, shared links, token-only entries and
+sign-in included, already serves the compiled app; retirement removes the fallback behind it.
 
-- Route every Dashboard entry to the compiled app, including anonymous catalog, shared links,
-  token-only entries and sign-in. Verify those flows and authenticated account flows in the browser.
 - Remove `src/treg/web/dashboard-legacy/`, `/app/legacy/assets/{path:path}`, the account-selection
   branch, all three `TREG_DASHBOARD_ROLLOUT_*` settings and their app-version stamp inputs.
 - Remove obsolete rollout tests, local defaults and packaging checks; retain coverage for the

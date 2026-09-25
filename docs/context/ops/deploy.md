@@ -241,7 +241,8 @@ The rollout defaults to legacy. Set `TREG_DASHBOARD_ROLLOUT_ENABLED=true` with a
 `TREG_DASHBOARD_ROLLOUT_USER_IDS` for an account allowlist, then increase
 `TREG_DASHBOARD_ROLLOUT_PERCENT` from zero. Disabling the master switch forces legacy, including
 allowlisted accounts. Environment changes require restarting Web processes, not rebuilding assets.
-Both frontends ship together; anonymous catalog/sign-in entries remain legacy even at 100%.
+Both frontends ship together. Anonymous catalog, shared-link and sign-in entries have no account
+bucket and move only at 100%; below it, or with the switch off, they remain legacy.
 See `frontend/README.md` for the full rollout and retirement contract.
 The frontend is authored in `frontend/` within the same repository. `GET /` retains the existing
 landing behavior. Dashboard assets, tutorials, agent files and installer assets ship with the wheel.

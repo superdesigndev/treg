@@ -85,7 +85,20 @@ def test_rollout_buckets_are_stable_monotonic_and_account_based(monkeypatch):
     assert cohorts[0] == set()
     assert 0 < len(cohorts[1]) < len(cohorts[2]) < len(cohorts[3]) == 500
     assert cohorts[1] < cohorts[2] < cohorts[3]
-    assert not _new_dashboard(None)
+
+
+async def test_anonymous_visitors_follow_only_the_full_rollout(clients, monkeypatch):
+    """No account means no bucket: signed-out entries move to the new frontend at 100% only, and
+    move back when the percentage drops or the rollout is switched off."""
+    settings = get_settings()
+    paths = ['/app', '/app/tools/shared', '/app/skills/shared', '/catalog', '/catalog/google']
+    for enabled, percent, new in [(True, 99, False), (True, 100, True), (False, 100, False)]:
+        monkeypatch.setattr(settings, 'dashboard_rollout_enabled', enabled)
+        monkeypatch.setattr(settings, 'dashboard_rollout_percent', percent)
+        assert _new_dashboard(None) is new
+        clients.cookies.clear()
+        for path in paths:
+            assert_version(await clients.get(path), new)
 
 
 @pytest.mark.parametrize('value', [-1, 101])
