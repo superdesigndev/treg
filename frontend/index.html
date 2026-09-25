@@ -7,6 +7,20 @@
 <!-- The dashboard is an authenticated app: every view needs a session and supports shared deep links. Nothing here is indexable, and a crawler that got in would index a sign-in prompt. -->
 <meta name="robots" content="noindex, follow"/>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<!-- Boot's first two requests start here, alongside the bundle download, instead of after it
+     (boot.js picks them up), and the saved theme applies before the first paint, not after mount. -->
+<script>
+(function(){
+  var h={'ngrok-skip-browser-warning':'1'};
+  window.__tregBoot={
+    meta:fetch('/meta',{headers:h}).then(function(r){return r.json()}),
+    me:fetch('/auth/me',{credentials:'include',headers:h}).then(function(r){return r.ok?r.json():null})
+  };
+  // boot.js attaches its own handlers; these only keep an unused promise from logging a rejection.
+  window.__tregBoot.meta.catch(function(){}); window.__tregBoot.me.catch(function(){});
+  try{ document.documentElement.dataset.theme=localStorage.getItem('treg-theme')||'light'; }catch(e){}
+})();
+</script>
 
 
 
@@ -15,9 +29,11 @@
 <script src="/adtrack.js"></script>
 </head>
 <body>
-<!-- The same markup App.vue shows while it boots, so mounting swaps it for itself instead of
-     jumping from an unstyled line to a centred mark. The reload hint appears only if boot stalls. -->
-<div id="app"><main class="boot-status" aria-live="polite" aria-busy="true"><a href="/" class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 290 290"><rect width="140.5" height="140.5" rx="20"/><rect x="149.5" y="149.5" width="140.5" height="140.5" rx="20"/></svg></span>treg</a><p role="status">Loading treg…</p><p class="boot-stuck">If this page does not load, <a href="">reload</a> to get the latest version.</p></main></div>
+<!-- The same markup App.vue shows while it boots, so mounting swaps it for itself. Nothing is
+     visible for the first moments; a thin bar fades in at the top only if boot is slow
+     (base.css, .boot-status). The status line hides itself inline: in development the stylesheet
+     arrives with the script, after this markup has painted. -->
+<div id="app"><main class="boot-status" aria-busy="true"><span class="boot-bar" aria-hidden="true"></span><p role="status" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap">Loading treg…</p></main></div>
 <script src="/sitetrack.js"></script>
 <script src="/agent-setup.js"></script>
 <script type="module" src="/src/main.ts"></script>

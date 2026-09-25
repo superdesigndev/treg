@@ -43,13 +43,15 @@ export default { ...controller, components: { ...controller.components, TeamReso
 
 <template>
 <div>
-<main v-if="!bootReady || bootFailed" class="boot-status" aria-live="polite" :aria-busy="!bootReady">
+<main v-if="bootFailed" class="boot-status" aria-live="polite">
   <a href="/" class="brand"><BrandMark/>treg</a>
-  <template v-if="bootFailed">
-    <p role="alert">The dashboard couldn't load. Please try again.</p>
-    <button class="btn" @click="reloadApp()">Try again</button>
-  </template>
-  <p v-else role="status">Loading treg…</p>
+  <p role="alert">The dashboard couldn't load. Please try again.</p>
+  <button class="btn" @click="reloadApp()">Try again</button>
+</main>
+<!-- Continues index.html's loader on the page's own clock, so mounting does not restart it. -->
+<main v-else-if="!bootReady" class="boot-status" aria-busy="true" :style="{'--boot-t': -Math.round(bootStartedAt)+'ms'}">
+  <span class="boot-bar" aria-hidden="true"></span>
+  <p role="status" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap">Loading treg…</p>
 </main>
 <div v-else :class="{redesign:authed && !publicCatalog}">
   <!-- Focused sign-in entry after session initialization. -->
