@@ -211,9 +211,11 @@ in `TeamResourcesPage.vue`, `FishVoiceDialog.vue`, `TryEndpointDialog.vue` and t
 
 `_new_dashboard` selects the compiled entry by verified session user ID: the master rollout switch
 must be on, then an ID allowlist or a stable SHA-256 bucket below the configured percentage selects
-new. Defaults are off and zero percent. Anonymous and token-only browser entries retain the frozen
+new. Defaults are off and zero percent. Anonymous and token-only browser entries have no bucket, so
+they get new only while the switch is on at 100%, and otherwise the frozen
 `dashboard-legacy/index.html`, whose Vue/onboarding/tutorial JavaScript has revision-qualified legacy asset
-URLs. No query parameter, team selection or analytics service controls assignment. All dashboard,
+URLs. Tying them to 100% keeps one rollback lever: lowering the percentage or switching off moves
+them back with the accounts, and no separate setting has to be retired later. No query parameter, team selection or analytics service controls assignment. All dashboard,
 shared-link and catalog entries use this decision and `private, no-store` plus `Vary: Cookie`.
 Environment changes require restarting Web processes. Existing tabs switch on reload; the version
 stamp also incorporates rollout settings to offer a refresh when assignment policy changes.
@@ -224,10 +226,9 @@ date an account's switch when the percentage moves.
 
 The legacy snapshot is deprecated and scheduled for removal after rollout, not a second maintained
 Dashboard. New features and routine fixes belong only in `frontend/`; normal main-branch syncs must
-not refresh the frozen artifact. `frontend/README.md` owns the retirement checklist: migrate
-anonymous and token-only entries as well as signed-in accounts, then remove the snapshot, legacy
-asset route, selection settings and obsolete rollout plumbing. A 100% account rollout alone does
-not retire legacy.
+not refresh the frozen artifact. `frontend/README.md` owns the retirement checklist: once
+100% has held, remove the snapshot, legacy asset route, selection settings and obsolete rollout
+plumbing.
 
 `GET /app` serves the selected document same-origin from the Python package, preserving local
 sign-in and parked OAuth authorization. Catalog and shared-link handlers modify that same document's

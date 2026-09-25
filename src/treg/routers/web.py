@@ -47,7 +47,11 @@ def _dashboard_assignment(user: User) -> str:
 
 def _new_dashboard(user: User | None) -> bool:
     if user is None:
-        return False
+        # A visitor with no account has no bucket, so it follows the rollout only once every
+        # bucket is in: at 100% the public catalog, shared links and the signed-out app move with
+        # the accounts, and lowering the percentage or switching the rollout off moves them back.
+        settings = get_settings()
+        return settings.dashboard_rollout_enabled and settings.dashboard_rollout_percent == 100
     assignment = _dashboard_assignment(user)
     if assignment != "bucket":
         return assignment == "allowlist"

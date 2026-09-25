@@ -160,7 +160,7 @@ xdist is pulled via `--with`, not the lockfile — same as CI. The Postgres CI j
   `src/treg/web/dashboard-legacy/` is **deprecated**, retained only for temporary rollout and
   rollback. Never hand-edit it or mirror new features/fixes into it; `frontend/` is the only
   maintained Dashboard source. Follow the retirement checklist in `frontend/README.md` to remove
-  it after rollout, including anonymous entries that still use legacy at 100%.
+  it after rollout; at 100% every entry, anonymous included, already serves the new app.
 - **The dashboard** lives in `frontend/` (Vue components, TypeScript entry/transport, Vite).
   Build with `bash scripts/build-dashboard.sh`; generated assets in `src/treg/web/dashboard/`
   ship with Python. Run `npm --prefix frontend test` and `npm --prefix frontend run test:e2e`.
