@@ -11,6 +11,8 @@
     "predev": "node scripts/copy-runtime.mjs"
   },
   "dependencies": {
+    "@fontsource/dm-mono": "5.3.0",
+    "@fontsource/geist-pixel": "5.3.0",
     "matter-js": "0.20.0",
     "vue": "3.5.41"
   },

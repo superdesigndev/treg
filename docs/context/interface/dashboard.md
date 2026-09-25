@@ -279,8 +279,9 @@ user. On narrow screens navigation scrolls in a second row; team switching and o
 remain available. The public catalog and logged-out landing retain their separate shells.
 
 The authenticated wrapper's `.redesign` class scopes `media/redesign/dashboard.css`, served through
-the existing `/media` mount. It uses Google Sans Flex for interface text, Geist Pixel for page titles,
-and DM Mono for commands and balances, with light and dark semantic colors. Getting started uses
+the existing `/media` mount. It uses the system UI font for interface text, Geist Pixel for page titles,
+and DM Mono for commands and balances (the only two web fonts, bundled from pinned `@fontsource`
+packages; see `design.md`), with light and dark semantic colors. Getting started uses
 an approximately 1080px centered column, a split agent-preview/setup card, image-backed prompt cards,
 and the existing optional Build on treg and manual setup flows. On mobile the setup card and prompt
 grid stack. Images are copied from the pinned designer repository; provenance is in

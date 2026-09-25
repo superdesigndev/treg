@@ -33,11 +33,11 @@ export default { components: { BrandMark }, setup: useDashboard }
 .lnav-brand{display:flex;align-items:center;gap:9px;font-family:"DM Mono",ui-monospace,"SF Mono",Menlo,monospace;font-weight:600;font-size:15px;color:#1a1a1a;text-decoration:none}
 .lnav-brand .brand-mark{width:28px;height:28px;border-radius:8px}
 .lnav-links{margin-left:auto;display:flex;align-items:center;gap:28px}
-.lnav-links a{font-family:"Suisse Intl","Inter","Segoe UI",system-ui,sans-serif;font-size:13.5px;font-weight:500;color:#7c7c7c;text-decoration:none;cursor:pointer;white-space:nowrap}
+.lnav-links a{font-family:var(--sans);font-size:13.5px;font-weight:500;color:#7c7c7c;text-decoration:none;cursor:pointer;white-space:nowrap}
 .lnav-links a:hover,.lnav-links a.on{color:#1a1a1a}
 .lnav-links a.ico{display:inline-flex;align-items:center;gap:6px}
 .lnav-links a.ico svg{width:15px;height:15px;display:block}
-.lnav-links .lnav-candy{display:inline-block;font-family:"Suisse Intl","Inter","Segoe UI",system-ui,sans-serif;font-weight:550;letter-spacing:.01em;
+.lnav-links .lnav-candy{display:inline-block;font-family:var(--sans);font-weight:550;letter-spacing:.01em;
   color:#f8f8f7;background:#1a1a1a;border:0;border-radius:999px;padding:8px 18px;font-size:12.5px;cursor:pointer;
   box-shadow:0 1px 2px #00000014;transition:box-shadow .24s cubic-bezier(.2,.72,.25,1),transform .12s cubic-bezier(.22,1,.36,1)}
 .lnav-links .lnav-candy:hover{color:#f8f8f7;transform:translateY(-1px);
