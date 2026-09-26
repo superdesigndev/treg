@@ -63,7 +63,7 @@ endpoints:
   summary: Search organizations, or look them up by domain
   input:
     bodyType: json
-    note: Returns totalCount, so a limit-1 call sizes a query for free. Pass `domains` to look companies up; the returned organizationId feeds deeplead.persons.search and deeplead.organizations.decision_maker.
+    note: Returns totalCount, so a limit-1 call sizes a query for free. Pass `domains` to look companies up; the returned organizationId feeds deeplead.persons.search and deeplead.organizations.decision_maker. Free on treg's partner key.
     body:
       query: {type: string, required: false, note: "free text matched against company name, description and keywords", example: "logistics software"}
       semantic: {type: string, required: false, note: "meaning-based match on the company description"}
@@ -101,11 +101,11 @@ endpoints:
   scope: any_account
   method: POST
   path: /persons/search
-  name: Search people
-  summary: Search persons
+  name: Search people with their emails and phones
+  summary: Search persons with their emails and phones
   input:
     bodyType: json
-    note: Free preview with totalCount and hasEmail/hasPhone flags; names, emails and phones are revealed by deeplead.persons.save. Needs at least one filter.
+    note: Returns only people with an email or phone, with names, emails, phones, titles, LinkedIn URLs and company data. `limit` 0 returns only totalCount (all matches, including people without contact data) and is free, so a query can be sized before paying. Page with nextOffset. Needs at least one filter. Send an Idempotency-Key header so retries never charge twice.
     body:
       jobTitle: {type: "array[string]", required: false, example: ["CFO"]}
       jobTitleExclude: {type: "array[string]", required: false}
@@ -115,42 +115,11 @@ endpoints:
       personState: {type: "array[string]", required: false}
       personCity: {type: "array[string]", required: false}
       organizationIds: {type: "array[string]", required: false, note: "from deeplead.organizations.search", example: ["rb:rb-oacwbixtv"]}
-      limit: {type: integer, required: false, note: "1-100, default 25", example: 1}
+      limit: {type: integer, required: false, note: "0-100, default 25; the spend cap. 0 = free count", example: 0}
       offset: {type: integer, required: false, note: "0-10,000"}
+      onePerOrganization: {type: boolean, required: false, note: "default false"}
   test_request:
-    body: {organizationIds: ["rb:rb-oacwbixtv"], decisionMakersOnly: true, limit: 1}
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    per: 1
-    unit: call
-    source: docs
-    source_url: https://www.deeplead.io/api/v1/docs
-    checked: '2026-09-25'
-    confidence: verified
-    note: Free; the live call left the balance unchanged.
-  docs_url: https://www.deeplead.io/api/v1/docs
-
-- id: deeplead.persons.save
-  domain: contacts
-  capability: people.search
-  platform: people
-  scope: any_account
-  method: POST
-  path: /persons/save
-  name: Reveal people matching a search
-  summary: Save matching persons to contacts
-  input:
-    bodyType: json
-    note: Takes the same filters as deeplead.persons.search plus `count`, and returns names, emails, phones, titles and LinkedIn URLs. Only people with an email or phone are returned and charged, so a call can return fewer than `count`. Send an Idempotency-Key header so retries never charge twice.
-    body:
-      organizationIds: {type: "array[string]", required: false, example: ["rb:rb-oacwbixtv"]}
-      jobTitle: {type: "array[string]", required: false}
-      decisionMakersOnly: {type: boolean, required: false, example: true}
-      count: {type: integer, required: true, note: "1-1000; the spend cap", example: 1}
-      onePerOrganization: {type: boolean, required: false, note: "default true"}
-  untestable: returns named private individuals with their contact details, so no example response is shipped; the vendor observed the charge once (see note)
+    body: {organizationIds: ["rb:rb-oacwbixtv"], decisionMakersOnly: true, limit: 0}
   cost:
     type: per_result
     value: 0.0045
@@ -159,9 +128,40 @@ endpoints:
     unit: record
     source: vendor_email
     source_url: https://www.deeplead.io/api/v1/docs
-    checked: '2026-09-25'
+    checked: '2026-09-26'
     confidence: documented
-    note: Partner rate per person newly revealed with an email or phone; people without either are never returned or charged. The partner key only reads, nothing is saved to a Deeplead account, so every reveal is billed. A live count-1 call on 2026-09-25 returned one person and charged 1 credit (balance 1,000,000 → 999,999), which the partner key bills at $0.0045.
+    note: Partner rate per person returned; every returned person has an email or phone, and limit 0 (the test_request) is a free count. Rows are named private individuals, so no example response is shipped and the paid path is observed by the vendor only (see the PR ledger). The partner key only reads, nothing is saved to a Deeplead account, so every call is billed.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.persons.lookup
+  domain: contacts
+  capability: people.enrich
+  platform: people
+  scope: any_account
+  method: POST
+  path: /persons/lookup
+  name: Look up a person by LinkedIn, email or name + domain
+  summary: Look up one person by LinkedIn URL, email, or name and company domain
+  input:
+    bodyType: json
+    note: Pass exactly one of linkedin, email, or name together with domain. Returns the person's emails, phones, role and company. 200 with found=false is a miss and free.
+    body:
+      linkedin: {type: string, required: false, example: "https://www.linkedin.com/in/jane-doe"}
+      email: {type: string, required: false}
+      name: {type: string, required: false, note: "full name; needs domain"}
+      domain: {type: string, required: false, note: "company domain; with name"}
+  untestable: returns a named private individual's contact details, so no example response is shipped
+  cost:
+    type: per_success
+    value: 0.0045
+    currency: USD
+    per: 1
+    unit: call
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-09-26'
+    confidence: documented
+    note: Partner rate per person found with an email or phone; a miss, or a person without either, is free.
   docs_url: https://www.deeplead.io/api/v1/docs
 
 - id: deeplead.organizations.decision_maker
