@@ -143,7 +143,7 @@ endpoints:
   summary: Save matching persons to contacts
   input:
     bodyType: json
-    note: Takes the same filters as deeplead.persons.search plus `count`, and returns names, emails, phones, titles and LinkedIn URLs. Send an Idempotency-Key header so retries never charge twice.
+    note: Takes the same filters as deeplead.persons.search plus `count`, and returns names, emails, phones, titles and LinkedIn URLs. Only people with an email or phone are returned and charged, so a call can return fewer than `count`. Send an Idempotency-Key header so retries never charge twice.
     body:
       organizationIds: {type: "array[string]", required: false, example: ["rb:rb-oacwbixtv"]}
       jobTitle: {type: "array[string]", required: false}
@@ -161,7 +161,7 @@ endpoints:
     source_url: https://www.deeplead.io/api/v1/docs
     checked: '2026-09-25'
     confidence: documented
-    note: Partner rate per person newly revealed; people this key already revealed are free. A live count-1 call on 2026-09-25 returned one person and charged 1 credit (balance 1,000,000 → 999,999), which the partner key bills at $0.0045.
+    note: Partner rate per person newly revealed with an email or phone; people without either are never returned or charged, and people this key already revealed are free. A live count-1 call on 2026-09-25 returned one person and charged 1 credit (balance 1,000,000 → 999,999), which the partner key bills at $0.0045.
   docs_url: https://www.deeplead.io/api/v1/docs
 
 - id: deeplead.organizations.decision_maker
