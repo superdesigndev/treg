@@ -116,7 +116,7 @@ shared behavior and must also prove the listed differences. Keep these V2 proper
 new directory review approves a contract change:
 
 - `/mcp/v2/` is the stable URL, and `/mcp/v2` resolves to the same resource.
-- The tool list has seven tools, including `feedback`; directory submissions must reflect this schema.
+- The tool list has ten tools, including `feedback` and `review`; directory submissions must reflect this schema.
 - V2 accepts catalog ids only. It does not list or call arbitrary team tools or passthrough paths.
 - Read and write calls stay separate, and their annotations match their method classes.
 - V1 and V2 OAuth audiences do not cross.
@@ -144,6 +144,18 @@ same-named team tool. A change is incomplete if only one relevant MCP test file 
 | `my_tools` | what the team registered that can be called without holding the key |
 | `feedback` | submit a private problem report or suggestion |
 | `catalog_request` | file what the catalog is MISSING — the demand signal for what gets added next |
+| `hub_create` | publish a hub tool (a maker's tool made of other tools) in the caller's team name |
+| `hub_update` | publish a new version of a hub tool the caller's team owns |
+| `hub_mine` | the caller's team's hub tools, with status, price, and check verdict |
+
+The three `hub_*` tools exist only on `/mcp/`, registered on the same server object as the rest of
+this table; `_HubToolsGate` (a `tools/list` middleware) hides them unless `TREG_HUB_ENABLED` is set
+and, when `TREG_HUB_TEAMS`/`TREG_HUB_USERS` also limit it, the caller resolves to a listed team or
+email (`_hub_reader`, cached a minute). `catalog_search` also merges in the caller's visible listed
+hub tools by score, tagged `kind: "hub"`, and `call` accepts a hub tool id (`<team-slug>.<name>[@N]`)
+that isn't a catalog id or `<tool>/<path>`, POSTing the inputs as its JSON body. `/mcp/v2/` never
+registers these tools (they are absent from `directory_mcp`), so the V2 tool count above is
+unaffected. See [the tool hub](hub.md) for the runtime.
 
 Deliberately not one tool per provider. A catalog of 2,600 endpoints exposed as 2,600 MCP tools would
 bury the client's tool list and force a re-connect every time the catalog grew. `catalog_search`

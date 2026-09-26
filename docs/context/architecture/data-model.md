@@ -47,6 +47,7 @@ sources:
   - src/treg/infra/db.py
   - src/treg/domain/referrals.py
   - src/treg/audit.py
+  - src/treg/application/evidence_retention.py
   - src/treg/analytics.py
   - src/treg/bootstrap_handlers.py
   - src/treg/ratestore.py

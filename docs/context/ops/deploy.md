@@ -253,6 +253,15 @@ accepted only with SQLite and a loopback public URL. `scripts/dev-local.sh up` m
 For browser previews from another device, build the dashboard and start or restart the local stack
 with `TREG_FRONTEND_DEV=false`; compiled assets then use the same origin on port 18790.
 
+A feature flag set in the calling shell (`TREG_HUB_ENABLED=1 scripts/dev-local.sh up`) does not
+reach the server on its own: the script starts the server inside a tmux session, and a tmux session
+inherits the **tmux server's** environment, not the calling client's — the server would start and
+answer every hub route `404` with no error. `dev-local.sh` expands a fixed passthrough list
+(currently `TREG_HUB_ENABLED`) in its own process and bakes the value into the command string tmux
+runs; add a flag to that list to pass another one through. The script's own three env vars
+(`TREG_EMAIL_DEV_MODE`, `TREG_CONNECT_DEMO_ENABLED`, `TREG_DATABASE_URL`) are appended last so they
+always win over anything passed through.
+
 [`deploy/render.example.yaml`](../../../deploy/render.example.yaml) is a generic self-hosting example.
 It creates one web service and one PostgreSQL database, builds with
 `bash scripts/build-web.sh` (frontend build followed by the locked Python install), runs
@@ -350,6 +359,10 @@ without importing the heavy database stack into the light `treg` CLI.
   (`--batch-size`, default 5000, rows per transaction; schedule it daily). `GET /admin/errors` is
   read-only and already withholds evidence past the window, so an unscheduled purge keeps the old
   bytes in the database but never shows them.
+- `treg-worker hub check [--only <tool_id>] [--json]` runs every live [hub](../architecture/hub.md)
+  tool's `check.json` once, as its maker (spends the maker's balance at step prices); a no-op with
+  exit 0 when `hub_enabled` is off. Schedule it every 6 hours; health is derived from the last three
+  runs.
 
 The two analytics commands exist so that no web process aggregates the audit table beside the
 money path; `callrecord` is read only through the persisted cursors they own. Workers call

@@ -25,8 +25,10 @@ related:
 > **Front-end entry removed.** The logged-out SPA no longer renders the sandbox studio or its coach
 > tour, stores `localStorage['treg-sbx']`, or calls `POST /demo/sandbox`. A use-case CTA arriving at
 > `/app?ref=<page>` keeps the parameter for attribution, strips it as a one-shot parameter, and opens
-> the sign-in modal. Plain logged-out `/app` still redirects to `/`. The logged-out hero, key-leak
-> explanation, footer CTA, invite and share gates, OAuth entry, and sign-in modal remain.
+> the sign-in modal. Plain logged-out `/app` still redirects to `/`. `SignedOutPage.vue` (`/app` while
+> signed out) is now a plain "Sign in to treg" page plus the share-link gate — the marketing hero,
+> key-leak explanation and footer CTA it used to render were dropped from this component along with
+> the sandbox studio; that marketing content now lives on the public landing page (`/`) instead.
 
 The sections below document backend behavior that is still shipped but has no visitor-facing mint
 path in the Dashboard components. Provisioning, export, samples, and garbage collection remain in

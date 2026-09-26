@@ -152,7 +152,7 @@ every subparser and `treg call -h` would print the grouped front page instead of
 
 ```
 THE CATALOG — tools you don't have a key for     catalog · call · balance · topup
-YOUR OWN TOOLS — what your team already has      tool · skill · secret · connections
+YOUR OWN TOOLS — what your team already has      tool · skill · secret · connections · hub
 ON YOUR MACHINE — team credentials, locally      cli · with · serve
 BULK UPLOAD                                      scan · upload
 TEAM MANAGEMENT                                  audit · org · invites · accept · agents · admin
@@ -412,6 +412,12 @@ Bare **`treg connections`** now lists (the subparser is `required=False` with a 
   the sites/properties/accounts it can act on), **`use <id> <resource_ref>`**
   (`POST /connections/{id}/resource` — select which one), **`rm <id>`** (`DELETE /connections/{id}` —
   disconnect). The old **`oauth`** namespace stays as a hidden alias of `connect` + `providers`.
+- **`hub`** (`cmd_hub_init`/`_run`/`_publish`/`_ls`/`_earnings`/`_price`/`_retire`/`_list`/`_unlist`/`_log`)
+  — publish a tool made of tools. See [hub](../architecture/hub.md).
+- **`whoami`** (`cmd_whoami`, visible but outside every `HELP_GROUPS` row) — the account, active team
+  + role, and server this CLI talks to (`GET /auth/me` + `/orgs`); added after an agent ran the
+  system `whoami` through `treg with` and printed the machine's user name, which reads like the
+  treg identity.
 - **`catalog [platform]`** (`cmd_catalog`) — the **endpoint** catalog: what you can CALL, as opposed to
   `connections providers`, which is what you can CONNECT. No arg → `GET /catalog/platforms`, one aligned row
   per platform (endpoints / verified / capabilities / the providers serving it), busiest first. With a

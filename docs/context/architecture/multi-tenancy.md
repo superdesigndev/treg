@@ -35,7 +35,6 @@ sources:
   - src/treg/infra/db.py
   - src/treg/alembic/versions/0017_async_task_record.py
   - src/treg/alembic/versions/0018_async_resource_ownership.py
-  - tests/test_router_dependencies.py
   - tests/test_asynctasks.py
 related:
   - architecture/data-model.md
@@ -299,9 +298,14 @@ bearer path refuses it once expired rather than reviving an expired cookie.
   transfer = promote another to owner, then step down), `leave_org` (`POST /orgs/{id}/leave`, self-removal,
   same last-owner guard), `delete_org` (`DELETE /orgs/{id}`, owner-only, cascades every org-scoped row
   through `cascade_delete_org` / `ORG_SCOPED_MODELS` in `domain/governance/teams.py` - including any
-  pending `AdConversion`: a queued conversion belongs to the team it would be attributed to, and
-  `Media`: hosted reference files would otherwise outlive the team until their TTL).
-  **That list is the only one.** Owner delete, admin force-delete, the landing-sandbox reaper and the
+  pending `AdConversion`: a queued conversion belongs to the team it would be attributed to,
+  `Media`: hosted reference files would otherwise outlive the team until their TTL, and
+  `HubListing`/`HubTool`: a maker's published tools and search listings go with the team that owned
+  them).
+  **That list is the only one**, plus one named exception: `cascade_delete_org` also deletes every
+  `HubRun` where `caller_org_id == org.id` before that sweep, because a run names the team that
+  CALLED by that foreign key and the maker only by number — a caller's traces go with the caller, a
+  maker's deletion leaves callers' history intact. Owner delete, admin force-delete, the landing-sandbox reaper and the
   demo reset all go through it; `test_org_delete_clears_EVERY_org_scoped_table` walks the models module
   for anything carrying `org_id` and also refuses a reaper that keeps a private copy. The sandbox reaper
   did until 2026-09-02, its copy never learned about `IdempotentCall` (which references a Membership),
@@ -330,6 +334,16 @@ bearer path refuses it once expired rather than reviving an expired cookie.
   other team may take it (`_slug_taken` checks both columns). One alias only; a second rename
   overwrites it. Slugs are validated as their own `_slugify`, 3–40 chars, never `sbx-` (the sandbox
   shape). Stripe metadata and the analytics group key keep the slug they were stamped with.
+- **Reserved names.** `teams.reserved_reason(text, extra)` refuses a name or slug that *reads* as
+  treg itself, as "official"/"verified", or as a catalog provider/platform (a hub tool's callable id
+  is `<team slug>.<name>`, so a squatted slug could pass a stranger's tool off as ours or a
+  provider's). Matching is by how the text reads, not its bytes: NFKC-fold, map lookalike
+  Latin/Cyrillic/Greek letters and leetspeak digits (`teams._LOOKALIKE`), strip separators, then
+  compare words — so `trеg-hub` (Cyrillic е), `t-r-e-g`, `apol1o` and `Hunter.io data` are all
+  caught. `signup.reserved_team_names()` supplies the catalog-derived `extra` set (provider slugs
+  exact-or-prefix, platform slugs `=`-marked for an exact-word match only). Checked at `create_org`,
+  `register_user`'s default team name, and `rename_org` (`PATCH /orgs/{id}`); a superadmin may bypass
+  it (`allow_reserved`).
 
 ## Schema ownership
 Alembic owns the multi-tenant schema. The 0.14.x adoption release converted and stamped legacy
@@ -386,7 +400,9 @@ the ledger/hold it references. Pinned read scopes do not change budget concurren
 
 - **Shared-provider async objects are org-scoped.** Platform-key poll and result-fetch utility calls
   must resolve their id through an org-owned `AsyncTaskRecord` or `AsyncResourceRecord` before the
-  upstream is contacted. BYOK calls keep access to ids in the team's own provider account.
+  upstream is contacted. `_one_resource_value` reads the id from the query string or, when the
+  catalog descriptor names a body parameter (`in: body`), from the JSON body — either way exactly one
+  value must be supplied. BYOK calls keep access to ids in the team's own provider account.
 - **Shared-provider durable objects are org-scoped.** A platform-key managed-resource call verifies
   every scalar or array id against `ProviderResource` before contacting the provider. A `use` tool
   may additionally declare a read-only public lookup: an id absent from the ownership table is

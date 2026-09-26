@@ -24,7 +24,7 @@ sources:
   - src/treg/application/call/types.py
   - src/treg/infra/upstream/relay.py
   - src/treg/application/connect.py
-  - src/treg/application/onboard.py
+  - src/treg/application/onboard/__init__.py
   - src/treg/application/referrals.py
   - src/treg/application/signup.py
   - src/treg/routers/__init__.py
@@ -406,7 +406,7 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   |---|---|
   | `GET /catalog/platforms` | Non-empty platforms with capability/endpoint counts and providers, ordered by endpoint count; `providers` names every browsable vendor |
   | `GET /catalog/platforms/{slug}` | Capabilities, extended endpoints, dashboard domain rows and provider metadata; unknown slug is 404 |
-  | `GET /catalog/search?q=&limit=` | Ranked endpoint views, count/total and hints; default 25, maximum 100 |
+  | `GET /catalog/search?q=&limit=` | Ranked endpoint views, count/total and hints; default 25, maximum 100. Listed hub tools merge into the same ranking by score (see [hub](../architecture/hub.md)); a hub row's run hint is its own `treg call <id> --data` line, since it has no catalog row or provider key |
   | `GET /catalog/find?q=` | Find tools for a described job: NDJSON stream of `candidates` then `judged` (verdict + kept rows with probabilities; a bare platform or provider name gets verdict `name` and its endpoints, unjudged); rate limited per IP, 503 without a judge key |
   | `GET /catalog/endpoints/{id}` | Endpoint, provider, capability siblings, call template, inline example and next-step hints; `overflow_price_usd` / `overflow_price_unit` / `overflow_via` on the endpoint when the deployment can relay it |
   | `GET /catalog/examples/{id}` | Captured JSON, resolved through the catalog before constructing a file path |
@@ -701,6 +701,12 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   `_resolve_call`, so an exact same-named team tool cannot shadow the catalog endpoint. From the
   credential ladder onward it delegates to `call_tool`, retaining provider/user credentials, ACLs,
   deny rules, caps, metering, audit, idempotency and faithful relay.
+
+  `_execute_call` (`application/call/service.py`) tries an own tool, then a catalog endpoint, then —
+  only when both 404 — a hub tool (`<team-slug>.<name>`), run under a per-team concurrency slot
+  (`hub_limits.slot`, 429 `hub_busy` over the cap); see [hub](../architecture/hub.md) for the run
+  itself. `router.routes.extend` wires `routers.hub`'s routes into the app alongside feedback and
+  media's.
 
   The credential ladder also supports a generic `platform_auth: anonymous` catalog fallback. A
   team tool or provider credential still wins. Without one, a verified free read-only endpoint can

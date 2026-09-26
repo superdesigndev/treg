@@ -161,7 +161,9 @@ same `tryExamples` copy cards AND the `tryOauth` connect chips as the Getting-st
 `localStorage` (`treg-ref`) because sign-in reloads the page, and `_welcomeAgentFromRef` consumes it when the
 welcome opens (unknown refs are ignored). The picked agent itself persists as `treg-agent` (a `welcome.agent`
 watcher; `_restoreAgent` at boot) so Getting started keeps showing the same steps after a reload. Finishing (or skipping) lands on **`#start`** (Getting started) — also the default
-view for ANY signed-in arrival at `/app` with no deep link or hash. `/onboard/seed-tool` and
+view for ANY signed-in arrival at `/app` with no deep link or hash — **except** when the welcome
+modal opened over a platform detail page (arrival via `/search`): `welcomeFinish` leaves the view
+alone so someone mid-signup from a platform page stays on it. `/onboard/seed-tool` and
 `/onboard/accept-teammate` no longer have a dashboard caller (the CLI/demo paths don't use them either);
 **"Remove demo"** (`resetDemo` → `/onboard/reset`) remains in Help. A clay **`demo` chip** marks a demo org.
 
