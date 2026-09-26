@@ -2707,6 +2707,42 @@ COMPANYENRICH = OAuthProvider(
 )
 
 
+INSOURCIA = OAuthProvider(
+    service="insourcia",
+    display_name="Insourcia",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Insourcia API key (isk_…)",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.insourcia.io/settings/api",
+    setup_action_label="Get your Insourcia API key",
+    setup_steps=(
+        "Sign up at app.insourcia.io - the Free plan needs no card.",
+        "Open Settings → API and create a key.",
+        "Copy the key (it starts with isk_) and paste it here.",
+    ),
+    setup_note=(
+        "Every call spends one unit of the plan's daily quota (search: one per 20 rows requested); "
+        "the key check is free."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "French company data, private companies included - search, filed accounts, officers, "
+        "legal events, credit grade and ownership graph, keyed by SIREN."
+    ),
+    base_url="https://api.insourcia.io",
+    docs_url="https://insourcia.io/docs/api-reference/",
+    # /v1/me is exempt from every quota window. Observed 2026-09-26 11:44 UTC: the key
+    # "garbage-key-123" and a request with no Authorization header both get HTTP 401
+    # {"error":"unauthorized","message":"Clé API invalide ou manquante."}; a valid key gets 200.
+    probe_path="/v1/me",
+)
+
+
 OCEANIO = OAuthProvider(
     service="oceanio",
     display_name="Ocean.io",
@@ -3584,7 +3620,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB,
+        INFLUENCERSCLUB, INSOURCIA,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,

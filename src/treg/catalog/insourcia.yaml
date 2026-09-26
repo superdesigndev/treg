@@ -1,0 +1,456 @@
+provider: insourcia
+source:
+  docs: https://insourcia.io/docs/api-reference/
+  openapi: https://api.insourcia.io/openapi.yaml
+  curated: '2026-09-26'
+limits: "Free: 20 requests/minute, 30 quota units/day, 50/month. Pro: 180 requests/minute, 2,500 quota units/day, no monthly cap. Prepaid credits (1 credit = 1 quota unit) take over once the day or month window is spent."
+pricing_url: https://insourcia.io/tarifs/
+
+# Submitted by the vendor (Insourcia). Contact: support@insourcia.io
+#
+# WHAT THIS IS. French company data - every company registered in France (~30M SIREN), private and
+# unlisted ones included: identity, filed annual accounts, registered officers, legal and corporate
+# events (insolvency proceedings, business disposals, capital changes, filings), a credit-risk grade
+# and the ownership graph. Built from public French registries (INSEE Sirene, RNE/INPI, BODACC).
+# The identifier everywhere is the SIREN, the 9-digit French registry number.
+#
+# BILLING. The API is sold by subscription plus optional prepaid credits, so there is no fixed USD
+# price per call. Costs below are in QUOTA UNITS, the currency the API itself meters:
+#   - every call costs 1 unit, a 404 on an unknown SIREN included (the lookup really happened);
+#   - GET /companies/search is billed per page of 20 rows REQUESTED (`limit`), not rows returned:
+#     limit 1-20 = 1 unit, 21-40 = 2, ..., 100 = 5;
+#   - POST /companies/resolve is billed per record submitted;
+#   - GET /me is exempt from every window, so it is the free probe.
+# 5xx and 503 `server_busy` are not charged. The meter is readable on every response:
+# `X-RateLimit-Daily-Remaining` (and `X-RateLimit-Monthly-Remaining` on Free), and GET /me returns
+# the credit balance without spending anything.
+#
+# PLAN GATING. Free accounts see a lighter response on some routes (fields are stripped, never
+# an error), pagination is Pro-only on search and event search, and `detail=full` on financials
+# answers 403 on Free. A request paid in credits is served as Pro.
+#
+# LANGUAGE. Field names and enum values are French (`chiffre_affaires`, `dirigeants`, `cession`).
+#
+# NOT MODELLED (deliberate):
+#   - GET /me: own-account key check, used as the probe.
+#   - GET /companies/batch, /companies/batch/{risk,financials,directors,events,graph} and
+#     POST /companies/enrich: multi-SIREN variants of the single-company routes below. Same data,
+#     same per-company cost; an agent can loop the single routes.
+#   - GET /companies/enrich/fields: field catalogue for the spreadsheet enrich route above.
+#   - GET /documents/{type}/{id}: binary PDF of an archived filing, not data.
+#   - GET /news, POST /news/read, GET/POST /saved-searches, GET/POST /lists/companies,
+#     DELETE /lists/companies/{siren}: the caller's own watchlists and alert feed inside the
+#     Insourcia app (workspace state, not company data).
+
+proposed_capabilities:
+  companies.lookup: Retrieve company records by provider identifier.
+  companies.financials: "A company's filed annual accounts over several years - revenue, profit, balance sheet, ratios"
+  companies.officers: "A company's registered officers and directors, from the official company registry"
+  companies.officers.search: "Find companies by the name of a registered officer or director"
+  companies.officers.appointments: "List every company a given officer or director holds a mandate in"
+  companies.events: "A company's legal and corporate events - insolvency proceedings, business disposals, capital changes, filings"
+  companies.events.search: "Search legal and corporate events across companies - insolvencies, business disposals, capital changes"
+  companies.credit_risk: "A company's credit-risk grade and probability of default"
+  companies.ownership: "A company's ownership and group structure - parent companies, subsidiaries, shared officers"
+
+endpoints:
+
+  # ---------------------------------------------------------------------------------------------
+  # Search and identity
+  # ---------------------------------------------------------------------------------------------
+  - id: insourcia.companies.search
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/search
+    name: "Search French companies"
+    summary: "Search French companies by name, SIREN, activity or financial criteria. Results are ranked by relevance and size; rows are light (no financials) - use the company record for the full profile."
+    input:
+      queryParams:
+        q: {type: string, required: true, note: "free text: company name, SIREN or activity keyword. Google-like operators; `*` matches all when filters do the work", example: "boulangerie lyon"}
+        region: {type: string, required: false, note: "French region name", example: "Bretagne"}
+        departement: {type: string, required: false, note: "French departement code", example: "75"}
+        ville: {type: string, required: false, note: "city name, comma-separated for several", example: "Paris,Lyon"}
+        code_postal: {type: string, required: false, note: "head-office postcode, comma-separated", example: "75001,69001"}
+        code_naf: {type: string, required: false, note: "NAF/APE activity code(s), comma-separated", example: "6201Z,6202A"}
+        statut: {type: string, required: false, note: "ACTIVE or DISSOLVED"}
+        effectif_min: {type: integer, required: false, note: "minimum headcount"}
+        ca_min: {type: number, required: false, note: "minimum filed revenue, EUR"}
+        ca_max: {type: number, required: false, note: "maximum filed revenue, EUR"}
+        inclure_estimations: {type: boolean, required: false, note: "true lets companies with confidential accounts pass the revenue filter on their ESTIMATED revenue. Default false: filed revenue only"}
+        resultat_net_min: {type: number, required: false, note: "minimum net income, EUR"}
+        ebitda_min: {type: number, required: false, note: "minimum EBITDA, EUR"}
+        cagr_ca_min: {type: number, required: false, note: "minimum 1-year revenue growth, % (20 = +20%)"}
+        categorie_juridique: {type: string, required: false, note: "legal form code, e.g. 5710 (SAS), 5499 (SARL)"}
+        procedure_collective: {type: string, required: false, note: "ongoing insolvency proceeding: liquidation, redressement, sauvegarde, conciliation, ..."}
+        date_creation_min: {type: string, required: false, note: "incorporated on or after, ISO date", example: "2021-01-01"}
+        dirigeant_nom: {type: string, required: false, note: "officer surname (exact)"}
+        is_cotee: {type: boolean, required: false, note: "true = listed companies only, false = exclude them"}
+        sort_by: {type: string, required: false, note: "relevance (default), chiffre_affaires, resultat_net, effectif_moyen, date_creation, capital"}
+        sort_order: {type: string, required: false, note: "desc (default) or asc"}
+        include_fields: {type: string, required: false, note: "extra per-row fields, comma-separated. Free: ca, resultat_net, effectif_moyen, croissance_ca, annee_financiere", example: "ca,resultat_net,annee_financiere"}
+        limit: {type: integer, required: false, note: "rows per page, default 20. Max 50 on Free, 100 on Pro. THIS IS THE PRICE: 1 unit per 20 rows requested"}
+        cursor: {type: string, required: false, note: "opaque cursor from `pagination.next_cursor`. Pro only; expires after 30 min"}
+      note: "~90 filters exist (financial ranges and growth rates, procedures, officers' age, auditors...); the most useful are listed here, the rest are in the OpenAPI spec. Rows carry SIREN, name, address, activity code, headcount band and status."
+    test_request:
+      queryParams: {q: "michelin", limit: 1}
+    cost:
+      type: per_call
+      value: 1
+      currency: unit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.insourcia.io/openapi.yaml
+      checked: '2026-09-26'
+      confidence: documented
+      note: "1 quota unit per page of 20 rows REQUESTED via `limit` (limit 1-20 = 1 unit, 100 = 5), whatever the number of rows returned. Units come from a Free/Pro subscription or prepaid credits; no fixed USD price."
+    docs_url: https://insourcia.io/docs/api-reference/
+
+  - id: insourcia.companies.get
+    domain: companies
+    capability: companies.lookup
+    miss:
+      status: 404
+      means: "no company behind this SIREN. Still costs 1 unit"
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{siren}
+    name: "Get a French company by SIREN"
+    summary: "Full record of a French company: identity, head office and establishments, activity, legal form, headcount, latest financial figures, officers summary, credit grade."
+    input:
+      pathParams:
+        siren: {type: string, required: true, note: "9-digit SIREN", example: "552081317"}
+      queryParams:
+        include_fields: {type: string, required: false, note: "extra root or financial fields, comma-separated, same vocabulary as search", example: "nb_dirigeants,dernier_depot_date"}
+      note: "SIREN is the official French registry number. Get one from search or resolve first."
+    test_request:
+      pathParams: {siren: "552081317"}
+    cost:
+      type: per_call
+      value: 1
+      currency: unit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.insourcia.io/openapi.yaml
+      checked: '2026-09-26'
+      confidence: documented
+      note: "1 quota unit per call, 404 included."
+    docs_url: https://insourcia.io/docs/api-reference/
+
+  - id: insourcia.companies.resolve
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v1/companies/resolve
+    name: "Match company records to their SIREN"
+    summary: "Match a batch of company records (name, postcode, website domain, VAT number...) to their French SIREN, with a match confidence per record."
+    input:
+      bodyType: json
+      body:
+        records: {type: "array[object]", required: true, note: "1-200 records. Each: {id?, name?, code_postal?, domain?, siren?, tva?}; give at least a name or a domain. The response keeps your `id` for joining back", example: [{id: "row-1", name: "Carrefour", domain: "carrefour.fr"}]}
+        shared_domain: {type: boolean, required: false, note: "true when several records legitimately share one domain (group subsidiaries)"}
+      note: "the bridge from a CRM or spreadsheet to Insourcia: turns names or domains into SIRENs that every other endpoint takes."
+    test_request:
+      body: {records: [{id: "t1", name: "Michelin", domain: "michelin.com"}]}
+    cost:
+      type: per_result
+      value: 1
+      currency: unit
+      per: 1
+      unit: record
+      source: docs
+      source_url: https://api.insourcia.io/openapi.yaml
+      checked: '2026-09-26'
+      confidence: documented
+      note: "1 quota unit per record SUBMITTED, matched or not."
+    docs_url: https://insourcia.io/docs/api-reference/
+
+  # ---------------------------------------------------------------------------------------------
+  # Company detail
+  # ---------------------------------------------------------------------------------------------
+  - id: insourcia.companies.financials
+    domain: financials
+    capability: companies.financials
+    miss:
+      status: 404
+      means: "unknown SIREN. Still costs 1 unit. A company with confidential or no filed accounts answers 200 with an empty list"
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{siren}/financials
+    name: "Get a company's filed accounts"
+    summary: "Financial history of a French company from its filed annual accounts: revenue, EBITDA, net income, equity, debt, cash, headcount and ratios, per fiscal year."
+    input:
+      pathParams:
+        siren: {type: string, required: true, note: "9-digit SIREN", example: "552081317"}
+      queryParams:
+        years: {type: integer, required: false, note: "number of fiscal years, default 3, max 10"}
+        type_bilan: {type: string, required: false, note: "K (consolidated), C (full statutory), S (simplified). Default: best available"}
+        detail: {type: string, required: false, note: "compact (~40 fields) or full (~140 fields). `full` is Pro-only and answers 403 on Free"}
+        fields: {type: string, required: false, note: "extra per-year fields, comma-separated", example: "roe,bfr_jours_ca"}
+    test_request:
+      pathParams: {siren: "552081317"}
+      queryParams: {years: 1}
+    cost:
+      type: per_call
+      value: 1
+      currency: unit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.insourcia.io/openapi.yaml
+      checked: '2026-09-26'
+      confidence: documented
+      note: "1 quota unit per call."
+    docs_url: https://insourcia.io/docs/api-reference/
+
+  - id: insourcia.companies.officers
+    domain: officers
+    capability: companies.officers
+    miss:
+      status: 404
+      means: "unknown SIREN. Still costs 1 unit"
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{siren}/directors
+    name: "List a company's officers"
+    summary: "Registered officers of a French company (legal representatives, board members, statutory auditors), people and legal entities, with role and mandate dates."
+    input:
+      pathParams:
+        siren: {type: string, required: true, note: "9-digit SIREN", example: "552081317"}
+      queryParams:
+        include_inactive: {type: boolean, required: false, note: "include past mandates. Default false"}
+        limit: {type: integer, required: false, note: "default 20, max 100"}
+    test_request:
+      pathParams: {siren: "552081317"}
+      queryParams: {limit: 1}
+    cost:
+      type: per_call
+      value: 1
+      currency: unit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.insourcia.io/openapi.yaml
+      checked: '2026-09-26'
+      confidence: documented
+      note: "1 quota unit per call."
+    docs_url: https://insourcia.io/docs/api-reference/
+
+  - id: insourcia.companies.events
+    domain: events
+    capability: companies.events
+    miss:
+      status: 404
+      means: "unknown SIREN. Still costs 1 unit"
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{siren}/events
+    name: "Get a company's legal events"
+    summary: "Timeline of a French company's legal and corporate events: business disposals, insolvency proceedings, accounts filings, capital increases, public contracts, grants, creation and removal from the register."
+    input:
+      pathParams:
+        siren: {type: string, required: true, note: "9-digit SIREN", example: "552081317"}
+      queryParams:
+        type: {type: string, required: false, note: "comma-separated: cession, procedure, depot_comptes, augmentation_capital, marche_public, subvention, radiation, creation"}
+        date_min: {type: string, required: false, note: "ISO date"}
+        date_max: {type: string, required: false, note: "ISO date"}
+        limit: {type: integer, required: false, note: "default 50, max 200"}
+        offset: {type: integer, required: false}
+    test_request:
+      pathParams: {siren: "552081317"}
+      queryParams: {limit: 1}
+    cost:
+      type: per_call
+      value: 1
+      currency: unit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.insourcia.io/openapi.yaml
+      checked: '2026-09-26'
+      confidence: documented
+      note: "1 quota unit per call."
+    docs_url: https://insourcia.io/docs/api-reference/
+
+  - id: insourcia.companies.credit_risk
+    domain: risk
+    capability: companies.credit_risk
+    miss:
+      status: 404
+      means: "unknown SIREN. Still costs 1 unit. A known company without a score answers 200 with no grade"
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{siren}/risk
+    name: "Get a company's credit grade"
+    summary: "Credit-risk grade of a French company (AAA to D) with the grade's probability of default at 3, 6 and 12 months and the main contributing factors."
+    input:
+      pathParams:
+        siren: {type: string, required: true, note: "9-digit SIREN", example: "552081317"}
+      note: "the probability is the grade's master-scale rate, not a company-specific estimate. Most companies are not scored."
+    test_request:
+      pathParams: {siren: "552081317"}
+    cost:
+      type: per_call
+      value: 1
+      currency: unit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.insourcia.io/openapi.yaml
+      checked: '2026-09-26'
+      confidence: documented
+      note: "1 quota unit per call."
+    docs_url: https://insourcia.io/docs/api-reference/
+
+  - id: insourcia.companies.ownership
+    domain: ownership
+    capability: companies.ownership
+    miss:
+      status: 404
+      means: "unknown SIREN. Still costs 1 unit"
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/{siren}/graph
+    name: "Get a company's ownership graph"
+    summary: "Graph of the entities linked to a French company: parent and subsidiary companies, and the officers they share, up to two hops."
+    input:
+      pathParams:
+        siren: {type: string, required: true, note: "9-digit SIREN", example: "552081317"}
+      queryParams:
+        depth: {type: integer, required: false, note: "1 (direct links) or 2 (default)"}
+        include_personnes: {type: boolean, required: false, note: "include natural-person officers. Default true"}
+        include_sci: {type: boolean, required: false, note: "false excludes property holding companies (SCI)"}
+        include_ceased: {type: boolean, required: false, note: "false excludes ceased companies"}
+        expand_persons: {type: boolean, required: false, note: "false stops expansion through the root's officers' other companies"}
+        max_nodes: {type: integer, required: false, note: "default 100, max 150"}
+      note: "slow: 1 to 5 seconds per call."
+    test_request:
+      pathParams: {siren: "552081317"}
+      queryParams: {depth: 1, max_nodes: 10}
+    cost:
+      type: per_call
+      value: 1
+      currency: unit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.insourcia.io/openapi.yaml
+      checked: '2026-09-26'
+      confidence: documented
+      note: "1 quota unit per call."
+    docs_url: https://insourcia.io/docs/api-reference/
+
+  # ---------------------------------------------------------------------------------------------
+  # Across companies
+  # ---------------------------------------------------------------------------------------------
+  - id: insourcia.events.search
+    domain: events
+    capability: companies.events.search
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/events/search
+    name: "Search legal events across companies"
+    summary: "Search legal and corporate events across all French companies: business disposals, insolvency proceedings, accounts filings, capital increases, public contracts, grants, creations, removals."
+    input:
+      queryParams:
+        type: {type: string, required: false, note: "comma-separated: cession, procedure, depot_comptes, augmentation_capital, marche_public, subvention, radiation, creation. Default: all"}
+        date_min: {type: string, required: false, note: "ISO date", example: "2026-09-01"}
+        date_max: {type: string, required: false, note: "ISO date"}
+        procedure_type: {type: string, required: false, note: "liquidation, redressement, sauvegarde, conciliation"}
+        cedant_siren: {type: string, required: false, note: "seller SIREN (disposals)"}
+        cessionnaire_siren: {type: string, required: false, note: "buyer SIREN (disposals)"}
+        prix_min: {type: number, required: false, note: "minimum disposal price, EUR"}
+        prix_max: {type: number, required: false, note: "maximum disposal price, EUR"}
+        tribunal: {type: string, required: false, note: "commercial court"}
+        region: {type: string, required: false}
+        departement: {type: string, required: false}
+        code_naf: {type: string, required: false}
+        limit: {type: integer, required: false, note: "default 50, max 200"}
+        cursor: {type: string, required: false, note: "pagination cursor, Pro only"}
+    test_request:
+      queryParams: {type: "procedure", limit: 1}
+    cost:
+      type: per_call
+      value: 1
+      currency: unit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.insourcia.io/openapi.yaml
+      checked: '2026-09-26'
+      confidence: documented
+      note: "1 quota unit per call."
+    docs_url: https://insourcia.io/docs/api-reference/
+
+  - id: insourcia.officers.search
+    domain: officers
+    capability: companies.officers.search
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/directors/search
+    name: "Find companies by officer name"
+    summary: "Search registered officers by surname across French companies, returning the companies where they hold a mandate."
+    input:
+      queryParams:
+        nom: {type: string, required: true, note: "officer surname", example: "DUPONT"}
+        role: {type: string, required: false, note: "role, e.g. President, Gerant, Administrateur"}
+        include_inactive: {type: boolean, required: false, note: "include past mandates. Default false"}
+        limit: {type: integer, required: false, note: "companies to scan, default 20, max 50"}
+      note: "surnames are ambiguous; to follow one person, take their birth date from a result and call the appointments endpoint."
+    test_request:
+      queryParams: {nom: "DUPONT", limit: 1}
+    cost:
+      type: per_call
+      value: 1
+      currency: unit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.insourcia.io/openapi.yaml
+      checked: '2026-09-26'
+      confidence: documented
+      note: "1 quota unit per call."
+    docs_url: https://insourcia.io/docs/api-reference/
+
+  - id: insourcia.officers.appointments
+    domain: officers
+    capability: companies.officers.appointments
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v1/companies/directors/companies
+    name: "List one officer's companies"
+    summary: "All the French companies in which one officer, identified by surname and birth date, holds or held a mandate."
+    input:
+      queryParams:
+        nom: {type: string, required: true, note: "officer surname", example: "BARTHES"}
+        date_naissance: {type: string, required: true, note: "birth date YYYY-MM-DD, disambiguates namesakes", example: "1974-10-08"}
+        limit: {type: integer, required: false, note: "default 50, max 200"}
+    test_request:
+      queryParams: {nom: "BARTHES", date_naissance: "1974-10-08", limit: 1}
+    cost:
+      type: per_call
+      value: 1
+      currency: unit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://api.insourcia.io/openapi.yaml
+      checked: '2026-09-26'
+      confidence: documented
+      note: "1 quota unit per call."
+    docs_url: https://insourcia.io/docs/api-reference/
