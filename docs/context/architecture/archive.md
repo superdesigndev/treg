@@ -238,6 +238,11 @@ Every common-reader invocation emits one best-effort `archive_body_read` complet
 `r2_read_ms`, `db_read_ms`, `total_ms` and returned `bytes`. Timings cover the common reader, not
 the preceding metadata query; in DB mode the pointer may already hold bytes. The event contains
 no body, hash, URL, call or team identity and receives the normal build/config fingerprints.
+For final `unavailable` or `db_error` outcomes, it also includes `snapshot_id` when the
+`BodyPointer` carries one. This identifies the selected snapshot, not its `body_of` carrier,
+for a subsequent diagnostic lookup. Successful reads, successful DB fallbacks, cancellations
+and pointers without an ID omit the field. Reporting reuses the existing pointer without
+additional database I/O; snapshot IDs never become process-counter labels.
 `read_<path>_<outcome>` process counters include successful reads as a denominator; fallback logs
 alone do not prove DB rescued a read. Analytics remains best effort, not evidence of full coverage.
 

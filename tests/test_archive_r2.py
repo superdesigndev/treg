@@ -85,11 +85,47 @@ async def test_legacy_read_reports_final_source(r2, monkeypatch, path, outcome):
     assert report['source'] == {'r2': 'r2', 'db_fallback': 'db', 'unavailable': 'none'}[outcome]
     assert report['fallback_reason'] == ('none' if outcome == 'r2' else 'not_found')
     assert report['r2_attempts'] == 1 and report['total_ms'] >= report['r2_read_ms']
+    assert 'snapshot_id' not in report  # Inline pointers have no snapshot identity.
     assert digest not in str(report) and RAW.decode() not in str(report)
 
 
+@pytest.mark.parametrize('outcome', ['r2', 'db_fallback', 'unavailable'])
+async def test_observation_identifies_only_failed_selected_snapshot(clients, r2, monkeypatch, outcome):
+    from treg import analytics
+    monkeypatch.setattr(get_settings(), 'archive_body_read_lookup', 'r2-first')
+    for _ in range(2):
+        await clients.get(URL, headers={'Cache-Control': 'no-cache'})
+        await archive.drain()
+    async with db.session_maker() as s:
+        rows = (await s.execute(select(ArchiveSnapshot).order_by(ArchiveSnapshot.id))).scalars().all()
+        carrier, selected = rows
+        assert selected.body_of == carrier.id
+        for row in rows:
+            row.body_storage = None
+            if outcome != 'db_fallback':
+                row.body = None
+            s.add(row)
+        selected_id = selected.id
+        await s.commit()
+    if outcome != 'r2':
+        r2.objects.clear()
+    events = []
+    monkeypatch.setattr(analytics, 'capture', lambda who, name, props: events.append((name, props)))
+    actual = await archive._read_change_body(selected_id)
+    assert actual == (None if outcome == 'unavailable' else RAW)
+    (name, report), = events
+    assert name == 'archive_body_read' and report['outcome'] == outcome
+    assert report['path'] == 'observation' and report['storage'] == 'legacy'
+    if outcome == 'unavailable':
+        assert report['snapshot_id'] == selected_id
+    else:
+        assert 'snapshot_id' not in report
+    assert archive.content_hash(RAW) not in str(report) and RAW.decode() not in str(report)
+
+
 @pytest.mark.parametrize('failure', ['db_error', 'cancelled'])
-async def test_read_failure_and_cancellation_finish_observation(r2, monkeypatch, failure):
+@pytest.mark.parametrize('snapshot_id', [None, 123])
+async def test_read_failure_and_cancellation_finish_observation(r2, monkeypatch, failure, snapshot_id):
     from treg import analytics
     monkeypatch.setattr(get_settings(), 'archive_body_read_result', 'r2-first')
     async def fail(*args):
@@ -100,9 +136,14 @@ async def test_read_failure_and_cancellation_finish_observation(r2, monkeypatch,
     events = []
     monkeypatch.setattr(analytics, 'capture', lambda who, name, props: events.append(props))
     with pytest.raises(asyncio.CancelledError if failure == 'cancelled' else RuntimeError):
-        await archive_bodies.read(archive_bodies.BodyPointer(archive.content_hash(RAW), None, None, None), 'result')
+        pointer = archive_bodies.BodyPointer(archive.content_hash(RAW), None, None, None, snapshot_id)
+        await archive_bodies.read(pointer, 'result')
     assert len(events) == 1 and events[0]['outcome'] == failure
     assert events[0]['source'] == 'none' and 'private database details' not in str(events)
+    if failure == 'db_error' and snapshot_id is not None:
+        assert events[0]['snapshot_id'] == snapshot_id
+    else:
+        assert 'snapshot_id' not in events[0]
 
 
 @pytest.mark.parametrize('source', ['r2', 'db'])

@@ -379,6 +379,8 @@ async def read(pointer: BodyPointer, path: str, *, diagnostics: dict | None = No
         raise
     finally:
         report["total_ms"] = round((time.monotonic() - started) * 1000, 3)
+        if report["outcome"] in {"unavailable", "db_error"} and pointer.snapshot_id is not None:
+            report["snapshot_id"] = pointer.snapshot_id
         outcomes["read_" + path + "_" + report["outcome"]] += 1
         if diagnostics is not None:
             diagnostics.update(cache_body_source=report["source"],
@@ -387,8 +389,8 @@ async def read(pointer: BodyPointer, path: str, *, diagnostics: dict | None = No
                                cache_r2_attempts=report["r2_attempts"],
                                cache_r2_retry_reason=report["r2_retry_reason"],
                                cache_r2_retry_recovered=report["r2_retry_recovered"])
-        # Best-effort, bounded fields only. A completed fallback event records whether DB actually
-        # rescued the read; failure logs alone cannot provide this or a success denominator.
+        # Best-effort completion event; snapshot identity is limited to unresolved reads.
+        # A completed fallback records whether DB rescued the read, unlike a fallback log.
         analytics.capture("archive", "archive_body_read", report)
 
 
