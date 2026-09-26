@@ -16,7 +16,7 @@ pricing_url: https://insourcia.io/tarifs/
 #
 # BILLING. The API is sold by subscription plus optional prepaid credits, so there is no fixed USD
 # price per call. Costs below are in QUOTA UNITS, the currency the API itself meters:
-#   - every call costs 1 unit, a 404 on an unknown SIREN included (the lookup really happened);
+#   - every call costs 1 unit, 4xx answers included (the lookup really happened);
 #   - GET /companies/search is billed per page of 20 rows REQUESTED (`limit`), not rows returned:
 #     limit 1-20 = 1 unit, 21-40 = 2, ..., 100 = 5;
 #   - POST /companies/resolve is billed per record submitted;
@@ -112,9 +112,6 @@ endpoints:
   - id: insourcia.companies.get
     domain: companies
     capability: companies.lookup
-    miss:
-      status: 404
-      means: "no company behind this SIREN. Still costs 1 unit"
     platform: companies
     scope: any_account
     method: GET
@@ -139,7 +136,7 @@ endpoints:
       source_url: https://api.insourcia.io/openapi.yaml
       checked: '2026-09-26'
       confidence: documented
-      note: "1 quota unit per call, 404 included."
+      note: "1 quota unit per call."
     docs_url: https://insourcia.io/docs/api-reference/
 
   - id: insourcia.companies.resolve
@@ -150,15 +147,15 @@ endpoints:
     method: POST
     path: /v1/companies/resolve
     name: "Match company records to their SIREN"
-    summary: "Match a batch of company records (name, postcode, website domain, VAT number...) to their French SIREN, with a match confidence per record."
+    summary: "Match a batch of company records (name, postcode, website domain, VAT number, SIRET) to their French SIREN, with a verdict and a confidence per record."
     input:
       bodyType: json
       body:
-        records: {type: "array[object]", required: true, note: "1-200 records. Each: {id?, name?, code_postal?, domain?, siren?, tva?}; give at least a name or a domain. The response keeps your `id` for joining back", example: [{id: "row-1", name: "Carrefour", domain: "carrefour.fr"}]}
+        records: {type: "array[object]", required: true, note: "1-200 records. Each: {id?, name?, postal_code?, domain?, siren?, siret?, vat?}; unknown keys are rejected with 400. An identifier (siren, siret, vat) resolves exactly; name + postal_code is the next best signal. The response keeps your `id` for joining back", example: [{id: "row-1", name: "Carrefour", postal_code: "91300", domain: "carrefour.fr"}]}
         shared_domain: {type: boolean, required: false, note: "true when several records legitimately share one domain (group subsidiaries)"}
-      note: "the bridge from a CRM or spreadsheet to Insourcia: turns names or domains into SIRENs that every other endpoint takes."
+      note: "the bridge from a CRM or spreadsheet to Insourcia: turns names, domains or VAT numbers into SIRENs that every other endpoint takes. Each record gets a verdict: `resolved` (with `siren` and `confidence`) or `review` (siren null, `reason` such as ambiguous_candidates, plus ranked `candidates`). A bare group name like \"Michelin\" lands in review because the group has many legal entities."
     test_request:
-      body: {records: [{id: "t1", name: "Michelin", domain: "michelin.com"}]}
+      body: {records: [{id: "t1", name: "EDF", vat: "FR03552081317"}]}
     cost:
       type: per_result
       value: 1
@@ -178,9 +175,6 @@ endpoints:
   - id: insourcia.companies.financials
     domain: financials
     capability: companies.financials
-    miss:
-      status: 404
-      means: "unknown SIREN. Still costs 1 unit. A company with confidential or no filed accounts answers 200 with an empty list"
     platform: companies
     scope: any_account
     method: GET
@@ -214,9 +208,6 @@ endpoints:
   - id: insourcia.companies.officers
     domain: officers
     capability: companies.officers
-    miss:
-      status: 404
-      means: "unknown SIREN. Still costs 1 unit"
     platform: companies
     scope: any_account
     method: GET
@@ -248,9 +239,6 @@ endpoints:
   - id: insourcia.companies.events
     domain: events
     capability: companies.events
-    miss:
-      status: 404
-      means: "unknown SIREN. Still costs 1 unit"
     platform: companies
     scope: any_account
     method: GET
@@ -285,9 +273,6 @@ endpoints:
   - id: insourcia.companies.credit_risk
     domain: risk
     capability: companies.credit_risk
-    miss:
-      status: 404
-      means: "unknown SIREN. Still costs 1 unit. A known company without a score answers 200 with no grade"
     platform: companies
     scope: any_account
     method: GET
@@ -316,9 +301,6 @@ endpoints:
   - id: insourcia.companies.ownership
     domain: ownership
     capability: companies.ownership
-    miss:
-      status: 404
-      means: "unknown SIREN. Still costs 1 unit"
     platform: companies
     scope: any_account
     method: GET
@@ -380,8 +362,9 @@ endpoints:
         code_naf: {type: string, required: false}
         limit: {type: integer, required: false, note: "default 50, max 200"}
         cursor: {type: string, required: false, note: "pagination cursor, Pro only"}
+      note: "at least one filter is REQUIRED - region, departement, ville or code_naf, or an event filter (date_min, date_max, cedant_siren...). Without one the API answers 400 `missing_prefilter`, still billed 1 unit."
     test_request:
-      queryParams: {type: "procedure", limit: 1}
+      queryParams: {type: "procedure", date_min: "2026-09-01", limit: 1}
     cost:
       type: per_call
       value: 1
@@ -410,7 +393,7 @@ endpoints:
         role: {type: string, required: false, note: "role, e.g. President, Gerant, Administrateur"}
         include_inactive: {type: boolean, required: false, note: "include past mandates. Default false"}
         limit: {type: integer, required: false, note: "companies to scan, default 20, max 50"}
-      note: "surnames are ambiguous; to follow one person, take their birth date from a result and call the appointments endpoint."
+      note: "surnames are ambiguous; to follow one person, take their first name and birth date from a result and call the appointments endpoint."
     test_request:
       queryParams: {nom: "DUPONT", limit: 1}
     cost:
@@ -434,14 +417,15 @@ endpoints:
     method: GET
     path: /v1/companies/directors/companies
     name: "List one officer's companies"
-    summary: "All the French companies in which one officer, identified by surname and birth date, holds or held a mandate."
+    summary: "All the French companies in which one officer, identified by surname, first name and birth date, holds or held a mandate."
     input:
       queryParams:
-        nom: {type: string, required: true, note: "officer surname", example: "BARTHES"}
-        date_naissance: {type: string, required: true, note: "birth date YYYY-MM-DD, disambiguates namesakes", example: "1974-10-08"}
+        nom: {type: string, required: true, note: "officer surname", example: "FONTANA"}
+        prenom: {type: string, required: true, note: "officer first name", example: "Bernard"}
+        date_naissance: {type: string, required: true, note: "birth date YYYY-MM-DD, disambiguates namesakes. The registry often publishes month precision only (day 01)", example: "1961-03-01"}
         limit: {type: integer, required: false, note: "default 50, max 200"}
     test_request:
-      queryParams: {nom: "BARTHES", date_naissance: "1974-10-08", limit: 1}
+      queryParams: {nom: "FONTANA", prenom: "Bernard", date_naissance: "1961-03-01", limit: 1}
     cost:
       type: per_call
       value: 1
