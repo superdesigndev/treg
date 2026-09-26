@@ -1134,6 +1134,16 @@ adapters:
     const: {queryParams.engine: google_maps, queryParams.type: search}
     out: {places: local_results}
     miss: "local_results == []"
+  apify.google.serp.maps:
+    accepts: [[q]]
+    in:  {q: body.searchStringsArray}
+    in_expr: {body.searchStringsArray: "list(q)", body.locationQuery: "country_name(country)", body.language: language}
+    # treg's key needs the run's spend cap, timeout and memory; 20 places bill at most 20 rows + the start.
+    const: {queryParams.maxTotalChargeUsd: "0.25", queryParams.timeout: "90", queryParams.memory: "1024",
+            body.maxCrawledPlacesPerSearch: 20, body.maxCrawledPlaces: 20, body.scrapeContacts: false,
+            body.scrapePlaceDetailPage: false, body.maxReviews: 0}
+    out: {places: ".", count: "len(.)"}
+    miss: ". == []"
 
   # ---- tiktok.user.videos (batch 5) ------------------------------------------------------------
   justoneapi.tiktok.user.videos:
@@ -1951,6 +1961,14 @@ adapters:
     in:  {post_id: queryParams.status_id}
     out: {post: data.detailInfo.status}
     miss: "data.detailInfo == null"
+  apify.weibo.post.detail:
+    accepts: [[post_id]]
+    in:  {post_id: body.post_ids}
+    in_expr: {body.post_ids: "list(post_id)"}
+    const: {body.mode: post, queryParams.maxTotalChargeUsd: "0.05", queryParams.timeout: "90",
+            queryParams.memory: "1024"}
+    out: {post: "[0]"}
+    miss: "[0] == null"
 
   predictleads.companies.job_openings:
     accepts: [[domain]]
