@@ -28,6 +28,8 @@
 # bill for all of them. ALWAYS send resultsLimit/limit in the input AND `maxTotalChargeUsd` in the
 # query string: it is the spend cap Apify enforces on every billed event (`maxItems` binds only actors
 # that honour it), and treg's key requires it.
+# Leave headroom above the spend you expect: a run whose charges land exactly on the cap can be
+# aborted by Apify, which answers 400 with no rows.
 # Some actors price by the caller's Apify SUBSCRIPTION TIER; those rows list every tier's rate and
 # name which one the catalog value is, so check your own plan before budgeting a large pull.
 provider: apify
@@ -263,7 +265,7 @@ endpoints:
     input:
       queryParams:
         maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 40}
-        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, at most 1, and holds it for the call; this actor refuses a cap below 0.05", example: 0.5}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, at most 1, and holds it for the call; this actor refuses a cap below 0.05. Set it ABOVE max_results x 0.005 (0.06 for 10 products): a run whose charges land exactly on the cap can be aborted by Apify and answers 400 with no rows", example: 0.06}
         memory: {type: integer, required: false, enum: [2048], note: "MB of run memory. treg's key requires 2048; your own key may set any size", example: 2048}
         timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
       body:
@@ -275,7 +277,7 @@ endpoints:
       note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries title, price, price_original, currency, rating, review_count, sold_count, seller_name, location, brand and product_url. Cap every call with maxTotalChargeUsd, the spend limit Apify enforces; the body row limit sets how many rows run"
     platform_request: {queryParams.memory: 2048, queryParams.timeout: 90}
     test_request:
-      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 90, memory: 2048}
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.06, timeout: 90, memory: 2048}
       body: {search_terms: ["iphone 15 case"], region: "sg", max_results: 10}
     cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: result, source: observed, source_url: 'https://api.apify.com/v2/acts/herus13~lazada-scraper', checked: '2026-09-26', confidence: verified, note: 'pay-per-event: one product-result event per product, $0.005 flat (no plan tiers), no start event. Since the actor''s 2026-09-25 pricing it refuses maxTotalChargeUsd below 0.05, returns at least 10 products (max_results below 10 is raised to 10) and no longer bills run compute to the caller, so there is no call_fee and a call costs about $0.05. OBSERVED 2026-09-26: a 10-product, 79-second run billed chargedEventCounts {product-result: 10}, usageTotalUsd 0.05 with no platform usage. A run takes about a minute even for a few products, so keep max_results low on treg''s key: a run past the 90 s timeout answers 400 and is not charged to you. Charged per product produced even if the run is cut short — cap with maxTotalChargeUsd'}
     verified: 2026-09-26
