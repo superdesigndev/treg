@@ -1,3 +1,12 @@
+---
+title: Tool justifications for the ChatGPT plugin submission
+status: reference
+sources: []
+related:
+  - interface/skill.md
+  - interface/skill-openai-submission.md
+---
+
 # Tool justifications for the ChatGPT plugin submission
 
 One block per form field. Copy the paragraph under each heading exactly as it is.

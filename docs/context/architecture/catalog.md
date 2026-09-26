@@ -497,6 +497,25 @@ endpoints:
     docs_url: https://docs.tikhub.io/…
 ```
 
+### Domain sections — grouping endpoints for browse
+
+`catalog_store._domain` derives the `domain:` heading above (capability middle segment, else a path
+keyword, else the path's grouping segment, else `other`) by splitting the candidate into whole words —
+on non-letters and camelCase humps, via `_WORDS = re.compile(r"[A-Z]?[a-z]+")` — then matching against
+`DOMAIN_KEYWORDS`. A short key (`ads`, `llm`, `ad_`→`ad`) must match a whole word; a stem key
+(`keyword`→`keywords`, `backlink`→`backlinks`, `shop`→`shopping`) matches by prefix. This keeps `ads`
+from matching inside `leads` or comment**threads**, and `user` from matching inside `abuser`reports.
+`DOMAIN_NOISE` drops vendor-internal path segments that would otherwise earn their own heading:
+brand-family markers (`dataforseo_labs`, `appendix`) and delivery-version markers (`web_v2`, `web_v3`,
+`web_v4`).
+
+Some brand-family or version headings come from a capability id's own middle segment rather than a
+path segment, so `DOMAIN_KEYWORDS`/`DOMAIN_NOISE` cannot filter them — `google-analytics`'s
+`measurement_protocol_secret` / `google_ads_link` / `firebase_link`, `x`'s `account_activity`, or
+`douyin`'s `xingtu` / `xingtu_v2`. Renaming those reads as a `capabilities.yaml` taxonomy edit, not a
+heuristic change; open renames are tracked in
+[catalog-review-proposal.md](../interface/catalog-review-proposal.md).
+
 ### Async descriptors
 
 `catalog_store._normalize` sets `cache: forbidden` for `image-gen`, `video-gen`, and `voice-gen` endpoints,

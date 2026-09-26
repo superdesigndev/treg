@@ -1,3 +1,13 @@
+---
+title: Test cases for the ChatGPT plugin submission
+status: reference
+sources: []
+related:
+  - interface/skill.md
+  - interface/skill-openai-submission.md
+  - interface/skill-openai-tool-justifications.md
+---
+
 # Test cases for the ChatGPT plugin submission
 
 Copy each block into its field. Every positive case below was run against production before it was
