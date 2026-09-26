@@ -1044,7 +1044,8 @@ count. Only the run options `maxTotalChargeUsd`, `maxItems`, `memory` and `timeo
 each once and in plain ASCII, because a dataset-view option (`limit`, `offset`, `format`, `unwind`)
 would make the returned rows disagree with the events billed. `_marketplace_pricing` holds the cap
 plus `cost.call_fee`, the flat per-run charge: a start event the cap already counts, or run compute
-billed to the caller that it does not. `_observed_cost_micro`
+billed to the caller that it does not. An actor that bills its start per query names the body arrays
+that multiply the fee in `cost.call_fee_per` (LinkedIn jobs: job titles x locations). `_observed_cost_micro`
 settles the rows run-sync returned times the row price plus the fee; within two rows of the hold the
 caller's cap was reached, and the hold is the bill, because a run stops when its next event would
 pass the cap and can already have billed one event it never pushed and a plan-tier price below the catalog's fits more rows under the cap.
