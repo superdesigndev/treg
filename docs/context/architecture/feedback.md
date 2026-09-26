@@ -48,10 +48,15 @@ no best-effort audit writer. Storage failures cannot produce a success acknowled
 
 `call_ids` and `endpoint_id` remain submitted claims. `verified_call_ids` is the subset found in
 the submitting team's `CallRecord.call_ref` or `LedgerEntry.call_id`; no cross-team lookup runs.
-Missing or delayed audit records do not reject a report. Verified provenance does not establish
-that the reported problem is true. Intake does not rank providers or adjust charges.
+A caller with pinned tags (`domain.governance.access.pinned_tag_predicates`) verifies only against
+rows carrying its own pin — on the ledger side, only the `reserve` entry carries `meta.tags`, so
+that is the row a pinned caller's claim is checked against. The submitted report itself is stamped
+with the caller's pin (`Feedback.tags`). Missing or delayed audit records do not reject a report.
+Verified provenance does not establish that the reported problem is true. Intake does not rank
+providers or adjust charges.
 
-`GET /feedback/{feedback_id}` returns the report only to its team; other teams receive 404.
+`GET /feedback/{feedback_id}` returns the report only to its team; other teams receive 404. A
+pinned caller narrows further to reports carrying its own pin, the same scope `/calls` uses.
 `GET /admin/feedback` uses `require_superadmin` and the admin pool, with category filtering and
 bounded descending-ID pagination (`limit`, `before`, `next_before`). It returns internal
 attribution too. There is no external notification, issue sync, or public feed.
@@ -105,9 +110,12 @@ to rate after using the result and continue their task.
 
 
 `application.feedback.submit_review` owns one transaction. It looks up call references only in
-its caller's team audit records; a missing audit record receives a retryable 404, including
-ledger-only evidence, which lacks status/provider/cache attribution. Own-tool records receive
-400. A routed parent uses its successful child's endpoint/provider when present, retaining the
+its caller's team audit records, further narrowed to the caller's own pin when it has one (a
+foreign reference is a 404, not an oracle for another customer's calls); a missing audit record
+receives a retryable 404, including ledger-only evidence, which lacks status/provider/cache
+attribution. Own-tool records receive 400, and so does a maker reviewing its own listed hub tool
+(`HubTool.tool_id == endpoint_id` in the caller's org) — a maker's review of its own tool is not a
+buyer's word. A routed parent uses its successful child's endpoint/provider when present, retaining the
 parent endpoint as `routed_via`; otherwise it retains parent attribution. `invited` is recomputed
 from a 2xx, non-cached record with `credential_tier == "platform"` and the current review
 sampling rate. Routed and own-key catalog calls can still be reviewed uninvited. Every agent-facing

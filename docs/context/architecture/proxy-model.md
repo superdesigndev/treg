@@ -22,6 +22,7 @@ sources:
   - src/treg/domain/governance/publicdemo.py
   - src/treg/domain/governance/usage.py
   - src/treg/routers/call.py
+  - src/treg/application/hub/limits.py
   - tests/test_ssrf_public_addresses.py
   - tests/test_call_application_contract.py
   - tests/test_call_cancellation.py
@@ -39,6 +40,7 @@ related:
   - architecture/data-model.md
   - architecture/auth-secrets.md
   - architecture/ads-conversions.md
+  - architecture/hub.md
   - foundation/charter.md
 ---
 
@@ -185,6 +187,13 @@ the separate API/admin/background pools are specified in [deploy](../ops/deploy.
 `* /call/{rest:path}` → `routers.call.call_tool()` → `application.call.service.execute_call()`
 → `resolve_call_target(...)` returns a framework-neutral
 `ResolvedTarget(tool, upstream)`. Each resolution use case owns and closes its read session.
+
+A named miss that is not an org tool falls through, in order: a catalog endpoint, then — only for
+a top-level call (`request.context.input.child_of is None`) — a hub tool (`<team-slug>.<name>`,
+`hub_app.tool_for`). An own tool or a catalog id always wins; a hub tool never shadows either. See
+[hub](hub.md) for what a hub run is; `service._execute_call` runs it under a per-team
+`hub_limits.slot()`, refusing a new run with `429 hub_busy` (naming the active count and a
+`retry_after_s`) rather than queuing past `hub_limits.MAX_RUNS_PER_TEAM`.
 **Both shapes are scoped to the caller's org** (`Tool.org_id == org_id`), so two
 orgs resolve independently and may reuse a tool name or upstream host; the use case then loads only
 same-org secrets. After resolution `application.call.authorize` runs tool/project ACL, deny, member-cap,
@@ -361,8 +370,20 @@ A catalog row with `kind: routed` (`treg.<capability>`, generated - `architectur
 § Routing) never reaches the credential ladder itself. `service._execute_call` hands it to
 `application/call/route.py`, which builds the plan and runs each child endpoint through **this same
 use case** as a child `CallContext` (`call_ref` `{parent}:r{n}`), so every rule below - ladder,
-reserve, relay faithfulness, capacity, overflow, settle, audit, cancellation - applies per child
-unchanged. The parent only assembles `{output, raw, _treg}` and owns the idempotency label.
+reserve, relay faithfulness, capacity, overflow, audit, cancellation - applies per child
+unchanged. **Settle does not** apply straight: each child's `MarketplaceCall.deferred` points at
+the parent's `CallContext.deferred_settles` list, so `_platform_settle` appends a `DeferredSettle`
+(call id, billable, the amount it would have charged, its archive-use marker) and leaves the hold
+open instead of closing it. The parent - not each child - decides whether the caller pays, and
+closes every child's hold exactly once with `settle.close_deferred(charge=…)`: `charge=True` settles
+each billable child as its own settle would have, `charge=False` releases all of them, because a
+routed call that fails charges the caller nothing. A crash before `close_deferred` runs leaves the
+holds to the reaper, which releases in the caller's favour. The parent only assembles
+`{output, raw, _treg}` and owns the idempotency label.
+
+A routed call whose outcome is still pending (`202` with `X-Treg-Route-Outcome: pending`) leaves
+`request.state.call_cost_micro` as `None` and skips the `X-Treg-Cost-Micro` response header rather
+than reporting a charge that has not happened yet.
 
 ## Platform capacity: refuse before reserve (plan step D)
 

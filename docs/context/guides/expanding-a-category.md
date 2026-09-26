@@ -82,6 +82,7 @@ Tests extend the existing auth, capacity and marketplace files. See [catalog](..
 |---|---|---|
 | Key in a header | `token_header` + `token_format` (`Bearer {secret}` / `{secret}` / `Token {secret}`) | TikHub, Apollo, SE Ranking |
 | Key in the query string | `token_location="query"` + `token_param` | Semrush, Diffbot, SpyFu |
+| Key in the JSON request body | `token_location="json"` + `token_param` (the JSON field name) | Adyntel `api_key` |
 | HTTP Basic from `login:password` | `token_format="Basic {secret}"` + `token_encode="base64"` | DataForSEO, Moz |
 | HTTP Basic with a RAW token after `Basic ` | `token_format="Basic {secret}"`, **no** `token_encode` | The Companies API |
 | Cheapest check on a DIFFERENT host | `probe_url` (absolute) | Semrush (balance host), Diffbot (account host) |
@@ -95,6 +96,8 @@ Tests extend the existing auth, capacity and marketplace files. See [catalog](..
 | The provider's OWN "test my auth" endpoint answers 200 with prose for a bad key | probe a DATA endpoint instead | Tiingo `/api/test` (2026-08-14; `/tiingo/daily/aapl` 403s cleanly) |
 | Bad key 302-redirects to an HTML login page (a Laravel app that only speaks JSON when asked) | `probe_reject_statuses=(302, 401, 403)` **plus** `token_verify_field` on a body field the redirect lacks | Findymail `/credits` → `email` (2026-08-20) |
 | TWO header credentials, both per-user, and a free probe answers the key alone | `extra_credential_label`/`extra_credential_header` with `extra_credential_setting` EMPTY (user binds the second half via `POST /connections/{id}/extra-credential`); probe the key-only route | Tomba `X-Tomba-Key` + `X-Tomba-Secret`, probe `/v1/usage` (2026-08-20) |
+| TWO credentials, but neither rides in a header | `extra_credential_location`/`extra_credential_param` (query or JSON), same pairing flow as above | Adyntel: key + `extra_credential_label="Account email"`, both `location="json"` |
+| TWO credentials that both ride in the SAME JSON body, and the API cannot verify the key alone | `token_location="json"` + `extra_credential_location="json"`, plus `probe_deferred_statuses` on the probe's "incomplete pair" status — the connect step stores the key with `health_status="unknown"` rather than pass/fail, and verification completes once the second credential is added | Adyntel `api_key` + `email`, probe `POST /facebook` answers `422` until the email is supplied |
 | TWO credentials but the API also takes standard HTTP Basic `a:b` | one pasted `key:token` pair, `token_format="Basic {secret}"` + `token_encode="base64"` — no second slot needed | PredictLeads `api_key:api_token` (2026-08-20) |
 | A second host that answers 200 to anything (demo/free tier) | pin the host that rejects | CoinGecko demo host (2026-08-14) |
 | Accepts ANY key on every endpoint, even premium ones | DROP — cannot ship | Alpha Vantage (2026-08-14: `apikey=bogus123` returned real quote data) |

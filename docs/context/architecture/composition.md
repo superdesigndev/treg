@@ -155,6 +155,12 @@ otherwise change route inspection and the committed surface snapshot.
 Public routes added since: `/{INDEXNOW_KEY}.txt` (`indexnow_key`, `routers/web.py`) — the IndexNow
 key file; listed in the ownership table beside `/sitemap.xml`. See `interface/seo.md` § IndexNow.
 
+The [tool hub](hub.md)'s management and browse surface (`/hub/tools*`, `/hub/run`, `/hub/runs/{run_id}`,
+`/hub/{tool_id}`, `/app/runs/{run_id}`, and the `/admin/hub/listings*` + `/admin/hub/updates*` review
+routes) joins `_CONTROL_ROUTE_KEYS` alongside the rest of the management surface; `/call/` and
+`/catalog/call/` remain the only dataplane routes a hub run's own steps go through. The legacy
+dashboard's `/app/legacy/assets/{path:path}` mount is gone — see [dashboard](../interface/dashboard.md).
+
 No web process collects Arena statistics any more: `treg-worker arena insights` (a cron) does,
 and `/arena/insights`, a control route, only reads the last published snapshot. `ROLE_BACKGROUND_TASKS`
 therefore lists `adsconv.worker` alone for control/all.

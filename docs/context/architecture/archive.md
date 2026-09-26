@@ -555,6 +555,11 @@ cache fields; missing fields are not misses. Shadow still only records/learns: i
 produce hypothetical hit counts or fresh-answer comparisons.
 
 
+A hub tool call (`<team-slug>.<name>`, resolved third in `_execute_call` after an own tool and a
+catalog id both miss) returns before reaching any of this: it runs through `hub_runner.run_hub_tool`
+instead of the marketplace/relay path, so nothing below applies to it. See
+[hub](hub.md) for that path.
+
 ## Eligibility — three gates, in order
 
 1. **Kind.** Only a `data` read (the catalog's default kind) is ever stored. `action` changes

@@ -525,7 +525,9 @@ shared-key tool they may run but not read) requires the **runner proof** (`X-Tre
 someone else's key value. A tool's `base_url` is validated against the internal-address block-list (loopback/private/link-local/
 metadata, incl. numeric IP encodings) at registration AND the proxy re-resolves the host at call time
 (`infra.upstream.ssrf.host_is_public`, also re-exported by `health`, gated by `proxy_ssrf_check`) — no
-SSRF, even via DNS rebinding.
+SSRF, even via DNS rebinding. `routers.resources._require_public_base_url` also rejects a `base_url`
+that points back at treg itself (`application.hub.points_at_treg`), so a team cannot register a tool
+that calls treg's own API through the proxy instead of using treg's tools by their ids directly.
 
 ## Kitt AI key connection
 

@@ -536,6 +536,11 @@ Provider-specific calculation stays outside the faithful relay.
 | Aviato | Fixed routes use the estimate; bulk enrichment counts successful records; catalog `settle: base` and `settle: modifiers` release documented-but-unbilled `reserve_only` riders |
 | Datagma | A finite nonnegative `creditBurn`, including numeric strings and zero, settles at that many frozen-price credits; invalid or absent evidence falls back to normal settlement |
 | ZeroBounce | The verified `per_success` adapter treats `status=unknown` as a zero-cost miss; other completed verdicts settle at the frozen one-credit estimate |
+| CompanyEnrich people search | Rows in `items[]`, floored at 1 (the documented 2-credit minimum on an empty page); each row is 2 credits (`_rows_billed_micro` scales `unit_micro` by the row's `cost.value`), capped at the reserved `pageSize` |
+| Icypeas bulk (`profile.url.bulk`, `people.identity.resolve.bulk`, `scrape.bulk`) | Rows in `data[]` whose `status` is `FOUND`; a company scrape (`type: "company"` in the request body) bills at 0.5 credit a hit, other bulk rows at 1 credit; `NOT_FOUND` rows are free |
+| Serpstat | An `error` envelope (bad token, exhausted limit, "Data not found") is free; otherwise rows in `result.data[]`, or `result.data.top[]` for `getKeywordTop`, floored at the documented 1-credit minimum on an empty list; any other response shape settles at the estimate |
+| TheCompaniesAPI companies search | `simplified=true` is free on endpoints that declare it in `input.queryParams`; otherwise one credit per company in `companies[]`, capped at the requested `size` |
+| Findymail employee search | One finder credit per contact in the returned list (`_rows_billed_micro`); an empty list is a free miss where the estimate used to bill the hold |
 
 Bright Data snapshot downloads are billable per result, including repeat downloads. Gzip or a
 buffer-truncated response falls back to the estimate because the record count is unknown.
