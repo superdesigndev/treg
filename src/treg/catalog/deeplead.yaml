@@ -161,7 +161,7 @@ endpoints:
     source_url: https://www.deeplead.io/api/v1/docs
     checked: '2026-09-25'
     confidence: documented
-    note: Partner rate per person newly revealed with an email or phone; people without either are never returned or charged, and people this key already revealed are free. A live count-1 call on 2026-09-25 returned one person and charged 1 credit (balance 1,000,000 → 999,999), which the partner key bills at $0.0045.
+    note: Partner rate per person newly revealed with an email or phone; people without either are never returned or charged. The partner key only reads, nothing is saved to a Deeplead account, so every reveal is billed. A live count-1 call on 2026-09-25 returned one person and charged 1 credit (balance 1,000,000 → 999,999), which the partner key bills at $0.0045.
   docs_url: https://www.deeplead.io/api/v1/docs
 
 - id: deeplead.organizations.decision_maker
