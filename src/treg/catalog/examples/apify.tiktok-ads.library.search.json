@@ -1,0 +1,32 @@
+[
+  {
+    "ad_id": "1802755681539186",
+    "advertiser_name": "Alltricks",
+    "audit_status": "approved",
+    "ad_type": "video",
+    "first_shown": "2024-07-25",
+    "last_shown": "2026-07-08",
+    "days_shown": 714,
+    "estimated_audience": "10K-100K",
+    "impression": 0,
+    "spent": "",
+    "deeplink": "https://library.tiktok.com/ads/detail/?ad_id=1802755681539186",
+    "videos": [
+      {
+        "video_url": "https://library.tiktok.com/api/v1/cdn/1790390526/video/aHR0cHM6Ly92NzcudGlrdG9rY2RuLmNvbS9mNWFlZmQzODk5MGRlMDQyNzczYjYyODEyMzk3MWY3Yi82YWI3ODU2Yy92aWRlby90b3MvYWxpc2cvdG9zLWFsaXNnLXZlLTAwNTFjMDAxLXNnL29NUHpYU1VpY2xORlFFeElyQmltQTY5QmdjUWhCQmJqZmZjRDF6Lw==/d3045bf8-adda-401d-ab33-49d9332cd101?a=475769&bt=848&btag=e00070000&bti=PDU2NmYwMy86&ft=.NpOcInz7ThuK~1GXq8Zmo&l=20260926104206D539986AEB3A136185CB&mime_type=video_mp4&rc=ZDk3NzY3ZjlkOmg0NTpoNEBpM2lxPG05cmV4czMzODYzNEBiNmMyLzYtXmIxLzU0MC0vYSNiXjU2MmRzaG1gLS1kMC1zcw%3D%3D&signature=gY6vN1LbvT9Xg81SGJHSwiLpHRmKkXaYfl%2BmdlqH4rw%3D&vvpl=1",
+        "cover_image": "https://p16-common-sign.tiktokcdn.com/tos-alisg-p-0051c001-sg/o0cNzcipFYSQczQjDlUX6bgEBfAQiBAP1B3mfI~tplv-tiktokx-origin.jpeg?dr=14582&refresh_token=36e09298&x-expires=1790409600&x-signature=eXnp7oOZRfJ5yZL4xCnRZh%2BsuU0%3D&t=4d5b0474&ps=13740610&shp=0c75dd76&shcp=9b759fb9&idc=sg1"
+      }
+    ],
+    "image_urls": [
+      "https://p16-common-sign.tiktokcdn.com/tos-alisg-p-0051c001-sg/o0cNzcipFYSQczQjDlUX6bgEBfAQiBAP1B3mfI~tplv-tiktokx-origin.jpeg?dr=14582&refresh_token=36e09298&x-expires=1790409600&x-signature=eXnp7oOZRfJ5yZL4xCnRZh%2BsuU0%3D&t=4d5b0474&ps=13740610&shp=0c75dd76&shcp=9b759fb9&idc=sg1"
+    ],
+    "query": "nike",
+    "region": "all",
+    "sort": "last_shown_date,desc",
+    "ad_status": "active",
+    "total_ads_in_search": 5000,
+    "pages_fetched": 1,
+    "_next_search_id": "eyJsYXN0X3NvcnQiOlsyNC43MzY0NjQsMTc4MzQ2ODgwMDAwMF0sIm5leHRfY3Vyc29yIjoxfQ==",
+    "_next_offset": 1
+  }
+]

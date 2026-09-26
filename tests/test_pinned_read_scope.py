@@ -160,13 +160,13 @@ async def test_resource_creation_and_fetch_preserve_customer(clients, identities
     hits = []
     async def relay(*args, **kwargs):
         hits.append(True)
-        return _response(200, {'data': {'id': 'run-a', 'defaultDatasetId': 'dataset-a'}})
+        return _response(200, {'snapshot_id': 'snapshot-a'})
     monkeypatch.setattr(call_service, 'relay', relay)
-    response = await clients.post('/call/apify.web.scrape.job.start?actor_id=apify~web-scraper',
-                                  json={'startUrls': [{'url': 'https://example.com'}]}, headers=h['a'])
+    response = await clients.post('/call/brightdata.web.scrape.job.start?dataset_id=gd_test',
+                                  json=[{'url': 'https://example.com'}], headers=h['a'])
     assert response.status_code == 200, response.text
-    for path in ['/call/apify.web.scrape.job.status?run_id=run-a',
-                 '/call/apify.web.scrape.job.results?dataset_id=dataset-a&limit=1']:
+    for path in ['/call/brightdata.web.scrape.job.status?snapshot_id=snapshot-a',
+                 '/call/brightdata.web.scrape.job.results?snapshot_id=snapshot-a&format=json']:
         assert (await clients.get(path, headers=h['b'])).status_code == 404
         assert (await clients.get(path, headers=h['a'])).status_code == 200
     assert len(hits) == 3

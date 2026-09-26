@@ -84,3 +84,4 @@ async def test_persistent_settlement_failure_keeps_response_path_non_raising(
     async with session_maker() as db:
         assert await db.get(Hold, call_id) is not None
         assert await ledger.balance_of(db, org_id) < before
+

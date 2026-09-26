@@ -1,0 +1,35 @@
+[
+  {
+    "product_id": "1731987113638072822",
+    "title": "junk phone case",
+    "price": 20,
+    "original_price": null,
+    "currency": "$",
+    "price_label": null,
+    "price_source": "api_search_product_list",
+    "discount_percent": null,
+    "seller_id": "7496085867160504822",
+    "seller_name": "jaidaalize",
+    "rating": null,
+    "review_count": 0,
+    "sold_count": 0,
+    "main_image": "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/94fdba7fde2e4228816fc2f6a1a9705b~tplv-fhlh96nyum-crop-webp:1290:1290.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=a6e80448&idc=useast5&from=2378011839",
+    "image_urls": [
+      "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/94fdba7fde2e4228816fc2f6a1a9705b~tplv-fhlh96nyum-crop-webp:1290:1290.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=a6e80448&idc=useast5&from=2378011839",
+      "https://p19-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/94fdba7fde2e4228816fc2f6a1a9705b~tplv-fhlh96nyum-crop-webp:1290:1290.webp?dr=12190&t=555f072d&ps=933b5bde&shp=8dbd94bf&shcp=a6e80448&idc=useast5&from=2378011839"
+    ],
+    "shop_logo": "https://p16-oec-general-useast5.ttcdn-us.com/tos-useast5-i-omjb5zjo8w-tx/587383daaf8a4eaaa4dfb4c8f2b5944f~tplv-fhlh96nyum-resize-png:300:300.png?dr=12184&t=555f072d&ps=933b5bde&shp=905da467&shcp=d9d491bf&idc=useast5&from=2422056039",
+    "brand_name": null,
+    "seller_verified": false,
+    "default_sku_id": "1731987120486257142",
+    "sku_ids": [
+      "1731987120486257142"
+    ],
+    "promo_seller_deduction": null,
+    "product_url": "https://shop.tiktok.com/us/pdp/pink-white-junk-phone-case-stylish-protective-cover/1731987113638072822",
+    "category_path": [],
+    "region": "US",
+    "scraped_at": "2026-09-23T17:22:46+00:00",
+    "error": null
+  }
+]

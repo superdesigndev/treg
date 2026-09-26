@@ -42,6 +42,18 @@ from .types import GatewayFailed, UpstreamResponse
 _NOT_THE_CALLERS_FAULT = frozenset({401, 402, 403, 405, 407, 408, 429})
 
 
+def _apify_call_fee_micro(mk: MarketplaceCall, cost: dict) -> int:
+    """The flat per-run charge, once per run the request starts. An actor that bills its start per
+    query (LinkedIn jobs: one actor-start per job title x location) names those body arrays in
+    `cost.call_fee_per`; each multiplies the fee by its length, an absent or empty one by one."""
+    fee = _usd_to_micro(float(cost.get("call_fee") or 0))
+    body = mk.request_data.get("body") if isinstance(mk.request_data, dict) else None
+    for path in cost.get("call_fee_per") or ():
+        items = body.get(str(path).removeprefix("body.")) if isinstance(body, dict) else None
+        fee *= max(1, len(items)) if isinstance(items, list) else 1
+    return fee
+
+
 def _platform_billable(status_code: int, cost_type: str) -> bool:
     """MAY a response with this status cost us money? (plan §2.2) — the status gate only.
       2xx                        → yes, the provider served it.
@@ -410,6 +422,8 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
       - fiber-ai: REPORTED in credits, `chargeInfo.creditsCharged` on every envelope, honoured
         for `method: charged-now` only (a poll repeats its job's charge). Error bodies carry no
         `chargeInfo`, which is what keeps a 400/404 on a `per_call` profile fetch unbilled.
+      - apify: DERIVED by counting the dataset rows a run-sync call returns, plus the row's flat
+        `call_fee` for the actor start or compute the run bills regardless of rows.
       - companyenrich / icypeas bulk / serpstat / thecompaniesapi search / findymail employees:
         DERIVED by counting the rows the vendor bills for, priced at the row's credits and capped
         at the hold (`_rows_billed_micro`): an empty answer never costs the requested page.
@@ -450,6 +464,19 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         doc = json.loads(body)
     except (ValueError, UnicodeDecodeError):
         return 0 if provider == "contactout" else None
+    if provider == "apify" and mk.cost_type == "per_result" and mk.unit_micro > 0:
+        # DERIVED: run-sync-get-dataset-items answers the bare dataset array, one billed event per
+        # row, and the run's start or compute charge is the catalog's flat `call_fee`. Apify's own
+        # usageTotalUsd trails a finished run by minutes, so the body is the only prompt evidence.
+        if not isinstance(doc, list):
+            return None
+        billed = len(doc) * mk.unit_micro + _apify_call_fee_micro(mk, cost or {})
+        # A run stops when its next event would pass maxTotalChargeUsd, and it may already have
+        # billed one event it never pushed as a row (seen live: 3 events, 2 rows), so a capped run
+        # lands within two rows of the hold; a plan-tier price below the catalog's lands there too.
+        # There the caller's own cap was reached, and that cap is the bill.
+        # ponytail: assumes at most one unpushed event per run; an actor that drops more under-bills.
+        return mk.estimate_micro if billed + 2 * mk.unit_micro >= mk.estimate_micro else billed
     if provider == "openmart" and mk.cost_type == "per_result" and mk.unit_micro > 0:
         records = _openmart_record_count(mk.endpoint_id, doc)
         return None if records is None else _openmart_credits(records) * mk.unit_micro

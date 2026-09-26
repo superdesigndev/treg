@@ -616,6 +616,66 @@ def test_openmart_settlement_rounds_three_credits_per_ten_records(endpoint, body
     assert call_settle._observed_cost_micro(mk, body) == expected
 
 
+@pytest.mark.parametrize(("body", "expected"), [
+    (b'[]', 10_000),
+    (b'[{"mid":"1"}]', 15_000),
+    (b'[{},{},{}]', 25_000),
+    (b'[' + b','.join([b'{}'] * 5) + b']', 35_000),
+    (b'[' + b','.join([b'{}'] * 6) + b']', 50_000),
+    (b'[' + b','.join([b'{}'] * 50) + b']', 50_000),
+    (b'{"error":{"type":"run-failed"}}', None),
+])
+def test_apify_settlement_counts_rows_and_bills_the_cap_when_reached(monkeypatch, body, expected):
+    """Rows x price + call_fee, but a run within two rows of its hold (maxTotalChargeUsd + fee)
+    reached the caller's cap: it may have billed an event it never pushed, so the cap is the bill."""
+    endpoint = {**catalog_store.load().by_id['apify.meta-ads.library.search']}
+    endpoint['cost'] = {**endpoint['cost'], 'call_fee': 0.01}
+    monkeypatch.setitem(catalog_store.load().by_id, endpoint['id'], endpoint)
+    mk = _mk('apify', endpoint_id=endpoint['id'], cost_type='per_result', unit_micro=5_000,
+             estimate_micro=50_000)
+    assert call_settle._observed_cost_micro(mk, body) == expected
+
+
+@pytest.mark.parametrize(('items', 'hold'), [
+    ((('maxTotalChargeUsd', '0.04'), ('timeout', '60')), 50_000),
+    ((('maxTotalChargeUsd', '0.025'), ('timeout', '90')), 35_000),
+    ((('maxTotalChargeUsd', '1'), ('maxItems', '3'), ('memory', '1024'), ('timeout', '90')),
+     1_010_000),
+    ((('maxTotalChargeUsd', '0.024'), ('timeout', '60')), None),
+    ((('maxTotalChargeUsd', '0.04'),), None),
+    ((('maxTotalChargeUsd', '0.04'), ('timeout', '91')), None),
+    ((('maxTotalChargeUsd', '0.04'), ('timeout', '0')), None),
+    ((), None),
+    ((('maxItems', '1'),), None),
+    ((('maxTotalChargeUsd', '0'),), None),
+    ((('maxTotalChargeUsd', '1.5'),), None),
+    ((('maxTotalChargeUsd', '1e-1'),), None),
+    ((('maxTotalChargeUsd', '０.5'),), None),
+    ((('maxTotalChargeUsd', ' 0.5'),), None),
+    ((('maxTotalChargeUsd', '0.5'), ('maxTotalChargeUsd', '0.1')), None),
+    ((('maxTotalChargeUsd', '0.5'), ('maxItems', '2'), ('maxItems', '1')), None),
+    ((('maxTotalChargeUsd', '0.5'), ('maxItems', '²')), None),
+    ((('maxTotalChargeUsd', '0.5'), ('maxItems', '0')), None),
+    ((('maxTotalChargeUsd', '0.5'), ('limit', '1')), None),
+    ((('maxTotalChargeUsd', '0.5'), ('format', 'csv')), None),
+    ((('maxTotalChargeUsd', '0.5'), ('unwind', 'x')), None),
+])
+def test_apify_platform_hold_is_the_charge_cap_plus_call_fee(items, hold):
+    ep = {**catalog_store.load().by_id['apify.meta-ads.library.search']}
+    ep.pop('platform_request', None)
+    cost = {**catalog_store.load().cost_view(ep['cost'], 'apify'), 'call_fee': 0.01}
+    ep['cost'] = cost
+    query = call_resolution.QueryValues(items)
+    if hold is None:
+        with pytest.raises(ResolutionFailed) as exc:
+            call_resolution._enforce_platform_request(ep, b'{}', query=query)
+        assert exc.value.detail['parameter'] == 'queryParams'
+        return
+    call_resolution._enforce_platform_request(ep, b'{}', query=query)
+    assert call_resolution._marketplace_pricing('apify', ep['id'], cost, query, b'{}') \
+        == (hold, 5_000)
+
+
 @pytest.mark.parametrize(("endpoint", "doc", "expected"), [
     *[("serper.web.extract", {"credits": reported, "text": "served"}, expected)
       for reported, expected in
@@ -1903,6 +1963,29 @@ def test_platform_request_constraints_do_not_require_a_price_table(body, valid):
             call_resolution._enforce_platform_request(ep, body)
 
 
+@pytest.mark.parametrize('items,valid', [
+    ((('memory', '1024'), ('maxTotalChargeUsd', '1')), True),
+    ((('memory', '1024.0'), ('maxTotalChargeUsd', '1.0')), False),
+    ((('memory', '１０２４'), ('maxTotalChargeUsd', '1')), False),
+    ((('memory', '1_024'), ('maxTotalChargeUsd', '1')), False),
+    ((('memory', '+1024'), ('maxTotalChargeUsd', '1')), False),
+    ((('memory', ' 1024 '), ('maxTotalChargeUsd', '1')), False),
+    ((('memory', '2048'), ('maxTotalChargeUsd', '1')), False),
+    ((('memory', '1024'), ('memory', '1024'), ('maxTotalChargeUsd', '1')), False),
+    ((('maxTotalChargeUsd', '1'),), False),
+    ((('memory', 'lots'), ('maxTotalChargeUsd', '1')), False),
+])
+def test_platform_request_pins_query_values_by_type(items, valid):
+    ep = {'id': 'example.run', 'platform_request': {
+        'queryParams.memory': 1024, 'queryParams.maxTotalChargeUsd': 1.0}}
+    query = call_resolution.QueryValues(items)
+    if valid:
+        call_resolution._enforce_platform_request(ep, b'', query=query)
+    else:
+        with pytest.raises(ResolutionFailed):
+            call_resolution._enforce_platform_request(ep, b'', query=query)
+
+
 # ---- ContactOut ----
 
 def _contactout_cost(eid):
@@ -2376,3 +2459,19 @@ async def test_a_sync_usage_settled_call_charges_the_providers_reported_cost(
     assert before - await _balance(clients) == 20
 
 
+
+
+@pytest.mark.parametrize(('body', 'fee'), [
+    ({'jobTitles': ['a'], 'locations': ['x']}, 1_000),
+    ({'jobTitles': ['a', 'b', 'c'], 'locations': ['x']}, 3_000),
+    ({'jobTitles': ['a'], 'locations': ['x', 'y']}, 2_000),
+    ({'jobTitles': ['a', 'b'], 'locations': []}, 2_000),
+    ({'jobTitles': ['a', 'b']}, 2_000),
+])
+def test_apify_call_fee_multiplies_by_each_query_the_actor_starts(body, fee):
+    """LinkedIn jobs bills one actor-start per job title x location searched."""
+    cost = catalog_store.load().by_id['apify.linkedin.search.jobs']['cost']
+    mk = _mk('apify', endpoint_id='apify.linkedin.search.jobs', cost_type='per_result',
+             unit_micro=1_000, estimate_micro=1_001_000, request_data={'body': body})
+    assert call_settle._apify_call_fee_micro(mk, cost) == fee
+    assert call_settle._observed_cost_micro(mk, b'[{}]') == 1_000 + fee

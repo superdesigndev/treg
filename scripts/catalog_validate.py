@@ -258,8 +258,8 @@ def check_platform_request(rule: object, input_schema: object, where: str,
     for path, value in rule.items():
         spec = fields.get(path) if isinstance(path, str) else None
         if (not isinstance(path, str)
-                or not path.startswith(("body.", "headers.")) or spec is None):
-            fail(errors, where, "platform_request must name a declared body or header field")
+                or not path.startswith(("body.", "headers.", "queryParams.")) or spec is None):
+            fail(errors, where, "platform_request must name a declared body, header or query field")
             continue
         allowed = spec.get("enum")
         if (not isinstance(allowed, list) or len(allowed) != 1
@@ -709,6 +709,19 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
                                 "fx.yaml credit_rates_usd entry")
         if "settle" in cost or cost.get("type") == "free":
             fail(errors, where, "cost.reported_charge requires a paid price without cost.settle")
+    if "call_fee" in cost:
+        fee = cost["call_fee"]
+        if (provider != "apify" or cost.get("type") != "per_result"
+                or cost.get("currency", "USD") != "USD"
+                or not _finite_number(fee) or fee <= 0):
+            fail(errors, where, "cost.call_fee must be a positive USD fee on an Apify per_result price")
+    if "call_fee_per" in cost:
+        per = cost["call_fee_per"]
+        fields = _input_fields(input_schema)
+        if (not isinstance(per, list) or not per or "call_fee" not in cost
+                or any(not isinstance(p, str) or not p.startswith("body.")
+                       or "array" not in str((fields.get(p) or {}).get("type", "")) for p in per)):
+            fail(errors, where, "cost.call_fee_per must list declared body array fields beside call_fee")
     if "display" in cost:
         display = cost["display"]
         if (not isinstance(display, dict) or not isinstance(display.get("unit"), str)

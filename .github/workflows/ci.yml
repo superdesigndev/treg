@@ -199,6 +199,13 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium
       - run: npm --prefix frontend run test:e2e
+      - name: Upload browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-results
+          path: frontend/test-results/
+          retention-days: 7
       - name: Check distributable assets
         run: |
           uv build

@@ -1,15 +1,10 @@
-# VERIFIED 2026-07-31 with a live credential (STARTER plan). Five of six endpoints called live and
-# passed; paths, parameters and the Facebook actor's per-result price are now observed rather than
-# transcribed. The one failure is `apify.tiktok-ads.library.search`: the actor RUNS (three runs,
-# exit code 0, two different input shapes) and produces ZERO dataset items every time, billing $0 —
-# an upstream-broken community actor, not a catalog error. Prices and paths below were originally
-# transcribed from official docs 2026-07-28.
+# Every per-result row below was called live on 2026-09-26 and its billed events matched the actor's
+# published rate card (pricingInfos on GET /v2/acts/{actor}); each row's cost note records what was
+# billed. Paths and parameters were first transcribed from official docs 2026-07-28.
 #
-# BILLING IS READABLE AFTER THE FACT, which is what let the estimates above become observed figures:
-# GET /v2/actor-runs?limit=N&desc=1 returns `usageTotalUsd` per run — the actual dollars a run cost.
-# Verified 2026-07-31: one facebook-ads-scraper run capped at maxItems=1 billed exactly $0.005, the
-# value this file already carried; a hello-world run billed $0.00013 (compute only, no results).
-# Read that endpoint after any pay-per-result run rather than trusting an estimate.
+# BILLING IS READABLE AFTER THE FACT, but late: GET /v2/actor-runs/{id} returns chargedEventCounts
+# as soon as a run ends, while usageTotalUsd (the dollars) can trail it by minutes. Settlement
+# therefore counts the rows a run-sync call returns rather than reading the run's cost.
 #
 # Apify is not a data API — it is a runner for other people's scrapers ("Actors"). One generic
 # endpoint shape does every job; what changes is WHICH actor id sits in the path and what its input
@@ -30,11 +25,13 @@
 #
 # COST IS PER RESULT AND OPEN-ENDED. Pay-per-result actors bill each dataset item, and most have no
 # default cap — an unbounded run over a large advertiser can produce tens of thousands of rows and
-# bill for all of them. ALWAYS send resultsLimit/limit in the input AND `maxItems` (or
-# maxTotalChargeUsd) in the query string; maxItems is the only ceiling Apify enforces server-side.
-# The per-result price varies by SUBSCRIPTION TIER (roughly $3.40–$5.80 per 1,000 for the Facebook
-# actor), so a value here is the observed STARTER-plan figure, not a universal quote — re-read
-# usageTotalUsd on your own plan before budgeting a large pull.
+# bill for all of them. ALWAYS send resultsLimit/limit in the input AND `maxTotalChargeUsd` in the
+# query string: it is the spend cap Apify enforces on every billed event (`maxItems` binds only actors
+# that honour it), and treg's key requires it.
+# Leave headroom above the spend you expect: a run whose charges land exactly on the cap can be
+# aborted by Apify, which answers 400 with no rows.
+# Some actors price by the caller's Apify SUBSCRIPTION TIER; those rows list every tier's rate and
+# name which one the catalog value is, so check your own plan before budgeting a large pull.
 provider: apify
 source:
   docs: https://docs.apify.com/api/v2
@@ -54,9 +51,9 @@ endpoints:
     summary: "Scrape publicly running Facebook and Instagram ads for a page or Ad Library search"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "SERVER-SIDE result cap for pay-per-result actors — the only hard spend limit; set it on every call", example: 50}
-        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 1.0}
-        timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off. This route blocks until the actor finishes and Apify closes the connection at 300s regardless — use the async pair below for anything large", example: 120}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
+        timeout: {type: integer, required: false, note: "treg's key requires 1-90 so the run and its rows arrive before any wait gives up (a larger pull needs your own key). seconds before the synchronous run is cut off. This route blocks until the actor finishes and Apify closes the connection at 300s regardless — use the async pair below for anything large", example: 90}
       body:
         startUrls: {type: array, required: true, note: "[{\"url\": \"…\"}] — either a Facebook Page URL or a full Meta Ad Library search URL (facebook.com/ads/library/?q=…&country=US)", example: [{"url": "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=US&q=project%20management"}]}
         resultsLimit: {type: integer, required: false, note: "max ads PER URL; unlimited if omitted, which is how runs get expensive", example: 50}
@@ -66,14 +63,15 @@ endpoints:
         onlyAdsNewerThan: {type: string, required: false, note: "YYYY-MM-DD or a relative phrase like \"2 months\"", example: "2026-06-01"}
         onlyAdsOlderThan: {type: string, required: false}
         onlyTotal: {type: boolean, required: false, note: "true returns just the ad COUNT instead of the ads — one cheap result row when all you need is how much a competitor is running", example: false}
-        enrichWithEcommerceData: {type: boolean, required: false, note: "true follows landing pages for product names and prices"}
+        enrichWithEcommerceData: {type: boolean, required: false, enum: [false], note: "true follows landing pages for product names and prices and bills an extra ecommerce-enrichment event per ad; treg's key requires false, your own key may enable it", example: false}
       bodyType: json
       note: "the response is the dataset items array directly — no run envelope, no polling. Result count is what you pay for, so onlyTotal:true is the cheap probe before a full pull. Unofficial: this reads the Ad Library web UI, so field availability tracks whatever Meta currently renders"
+    platform_request: {body.enrichWithEcommerceData: false}
     test_request:
-      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 180}
-      body: {startUrls: [{url: "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=project%20management"}], resultsLimit: 1, activeStatus: "active", isDetailsPerAd: false, onlyTotal: true}
-    cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: ad, source: observed, source_url: 'https://apify.com/pricing', checked: '2026-07-31', confidence: verified, note: 'pay-per-result: one result = one ad. OBSERVED 2026-07-31 on the STARTER plan — a run capped at maxItems=1 reported usageTotalUsd 0.005 in GET /actor-runs, matching the $5.00-per-1,000 list rate; the rate varies $3.40–$5.80 across subscription tiers, so this is the Starter figure. Charged on results produced even if the run is cut short — cap it with maxItems'}
-    verified: 2026-07-31
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {startUrls: [{url: "https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=project%20management"}], resultsLimit: 1, activeStatus: "active", isDetailsPerAd: false, onlyTotal: true, enrichWithEcommerceData: false}
+    cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: ad, source: observed, source_url: 'https://apify.com/pricing', checked: '2026-09-26', confidence: verified, note: 'pay-per-event, TIERED by the caller''s Apify plan — one apify-default-dataset-item event per ad: FREE 0.0058, BRONZE 0.005 (the value here), SILVER 0.0042, GOLD 0.0034, PLATINUM 0.0021, DIAMOND 0.001; enrichWithEcommerceData adds an ecommerce-enrichment event per ad (FREE 0.0057), pinned off on treg''s key. No start event. OBSERVED 2026-09-26 on the platform key: 1 ad billed chargedEventCounts {apify-default-dataset-item: 1}, at the rate-card price for that key''s plan tier. Charged per ad produced even if the run is cut short — cap it with maxTotalChargeUsd'}
+    verified: 2026-09-26
     example_response: examples/apify.meta-ads.library.search.json
     docs_url: https://apify.com/apify/facebook-ads-scraper
 
@@ -87,8 +85,9 @@ endpoints:
     summary: "Scrape publicly running TikTok ads from TikTok's ad library by keyword or advertiser"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "server-side result cap; set it on every call", example: 50}
-        timeout: {type: integer, required: false, example: 120}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
+        timeout: {type: integer, required: false, note: "treg's key requires 1-90 so the run and its rows arrive before any wait gives up (a larger pull needs your own key)", example: 90}
       body:
         search: {type: string, required: true, note: "keyword or advertiser name to search the ad library for", example: "skincare"}
         adv_biz_ids: {type: string, required: false, note: "advertiser business id, to pin the search to one advertiser instead of a keyword"}
@@ -98,22 +97,16 @@ endpoints:
         start_date: {type: string, required: false, note: "YYYY-MM-DD", example: "2026-06-01"}
         end_date: {type: string, required: false, note: "YYYY-MM-DD"}
         sort: {type: string, required: false}
-        limit: {type: integer, required: false, note: "results to return; pair it with maxItems", example: 50}
+        limit: {type: integer, required: false, note: "results to return; pair it with maxTotalChargeUsd", example: 50}
         offset: {type: integer, required: false, example: 0}
       bodyType: json
       note: "returns creative content, advertiser, dates, audience reach and targeting as TikTok discloses them in the Commercial Content Library. Community actor, not an official TikTok surface — the only route to this capability in the catalog, and the one most likely to break upstream, so check the actor's run history before relying on it"
     test_request:
-      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 180}
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 90}
       body: {search: "nike", region: "all", query_type: "1", limit: 1, offset: 0}
-    cost: {type: per_result, value: 0.003, currency: USD, per: 1, unit: ad, source: docs, source_url: 'https://apify.com/pricing', checked: '2026-08-13', confidence: documented, note: 'pay-per-event: ~$3.00 per 1,000 ads scraped (published on the actor page), no subscription minimum. The per-ad price is documented, but the charge stays unobservable: a live run 2026-08-13 succeeded (201) yet returned 0 items (x-apify-pagination-total 0), as did all three 2026-07-31 runs — the actor consistently yields nothing, so a real call bills $0. Treat as effectively non-returning until the upstream actor is fixed.'}
-    unverified: "actor is upstream-broken, not the route: HTTP 201 with an EMPTY dataset ([]) on three
-      live runs 2026-07-31 — search=skincare/region=DE/query_type default, search=skincare/region=all/
-      query_type=0 (keyword), and search=nike/region=all/query_type=1 (advertiser, the actor's own
-      prefill). Every run reports SUCCEEDED with exit code 0 and usageTotalUsd 0.00, and the run log
-      shows the Actor initialising and exiting inside 1 second without attempting a fetch. Input
-      shapes were taken from the actor's own published input schema (region=US is rejected upstream —
-      use 'all'), so this is not a parameter error. Re-check the actor's run history before relying on
-      this capability; it is the catalog's ONLY route to tiktok-ads.library.search"
+    cost: {type: per_result, value: 0.003, currency: USD, per: 1, unit: ad, source: observed, source_url: 'https://apify.com/pricing', checked: '2026-09-26', confidence: verified, note: 'pay-per-event: one scraped event per ad, $0.003 flat (no plan tiers), no start event. OBSERVED 2026-09-26 on the platform key: 1 ad billed chargedEventCounts {scraped: 1}, usageTotalUsd 0.003. Earlier runs (2026-07-31, 2026-08-13) returned empty datasets; the actor returns rows again'}
+    verified: 2026-09-26
+    example_response: examples/apify.tiktok-ads.library.search.json
     docs_url: https://apify.com/s-r/tiktok-ads-library
 
   - id: apify.linkedin.search.jobs
@@ -126,9 +119,9 @@ endpoints:
     summary: "Scrape LinkedIn job postings by title, company, location or filters — the hiring-signal search that also answers 'what is this company hiring for' via the company filter"
     input:
       queryParams:
-        maxItems: {type: integer, required: false, note: "SERVER-SIDE result cap for pay-per-result actors — the only hard spend limit; set it on every call", example: 25}
-        maxTotalChargeUsd: {type: number, required: false, note: "alternative hard cap, in dollars", example: 0.05}
-        timeout: {type: integer, required: false, note: "seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless", example: 120}
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 25}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
+        timeout: {type: integer, required: false, note: "treg's key requires 1-90 so the run and its rows arrive before any wait gives up (a larger pull needs your own key). seconds before the synchronous run is cut off; Apify closes the connection at 300s regardless", example: 90}
       body:
         jobTitles: {type: "array[string]", required: true, note: "job-search queries; supports boolean operators. To list ALL of one company's openings, pass a broad query here and pin `company`", example: ["software engineer"]}
         company: {type: "array[string]", required: false, note: "restrict to these companies — names or LinkedIn company URLs", example: ["Netflix"]}
@@ -138,15 +131,20 @@ endpoints:
         experienceLevel: {type: "array[string]", required: false, note: "Entry / Mid / Senior"}
         postedLimit: {type: string, required: false, note: "allowed values: 1h | 24h | week | month — labels like 'Past hour' are rejected", example: "24h"}
         sortBy: {type: string, required: false, note: "date | relevance"}
-        maxItems: {type: integer, required: false, note: "jobs per query; 0 means every available page (LinkedIn caps at 40 pages ≈ 1,000). Pair with the query-string maxItems, which is the enforced ceiling", example: 25}
+        maxItems: {type: integer, required: false, note: "jobs per query; 0 means every available page (LinkedIn caps at 40 pages ≈ 1,000). Pair with the query-string maxTotalChargeUsd, the spend cap Apify enforces", example: 25}
         page: {type: integer, required: false, note: "starting page, 25 jobs per page"}
+        salary: {type: "array[string]", required: false, note: "salary ranges, e.g. `100k+`"}
+        under10Applicants: {type: boolean, required: false, note: "only jobs with fewer than 10 applicants"}
+        easyApply: {type: boolean, required: false, note: "only jobs with LinkedIn Easy Apply"}
+        industryIds: {type: "array[string]", required: false, note: "LinkedIn industry ids, e.g. `4` for Software Development"}
       bodyType: json
-      note: "the response is the dataset items array directly — no run envelope. Community actor scraping LinkedIn's public job search: no LinkedIn login needed, but expect the flakiness every LinkedIn scraper shows — retry before concluding a company has no openings"
+      note: "only the declared body fields are accepted: geoIds is refused because the actor bills a start for each geo id it searches — name places in `locations` instead. The response is the dataset items array directly — no run envelope. Community actor scraping LinkedIn's public job search: no LinkedIn login needed, but expect the flakiness every LinkedIn scraper shows — retry before concluding a company has no openings"
+    body_allowlist: true
     test_request:
-      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 180}
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 90}
       body: {jobTitles: ["attorney"], locations: ["Miami, Florida"], maxItems: 1}
-    cost: {type: per_result, value: 0.001, currency: USD, per: 1, unit: result, source: docs, source_url: 'https://apify.com/harvestapi/linkedin-job-search', checked: '2026-08-20', confidence: documented, note: 'pay-per-event: $1.00 per 1,000 jobs published on the actor page, no platform usage charge on top. Charged per dataset item produced — cap every call with maxItems and read usageTotalUsd from GET /v2/actor-runs after a big pull'}
-    verified: 2026-08-20
+    cost: {type: per_result, value: 0.001, call_fee: 0.001, call_fee_per: [body.jobTitles, body.locations], currency: USD, per: 1, unit: result, source: observed, source_url: 'https://apify.com/harvestapi/linkedin-job-search', checked: '2026-09-26', confidence: verified, note: 'pay-per-event: one job event per job ($0.001) plus one actor-start event per job title x location searched ($0.001, the call_fee, multiplied by call_fee_per; observed 2026-09-26: 3 titles x 1 location billed actor-start 3, 1 title x 2 locations billed 2), flat, no platform usage charge on top. OBSERVED 2026-09-26 on the platform key: 1 job billed chargedEventCounts {job: 1, actor-start: 1}, usageTotalUsd 0.002. Charged per job produced — cap every call with maxTotalChargeUsd'}
+    verified: 2026-09-26
     example_response: examples/apify.linkedin.search.jobs.json
     docs_url: https://apify.com/harvestapi/linkedin-job-search
 
@@ -175,6 +173,7 @@ endpoints:
       bodyType: json
       note: "the whole request body IS the actor's input object — there is no wrapper key; use the same fields as the run-sync entries above (startUrls/resultsLimit for the Facebook actor, search/limit for the TikTok one). Returns immediately with {data: {id, status, defaultDatasetId}}. This is the route for anything that outruns run-sync's 300-second ceiling: keep `id` to poll and `defaultDatasetId` to collect results. The test_request deliberately targets apify~hello-world rather than a data actor — REPLAYING IT STARTS A REAL RUN, and hello-world is the cheapest actor that exists (observed 2026-07-31: $0.00013 of compute, no results, so nothing pay-per-result can bill). Verified live 2026-07-31 that /actors/{id}/runs and the older /acts/{id}/runs are the same endpoint — both answer 201"
     cost: {type: free, value: 0, currency: USD, unit: call, note: starting a run costs nothing; the run itself bills per result or per compute unit according to the actor's pricing}
+    platform_blocked: "Runs any actor the caller names and bills per that actor's own pricing, which a free catalog price cannot meter; connect your own Apify key."
     test_request:
       pathParams: {actor_id: "apify~hello-world"}
       queryParams: {waitForFinish: 0, timeout: 60, memory: 256, maxTotalChargeUsd: 0.05}
@@ -255,4 +254,288 @@ endpoints:
     example_response: examples/apify.account.usage.json
     docs_url: https://docs.apify.com/api/v2/users-me-get
 
+  - id: apify.lazada.search.products
+    capability: lazada.search.products
+    platform: lazada
+    scope: any_account
+    method: POST
+    path: /actors/herus13~lazada-scraper/run-sync-get-dataset-items
+    name: "Search Lazada products by keyword across Southeast Asia"
+    summary: "Search Lazada and return products with price, original price, currency, rating, review and sold counts, seller and location from one of six SEA country sites (SG, MY, VN, TH, PH, ID)"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 40}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, at most 1, and holds it for the call; this actor refuses a cap below 0.05. Set it ABOVE max_results x 0.005 (0.06 for 10 products): a run whose charges land exactly on the cap can be aborted by Apify and answers 400 with no rows", example: 0.06}
+        memory: {type: integer, required: false, enum: [2048], note: "MB of run memory. treg's key requires 2048; your own key may set any size", example: 2048}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        search_terms: {type: "array[string]", required: true, note: "keywords to search, one per entry; each is paged until the run reaches max_results. An empty list stops the run with an input error before anything is charged", example: ["iphone 15 case"]}
+        region: {type: string, required: false, note: "one of sg|my|vn|th|ph|id — decides which country site, the listing language and the currency of every price. Default sg. One run covers one country, so comparing markets means one run per region", example: "sg"}
+        max_results: {type: integer, required: false, note: "total products across all search terms; default 40, max 4000, and a value below 10 is raised to 10. A single keyword usually runs out before 4000 — widen coverage with more terms, not a higher cap", example: 40}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass one gateway URL per entry (http://user:pass@host:port) to route through your own provider instead"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries title, price, price_original, currency, rating, review_count, sold_count, seller_name, location, brand and product_url. Cap every call with maxTotalChargeUsd, the spend limit Apify enforces; the body row limit sets how many rows run"
+    platform_request: {queryParams.memory: 2048, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, maxTotalChargeUsd: 0.06, timeout: 90, memory: 2048}
+      body: {search_terms: ["iphone 15 case"], region: "sg", max_results: 10}
+    cost: {type: per_result, value: 0.005, currency: USD, per: 1, unit: result, source: observed, source_url: 'https://api.apify.com/v2/acts/herus13~lazada-scraper', checked: '2026-09-26', confidence: verified, note: 'pay-per-event: one product-result event per product, $0.005 flat (no plan tiers), no start event. Since the actor''s 2026-09-25 pricing it refuses maxTotalChargeUsd below 0.05, returns at least 10 products (max_results below 10 is raised to 10) and no longer bills run compute to the caller, so there is no call_fee and a call costs about $0.05. OBSERVED 2026-09-26: a 10-product, 79-second run billed chargedEventCounts {product-result: 10}, usageTotalUsd 0.05 with no platform usage. A run takes about a minute even for a few products, so keep max_results low on treg''s key: a run past the 90 s timeout answers 400 and is not charged to you. Charged per product produced even if the run is cut short — cap with maxTotalChargeUsd'}
+    verified: 2026-09-26
+    example_response: examples/apify.lazada.search.products.json
+    docs_url: https://apify.com/herus13/lazada-scraper
+
+  - id: apify.google.serp.maps
+    capability: google.serp.maps
+    platform: google
+    scope: any_account
+    method: POST
+    path: /actors/herus13~google-maps-scraper/run-sync-get-dataset-items
+    name: "Search Google Maps businesses by keyword and location"
+    summary: "Scrape Google Maps for businesses matching a keyword in a place — name, address, phone, website, rating, review_count, categories, hours and coordinates, with email and social-profile enrichment from each business site included in the result price"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 100}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        searchStringsArray: {type: "array[string]", required: true, note: "keywords to search, one per entry (dentist, plumber, coffee shop); each is searched inside locationQuery and every business becomes one row", example: ["coffee shop"]}
+        locationQuery: {type: string, required: false, note: "where to search, as typed into Google Maps: 'Austin, TX', 'London, UK', or a whole country. Omit to let each term carry its own location", example: "Austin, TX"}
+        maxCrawledPlacesPerSearch: {type: integer, required: false, note: "max businesses per search term, 1-500, counted AFTER filters; default 100", example: 20}
+        maxCrawledPlaces: {type: integer, required: false, note: "total businesses across all terms; 0 = no ceiling. You pay per business returned, so set this to cap the bill", example: 100}
+        language: {type: string, required: false, note: "result language, e.g. en|es|fr|de|ja|zh-CN|vi; default en", example: "en"}
+        scrapeContacts: {type: boolean, required: false, note: "look up each business site for emails and social links (emails, email_type, social_links). Default true — these fields are part of the result price, not an add-on", example: true}
+        scrapePlaceDetailPage: {type: boolean, required: false, note: "also open each place's Maps page for hours, price_level, popular_times and any missing phone/site. Default false; makes a run noticeably longer", example: false}
+        maxReviews: {type: integer, required: false, note: "reviews to attach per business, 0-500; default 0 (none). A place page holds roughly the first 8", example: 0}
+        placeMinimumStars: {type: string, required: false, note: "keep only businesses rated at or above '1'|'2'|'3'|'4'|'4.5'; empty keeps all. Filtered-out places are not returned, not charged", example: ""}
+        website: {type: string, required: false, note: "allPlaces | withWebsite | withoutWebsite — filter on whether the business has its own site. Filtered-out places are not charged", example: "allPlaces"}
+        skipClosedPlaces: {type: boolean, required: false, note: "leave out permanently-closed businesses so you do not pay for dead leads. Default true", example: true}
+        geo_split: {type: boolean, required: false, note: "split a wide area into a grid and search each cell to get past Google's ~120-per-view ceiling. Default false; turn on for anything wider than a city", example: false}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries place_id, name, address, phone, website, rating, review_count, categories, hours, latitude, longitude, google_maps_url, and (when scrapeContacts is on) emails and social_links. Cap every call with maxTotalChargeUsd, the spend limit Apify enforces; the body row limit sets how many rows run. Filters (placeMinimumStars, website, skipClosedPlaces) drop places before they are returned or charged"
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.08, timeout: 90}
+      body: {searchStringsArray: ["coffee shop"], locationQuery: "Austin, TX", maxCrawledPlacesPerSearch: 1, maxCrawledPlaces: 1, scrapeContacts: false, maxReviews: 0, scrapePlaceDetailPage: false, skipClosedPlaces: true}
+    cost: {type: per_result, value: 0.009, call_fee: 0.01, currency: USD, per: 1, unit: result, source: observed, source_url: 'https://api.apify.com/v2/acts/herus13~google-maps-scraper', checked: '2026-09-26', confidence: verified, note: 'OBSERVED 2026-09-26 on the platform key: 1 place billed {apify-default-dataset-item: 1, apify-actor-start: 1} and a 20-place routed run {apify-default-dataset-item: 20, apify-actor-start: 1}, at the rate-card price for that key''s plan tier. the flat $0.01 call_fee is the apify-actor-start event at the pinned 1 GB. pay-per-event, TIERED by the caller''s Apify subscription — one result event = one business: FREE 0.009 (the value here, what a default caller pays), BRONZE 0.007, SILVER 0.005, GOLD/PLATINUM/DIAMOND 0.0035; email and social enrichment are included in this price, not billed separately. PLUS a one-time apify-actor-start fee of $0.01 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.01 start. apifyMarginPercentage 0.20, all read live 2026-09-23 from the actor pricingInfos'}
+    verified: 2026-09-26
+    example_response: examples/apify.google.serp.maps.json
+    docs_url: https://apify.com/herus13/google-maps-scraper
+
+  - id: apify.tiktok-shop.search.products
+    capability: tiktok-shop.search.products
+    platform: tiktok-shop
+    scope: any_account
+    method: POST
+    path: /actors/herus13~tiktok-shop-scraper/run-sync-get-dataset-items
+    name: "Search TikTok Shop products by keyword"
+    summary: "Scrape TikTok Shop products for a keyword across 10 storefronts (US, GB, VN, TH, PH, MY, SG, JP, MX, ID) — title, price, original_price, discount_percent, seller_name, rating, sold_count and full category_path per product"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 100}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
+        memory: {type: integer, required: false, enum: [2048], note: "MB of run memory. treg's key requires 2048, which fixes the actor-start charge; your own key may set any size", example: 2048}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        search_terms: {type: "array[string]", required: true, note: "keywords to search, one per entry; each returns every matching product up to max_results", example: ["phone case"]}
+        region: {type: string, required: false, note: "storefront to scrape — one of US|GB|VN|TH|PH|MY|SG|JP|MX|ID; decides the catalogue, listing language and price currency. Default US. Coverage is strongest on US and SEA storefronts", example: "US"}
+        max_results: {type: integer, required: false, note: "max products per search term, 1-500; default 100. You pay per product returned, so cap it or set maxTotalChargeUsd", example: 100}
+        scrape_product_details: {type: boolean, required: false, enum: [false], note: "true opens each product's detail page for the full field set — billed at the higher product-detail price, not the search price (see cost note). Default false", example: false}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. Each row carries product_id, title, price, original_price, discount_percent, currency, seller_name, seller_id, rating, review_count, sold_count, category_path, product_url and image URLs. Cap every call with maxTotalChargeUsd, the spend limit Apify enforces; the body row limit sets how many rows run. The same actor also takes product_urls (per-product detail, billed product-detail) and category_urls (category browse); this entry is the keyword-search capability"
+    body_allowlist: true
+    platform_request: {queryParams.memory: 2048, queryParams.timeout: 90, body.scrape_product_details: false}
+    test_request:
+      queryParams: {maxItems: 1, memory: 2048, maxTotalChargeUsd: 0.08, timeout: 90}
+      body: {search_terms: ["phone case"], region: "US", max_results: 1, scrape_product_details: false}
+    cost: {type: per_result, value: 0.008, call_fee: 0.004, currency: USD, per: 1, unit: result, source: observed, source_url: 'https://api.apify.com/v2/acts/herus13~tiktok-shop-scraper', checked: '2026-09-26', confidence: verified, note: 'OBSERVED 2026-09-26 on the platform key: 1 product billed {product-search-result: 1, apify-actor-start: 2} at 2 GB, at the rate-card price for that key''s plan tier. the flat $0.004 call_fee is two apify-actor-start events: the actor runs at 2 GB whatever memory is asked (observed 2026-09-25, chargedEventCounts apify-actor-start 2). pay-per-event, TIERED by the caller''s Apify plan. This entry (keyword search, scrape_product_details off) bills the `product-search-result` event — one result event = one product: FREE 0.008 (the value here, what a default caller pays), BRONZE 0.00733, SILVER 0.00667, GOLD/PLATINUM/DIAMOND 0.006. With scrape_product_details on, or the actor''s product_urls mode, each product bills the higher `product-detail` event instead: FREE 0.018 down to 0.013 at GOLD. PLUS a one-time apify-actor-start fee of $0.002 per GB of run memory (min 1 GB), billed at 2 GB whatever memory is asked. apifyMarginPercentage 0.20, all read live 2026-09-23 from the actor pricingInfos'}
+    verified: 2026-09-26
+    example_response: examples/apify.tiktok-shop.search.products.json
+    docs_url: https://apify.com/herus13/tiktok-shop-scraper
+
+  - id: apify.weibo.search.posts
+    capability: weibo.search.posts
+    platform: weibo
+    scope: any_account
+    method: POST
+    path: /actors/herus13~weibo-scraper/run-sync-get-dataset-items
+    name: "Search Weibo posts by keyword"
+    summary: "Search Weibo posts by keyword or #topic# with no login — relevance (top, up to ~2,000 posts per keyword) or newest-first (latest, walks back in time without a depth ceiling), optionally within a Beijing-time date range; text, counts, images, video, topics and author per post"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        mode: {type: string, required: true, note: "must be `search` for this entry — it selects the mode", example: "search"}
+        keywords: {type: "array[string]", required: true, note: "search terms, one per entry — e.g. 咖啡 or #新能源# for a topic; a post matching two terms is returned once", example: ["咖啡"]}
+        max_items: {type: integer, required: false, note: "posts per keyword, 1-10000; default 50. You pay per post returned — cap it here or with maxTotalChargeUsd", example: 50}
+        search_type: {type: string, required: false, note: "top (default; relevance-ranked, ends after ~2,000 posts per keyword, often fewer) | latest (newest-first; keeps going back in time — use it, or a date range, for deep pulls)", example: "latest"}
+        start_date: {type: string, required: false, note: "YYYY-MM-DD in Beijing time (or a full ISO timestamp); only posts on or after it", example: "2026-09-01"}
+        end_date: {type: string, required: false, note: "YYYY-MM-DD in Beijing time, whole day inclusive; not before start_date", example: "2026-09-07"}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.weibo.search.posts, .trending.hot_search, .user.posts, .user.profile, .post.detail and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row carries mid, mblogid, url, created_at, text/text_raw, reposts/comments/attitudes counts, image_urls, video fields, topics, repost linkage and the author (user_id, screen name, verification, followers), plus source_keyword"
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {mode: "search", keywords: ["咖啡"], max_items: 1}
+    cost: {type: per_result, value: 0.005, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: observed, source_url: 'https://api.apify.com/v2/acts/herus13~weibo-scraper', checked: '2026-09-26', confidence: verified, note: 'OBSERVED 2026-09-26 on the platform key: 1 row billed its one row event plus apify-actor-start 1, usageTotalUsd 0.00505. the flat $0.00005 call_fee is the apify-actor-start event at the pinned 1 GB. pay-per-event, FLAT (no plan tiers). This entry bills the `post` event — one event per post returned, $0.005 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.00005 start. Read live 2026-09-24 from the actor pricingInfos. Event COUNTS observed on the 2026-09-24 test run (chargedEventCounts: 1 start + 1 `post` for 1 row)'}
+    verified: 2026-09-26
+    example_response: examples/apify.weibo.search.posts.json
+    docs_url: https://apify.com/herus13/weibo-scraper
+
+  - id: apify.weibo.trending.hot_search
+    capability: weibo.trending.hot_search
+    platform: weibo
+    scope: any_account
+    method: POST
+    path: /actors/herus13~weibo-scraper/run-sync-get-dataset-items
+    name: "Weibo realtime hot-search board"
+    summary: "Weibo's realtime hot-search board (热搜榜, about 50 entries) with no login — word, rank, heat, label, pinned flag and the search URL per entry"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        mode: {type: string, required: true, note: "must be `hot_search` for this entry — it selects the mode", example: "hot_search"}
+        max_items: {type: integer, required: false, note: "caps the whole board (it holds about 50 entries); default 50", example: 50}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.weibo.search.posts, .trending.hot_search, .user.posts, .user.profile, .post.detail and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row carries rank, word, note, heat, label (热/新/沸…), is_pinned and the s.weibo.com search url; pinned entries carry rank and heat null"
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {mode: "hot_search", max_items: 1}
+    cost: {type: per_result, value: 0.005, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: observed, source_url: 'https://api.apify.com/v2/acts/herus13~weibo-scraper', checked: '2026-09-26', confidence: verified, note: 'OBSERVED 2026-09-26 on the platform key: 1 row billed its one row event plus apify-actor-start 1, usageTotalUsd 0.00505. the flat $0.00005 call_fee is the apify-actor-start event at the pinned 1 GB. pay-per-event, FLAT (no plan tiers). This entry bills the `hot-search-entry` event — one event per board entry returned, $0.005 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.00005 start. Read live 2026-09-24 from the actor pricingInfos. Event COUNTS observed on the 2026-09-24 test run (chargedEventCounts: 1 start + 1 `hot-search-entry` for 1 row)'}
+    verified: 2026-09-26
+    example_response: examples/apify.weibo.trending.hot_search.json
+    docs_url: https://apify.com/herus13/weibo-scraper
+
+  - id: apify.weibo.user.posts
+    capability: weibo.user.posts
+    platform: weibo
+    scope: any_account
+    method: POST
+    path: /actors/herus13~weibo-scraper/run-sync-get-dataset-items
+    name: "List a Weibo user's recent posts"
+    summary: "A Weibo user's timeline, newest first, with no login — about 1,000 posts deep per user; same post fields as search"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        mode: {type: string, required: true, note: "must be `timeline` for this entry — it selects the mode", example: "timeline"}
+        users: {type: "array[string]", required: true, note: "one per entry: numeric uid (2803301701), screen name (人民日报), custom domain (rmrb) or a weibo.com / m.weibo.cn profile URL; the same user given twice is scraped once", example: ["2803301701"]}
+        max_items: {type: integer, required: false, note: "posts per user, 1-10000; default 50", example: 50}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.weibo.search.posts, .trending.hot_search, .user.posts, .user.profile, .post.detail and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row is a post (same fields as apify.weibo.search.posts) with source_user set to the requested user"
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {mode: "timeline", users: ["2803301701"], max_items: 1}
+    cost: {type: per_result, value: 0.005, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: observed, source_url: 'https://api.apify.com/v2/acts/herus13~weibo-scraper', checked: '2026-09-26', confidence: verified, note: 'OBSERVED 2026-09-26 on the platform key: 1 row billed its one row event plus apify-actor-start 1, usageTotalUsd 0.00505. the flat $0.00005 call_fee is the apify-actor-start event at the pinned 1 GB. pay-per-event, FLAT (no plan tiers). This entry bills the `post` event — one event per post returned, $0.005 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.00005 start. Read live 2026-09-24 from the actor pricingInfos. Event COUNTS observed on the 2026-09-24 test run (chargedEventCounts: 1 start + 1 `post` for 1 row)'}
+    verified: 2026-09-26
+    example_response: examples/apify.weibo.user.posts.json
+    docs_url: https://apify.com/herus13/weibo-scraper
+
+  - id: apify.weibo.user.profile
+    capability: weibo.user.profile
+    platform: weibo
+    scope: any_account
+    method: POST
+    path: /actors/herus13~weibo-scraper/run-sync-get-dataset-items
+    name: "Get a Weibo user's public profile"
+    summary: "A Weibo user's public profile with no login — screen name, description, followers/following/post counts, verification type and reason, member rank, location, company, labels and account creation date"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        mode: {type: string, required: true, note: "must be `profile` for this entry — it selects the mode", example: "profile"}
+        users: {type: "array[string]", required: true, note: "one per entry: numeric uid, screen name, custom domain or profile URL — one profile row each", example: ["2803301701"]}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.weibo.search.posts, .trending.hot_search, .user.posts, .user.profile, .post.detail and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row carries uid, screen_name, url, description, followers_count, friends_count, statuses_count, verified/verified_type/verified_reason, mbrank, avatar_url, domain, account_created_at, company, labels, location, gender and source_input"
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {mode: "profile", users: ["2803301701"]}
+    cost: {type: per_result, value: 0.005, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: observed, source_url: 'https://api.apify.com/v2/acts/herus13~weibo-scraper', checked: '2026-09-26', confidence: verified, note: 'OBSERVED 2026-09-26 on the platform key: 1 row billed its one row event plus apify-actor-start 1, usageTotalUsd 0.00505. the flat $0.00005 call_fee is the apify-actor-start event at the pinned 1 GB. pay-per-event, FLAT (no plan tiers). This entry bills the `profile` event — one event per profile returned, $0.005 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.00005 start. Read live 2026-09-24 from the actor pricingInfos. Event COUNTS observed on the 2026-09-24 test run (chargedEventCounts: 1 start + 1 `profile` for 1 row)'}
+    verified: 2026-09-26
+    example_response: examples/apify.weibo.user.profile.json
+    docs_url: https://apify.com/herus13/weibo-scraper
+
+  - id: apify.weibo.post.detail
+    capability: weibo.post.detail
+    platform: weibo
+    scope: any_account
+    method: POST
+    path: /actors/herus13~weibo-scraper/run-sync-get-dataset-items
+    name: "Get a Weibo post by id"
+    summary: "One or more Weibo posts by id, short code or URL with no login — FULL long text (search and timeline rows truncate long posts), counts including reads, images, video and topics"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        mode: {type: string, required: true, note: "must be `post` for this entry — it selects the mode", example: "post"}
+        post_ids: {type: "array[string]", required: true, note: "one per entry: numeric mid (16 digits), the mblogid short code from a weibo.com post URL, or the URL itself; the same post given in two forms is scraped and billed once", example: ["https://weibo.com/2803301701/Rjuwfpy8d"]}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.weibo.search.posts, .trending.hot_search, .user.posts, .user.profile, .post.detail and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row is a post (same fields as apify.weibo.search.posts) with the full text"
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {mode: "post", post_ids: ["https://weibo.com/2803301701/Rjuwfpy8d"]}
+    cost: {type: per_result, value: 0.005, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: observed, source_url: 'https://api.apify.com/v2/acts/herus13~weibo-scraper', checked: '2026-09-26', confidence: verified, note: 'OBSERVED 2026-09-26 on the platform key: 1 row billed its one row event plus apify-actor-start 1, usageTotalUsd 0.00505. the flat $0.00005 call_fee is the apify-actor-start event at the pinned 1 GB. pay-per-event, FLAT (no plan tiers). This entry bills the `post` event — one event per post returned, $0.005 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.00005 start. Read live 2026-09-24 from the actor pricingInfos. Event COUNTS observed on the 2026-09-24 test run (chargedEventCounts: 1 start + 1 `post` for 1 row)'}
+    verified: 2026-09-26
+    example_response: examples/apify.weibo.post.detail.json
+    docs_url: https://apify.com/herus13/weibo-scraper
+
+  - id: apify.weibo.post.comments
+    capability: weibo.post.comments
+    platform: weibo
+    scope: any_account
+    method: POST
+    path: /actors/herus13~weibo-scraper/run-sync-get-dataset-items
+    name: "List a Weibo post's comments"
+    summary: "Comments on Weibo posts with no login, hot-first or newest-first, optionally with each comment's reply thread — text, likes, reply count, floor, IP region and commenter per row"
+    input:
+      queryParams:
+        maxItems: {type: integer, required: false, note: "optional row cap; pay-per-event actors that take the row count from their own input ignore it, so maxTotalChargeUsd is the spend limit", example: 50}
+        maxTotalChargeUsd: {type: number, required: false, note: "the spend cap Apify enforces on every event this run bills, in dollars. treg's key requires it, above 0 and at most 1, and holds it for the call", example: 0.5}
+        memory: {type: integer, required: false, enum: [1024], note: "MB of run memory. treg's key requires 1024, which fixes the actor-start charge; your own key may set any size", example: 1024}
+        timeout: {type: integer, required: false, enum: [90], note: "run timeout in seconds. treg's key requires 90 so the run and its rows arrive before any wait gives up; a larger pull should use your own key and the async web.scrape.job.* pair above", example: 90}
+      body:
+        mode: {type: string, required: true, note: "must be `comments` for this entry — it selects the mode", example: "comments"}
+        post_ids: {type: "array[string]", required: true, note: "one per entry: numeric mid, mblogid short code, or post URL", example: ["https://weibo.com/2803301701/Rjuwfpy8d"]}
+        max_items: {type: integer, required: false, note: "comments per post, 1-10000, replies included; default 50", example: 50}
+        comment_sort: {type: string, required: false, note: "hot (default, most-liked first) | time (newest first)", example: "hot"}
+        include_replies: {type: boolean, required: false, note: "also walk each comment's reply thread; replies come back as rows with is_reply true and root_id linking them to their comment, and bill as comments. Default false", example: false}
+        proxyUrls: {type: "array[string]", required: false, note: "leave empty to use the residential proxy included in the run price; or pass your own gateway URLs (http://user:pass@host:port)"}
+      bodyType: json
+      note: "the response is the dataset items array directly — no run envelope, no polling. No login and no cookies needed from the caller. The same actor serves apify.weibo.search.posts, .trending.hot_search, .user.posts, .user.profile, .post.detail and .post.comments; `mode` selects which, and a field that belongs to another mode is rejected rather than ignored. Each row carries comment_id, post_mid, root_id, is_reply, reply_to_id, floor_number, created_at, text/text_raw, source (IP region), like_count, reply_count, liked_by_author and the commenter (user_id, screen name, verification). Replies also answer weibo.comment.replies"
+    platform_request: {queryParams.memory: 1024, queryParams.timeout: 90}
+    test_request:
+      queryParams: {maxItems: 1, memory: 1024, maxTotalChargeUsd: 0.05, timeout: 90}
+      body: {mode: "comments", post_ids: ["https://weibo.com/2803301701/Rjuwfpy8d"], max_items: 1}
+    cost: {type: per_result, value: 0.005, call_fee: 0.00005, currency: USD, per: 1, unit: result, source: observed, source_url: 'https://api.apify.com/v2/acts/herus13~weibo-scraper', checked: '2026-09-26', confidence: verified, note: 'OBSERVED 2026-09-26 on the platform key: 1 row billed its one row event plus apify-actor-start 1, usageTotalUsd 0.00505. the flat $0.00005 call_fee is the apify-actor-start event at the pinned 1 GB. pay-per-event, FLAT (no plan tiers). This entry bills the `comment` event — one event per comment or reply returned, $0.005 each. PLUS a one-time apify-actor-start fee of $0.00005 per GB of run memory (min 1 GB): the test_request pins memory=1024 for a $0.00005 start. Read live 2026-09-24 from the actor pricingInfos. Event COUNTS observed on the 2026-09-24 test run (chargedEventCounts: 1 start + 1 `comment` for 1 row)'}
+    verified: 2026-09-26
+    example_response: examples/apify.weibo.post.comments.json
+    docs_url: https://apify.com/herus13/weibo-scraper
+
 proposed_capabilities:
+  lazada.search.products: "Search Lazada products by keyword across Southeast Asia (SG, MY, VN, TH, PH, ID)"

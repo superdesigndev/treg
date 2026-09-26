@@ -80,6 +80,7 @@ platforms:
   jd: {label: "JD.com", category: "E-commerce", featured: 3, summary: "Products, prices, comments and search from JD.com."}
   tiktok-shop: {label: "TikTok Shop", category: "E-commerce", featured: 4, summary: "Product listings and search from TikTok Shop."}
   douyin-shop: {label: "Douyin e-commerce (product and shop data)", category: "E-commerce", summary: "Products, SKUs, shop listings and item comments from Douyin e-commerce."}
+  lazada: {label: "Lazada", category: "E-commerce", summary: "Product listings and search from Lazada across Southeast Asia (SG, MY, VN, TH, PH, ID)."}
   "1688": {label: "1688 (Alibaba wholesale)", category: "E-commerce", summary: "Wholesale item data and search from 1688."}   # quoted: unquoted 1688 is a YAML integer
   xianyu: {label: "Xianyu / Goofish (Alibaba second-hand)", category: "E-commerce", summary: "Second-hand listings and search from Xianyu (Goofish)."}
   dewu: {label: "Dewu / Poizon", category: "E-commerce", summary: "Product data from Dewu (Poizon)."}

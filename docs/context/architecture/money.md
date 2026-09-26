@@ -1041,6 +1041,31 @@ single enrichments from endpoint-specific success evidence plus `free_enrichment
 `free` and the result list, and suggestions at zero. Non-finite or malformed numeric evidence keeps
 the estimate for reconciliation. BYOK calls never enter this money path.
 
+## Apify dataset-row settlement
+
+An Apify `per_result` row on the platform key requires `maxTotalChargeUsd` (above 0, at most $1),
+the per-event spend cap Apify enforces; `maxItems` does not bind actors whose own input sets the row
+count. Only the run options `maxTotalChargeUsd`, `maxItems`, `memory` and `timeout` are accepted,
+each once and in plain ASCII, because a dataset-view option (`limit`, `offset`, `format`, `unwind`)
+would make the returned rows disagree with the events billed. `_marketplace_pricing` holds the cap
+plus `cost.call_fee`, the flat per-run charge: a start event the cap already counts, or run compute
+billed to the caller that it does not. An actor that bills its start per query names the body arrays
+that multiply the fee in `cost.call_fee_per` (LinkedIn jobs: job titles x locations). `_observed_cost_micro`
+settles the rows run-sync returned times the row price plus the fee; within two rows of the hold the
+caller's cap was reached, and the hold is the bill, because a run stops when its next event would
+pass the cap and can already have billed one event it never pushed and a plan-tier price below the catalog's fits more rows under the cap.
+Apify's `usageTotalUsd` trails a finished run by minutes, so it is not settlement evidence. A run
+that exceeds its own timeout, FAILS or is ABORTED answers 400 `run-failed` with no rows and releases,
+although Apify may have billed events up to the cap; so does an answer over the 8 MiB evidence limit.
+So does a caller who disconnects mid-run: the hold releases while the run keeps billing. The $1
+ceiling bounds each loss. That body names the run, so treg's Apify account must keep general
+resource access Restricted: with public access anyone could read the unbilled run's dataset by id.
+Settling such a run from its own event counts would need a deferred settle; `usageTotalUsd` lags. `timeout` is required and at most 90 seconds (and
+30 under `call_timeout_s`), because a run still going when Apify's 300-second synchronous wait,
+treg's upstream read timeout or the MCP client's 120 s ends leaves a failed call that releases
+unbilled while the run keeps billing. The cap must cover `call_fee` plus three rows, or the
+within-two-rows rule would bill an empty answer in full. BYOK calls never enter this money path.
+
 ## Pinned attribution and replay reads
 
 `reserve_in_transaction` writes `meta.tags` from its authoritative `tags` argument, overriding any

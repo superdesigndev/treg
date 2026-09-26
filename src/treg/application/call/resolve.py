@@ -808,6 +808,13 @@ def _marketplace_pricing(
             size = max(1, min(size, 100)) if type(size) is int else 100
             return size * credit, credit
         return estimate, credit
+    if provider == "apify" and cost.get("type") == "per_result" and cost.get("usd"):
+        # The platform guard requires maxTotalChargeUsd, which caps every event Apify bills; the
+        # flat call_fee adds the per-run charge (a start event inside the cap, or run compute billed
+        # to the caller outside it).
+        cap = _apify_charge_cap(query)
+        rows = unit * _PLATFORM_PAGE_DEFAULT if cap is None else _usd_to_micro(cap)
+        return _usd_to_micro(float(cost.get("call_fee") or 0)) + rows, unit
     if provider == "tomba" and endpoint_id == "tomba.companies.emails.list":
         # Tomba bills requested page slots in blocks of ten, with a ten-slot default.
         # A partial non-empty page still costs the full block; settlement frees empty pages.
@@ -1409,7 +1416,90 @@ def _request_body_document(ep: dict, body: bytes, headers) -> dict:
     return _strict_json_object(body, ep["id"])
 
 
-def _enforce_platform_request(ep: dict, body: bytes, headers=None) -> None:
+# Apify runs bill per event, and only the run option maxTotalChargeUsd bounds those events: the
+# maxItems option does not bind actors whose own input sets the row count. A platform call must name
+# that cap, and may add only the run options below, each once; a dataset-view option (limit, offset,
+# format, unwind) would make the returned rows disagree with the events billed.
+# ponytail: a run that outlives its timeout answers 400 with no rows while Apify still bills up to
+# the cap; the ceiling below bounds that loss per call. Settling from the run itself would lift it.
+_APIFY_PLATFORM_MAX_CHARGE_USD = 1.0
+# A run must end, and its rows arrive, before anyone stops waiting: past Apify's 300-second synchronous
+# wait it answers 408, past treg's upstream read timeout (call_timeout_s) or the MCP client's 120 s
+# the call fails, and each releases the hold unbilled while the run keeps billing. 90 s leaves room
+# for the container start and the dataset read under the shortest of those waits.
+_APIFY_PLATFORM_MAX_TIMEOUT = 90
+
+
+def _apify_max_timeout() -> int:
+    # Catalog rows pin timeout 90, so call_timeout_s must stay >= 120 or those rows refuse every call.
+    return max(1, min(_APIFY_PLATFORM_MAX_TIMEOUT, get_settings().call_timeout_s - 30))
+_APIFY_PLATFORM_QUERY = frozenset({"maxTotalChargeUsd", "maxItems", "memory", "timeout"})
+_ASCII_INT = re.compile(r"[0-9]+")
+_ASCII_DECIMAL = re.compile(r"[0-9]+(?:\.[0-9]+)?")
+
+
+def _query_value(raw: str, expected: object) -> object:
+    """Read a query string as the pinned value's type. Only plain ASCII spellings count: `int()`
+    also accepts Unicode digits, signs, spaces and underscores that an upstream may not parse."""
+    if isinstance(expected, bool):
+        return {"true": True, "false": False}.get(raw)
+    if isinstance(expected, int):
+        return int(raw) if _ASCII_INT.fullmatch(raw) else None
+    if isinstance(expected, float):
+        return float(raw) if _ASCII_DECIMAL.fullmatch(raw) else None
+    return raw
+
+
+def _apify_charge_cap(query) -> float | None:
+    """The single, plainly spelled maxTotalChargeUsd a platform Apify call carries, else None."""
+    values = [value for name, value in query.multi_items() if name == "maxTotalChargeUsd"] \
+        if query is not None else []
+    if len(values) != 1 or not _ASCII_DECIMAL.fullmatch(values[0]):
+        return None
+    cap = float(values[0])
+    return cap if 0 < cap <= _APIFY_PLATFORM_MAX_CHARGE_USD else None
+
+
+def _enforce_apify_run_options(ep: dict, query) -> None:
+    names = [name for name, _ in query.multi_items()] if query is not None else []
+    problem = None
+    if any(name not in _APIFY_PLATFORM_QUERY for name in names):
+        problem = "only maxTotalChargeUsd, maxItems, memory and timeout"
+    elif len(names) != len(set(names)):
+        problem = "each run option at most once"
+    elif _apify_charge_cap(query) is None:
+        problem = f"maxTotalChargeUsd above 0 and at most {_APIFY_PLATFORM_MAX_CHARGE_USD:g}"
+    elif not (_ASCII_INT.fullmatch(query.get("timeout") or "")
+              and 1 <= int(query.get("timeout")) <= _apify_max_timeout()):
+        problem = f"timeout from 1 to {_apify_max_timeout()} seconds"
+    elif query.get("maxItems") is not None and not (
+            _ASCII_INT.fullmatch(query.get("maxItems")) and int(query.get("maxItems")) >= 1):
+        problem = "maxItems as a positive integer"
+    else:
+        # Settlement bills the whole cap within two rows of it, so a smaller cap would bill an
+        # empty answer in full.
+        cost = ep.get("cost") or {}
+        floor = _usd_to_micro(float(cost.get("call_fee") or 0)) + 3 * _usd_to_micro(
+            float(cost.get("value") or 0) / float(cost.get("per") or 1))
+        if _usd_to_micro(_apify_charge_cap(query)) < floor:
+            problem = (f"maxTotalChargeUsd of at least {floor / 1_000_000:g} "
+                       "(the call fee plus three rows)")
+    if problem:
+        raise ResolutionFailed(
+            "catalog_parameter_invalid", status_code=400, detail={
+                "error": "catalog_parameter_invalid",
+                "endpoint_id": ep["id"],
+                "parameter": "queryParams",
+                "expected": problem,
+                "message": (
+                    f"Apify platform calls take {problem}; maxTotalChargeUsd is the spend cap Apify "
+                    "enforces and the hold. Connect your own key for larger runs"
+                ),
+            },
+        )
+
+
+def _enforce_platform_request(ep: dict, body: bytes, headers=None, query=None) -> None:
     """Check explicit platform constraints and fixed pricing selectors before reserve/relay.
 
     Catalog tables may price several rows on one upstream path. A table condition whose body field
@@ -1453,6 +1543,9 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None) -> None:
                 },
             )
 
+    if ep.get("provider") == "apify" and (ep.get("cost") or {}).get("type") == "per_result":
+        _enforce_apify_run_options(ep, query)
+
     input_schema = ep.get("input") or {}
     rules = ep.get("platform_request") or {}
     for path, expected in sorted(rules.items()):
@@ -1466,6 +1559,20 @@ def _enforce_platform_request(ep: dict, body: bytes, headers=None) -> None:
                     "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
                     "parameter": f"headers.{name}", "expected": expected,
                     "message": f"{ep['id']} requires header {name}: {expected}",
+                },
+            )
+    for path, expected in sorted(rules.items()):
+        if not str(path).startswith("queryParams."):
+            continue
+        name = str(path).split(".", 1)[1]
+        supplied = [value for key, value in query.multi_items() if key == name] \
+            if query is not None else []
+        if len(supplied) != 1 or _query_value(supplied[0], expected) != expected:
+            raise ResolutionFailed(
+                "catalog_parameter_invalid", status_code=400, detail={
+                    "error": "catalog_parameter_invalid", "endpoint_id": ep["id"],
+                    "parameter": f"queryParams.{name}", "expected": expected,
+                    "message": f"{ep['id']} requires query parameter {name}={expected}",
                 },
             )
     selectors: dict[str, object] = {
@@ -1981,7 +2088,7 @@ async def _resolve_marketplace_call(
     # request without inventing an Authorization or provider-key header.
     anonymous_cost = _anonymous_offer(ep, caller.org)
     if anonymous_cost is not None:
-        _enforce_platform_request(ep, body, request_headers)
+        _enforce_platform_request(ep, body, request_headers, query)
         virtual = Tool(
             org_id=caller.org_id, name=ep["id"], owner=caller.email,
             base_url=provider.base_url, host=_host_of(provider.base_url), bindings=[],
@@ -1998,7 +2105,7 @@ async def _resolve_marketplace_call(
     cost = _platform_offer(ep, provider, caller.org)
     async_owner_call_id = None
     if cost is not None:
-        _enforce_platform_request(ep, body, request_headers)
+        _enforce_platform_request(ep, body, request_headers, query)
         if service == "sumble":
             from . import sumble
             sumble.enforce(ep, _strict_json_object(body, ep["id"]) if has_body else {}, query)
