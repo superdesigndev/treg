@@ -1637,14 +1637,11 @@ USE_CASE_PAGES["youtube-video-comments"] = {
 
 USE_CASE_PAGES["google-results-for-a-keyword"] = {
     "label": "Google results for a keyword",
-    "sentence": "SERP API: Google organic results for a keyword",
-    "title": "SERP API: {n} providers compared, from {cheapest} | treg.to",
+    "sentence": "Get Google organic results for a keyword",
+    "title": "Google Results for a Keyword: from {cheapest} | treg.to",
     "lede": (
-        "Send a keyword, get Google's organic results back as data: the ranking URLs in order, with "
-        "their titles and snippets. {n} providers do this through one treg.to key, from {cheapest} a "
-        "call, billed from a prepaid balance instead of a monthly plan. What you are really choosing "
-        "between is the billing unit, how deep each one goes, and how much of the page beyond ten "
-        "blue links it can see."),
+        "Send a keyword, get the ranking URLs with titles and snippets. {n} providers through one "
+        "treg.to key, from {cheapest} per search. Billed per call, not a monthly plan."),
     "prompt": "Using treg, get the top 10 Google organic results for best crm for startups in the "
               "United States, in English. Show me the price first, then list the ranking domains "
               "with their titles.",
@@ -2123,13 +2120,12 @@ USE_CASE_PAGES["find-local-businesses-by-keyword-and-location"] = {
 
 USE_CASE_PAGES["keywords-a-domain-ranks-for"] = {
     "label": "Keywords a domain ranks for",
-    "sentence": "Rank tracking API: the keywords a domain ranks for",
-    "title": "Rank tracking API: {n} providers from {cheapest} | treg.to",
+    "sentence": "Get the keywords a domain ranks for",
+    "title": "Keywords a Domain Ranks For: from {cheapest} | treg.to",
     "lede": (
-        "Ask for a domain and get the keywords it already ranks for in Google, with the position it "
-        "holds and the volume behind each one. {n} providers do this through one treg.to key, from "
-        "{cheapest} a call, billed per call from a prepaid balance rather than an annual seat. It "
-        "works on any domain, which is exactly the question your own Search Console cannot answer."),
+        "Give a domain, get the keywords it ranks for in Google with position and volume. {n} "
+        "providers through one treg.to key, from {cheapest} per call. Works on any domain, not "
+        "just your own."),
     "prompt": "Using treg, get the top 200 keywords stripe.com ranks for in Google in the United "
               "States, with position and monthly volume. Show me the price first, then group them "
               "by position band.",
@@ -2883,15 +2879,12 @@ USE_CASE_PAGES["tiktok-shop-products-and-reviews"] = {
 
 USE_CASE_PAGES["ads-a-competitor-is-running-now"] = {
     "label": "Ads a competitor is running now",
-    "sentence": "Meta Ad Library API, Google Ads Transparency Center and LinkedIn ads: what a competitor is running right now",
-    "title": "Meta Ad Library API and Google Ads Transparency data | treg.to",
+    "sentence": "See the ads a competitor is running",
+    "title": "Competitor Ads: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent a competitor's Page, advertiser or company and get their live ads back "
-        "as rows: creative text, link titles, start dates, platforms and the snapshot URL. Meta, "
-        "Google and LinkedIn answer through one treg.to key, from {cheapest} at the "
-        "provider's own rate with no markup, or free on the Meta Ad Library token you set up "
-        "yourself. The three libraries are not alternatives to each other; the network is the "
-        "choice."),
+        "Give a Page, advertiser or company and get their live ads back as rows. Meta, Google and "
+        "LinkedIn through one treg.to key, from {cheapest} per call. Free on your own Meta Ad "
+        "Library token."),
     "prompt": "Using treg, list every Facebook and Instagram ad this Page has run in the US in the "
               "last 30 days, show me the price first, then group them by landing page and tell me "
               "which creatives have been live longest.",
@@ -3614,16 +3607,12 @@ USE_CASE_PAGES["keywords-a-domain-bids-on"] = {
 
 USE_CASE_PAGES["backlink-profile-of-a-domain"] = {
     "label": "Backlink profile of a domain",
-    "sentence": "Backlink API: the backlink profile of a domain from Moz, DataForSEO, Serpstat, SE Ranking, Majestic or Semrush, per call",
-    "title": "Backlink API: backlink profile of a domain, {n} providers | treg.to",
+    "sentence": "Pull a domain's backlink profile",
+    "title": "Backlink Profile by Domain: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent a domain and get its backlink profile back as one row: total "
-        "backlinks, referring domains, follow and nofollow split, the vendor's authority score "
-        "and, from some providers, the spam and anchor breakdowns. {n} providers answer through "
-        "one treg.to key, from {cheapest}, each at its own rate with no markup and none of them "
-        "behind a monthly plan or a credit reset. Ahrefs is not among them. Every index is that "
-        "vendor's own crawl, so the counts differ by design, and the page shows them side by "
-        "side rather than picking one."),
+        "Get total backlinks, referring domains, follow/nofollow split and authority score for any "
+        "domain. {n} providers through one treg.to key, from {cheapest} per lookup. No SEO tool "
+        "subscription required."),
     "prompt": "Using treg, get the backlink summary for our domain and our three main "
               "competitors from the cheapest verified provider, show me the price first, then "
               "put referring domains, follow share and the authority score in one table and "
@@ -4339,16 +4328,12 @@ USE_CASE_PAGES["find-phone-numbers"] = {
 
 USE_CASE_PAGES["keyword-volume-cpc-and-competition"] = {
     "label": "Keyword volume, CPC and competition",
-    "sentence": "Keyword research API: Google search volume, CPC and competition for a list of keywords",
-    "title": "Keyword research API: Google search volume and CPC | treg.to",
+    "sentence": "Get volume, CPC and competition for a keyword list",
+    "title": "Keyword Volume and CPC: from {cheapest} | treg.to",
     "lede": (
-        "Hand your agent a list of keywords and get a figure back for each one: average "
-        "monthly searches, the competition level and the top of page bid range. {n} providers "
-        "answer through one treg.to key: a twentieth of a cent per keyword on the cheapest "
-        "row, a flat rate per request on another, each at the provider's own rate with no markup. Google's own row is free on your connected "
-        "Google Ads account and never metered, and it answers with a number per keyword rather "
-        "than the bucket the Keyword Planner screen shows you. It is the row the research "
-        "behind these pages runs on."),
+        "Send a list of keywords, get monthly search volume, CPC and competition back for each. "
+        "{n} providers through one treg.to key, from {cheapest} per keyword. Free on your own "
+        "Google Ads account."),
     "prompt": "Using treg, get the average monthly searches, competition and top of page bid "
               "for these 200 keywords in the US in English, show me the price per provider "
               "first, batch them into as few calls as the provider allows, and sort the table "
@@ -5347,16 +5332,12 @@ USE_CASE_PAGES["mine-the-comments"] = {
 
 USE_CASE_PAGES["build-a-company-list-by-industry-size-or-tech"] = {
     "label": "Build a company list by industry, size or tech",
-    "sentence": "Companies by industry: build a company list by industry, size, location or tech stack through one key",
-    "title": "Company list by industry, size or tech: {n} APIs | treg.to",
+    "sentence": "Build a company list by industry, size or tech",
+    "title": "Company List by Industry, Size or Tech: from {cheapest} | treg.to",
     "lede": (
-        "Describe the companies you want, by industry, headcount, country, revenue, funding or "
-        "the technology they run, and get a list back as rows with a domain on each. {n} "
-        "providers answer through one treg.to key, from Apollo and Crunchbase to the smaller "
-        "databases nobody has heard of, each at its own rate with $0.000 added and most of "
-        "them priced per company returned, so the size of the page is the price. Three rows "
-        "are free, and a free row that returns ids is not the same as a free row that returns "
-        "companies; the notes say which is which."),
+        "Filter by industry, headcount, country, funding or tech stack and get a list of matching "
+        "domains. {n} providers through one treg.to key, from {cheapest} per company. Most priced "
+        "per row returned."),
     "prompt": "Using treg, build me a list of 200 B2B software companies in Germany with 50 to "
               "500 employees, show me the price for 200 rows from each provider first, run the "
               "two cheapest, dedupe on domain, and tell me how many rows each one returned and "
