@@ -3,6 +3,7 @@ title: The web dashboard (served from FastAPI)
 status: shipped
 sources:
   - src/treg/web/sitetrack.js
+  - frontend/README.md
   - frontend/index.html
   - frontend/package.json
   - frontend/vite.config.ts

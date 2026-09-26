@@ -19,6 +19,8 @@ sources:
 related:
   - interface/cli.md
   - interface/api.md
+  - interface/skill-openai-test-cases.md
+  - interface/skill-openai-tool-justifications.md
 ---
 
 # The `tools-registry` skill
@@ -65,7 +67,7 @@ served**, because a second copy of the product's most-read page is a copy that r
 |---|---|---|
 | the installer | `install.sh` → `treg skill bootstrap` → every detected agent's skills dir | people who ran the curl one-liner |
 | Claude Code plugin | `.claude-plugin/` + generated `skills/treg/SKILL.md` (repo root) | `/plugin marketplace add superdesigndev/treg` |
-| Codex/ChatGPT plugin | `plugin/.codex-plugin/` + generated `plugin/skills/treg/SKILL.md` | the directory ChatGPT and Codex share |
+| Codex/ChatGPT plugin | `plugin/.codex-plugin/` + generated `plugin/skills/treg/SKILL.md` | the directory ChatGPT and Codex share. Submission runbook: [docs/PLUGIN-SUBMISSION.md](../../PLUGIN-SUBMISSION.md), test cases: [skill-openai-test-cases.md](skill-openai-test-cases.md), per-tool justifications: [skill-openai-tool-justifications.md](skill-openai-tool-justifications.md) |
 | Cursor plugin | `.cursor-plugin/marketplace.json` + generated `plugins/treg/skills/treg/SKILL.md` | the Cursor marketplace (plugin root is never the repo root) |
 | DeepSeek Harness bundle | root `package.json` (`dsh.bundle`) + `dsh/cordis.patch.yml` + generated `dsh/skills/treg/SKILL.md` | `dsh plugin --profile <name> add github:superdesigndev/treg` |
 | MiniMax plugin | `plugins/minimax/.minimax-plugin/plugin.json` + generated `plugins/minimax/skills/treg/SKILL.md`; `scripts/minimax_plugin.py` pre-runs their validator and builds the ZIP | the MiniMax Plugin Marketplace (MiniMax Code + MiniMax Agent), submitted by form as GitHub subdir `plugins/minimax`; skills-only because the package may hold no credential and the bootstrap omits `treg mcp install`, which cannot write a MiniMax config. See [docs/MINIMAX-PLUGIN.md](../../MINIMAX-PLUGIN.md) |
