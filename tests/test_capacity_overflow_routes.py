@@ -284,6 +284,7 @@ _UNRECORDED_SIGNATURE = {
     "openmart",  # funded subscription was not exhausted; shared-key exhaustion was not forced
     # Bare 402 is already the generic balance signal; the real empty-Credits body was not forced.
     "financialdatasets",
+    "deeplead",  # partner key is invoiced monthly, not prepaid; an empty balance answers a generic 402 PAYMENT_REQUIRED
     "fetchinio",  # funded credits remain; documented generic 402 was not deliberately forced
     "fishaudio",  # shared-key serving stays disabled until the funded-account signatures are verified
     "minimax", "oceanio", "openrouter", "replicate", "scrapecreators", "seranking",

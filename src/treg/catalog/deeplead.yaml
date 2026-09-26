@@ -1,0 +1,315 @@
+# Deeplead API. Self-verified by the vendor 2026-09-25 against production with a partner key.
+# Prices are Deeplead's partner rates for treg's platform key, quoted by the vendor and metered per
+# call in the `x-deeplead-cost-usd` response header. Keys bought directly from Deeplead pay in
+# credits instead (1 credit per revealed person, 2 per decision maker, searches free; credits cost
+# $0.02-$0.10 on https://www.deeplead.io/pricing).
+provider: deeplead
+source:
+  docs: https://www.deeplead.io/api/v1/docs
+  openapi: https://www.deeplead.io/api/v1/spec.json
+  curated: '2026-09-25'
+pricing_url: https://www.deeplead.io/pricing
+limits: 120 requests/minute per key.
+proposed_capabilities:
+  companies.businesses.search: Search physical business locations.
+  people.search.parse: Turn a plain-English description of the people you want into people-search filters
+
+endpoints:
+- id: deeplead.businesses.search
+  domain: companies
+  capability: companies.businesses.search
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /businesses/search
+  name: Search local businesses
+  summary: Search local businesses from Google Business Profiles
+  input:
+    bodyType: json
+    note: 30 businesses per page. Every row carries rating, review counts per star, website, emails, phones, socials and ad-pixel flags (Meta, Google Ads, GA, TikTok, ChatGPT). `require` filters to rows that have (true) or were checked and lack (false) a field.
+    body:
+      niches: {type: "array[string]", required: true, note: "1-10 Google categories or plain niches", example: ["dentist"]}
+      location: {type: string, required: true, note: "a city (\"Austin, TX\"), a US state (\"Texas\") or a country (\"Germany\")", example: "Austin, TX"}
+      page: {type: integer, required: false, note: "1-100, default 1", example: 1}
+      radiusMiles: {type: number, required: false, note: "1-100 around a city, default 30", example: 10}
+      keyword: {type: string, required: false, note: "matched against the business name and categories", example: "Castle Dental"}
+      excludedNiches: {type: "array[string]", required: false}
+      rating: {type: string, required: false, note: "rating band"}
+      reviews: {type: string, required: false, note: "review-count band"}
+      require: {type: object, required: false, note: "e.g. {\"email\": true, \"metaAds\": false}", example: {email: true}}
+  test_request:
+    body: {niches: ["dentist"], location: "Austin, TX", keyword: "Castle Dental & Orthodontics - Sunset Valley"}
+  cost:
+    type: per_result
+    value: 0.0085
+    currency: USD
+    per: 1
+    unit: record
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-09-25'
+    confidence: documented
+    note: Partner rate per business returned; an empty page is free. The test_request returns one business. Metered per call in the x-deeplead-cost-usd response header.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.organizations.search
+  domain: companies
+  capability: companies.search
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /organizations/search
+  name: Search companies, or look them up by domain
+  summary: Search organizations, or look them up by domain
+  input:
+    bodyType: json
+    note: Returns totalCount, so a limit-1 call sizes a query for free. Pass `domains` to look companies up; the returned organizationId feeds deeplead.persons.search and deeplead.organizations.decision_maker. Free on treg's partner key.
+    body:
+      query: {type: string, required: false, note: "free text matched against company name, description and keywords", example: "logistics software"}
+      semantic: {type: string, required: false, note: "meaning-based match on the company description"}
+      domains: {type: "array[string]", required: false, note: "up to 100 domains", example: ["stripe.com"]}
+      hqCountry: {type: "array[string]", required: false, note: "ISO alpha-2", example: ["US"]}
+      hqState: {type: "array[string]", required: false}
+      employeeBands: {type: "array[string]", required: false, example: ["51-200"]}
+      revenueRange: {type: "array[string]", required: false}
+      industryNaicsDirect: {type: "array[string]", required: false, note: "NAICS codes"}
+      technologies: {type: "array[string]", required: false}
+      foundedAfter: {type: integer, required: false}
+      foundedBefore: {type: integer, required: false}
+      limit: {type: integer, required: false, note: "1-25, default 25", example: 1}
+      offset: {type: integer, required: false, note: "0-10,000"}
+      includeWithoutWebsite: {type: boolean, required: false}
+  test_request:
+    body: {domains: ["stripe.com"], limit: 1}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-09-25'
+    confidence: verified
+    note: Free; the live call left the balance unchanged.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.persons.search
+  domain: contacts
+  capability: people.search
+  platform: people
+  scope: any_account
+  method: POST
+  path: /persons/search
+  name: Search people with their emails and phones
+  summary: Search persons with their emails and phones
+  input:
+    bodyType: json
+    note: Returns only people with an email or phone, with names, emails, phones, titles, LinkedIn URLs and company data. `limit` 0 returns only totalCount (all matches, including people without contact data) and is free, so a query can be sized before paying. Page with nextOffset. Needs at least one filter. Send an Idempotency-Key header so retries never charge twice.
+    body:
+      jobTitle: {type: "array[string]", required: false, example: ["CFO"]}
+      jobTitleExclude: {type: "array[string]", required: false}
+      jobLevel: {type: "array[string]", required: false, example: ["C-Team"]}
+      decisionMakersOnly: {type: boolean, required: false, example: true}
+      inCountry: {type: "array[string]", required: false, note: "ISO alpha-2 where the person is based", example: ["US"]}
+      personState: {type: "array[string]", required: false}
+      personCity: {type: "array[string]", required: false}
+      organizationIds: {type: "array[string]", required: false, note: "from deeplead.organizations.search", example: ["rb:rb-oacwbixtv"]}
+      limit: {type: integer, required: false, note: "0-100, default 25; the spend cap. 0 = free count", example: 0}
+      offset: {type: integer, required: false, note: "0-10,000"}
+      onePerOrganization: {type: boolean, required: false, note: "default false"}
+  test_request:
+    body: {organizationIds: ["rb:rb-oacwbixtv"], decisionMakersOnly: true, limit: 0}
+  cost:
+    type: per_result
+    value: 0.0045
+    currency: USD
+    per: 1
+    unit: record
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-09-26'
+    confidence: documented
+    note: Partner rate per person returned; every returned person has an email or phone, and limit 0 (the test_request) is a free count. Rows are named private individuals, so no example response is shipped and the paid path is observed by the vendor only (see the PR ledger). The partner key only reads, nothing is saved to a Deeplead account, so every call is billed.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.persons.lookup
+  domain: contacts
+  capability: people.enrich
+  platform: people
+  scope: any_account
+  method: POST
+  path: /persons/lookup
+  name: Look up a person by LinkedIn, email or name + domain
+  summary: Look up one person by LinkedIn URL, email, or name and company domain
+  input:
+    bodyType: json
+    note: Pass exactly one of linkedin, email, or name together with domain. Returns the person's emails, phones, role and company. 200 with found=false is a miss and free.
+    body:
+      linkedin: {type: string, required: false, example: "https://www.linkedin.com/in/jane-doe"}
+      email: {type: string, required: false}
+      name: {type: string, required: false, note: "full name; needs domain"}
+      domain: {type: string, required: false, note: "company domain; with name"}
+  untestable: returns a named private individual's contact details, so no example response is shipped
+  cost:
+    type: per_success
+    value: 0.0045
+    currency: USD
+    per: 1
+    unit: call
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-09-26'
+    confidence: documented
+    note: Partner rate per person found with an email; a person returned with a phone is billed at the phone rate ($0.025, as deeplead.persons.phone.find). A miss, or a person without email or phone, is free.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.persons.email.find
+  domain: contacts
+  capability: people.email.find
+  platform: people
+  scope: any_account
+  method: POST
+  path: /persons/email/find
+  name: Find a work email by LinkedIn or name + domain
+  summary: Find a person's work email by LinkedIn URL, or full name and company domain
+  input:
+    bodyType: json
+    note: Pass linkedin, or name together with domain. Returns the email with the person's name, title and company; no phone numbers. 200 with found=false is a miss and free.
+    body:
+      linkedin: {type: string, required: false, example: "https://www.linkedin.com/in/jane-doe"}
+      name: {type: string, required: false, note: "full name; needs domain"}
+      domain: {type: string, required: false, note: "company domain; with name"}
+  miss: {status: 200, means: "found=false, email null: no email on file for that person; free"}
+  untestable: returns a named private individual's email, so no example response is shipped
+  cost:
+    type: per_success
+    value: 0.0045
+    currency: USD
+    per: 1
+    unit: call
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-09-26'
+    confidence: documented
+    note: Partner rate per email found; a miss is free.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.persons.phone.find
+  domain: contacts
+  capability: people.phone.find
+  platform: people
+  scope: any_account
+  method: POST
+  path: /persons/phone/find
+  name: Find a phone by LinkedIn, email or name + domain
+  summary: Find a person's phone number by LinkedIn URL, email, or full name and company domain
+  input:
+    bodyType: json
+    note: Pass exactly one of linkedin, email, or name together with domain. Returns every phone on file (mobile or direct line, not labelled) with the person's name, title and company; no emails. 200 with found=false is a miss and free.
+    body:
+      linkedin: {type: string, required: false, example: "https://www.linkedin.com/in/jane-doe"}
+      email: {type: string, required: false}
+      name: {type: string, required: false, note: "full name; needs domain"}
+      domain: {type: string, required: false, note: "company domain; with name"}
+  miss: {status: 200, means: "found=false, phone null: no phone on file for that person; free"}
+  untestable: returns a named private individual's phone number, so no example response is shipped
+  cost:
+    type: per_success
+    value: 0.025
+    currency: USD
+    per: 1
+    unit: call
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-09-26'
+    confidence: documented
+    note: Partner rate per phone found; a miss is free.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.organizations.enrich
+  domain: companies
+  capability: companies.enrich
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /organizations/enrich
+  name: Enrich a company from its domain
+  summary: Enrich a company from its domain
+  input:
+    bodyType: json
+    note: Returns firmographics, socials, technologies and website data for one company. 200 with found=false is a miss and free.
+    body:
+      domain: {type: string, required: true, note: "domain or website URL", example: "stripe.com"}
+  miss: {status: 200, means: "found=false, organization null: no company with that domain; free"}
+  test_request:
+    body: {domain: "stripe.com"}
+  cost:
+    type: per_success
+    value: 0.0017
+    currency: USD
+    per: 1
+    unit: call
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-09-26'
+    confidence: documented
+    note: Partner rate per company found; a miss is free.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.organizations.decision_maker
+  domain: contacts
+  capability: people.decision_makers
+  platform: people
+  scope: any_account
+  method: POST
+  path: /organizations/{organizationId}/decision-maker
+  name: Find a company's decision maker with a verified email
+  summary: Find the decision maker of an organization with a verified email
+  input:
+    pathParams:
+      organizationId: {type: string, required: true, note: "from deeplead.organizations.search (e.g. a domain lookup)", example: "rb:rb-oabdk75ro"}
+    note: Checks candidates from Deeplead's database, the company's LinkedIn page and its website domain, confirms each still works there, and returns the first whose email verifies. Usually 5-30 s, up to 3 minutes. 200 with found=false is a miss and free; 503 means the lookup did not finish, nothing was charged, retry later. Send an Idempotency-Key header.
+  untestable: returns a named private individual's email, so no example response is shipped; the vendor observed a hit once (see note)
+  cost:
+    type: per_success
+    value: 0.12
+    currency: USD
+    per: 1
+    unit: call
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-09-25'
+    confidence: documented
+    note: Partner rate per decision maker found; a miss (found=false), a 404 for an unknown organizationId and a 503 are free. A live hit on 2026-09-25 took 11 s and charged 2 credits (999,999 → 999,997), which the partner key bills at $0.12; a second target returned 503 after 29 s with the balance unchanged.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.search.parse
+  domain: contacts
+  capability: people.search.parse
+  platform: people
+  kind: utility
+  scope: any_account
+  method: POST
+  path: /search/parse
+  name: Turn a plain-English lead description into search filters
+  summary: Turn a plain-English description into search filters
+  input:
+    bodyType: json
+    note: Returns filters for deeplead.persons.search or deeplead.organizations.search.
+    body:
+      query: {type: string, required: true, note: "3-500 characters", example: "CFOs at US logistics companies with 50-200 staff"}
+  test_request:
+    body: {query: "CFOs at US logistics companies with 50-200 staff"}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-09-25'
+    confidence: verified
+    note: Free; the live call left the balance unchanged.
+  docs_url: https://www.deeplead.io/api/v1/docs

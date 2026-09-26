@@ -1308,6 +1308,31 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+DEEPLEAD = OAuthProvider(
+    service="deeplead",
+    display_name="Deeplead",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Deeplead API key (dl_…)",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.deeplead.io/app/api-keys",
+    setup_action_label="Get your Deeplead API key",
+    setup_steps=(
+        "Sign in to Deeplead and open My Account → API.",
+        "Create a key and copy it; it is shown once.",
+    ),
+    setup_note="Searches are free; revealing people and finding decision makers spend credits. The balance check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Search 23M+ local businesses with emails, phones and ad pixels, and find a company's decision maker with a verified email.",
+    base_url="https://www.deeplead.io/api/v1",
+    docs_url="https://www.deeplead.io/api/v1/docs",
+    probe_path="/credits",  # free — a bad key gets a 401 here
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -3584,7 +3609,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB,
+        INFLUENCERSCLUB, DEEPLEAD,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
