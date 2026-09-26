@@ -161,7 +161,100 @@ endpoints:
     source_url: https://www.deeplead.io/api/v1/docs
     checked: '2026-09-26'
     confidence: documented
-    note: Partner rate per person found with an email or phone; a miss, or a person without either, is free.
+    note: Partner rate per person found with an email; a person returned with a phone is billed at the phone rate ($0.025, as deeplead.persons.phone.find). A miss, or a person without email or phone, is free.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.persons.email.find
+  domain: contacts
+  capability: people.email.find
+  platform: people
+  scope: any_account
+  method: POST
+  path: /persons/email/find
+  name: Find a work email by LinkedIn or name + domain
+  summary: Find a person's work email by LinkedIn URL, or full name and company domain
+  input:
+    bodyType: json
+    note: Pass linkedin, or name together with domain. Returns the email with the person's name, title and company; no phone numbers. 200 with found=false is a miss and free.
+    body:
+      linkedin: {type: string, required: false, example: "https://www.linkedin.com/in/jane-doe"}
+      name: {type: string, required: false, note: "full name; needs domain"}
+      domain: {type: string, required: false, note: "company domain; with name"}
+  miss: {status: 200, means: "found=false, email null: no email on file for that person; free"}
+  untestable: returns a named private individual's email, so no example response is shipped
+  cost:
+    type: per_success
+    value: 0.0045
+    currency: USD
+    per: 1
+    unit: call
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-09-26'
+    confidence: documented
+    note: Partner rate per email found; a miss is free.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.persons.phone.find
+  domain: contacts
+  capability: people.phone.find
+  platform: people
+  scope: any_account
+  method: POST
+  path: /persons/phone/find
+  name: Find a phone by LinkedIn, email or name + domain
+  summary: Find a person's phone number by LinkedIn URL, email, or full name and company domain
+  input:
+    bodyType: json
+    note: Pass exactly one of linkedin, email, or name together with domain. Returns every phone on file (mobile or direct line, not labelled) with the person's name, title and company; no emails. 200 with found=false is a miss and free.
+    body:
+      linkedin: {type: string, required: false, example: "https://www.linkedin.com/in/jane-doe"}
+      email: {type: string, required: false}
+      name: {type: string, required: false, note: "full name; needs domain"}
+      domain: {type: string, required: false, note: "company domain; with name"}
+  miss: {status: 200, means: "found=false, phone null: no phone on file for that person; free"}
+  untestable: returns a named private individual's phone number, so no example response is shipped
+  cost:
+    type: per_success
+    value: 0.025
+    currency: USD
+    per: 1
+    unit: call
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-09-26'
+    confidence: documented
+    note: Partner rate per phone found; a miss is free.
+  docs_url: https://www.deeplead.io/api/v1/docs
+
+- id: deeplead.organizations.enrich
+  domain: companies
+  capability: companies.enrich
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /organizations/enrich
+  name: Enrich a company from its domain
+  summary: Enrich a company from its domain
+  input:
+    bodyType: json
+    note: Returns firmographics, socials, technologies and website data for one company. 200 with found=false is a miss and free.
+    body:
+      domain: {type: string, required: true, note: "domain or website URL", example: "stripe.com"}
+  miss: {status: 200, means: "found=false, organization null: no company with that domain; free"}
+  test_request:
+    body: {domain: "stripe.com"}
+  cost:
+    type: per_success
+    value: 0.0017
+    currency: USD
+    per: 1
+    unit: call
+    source: vendor_email
+    source_url: https://www.deeplead.io/api/v1/docs
+    checked: '2026-09-26'
+    confidence: documented
+    note: Partner rate per company found; a miss is free.
   docs_url: https://www.deeplead.io/api/v1/docs
 
 - id: deeplead.organizations.decision_maker
