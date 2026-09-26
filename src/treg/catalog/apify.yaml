@@ -1,15 +1,10 @@
-# VERIFIED 2026-07-31 with a live credential (STARTER plan). Five of six endpoints called live and
-# passed; paths, parameters and the Facebook actor's per-result price are now observed rather than
-# transcribed. The one failure is `apify.tiktok-ads.library.search`: the actor RUNS (three runs,
-# exit code 0, two different input shapes) and produces ZERO dataset items every time, billing $0 —
-# an upstream-broken community actor, not a catalog error. Prices and paths below were originally
-# transcribed from official docs 2026-07-28.
+# Every per-result row below was called live on 2026-09-26 and its billed events matched the actor's
+# published rate card (pricingInfos on GET /v2/acts/{actor}); each row's cost note records what was
+# billed. Paths and parameters were first transcribed from official docs 2026-07-28.
 #
-# BILLING IS READABLE AFTER THE FACT, which is what let the estimates above become observed figures:
-# GET /v2/actor-runs?limit=N&desc=1 returns `usageTotalUsd` per run — the actual dollars a run cost.
-# Verified 2026-07-31: one facebook-ads-scraper run capped at maxItems=1 billed exactly $0.005, the
-# value this file already carried; a hello-world run billed $0.00013 (compute only, no results).
-# Read that endpoint after any pay-per-result run rather than trusting an estimate.
+# BILLING IS READABLE AFTER THE FACT, but late: GET /v2/actor-runs/{id} returns chargedEventCounts
+# as soon as a run ends, while usageTotalUsd (the dollars) can trail it by minutes. Settlement
+# therefore counts the rows a run-sync call returns rather than reading the run's cost.
 #
 # Apify is not a data API — it is a runner for other people's scrapers ("Actors"). One generic
 # endpoint shape does every job; what changes is WHICH actor id sits in the path and what its input
@@ -33,9 +28,8 @@
 # bill for all of them. ALWAYS send resultsLimit/limit in the input AND `maxTotalChargeUsd` in the
 # query string: it is the spend cap Apify enforces on every billed event (`maxItems` binds only actors
 # that honour it), and treg's key requires it.
-# The per-result price varies by SUBSCRIPTION TIER (roughly $3.40–$5.80 per 1,000 for the Facebook
-# actor), so a value here is the observed STARTER-plan figure, not a universal quote — re-read
-# usageTotalUsd on your own plan before budgeting a large pull.
+# Some actors price by the caller's Apify SUBSCRIPTION TIER; those rows list every tier's rate and
+# name which one the catalog value is, so check your own plan before budgeting a large pull.
 provider: apify
 source:
   docs: https://docs.apify.com/api/v2
@@ -142,7 +136,7 @@ endpoints:
     test_request:
       queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 90}
       body: {jobTitles: ["attorney"], locations: ["Miami, Florida"], maxItems: 1}
-    cost: {type: per_result, value: 0.001, call_fee: 0.001, currency: USD, per: 1, unit: result, source: observed, source_url: 'https://apify.com/harvestapi/linkedin-job-search', checked: '2026-09-26', confidence: verified, note: 'pay-per-event: one job event per job ($0.001) plus one actor-start event per run ($0.001, the call_fee), flat, no platform usage charge on top. OBSERVED 2026-09-26 on the platform key: 1 job billed chargedEventCounts {job: 1, actor-start: 1}, usageTotalUsd 0.002. Charged per job produced — cap every call with maxTotalChargeUsd'}
+    cost: {type: per_result, value: 0.001, call_fee: 0.001, call_fee_per: [body.jobTitles, body.locations], currency: USD, per: 1, unit: result, source: observed, source_url: 'https://apify.com/harvestapi/linkedin-job-search', checked: '2026-09-26', confidence: verified, note: 'pay-per-event: one job event per job ($0.001) plus one actor-start event per job title x location searched ($0.001, the call_fee, multiplied by call_fee_per; observed 2026-09-26: 3 titles x 1 location billed actor-start 3, 1 title x 2 locations billed 2), flat, no platform usage charge on top. OBSERVED 2026-09-26 on the platform key: 1 job billed chargedEventCounts {job: 1, actor-start: 1}, usageTotalUsd 0.002. Charged per job produced — cap every call with maxTotalChargeUsd'}
     verified: 2026-09-26
     example_response: examples/apify.linkedin.search.jobs.json
     docs_url: https://apify.com/harvestapi/linkedin-job-search

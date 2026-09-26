@@ -2459,3 +2459,19 @@ async def test_a_sync_usage_settled_call_charges_the_providers_reported_cost(
     assert before - await _balance(clients) == 20
 
 
+
+
+@pytest.mark.parametrize(('body', 'fee'), [
+    ({'jobTitles': ['a'], 'locations': ['x']}, 1_000),
+    ({'jobTitles': ['a', 'b', 'c'], 'locations': ['x']}, 3_000),
+    ({'jobTitles': ['a'], 'locations': ['x', 'y']}, 2_000),
+    ({'jobTitles': ['a', 'b'], 'locations': []}, 2_000),
+    ({'jobTitles': ['a', 'b']}, 2_000),
+])
+def test_apify_call_fee_multiplies_by_each_query_the_actor_starts(body, fee):
+    """LinkedIn jobs bills one actor-start per job title x location searched."""
+    cost = catalog_store.load().by_id['apify.linkedin.search.jobs']['cost']
+    mk = _mk('apify', endpoint_id='apify.linkedin.search.jobs', cost_type='per_result',
+             unit_micro=1_000, estimate_micro=1_001_000, request_data={'body': body})
+    assert call_settle._apify_call_fee_micro(mk, cost) == fee
+    assert call_settle._observed_cost_micro(mk, b'[{}]') == 1_000 + fee

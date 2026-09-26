@@ -42,6 +42,18 @@ from .types import GatewayFailed, UpstreamResponse
 _NOT_THE_CALLERS_FAULT = frozenset({401, 402, 403, 405, 407, 408, 429})
 
 
+def _apify_call_fee_micro(mk: MarketplaceCall, cost: dict) -> int:
+    """The flat per-run charge, once per run the request starts. An actor that bills its start per
+    query (LinkedIn jobs: one actor-start per job title x location) names those body arrays in
+    `cost.call_fee_per`; each multiplies the fee by its length, an absent or empty one by one."""
+    fee = _usd_to_micro(float(cost.get("call_fee") or 0))
+    body = mk.request_data.get("body") if isinstance(mk.request_data, dict) else None
+    for path in cost.get("call_fee_per") or ():
+        items = body.get(str(path).removeprefix("body.")) if isinstance(body, dict) else None
+        fee *= max(1, len(items)) if isinstance(items, list) else 1
+    return fee
+
+
 def _platform_billable(status_code: int, cost_type: str) -> bool:
     """MAY a response with this status cost us money? (plan §2.2) — the status gate only.
       2xx                        → yes, the provider served it.
@@ -458,7 +470,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         # usageTotalUsd trails a finished run by minutes, so the body is the only prompt evidence.
         if not isinstance(doc, list):
             return None
-        billed = len(doc) * mk.unit_micro + _usd_to_micro(float((cost or {}).get("call_fee") or 0))
+        billed = len(doc) * mk.unit_micro + _apify_call_fee_micro(mk, cost or {})
         # A run stops when its next event would pass maxTotalChargeUsd, and it may already have
         # billed one event it never pushed as a row (seen live: 3 events, 2 rows), so a capped run
         # lands within two rows of the hold; a plan-tier price below the catalog's lands there too.

@@ -715,6 +715,13 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
                 or cost.get("currency", "USD") != "USD"
                 or not _finite_number(fee) or fee <= 0):
             fail(errors, where, "cost.call_fee must be a positive USD fee on an Apify per_result price")
+    if "call_fee_per" in cost:
+        per = cost["call_fee_per"]
+        fields = _input_fields(input_schema)
+        if (not isinstance(per, list) or not per or "call_fee" not in cost
+                or any(not isinstance(p, str) or not p.startswith("body.")
+                       or "array" not in str((fields.get(p) or {}).get("type", "")) for p in per)):
+            fail(errors, where, "cost.call_fee_per must list declared body array fields beside call_fee")
     if "display" in cost:
         display = cost["display"]
         if (not isinstance(display, dict) or not isinstance(display.get("unit"), str)
