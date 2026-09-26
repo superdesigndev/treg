@@ -14,6 +14,8 @@ import AdminPage from './pages/AdminPage.vue'
 import GettingStartedPage from './pages/GettingStartedPage.vue'
 import ReferralsPage from './pages/ReferralsPage.vue'
 import HelpPage from './pages/HelpPage.vue'
+import HubPage from './pages/HubPage.vue'
+import HubRunPage from './pages/HubRunPage.vue'
 import SearchPage from './pages/SearchPage.vue'
 import SignedOutPage from './components/SignedOutPage.vue'
 import BrandMark from './components/BrandMark.vue'
@@ -38,18 +40,20 @@ import RunToolDialog from './dialogs/RunToolDialog.vue'
 import CallDetailsDialog from './dialogs/CallDetailsDialog.vue'
 import TryEndpointDialog from './dialogs/TryEndpointDialog.vue'
 import SignInDialog from './components/SignInDialog.vue'
-export default { ...controller, components: { ...controller.components, TeamResourcesPage, FishVoiceDialog, CatalogPage, ProviderPage, PlatformPage, ToolsPage, DetailPage, SecretsPage, TeamPage, ActivityPage, AdminPage, GettingStartedPage, ReferralsPage, HelpPage, SearchPage, SignedOutPage, BrandMark, PublicNavigation, LandingNavigation, DashboardNavigation, ConnectTokenDialog, TopUpDialog, AgentGuideDialog, ConnectionMethodDialog, ResourcePickerDialog, ExtraCredentialDialog, EditToolDialog, AcceptInvitesDialog, WelcomeDialog, CopyToolDialog, ImportSkillDialog, RequestToolDialog, ShareDialog, RecipeDialog, RunToolDialog, CallDetailsDialog, TryEndpointDialog, SignInDialog } }
+export default { ...controller, components: { ...controller.components, TeamResourcesPage, FishVoiceDialog, CatalogPage, ProviderPage, PlatformPage, ToolsPage, DetailPage, SecretsPage, TeamPage, ActivityPage, AdminPage, GettingStartedPage, ReferralsPage, HelpPage, SearchPage, HubPage, HubRunPage, SignedOutPage, BrandMark, PublicNavigation, LandingNavigation, DashboardNavigation, ConnectTokenDialog, TopUpDialog, AgentGuideDialog, ConnectionMethodDialog, ResourcePickerDialog, ExtraCredentialDialog, EditToolDialog, AcceptInvitesDialog, WelcomeDialog, CopyToolDialog, ImportSkillDialog, RequestToolDialog, ShareDialog, RecipeDialog, RunToolDialog, CallDetailsDialog, TryEndpointDialog, SignInDialog } }
 </script>
 
 <template>
 <div>
-<main v-if="!bootReady || bootFailed" class="boot-status" aria-live="polite" :aria-busy="!bootReady">
+<main v-if="bootFailed" class="boot-status" aria-live="polite">
   <a href="/" class="brand"><BrandMark/>treg</a>
-  <template v-if="bootFailed">
-    <p role="alert">The dashboard couldn't load. Please try again.</p>
-    <button class="btn" @click="reloadApp()">Try again</button>
-  </template>
-  <p v-else role="status">Loading treg…</p>
+  <p role="alert">The dashboard couldn't load. Please try again.</p>
+  <button class="btn" @click="reloadApp()">Try again</button>
+</main>
+<!-- Continues index.html's loader on the page's own clock, so mounting does not restart it. -->
+<main v-else-if="!bootReady" class="boot-status" aria-busy="true" :style="{'--boot-t': -Math.round(bootStartedAt)+'ms'}">
+  <span class="boot-bar" aria-hidden="true"></span>
+  <p role="status" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap">Loading treg…</p>
 </main>
 <div v-else :class="{redesign:authed && !publicCatalog}">
   <!-- Focused sign-in entry after session initialization. -->
@@ -118,6 +122,8 @@ export default { ...controller, components: { ...controller.components, TeamReso
         <!-- REFERRALS — a person's link and everyone who used it. A top-level view (never nested):
              a view inside a view renders nowhere, and the nav button would look dead. -->
         <ReferralsPage v-if="view==='referrals'" />
+        <HubPage v-if="view==='hub'" />
+        <HubRunPage v-if="view==='run'" />
 
         <!-- HELP -->
         <HelpPage v-if="view==='help'" />
@@ -274,7 +280,3 @@ export default { ...controller, components: { ...controller.components, TeamReso
 </div>
 </template>
 
-<style scoped>
-.boot-status { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; color: var(--muted); }
-.boot-status .brand { color: var(--text); text-decoration: none; }
-</style>

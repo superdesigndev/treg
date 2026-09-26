@@ -1,0 +1,1 @@
+{ "inputs": { "full_name": "Patrick Collison", "domain": "stripe.com" }, "fields": ["email", "email_status", "units"] }

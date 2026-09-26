@@ -360,6 +360,8 @@ _SIGNUP_HTTP_ERRORS = {
         "the demo sandbox can't create a real team — sign in with GitHub, Google, or email to make one"
     )),
     "slug_conflict": (409, "could not allocate a unique org slug — retry"),
+    "reserved_name": (422, "this team name is reserved: it reads as treg itself, as official, or as a "
+                           "catalog provider or platform. Choose another name."),
 }
 
 
@@ -1322,7 +1324,9 @@ async def rename_org(
     org = caller.org
     old_slug = org.slug
     try:
-        await teams.rename_org(db, org, name=body.name, slug=body.slug)
+        await teams.rename_org(db, org, name=body.name, slug=body.slug,
+                               reserved=signup_use_cases.reserved_team_names(),
+                               allow_reserved=bool(caller.user.is_superadmin))
         await db.commit()
     except ValueError as e:
         raise HTTPException(status_code=409 if "taken" in str(e) else 400, detail=str(e))

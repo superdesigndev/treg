@@ -4,24 +4,37 @@ from pathlib import Path
 import re
 import pytest
 
-from httpx import AsyncClient
 
 from treg import api
 
 
 @pytest.fixture
-async def new_dashboard(clients, monkeypatch):
-    from treg.config import get_settings
+async def new_dashboard(clients):
     from treg.infra.db import session_maker
     from treg.models import User
     from treg.domain.identity import session
     from sqlmodel import select
-    monkeypatch.setattr(get_settings(), 'dashboard_rollout_enabled', True)
-    monkeypatch.setattr(get_settings(), 'dashboard_rollout_percent', 100)
     async with session_maker() as db:
         user = (await db.execute(select(User).where(User.email == 'tim@superdesign.dev'))).scalar_one()
         clients.cookies.set(session.COOKIE, session.make_session(user.id, token_version=user.token_version))
     return clients
+
+
+async def test_every_entry_serves_the_compiled_app_to_every_visitor(new_dashboard):
+    """Signed in, signed out or with a forged session, every Dashboard entry is the one compiled app,
+    never cached across visitors."""
+    clients = new_dashboard
+    paths = ['/app', '/app/tools/shared', '/app/skills/shared', '/catalog', '/catalog/google', '/search']
+    signed_in = dict(clients.cookies)
+    for cookies in (signed_in, {}, {'treg_session': 'forged'}):
+        clients.cookies.clear()
+        clients.cookies.update(cookies)
+        for path in paths:
+            page = await clients.get(path)
+            assert page.status_code == 200, path
+            assert '/app/ui/assets/' in page.text, path
+            assert page.headers['cache-control'] == 'private, no-store', path
+            assert page.headers['vary'] == 'Cookie', path
 
 
 async def test_dashboard_redesign_assets_are_served_from_the_same_origin(new_dashboard):
@@ -41,6 +54,7 @@ async def test_dashboard_redesign_assets_are_served_from_the_same_origin(new_das
     missing = await clients.get('/app/ui/assets/missing.js')
     assert missing.status_code == 404
     assert '<!doctype' not in missing.text.lower()
+    assert (await clients.get('/app/ui/assets/%2e%2e/index.html')).status_code == 404
     # Include the dynamic task, provider and token-state images as well as literal URLs.
     asset_dir = Path(api.__file__).parent / 'web' / 'media' / 'redesign'
     paths.update('/media/redesign/' + p.name for p in asset_dir.iterdir() if p.suffix in {'.svg', '.png', '.jpg'})
@@ -50,20 +64,6 @@ async def test_dashboard_redesign_assets_are_served_from_the_same_origin(new_das
         assert response.content, path
         expected_type = 'text/css' if path.endswith('.css') else 'image/'
         assert response.headers['content-type'].startswith(expected_type), path
-
-
-async def test_dashboard_dev_entry_preserves_same_origin_requests(new_dashboard, monkeypatch):
-    clients = new_dashboard
-    from treg.config import get_settings
-    settings = get_settings()
-    monkeypatch.setattr(settings, 'frontend_dev', True)
-    monkeypatch.setattr(settings, 'public_url', 'http://localhost:18790')
-    response = await clients.get('/app')
-    assert response.status_code == 200
-    assert 'http://localhost:5173/app/ui/@vite/client' in response.text
-    assert 'http://localhost:5173/app/ui/src/main.ts' in response.text
-    assert '/agent-setup.js' in response.text
-    assert response.headers['cache-control'] == 'private, no-store'
 
 
 async def test_dashboard_dev_entry_refuses_a_public_hostname(new_dashboard, monkeypatch):

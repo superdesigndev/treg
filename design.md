@@ -85,20 +85,20 @@ Use fluid layout instead of copying Figma's absolute coordinates. Set `min-width
 | --- | --- | --- | --- |
 | Page title | Geist Pixel | 22 / 27.5px | 400 |
 | Short introduction, such as the Try it out intro | Geist Pixel | 16 / 22px | 400 |
-| Module title | Google Sans Flex | 16 / 24px | 500 |
-| Body copy and form instructions | Google Sans Flex | 14 / 21px | 400; key field labels 600 |
-| Navigation and selectors | Google Sans Flex | 13 / 19.5px | 400-600, according to state |
-| Supporting copy | Google Sans Flex | 12.5 / 19.375px | 400 |
-| Example card label | Inter | 12.5 / 19.375px | 400 |
-| Example task copy | Inter | 13 / 20.15px | 600 |
+| Module title | System UI font | 16 / 24px | 500 |
+| Body copy and form instructions | System UI font | 14 / 21px | 400; key field labels 600 |
+| Navigation and selectors | System UI font | 13 / 19.5px | 400-600, according to state |
+| Supporting copy | System UI font | 12.5 / 19.375px | 400 |
+| Example card label | System UI font | 12.5 / 19.375px | 400 |
+| Example task copy | System UI font | 13 / 20.15px | 600 |
 | Commands, tokens, and code | DM Mono | 12 / 18.6px | 400 |
 | Balance values and step numbers | DM Mono | 12 / 18px | 500 |
 
-Body copy falls back to Inter and system sans-serif; code falls back to system monospace. If Geist Pixel is unavailable, fall back to mono without blocking the page. Chinese content needs a system font fallback with complete glyph coverage; do not force it into a pixel font with missing glyphs.
+Interface text uses the operating system's UI font (`--sans`: SF Pro on Apple platforms, Segoe UI on Windows, Roboto on Android), as ChatGPT's product does. It downloads nothing, so text is final from the first paint and never reflows when a web font arrives; the brand is carried by Geist Pixel titles and DM Mono figures, not by body text. Those two faces are the only web fonts: pinned `@fontsource` npm packages (OFL-1.1), bundled same-origin with the Dashboard. Do not add a body web font without a brand reason strong enough to pay for its download and swap. Code falls back to system monospace. If Geist Pixel is unavailable, fall back to mono without blocking the page. Chinese content needs a system font fallback with complete glyph coverage; do not force it into a pixel font with missing glyphs.
 
 Preserve DM Mono for balances as a treg detail instead of adopting Vercel's rule of using Sans for every financial figure. Use tabular numerals for comparisons, with consistent units and precision.
 
-The wordmark target is Figma's Google Sans Flex at 15px / 500. The current prototype's `.brand` still inherits an earlier mono declaration. This is a known discrepancy, not a second brand typography rule.
+The wordmark target is the system UI font at 15px / 500 (Figma used Google Sans Flex). The current prototype's `.brand` still inherits an earlier mono declaration. This is a known discrepancy, not a second brand typography rule.
 
 ## 6. Color and themes
 

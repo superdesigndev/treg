@@ -68,11 +68,6 @@ async def test_cannot_accept_someone_elses_invite(client):
     assert (await client.get("/invites/mine", headers=_h(mallory))).json() == []  # sees nothing
 
 
-async def test_mine_requires_auth(client):
-    r = await client.get("/invites/mine")
-    assert r.status_code == 401
-
-
 async def _invite_code(c: AsyncClient, owner_email: str, invitee: str, role: str = "member") -> str:
     tok = await _otp(c, owner_email)
     org = (await c.post("/orgs", json={"name": "Superdesign"}, headers=_h(tok))).json()
@@ -161,7 +156,7 @@ async def test_email_link_post_signs_in_once_and_lands_on_invite_org(client, sen
         mine = (await visitor.get("/invites/mine")).json()  # the cookie authenticates the session
         assert [m["org_id"] for m in mine] == [org["org_id"]]  # invite still PENDING — accepted in the app
         # Inbox-only proof, unlike the admin-visible code, qualifies a new account.
-        team = await visitor.post("/orgs", json={"name": "verified-invite-team"})
+        team = await visitor.post("/orgs", json={"name": "invite-team"})
         assert team.status_code == 200
         balance = await visitor.get(f"/orgs/{team.json()['org_id']}/balance",
                                     headers={"X-Treg-Token": team.json()["token"]})

@@ -98,6 +98,19 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/media', ('POST',), 'host_media'),
     ('/m/{token}', ('GET',), 'serve_media'),
     ('/admin/feedback', ('GET',), 'admin_feedback'),
+    ('/hub/tools', ('POST',), 'publish_hub_tool'),
+    ('/hub/tools/mine', ('GET',), 'my_hub_tools'),
+    ('/hub/tools/{tool_id}', ('GET',), 'get_hub_tool'),
+    ('/hub/tools/{tool_id}', ('PUT',), 'update_hub_tool'),
+    ('/hub/run', ('POST',), 'run_hub_folder'),
+    ('/hub/tools/{tool_id}/earnings', ('GET',), 'hub_tool_earnings'),
+    ('/hub/tools/{tool_id}', ('DELETE',), 'retire_hub_tool'),
+    ('/hub/tools/{tool_id}', ('PATCH',), 'set_hub_tool_price'),
+    ('/hub/tools/{tool_id}/health', ('GET',), 'hub_tool_health'),
+    ('/hub/runs/{run_id}', ('GET',), 'hub_run'),
+    ('/app/runs/{run_id}', ('GET',), 'dashboard_run_page'),
+    ('/hub/{tool_id}', ('GET',), 'hub_page'),
+    ('/hub/{tool_id}.md', ('GET',), 'hub_page'),
     ('/auth/github', ('GET',), 'auth_github'),
     ('/auth/github/callback', ('GET',), 'auth_github_callback'),
     ('/auth/google', ('GET',), 'auth_google'),
@@ -115,7 +128,6 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/auth/invite-signin', ('POST',), 'auth_invite_signin_confirm'),
     ('/', ('GET',), 'landing'),
     ('/app', ('GET',), 'dashboard'),
-    ('/app/legacy/assets/{path:path}', ('GET',), 'legacy_dashboard_asset'),
     ('/app/ui/assets/{name}', ('GET',), 'dashboard_asset'),
     ('/app/marketplace/{service}', ('GET',), 'dashboard_marketplace'),
     ('/app/skills/{name}', ('GET',), 'dashboard_skill_page'),
@@ -296,6 +308,10 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/orgs/{org_id}', ('GET',), 'admin_org_detail'),
     ('/admin/users', ('GET',), 'admin_users'),
     ('/admin/tools', ('GET',), 'admin_tools'),
+    ('/admin/hub/listings', ('GET',), 'admin_hub_listings'),
+    ('/admin/hub/listings/{tool_id}', ('POST',), 'admin_hub_listing_decide'),
+    ('/admin/hub/updates', ('GET',), 'admin_hub_updates'),
+    ('/admin/hub/updates/{tool_id}', ('POST',), 'admin_hub_update_decide'),
     ('/admin/calls', ('GET',), 'admin_calls'),
     ('/admin/errors', ('GET',), 'admin_errors'),
     ('/admin/health', ('GET',), 'admin_health'),
@@ -531,12 +547,11 @@ def configure_archive_object_store(store) -> None:
 
 
 @asynccontextmanager
-async def _archive_object_store(app):
+async def archive_object_store(injected=None):
     from . import archive_bodies
     from .infra.object_store import open_r2
 
     enabled = archive_bodies.validate_configuration()
-    injected = getattr(app.state, "archive_object_store", None)
     opener = open_r2(get_settings()) if enabled and injected is None else nullcontext(injected)
     async with opener as store:
         configure_archive_object_store(store)
@@ -549,7 +564,7 @@ async def _archive_object_store(app):
 def _lifespan(role: AppRole):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        async with _archive_object_store(app):
+        async with archive_object_store(getattr(app.state, "archive_object_store", None)):
             await verify_db()
             if kv.configured() and not await kv.store().ping():
                 # Not fatal: the store's tenants fail closed (infra/kv.py). Loud, because until it

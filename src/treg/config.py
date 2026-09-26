@@ -452,6 +452,20 @@ class Settings(BaseSettings):
     archive_prune_keep_versions: int = 2       # newest N bodies kept on servable keys
     archive_prune_min_age_days: int = 7        # servable bodies younger than this are never touched
 
+    # The tool hub (docs/HUB-DECISIONS.md): tools a maker publishes, made of other tools. Off by
+    # default so every merge along the way changes nothing users see; production flips it once
+    # the whole hub has landed on main.
+    hub_enabled: bool = False
+    # With the hub on, a comma-separated list of team slugs that may use it; EMPTY means every
+    # team. The middle stage between "off" and "open": the owner's own team tries the live hub on
+    # production first (decided 2026-09-24). Pages that have no caller (the share page, the
+    # agent-facing files) follow the plain flag: they describe the hub, they do not run it.
+    hub_teams: str = ""
+    # A comma-separated list of people (sign-in emails) who may use the hub in ANY team they work in,
+    # beside `hub_teams` (owner, 2026-09-26): colleagues try it from their own accounts, with no
+    # shared team. Either list lets a reader in; both empty means every team.
+    hub_users: str = ""
+
     # Additive Claude directory MCP. Default OFF so deploying code cannot publish a new connector
     # surface before its production Inspector and custom-connector gates have passed.
     claude_connector_enabled: bool = False
@@ -578,9 +592,6 @@ class Settings(BaseSettings):
     # response, which is an unauthenticated account-takeover vector in prod — so it defaults OFF and
     # must be explicitly enabled (TREG_EMAIL_DEV_MODE=true) for local testing without a mail sender.
     email_dev_mode: bool = False
-    dashboard_rollout_enabled: bool = False
-    dashboard_rollout_percent: int = Field(default=0, ge=0, le=100)
-    dashboard_rollout_user_ids: set[PositiveInt] = Field(default_factory=set)
     frontend_dev: bool = False  # Local SQLite development only; use Vite module scripts.
 
     # The WHOLE email-domain blocklist (TREG_BLOCKED_EMAIL_DOMAINS), comma-separated:
@@ -644,6 +655,21 @@ class Settings(BaseSettings):
     def platform_provider_set(self) -> frozenset[str]:
         """The allow-listed tier-4 providers (comma-separated `TREG_PLATFORM_PROVIDERS`)."""
         return frozenset(p.strip().lower() for p in self.platform_providers.split(",") if p.strip())
+
+    @property
+    def hub_user_set(self) -> frozenset[str]:
+        """`hub_users` parsed: lower-cased emails, empty means no restriction by person."""
+        return frozenset(p.strip().lower() for p in self.hub_users.split(",") if p.strip())
+
+    @property
+    def hub_limited(self) -> bool:
+        """The hub is on only for some readers: a team list or a person list is set."""
+        return bool(self.hub_team_set or self.hub_user_set)
+
+    @property
+    def hub_team_set(self) -> frozenset[str]:
+        """`hub_teams` parsed: lower-cased slugs, empty means no restriction."""
+        return frozenset(p.strip().lower() for p in self.hub_teams.split(",") if p.strip())
 
     def platform_provider_enabled(self, provider: str) -> bool:
         """Whether this deployment allows a catalog fallback for `provider`.

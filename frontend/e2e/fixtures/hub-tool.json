@@ -1,0 +1,106 @@
+{
+ "tool_id": "treg-hub.domain-authority",
+ "version": 1,
+ "kind": "script",
+ "status": "live",
+ "summary": "How strong a site is in Google, in one call: authority rank, backlinks, referring domains, keywords ranked and estimated traffic, the top linking sites and keywords, and a one-word verdict.",
+ "writes": false,
+ "price_usd": 0.01,
+ "pricing": {
+  "mode": "per_call",
+  "price_usd": 0.01
+ },
+ "listed": false,
+ "public_log": true,
+ "price_label": "$0.01 per call",
+ "uses": [
+  "serpstat.web.backlinks.summary",
+  "serpstat.google.domain.ranked_keywords",
+  "serpstat.web.linking_domains.list"
+ ],
+ "inputs": {
+  "domain": {
+   "example": "stripe.com",
+   "type": "string",
+   "note": "the site's domain, no scheme",
+   "secret": false
+  },
+  "search_engine": {
+   "example": "g_us",
+   "default": "g_us",
+   "type": "string",
+   "note": "Serpstat search database: g_us, g_uk, g_de, ... or bing_us",
+   "secret": false
+  }
+ },
+ "output": {
+  "fields": [
+   "domain",
+   "search_engine",
+   "verdict",
+   "report",
+   "top_keywords",
+   "top_linking_domains",
+   "linking_domains_total",
+   "reports_answered",
+   "failed",
+   "summary"
+  ]
+ },
+ "limits": {
+  "steps": 20,
+  "wall_s": 120,
+  "cost_usd": 0.1
+ },
+ "created_by": "maker@example.com",
+ "created_at": "2026-09-24T05:07:45.160947",
+ "check_result": {
+  "run_id": "7b07bed12cae421b8aeea291232bc324",
+  "checked_at": "2026-09-24T05:07:48.715806",
+  "status_code": 200,
+  "charged_micro": 3500,
+  "trace": [
+   {
+    "wave": 0,
+    "name": "call1",
+    "outcome": "ok",
+    "status": 200,
+    "ms": 1396,
+    "cost_micro": 2500,
+    "key": "treg",
+    "call": "a catalog tool"
+   },
+   {
+    "wave": 1,
+    "name": "call2",
+    "outcome": "ok",
+    "status": 200,
+    "ms": 1422,
+    "cost_micro": 500,
+    "key": "treg",
+    "call": "a catalog tool"
+   },
+   {
+    "wave": 2,
+    "name": "call3",
+    "outcome": "ok",
+    "status": 200,
+    "ms": 3479,
+    "cost_micro": 500,
+    "key": "treg",
+    "call": "a catalog tool"
+   }
+  ],
+  "status": "passed"
+ },
+ "data": null,
+ "health": "ok",
+ "fails_in_a_row": 0,
+ "last_run_at": "2026-09-24T05:07:48.711060",
+ "price_range": "$0.0135/run",
+ "price_samples": 1,
+ "price_low_micro": 13500,
+ "price_high_micro": 13500,
+ "runs_30d": 0,
+ "earned_30d_micro": 0
+}

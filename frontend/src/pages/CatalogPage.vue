@@ -141,7 +141,7 @@ export default { components: { FindAnswer }, setup: useDashboard, beforeUnmount(
                  the finder, instead of implying the server has no catalog. -->
             <p v-if="!platCatGroups.length && platNameQuery && plats.list.length && !findSoon" class="find-miss">
               No platform is called that.</p>
-            <div v-else-if="!platCatGroups.length && !q.trim()" class="mk-empty">
+            <div v-else-if="plats.settled && !platCatGroups.length && !q.trim()" class="mk-empty">
               No catalogued platforms{{mkTabActive==='all'?'':' in '+mkTabActive}} on this server yet — the
               <b>Platform</b> tab lists every integration you can connect.
             </div>

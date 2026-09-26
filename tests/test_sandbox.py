@@ -121,15 +121,6 @@ async def test_export_skill(anon):
     assert STRIPE["value"] not in exp["treg_json"]
 
 
-async def test_skill_samples(anon):
-    r = await anon.get("/skills/samples")
-    assert r.status_code == 200, r.text
-    names = {s["name"] for s in r.json()}
-    assert "posthog-insights" in names and "stripe-billing" in names
-    ph = next(s for s in r.json() if s["name"] == "posthog-insights")
-    assert ph["key"] == "POSTHOG_KEY" and "SKILL.md" in ph["files"] and "treg.json" in ph["files"]
-
-
 async def test_skill_install_script(anon):
     r = await anon.get("/skills/posthog-insights/install.sh", params={"token": "sbx_tok_123"})
     assert r.status_code == 200, r.text

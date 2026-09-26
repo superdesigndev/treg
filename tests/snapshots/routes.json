@@ -248,6 +248,24 @@
       "GET",
       "HEAD"
     ],
+    "name": "hub_page",
+    "path": "/hub/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "hub_page",
+    "path": "/hub/{tool_id}.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "tools_provider",
     "path": "/tools/{service}"
   },
@@ -319,6 +337,125 @@
     ],
     "name": "admin_reviews",
     "path": "/admin/reviews"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "publish_hub_tool",
+    "path": "/hub/tools"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "update_hub_tool",
+    "path": "/hub/tools/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "my_hub_tools",
+    "path": "/hub/tools/mine"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "hub_run",
+    "path": "/hub/runs/{run_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "get_hub_tool",
+    "path": "/hub/tools/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "run_hub_folder",
+    "path": "/hub/run"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "hub_tool_earnings",
+    "path": "/hub/tools/{tool_id}/earnings"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "retire_hub_tool",
+    "path": "/hub/tools/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "set_hub_tool_price",
+    "path": "/hub/tools/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "hub_tool_health",
+    "path": "/hub/tools/{tool_id}/health"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_hub_listings",
+    "path": "/admin/hub/listings"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_hub_listing_decide",
+    "path": "/admin/hub/listings/{tool_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_hub_updates",
+    "path": "/admin/hub/updates"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_hub_update_decide",
+    "path": "/admin/hub/updates/{tool_id}"
   },
   {
     "kind": "APIRoute",
@@ -481,15 +618,6 @@
       "GET",
       "HEAD"
     ],
-    "name": "legacy_dashboard_asset",
-    "path": "/app/legacy/assets/{path:path}"
-  },
-  {
-    "kind": "APIRoute",
-    "methods": [
-      "GET",
-      "HEAD"
-    ],
     "name": "dashboard_asset",
     "path": "/app/ui/assets/{name}"
   },
@@ -528,6 +656,15 @@
     ],
     "name": "dashboard_tool_page",
     "path": "/app/tools/{name}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "dashboard_run_page",
+    "path": "/app/runs/{run_id}"
   },
   {
     "kind": "APIRoute",

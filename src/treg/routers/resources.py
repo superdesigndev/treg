@@ -268,6 +268,10 @@ def _require_public_base_url(base_url: str) -> None:
         raise HTTPException(status_code=422, detail=(
             "base_url must be a public http(s) address — loopback, private, link-local, and cloud-"
             "metadata hosts are refused"))
+    from ..application import hub as hub_app
+    if hub_app.points_at_treg(base_url):
+        raise HTTPException(status_code=422, detail=(
+            "base_url may not be treg itself: call treg's tools by their ids, not through a tool of your own"))
 
 
 async def _require_secret_ownership(secret: Secret, caller: Caller) -> None:

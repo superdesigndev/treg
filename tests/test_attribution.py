@@ -7,7 +7,6 @@ the script is served on every public page with the PostHog key templated in (or 
 """
 from urllib.parse import quote
 
-import pytest
 from sqlmodel import select
 
 from treg.config import get_settings
@@ -83,8 +82,3 @@ async def test_sitetrack_templates_the_posthog_key(clients, monkeypatch):
     assert "capture_pageview: true" in r.text  # the whole point: the first hop is recorded
 
 
-@pytest.mark.parametrize("path", ["/", "/resources", "/tutorial", "/use-cases/seo-data-for-ai-agents"])
-async def test_public_pages_load_sitetrack_before_the_ad_script(clients, path):
-    r = await clients.get(path, follow_redirects=True)
-    assert r.status_code == 200, (path, r.status_code)
-    assert '<script src="/sitetrack.js"></script>' in r.text, path

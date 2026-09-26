@@ -1,0 +1,63 @@
+{
+  "name": "lead-pipeline",
+  "summary": "The people at a company, each with a checked work email, in one call. Provider calls at cost, plus $0.01 only per person whose email is valid or risky.",
+  "capability": "people.employees.search",
+  "inputs": {
+    "company_domain": {
+      "type": "string",
+      "example": "stripe.com",
+      "note": "the company's website domain"
+    },
+    "title": {
+      "type": "string",
+      "default": "",
+      "example": "head of marketing",
+      "note": "keep people whose title matches"
+    },
+    "country": {
+      "type": "string",
+      "default": "",
+      "example": "US",
+      "note": "ISO country code, where the provider supports it"
+    },
+    "limit": {
+      "type": "int",
+      "default": 5,
+      "max": 9,
+      "note": "people to return; at most 9, or 6 with include_phone (20 calls per run)"
+    },
+    "include_phone": {
+      "type": "bool",
+      "default": false,
+      "note": "also look up a phone number for each person; about $0.25 per phone, far more than an email"
+    },
+    "max_spend_usd": {
+      "type": "float",
+      "default": 0.8,
+      "note": "the most the provider calls may cost in one run, up to 1.80; the run stops early and returns what it has. A phone costs about $0.25"
+    }
+  },
+  "uses": [
+    "treg.people.search",
+    "treg.people.email.find",
+    "treg.people.email.verify",
+    "treg.people.phone.find"
+  ],
+  "script": "run.js",
+  "output": {
+    "fields": [
+      "people",
+      "count",
+      "valid",
+      "risky",
+      "searched_by",
+      "stopped_early",
+      "spent_usd",
+      "units"
+    ]
+  },
+  "pricing": { "max_price_usd": 0.09 },
+  "limits": {
+    "cost_usd": 2.0
+  }
+}

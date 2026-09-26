@@ -217,6 +217,7 @@ tools, vendor CLIs — is free of it.
 | `treg topup` | | add funds, or set up automatic top-ups |
 
 ```bash
+treg whoami                  # the account, the active team and your role, the server
 treg balance                 # every new team starts with $1.00 of free credit
 treg balance --json          # integer micro-USD (1e-6 USD) — the unit the ledger uses
 treg topup
@@ -490,6 +491,65 @@ credential that stops working and webhooks the owner (if a `webhook_url` was set
 - `oauth` — a JSON OAuth token; pull `secret_field` (auto-refreshed if refreshable)
 - `cli_auth` — material lifted from a CLI's keychain (placed like a string)
 
+## `treg hub` — publish a tool made of tools (behind `TREG_HUB_ENABLED`)
+
+A hub tool is one your team publishes for other people's agents: a JSON steps recipe, or a
+script in a sandbox. Every step runs through your own tools and keys; a caller pays the metered
+steps plus the price you set, and the price lands on your balance as credit. Callable the moment
+it is published, by id `<team-slug>.<name>`; shared by the page `/hub/<id>`. A new tool is not in
+search until you list it.
+
+```
+treg hub init <name> [--script] [--dir D]   write the files: recipe.json, run.js (scripts), check.json, README.md
+treg hub run <dir> --input k=v …            run the folder for real on your token; nothing stored; read the trace
+treg hub publish <dir>                      validate, run check.json once on your balance, live on pass (a new version)
+treg hub ls                                 your team's hub tools, every version, with health and 30-day numbers
+treg hub earnings <id> [--days N] [--csv]   what one tool earned, per day (sales only; never who called)
+treg hub price <id> <usd>                   change the price for later runs; no version bump; 0 = free
+treg hub retire <id>                        every version off the call road; history and earnings stay readable
+treg hub list <id> · treg hub unlist <id>   ask for a place in catalog search (treg approves), or take it out
+treg hub log <id> --public on|off           show or hide the run log on the share page (default on)
+```
+
+**Listing and the public run log.** Neither bumps the version. `list` is a request: once treg
+approves it, the tool is in `treg catalog search` and `catalog_search`, marked `hub` with your team,
+the price label and the 30-day success rate, ranked by relevance with no boost. A rejection comes
+with a reason (`treg hub ls`, and the dashboard's Listing tab); listing again asks again. An
+listing belongs to the tool; `unlist` withdraws it. Add
+`"capability": "<a catalog capability id>"` to recipe.json to name the job your tool does: once
+approved, `treg catalog get` on any provider of that job shows your tool beside them. A new tool's
+success rate starts at 90%, counted as 5 runs, and real runs by other teams replace that estimate.
+Once a tool is listed, every new version and every `treg hub price` waits for treg's review: the
+publish answers `review`, callers keep the approved version and price, and you can call the new
+version yourself as `<id>@N`. A rejected update keeps the approved one and tells you why. This
+stays true after `unlist`: once treg has approved a tool, it stays under review, and `list` puts it
+back in search with no new review. A team name that reads as treg, as official or verified, or as a
+catalog provider (look-alike letters included) cannot publish. A tool treg rejects can be called only
+by its maker's team. check.json may hold `{"cases": [...]}`, up to 5 samples, all run at publish. An answer with every output field empty pays no seller price. Unlisted,
+unapproved, failed and retired tools never appear. The share page's run log shows the last 20 runs and runs per
+day for 30 days: time, outcome, duration, steps, units and the price paid, and never who called,
+the inputs, or the output. The dashboard has the same two switches under Hub → a tool → Listing.
+
+The folder may carry a fifth file, `data.csv` (≤ 50 MB): the script reads it as `ctx.data`. A
+script gets `ctx.inputs`, `ctx.call(target, {method, query, body, headers})`, `ctx.charge(usd, note)`,
+`ctx.csv(text)`, `ctx.data`, `ctx.log(text)`; `target` is a catalog id, one of your own tools as `<tool>/<path>`,
+or a full URL under such a tool's base URL. Never paste a credential into a script: register it
+first (`treg secret add`, `treg tool add`), list the tool in `uses`, name it in `ctx.call`.
+Callers run it with `treg call <id> --data '{…}'`; read its contract with `treg catalog get <id>`.
+
+**Pricing.** It is your price only: the provider fees (the catalog steps) are billed to the caller
+on top, and a failed run charges nothing.
+
+| kind | recipe.json | you earn per successful run |
+|---|---|---|
+| steps recipe | `"pricing": {"price_usd": 0.02}` | a fixed price |
+| script | `"pricing": {"max_price_usd": 0.05}` | the sum of the `ctx.charge(usd, note)` lines in run.js, never above the cap |
+
+A script's lines can be a fee (`ctx.charge(0.01, "fee")`), per result (`rows.length * 0.002`), a
+margin on a catalog call (`r.cost_usd * 0.2`) or your own vendor's cost. The caller sees the cap
+before the run. Every surface shows callers what recent successful runs cost, low to high, fees and
+your price together. `treg hub price <id> <usd>` sets a recipe's price, or a script's cap, for later
+runs.
 ## Anonymous usage analytics
 
 When using treg.to, the CLI sends basic usage through PostHog: command name, success/exit code,

@@ -1279,6 +1279,104 @@ class Feedback(SQLModel, table=True):
     created_at: NaiveUTC = Field(default_factory=_now)
 
 
+class HubTool(SQLModel, table=True):
+    """One version of a tool a maker published on the hub (docs/HUB-DECISIONS.md). A tool is
+    made of other tools: either a JSON list of steps or a script that runs in a sandbox. The row
+    stores the four files a maker ships (manifest, script, check, readme) plus what the runner
+    and the catalog read straight off the row.
+
+    `tool_id` is the callable id, `<team slug>.<name>`; one row per (tool_id, version). The
+    newest `live` version serves `/call/<tool_id>`; `<tool_id>@N` pins one.
+    """
+
+    __table_args__ = (UniqueConstraint("tool_id", "version", name="uq_hubtool_id_version"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    org_id: int = Field(foreign_key="org.id", index=True)
+    tool_id: str = Field(index=True)                 # `<slug>.<name>`
+    name: str
+    version: int = Field(default=1)
+    kind: str                                        # steps | script
+    status: str = Field(default="unchecked")         # unchecked | live | failed | retired
+    summary: str
+    writes: bool = Field(default=False)
+    price_micro: int = Field(default=0)              # the seller's price per successful run
+    manifest: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    script: str | None = Field(default=None)         # run.js, script road only
+    check: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    readme: str = Field(default="")
+    created_by: str = Field(default="")              # the maker's email
+    created_at: datetime = Field(default_factory=_now)
+    # The check run's verdict (docs/HUB-DECISIONS.md round 2 q10): {status, run_id, checked_at,
+    # error?, trace?}. Declared LAST to match the migration's ALTER TABLE append position.
+    check_result: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    # The maker's uploaded CSV (docs/HUB-DECISIONS.md round 1 q6): at most 50 MB, read-only after
+    # upload, a replacement is a new version; the script reads it as ctx.data. Declared LAST
+    # (migration 0037).
+    data: str | None = Field(default=None)
+    # Phase 10 (docs/hub-listing-decisions.md): flipped without a version bump. Whether the tool is in
+    # catalog search is not a version's switch: it is the tool's HubListing row.
+    listed: bool = Field(default=False)              # UNREAD since migration 0050 (expand-only); use HubListing
+    public_log: bool = Field(default=True)           # true = the share page shows the recent-runs log
+
+
+class HubListing(SQLModel, table=True):
+    """A hub tool's place in catalog search (docs/hub-listing-decisions.md round 2, 2026-09-24): the
+    maker requests it, a superadmin approves or rejects it. One row per tool, not per version, so
+    the listing stays while each new version waits for its own review (round 4); unlisting deletes the row, and listing again
+    is a new request. Only `approved` puts the tool in search."""
+
+    tool_id: str = Field(primary_key=True)           # `<slug>.<name>`
+    org_id: int = Field(foreign_key="org.id", index=True)
+    state: str = Field(default="requested", index=True)   # requested | approved | rejected
+    reason: str = Field(default="")                  # the admin's words on a rejection, for the maker
+    requested_by: str = Field(default="")            # the maker's email
+    requested_at: datetime = Field(default_factory=_now)
+    decided_by: str = Field(default="")              # the superadmin's email
+    decided_at: datetime | None = Field(default=None)
+    # The catalog job treg approved for it (round 3): the tool then sits beside that job's providers
+    # in catalog_get. "" = in search, but beside nobody. Set only by an approval.
+    capability: str = Field(default="", index=True)
+    # An update to an approved tool waits for review (round 4): a new version (`pending_version`,
+    # its HubTool row in status `review`) and/or a new price (`pending_pricing`, {"price_usd": N}).
+    # The approved version and price keep serving until treg approves; a rejection leaves them and
+    # says why in `update_reason`.
+    pending_version: int = Field(default=0)
+    pending_pricing: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    update_reason: str = Field(default="")
+    # Set by the first approval and never cleared (hub simulation run 2): an approved tool stays
+    # under review for good. Unlisting it only hides it (state `unlisted`); its new versions and
+    # prices still wait, so "approve, unlist, change" is not a way round the review.
+    reviewed: bool = Field(default=False)
+
+
+class HubRun(SQLModel, table=True):
+    """One run of a hub tool: who called, which version, what ran, what it cost. Kept 30 days.
+    Every step is ALSO an ordinary CallRecord under `{run_id}:s{n}`, so nothing here is a second
+    source of truth for money — the ledger holds the holds and settles; this row holds the trace
+    a caller and a maker read (docs/HUB-DECISIONS.md rounds 2 and 5)."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    run_id: str = Field(index=True)                  # `r_<hex>`, also the parent call_ref
+    tool_id: str = Field(index=True)
+    version: int
+    caller_org_id: int = Field(foreign_key="org.id", index=True)
+    maker_org_id: int = Field(index=True)
+    caller_email: str = Field(default="")
+    status: str                                      # ok | failed | stopped
+    steps: int = Field(default=0)                    # steps counted against the caps (items included)
+    cost_micro: int = Field(default=0)               # what the steps charged the caller
+    price_micro: int = Field(default=0)              # the seller's price paid (phase 6; 0 until then)
+    duration_ms: int = Field(default=0)
+    inputs: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))   # secrets masked
+    trace: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    log: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
+    error: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    started_at: datetime = Field(default_factory=_now, index=True)
+    finished_at: datetime | None = Field(default=None)
+    # The run's answer, for the caller's run page (docs/HUB-DECISIONS.md round 5 q8); only for
+    # successful runs, capped by the runner's 2 MB output rule. Declared LAST (migration 0029).
+    output: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
 class FeedbackHandling(SQLModel, table=True):
     """Internal admin state. Only treg-internal writes; absence means open/version zero."""
 

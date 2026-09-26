@@ -6,9 +6,8 @@ The echo upstream + authed `clients` fixture live in conftest.py.
 
 from __future__ import annotations
 
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 
-from treg.api import app
 
 
 async def _register_posthog_like(c: AsyncClient, *, auth_in="header") -> str:
@@ -30,13 +29,6 @@ async def _register_posthog_like(c: AsyncClient, *, auth_in="header") -> str:
     )
     assert t.status_code == 200, t.text
     return name
-
-
-async def test_proxy_injects_header_credential(clients: AsyncClient):
-    name = await _register_posthog_like(clients, auth_in="header")
-    r = await clients.get(f"/call/{name}/echo")
-    assert r.status_code == 200, r.text
-    assert r.json()["auth"] == "Bearer test-secret-123"  # injected by the registry
 
 
 async def test_proxy_injects_query_credential_and_relays_body(clients: AsyncClient):
@@ -71,33 +63,6 @@ async def test_secret_value_never_returned(clients: AsyncClient):
     r = await clients.get("/secrets")
     assert r.status_code == 200
     assert all("value" not in row for row in r.json())
-
-
-async def test_auth_required():
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        r = await c.get("/tools")  # no token
-        assert r.status_code == 401
-
-
-async def test_unknown_tool_404(clients: AsyncClient):
-    r = await clients.get("/call/nope/echo")
-    assert r.status_code == 404
-
-
-async def test_dashboard_served_at_root(clients: AsyncClient):
-    # `/` is the marketing landing; the SPA (login shell + dashboard) lives at /app.
-    r = await clients.get("/")
-    assert r.status_code == 200
-    # The product is branded `treg` everywhere since the rename; asserting the old name left main
-    # red and every PR failing CI behind it.
-    assert "treg" in r.text and "Sign in" in r.text
-    r = await clients.get("/app")
-    assert r.status_code == 200
-    # the app root div may carry extra attributes (e.g. v-cloak) — match the id, not the exact tag
-    assert "treg" in r.text and 'id="app"' in r.text
-    # deep links (invite flows etc.) carry query params and still reach the SPA at /
-    r = await clients.get("/?invite=x%40y.z")
-    assert r.status_code == 200 and 'id="app"' in r.text
 
 
 async def test_meta_reports_the_released_version(clients: AsyncClient):

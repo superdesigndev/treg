@@ -1,0 +1,31 @@
+{
+  "status": 403,
+  "body": {
+    "runId": "01SYNTHETICCONTACTOUTQUOTA",
+    "provider": "contactout",
+    "endpoint": "/v1/email/verify",
+    "status": "COMPLETED",
+    "output": null,
+    "providerResponse": {
+      "httpStatus": 403,
+      "error": {
+        "message": "You're out of credits, please email your sales manager",
+        "status_code": 403
+      }
+    },
+    "billing": {
+      "reportedCost": {
+        "currency": "USD",
+        "value": 0,
+        "unit": "MICRO_DOLLAR"
+      }
+    },
+    "resultCount": 0,
+    "billedUnits": 0
+  },
+  "expect": {
+    "upstream_status": 403,
+    "cost_micro": 0,
+    "failure": "vendor_dry"
+  }
+}

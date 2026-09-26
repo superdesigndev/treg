@@ -134,6 +134,23 @@ Notes:
     price, same shape). `catalog_get` shows that price up front as `overflow_price_usd` when the
     deployment can relay the endpoint - a "free" endpoint with one may bill exactly that, so quote
     it. A team opts out with `treg org overflow off`.
+<!--hub-->
+  - **Six jobs are already built as tools. Call the tool, not the chain.** Each is one call on
+    `{BASE}/call/<id>`, runs the steps below in parallel, returns one fixed shape whichever provider
+    answered, and charges its fee only for what it delivered. Chaining the endpoints yourself costs
+    the same provider money and more calls, and the tool removes duplicates and stops at its
+    budget for you.
+    | you want | call | not this by hand |
+    |---|---|---|
+    | the people at a company, each with a checked email | `treg-hub.lead-pipeline` `{company_domain, title?, limit?, include_phone?}` | people.search → email.find → email.verify per person |
+    | one person's email, found and checked | `treg-hub.verified-email` `{linkedin_url}` or `{full_name, domain}` | email.find → email.verify |
+    | whether AI engines mention a brand | `treg-hub.ai-visibility` `{prompt, brand, brand_domain?, competitors?}` | ChatGPT, Gemini, Copilot, AI Mode one by one, then reading each answer |
+    | company details you can trust | `treg-hub.company-consensus` `{domain}` | two or three companies.enrich providers, then comparing fields |
+    | how strong a site is in Google | `treg-hub.domain-authority` `{domain}` | backlinks summary + ranked keywords + linking domains |
+    | a Search Console property's health (own account) | `treg-hub.search-console-health` `{site}` | performance + sitemaps + url inspection |
+    `catalog_get <id>` shows each one's inputs, output and price line. When the hub is off on this
+    registry these ids answer 404: fall back to the routed endpoints below.
+<!--/hub-->
 <!--routed-->
   - **Routed endpoints** (`treg.<capability>`, e.g. `treg.people.email.find`) are where you can
     ask treg to choose: POST the identity (`{full_name, domain}` | `{first_name, last_name, domain}` |
@@ -152,6 +169,9 @@ Notes:
     match; only `output.verified: true` means it checked the mailbox. When it is not, the answer
     carries `_treg.advice` naming the verify step (`treg.people.email.verify`, a fraction of a cent)
     — run it before outreach, and never re-send the same find: every hit bills, repeats included.
+<!--hub-->
+    `treg-hub.verified-email` does find + verify in one call and bills its fee only on a usable email.
+<!--/hub-->
   - **Verify before you send. Every address, every time.** This includes rows from a company or
     domain search (`treg.people.search`, `hunter.companies.emails`, …): those are directory
     listings, and a row's email is unconfirmed unless that row's own verification field says
@@ -255,6 +275,95 @@ it. Works for GET/POST/PUT/PATCH/DELETE.
 
 Only tools this org has registered resolve. Discover them with `treg tool ls` · `treg skill ls`.
 
+<!--hub-->
+## Task — publish a tool made of tools (the hub)
+
+**A hub tool is a tool your team publishes, made of other tools:** a JSON steps recipe, or a script
+that runs in a sandbox. Every step runs through the team's own tools and keys; a caller pays the
+metered steps plus the price you set, and the price lands on your balance as credit. The tool is
+callable at once by id, `<team-slug>.<name>`, from any agent with a treg token. A new tool is NOT in
+search: you share the id or the page `{BASE}/hub/<id>`. Ask for a place in search with `treg hub list <id>`:
+once treg approves the request it appears in `catalog_search` too, marked `kind: "hub"`, ranked by
+relevance like any endpoint (`treg hub ls` shows where the request stands, and a rejection's reason).
+Name the job in recipe.json, `"capability": "people.email.find"` (a capability id from
+`treg catalog search`): once approved, `catalog_get` on any provider of that job lists your tool
+beside them, with a success rate that starts at an estimate and follows real runs. Once approved,
+every new version and every price change waits for treg's review, also after `treg hub unlist`: `treg hub publish` answers
+`review`, callers keep the approved version, and you can try the new one yourself as `<id>@N`.
+
+**First, check this registry HAS the hub.** It is a per-deployment switch, and it is off by default.
+When it is off every `/hub/...` route answers `404` and every `treg hub` command refuses. That is
+not a fault you can fix and not a reason to retry: tell the person this registry does not have the
+hub turned on yet, and use the rest of the catalog. `treg hub ls` is the cheapest way to find out.
+
+**One folder, four files** — `treg hub init <name> --script` writes a neutral skeleton:
+
+```
+recipe.json   the manifest: name, summary, inputs, uses, output, pricing; steps OR "script": "run.js"
+run.js        export default async function run(ctx) { ... }   (script recipes only)
+check.json    sample inputs + the output fields the check must find; run once for real at publish
+              (or {"cases": [...]}, up to 5, e.g. one per path of your tool)
+README.md     what it does, for a human
+```
+
+**recipe.json rules** (publish refuses anything else, naming the field): `summary` is 1-200
+characters, what an agent reads first. Each input takes only `type` (string, int, float, bool, list,
+object), `default`, `example`, `note` (its description), `min`, `max`, `secret`. An input with no
+`default` is required; every non-secret input needs an `example` or a `default`, and an `int` needs a
+`max`. `capability` is optional: a catalog capability id, the job your tool does.
+
+**The rule before you write a line of script: never paste a credential into it.** A key the team
+does not hold yet is registered FIRST, then named. The script only ever sees a tool's NAME:
+
+```
+treg secret add SUPABASE_SERVICE_KEY --value <the key>
+treg tool add supabase --base-url https://<ref>.supabase.co \
+  --bind "secret=<ID>,name=Authorization,format=Bearer {secret}"     # then list "supabase" in `uses`
+```
+
+**What a script gets — the whole surface:** `ctx.inputs` (checked against the manifest),
+`ctx.call(target, {method, query, body, headers, timeout_s})` → `{status, headers, json, text, timed_out, cost_usd}` (calls in one `Promise.all` run four at once), `ctx.charge(usd, note)` (your price, one line at a time; see Pricing below),
+`ctx.csv(text)` → rows keyed by the header, `ctx.data` → the rows of the `data.csv` uploaded with
+the tool (a fifth file, ≤ 5 MB, read-only; replace it and publish again), and `ctx.log(text)`.
+No network, no files, no `require`; `ctx.call` is the only road out, and `target` must be in the
+manifest's `uses`: a catalog id, one of the team's own tools as `<tool>/<path>`, or a full URL
+under such a tool's base URL. **Your own server is a tool:** `treg tool add my-api --base-url
+https://api.mine.com` (a secret is optional; a public Google Sheet needs none), list `my-api` in
+`uses`, then `ctx.call("my-api/v1/things")`. treg makes the request; the sandbox never opens a socket.
+Caps: 120 s, 20 calls, 64 MB, four runs at a time per team. A steps recipe instead names its calls in
+`steps` and reads earlier answers with references (`$input.x`, `$step.path`, `$step[]`,
+`$step.length`); steps that do not depend on each other run four at a time.
+
+**Pricing — your price only.** The provider fees (the catalog steps) are billed to the caller on
+top; your price is what you earn per successful run. A failed run charges nothing.
+- A steps recipe: `"pricing": {"price_usd": 0.02}`, a fixed price per successful run (0 = free).
+- A script: `"pricing": {"max_price_usd": 0.05}`, and the price itself in run.js with
+  `ctx.charge(usd, note)`, as many lines as you need: a fee (`ctx.charge(0.01, "fee")`), per result
+  (`ctx.charge(rows.length * 0.002, "per row")`), a margin on a catalog call
+  (`ctx.charge(r.cost_usd * 0.2, "20% margin")`), your vendor's cost (`ctx.charge(0.03, "vendor hit")`).
+  The caller sees `max_price_usd` before the run; the run settles at the sum of the lines, and a
+  line that would pass the cap stops the run. No `pricing` block: free, and ctx.charge is refused.
+Callers see what recent runs cost, low to high, fees and your price together.
+The caller's `X-Treg-Run-Max-Cost` caps the whole run, your price included; when the caller sends none your
+`limits.cost_usd` does (else $1.00). A run that passes the cap is stopped and returns nothing, so a script
+that makes several paid calls should add up `cost_usd` and stop early.
+
+**The road:**
+
+```
+treg hub run . --input domain=figma.com   # a real run on your own token; nothing stored; read the trace
+treg hub publish .                        # validate, run check.json once on your balance, live on pass
+treg hub ls · treg hub earnings <id>      # your tools; what one earned, per day
+treg hub list <id> · treg hub unlist <id>  # ask for catalog search (treg approves), or take it out
+treg hub log <id> --public off             # hide the run log on your share page (default: shown)
+```
+
+A refusal names the exact field and rule to fix (`uses[0]: 'supabase' is not one of your team's
+tools`). Over MCP the same three moves are `hub_create`, `hub_update`, `hub_mine`; calling stays
+`call`. A caller runs it with `treg call <team>.<name> --data '{...}'` or `POST {BASE}/call/<id>`;
+the reply carries `output`, `usage` (steps cost + your price), and the `trace`. Read a tool's
+contract, yours or anyone's, with `treg catalog get <id>` / `catalog_get`.
+<!--/hub-->
 ## Task — share your keys & skills so teammates' agents can use them
 **Bulk (the fast path):** run it in the directory the human names. It lists the provider keys it
 recognises in that `.env` and the skills in its subdirs, and registers only the ones they tick:

@@ -1,0 +1,2 @@
+{"inputs": {"emails": ["jane@stripe.com", "info@acme.io", "bob@gmail.com", "x@mailinator.com", "nope", "jane@stripe.com"]},
+ "fields": ["checked", "to_verify", "summary", "rows"], "min_rows": 1}

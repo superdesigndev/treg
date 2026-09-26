@@ -1,0 +1,14 @@
+{
+  "name": "brand-mentions",
+  "summary": "Recent Reddit and X posts that actually mention a brand or term, merged, deduplicated and newest first. Posts that only match loosely are dropped.",
+  "inputs": {
+    "term": {"type": "string", "example": "linear.app", "note": "the exact brand, product or domain to find; matched case-insensitively in the post text"},
+    "timeframe": {"type": "string", "default": "week", "note": "Reddit window: day | week | month | year"},
+    "sources": {"type": "string", "default": "reddit,x", "note": "comma list: reddit, x"},
+    "limit": {"type": "int", "default": 20, "min": 1, "max": 50, "note": "the most mentions returned (and billed)"}
+  },
+  "uses": ["scrapecreators.reddit.search.posts", "treg.x.search.posts"],
+  "script": "run.js",
+  "output": {"fields": ["term", "mentions", "results", "scanned", "dropped_as_noise"]},
+  "pricing": {"max_price_usd": 0.1}
+}

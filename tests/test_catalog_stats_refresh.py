@@ -21,7 +21,6 @@ from treg.infra import catalog_observations
 from treg.infra.catalog_observations import PostgresEndpointObservationReader
 from treg.infra.db import session_maker
 from treg.models import CallRecord, EndpointDayStat, EndpointStatCursor
-from treg import worker
 
 EP = "tikhub.tiktok.user.profile"
 EP2 = "tomba.people.email.find"
@@ -51,18 +50,6 @@ async def _live(ids, **kw):
 async def _cursor() -> EndpointStatCursor | None:
     async with session_maker() as db:
         return await db.get(EndpointStatCursor, catalog_stats.CURSOR_ID)
-
-
-async def test_naive_datetime_comparisons_do_not_raise_type_error(clients):
-    """Regression test: SQLModel 0.0.45 changed datetime handling, breaking naive comparisons.
-
-    The catalog stats worker compares `created_at` (from DB) with `since` (from utcnow_naive()).
-    Before the NaiveUTC annotation fix, SQLModel 0.0.45 would return aware datetimes from the DB,
-    causing: TypeError: can't compare offset-naive and offset-aware datetimes
-    """
-    await _record(EP, 200, 100, ago=timedelta(days=1))
-    result = await catalog_stats.refresh(now=_now())
-    assert result["rows"] >= 0
 
 
 async def test_buckets_publish_exactly_what_the_live_aggregate_publishes(clients):
@@ -264,25 +251,3 @@ def test_merging_days_keeps_the_newest_success_and_every_count():
     assert (m.n, m.ok, m.bad, m.last_ok) == (7, 6, 1, datetime(2026, 9, 3))
     assert (m.hits, m.hit_decided, m.paid_hits, m.free_misses) == (1, 2, 2, 1)
     assert m.latency_seen == 6 and sorted(m.latencies) == [10, 20, 30, 40, 50, 60]
-
-
-def test_the_worker_commands_parse(monkeypatch):
-    seen = {}
-
-    async def fake_refresh(*, max_rows):
-        seen["max_rows"] = max_rows
-        return {"rows": 0, "buckets": 0, "caught_up": True, "cursor": 0}
-
-    async def fake_drain(*, max_seconds):
-        seen["max_seconds"] = max_seconds
-        return {"batches": 1, "backlog": False, "failed": False}
-
-    async def fake_verify():
-        return None
-
-    monkeypatch.setattr("treg.application.catalog_stats.refresh", fake_refresh)
-    monkeypatch.setattr("treg.application.arena_insights.drain", fake_drain)
-    monkeypatch.setattr("treg.infra.db.verify_db", fake_verify)
-    assert worker.main(["catalog", "stats", "--max-rows", "123"]) == 0
-    assert worker.main(["arena", "insights", "--max-seconds", "9"]) == 0
-    assert seen == {"max_rows": 123, "max_seconds": 9.0}

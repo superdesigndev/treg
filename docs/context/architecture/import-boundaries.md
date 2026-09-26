@@ -62,8 +62,9 @@ archive body PUT chain because it persists the paid response outside any DB tran
 post-relay provider-resource register/rename/tombstone calls because shared-key resource ownership
 must be established or advanced by the call that receives the provider's successful response.
 
-The separate `test-postgres` job runs its database-sensitive subset serially against Postgres 16;
-it uses unbuffered Python output and a 15-minute job budget so a slow test remains diagnosable. The
+The separate `test-postgres` job runs its database-sensitive subset against Postgres 16, one
+database per xdist worker; it uses unbuffered Python output and a 15-minute job budget so a slow
+test remains diagnosable. The
 subset includes agent attribution, managed API-key lifecycle and concurrency, credential health,
 local-run reporting and ads-conversion coverage so naive-UTC assumptions are exercised by asyncpg
 rather than hidden by SQLite's permissive adapter.
@@ -146,7 +147,9 @@ application imports the capacity domain inward (`resolve` â†’ `view`, `settle` â
 the domain never imports back; `application.call.overflow` composes the capacity domain, the
 aggregator envelopes and the money primitives, and the aggregator adapters stay pure envelope code;
 `routers.catalog` reads the capacity domain's `routes_view` for the overflow price disclosure (a read
-of the worker-owned table through the same in-process copy the call path uses, never a write); `application.call.route` composes the pure
+of the worker-owned table through the same in-process copy the call path uses, never a write);
+`application.call.route` reads both capacity views before planning so an exhausted provider with an
+enabled overflow route reaches the ordinary child ladder, and composes the pure
 `domain.catalog.routing` package (contracts, adapters, ranking) with the call use case itself. The
 aggregator envelopes live under `treg.infra.upstream.aggregators` and inherit the upstream contract
 (no HTTP adapters, no routers); the capacity domain's `verify` module may import them because they are

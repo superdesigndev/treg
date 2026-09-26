@@ -365,7 +365,8 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
   parameterized locations have no mapped fallback.
 - **Mark scope on a failed child** (`overflow.py`): only `aggregator_auth` and `aggregator_balance`
   mark `overflow:<aggregator>` for every provider. Everything else - the aggregator's account for
-  the vendor being dry, and a `malformed` answer (a 5xx, a transport timeout, a non-envelope) - marks
+  the vendor being dry, a vendor-specific authentication or authorization refusal, and a
+  `malformed` answer (a 5xx, a transport timeout, a non-envelope) - marks
   `overflow:<aggregator>:<provider>`. On 2026-09-17 one Orthogonal Apollo relay answering
   "timeout of 30000ms exceeded" marked the whole aggregator and refused every other provider's
   fallback for 15 minutes, including 62 Influencers Club `similar` calls from one team. A dead
@@ -396,6 +397,8 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
 - **`infra/upstream/aggregators/`** — the envelopes, and nothing else: `build()` wraps the
   vendor request (Orthogonal `POST /run {api, path, query, body}`; Monid `POST /run {provider,
   endpoint, input}`), `parse()` unwraps the vendor status + body + the real in-band charge, and
+  `build()` restores JSON scalar types that Monid validates and converts Akta enrichment's native
+  comma-separated `sections` query value to Monid's array-shaped envelope field, and
   names who to blame when the aggregator itself refused (`AGGREGATOR_SIDE` = `aggregator_auth`,
   `aggregator_balance`, `malformed` - the call path marks the aggregator unhealthy for everyone, the
   verifier leaves the route alone; `contract` - the aggregator's own per-request refusal, including
@@ -405,6 +408,12 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
   signature table - the one place a relayed body is read - is the aggregator's account for THIS
   vendor (a relayed 402, Apollo's 422, a period 429): the call path marks
   `overflow:<aggregator>:<provider>` only, so one vendor's cap never takes the others offline.
+  An otherwise unrecognized relayed vendor 401/403 becomes `VENDOR_REFUSAL` and uses that same
+  provider-scoped mark: repeated calls pause briefly without treating the aggregator as globally
+  unavailable.
+  A valid Monid run envelope takes precedence over its outer HTTP status: Monid mirrors relayed
+  vendor 401/402/403 statuses, so only a refusal with no run id proves the Monid key or balance
+  failed; a completed run unwraps `providerResponse.error` for the vendor signature table.
   Deliberately not the direct path's strike ladder: the mark is immediate and a flat 15 min, because
   a relayed body carries no headers to tell a burst from a cap and the caller has already paid the
   aggregator's round trip;
@@ -414,7 +423,10 @@ pays the aggregator's real price, 0% markup, disclosed in-band when it ships (st
 - **`verify.py`** + `treg-worker overflow verify` — the weekly re-verify: one cheap call per
   route through the aggregator (and, when we hold the vendor key, directly), compare the shape
   fingerprint (keys and list/leaf markers, values ignored), stamp `last_verified_at` or disable
-  with the reason. Two per-route price caps and one run budget: a route that is enabled or was
+  with the reason. A mismatch prints a bounded key-only structural diff, never response values;
+  identifier-shaped map keys are replaced before logging or persistence, so an operator can
+  distinguish omitted metadata from an incompatible body without exposing PII.
+  Two per-route price caps and one run budget: a route that is enabled or was
   stamped before is a **renewal**, held to `--renew-max-usd` (default $1); a never-verified pair is
   **discovery**, visited only under `--all` and held to `--max-usd` (default 2¢). Renewals go first,
   oldest stamp first, so the route nearest its 7-day decay is reached before `--budget-usd`

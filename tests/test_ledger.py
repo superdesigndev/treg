@@ -113,8 +113,7 @@ async def test_two_deliveries_of_one_payment_credit_once(c: AsyncClient):
 
     Each task needs its OWN session: two coroutines sharing one AsyncSession is a different bug.
     """
-    from treg.models import AdConversion, User
-    from treg.timeutil import utcnow_naive
+    from treg.models import AdConversion
 
     org_id, _ = await _org(c)
     promo = get_settings().promo_grant_micro
@@ -410,6 +409,9 @@ async def test_referrals_page_survives_a_sweep_rollback(c: AsyncClient, monkeypa
         summary = await referrals_app.get_referral_summary(user_id)  # must not raise
     assert "referral sweep failed for user" in caplog.text
     assert summary["code"]  # the page still renders
+
+
+async def test_signup_promo_and_its_conversion_land_or_fail_together(c: AsyncClient, monkeypatch):
     """The one-transaction property, in both directions: a failed commit loses the grant AND the
     queued ad conversion (and does not raise - the never-500-the-signup contract), and the retry
     makes both durable in one commit."""
@@ -461,26 +463,12 @@ async def test_referrals_page_survives_a_sweep_rollback(c: AsyncClient, monkeypa
     assert await _assert_invariant(org_id) == get_settings().promo_grant_micro
 
 
-async def test_a_grant_failure_cannot_fail_signup(c: AsyncClient, monkeypatch):
-    """The promo is a nicety: a broken grant must cost the team its $1, never their signup."""
-    async def boom(*a, **kw):
-        raise RuntimeError("grant broke")
-
-    monkeypatch.setattr(ledger, "grant", boom)
-    r = await verified_signup(c, json={"email": "promo-fails@superdesign.dev"})
-    assert r.status_code == 200, r.text
-    org_id = r.json()["org_id"]
-    async with session_maker() as db:
-        assert await db.get(Org, org_id) is not None
-        assert await ledger.balance_of(db, org_id) == 0
-        assert await ledger.blocks_of(db, org_id) == []
-
-
 async def test_a_grant_failure_after_staging_still_returns_the_signup(c: AsyncClient, monkeypatch):
-    """The sharper variant of the test above: the grant fails AFTER its SQL has staged, so the
-    recovery rollback expires every object the session tracks. Both signup doors must still answer
-    with the fields they promised, and the referral must still be attributed - the never-500-the-
-    signup contract does not stop at objects that now need a reload."""
+    """A broken promo grant costs the team its credit, never their signup. The grant fails AFTER
+    its SQL has staged, so the recovery rollback expires every object the session tracks. Both
+    signup doors must still answer with the fields they promised, and the referral must still be
+    attributed - the never-500-the-signup contract does not stop at objects that now need a
+    reload."""
     from treg.routers.signup_cookies import REFERRAL_COOKIE
     from treg.models import Referral
 

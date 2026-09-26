@@ -20,6 +20,11 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     "invalid_target": "caller",
     "tool_access_denied": "caller",
     "target_not_found": "caller",
+    "hub_not_runnable": "treg",
+    "hub_input_invalid": "caller",
+    "hub_run_failed": "upstream",
+    "hub_busy": "caller",
+    "hub_price_unaffordable": "caller",
     "unknown_endpoint": "caller",
     "target_ambiguous": "caller",
     "catalog_retired": "caller",
@@ -224,6 +229,9 @@ class CallInput:
     client_ip: str
     # The reviewed /catalog/call surface accepts only a catalog id — team tools never shadow it.
     catalog_only: bool = False
+    # Set on every child call of a hub run: a child never resolves to a hub tool (no nested
+    # runs, no undisclosed second price; 8.1 review).
+    child_of: str | None = None
 
 
 class FinalizationState(Enum):
@@ -247,6 +255,9 @@ class CallContext:
     audited: bool = False
     cached: bool = False
     cost_micro: int | None = None
+    # Set by a routed parent on each child: the child leaves its hold OPEN here instead of settling,
+    # and the parent charges or releases every one at the end (route.py `_close_deferred`).
+    deferred_settles: list | None = None
 
 
 @dataclass(frozen=True)

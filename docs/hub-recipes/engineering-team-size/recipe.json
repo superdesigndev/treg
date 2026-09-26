@@ -1,0 +1,40 @@
+{
+  "name": "engineering-team-size",
+  "summary": "Estimate a company's engineering headcount from its domain: a free identity resolution, then CrustData's role headcount, then PDL's R&D class as a fallback, with a confidence verdict.",
+  "inputs": {
+    "domain": {
+      "type": "string",
+      "example": "stripe.com",
+      "note": "the company's website domain"
+    },
+    "method": {
+      "type": "string",
+      "default": "cost_optimized",
+      "note": "cost_optimized (first tier that answers wins) | crust_only | pdl_only | validate (run every tier and compare)"
+    }
+  },
+  "uses": [
+    "pdl.x.company-clean",
+    "crustdata.companies.enrich",
+    "pdl.companies.enrich"
+  ],
+  "script": "run.js",
+  "output": {
+    "fields": [
+      "domain",
+      "status",
+      "estimated_engineering_count",
+      "estimated_range",
+      "confidence",
+      "selected_method",
+      "company_headcount",
+      "engineering_to_company_ratio",
+      "engineering_growth_yoy_pct",
+      "review_reasons",
+      "resolved_linkedin_url",
+      "resolved_company_name",
+      "provider_attempts"
+    ]
+  },
+  "pricing": {"max_price_usd": 0.15}
+}

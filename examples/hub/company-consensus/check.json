@@ -1,0 +1,1 @@
+{ "inputs": { "domain": "stripe.com" }, "fields": ["company", "agreement", "confidence", "summary"] }

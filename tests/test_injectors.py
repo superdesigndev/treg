@@ -23,9 +23,10 @@ def _b(**kw) -> dict:
     return base
 
 
-def test_env_header():
+@pytest.mark.parametrize("injector", ["env", "cli_auth"])
+def test_string_injectors_place_the_secret(injector):
     h: dict[str, str] = {}
-    inject(h, [], _b(), "ABC")
+    inject(h, [], _b(injector=injector), "ABC")
     assert h["Authorization"] == "Bearer ABC"
 
 
@@ -50,15 +51,13 @@ def test_query_injection_overrides_caller_param_of_same_name():
     assert ("api_key", "REAL") in p and ("api_key", "caller") not in p  # injected wins
 
 
-def test_cli_auth_places_string_like_env():
+@pytest.mark.parametrize("injector,blob", [
+    ("secret_file", '{"access_token": "AT123", "refresh_token": "RT"}'),
+    ("oauth", '{"access_token": "AT123", "expires_at": 123}'),
+])
+def test_json_injectors_extract_the_default_field(injector, blob):
     h: dict[str, str] = {}
-    inject(h, {}, _b(injector="cli_auth"), "TOK")
-    assert h["Authorization"] == "Bearer TOK"
-
-
-def test_secret_file_extracts_default_field():
-    h: dict[str, str] = {}
-    inject(h, {}, _b(injector="secret_file"), '{"access_token": "AT123", "refresh_token": "RT"}')
+    inject(h, {}, _b(injector=injector), blob)
     assert h["Authorization"] == "Bearer AT123"
 
 
@@ -68,32 +67,14 @@ def test_secret_file_custom_field():
     assert h["Authorization"] == "Bearer XYZ"
 
 
-def test_oauth_injects_access_token():
-    h: dict[str, str] = {}
-    inject(h, {}, _b(injector="oauth"), '{"access_token": "OAT", "expires_at": 123}')
-    assert h["Authorization"] == "Bearer OAT"
-
-
-def test_plain_developer_token_header():
-    # google-ads shape: a second binding placing a non-bearer header.
-    h: dict[str, str] = {}
-    inject(h, {}, _b(name="developer-token", format="{secret}"), "DEV123")
-    assert h["developer-token"] == "DEV123"
-
-
-def test_invalid_json_raises():
-    with pytest.raises(ValueError, match="not valid JSON"):
-        inject({}, {}, _b(injector="secret_file"), "not json")
-
-
-def test_missing_field_raises():
-    with pytest.raises(ValueError, match="not found"):
-        inject({}, {}, _b(injector="secret_file", secret_field="nope"), '{"access_token": "x"}')
-
-
-def test_unknown_injector_raises():
-    with pytest.raises(ValueError, match="unknown injector"):
-        inject({}, {}, _b(injector="ghost"), "x")
+@pytest.mark.parametrize("binding,secret,error", [
+    ({"injector": "secret_file"}, "not json", "not valid JSON"),
+    ({"injector": "secret_file", "secret_field": "nope"}, '{"access_token": "x"}', "not found"),
+    ({"injector": "ghost"}, "x", "unknown injector"),
+])
+def test_bad_binding_or_secret_raises(binding, secret, error):
+    with pytest.raises(ValueError, match=error):
+        inject({}, {}, _b(**binding), secret)
 
 
 # ---- token_encode="base64" for HTTP Basic providers (DataForSEO, Moz, PredictLeads) -------------

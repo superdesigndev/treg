@@ -11,7 +11,7 @@ go(v, fromPop){ this.resetConfirms(); this.mobileNav=false;  // stale inline "Co
       // working so an existing /app#usage link, and the balance card's deep link, still land right.
       if(v==='usage'){ this.actTab='usage'; v='activity'; this.loadUsage(); }
       else if(v==='activity'){ this.actTab='feed'; }
-      this.detail=null; this.view=v; if(v==='activity')this.loadCalls(); if(v==='admin')this.loadAdmin(); if(v==='orgs'){this.loadOrgAdmin(); this.loadMyUsage(); this.loadBilling();} if(v==='usage')this.loadUsage(); if(v==='secrets'){this.loadSecrets(); if(!this.providers.length)this.loadConnections();} if(v==='resources')this.loadTeamResources(); if(v==='connections')this.loadConnections(); if(v==='referrals')this.loadReferrals();
+      this.detail=null; this.view=v; if(v==='activity')this.loadCalls(); if(v==='admin')this.loadAdmin(); if(v==='orgs'){this.loadOrgAdmin(); this.loadMyUsage(); this.loadBilling();} if(v==='usage')this.loadUsage(); if(v==='secrets'){this.loadSecrets(); if(!this.providers.length)this.loadConnections();} if(v==='resources')this.loadTeamResources(); if(v==='connections')this.loadConnections(); if(v==='referrals')this.loadReferrals(); if(v==='hub')this.loadHub();
       // push history so browser Back navigates BETWEEN views instead of leaving the app; the '/app'
       // pathname also walks back from a /app/skills/<x> detail URL so reload doesn't reopen the detail
       if(!fromPop) history.pushState({view:v}, '',

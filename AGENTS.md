@@ -84,7 +84,7 @@ agents then built against a constitution that was wrong.
 |---|---|---|
 | `routers/` | HTTP and MCP translation in, response shape out | business rules, query orchestration, money |
 | `application/` | use-case sequencing, transaction boundaries, compensation, cross-domain composition | empty wrappers around one-domain CRUD |
-| `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money`, `asynctasks`, `feedback` | routers, application, concrete SDKs |
+| `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money`, `asynctasks`, `feedback`, `hub` (a maker's tool made of tools: the manifest, the reference language, the graph) | routers, application, concrete SDKs |
 | `infra/` | DB engine and sessions, crypto, upstream relay and SSRF, ratestore, the shared key-value store, email, Stripe | decisions |
 
 - Domains do not import each other, with three sanctioned edges: `governance -> identity`,
@@ -117,6 +117,18 @@ agents then built against a constitution that was wrong.
   markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
   archive-question marks, and durable provider-resource ownership). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
+- **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary
+  calls: every step goes through `execute_call` under its own hold, a catalog step as the caller and
+  an own-tool step as the maker; the seller's price is one more hold, settled to the maker as an
+  `earned` block in one transaction (`money.settle_to_in_transaction`, the only cross-team money
+  movement). A steps recipe has one fixed price (`price_usd`); a script declares `max_price_usd` and
+  prices itself with `ctx.charge(usd, note)` lines, so the cap is held and the sum of the lines is
+  settled, the rest refunded (`docs/hub-pricing-decisions.md`). A script runs in a separate process
+  with no network; `ctx.call` is its only road out and `uses` in the manifest names every host it
+  may reach. A hub tool is out of catalog search until its maker asks and treg approves (`HubListing`); once
+  approved it stays under review for good, unlisted or not, and its share
+  page shows a run log of outcomes only unless the maker turns `public_log` off
+  (`docs/hub-listing-decisions.md`). See `docs/context/architecture/hub.md`.
 - **Signup credit.** Once per new verified user, enforced by a user-level atomic claim committed
   with the grant. Team deletion never restores eligibility; legacy registration is not email proof.
 - **Money.** Everything is **integer micro-USD** - never floats, never cents. The Stripe SDK lives
@@ -146,9 +158,9 @@ uv run lint-imports                            # the import-linter contracts (CI
 scripts/dev-local.sh up                        # live dev stack on :18790 with its own sqlite DB
 ```
 
-xdist is pulled via `--with`, not the lockfile — same as CI. The Postgres CI job
-(`test-postgres`) must stay serial: every worker would share one database while
-`reset_db()` drops tables.
+xdist is pulled via `--with`, not the lockfile — same as CI. Every test process gets its own
+database (a sqlite file per pid; under `TREG_TEST_DB_URL`, a Postgres database per xdist worker),
+so parallel runs and side-by-side runs never share one.
 
 - **Dependencies change through `uv add` or `uv lock`, never by hand.** `pyproject.toml` pins
   `required-version` so an old uv refuses to run instead of rewriting `uv.lock`; CI uses `--locked`.
@@ -156,11 +168,6 @@ xdist is pulled via `--with`, not the lockfile — same as CI. The Postgres CI j
   `[server]` extra, the certificate authority is `[proxy]`. Never import a heavy dependency at the
   top of a CLI-path module; the "Lightweight CLI modules" import-linter contract lists them and
   fails the build.
-- **Frontend rollout.** `frontend/README.md` documents account assignment and rollback.
-  `src/treg/web/dashboard-legacy/` is **deprecated**, retained only for temporary rollout and
-  rollback. Never hand-edit it or mirror new features/fixes into it; `frontend/` is the only
-  maintained Dashboard source. Follow the retirement checklist in `frontend/README.md` to remove
-  it after rollout, including anonymous entries that still use legacy at 100%.
 - **The dashboard** lives in `frontend/` (Vue components, TypeScript entry/transport, Vite).
   Build with `bash scripts/build-dashboard.sh`; generated assets in `src/treg/web/dashboard/`
   ship with Python. Run `npm --prefix frontend test` and `npm --prefix frontend run test:e2e`.

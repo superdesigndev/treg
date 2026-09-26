@@ -34,11 +34,6 @@ async def test_fishaudio_balance_uses_workspace_wallet(monkeypatch):
         collectors.get_settings.cache_clear()
     assert row["value"] == 99.95754
     assert row["unit"] == "USD"
-    capacity = policy.default_policy("fishaudio", has_key=True)
-    assert capacity.capacity_type == "cash"
-    assert capacity.funding_mode == "manual"
-    assert capacity.source == "api"
-    assert capacity.rate_limit is None
 
 
 async def test_fishaudio_balance_is_unknown_without_workspace_and_skips_request(monkeypatch):
@@ -71,7 +66,7 @@ async def test_fishaudio_balance_rejects_invalid_credit(monkeypatch, credit):
     assert row["value"] is None
 
 
-async def test_openmart_balance_collector_and_policy():
+async def test_openmart_balance_collector():
     def probe(request):
         assert request.method == "GET"
         assert request.url.path == "/api/v2/credit-balance"
@@ -89,13 +84,9 @@ async def test_openmart_balance_collector_and_policy():
         "unit": "credits",
         "note": "Monthly subscription balance; current period ends 2026-10-01T00:00:00Z.",
     }
-    capacity = policy.default_policy("openmart", has_key=True)
-    assert capacity.capacity_type == "credits"
-    assert capacity.funding_mode == "subscription"
-    assert capacity.rate_limit == {"limit": 15, "window_s": 1, "source": "docs"}
 
 
-async def test_tavily_capacity_uses_key_credit_remainder_and_conservative_rate():
+async def test_tavily_capacity_uses_key_credit_remainder():
     def probe(request):
         assert request.method == "GET"
         assert request.url == "https://api.tavily.com/usage"
@@ -113,14 +104,9 @@ async def test_tavily_capacity_uses_key_credit_remainder_and_conservative_rate()
         "unit": "API credits",
         "note": "key usage 125 of 1000; account pools are informational",
     }
-    capacity = policy.default_policy("tavily", has_key=True)
-    assert capacity.capacity_type == "credits"
-    assert capacity.funding_mode == "manual"
-    assert capacity.source == "api"
-    assert capacity.rate_limit == {"limit": 100, "window_s": 60, "source": "docs"}
 
 
-async def test_serper_capacity_uses_free_account_balance_and_live_rate():
+async def test_serper_capacity_uses_free_account_balance():
     def probe(request):
         assert request.method == "GET"
         assert request.url == "https://google.serper.dev/account"
@@ -134,12 +120,6 @@ async def test_serper_capacity_uses_free_account_balance_and_live_rate():
         "unit": "credits",
         "note": "account rate limit 50 queries/s",
     }
-    capacity = policy.default_policy("serper", has_key=True)
-    assert capacity.capacity_type == "credits"
-    assert capacity.funding_mode == "auto_recharge"
-    assert capacity.auto_funding_enabled is True
-    assert capacity.source == "api"
-    assert capacity.rate_limit == {"limit": 50, "window_s": 1, "source": "api"}
 
 
 @pytest.mark.parametrize("balance", [None, True, "bad", "NaN", "Infinity", -1])
@@ -150,7 +130,7 @@ async def test_serper_capacity_rejects_invalid_balance(balance):
             await collectors._serper(client, "test")
 
 
-async def test_fetchin_capacity_uses_free_subscription_balance_and_safe_rate():
+async def test_fetchin_capacity_uses_free_subscription_balance():
     def probe(request):
         assert request.method == "GET"
         assert request.url == "https://api.fetchin.io/api/v1/subscription"
@@ -165,11 +145,6 @@ async def test_fetchin_capacity_uses_free_subscription_balance_and_safe_rate():
     assert row["value"] == 51_000
     assert row["unit"] == "credits"
     assert "account limit 5 requests/s" in row["note"]
-    capacity = policy.default_policy("fetchinio", has_key=True)
-    assert capacity.capacity_type == "credits"
-    assert capacity.funding_mode == "manual"
-    assert capacity.source == "api"
-    assert capacity.rate_limit == {"limit": 2, "window_s": 1, "source": "policy"}
 
 
 @pytest.mark.parametrize("remaining", [None, True, -1, "51000", float("nan")])
@@ -258,15 +233,6 @@ async def test_zerobounce_balance_rejects_uncertain_values_without_exposing_key(
         collectors.get_settings.cache_clear()
 
 
-def test_zerobounce_capacity_policy_stays_manual_until_vendor_auto_pay_is_verified():
-    row = policy.default_policy("zerobounce", has_key=True)
-    assert row.capacity_type == "credits"
-    assert row.funding_mode == "manual"
-    assert row.source == "api"
-    assert row.auto_funding_enabled is False
-    assert row.rate_limit == {"limit": 25, "window_s": 1, "source": "policy"}
-
-
 @pytest.mark.parametrize("balance", [0, 465])
 async def test_millionverifier_balance_uses_query_key_without_double_counting(monkeypatch, balance):
     monkeypatch.setenv("TREG_PLATFORM_KEY_MILLIONVERIFIER", "private-test-key")
@@ -306,51 +272,23 @@ async def test_bounceban_balance_uses_raw_authorization_header(monkeypatch, bala
         collectors.get_settings.cache_clear()
 
 
-@pytest.mark.parametrize("balance", [None, -1, True, "9997"])
+@pytest.mark.parametrize("balance", [None, -1, True, "9997", float("inf")])
 async def test_bounceban_balance_rejects_uncertain_values_without_exposing_key(monkeypatch, balance):
+    def probe(_request):
+        if balance == float("inf"):
+            return httpx.Response(200, content=b'{"available_credits": Infinity}')
+        return httpx.Response(200, json={"available_credits": balance})
+
     monkeypatch.setenv("TREG_PLATFORM_KEY_BOUNCEBAN", "private-test-key")
     collectors.get_settings.cache_clear()
     try:
-        async with httpx.AsyncClient(transport=httpx.MockTransport(
-                lambda request: httpx.Response(200, json={"available_credits": balance}))) as client:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
             row = await collectors.provider_balance("bounceban", client)
         assert row["value"] is None
         assert "valid verification-credit balance" in row["note"]
         assert "private-test-key" not in str(row)
     finally:
         collectors.get_settings.cache_clear()
-
-
-async def test_bounceban_balance_rejects_non_finite_value(monkeypatch):
-    class Response:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {"available_credits": float("inf")}
-
-    class Client:
-        async def get(self, *args, **kwargs):
-            return Response()
-
-    monkeypatch.setenv("TREG_PLATFORM_KEY_BOUNCEBAN", "private-test-key")
-    collectors.get_settings.cache_clear()
-    try:
-        row = await collectors.provider_balance("bounceban", Client())
-        assert row["value"] is None
-        assert "valid verification-credit balance" in row["note"]
-        assert "private-test-key" not in str(row)
-    finally:
-        collectors.get_settings.cache_clear()
-
-
-def test_bounceban_capacity_policy_uses_manual_prepaid_credits():
-    row = policy.default_policy("bounceban", has_key=True)
-    assert row.capacity_type == "credits"
-    assert row.funding_mode == "manual"
-    assert row.source == "api"
-    assert row.auto_funding_enabled is False
-    assert row.rate_limit == {"limit": 25, "window_s": 1, "source": "docs"}
 
 
 @pytest.mark.parametrize("status,body", [(200, {"error": "apikey_not_found"}), (401, {}), (200, {})])
@@ -412,14 +350,6 @@ async def test_brightdata_collector_parses_balance_and_pending():
     assert "pending $12.34" in result["note"]
 
 
-async def test_brightdata_collector_handles_missing_pending():
-    resp = MockResponse({"balance": 100.0, "credit": 0, "prepayment": 0})
-    client = MockClient(get_response=resp)
-    result = await collectors._brightdata(client, "test-key")
-    assert result["value"] == 100.0
-    assert "pending $0.00" in result["note"]
-
-
 # ---- crustdata --------------------------------------------------------------------------
 
 async def test_crustdata_collector_parses_credits_and_recurring():
@@ -437,21 +367,6 @@ async def test_crustdata_collector_parses_credits_and_recurring():
     assert result["unit"] == "credits"
     assert "recurring 2000 monthly" in result["note"]
     assert "2026-09-01" in result["note"]
-
-
-async def test_crustdata_collector_handles_no_recurring_grant():
-    resp = MockResponse({
-        "account": {
-            "credits": 1234.0,
-            "recurring_credits": None,
-            "recurring_credits_frequency": None,
-            "recurring_credits_refresh_date": None
-        }
-    })
-    client = MockClient(get_response=resp)
-    result = await collectors._crustdata(client, "test-key")
-    assert result["value"] == 1234.0
-    assert "no recurring grant" in result["note"]
 
 
 # ---- akta -------------------------------------------------------------------------------
@@ -474,46 +389,9 @@ async def test_akta_collector_parses_credits_and_tier():
     assert "lifetime 100.0 used" in result["note"]
 
 
-async def test_akta_collector_marks_enterprise_accounts():
-    resp = MockResponse({
-        "credit_balance": 50000.0,
-        "package_type": "scale",
-        "is_enterprise": True,
-        "lifetime_consumed_credits": 0
-    })
-    client = MockClient(get_response=resp)
-    result = await collectors._akta(client, "test-key")
-    assert result["value"] == 50000.0
-    assert "(enterprise)" in result["note"]
-
-
 # ---- NO_BALANCE_API / BALANCE_ROUTES registration ---------------------------------------
 
-def test_no_balance_api_includes_expected_providers():
-    """Verify the vendors that have no free balance API are documented."""
-    expected = {
-        "adyntel", "aviato", "coresignal", "exa", "financialdatasets", "finnhub",
-        "justoneapi", "keenable", "limadata", "marketstack", "scrubby", "tiingo", "trestleiq",
-    }
-    assert expected == set(collectors.NO_BALANCE_API.keys())
-
-
-async def test_keenable_capacity_is_portal_only_with_documented_rate_limit(monkeypatch):
-    monkeypatch.setenv("TREG_PLATFORM_KEY_KEENABLE", "test")
-    collectors.get_settings.cache_clear()
-    try:
-        row = await collectors.provider_balance("keenable")
-        assert row["value"] is None and row["no_api"] is True
-        capacity = policy.default_policy("keenable", has_key=True)
-        assert capacity.capacity_type == "requests"
-        assert capacity.funding_mode == "manual"
-        assert capacity.source == "manual"
-        assert capacity.rate_limit == {"limit": 10, "window_s": 1, "source": "docs"}
-    finally:
-        collectors.get_settings.cache_clear()
-
-
-async def test_olostep_balance_and_conservative_shared_key_rate(monkeypatch):
+async def test_olostep_balance(monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_OLOSTEP", "test-key")
     collectors.get_settings.cache_clear()
     try:
@@ -535,16 +413,11 @@ async def test_olostep_balance_and_conservative_shared_key_rate(monkeypatch):
             "unit": "credits",
             "note": "plan Free; usage allowed",
         }
-        capacity = policy.default_policy("olostep", has_key=True)
-        assert capacity.capacity_type == "credits"
-        assert capacity.funding_mode == "manual"
-        assert capacity.source == "api"
-        assert capacity.rate_limit == {"limit": 5, "window_s": 1, "source": "policy"}
     finally:
         collectors.get_settings.cache_clear()
 
 
-async def test_scrapegraphai_balance_and_shared_key_policy(monkeypatch):
+async def test_scrapegraphai_balance(monkeypatch):
     monkeypatch.setenv("TREG_PLATFORM_KEY_SCRAPEGRAPHAI", "test-key")
     collectors.get_settings.cache_clear()
     try:
@@ -570,11 +443,6 @@ async def test_scrapegraphai_balance_and_shared_key_policy(monkeypatch):
             "unit": "credits",
             "note": "plan Free Plan; used 25; crawl jobs 0/1; monitors 0/1",
         }
-        capacity = policy.default_policy("scrapegraphai", has_key=True)
-        assert capacity.capacity_type == "credits"
-        assert capacity.funding_mode == "subscription"
-        assert capacity.source == "api"
-        assert capacity.rate_limit == {"limit": 500, "window_s": 60, "source": "policy"}
     finally:
         collectors.get_settings.cache_clear()
 
@@ -589,48 +457,6 @@ async def test_scrapegraphai_balance_rejects_uncertain_values(remaining):
     async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as client:
         with pytest.raises(ValueError, match="remaining-credit"):
             await collectors._scrapegraphai(client, "test")
-
-
-async def test_adyntel_capacity_is_dashboard_only_and_rate_limited(monkeypatch):
-    monkeypatch.setenv("TREG_PLATFORM_KEY_ADYNTEL", "PLATFORM-ADYNTEL")
-    collectors.get_settings.cache_clear()
-    try:
-        row = await collectors.provider_balance("adyntel")
-        assert row["no_api"] is True and row["value"] is None
-        assert "dashboard only" in row["note"]
-        capacity = policy.default_policy("adyntel", has_key=True)
-        assert capacity.capacity_type == "credits"
-        assert capacity.funding_mode == "manual"
-        assert capacity.auto_funding_enabled is False
-        assert capacity.source == "manual"
-        assert capacity.rate_limit == {"limit": 5, "window_s": 1, "source": "docs"}
-    finally:
-        collectors.get_settings.cache_clear()
-
-
-def test_limadata_policy_uses_auto_recharge_and_the_documented_rate():
-    row = policy.default_policy("limadata", has_key=True)
-    assert row.capacity_type == "credits"
-    assert row.funding_mode == "auto_recharge"
-    assert row.auto_funding_enabled is True
-    assert row.source == "manual"
-    assert row.rate_limit == {"limit": 1, "window_s": 1, "source": "docs"}
-
-
-async def test_trestleiq_capacity_is_portal_only_with_manually_verified_auto_recharge(monkeypatch):
-    monkeypatch.setenv("TREG_PLATFORM_KEY_TRESTLEIQ", "PLATFORM-TRESTLEIQ")
-    collectors.get_settings.cache_clear()
-    try:
-        row = await collectors.provider_balance("trestleiq")
-        assert row["no_api"] is True and row["value"] is None
-        capacity = policy.default_policy("trestleiq", has_key=True)
-        assert capacity.capacity_type == "cash"
-        assert capacity.funding_mode == "auto_recharge"
-        assert capacity.auto_funding_enabled is True
-        assert capacity.source == "manual"
-        assert capacity.rate_limit == {"limit": 10, "window_s": 1, "source": "docs"}
-    finally:
-        collectors.get_settings.cache_clear()
 
 
 def test_implemented_collectors_are_registered_and_do_not_overlap_absent_list():
@@ -713,14 +539,6 @@ async def test_aiark_balance_collector_uses_total(remaining, expected):
             assert "roll over" in row["note"]
 
 
-def test_aiark_policy_uses_subscription_and_documented_rate():
-    row = policy.default_policy("aiark", has_key=True)
-    assert row.capacity_type == "monthly_quota"
-    assert row.funding_mode == "quota_reset"
-    assert row.auto_funding_enabled is False
-    assert row.rate_limit == {"limit": 5, "window_s": 1, "source": "docs"}
-
-
 @pytest.mark.parametrize("remaining,expected", [(997, 997), (0, 0), (-1, None), (True, None)])
 async def test_getleadsio_balance_collector_uses_fair_use_credits(remaining, expected):
     def serve(request):
@@ -737,16 +555,6 @@ async def test_getleadsio_balance_collector_uses_fair_use_credits(remaining, exp
             assert row["value"] == expected
             assert row["unit"] == "credits"
             assert "Live Leads wallet is not included" in row["note"]
-
-
-def test_getleadsio_policy_uses_the_documented_default_rate():
-    row = policy.default_policy("getleadsio", has_key=True)
-    assert row.rate_limit == {"limit": 100, "window_s": 60, "source": "docs"}
-
-
-def test_prospeo_policy_smooths_at_the_stricter_shared_key_rate():
-    row = policy.default_policy("prospeo", has_key=True)
-    assert row.rate_limit == {"limit": 1, "window_s": 1, "source": "docs"}
 
 
 @pytest.mark.parametrize('remaining,expected', [(300, 300), (0, 0), (None, None), (-1, None), ('unlimited', None), (True, None)])

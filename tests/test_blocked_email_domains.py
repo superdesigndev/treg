@@ -72,34 +72,31 @@ def test_nothing_is_blocked_with_no_setting_at_all(ops):
         assert not _is_blocked_email(email), email
 
 
-def test_match_is_on_the_domain_only_never_the_local_part(ops):
-    """The single most important rule. Matching the whole address false-flags real people whose
-    USERNAME happens to contain a listed string, which is how a blocklist starts refusing
-    customers."""
-    ops()
-    assert not _is_blocked_email("farm-a.example@company.dev")
-    assert not _is_blocked_email("farm-a@company.dev")
-
-
 def test_ops_tier_parses_case_whitespace_and_leading_marks(ops):
     ops()
     assert get_settings().blocked_email_domain_set == frozenset(
         {"farm-a.example", "farm-b.example", "farm-c.example", "farm-d.example"})
 
 
-def test_a_listed_domain_matches_itself_and_every_subdomain(ops):
+@pytest.mark.parametrize(("email", "blocked"), [
+    # The single most important rule: match the domain only, never the local part. Matching the
+    # whole address false-flags real people whose USERNAME happens to contain a listed string,
+    # which is how a blocklist starts refusing customers.
+    ("farm-a.example@company.dev", False),
+    ("farm-a@company.dev", False),
+    # A listed domain matches itself and every subdomain.
+    ("a@farm-a.example", True),
+    ("A@FARM-B.EXAMPLE", True),
+    ("a@deep.mail.farm-c.example", True),   # the subdomain bypass that must not work
+    ("a@farm-d.example", True),             # listed as ".farm-d.example"
+    # The walk strips whole labels off the front only.
+    ("a@notfarm-a.example", False),         # a string suffix, not a subdomain
+    ("a@farm-a.example.org", False),        # the listed domain in the middle
+    ("a@company.dev", False),
+])
+def test_a_listed_domain_blocks_itself_and_its_subdomains_only(ops, email, blocked):
     ops()
-    assert _is_blocked_email("a@farm-a.example")
-    assert _is_blocked_email("A@FARM-B.EXAMPLE")
-    assert _is_blocked_email("a@deep.mail.farm-c.example")   # the subdomain bypass that must not work
-    assert _is_blocked_email("a@farm-d.example")             # listed as ".farm-d.example"
-
-
-def test_walk_strips_whole_labels_off_the_front_only(ops):
-    ops()
-    assert not _is_blocked_email("a@notfarm-a.example")      # a string suffix, not a subdomain
-    assert not _is_blocked_email("a@farm-a.example.org")     # the listed domain in the middle
-    assert not _is_blocked_email("a@company.dev")
+    assert _is_blocked_email(email) is blocked
 
 
 def test_a_bare_public_suffix_can_never_be_an_entry(ops):
@@ -182,13 +179,6 @@ async def test_open_registration_refuses_a_blocked_domain_and_creates_nothing(cl
         assert await _user_count(email) == 0
     async with session_maker() as s:
         assert (await s.execute(select(Org))).scalars().all() == []   # no team, so no grant
-
-
-async def test_open_registration_is_unchanged_for_an_unlisted_domain(client, ops):
-    ops("")
-    r = await client.post("/users", json={"email": "someone@farm-a.example"})
-    assert r.status_code == 200, r.text
-    assert r.json()["email"] == "someone@farm-a.example"
 
 
 # ---- creating a team (POST /orgs: the other promo door, for an already-registered identity) -------

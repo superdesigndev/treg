@@ -298,7 +298,7 @@ export default {
 <div class="sp" :class="{answered:find.phase==='done' && cards.length}" ref="stage">
   <section class="sp-top">
     <div v-if="find.phase==='idle' || findBusy" class="sp-hero" :class="{quiet:findBusy}">
-      <span class="sp-count">{{platforms.length}} platforms · {{vendors.length}} providers<template v-if="toolCountText"> · {{toolCountText}} tools</template></span>
+      <span class="sp-count" :style="plats.settled ? null : {visibility:'hidden'}">{{platforms.length}} platforms · {{vendors.length}} providers<template v-if="toolCountText"> · {{toolCountText}} tools</template></span>
       <h1 class="hero-h1">What does your agent<br><span>need to do?</span></h1>
     </div>
 
@@ -399,7 +399,7 @@ html.sp-lock,html.sp-lock body{overflow:hidden;overscroll-behavior:none}
   --l-shadow-md:0 1px 2px -1px #0000000a,0 4px 6px -1px #0000000f;
   --l-shadow-lg:0 1px 2px -1px #0000000a,0 4px 6px -1px #0000000f,0 8px 16px #0000000a;--l-ease:cubic-bezier(.2,.72,.25,1);
   position:relative;display:flex;flex-direction:column;align-items:center;gap:18px;overflow:hidden;padding:88px 20px 0;box-sizing:border-box;
-  min-height:520px;background:var(--l-bg);color:var(--l-ink);font-family:"Suisse Intl","Inter","Segoe UI",system-ui,sans-serif}
+  min-height:520px;background:var(--l-bg);color:var(--l-ink);font-family:var(--sans)}
 /* The landing hero's soft green light, under its glyph field. */
 .sp::before{content:"";position:absolute;inset:0 0 auto;height:75%;pointer-events:none;z-index:0;
   background:radial-gradient(ellipse at 50% 20%,#dce8d585,transparent 65%)}

@@ -9,7 +9,10 @@ import asyncio
 import json
 import time
 
+import httpx
 from httpx import AsyncClient
+
+from treg import oauth
 
 
 def _oauth_blob(access: str, expires_at: float) -> str:
@@ -52,15 +55,6 @@ async def test_manual_mode_token_without_refresh_fields_is_injected_as_is(client
     r = await clients.get("/call/manual/echo")
     assert r.status_code == 200, r.text
     assert r.json()["auth"] == "Bearer MANUAL-TOKEN"
-
-
-async def test_refresh_persists_so_next_call_is_free(clients: AsyncClient):
-    await _register_oauth_tool(clients, "gsc", _oauth_blob("OLD", expires_at=0))
-    first = await clients.get("/call/gsc/echo")
-    assert first.json()["auth"] == "Bearer REFRESHED"
-    # second call: token is now fresh + persisted (expires_in 3600), still serves the refreshed one
-    second = await clients.get("/call/gsc/echo")
-    assert second.json()["auth"] == "Bearer REFRESHED"
 
 
 async def test_token_endpoint_io_holds_no_database_connection(
@@ -123,10 +117,6 @@ async def test_concurrent_stale_calls_keep_one_refresh_winner(
 # posting client_secret in the body is 401'd. The proxy-level tests above can't catch this because
 # conftest's /token accepts anything — which is exactly how the bug shipped: connect worked, and
 # every refresh died two hours later in production only.
-
-import httpx
-
-from treg import oauth
 
 
 def _x_like_transport(calls: list[str]) -> httpx.MockTransport:

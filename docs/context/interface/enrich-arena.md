@@ -13,8 +13,6 @@ sources:
   - src/treg/web/enrich-arena.html
   - src/treg/web/enrich-arena/arena.js
   - src/treg/web/enrich-arena/bench.js
-  - tests/js/arena-bench.test.cjs
-  - tests/js/arena-template.test.cjs
   - src/treg/web/enrich-arena/arena.css
   - src/treg/web/agent-setup.js
   - src/treg/application/arena_verification_insights.py
@@ -40,7 +38,6 @@ sources:
   - src/treg/web/logos/tomba.svg
   - src/treg/web/sitetrack.js
   - tests/test_enrich_arena.py
-  - tests/js/enrich-arena.test.cjs
 related:
   - architecture/catalog.md
   - architecture/money.md
@@ -266,8 +263,15 @@ database the money path depends on. In the worker process it uses the API pool, 
 there. The rewind that
 revisits ten minutes of evidence is constrained to the Arena's endpoints so it rides
 `ix_callrecord_endpoint_id_created_at` instead of walking the table.
-It reads 100 audit records per transaction, follows their exact archive key/content and optional body
-carrier, reclassifies stored responses with current Arena required-field rules, and upserts anonymous
+It reads a bounded batch of 100 audit records and their exact archive key/content pointers, closes
+its metadata session, then resolves bodies through `archive_bodies.read` with path `arena` and the
+result read switch. Object reads have concurrency eight and retain the existing decode-size cap.
+Invalid compressed DB bodies remain unresolved per record rather than stopping collection of
+other evidence, including when decompression occurs in the common reader's DB fallback.
+The worker uses `bootstrap.archive_object_store` for the client lifecycle and drains read telemetry
+before exiting. It reacquires the cursor row lock and validates cursor, cutoff and completion state
+before publishing; evidence from a superseded batch is discarded. Thus no cursor lock or DB
+connection is held across R2 I/O. It reclassifies responses with current required-field rules and upserts anonymous
 `ArenaObservation` facts. It never calls vendors or trusts `CallRecord.hit`. No money writes or proxy
 changes are involved. Evidence lookup deduplicates key/content pairs and finds each pair's newest
 matching snapshot through the existing `(key_id, version)` index. This avoids repeatedly scanning
@@ -592,9 +596,6 @@ Alembic revision `0027` creates `arenarun` and `arenaevaluation`. Run `python -m
 before serving the new release. Tests cover auth/private access, aggregate admission, direct billing,
 own keys, cancellation, duplicate start/vote, attributed progress/results and pre-charge name validation, waterfall progression and OAuth return.
 
-Frontend billing-flow checks: `node --test tests/js/enrich-arena.test.cjs` exercises inline pricing,
-price invalidation, login gating, duplicate clicks, quote expiry and the correct-team top-up link.
-
 ### Conversion tracking
 
 `TregTracking` in `sitetrack.js` connects anonymous pageviews to the authenticated email and
@@ -727,10 +728,6 @@ original LessieAI benchmark. The original repository's current figures differ fr
 the page discloses that difference and does not manufacture an overall score or describe these
 numbers as individual vendor hit rates or email-verification accuracy. The new charts update when
 the existing landing source changes. No paid benchmark execution is triggered by viewing them.
-
-`tests/js/arena-template.test.cjs` compiles the shared page and component templates using the
-bundled Vue runtime. This catches malformed template expressions that method-only tests miss,
-including the nested footer interpolation that previously prevented all Arena views from mounting.
 
 ## Published verification pilot
 

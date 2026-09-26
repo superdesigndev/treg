@@ -161,6 +161,8 @@ _EXPECTED_DERIVED_WRITE_SITES = {
     ("application/call/settle.py", "_close", "overflow_spend_ledger.add_in_transaction"),
     ("application/call/settle.py", "_platform_settle", "archive.note_org_use_in_transaction"),
     ("application/call/settle.py", "_close", "archive.note_org_use_in_transaction"),
+    # a routed parent closing its children's deferred holds marks the paid question the same way
+    ("application/call/settle.py", "close_deferred", "archive.note_org_use_in_transaction"),
     ("application/call/overflow.py", "_maybe_overflow_attempt", "capacity_marks.strike"),
     ("application/call/overflow.py", "_record_shadow", "overflow_spend_ledger.add_in_transaction"),
     ("application/call/overflow.py", "_finish_budget", "overflow_spend_ledger.add_in_transaction"),

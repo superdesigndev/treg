@@ -870,7 +870,9 @@ def group_routed(rows: list[dict], key=lambda r: r, max_children: int | None = N
     for r in ordered:
         v = key(r)
         cap = v["capability"]
-        if cap in routed_caps and v.get("kind") != "routed":
+        # An approved hub tool of this job stays in its group and is never cut: it is not one of
+        # the router's providers, and `catalog get <parent>` would not list it (hub-listing round 3).
+        if cap in routed_caps and v.get("kind") not in ("routed", "hub"):
             if shown.get(cap, 0) >= max_children:
                 if cap in parents:
                     parents[cap]["children_hidden"] = parents[cap].get("children_hidden", 0) + 1
@@ -1193,6 +1195,42 @@ def candidates(query: str, cat: Catalog, limit: int = 30) -> list[tuple[dict, fl
         scored.append((ep, round(sum(w * idf[i] for i, w in enumerate(per_tok)), 4)))
     scored.sort(key=lambda row: (-row[1], row[0]["tier"] != "core", not row[0]["verified"], row[0]["id"]))
     return scored[:limit]
+
+
+def score_extra(query: str, cat: Catalog,
+                extra: list[tuple[dict, list[tuple[int, str]]]]) -> list[tuple[dict, float]]:
+    """Score rows that are NOT in the catalog (a listed hub tool, docs/hub-listing-decisions.md)
+    with the SAME tokens, aliases, platform boost, idf and admission gate as `search`, so they rank
+    by relevance beside catalog rows with no boost. `extra` is `[(row, haystacks)]` in the shape
+    `_haystacks` produces. The idf is the catalog's: one extra row cannot move it."""
+    m = _match(query, cat)
+    if m is None or not extra:
+        return []
+    tokens, _rows, _best, idf, required, need = m
+    variants = [[tok, *cat.aliases.get(tok, ())] for tok in tokens]
+    boost = [2 if tok in cat.platforms else 1 for tok in tokens]
+    out: list[tuple[dict, float]] = []
+    for ep, fields in extra:
+        per_tok = [b * max((w for w, text in fields if any(v in text for v in vs)), default=0)
+                   for vs, b in zip(variants, boost)]
+        if sum(1 for i in required if per_tok[i]) < need:
+            continue
+        out.append((ep, round(sum(w * idf[i] for i, w in enumerate(per_tok)), 4)))
+    return out
+
+
+def merge_by_score(primary: list[tuple[dict, float]], extra: list[tuple[dict, float]]) -> list[tuple[dict, float]]:
+    """Merge a second ranked list into the first by descending score. On a tie the primary (catalog)
+    rows stay first: a hub tool gets no boost (docs/hub-listing-decisions.md, decision 2)."""
+    out = list(primary)
+    for ep, score in sorted(extra, key=lambda r: -r[1]):
+        at = len(out)
+        for j, (_, ps) in enumerate(out):
+            if ps < score:
+                at = j
+                break
+        out.insert(at, (ep, score))
+    return out
 
 
 def near_misses(query: str, cat: Catalog, limit: int = 3) -> list[dict]:

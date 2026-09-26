@@ -99,8 +99,6 @@ sources:
   - src/treg/web/tour/tour.js
   - src/treg/web/tour/index.html
   - src/treg/api.py
-  - tests/test_dashboard_rollout.py
-  - src/treg/web/dashboard-legacy/README.md
   - src/treg/routers/web.py
   - src/treg/domain/identity/session.py
   - src/treg/routers/api_keys.py
@@ -202,32 +200,29 @@ per-application state available to extracted components during this incremental 
 not a singleton, and this boundary is not yet a fully typed domain store. The TypeScript entry,
 JSON transport and development configuration are checked with `vue-tsc` before every build.
 Initialization renders a neutral loading state until session and route resolution finish, with a
-retry on unexpected failure. Signed-out arrivals get a focused sign-in entry or shared-link gate;
+retry on unexpected failure. `index.html` paints the same `.boot-status` markup before any script
+runs, so mounting swaps the screen for itself. A fast boot shows only the page ground: the
+indicator fades in after a delay, on the page's own clock (`bootStartedAt`), so the node Vue swaps
+in does not restart it. `index.html` also starts
+`/meta` and `/auth/me` alongside the bundle download (`window.__tregBoot`, taken over by boot) and
+applies the saved theme before first paint. `loadAll` waits on one round trip per dependency step:
+`/orgs` with `/invites/mine`, then the bearer with the team's tools, health and skills.
+Catalog data does not wait for the session: boot starts the shelves (and a shelf's endpoints,
+through `prefetchPlatform`, which `loadPlatform` takes over) alongside `/meta` and `/auth/me`.
+**A view renders nothing it cannot yet know.** Empty states, zero figures and fallback views wait
+for their data to answer (`plats.settled`, `callsLoaded`, `orgMembersLoaded`, `ref.loaded`); text
+whose values are still loading keeps its space invisibly rather than showing zeros. Signed-out arrivals get a focused sign-in entry or shared-link gate;
 the obsolete embedded marketing page is removed. The public landing page remains at `/`.
 History navigation retains existing hashes, catalog URLs and shared links in `state/navigation.js`,
 `state/catalog.js`, `state/details.js` and `state/boot.js`.
 Mainline Team resources and Fish Audio upload, voice-management and audio-preview flows live
 in `TeamResourcesPage.vue`, `FishVoiceDialog.vue`, `TryEndpointDialog.vue` and their state modules.
 
-`_new_dashboard` selects the compiled entry by verified session user ID: the master rollout switch
-must be on, then an ID allowlist or a stable SHA-256 bucket below the configured percentage selects
-new. Defaults are off and zero percent. Anonymous and token-only browser entries retain the frozen
-`dashboard-legacy/index.html`, whose Vue/onboarding/tutorial JavaScript has revision-qualified legacy asset
-URLs. No query parameter, team selection or analytics service controls assignment. All dashboard,
-shared-link and catalog entries use this decision and `private, no-store` plus `Vary: Cookie`.
-Environment changes require restarting Web processes. Existing tabs switch on reload; the version
-stamp also incorporates rollout settings to offer a refresh when assignment policy changes.
-Every signed-in selection emits `dashboard_served` (variant, assignment, bucket, percentage) and
-sets the `dashboard_variant` and `dashboard_bucket` person properties. Analytics only observes the
-decision: PostHog persons carry no user ID to recompute the bucket from, and the bucket alone cannot
-date an account's switch when the percentage moves.
-
-The legacy snapshot is deprecated and scheduled for removal after rollout, not a second maintained
-Dashboard. New features and routine fixes belong only in `frontend/`; normal main-branch syncs must
-not refresh the frozen artifact. `frontend/README.md` owns the retirement checklist: migrate
-anonymous and token-only entries as well as signed-in accounts, then remove the snapshot, legacy
-asset route, selection settings and obsolete rollout plumbing. A 100% account rollout alone does
-not retire legacy.
+`_dashboard_index` returns the one compiled entry for every Dashboard, shared-link and catalog
+request, signed in or not, so those pages no longer look up the session to choose a frontend. They
+are served `private, no-store` with `Vary: Cookie`. The frozen legacy snapshot and its percentage
+rollout were retired once every visitor was on this app; rollback is a deploy of the previous build.
+The version stamp in `/meta` is the bundle hash, so an open tab offers a refresh after a deploy.
 
 `GET /app` serves the selected document same-origin from the Python package, preserving local
 sign-in and parked OAuth authorization. Catalog and shared-link handlers modify that same document's
@@ -244,7 +239,7 @@ and Vite, using a local-only development entry for hot updates. See `CONTRIBUTIN
 
 Vue is pinned in the npm lockfile and bundled from the same origin, so a blocked CDN cannot
 prevent startup. The shared onboarding widgets in `/agent-setup.js` still serve both Dashboard and
-Arena; their templates use Vue's bundled compiler. The global Vue runtime for standalone pages and the legacy snapshot is
+Arena; their templates use Vue's bundled compiler. The global Vue runtime for the standalone Arena page is
 copied from the npm package at build time, with its license; generated copies are not committed. Agent icons and Google Fonts remain optional external presentation assets.
 The unmounted entry displays a loading message and a reload link rather than hiding a raw template.
 The authenticated redesign follows the root `design.md`.
@@ -289,8 +284,9 @@ user. On narrow screens navigation scrolls in a second row; team switching and o
 remain available. The public catalog and logged-out landing retain their separate shells.
 
 The authenticated wrapper's `.redesign` class scopes `media/redesign/dashboard.css`, served through
-the existing `/media` mount. It uses Google Sans Flex for interface text, Geist Pixel for page titles,
-and DM Mono for commands and balances, with light and dark semantic colors. Getting started uses
+the existing `/media` mount. It uses the system UI font for interface text, Geist Pixel for page titles,
+and DM Mono for commands and balances (the only two web fonts, bundled from pinned `@fontsource`
+packages; see `design.md`), with light and dark semantic colors. Getting started uses
 an approximately 1080px centered column, a split agent-preview/setup card, image-backed prompt cards,
 and the existing optional Build on treg and manual setup flows. On mobile the setup card and prompt
 grid stack. Images are copied from the pinned designer repository; provenance is in
@@ -640,7 +636,9 @@ selected account stamps a runnable containers-list path into the provisioned too
 platform logo assets both carry the Google Tag Manager mark, so the catalog tile, platform header,
 provider page, and expanded endpoint rows resolve to the same identity.
 The tab bar itself is `v-if`'d on `plats.list.length` and `mkTabActive` collapses to `'platform'` when
-the catalog is absent, so a build that predates `/catalog` renders exactly the old marketplace.
+the catalog is absent, so a build that predates `/catalog` renders exactly the old marketplace. It
+collapses only once `plats.settled` (the request answered, even with a failure): falling back while
+the shelves loaded flashed the integration list on every visit.
 
 The catalog page's header carries a **Request a tool** button (`reqAsk` modal): a short form —
 what's missing, an optional note, a contact field only when signed out (`!me`) — POSTed to
@@ -1056,9 +1054,8 @@ fit is its best provider's. The page never re-ranks providers.
   copies. Any result (a card, a job line, a tile) opens that platform in the dashboard: directly
   for a member; otherwise sign-in first, the destination kept in localStorage for ten minutes and
   resumed by boot (`findResume`) however sign-in returns, and first-run onboarding leaves a
-  visitor on that platform rather than on Getting started. The server serves the new frontend here
-  to every visitor while the rollout is enabled (there is no legacy view of this page) and 404s
-  when the rollout switch forces legacy.
+  visitor on that platform rather than on Getting started. The server serves this page to every
+  visitor.
 
 **Analytics for finds** (PostHog through `track`, anonymous until sign-in, when the visitor's
 earlier events join the identified person): `search_opened` (`ref`: the landing's Tools link sends

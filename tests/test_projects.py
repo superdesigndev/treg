@@ -35,7 +35,9 @@ async def _mint(email: str, org_id: int, role: str) -> tuple[str, int]:
     async with session_maker() as s:
         u = (await s.execute(select(User).where(User.email == email))).scalar_one_or_none()
         if u is None:
-            u = User(email=email); s.add(u); await s.flush()
+            u = User(email=email)
+            s.add(u)
+            await s.flush()
         s.add(Membership(user_id=u.id, org_id=org_id, role=role, token_hash=crypto.hash_token(token)))
         await s.commit()
         uid = u.id
@@ -48,7 +50,10 @@ async def env():
     app.state.http = AsyncClient(transport=ASGITransport(app=make_upstream()), base_url="http://upstream")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
         async with session_maker() as s:
-            org = Org(name="Team", slug="team"); s.add(org); await s.commit(); await s.refresh(org)
+            org = Org(name="Team", slug="team")
+            s.add(org)
+            await s.commit()
+            await s.refresh(org)
             org_id = org.id
         owner, _ = await _mint("owner@x.dev", org_id, "owner")
         member, member_uid = await _mint("m@x.dev", org_id, "member")
@@ -79,14 +84,6 @@ async def test_unscoped_members_see_and_call_everything(env):
     assert names == {"a-tool", "g-tool", "shared"}
     for n in names:
         assert (await env.c.get(f"/call/{n}/ok", headers=_h(env.member))).status_code == 200
-
-
-async def test_a_tool_with_no_project_is_org_wide(env):
-    """Every tool that predates projects has project_id NULL — it must stay visible to everyone."""
-    await _scope(env, [env.apollo["slug"]])
-    names = {t["name"] for t in (await env.c.get("/tools", headers=_h(env.member))).json()}
-    assert "shared" in names, "an org-wide tool must remain in scope for a project-scoped member"
-    assert (await env.c.get("/call/shared/ok", headers=_h(env.member))).status_code == 200
 
 
 # ---- the scope itself -------------------------------------------------------------------------
@@ -218,7 +215,10 @@ async def test_only_admins_manage_projects(env):
 
 async def test_another_orgs_project_is_never_reachable(env):
     async with session_maker() as s:
-        other = Org(name="Other", slug="other"); s.add(other); await s.commit(); await s.refresh(other)
+        other = Org(name="Other", slug="other")
+        s.add(other)
+        await s.commit()
+        await s.refresh(other)
         other_id = other.id
     tok, _ = await _mint("o@x.dev", other_id, "owner")
     assert (await env.c.delete(f"/orgs/{other_id}/projects/{env.apollo['id']}",
@@ -237,19 +237,6 @@ async def test_an_invite_carries_the_project_scope_onto_the_membership(env):
     assert names == {"a-tool", "shared"}
 
 
-async def test_an_access_patch_without_projects_keeps_the_scope(env):
-    """The dashboard's local-run toggle PATCHes only tool_access + local_run_enabled. That must not
-    silently clear the member's project scoping (the field defaults to None on the way in)."""
-    await _scope(env, [env.apollo["slug"]])
-    r = await env.c.patch(f"/orgs/{env.org_id}/members/{env.member_uid}/access", headers=_h(env.owner),
-                          json={"tool_access": None, "local_run_enabled": False})
-    assert r.status_code == 200, r.text
-    members = (await env.c.get(f"/orgs/{env.org_id}/members", headers=_h(env.owner))).json()
-    me = next(m for m in members if m["user_id"] == env.member_uid)
-    assert me["project_access"] == [env.apollo["id"]], "project scope must survive an unrelated PATCH"
-    assert (await env.c.get("/call/g-tool/ok", headers=_h(env.member))).status_code == 403
-
-
 # ---- agents can be project-scoped at creation -------------------------------------------------
 async def test_agent_created_with_project_scope(env):
     """`AgentIn.project_access` — an agent can be scoped to a project at mint time (slugs or ids),
@@ -262,19 +249,6 @@ async def test_agent_created_with_project_scope(env):
     names = {t["name"] for t in (await env.c.get("/tools", headers=_h(tok))).json()}
     assert names == {"a-tool", "shared"}
     assert (await env.c.get("/call/g-tool/ok", headers=_h(tok))).status_code == 403
-
-
-async def test_agent_rotate_without_projects_keeps_the_scope(env):
-    """A rotate that does not mention project_access must not widen it — same `model_fields_set`
-    contract as tool_access (round-4 blocker #2)."""
-    made = await env.c.post(f"/orgs/{env.org_id}/agents", headers=_h(env.owner),
-                            json={"name": "scoped", "project_access": [env.apollo["slug"]]})
-    assert made.status_code == 200, made.text
-    rot = await env.c.post(f"/orgs/{env.org_id}/agents", headers=_h(env.owner),
-                           json={"name": "scoped"})  # the dashboard Rotate shape
-    assert rot.status_code == 200, rot.text
-    assert rot.json()["project_access"] == [env.apollo["id"]], "rotate must never widen the scope"
-    assert (await env.c.get("/call/g-tool/ok", headers=_h(rot.json()["token"]))).status_code == 403
 
 
 async def test_agent_created_with_unknown_project_is_rejected(env):

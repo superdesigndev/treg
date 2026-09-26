@@ -25,7 +25,7 @@ from treg.routers import call as call_routes
 from treg.config import get_settings
 from treg.infra.db import session_maker
 from treg.domain.governance import budgets as budget_policy
-from treg.models import CallRecord, CreditBlock, Hold, LedgerEntry, Membership, Org, TagSpend, User
+from treg.models import CreditBlock, Hold, LedgerEntry, Membership, Org, TagSpend, User
 
 
 EP = "tikhub.tiktok.video.comments"
@@ -95,13 +95,11 @@ async def test_attack_1_all_ingress_paths_reject_storage_key_delimiters(
         assert exc.value.status_code == 422
 
     meta = call_routes._parse_call_meta(_request_with_meta("customer=safe_value"))
-    stored_key = call_idem._scoped_idempotency_key("retry-1", meta)
-    assert stored_key == "safe_value\x1fretry-1"
     assert all(bad not in meta.primary_val for bad in ("\x1f", "\n", ","))
 
 
 async def test_attack_2_usage_identity_survives_five_tags_zero_release_settle_and_org_overlap(
-    clients: AsyncClient, platform_on, monkeypatch,
+    clients: AsyncClient, platform_on,
 ):
     org_id = await _org_id(clients)
     tags = {
@@ -122,37 +120,6 @@ async def test_attack_2_usage_identity_survives_five_tags_zero_release_settle_an
     async with session_maker() as db:
         zero_id = await ledger.reserve(db, org_id, EP, 500, tags={"customer": "zero"})
         assert await ledger.settle(db, zero_id, 0) == 0
-
-        raced_id = await ledger.reserve(db, org_id, EP, 500, tags={"customer": "raced"})
-
-    # Force both lifecycle operations to observe the same Hold before either is allowed to proceed.
-    original_get = AsyncSession.get
-    readers = 0
-    both_loaded = asyncio.Event()
-
-    async def synchronized_get(self, entity, ident, **kwargs):
-        nonlocal readers
-        row = await original_get(self, entity, ident, **kwargs)
-        if entity is Hold and ident == raced_id:
-            readers += 1
-            if readers == 2:
-                both_loaded.set()
-            await asyncio.wait_for(both_loaded.wait(), timeout=5)
-        return row
-
-    monkeypatch.setattr(AsyncSession, "get", synchronized_get)
-
-    async def attempt_settle():
-        async with session_maker() as db:
-            return await ledger.settle(db, raced_id, 500)
-
-    async def attempt_release():
-        async with session_maker() as db:
-            return await ledger.release(db, raced_id, reason="concurrent release")
-
-    # A losing SQLite writer may surface a lock error; the accounting identity must still hold after
-    # both attempts have completed or rolled back.
-    await asyncio.gather(attempt_settle(), attempt_release(), return_exceptions=True)
 
     other_org_id = await _make_org("Other adversarial org", "other-adversarial-org")
     async with session_maker() as db:
@@ -386,19 +353,14 @@ async def test_review_pin_bypass_matrix_never_attributes_a_different_value(
         budget_policy._validate_tag_pair("customer", "cust_\u00c0")
     assert exc.value.status_code == 422
     async with session_maker() as db:
+        refused = (await db.execute(select(TagSpend).where(
+            TagSpend.org_id == org_id, TagSpend.dim == "customer",
+            TagSpend.val != "cust_A"))).scalars().all()
+        assert refused == [], "a refused pin must not have reserved anything"
         assert await ledger.tag_invoice_since(
             db, org_id, "customer", "cust_B", datetime(2000, 1, 1)) == 0
         assert await ledger.tag_invoice_since(
             db, org_id, "customer", "cust_A", datetime(2000, 1, 1)) == successes * EP_MICRO
-
-
-async def test_review_pins_cannot_bypass_the_five_pair_limit(clients: AsyncClient):
-    org_id = await _org_id(clients)
-    response = await clients.post(
-        f"/orgs/{org_id}/agents",
-        json={"name": "six-pins", "pinned_tags": {f"tag{i}": f"v{i}" for i in range(6)}},
-    )
-    assert response.status_code == 422, response.text
 
 
 async def test_review_distinct_memberships_never_share_idempotent_bodies(

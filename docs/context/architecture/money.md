@@ -680,8 +680,9 @@ still pay the provider twice.
   Neither a global nor an org-wide key safely separates independent callers.
 - A short application transaction claims a pending row before relay. The unique constraint
   arbitrates concurrent claims; the loser gets 409. Reusing a label with another fingerprint is 422.
-- Metered successes and partially charged routed failures retain status, body, charge and call id
-  for 24 hours. Uncharged failures, BYOK calls and owned free polls release the label immediately.
+- Metered successes retain status, body, charge and call id for 24 hours. Uncharged failures
+  (every routed failure since routed children defer their holds to the parent, catalog.md), BYOK
+  calls and owned free polls release the label immediately, so a retry tries again.
 - Replays return `X-Treg-Idempotent-Replay: true` and the original `X-Treg-Cost-Micro`;
   MCP returns `replayed: true`. An async submission replay repeats its original reservation.
 - Refusal and cancellation cleanup return an acquired label. Expired entries are swept lazily,
@@ -973,6 +974,19 @@ Profile-only LinkedIn enrichment reserves and settles 20,000 micro-USD when a pr
 misses remain free. Platform reveal search requires an explicit page size to bound its hold.
 Own keys are unmetered.
 
+## The hub seller's price (`earned`, `settle_to_in_transaction`)
+
+The tool hub (architecture/hub.md) adds one block kind and one primitive, and nothing else to
+the five entries. `earned` is a block kind like `promotional`: credit a maker's team received as a
+hub seller's price. It spends after the free kinds and before `purchased`. `settle_to_in_transaction`
+closes a hold on the payer and, in the same transaction, grants the settled amount to the payee as
+an `earned` block. `actual_micro=None` settles the full reserved amount (a flat price); a given
+`actual_micro` settles that much and refunds the rest of the hold to the payer (a variable hub
+price: the runner reserved the declared maximum and pays the real price, `docs/hub-pricing-decisions.md`).
+The entries: a `settle` entry on the payer whose meta names
+`payee_org_id`, and a `grant` entry on the payee whose meta names `payer_org_id` and the run. The
+invariant holds on both teams at every instant. It does not commit; the hub runner owns the
+transaction. It is the only cross-team money movement in treg.
 ## Top-up product attribution
 
 Manual checkout accepts optional product attribution independent of billing policy. `start_topup`

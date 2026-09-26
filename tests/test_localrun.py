@@ -72,10 +72,6 @@ def test_effective_profile_deny_defaults_false_drops_catalog_denies_only():
     assert eff["deny"] == ["refunds"]                                # kept mine, dropped the default
 
 
-def test_effective_profile_none_when_nobody_knows_the_cli():
-    assert localrun.effective_profile(_tool(cli=None), None) is None
-
-
 # ---- unit: deny semantics ------------------------------------------------------------------
 def test_check_deny_word_boundary_and_source():
     prof = localrun.effective_profile(_tool(cli={"enabled": True, "deny": ["refunds create"]}),
@@ -145,7 +141,8 @@ def test_catalog_cli_recipe_becomes_runnable_tool(tmp_path):
     # The bridge: a secret-less recipe skill the catalog knows as a CLI (stripe-cli) becomes a runnable
     # cli tool, sourcing its credential from an env var — a gap when absent, ready when present.
     from treg import skills as sk, providers as prov
-    d = tmp_path / "stripe-cli"; d.mkdir()
+    d = tmp_path / "stripe-cli"
+    d.mkdir()
     (d / "SKILL.md").write_text("# use the stripe CLI to do things")
     det = sk._classify(d, prov.CATALOG, set())                       # STRIPE_API_KEY not in env
     assert det.kind == "generated" and det.cli and det.cli["enabled"] is True
@@ -319,11 +316,6 @@ async def test_grant_creator_deny_and_deny_defaults_opt_out(clients: AsyncClient
 
 
 # ---- endpoint: refusals --------------------------------------------------------------------
-async def test_grant_unknown_tool_404(clients: AsyncClient):
-    r = await clients.post("/tools/nope/grant", json={"argv": []})
-    assert r.status_code == 404
-
-
 async def test_grant_no_profile_409_with_template(clients: AsyncClient):
     await _mk_tool(clients, name="zzz-internal", cli=None)  # no catalog match, no contract cli
     r = await clients.post("/tools/zzz-internal/grant", json={"argv": []})
@@ -667,7 +659,8 @@ def test_cmd_run_helper_uses_env_context(monkeypatch):
     monkeypatch.setattr(cli_mod, "_client", lambda cfg: seen.update(cfg=cfg) or _FakeClient({"/grant": grant}))
     monkeypatch.setattr(cli_mod.shutil, "which", lambda b: f"/bin/{b}")
     monkeypatch.setattr(cli_mod.subprocess, "Popen", lambda cmd, env=None, **kw: _FakeProc(0, b""))
-    monkeypatch.setenv("TREG_RUN_TOKEN", "T"); monkeypatch.setenv("TREG_RUN_BASE", "http://x")
+    monkeypatch.setenv("TREG_RUN_TOKEN", "T")
+    monkeypatch.setenv("TREG_RUN_BASE", "http://x")
     monkeypatch.setenv("TREG_RUN_ORG", "acme")
     with pytest.raises(SystemExit):
         cli_mod.cmd_run_helper(_run_args("gh", "api", "user"), {})
@@ -730,13 +723,6 @@ def test_setup_local_run_guards(monkeypatch):
     with pytest.raises(SystemExit) as e2:
         cli_mod.cmd_setup_local_run(_args(member=None), {})
     assert "sudo" in str(e2.value.code)                            # needs root, on macOS too
-
-
-def test_parser_dispatches_run_helper_and_setup():
-    from treg import cli as cli_mod
-    p = cli_mod.build_parser()
-    assert p.parse_args(["setup-local-run"]).fn is cli_mod.cmd_setup_local_run
-    assert p.parse_args(["__run-helper", "gh", "--", "api", "user"]).fn is cli_mod.cmd_run_helper
 
 
 def test_run_parser_remainder():

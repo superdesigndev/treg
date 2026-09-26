@@ -124,7 +124,9 @@ async def test_member_and_admin_permissions_are_distinct(clients):
     async with session_maker() as db:
         member = User(email="member@example.dev")
         viewer = User(email="viewer@example.dev")
-        db.add(member); db.add(viewer); await db.flush()
+        db.add(member)
+        db.add(viewer)
+        await db.flush()
         db.add(Membership(user_id=member.id, org_id=org_id, role="member",
                           token_hash=crypto.hash_token(member_token)))
         db.add(Membership(user_id=viewer.id, org_id=org_id, role="viewer",
@@ -195,11 +197,19 @@ async def test_database_allows_only_one_current_agent_key(clients):
             await db.commit()
 
 
-async def test_concurrent_human_rotation_has_one_winner_and_one_replacement(clients):
+@pytest.mark.parametrize("kind", ["human", "agent"])
+async def test_concurrent_rotation_has_one_winner_and_one_replacement(clients, kind):
     org_id = (await clients.get("/auth/me")).json()["org_id"]
-    old = (await clients.post(
-        f"/orgs/{org_id}/api-keys", json={"name": "Concurrent human"},
-    )).json()
+    if kind == "human":
+        old = (await clients.post(
+            f"/orgs/{org_id}/api-keys", json={"name": "Concurrent human"},
+        )).json()
+    else:
+        agent = (await clients.post(
+            f"/orgs/{org_id}/agents", json={"name": "concurrent-agent"},
+        )).json()
+        keys = (await clients.get(f"/orgs/{org_id}/api-keys")).json()
+        old = next(row for row in keys if row["user_id"] == agent["user_id"] and row["state"] == "active")
 
     responses = await asyncio.gather(*(
         clients.post(f"/orgs/{org_id}/api-keys/{old['id']}/rotate") for _ in range(2)
@@ -212,33 +222,7 @@ async def test_concurrent_human_rotation_has_one_winner_and_one_replacement(clie
         old_row = await db.get(ApiKey, old["id"])
         rows = (await db.execute(select(ApiKey).where(
             ApiKey.membership_id == old_row.membership_id,
-            ApiKey.name == "Concurrent human",
-        ))).scalars().all()
-    assert old_row.state == "revoked" and old_row.replacement_key_id is not None
-    assert old_row.deleted_at is not None
-    assert [row.state for row in rows].count("active") == 1
-    assert len(rows) == 2
-
-
-async def test_concurrent_agent_rotation_has_one_winner_and_no_500(clients):
-    org_id = (await clients.get("/auth/me")).json()["org_id"]
-    agent = (await clients.post(
-        f"/orgs/{org_id}/agents", json={"name": "concurrent-agent"},
-    )).json()
-    keys = (await clients.get(f"/orgs/{org_id}/api-keys")).json()
-    old = next(row for row in keys if row["user_id"] == agent["user_id"] and row["state"] == "active")
-
-    responses = await asyncio.gather(*(
-        clients.post(f"/orgs/{org_id}/api-keys/{old['id']}/rotate") for _ in range(2)
-    ))
-    assert sorted(response.status_code for response in responses) == [200, 409]
-    winner = next(response for response in responses if response.status_code == 200)
-    assert winner.headers["cache-control"] == "no-store"
-
-    async with session_maker() as db:
-        old_row = await db.get(ApiKey, old["id"])
-        rows = (await db.execute(select(ApiKey).where(
-            ApiKey.membership_id == old["membership_id"], ApiKey.kind == "agent",
+            ApiKey.name == old["name"] if kind == "human" else ApiKey.kind == "agent",
         ))).scalars().all()
     assert old_row.state == "revoked" and old_row.replacement_key_id is not None
     assert old_row.deleted_at is not None
@@ -371,7 +355,7 @@ async def test_agent_key_uses_readable_name_and_admin_metadata_actions(clients):
     )).status_code == 200
 
 
-async def test_secret_bearing_default_legacy_agent_and_public_responses_are_no_store(clients):
+async def test_every_token_bearing_response_is_no_store(clients, sent_otps):
     me = (await clients.get("/auth/me")).json()
     org_id = me["org_id"]
     orgs = (await clients.get("/orgs")).json()
@@ -396,8 +380,6 @@ async def test_secret_bearing_default_legacy_agent_and_public_responses_are_no_s
     assert public.json()["token"] and public.headers["cache-control"] == "no-store"
     assert (await clients.delete(f"/orgs/{org_id}/public-token")).status_code == 200
 
-
-async def test_identity_token_responses_are_no_store(clients, sent_otps):
     revoked = await clients.post("/auth/revoke-tokens")
     assert revoked.json()["token"] and revoked.headers["cache-control"] == "no-store"
     pairing = (await clients.post("/auth/cli/start")).json()
@@ -491,6 +473,9 @@ async def test_activity_has_key_snapshot_and_key_filter(clients):
     events = (await clients.get(f"/orgs/{org_id}/api-keys/{key_id}/events")).json()
     assert events[0]["action"] == "created"
     assert secret not in str(events)
+    async with session_maker() as db:
+        rows = (await db.execute(select(ApiKeyEvent).where(ApiKeyEvent.key_id == key_id))).scalars().all()
+    assert rows and secret not in repr(rows)
 
 
 async def test_membership_removal_keeps_safe_key_and_activity_history(clients):
@@ -498,10 +483,12 @@ async def test_membership_removal_keeps_safe_key_and_activity_history(clients):
     token = crypto.new_token()
     async with session_maker() as db:
         user = User(email="departing@example.dev")
-        db.add(user); await db.flush()
+        db.add(user)
+        await db.flush()
         membership = Membership(user_id=user.id, org_id=org_id, role="member",
                                 token_hash=crypto.hash_token(token))
-        db.add(membership); await db.commit()
+        db.add(membership)
+        await db.commit()
         user_id = user.id
     key = (await clients.post(
         f"/orgs/{org_id}/api-keys", headers=_h(token), json={"name": "Departing key"},
@@ -522,7 +509,8 @@ async def test_more_keys_do_not_bypass_membership_daily_cap(clients):
     token = crypto.new_token()
     async with session_maker() as db:
         user = User(email="capped@example.dev")
-        db.add(user); await db.flush()
+        db.add(user)
+        await db.flush()
         db.add(Membership(user_id=user.id, org_id=org_id, role="member",
                           token_hash=crypto.hash_token(token), daily_call_cap=1))
         await db.commit()
@@ -616,15 +604,3 @@ async def test_default_key_rotation_is_team_specific_and_not_revocable(sent_otps
         )).json()
         assert issued["default_key_id"] == default["id"]
         assert issued["default_key_state"] == managed_keys.DISABLED
-
-
-async def test_key_audit_rows_never_contain_plaintext(clients):
-    org_id = (await clients.get("/auth/me")).json()["org_id"]
-    created = (await clients.post(
-        f"/orgs/{org_id}/api-keys", json={"name": "No secret event"},
-    )).json()
-    async with session_maker() as db:
-        events = (await db.execute(select(ApiKeyEvent).where(
-            ApiKeyEvent.key_id == created["id"],
-        ))).scalars().all()
-    assert events and created["secret"] not in repr(events)

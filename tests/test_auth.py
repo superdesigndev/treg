@@ -10,6 +10,8 @@ import hashlib
 import hmac
 import json
 import time
+from contextlib import asynccontextmanager
+from urllib.parse import urlsplit
 
 import pytest
 from fastapi import FastAPI
@@ -93,19 +95,6 @@ def test_legacy_compatibility_stops_at_the_cryptographic_boundary():
     assert sess.read_session_claims(pr_era_identity) is None
 
 
-def test_token_can_carry_an_org_claim_statelessly():
-    """A team-pinned identity token: same stateless HMAC, plus an `org` slug. Omitting org keeps the
-    plain shape (backward-compatible); passing it round-trips — and the signature still covers it, so
-    a tampered org is rejected like any other tampered claim."""
-    plain = sess.read_identity_claims(sess.make_identity(7))
-    assert plain is not None and "org" not in plain
-    pinned = sess.read_identity_claims(sess.make_identity(7, org="acme"))
-    assert pinned is not None and pinned["org"] == "acme" and pinned["uid"] == 7
-    # tampering the payload to inject/forge an org breaks the signature
-    good = sess.make_identity(7, org="acme")
-    assert sess.read_identity_claims(good + "x") is None
-
-
 def test_typed_identity_scopes_round_trip_and_bootstrap_expires():
     bootstrap = sess.read_identity_claims(sess.make_identity(
         7, ttl=sess.BOOTSTRAP_TTL_SECONDS, scope=sess.BOOTSTRAP_SCOPE,
@@ -121,44 +110,76 @@ def test_typed_identity_scopes_round_trip_and_bootstrap_expires():
     }
 
 
-@pytest.fixture
-async def gc(monkeypatch):
-    monkeypatch.setenv("TREG_GITHUB_CLIENT_ID", "cid")
-    monkeypatch.setenv("TREG_GITHUB_CLIENT_SECRET", "csec")
-    monkeypatch.setenv("TREG_GITHUB_TOKEN_URL", "http://gh/login/oauth/access_token")
-    monkeypatch.setenv("TREG_GITHUB_API_URL", "http://gh")
+_OAUTH_ENV = {
+    "github": {
+        "TREG_GITHUB_CLIENT_ID": "cid",
+        "TREG_GITHUB_CLIENT_SECRET": "csec",
+        "TREG_GITHUB_TOKEN_URL": "http://gh/login/oauth/access_token",
+        "TREG_GITHUB_API_URL": "http://gh",
+    },
+    "google": {
+        "TREG_GOOGLE_CLIENT_ID": "gid",
+        "TREG_GOOGLE_CLIENT_SECRET": "gsec",
+        "TREG_GOOGLE_TOKEN_URL": "http://gg/token",
+        "TREG_GOOGLE_USERINFO_URL": "http://gg/userinfo",
+    },
+}
+
+
+@asynccontextmanager
+async def _oauth_client(monkeypatch, provider: str):
+    for key, value in _OAUTH_ENV[provider].items():
+        monkeypatch.setenv(key, value)
     monkeypatch.setenv("TREG_SESSION_SECRET", "test-session-secret")
     get_settings.cache_clear()
     await reset_db()
-    app.state.http = AsyncClient(transport=ASGITransport(app=_github_app()), base_url="http://gh")
+    upstream, base_url = (_github_app(), "http://gh") if provider == "github" else (_google_app(), "http://gg")
+    app.state.http = AsyncClient(transport=ASGITransport(app=upstream), base_url=base_url)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
         yield c
     await app.state.http.aclose()
     get_settings.cache_clear()
 
 
-async def test_github_login_creates_user_session_but_no_auto_org(gc):
-    r = await gc.get("/auth/github", follow_redirects=False)
+@pytest.fixture
+async def gc(monkeypatch):
+    async with _oauth_client(monkeypatch, "github") as c:
+        yield c
+
+
+@pytest.fixture(params=["github", "google"])
+async def login(request, monkeypatch):
+    async with _oauth_client(monkeypatch, request.param) as c:
+        yield request.param, c
+
+
+async def test_login_creates_user_session_but_no_auto_org(login):
+    provider, c = login
+    email = {"github": "octo@example.com", "google": "guser@example.com"}[provider]
+    r = await c.get(f"/auth/{provider}", follow_redirects=False)
     assert r.status_code == 302
-    state = gc.cookies.get("treg_oauth_state")
+    authorize_host = {"github": "github.com", "google": "accounts.google.com"}[provider]
+    assert urlsplit(r.headers["location"]).hostname == authorize_host
+    state = c.cookies.get("treg_oauth_state")
     assert state
-    cb = await gc.get(f"/auth/github/callback?code=abc&state={state}", follow_redirects=False)
+    cb = await c.get(f"/auth/{provider}/callback?code=abc&state={state}", follow_redirects=False)
     assert cb.status_code == 302 and cb.headers["location"] == "/app"
-    assert gc.cookies.get("treg_session")  # session cookie set (secure omitted over http)
-    me = await gc.get("/auth/me")
-    assert me.status_code == 200 and me.json()["email"] == "octo@example.com"
-    # first login creates the USER ONLY — no throwaway personal org; the user names their first team next
+    assert c.cookies.get("treg_session")  # session cookie set (secure omitted over http)
+    me = await c.get("/auth/me")
+    assert me.status_code == 200 and me.json()["email"] == email
+    # first login creates the USER ONLY - no throwaway personal org; the user names their first team next
     async with session_maker() as s:
-        u = (await s.execute(select(User).where(User.email == "octo@example.com"))).scalar_one()
+        u = (await s.execute(select(User).where(User.email == email))).scalar_one()
         assert u.email_verified_at is not None
         assert u.signup_promo_available
         n = len((await s.execute(select(Membership).where(Membership.user_id == u.id))).scalars().all())
     assert n == 0
 
 
-async def test_bad_state_rejected(gc):
-    await gc.get("/auth/github", follow_redirects=False)
-    cb = await gc.get("/auth/github/callback?code=abc&state=WRONG", follow_redirects=False)
+async def test_bad_state_rejected(login):
+    provider, c = login
+    await c.get(f"/auth/{provider}", follow_redirects=False)
+    cb = await c.get(f"/auth/{provider}/callback?code=abc&state=WRONG", follow_redirects=False)
     assert cb.status_code == 400
 
 
@@ -172,9 +193,11 @@ async def _seed(email="dev@x.dev", role="owner", superadmin=False):
     slug = email.split("@")[0] + "-team"  # unique per user
     async with session_maker() as s:
         u = User(email=email, is_superadmin=superadmin)
-        s.add(u); await s.flush()
+        s.add(u)
+        await s.flush()
         o = Org(name="Team", slug=slug)
-        s.add(o); await s.flush()
+        s.add(o)
+        await s.flush()
         s.add(Membership(user_id=u.id, org_id=o.id, role=role, token_hash=crypto.hash_token("tok-"+email)))
         await s.commit()
         return u.id, o.id, slug
@@ -267,9 +290,14 @@ async def test_orgs_marks_the_team_pinned_tokens_org_active(gc):
     `treg login --token` lands on the right team. Before this, no org was marked active for such a
     token and the CLI guessed the FIRST membership: for a multi-team user, an arbitrary other team."""
     async with session_maker() as s:
-        u = User(email="two-teams@x.dev"); s.add(u); await s.flush()
-        first = Org(name="First", slug="first-team"); second = Org(name="Second", slug="second-team")
-        s.add(first); s.add(second); await s.flush()
+        u = User(email="two-teams@x.dev")
+        s.add(u)
+        await s.flush()
+        first = Org(name="First", slug="first-team")
+        second = Org(name="Second", slug="second-team")
+        s.add(first)
+        s.add(second)
+        await s.flush()
         s.add(Membership(user_id=u.id, org_id=first.id, role="owner", token_hash=crypto.hash_token("t1")))
         s.add(Membership(user_id=u.id, org_id=second.id, role="owner", token_hash=crypto.hash_token("t2")))
         await s.commit()
@@ -307,50 +335,6 @@ def _google_app():
         return {"email": "guser@example.com", "email_verified": True}
 
     return g
-
-
-@pytest.fixture
-async def goog(monkeypatch):
-    monkeypatch.setenv("TREG_GOOGLE_CLIENT_ID", "gid")
-    monkeypatch.setenv("TREG_GOOGLE_CLIENT_SECRET", "gsec")
-    monkeypatch.setenv("TREG_GOOGLE_TOKEN_URL", "http://gg/token")
-    monkeypatch.setenv("TREG_GOOGLE_USERINFO_URL", "http://gg/userinfo")
-    monkeypatch.setenv("TREG_SESSION_SECRET", "test-session-secret")
-    get_settings.cache_clear()
-    await reset_db()
-    app.state.http = AsyncClient(transport=ASGITransport(app=_google_app()), base_url="http://gg")
-    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
-        yield c
-    await app.state.http.aclose()
-    get_settings.cache_clear()
-
-
-async def test_google_login_creates_user_session_but_no_auto_org(goog):
-    r = await goog.get("/auth/google", follow_redirects=False)
-    assert r.status_code == 302 and "accounts.google.com" in r.headers["location"]
-    state = goog.cookies.get("treg_oauth_state")
-    assert state
-    cb = await goog.get(f"/auth/google/callback?code=abc&state={state}", follow_redirects=False)
-    assert cb.status_code == 302 and cb.headers["location"] == "/app"
-    assert goog.cookies.get("treg_session")
-    me = await goog.get("/auth/me")
-    assert me.status_code == 200 and me.json()["email"] == "guser@example.com"
-    async with session_maker() as s:
-        u = (await s.execute(select(User).where(User.email == "guser@example.com"))).scalar_one()
-        assert u.email_verified_at is not None
-        assert u.signup_promo_available
-        n = len((await s.execute(select(Membership).where(Membership.user_id == u.id))).scalars().all())
-    assert n == 0  # first login registers the user only — no auto personal org
-
-
-async def test_google_bad_state_rejected(goog):
-    await goog.get("/auth/google", follow_redirects=False)
-    cb = await goog.get("/auth/google/callback?code=abc&state=WRONG", follow_redirects=False)
-    assert cb.status_code == 400
-
-
-async def test_meta_exposes_google_flag(goog):
-    assert (await goog.get("/meta")).json()["google"] is True
 
 
 async def test_oauth_callback_carries_arena_acquisition_and_counts_signup_once(gc, monkeypatch):

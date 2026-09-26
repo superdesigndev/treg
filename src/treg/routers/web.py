@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from functools import lru_cache
-import hashlib
 import html as _html
 import html as html_mod
 import json
@@ -18,6 +17,7 @@ from fastapi.responses import (FileResponse, HTMLResponse, JSONResponse, PlainTe
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from ..timeutil import utcnow_naive as _utcnow_naive
 from .. import adsconv, agent_pages, analytics, oauth_providers
 from ..domain import referrals
 from ..domain.catalog import store as catalog_store
@@ -27,62 +27,15 @@ from ..infra.db import get_session
 from ..models import User
 from ..domain.catalog import stats as endpoint_stats
 from .catalog import (_endpoint_observation_reader, _observed_or_empty, _platform_rows,
-                      _provider_display, catalog_platform)
+                      _provider_display, catalog_platform,
+                      _platforms_payload)
 from ..domain.identity.access import _user_from_session
 from .auth_helpers import OAUTH_RETURN_COOKIE, _is_https, _take_oauth_return
 from .signup_cookies import _remember_referral
 
 
-def _dashboard_bucket(user_id: int) -> int:
-    return int.from_bytes(hashlib.sha256(f"dashboard-v2:{user_id}".encode()).digest()[:8], "big") % 100
-
-
-def _dashboard_assignment(user: User) -> str:
-    """Why this account gets its frontend: `off`, `allowlist` or `bucket`."""
-    settings = get_settings()
-    if not settings.dashboard_rollout_enabled:
-        return "off"
-    return "allowlist" if user.id in settings.dashboard_rollout_user_ids else "bucket"
-
-
-def _new_dashboard(user: User | None) -> bool:
-    if user is None:
-        return False
-    assignment = _dashboard_assignment(user)
-    if assignment != "bucket":
-        return assignment == "allowlist"
-    return _dashboard_bucket(user.id) < get_settings().dashboard_rollout_percent
-
-
-def _record_dashboard_served(user: User, new: bool) -> None:
-    """Tell product analytics which frontend this account was served.
-
-    The bucket alone cannot say when an account switched (the percentage moves) or whether it
-    ever opened the Dashboard, and PostHog persons carry no user ID to recompute it from. The
-    person property lets any funnel break down by frontend; the event dates each exposure.
-    """
-    variant = "new" if new else "legacy"
-    bucket = _dashboard_bucket(user.id)
-    analytics.capture(user.email, "dashboard_served", {
-        "variant": variant,
-        "assignment": _dashboard_assignment(user),
-        "bucket": bucket,
-        "rollout_percent": get_settings().dashboard_rollout_percent,
-        "$set": {"dashboard_variant": variant, "dashboard_bucket": bucket},
-    })
-
-
-def _dashboard_index(user: User | None = None) -> Path:
-    new = _new_dashboard(user)
-    if user is not None:
-        _record_dashboard_served(user, new)
-    if not new:
-        return _WEB_DIR / "dashboard-legacy" / "index.html"
-    return _new_dashboard_index()
-
-
-def _new_dashboard_index() -> Path:
-    """The new frontend's index, whoever asks: the rollout decision is `_dashboard_index`'s."""
+def _dashboard_index() -> Path:
+    """The compiled Dashboard's index. Local frontend development swaps in Vite's source entry."""
     settings = get_settings()
     if settings.frontend_dev:
         host = urlsplit(settings.public_url).hostname
@@ -308,7 +261,7 @@ def _page(title: str, description: str, path: str, body: str, ld: list[dict],
 
 
 def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
-                      prerender: str, user: User | None = None, *, index: Path | None = None) -> HTMLResponse:
+                      prerender: str) -> HTMLResponse:
     """Serve the dashboard SPA at a PUBLIC catalog URL, with the head a crawler needs.
 
     The public catalog is not a second implementation of the marketplace — it IS the marketplace.
@@ -322,14 +275,15 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
     1. **The head.** The SPA ships one bare `<title>treg</title>`. Every catalog URL needs its own
        title, description, canonical, og/twitter card and JSON-LD, so they are substituted in here —
        the same trick `_spa_with_og` uses for shared skill/tool links.
-    2. **A no-JS fallback.** Vue compiles `#app`'s own innerHTML as its template, so prerendered
-       markup cannot go inside it. `#prerender` is therefore a SIBLING, removed by the app on boot.
-       It is deliberately plainer than the Vue view — the ledger's row-merging is a chain of
-       client-side computeds, and reproducing it server-side would recreate exactly the duplicate
-       implementation this design avoids. It carries the TEXT (names, summaries, providers, prices),
-       which is what a crawler that does not run scripts is here for.
+    2. **A no-JS fallback.** Vue replaces `#app`'s content on mount, so prerendered markup cannot
+       go inside it. `#prerender` is therefore a SIBLING, removed by the app on boot. It carries the
+       TEXT (names, summaries, providers, prices) for readers that run no script (most AI crawlers
+       and agent fetchers), and is visually hidden: shown to people, a plain list that the app then
+       swapped for its own layout read as a second, older page flashing past.
+    3. **The shelves.** The `/catalog/platforms` body rides along as JSON (`#catalog-platforms`), so
+       the app's first render already has every platform instead of fetching them after boot.
     """
-    index = index or _dashboard_index(user)
+    index = _dashboard_index()
     if not index.exists():
         return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
     base = get_settings().public_url.rstrip("/")
@@ -375,34 +329,23 @@ def _spa_catalog_page(title: str, description: str, path: str, ld: list[dict],
                          flags=re.IGNORECASE | re.DOTALL)
     if not hits:
         html = html.replace("<head>", "<head>\n" + meta, 1)
+    shelves = json.dumps(_platforms_payload(), separators=(",", ":")).replace("<", "\\u003c")
     marker = '<div id="app"'
     if marker in html:
-        html = html.replace(marker, f'<div id="prerender">{prerender}</div>\n{marker}', 1)
+        html = html.replace(marker, f'{_PRERENDER_HIDDEN}<div id="prerender">{prerender}</div>\n'
+                            f'<script id="catalog-platforms" type="application/json">{shelves}</script>\n'
+                            f'{marker}', 1)
     return HTMLResponse(html, headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
 
 
-# The fallback's own skin. Scoped to #prerender and written against the dashboard's OWN tokens
-# (already defined in index.html), so it reads as the same product for the moment it is on screen.
-_PRERENDER_CSS = """<style>
-#prerender{max-width:1100px;margin:0 auto;padding:38px 26px 60px;font-family:var(--sans,system-ui);
-  color:var(--ink,#1a1a1a)}
-#prerender h1{font-size:30px;letter-spacing:-.01em;margin:0 0 8px}
-#prerender .lede{color:var(--muted,#7c7c7c);margin:0 0 20px;max-width:64ch}
-#prerender h2{font-size:13px;text-transform:uppercase;letter-spacing:.05em;
-  color:var(--muted2,#989898);margin:26px 0 10px;padding-bottom:8px;
-  border-bottom:1px solid var(--line,#26262322)}
-#prerender ul{list-style:none;margin:0;padding:0}
-#prerender li{padding:9px 0;border-bottom:1px solid var(--line,#26262322)}
-#prerender li b{font-weight:600}
-#prerender li i{font-style:normal;color:var(--muted,#7c7c7c);display:block;font-size:13.5px}
-#prerender .m{font-family:var(--mono,ui-monospace);font-size:11.5px;
-  color:var(--muted2,#989898);margin-top:3px;display:block}
-#prerender a{color:var(--teal,#1a7da6);text-decoration:none}
-</style>"""
+# Crawler-only: kept in the document for readers that run no script, but never painted. The
+# page's own markup still styles the text (the `h1`/`ul` structure is what a crawler reads).
+_PRERENDER_HIDDEN = ("<style>#prerender{position:absolute;width:1px;height:1px;overflow:hidden;"
+                     "clip-path:inset(50%);white-space:nowrap}</style>")
 
 
 @app.get("/catalog", include_in_schema=False)
-async def catalog_index(treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
+async def catalog_index():
     """The catalog index — the marketplace's Catalog view, on a public, indexable URL."""
     base = get_settings().public_url.rstrip("/")
     rows = _platform_rows()
@@ -437,8 +380,7 @@ async def catalog_index(treg_session: str = Cookie(default=""), db: AsyncSession
     prov_links = " · ".join(
         f'<a href="/tools/{_esc_html(r["service"])}">{_esc_html(r["display"])}</a>'
         for r in prov_rows)
-    prerender = (_PRERENDER_CSS
-                 + "<h1>The tool catalog</h1>"
+    prerender = ("<h1>The tool catalog</h1>"
                  + f'<p class="lede">{total_eps:,} endpoints across {len(rows)} platforms and '
                    f"{len(providers)} providers — every tool your agent can call through one key, "
                    "priced up front and billed per call, with no provider signup.</p>"
@@ -472,23 +414,18 @@ async def catalog_index(treg_session: str = Cookie(default=""), db: AsyncSession
         f"Tool catalog — {total_eps:,} API endpoints your agent can call | treg",
         f"Browse {total_eps:,} endpoints across {len(rows)} platforms and {len(providers)} providers "
         "— SEO, social, enrichment, ads and scraping data. One key, priced per call, no provider signup.",
-        "/catalog", ld, prerender, await _user_from_session(treg_session, db))
+        "/catalog", ld, prerender)
 
 
 @app.get("/search", include_in_schema=False)
 async def search_page():
-    """Find tools by describing the job: the new frontend's public find view over `/catalog/find`.
-
-    Only the new frontend has this page, so it is served to every visitor while the rollout is
-    enabled (anonymous included), with no per-user rollout check, and is absent when the rollout
-    switch forces legacy."""
-    if not get_settings().dashboard_rollout_enabled:
-        raise HTTPException(status_code=404, detail="not found")
+    """Find tools by describing the job: the Dashboard's public find view over `/catalog/find`."""
     rows = _platform_rows()
     # Until the page's script runs, a visitor sees the page's own ground and nothing else: a
     # different first screen that swaps out would read as a loading step. The words are for readers
     # that never run the script, so they are visually hidden rather than drawn.
-    prerender = ('<style>#prerender{position:fixed;inset:0;z-index:100;background:#f4f4f1}'
+    prerender = ('<style>#prerender{position:fixed;inset:0;z-index:100;background:#f4f4f1;'
+                 'width:auto;height:auto;clip-path:none}'
                  '#prerender>div{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}</style>'
                  "<div><h1>What does your agent need to do?</h1>"
                  '<p>Describe the job in plain words and see which tools in the treg catalog can do it, '
@@ -498,11 +435,11 @@ async def search_page():
         "Find tools for your agent | treg",
         "Describe the job in plain words and see which tools in the treg catalog can do it, "
         "priced per call, callable through one key.",
-        "/search", [], prerender, index=_new_dashboard_index())
+        "/search", [], prerender)
 
 
 @app.get("/catalog/{slug}", include_in_schema=False)
-async def catalog_page(slug: str, treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
+async def catalog_page(slug: str):
     """One platform shelf — the marketplace's platform view, on a public, indexable URL."""
     if slug in _CATALOG_RESERVED:
         raise HTTPException(status_code=404, detail=f"unknown platform {slug!r}")
@@ -538,8 +475,7 @@ async def catalog_page(slug: str, treg_session: str = Cookie(default=""), db: As
         blocks.append(f'<h2>{_esc_html(cap["description"] or cap["id"])}</h2><ul>{"".join(lis)}</ul>')
 
     provs = ", ".join(p["display_name"] for p in detail["providers"].values())
-    prerender = (_PRERENDER_CSS
-                 + f'<p class="m"><a href="/catalog">← Catalog</a> · {_esc_html(category)}</p>'
+    prerender = (f'<p class="m"><a href="/catalog">← Catalog</a> · {_esc_html(category)}</p>'
                  + f"<h1>{_esc_html(label)}</h1>"
                  + f'<p class="lede">{_esc_html(summary)} {len(eps)} endpoints from '
                    f"{_esc_html(provs)}"
@@ -569,7 +505,7 @@ async def catalog_page(slug: str, treg_session: str = Cookie(default=""), db: As
     # "{platform} api pricing" is the non-brand phrasing that reaches the site (GSC), so the shelf
     # title leads with it; the brand is treg.to and the copy carries no em-dash.
     return _spa_catalog_page(f"{label} API pricing: {len(eps)} endpoints priced per call | treg.to",
-                             desc[:300], f"/catalog/{slug}", ld, prerender, await _user_from_session(treg_session, db))
+                             desc[:300], f"/catalog/{slug}", ld, prerender)
 
 
 # --------------------------------------------------------------------------- /agents/<agent>
@@ -2124,6 +2060,339 @@ details.tl li.more a{color:var(--link);text-decoration:none}
 </style>"""
 
 
+# ---------------------------------------------------------------------------------------------
+# The hub's public share page (docs/HUB-DECISIONS.md round 4 q4, round 5 q7)
+
+# Scoped to the hub page: the public stylesheet styles cards and pre blocks by their own class
+# names, so a hub page defines its few shapes here on the SAME variables (light-only, like every
+# public page). Every wide thing scrolls inside its own box; the body never scrolls sideways.
+_HUB_PAGE_CSS = """
+.hubpage h1{font-size:clamp(28px,4vw,44px);margin:6px 0 10px}
+.hubpage h2{font-family:var(--sans);font-weight:600;font-size:17px;margin:30px 0 10px}
+.hubpage h2 .muted{font-weight:400}
+.hubpage p{line-height:1.55}
+.hubpage code{font-family:var(--mono);font-size:.92em;background:var(--panel2);padding:1px 5px;border-radius:5px}
+.hubpage pre{margin:10px 0;background:var(--panel);border:1px solid var(--line);border-radius:var(--rb);padding:12px 14px;
+  font-family:var(--mono);font-size:12.5px;line-height:1.55;color:var(--ink);overflow-x:auto;white-space:pre}
+.hubpage pre code{background:none;padding:0;font-size:inherit}
+.hubpage .pricecard{display:inline-block;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 18px;margin:10px 0 6px;box-shadow:var(--shadow-sm);min-width:280px}
+.hubpage .pricecard .big{font-size:17px;font-weight:600}
+.hubpage .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;letter-spacing:.04em;
+  border:1px solid var(--teal);color:var(--teal);vertical-align:middle}
+.hubpage .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:var(--rb);background:var(--surface)}
+.hubpage table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.hubpage th{font-family:var(--sans);font-weight:500;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+.hubpage td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.hubpage tr:last-child td{border-bottom:0}
+.hubpage .readme h2,.hubpage .readme h3,.hubpage .readme h4{font-size:15px;margin:16px 0 6px}
+.hubpage .readme ul{padding-left:20px}
+.hubpage ul.facts{padding-left:18px;line-height:1.7}
+.hubpage .bars{display:flex;align-items:flex-end;gap:3px;height:52px;padding-top:6px;border-bottom:1px solid var(--line)}
+.hubpage .bars i{flex:1;display:block;min-width:3px;background:var(--accent, #b9552c);opacity:.55;border-radius:2px 2px 0 0}
+.hubpage .bars i:last-child{opacity:1}
+.hubpage .axis{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin:4px 0 10px;font-variant-numeric:tabular-nums}
+.hubpage td.num,.hubpage th.num{text-align:right}
+.hubpage .ok{color:var(--ok, #3f7a4a);font-weight:500}.hubpage .bad{color:var(--bad, #b8322a);font-weight:500}
+.hubpage .hidden{border:1px dashed var(--line2);padding:10px 14px;border-radius:var(--rb);max-width:62ch;font-size:12.5px;color:var(--muted);margin-top:22px}
+"""
+
+
+_MD_CODE = re.compile(r"`([^`]+)`")
+_MD_BOLD = re.compile(r"\*\*([^*]+)\*\*")
+
+
+def _md_lite(text: str) -> str:
+    """A maker's README as HTML: paragraphs, `#` headings, `-` lists, `code`, **bold**. Everything
+    is escaped first; no raw HTML, no images, no scripts survive. Deliberately small: the readme is
+    at most 4,000 characters of plain markdown, not a document engine."""
+    out: list[str] = []
+    para: list[str] = []
+    in_list = False
+
+    def inline(s: str) -> str:
+        s = _esc_html(s)
+        s = _MD_CODE.sub(r"<code>\1</code>", s)
+        return _MD_BOLD.sub(r"<b>\1</b>", s)
+
+    def flush() -> None:
+        nonlocal para
+        if para:
+            out.append("<p>" + inline(" ".join(para)) + "</p>")
+            para = []
+
+    for line in text.splitlines():
+        s = line.rstrip()
+        if s.startswith("#"):
+            flush()
+            if in_list:
+                out.append("</ul>"); in_list = False
+            level = min(len(s) - len(s.lstrip("#")), 3)
+            out.append(f"<h{level + 1}>{inline(s.lstrip('#').strip())}</h{level + 1}>")
+        elif s.lstrip().startswith("- "):
+            flush()
+            if not in_list:
+                out.append("<ul>"); in_list = True
+            out.append("<li>" + inline(s.lstrip()[2:]) + "</li>")
+        elif not s.strip():
+            flush()
+            if in_list:
+                out.append("</ul>"); in_list = False
+        else:
+            if in_list:
+                out.append("</ul>"); in_list = False
+            para.append(s.strip())
+    flush()
+    if in_list:
+        out.append("</ul>")
+    return "\n".join(out)
+
+
+async def _hub_recent_runs(db: AsyncSession, tool_id: str, maker_org_id: int, *, last: int = 20) -> dict:
+    """The public run log (docs/hub-listing-decisions.md, decision 3): the last `last` runs by
+    OTHERS and runs per day for 30 days. Per run: when, outcome, duration, steps, units (a
+    per_unit tool's count), the price paid. Never who called, never the inputs, never the output;
+    `units` is the one integer read out of the stored output, nothing else leaves it."""
+    from datetime import timedelta
+    from sqlalchemy import func, select as _select
+    from ..models import HubRun
+    now = _utcnow_naive()
+    since = now - timedelta(days=30)
+    where = (HubRun.tool_id == tool_id, HubRun.caller_org_id != maker_org_id,
+             HubRun.version > 0, HubRun.started_at >= since)
+    rows = (await db.execute(
+        _select(HubRun.started_at, HubRun.status, HubRun.duration_ms, HubRun.steps, HubRun.price_micro, HubRun.output)
+        .where(*where).order_by(HubRun.started_at.desc()).limit(last))).all()
+    day = func.date(HubRun.started_at)
+    per_day = {str(d): int(n) for d, n in (await db.execute(
+        _select(day, func.count(HubRun.id)).where(*where).group_by(day))).all()}
+    totals = {str(s): int(n) for s, n in (await db.execute(
+        _select(HubRun.status, func.count(HubRun.id)).where(*where).group_by(HubRun.status))).all()}
+    days = [(since + timedelta(days=i + 1)).date().isoformat() for i in range(30)]
+    counts = [per_day.get(d, 0) for d in days]
+    runs = []
+    for started, status, ms, steps, price, output in rows:
+        units = output.get("units") if isinstance(output, dict) else None
+        runs.append({"when": started.strftime("%Y-%m-%d %H:%M"), "ok": status == "ok",
+                     "ms": int(ms or 0), "steps": int(steps or 0),
+                     "units": units if isinstance(units, int) and not isinstance(units, bool) else None,
+                     "price_micro": int(price or 0)})
+    n = sum(counts)
+    return {"runs": runs, "per_day": counts, "days": days, "total": n,
+            "ok": totals.get("ok", 0), "failed": n - totals.get("ok", 0)}
+
+
+async def _hub_reliability(db: AsyncSession, tool_id: str, maker_org_id: int) -> dict:
+    """Runs by OTHERS, 30 days: count, success share, median duration. Counts only; never who."""
+    from datetime import timedelta
+    from sqlalchemy import func, select as _select
+    from ..models import HubRun
+    since = _utcnow_naive() - timedelta(days=30)
+    rows = (await db.execute(
+        _select(HubRun.status, HubRun.duration_ms)
+        .where(HubRun.tool_id == tool_id, HubRun.caller_org_id != maker_org_id,
+               HubRun.version > 0, HubRun.started_at >= since))).all()
+    n = len(rows)
+    ok = sum(1 for s, _ in rows if s == "ok")
+    durs = sorted(d for _, d in rows if d)
+    median = durs[len(durs) // 2] if durs else 0
+    return {"runs": n, "ok": ok, "ok_pct": round(100 * ok / n) if n else None, "median_ms": median}
+
+
+@app.get("/hub/{tool_id}.md", include_in_schema=False)
+@app.get("/hub/{tool_id}", include_in_schema=False)
+async def hub_page(request: Request, tool_id: str, db: AsyncSession = Depends(get_session)):
+    """One hub tool, for a person or an agent that was handed the id: summary, readme, inputs,
+    output, the price line, health, version, the exact call line, the check trace. Never the
+    script, the maker's tools, or a key. `.md` serves the same page as Markdown. Readable without
+    sign-in; calling needs a token and balance. Not in the sitemap and `noindex`: a hub tool is
+    shared by its id, not found by search (round 1 q7)."""
+    from ..application import hub as hub_app
+    from ..models import Org
+    as_md = request.url.path.endswith(".md")
+    raw = tool_id[:-3] if tool_id.endswith(".md") else tool_id
+    from .hub_gate import hub_visible
+    visible, reader = await hub_visible(request, db)
+    if not visible:
+        raise HTTPException(status_code=404, detail="Not Found")
+    row = await hub_app.tool_for(db, raw, caller_slug=reader[0], caller_email=reader[1])
+    if row is None:
+        if await hub_app.is_rejected(db, hub_app.split_id(raw)[0]):
+            raise HTTPException(status_code=410, detail=(
+                "treg's review rejected this hub tool: it cannot be called by other teams"))
+        raise HTTPException(status_code=404, detail="no such hub tool")
+    org = await db.get(Org, row.org_id)
+    maker = org.slug if org else ""
+    base = get_settings().public_url.rstrip("/")
+    m = row.manifest
+    inputs = m.get("inputs", {})
+    out = m.get("output", {})
+    fields = out.get("fields") if isinstance(out, dict) and "fields" in out else list(out)
+    example = {k: v.get("example", v.get("default")) for k, v in inputs.items() if "example" in v or "default" in v}
+    example = {k: v for k, v in example.items() if v not in ("", None, 0)}
+    example_json = json.dumps(example)
+    from ..domain.hub import PAY_NOTE as HUB_PAY_NOTE, fees_label as hub_fees_label, price_label as hub_price_label, stored_pricing
+    pricing = stored_pricing({"price_usd": row.price_micro / 1_000_000, **m})
+    hosts = await hub_app.own_hosts(db, row)
+    raw_rng = (await hub_app.price_ranges(db, {row.tool_id: m})).get(row.tool_id)
+    price_usd = hub_app.worst_usd(m, row.price_micro, raw_rng) or 0.0             # the most a run has cost, for the Offer
+    label = hub_price_label(m)
+    fees = any("." in u for u in m.get("uses", []))
+    if pricing["mode"] == "charge":
+        price_line = f"seller {label}" + hub_fees_label(m, raw_rng)
+        per_k = "the script sets each run's price, never above the cap"
+    else:
+        p_usd = pricing["price_usd"]
+        price_line = (f"seller ${p_usd:.6g}" if p_usd else "free") + hub_fees_label(m, raw_rng)
+        per_k = f"${p_usd * 1000:,.2f} per 1,000 runs" if p_usd else "no seller price"
+    rng = hub_app.with_range(m, raw_rng)
+    price_range = rng["price_range"]
+    range_note = (f"what {rng['price_samples']} recent run{'s' if rng['price_samples'] != 1 else ''} cost, provider fees and the seller's price together"
+                  if rng["price_samples"] else ("no run yet: the seller's price, plus the provider fees" if fees else "no run yet"))
+    chk = row.check_result or {}
+    checked_at = str(chk.get("checked_at") or "")[:16].replace("T", " ")
+    rel = await _hub_reliability(db, row.tool_id, row.org_id)
+    runlog = await _hub_recent_runs(db, row.tool_id, row.org_id) if getattr(row, "public_log", True) else None
+    caps = m.get("limits", {})
+    kind = "script, sandboxed" if row.kind == "script" else f"{len(m.get('steps', []))} steps"
+    older = await _hub_older_versions(db, row)
+    title = f"{row.name} · a hub tool by {maker}"
+    desc = _serp_desc(row.summary)
+
+    from ..application.hub.health import health_of
+    hstate = (await health_of(db, row.tool_id, row.version, row.check_result)).state
+    health_word = ("failing (the last 3 runs failed)" if hstate == "failing"
+                   else "healthy" if chk.get("status") == "passed" and row.status == "live" else row.status)
+    if as_md:
+        md = [f"# {row.name}", "", f"`{row.tool_id}` · a hub tool by **{maker}** · v{row.version} · {row.status}", "",
+              row.summary, "", f"**Price:** {price_range} — {range_note}. {price_line} ({per_k}); {HUB_PAY_NOTE}.", "",
+              "## Call it", "", "```", f"treg call {row.tool_id} --data '{example_json}'", "",
+              f"POST {base}/call/{row.tool_id}    X-Treg-Token · Content-Type: application/json · body {example_json}", "```", "",
+              f"Your agent: `catalog_get(\"{row.tool_id}\")` then `call`. Needs a treg token and balance.", "",
+              "## Inputs", "", "| name | type | default | example | note |", "|---|---|---|---|---|"]
+        for k, v in inputs.items():
+            dflt = json.dumps(v["default"]) if "default" in v else "required"
+            md.append(f"| {k} | {v.get('type', '')}{(' ≤ ' + str(v['max'])) if 'max' in v else ''} | {dflt} | {v.get('example', '')} | {v.get('note', '')} |")
+        md += ["", "## Output", "", ", ".join(f"`{f}`" for f in fields), "",
+               "## About", "", row.readme, "",
+               "## Health", "", f"{health_word} · check {chk.get('status') or '-'}{(' at ' + checked_at) if checked_at else ''} · "
+               f"{rel['runs']} runs by others in 30 days" + (f", {rel['ok_pct']}% ok, {rel['median_ms']} ms median" if rel["runs"] else ""), "",
+               "## Made of", "", f"made of {len(m.get('uses', []))} tool(s) (catalog tools and the maker's own; names and keys hidden) · {kind} · "
+               + (f"sends your inputs to the maker's own server at {', '.join(hosts)} · " if hosts else "")
+               + f"{caps.get('wall_s', 120)} s · {caps.get('steps', 20)} calls max", ""]
+        if runlog is not None:
+            md += [f"## Recent runs (30 days: {runlog['total']} runs, {runlog['ok']} ok, {runlog['failed']} failed)", "",
+                   "| when | outcome | ms | steps | units | price_usd |", "|---|---|---|---|---|---|"]
+            md += [f"| {r['when']} | {'ok' if r['ok'] else 'failed'} | {r['ms']} | {r['steps']} | "
+                   f"{r['units'] if r['units'] is not None else '-'} | {r['price_micro'] / 1e6:.6g} |" for r in runlog["runs"]]
+            md += ["", "Never shown: who called, the inputs, the output.", ""]
+        if older:
+            md += ["## Versions", ""] + [f"- v{v['version']} callable as `{row.tool_id}@{v['version']}` until {v['until']}" for v in older] + [""]
+        md += ["This page never shows the script, the maker's tools, or any key. A caller sees the trace of their own run only.", ""]
+        return PlainTextResponse("\n".join(md), media_type="text/markdown; charset=utf-8",
+                                 headers={"X-Robots-Tag": "noindex"})
+
+    e = _esc_html
+    rows_html = "".join(
+        f"<tr><td><code>{e(k)}</code></td><td>{e(v.get('type', ''))}{(' ≤ ' + e(str(v['max']))) if 'max' in v else ''}</td>"
+        f"<td>{e(json.dumps(v['default'])) if 'default' in v else '<span class=\"muted\">required</span>'}</td>"
+        f"<td>{e(str(v.get('example', '')))}</td><td>{e(str(v.get('note', '')))}</td></tr>"
+        for k, v in inputs.items())
+    # The check trace shows the SHAPE of the run (waves, steps, outcome, cost, time), never what
+    # each step called: a catalog id or an own-tool name is the maker's recipe (round 5 q7).
+    def _what(call: str) -> str:
+        return "a catalog tool" if "." in call.split("/", 1)[0] else "the maker's own tool"
+    trace_html = "".join(
+        f"<tr><td>{e(str(s.get('wave', '')))}</td><td>{e(str(s.get('name', '')))}</td><td>{e(_what(str(s.get('call', ''))))}</td>"
+        f"<td>{e(str(s.get('outcome', '')))} {e(str(s.get('status') or ''))}</td><td>{e(str(s.get('cost_micro', 0)))} µ$</td><td>{e(str(s.get('ms', '')))} ms</td></tr>"
+        for s in (chk.get("trace") or []))
+    older_html = "".join(f"<li>v{v['version']} callable as <code>{e(row.tool_id)}@{v['version']}</code> until {v['until']}</li>" for v in older)
+    body = f"""
+<main class="hubpage" style="max-width:900px;margin:0 auto;padding:24px 22px 60px">
+  <p class="muted" style="font-size:13px"><code>{e(row.tool_id)}</code> · <span class="pill">HUB</span> · by <b>{e(maker)}</b> · v{row.version}</p>
+  <h1 style="margin:4px 0 8px">{e(row.name)}</h1>
+  <p style="max-width:66ch">{e(row.summary)}</p>
+  <div class="pricecard">
+    <div class="big">{e(price_range)}</div>
+    <div class="muted" style="font-size:12px">{e(range_note)}</div>
+    <div class="muted" style="font-size:12px">{e(price_line)} · {e(per_k)} · {e(HUB_PAY_NOTE)}</div>
+    <div style="margin-top:8px;font-size:13px">{e(health_word)}{(' · checked ' + e(checked_at)) if checked_at else ''}</div>
+  </div>
+
+  <h2>Call it</h2>
+  <pre><code>treg call {e(row.tool_id)} --data '{e(example_json)}'
+
+curl -X POST {e(base)}/call/{e(row.tool_id)} \\
+  -H "X-Treg-Token: $TREG_TOKEN" -H "Content-Type: application/json" \\
+  -d '{e(example_json)}'</code></pre>
+  <p class="muted" style="font-size:13px">Needs a treg token and balance. Your agent: <code>catalog_get("{e(row.tool_id)}")</code> then <code>call</code>. This page as text: <a href="/hub/{e(row.tool_id)}.md">/hub/{e(row.tool_id)}.md</a>.</p>
+
+  <h2>Inputs</h2>
+  <div class="scroll"><table><tr><th>Name</th><th>Type</th><th>Default</th><th>Example</th><th>Note</th></tr>{rows_html}</table></div>
+
+  <h2>Output</h2>
+  <p>{", ".join(f"<code>{e(f)}</code>" for f in fields)}</p>
+
+  <h2>About</h2>
+  <div class="readme" style="max-width:66ch">{_md_lite(row.readme)}</div>
+
+  <h2>The check <span class="muted" style="font-size:12px">(run at publish, for real)</span></h2>
+  {('<div class="scroll"><table><tr><th>Wave</th><th>Step</th><th>Called</th><th>Result</th><th>Cost</th><th>ms</th></tr>' + trace_html + '</table></div>') if trace_html else '<p class="muted">no trace recorded</p>'}
+  <p class="muted" style="font-size:12px">{e(chk.get('status') or '-')}{(' at ' + e(checked_at)) if checked_at else ''}</p>
+
+  {_hub_runlog_html(runlog)}
+  <h2>Made of</h2>
+  <ul class="facts">
+    <li>made of {len(m.get('uses', []))} tool(s) <span class="muted">(catalog tools and the maker's own; names and keys hidden)</span></li>
+    {f'<li>sends your inputs to the maker&#39;s own server at <b>{e(", ".join(hosts))}</b>; what answers there can change without a new version</li>' if hosts else ''}
+    <li>{e(kind)} · {caps.get('wall_s', 120)} s · {caps.get('steps', 20)} calls max</li>
+    {('<li>data uploaded with the tool: ' + str(max(0, row.data.count(chr(10)) + (0 if row.data.endswith(chr(10)) else 1) - 1)) + ' rows</li>') if getattr(row, 'data', None) else ''}
+    <li>Reliability, 30 days: {rel['runs']} runs by others{(' · ' + str(rel['ok_pct']) + '% ok · ' + str(rel['median_ms']) + ' ms median') if rel['runs'] else ''}</li>
+    {('<li>Older versions: <ul>' + older_html + '</ul></li>') if older_html else ''}
+  </ul>
+  <p class="hidden">This page never shows the script, the maker's tools, or any key. A caller sees the trace of their own run only.</p>
+</main>"""
+    ld = [{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": row.name,
+           "description": row.summary, "applicationCategory": "DeveloperApplication",
+           "offers": {"@type": "Offer", "price": f"{price_usd:.6g}", "priceCurrency": "USD"}}]
+    return _page(title, desc, f"/hub/{row.tool_id}", body, ld, nav_current="",
+                 head_extra='<meta name="robots" content="noindex"/>\n<style>' + _HUB_PAGE_CSS + '</style>')
+
+
+def _hub_runlog_html(runlog: dict | None) -> str:
+    """The recent-runs section of the public page; empty when the maker switched the log off."""
+    if runlog is None:
+        return ""
+    e = _esc_html
+    peak = max(runlog["per_day"] or [0]) or 1
+    bars = "".join(f'<i style="height:{max(4, round(100 * c / peak)) if c else 0}%"></i>' for c in runlog["per_day"])
+    rows = "".join(
+        f"<tr><td>{e(r['when'])}</td><td>{'<span class=\"ok\">ok</span>' if r['ok'] else '<span class=\"bad\">failed</span>'}</td>"
+        f"<td class=\"num\">{r['ms']:,}</td><td class=\"num\">{r['steps']}</td>"
+        f"<td class=\"num\">{r['units'] if r['units'] is not None else '—'}</td>"
+        f"<td class=\"num\">${r['price_micro'] / 1e6:.6g}</td></tr>" for r in runlog["runs"])
+    table = (f'<div class="scroll"><table><tr><th>When (UTC)</th><th>Outcome</th><th class="num">ms</th>'
+             f'<th class="num">Steps</th><th class="num">Units</th><th class="num">Price paid</th></tr>{rows}</table></div>'
+             if rows else '<p class="muted">no runs by others in the last 30 days</p>')
+    return (f'<h2>Recent runs <span class="muted" style="font-size:12px">(30 days: {runlog["total"]} runs, '
+            f'{runlog["ok"]} ok, {runlog["failed"]} failed)</span></h2>'
+            f'<div class="bars">{bars}</div><div class="axis"><span>{e(runlog["days"][0])}</span><span>runs per day</span><span>today</span></div>'
+            f'{table}'
+            f'<p class="muted" style="font-size:12.5px">Never shown: who called, the inputs, the output. A failed run pays the seller nothing.</p>')
+
+
+async def _hub_older_versions(db: AsyncSession, row) -> list[dict]:
+    from datetime import timedelta
+    from sqlalchemy import select as _select
+    from ..application import hub as hub_app
+    from ..models import HubTool
+    olds = (await db.execute(_select(HubTool).where(HubTool.tool_id == row.tool_id, HubTool.status == "live",
+                                                    HubTool.version < row.version).order_by(HubTool.version.desc()))).scalars().all()
+    return [{"version": o.version, "until": (row.created_at + timedelta(days=hub_app.OLD_VERSION_DAYS)).date().isoformat()}
+            for o in olds]
+
+
 @app.get("/tools/{service}", include_in_schema=False)
 async def tools_provider(service: str, db: AsyncSession = Depends(get_session),
                          observations: endpoint_stats.EndpointObservationReader = Depends(
@@ -2877,11 +3146,6 @@ def _dashboard_asset(directory: Path, name: str) -> FileResponse:
     return FileResponse(asset, headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
-@app.get("/app/legacy/assets/{path:path}", include_in_schema=False)
-async def legacy_dashboard_asset(path: str):
-    return _dashboard_asset(_WEB_DIR / "dashboard-legacy" / "assets", path)
-
-
 @app.get("/app/ui/assets/{name}", include_in_schema=False)
 async def dashboard_asset(name: str):
     return _dashboard_asset(_WEB_DIR / "dashboard" / "assets", name)
@@ -2910,7 +3174,7 @@ async def dashboard(
     if signed_in and (resume := _resume_parked_authorization(request)) is not None:
         return resume
     owner = await _local_owner(db) if not signed_in else None
-    index = _dashboard_index(signed_in or owner)
+    index = _dashboard_index()
     if not index.exists():
         raise HTTPException(503, "Dashboard not bundled")
     resp = HTMLResponse(_dashboard_document(index), headers={"Cache-Control": "private, no-store", "Vary": "Cookie"})
@@ -2922,14 +3186,14 @@ async def dashboard(
     return resp
 
 
-def _spa_with_og(kind: str, name: str, user: User | None = None):
+def _spa_with_og(kind: str, name: str):
     """Serve the SPA at a shareable detail path (/app/skills/x, /app/tools/x) with per-resource
     og/twitter meta so link unfurls show what was shared. The meta echoes only the URL's own
-    name segment. Session lookup selects the frontend but never exposes resource contents."""
-    index = _dashboard_index(user)
+    name segment and never exposes resource contents."""
+    index = _dashboard_index()
     if not index.exists():
         return HTMLResponse("<h3>tools-registry API. Dashboard not bundled.</h3>")
-    label = "skill" if kind == "skills" else "tool"
+    label = {"skills": "skill", "runs": "run"}.get(kind, "tool")
     safe = _esc_html(name)
     meta = (
         f"<title>{safe} · Treg</title>\n"
@@ -2970,25 +3234,33 @@ async def dashboard_marketplace(
 
 
 @app.get("/app/skills/{name}", include_in_schema=False)
-async def dashboard_skill_page(name: str, treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
-    return _spa_with_og("skills", name, await _user_from_session(treg_session, db))
+async def dashboard_skill_page(name: str):
+    return _spa_with_og("skills", name)
 
 
 @app.get("/app/tools/{name}", include_in_schema=False)
-async def dashboard_tool_page(name: str, treg_session: str = Cookie(default=""), db: AsyncSession = Depends(get_session)):
-    return _spa_with_og("tools", name, await _user_from_session(treg_session, db))
+async def dashboard_tool_page(name: str):
+    return _spa_with_og("tools", name)
+
+
+@app.get("/app/runs/{run_id}", include_in_schema=False)
+async def dashboard_run_page(run_id: str):
+    """The caller's (or maker's) run page: the app opens `/hub/runs/<id>` on load."""
+    return _spa_with_og("runs", run_id)
 
 
 @app.get("/llms.txt", include_in_schema=False)
-async def llms_txt():
+async def llms_txt(request: Request, db: AsyncSession = Depends(get_session)):
     """Agent-readable overview (llms.txt convention) — an AI agent that fetches this learns the
     whole registry: the call protocol, discovery, auth, CLI, skills, and links to the tutorial/docs.
     The serving domain is templated in so links stay correct across deploys."""
     f = _WEB_DIR / "llms.txt"
     if not f.exists():
         raise HTTPException(status_code=404, detail="llms.txt not bundled")
+    from .hub_gate import hub_visible
+    hub_on = (await hub_visible(request, db))[0]
     base = get_settings().public_url.rstrip("/")
-    return PlainTextResponse(_fill_headline(_strip_routed(f.read_text(encoding="utf-8"))).replace("{BASE}", base),
+    return PlainTextResponse(_fill_headline(_strip_routed(f.read_text(encoding="utf-8"), hub_on)).replace("{BASE}", base),
                              media_type="text/plain; charset=utf-8")
 
 
@@ -3169,11 +3441,25 @@ def routed_discovery_on() -> bool:
     return str(get_settings().routed_discovery).strip().lower() not in ("off", "0", "false", "no")
 
 
-def _strip_routed(text: str) -> str:
-    """Remove the `<!--routed-->…<!--/routed-->` blocks (and, when kept, just the markers)."""
+def _hub_app_visible(slug: str | None) -> bool:
+    from ..application import hub as hub_app
+    return hub_app.visible_to(slug)
+
+
+def _strip_routed(text: str, hub_on: bool | None = None) -> str:
+    """Remove the `<!--routed-->…<!--/routed-->` blocks (and, when kept, just the markers), and the
+    `<!--hub-->…<!--/hub-->` blocks the same way behind `hub_enabled`: an agent-facing file must
+    never describe what this deployment has not switched on (AGENTS.md: do not document what is
+    not built)."""
     if routed_discovery_on():
-        return text.replace("<!--routed-->\n", "").replace("\n<!--/routed-->", "")
-    return re.sub(r"<!--routed-->.*?<!--/routed-->\n?", "", text, flags=re.S)
+        text = text.replace("<!--routed-->\n", "").replace("\n<!--/routed-->", "")
+    else:
+        text = re.sub(r"<!--routed-->.*?<!--/routed-->\n?", "", text, flags=re.S)
+    # The hub sections follow the reader: while TREG_HUB_TEAMS limits the hub, only a reader acting
+    # for a listed team gets them (`hub_on`, from the route); with no reader, the public answer.
+    if hub_on if hub_on is not None else _hub_app_visible(None):
+        return text.replace("<!--hub-->\n", "").replace("\n<!--/hub-->", "")
+    return re.sub(r"<!--hub-->.*?<!--/hub-->\n?", "", text, flags=re.S)
 
 
 def _fill_headline(text: str) -> str:
@@ -3184,14 +3470,14 @@ def _fill_headline(text: str) -> str:
     return text.replace("{ENDPOINTS}", endpoints).replace("{PROVIDERS}", str(providers))
 
 
-def _serve_md(name: str) -> PlainTextResponse:
+def _serve_md(name: str, hub_on: bool | None = None) -> PlainTextResponse:
     """Serve a bundled markdown file as inline text (so "open in new tab" shows it, not a download),
     with the serving domain templated in. Backs the 'copy markdown' buttons on the docs pages."""
     f = _WEB_DIR / name
     if not f.exists():
         raise HTTPException(status_code=404, detail=f"{name} not bundled")
     base = get_settings().public_url.rstrip("/")
-    return PlainTextResponse(_fill_headline(_strip_routed(f.read_text(encoding="utf-8"))).replace("{BASE}", base),
+    return PlainTextResponse(_fill_headline(_strip_routed(f.read_text(encoding="utf-8"), hub_on)).replace("{BASE}", base),
                              media_type="text/plain; charset=utf-8")
 
 
@@ -3247,10 +3533,11 @@ async def integrate_md():
 
 
 @app.get("/skill.md", include_in_schema=False)
-async def skill_md():
+async def skill_md(request: Request, db: AsyncSession = Depends(get_session)):
     """The OFFICIAL treg Claude skill (3 personas), {BASE}-templated to this server.
     install.sh drops it into ~/.claude/skills/treg/ so agents learn treg at CLI install."""
-    return _serve_md("skill.md")
+    from .hub_gate import hub_visible
+    return _serve_md("skill.md", (await hub_visible(request, db))[0])
 
 
 @app.get("/skills/ugc/SKILL.md", include_in_schema=False)
@@ -3895,11 +4182,12 @@ async def well_known_skills_index():
 
 
 @app.get("/.well-known/skills/treg/SKILL.md", include_in_schema=False)
-async def well_known_skill_md():
+async def well_known_skill_md(request: Request, db: AsyncSession = Depends(get_session)):
     """The skill itself, at the path `index.json` promises. Deliberately the same `_serve_md` the
     canonical `/skill.md` uses, so `{BASE}` is templated to the serving host here too — a self-hosted
     registry advertises ITSELF, not treg.to."""
-    return _serve_md("skill.md")
+    from .hub_gate import hub_visible
+    return _serve_md("skill.md", (await hub_visible(request, db))[0])
 
 
 @app.get("/.well-known/skills/make-ugc/SKILL.md", include_in_schema=False)

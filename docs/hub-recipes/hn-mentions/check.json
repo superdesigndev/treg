@@ -1,0 +1,1 @@
+{"inputs": {"query": "sqlite", "days": 7, "limit": 5}, "fields": ["query", "hits", "count"], "min_rows": 1}

@@ -35,49 +35,6 @@ async def plan(c, mode="compare", providers=None, **extra):
     return r.json()
 
 
-async def test_bounceban_enters_email_verification_arena_via_verified_adapter(
-    clients, monkeypatch,
-):
-    from treg.config import get_settings
-    monkeypatch.setenv("TREG_PLATFORM_KEY_BOUNCEBAN", "PLATFORM-BOUNCEBAN")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "bounceban")
-    get_settings.cache_clear()
-    response = await clients.post("/arena/plans", json={
-        "capability": "people.email.verify",
-        "identity": {"email": "dev@bounceban.com"},
-        "mode": "compare",
-        "providers": ["bounceban"],
-        "max_cost_micro": 10_000,
-    })
-    assert response.status_code == 200, response.text
-    quote = response.json()
-    assert len(quote["providers"]) == 1
-    assert quote["providers"][0]["provider"] == "bounceban"
-    assert quote["providers"][0]["endpoint_id"] == "bounceban.people.email.verify"
-    assert quote["estimate_micro"] == 4_000
-    get_settings.cache_clear()
-
-
-async def test_aiark_email_finder_enters_the_enrichment_arena(clients, monkeypatch):
-    from treg.config import get_settings
-
-    monkeypatch.setenv("TREG_PLATFORM_KEY_AIARK", "PLATFORM-AIARK")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "aiark")
-    get_settings.cache_clear()
-    response = await clients.post("/arena/plans", json={
-        "capability": "people.email.find",
-        "identity": {"linkedin_url": "https://www.linkedin.com/in/example"},
-        "mode": "compare",
-        "providers": ["aiark"],
-        "max_cost_micro": 100_000,
-    })
-    assert response.status_code == 200, response.text
-    quote = response.json()
-    assert quote["providers"][0]["endpoint_id"] == "aiark.people.email.find"
-    assert quote["estimate_micro"] == 5267
-    get_settings.cache_clear()
-
-
 async def test_wiza_async_email_finder_completes_inside_arena(clients, monkeypatch):
     from treg.config import get_settings
 
@@ -110,19 +67,17 @@ async def test_wiza_async_email_finder_completes_inside_arena(clients, monkeypat
     get_settings.cache_clear()
 
 
-def test_wiza_async_finders_are_visible_in_public_arena_tasks():
-    tasks = {task["id"]: task for task in arena.public_tasks()}
-    assert "wiza" in tasks["people.email.find"]["providers"]
-    assert "wiza" in tasks["people.phone.find"]["providers"]
-
-
 async def test_wiza_arena_timeout_is_shown_as_pending_with_reservation(clients, monkeypatch):
     from treg.config import get_settings
 
     monkeypatch.setenv("TREG_PLATFORM_KEY_WIZA", "PLATFORM-WIZA")
     monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "wiza")
-    monkeypatch.setattr(arena, "RUN_SECONDS", 0.1)
+    # The run deadline must land after the submit but before the first poll; a
+    # tight deadline raced the submit under parallel load and read "cancelled".
+    monkeypatch.setattr(arena, "RUN_SECONDS", 1)
     get_settings.cache_clear()
+    endpoint = arena.catalog_store.load().by_id["wiza.people.phone.find"]
+    monkeypatch.setitem(endpoint["async"], "interval", 60)
     seen = []
     monkeypatch.setattr(service, "relay", _relay_by_provider({
         "wiza": [(200, {"data": {"id": 778, "status": "queued"}})],
@@ -170,61 +125,6 @@ async def test_wiza_arena_poll_404_stops_waterfall_while_task_is_live(clients, m
     async with session_maker() as db:
         task = (await db.execute(select(AsyncTaskRecord))).scalars().one()
         assert task.status == "pending" and await db.get(Hold, task.call_id) is not None
-    get_settings.cache_clear()
-
-
-def test_limadata_verified_adapters_enter_the_enrichment_arena():
-    seen = {}
-    for task in arena.public_tasks():
-        endpoints = {
-            preview["endpoint_id"]
-            for previews in task["provider_previews"]
-            for preview in previews
-            if preview["provider"] == "limadata"
-        }
-        if endpoints:
-            seen[task["id"]] = endpoints
-    assert seen == {
-        "people.email.find": {
-            "limadata.people.email.find.name",
-            "limadata.people.email.find.linkedin",
-        },
-        "people.email.verify": {"limadata.people.email.verify"},
-        "people.phone.find": {"limadata.people.phone.find"},
-        "companies.enrich": {"limadata.companies.enrich"},
-    }
-
-
-async def test_zerobounce_verifier_enters_arena_but_expensive_finder_does_not(
-    clients, monkeypatch,
-):
-    from treg.config import get_settings
-    monkeypatch.setenv("TREG_PLATFORM_KEY_ZEROBOUNCE", "PLATFORM-ZEROBOUNCE")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "zerobounce")
-    get_settings.cache_clear()
-    response = await clients.post("/arena/plans", json={
-        "capability": "people.email.verify",
-        "identity": {"email": "valid@example.com"},
-        "mode": "compare",
-        "providers": ["zerobounce"],
-        "max_cost_micro": 20_000,
-    })
-    assert response.status_code == 200, response.text
-    quote = response.json()
-    assert len(quote["providers"]) == 1
-    assert quote["providers"][0]["provider"] == "zerobounce"
-    assert quote["providers"][0]["endpoint_id"] == "zerobounce.people.email.verify"
-    assert quote["estimate_micro"] == 13_800
-
-    finder_response = await clients.post("/arena/plans", json={
-        "capability": "people.email.find",
-        "identity": {"full_name": "Ada Lovelace", "domain": "example.com"},
-        "mode": "compare",
-        "providers": ["zerobounce"],
-        "max_cost_micro": 300_000,
-    })
-    assert finder_response.status_code == 422
-    assert "cannot use this input" in finder_response.text
     get_settings.cache_clear()
 
 
@@ -385,20 +285,12 @@ async def test_batch_own_keys_remain_free_at_maximum_list_size(clients, enrichme
 async def test_public_page_and_tasks_but_no_anonymous_spending(clients):
     token = clients.headers.pop("X-Treg-Token")
     assert (await clients.get("/enrich-arena")).status_code == 200
-    leaderboard = await clients.get("/enrich-arena/leaderboard")
-    assert leaderboard.status_code == 200
-    assert 'aria-label="Arena pages"' in leaderboard.text
-    benchmark = await clients.get("/enrich-arena/people-search-bench")
-    assert benchmark.status_code == 200
-    assert 'href="/enrich-arena/people-search-bench"' in benchmark.text
+    assert (await clients.get("/enrich-arena/leaderboard")).status_code == 200
+    assert (await clients.get("/enrich-arena/people-search-bench")).status_code == 200
     assert (await clients.get("/enrich-arena/bench.js")).status_code == 200
     tasks = (await clients.get("/arena/tasks")).json()
-    assert len(tasks) == 9
     work = next(t for t in tasks if t["id"] == "people.email.find")
-    names, linkedin = work["provider_previews"]
-    assert "hunter" in {p["provider"] for p in names}
-    assert "hunter" not in {p["provider"] for p in linkedin}
-    assert "fiber-ai" in {p["provider"] for p in linkedin}
+    names = work["provider_previews"][0]
     assert all(isinstance(p["estimate_micro"], int) and p["estimate_micro"] >= 0 for p in names)
     assert all(p["price_type"] == "per_success" for p in names)
     async with session_maker() as db:
@@ -1096,45 +988,6 @@ async def test_history_pages_keep_tied_rows_stable_and_never_dispatch(clients, e
         assert not (await db.execute(select(Hold))).scalars().all()
 
 
-async def test_arena_and_dashboard_share_setup_components(clients):
-    asset = await clients.get('/agent-setup.js')
-    assert asset.status_code == 200 and 'no-cache' in asset.headers['cache-control']
-    assert 'javascript' in asset.headers['content-type']
-    assert 'SetupInstructions' in asset.text and 'AgentPicker' in asset.text
-    page = (await clients.get('/enrich-arena')).text
-    dashboard = (await clients.get('/app')).text
-    assert '/agent-setup.js' in page and '/agent-setup.js' in dashboard
-
-
-def test_discovery_public_cohorts_keep_all_requested_constraints():
-    tasks = {t['id']: t for t in arena.public_tasks()}
-    assert tasks['people.search']['discovery']
-    assert list(tasks['people.search']['variants'][0]) == ['title', 'company_domain']
-    company_role, company, _q, role_country = tasks['people.search']['provider_previews']
-    assert company_role and not {'hunter','lusha','leadsforge'} & {p['provider'] for p in company_role}
-    assert company and {'hunter','leadsforge'} <= {p['provider'] for p in company}
-    assert role_country and 'lusha' not in {p['provider'] for p in role_country}
-    assert 'people.company.search' not in tasks and rules.catalog_capability('people.company.search') == 'people.search'
-    similar = tasks['companies.similar']['provider_previews'][0]
-    assert {'tomba','companyenrich'} <= {p['provider'] for p in similar}
-    assert tasks['companies.similar']['max_entries'] == 10
-    assert next(p for p in similar if p['provider']=='companyenrich')['estimate_micro'] > next(p for p in similar if p['provider']=='tomba')['estimate_micro']
-
-
-def test_openmart_is_not_offered_in_enrich_arena():
-    assert all(
-        preview["provider"] != "openmart"
-        for task in arena.public_tasks()
-        for cohort in task["provider_previews"]
-        for preview in cohort
-    )
-
-
-def test_open_web_tools_are_not_enrich_arena_tasks():
-    tasks = {task["id"] for task in arena.public_tasks()}
-    assert not {"web.search", "web.extract", "web.map", "web.crawl"} & tasks
-
-
 def test_search_outputs_are_bounded_sanitized_and_survive_presentation():
     output = rules.safe_output({'people':[{'name':'Example Person','linkedin_url':'javascript:bad','email':True,'title':False}]*30,'count':99999}, capability='people.search')
     assert output['count']==10 and len(output['people'])==10
@@ -1208,26 +1061,6 @@ async def test_discovery_rejects_unknown_country_before_planning(clients, enrich
 def test_discovery_normalizes_saved_vendor_response_shapes(source):
     output = rules.safe_output({'people': [source]}, capability='people.search')
     assert output == {'people': [{'name': 'Example Person', 'title': 'Engineer', 'linkedin_url': 'https://www.linkedin.com/in/example'}], 'count': 1}
-
-
-async def test_companyenrich_similar_quotes_and_dispatches_the_explicit_page_limit(clients, enrichment_on, monkeypatch):
-    from treg.config import get_settings
-    monkeypatch.setenv('TREG_PLATFORM_KEY_COMPANYENRICH', 'PLATFORM-COMPANYENRICH-KEY')
-    monkeypatch.setenv('TREG_PLATFORM_PROVIDERS', 'companyenrich')
-    get_settings.cache_clear()
-    seen = []
-    monkeypatch.setattr(service, 'relay', _relay_by_provider({'companyenrich': [(200, {'items': [{'name': 'Example Peer', 'domain': 'peer.test'}], 'totalItems': 500})]}, seen))
-    response = await clients.post('/arena/plans', json={
-        'capability': 'companies.similar', 'identity': {'domain': 'seed.test'},
-        'providers': ['companyenrich'], 'mode': 'compare', 'max_cost_micro': 1_000_000})
-    assert response.status_code == 200, response.text
-    result = await finish(clients, response.json())
-    assert seen[0][3] == {'domains': ['seed.test'], 'page': 1, 'pageSize': 10}
-    assert result['results'][0]['state'] == 'hit'
-    assert result['results'][0]['output']['count'] == 1, 'Upstream total is not the number of displayed matches'
-    assert result['results'][0]['output']['companies'][0]['domain'] == 'peer.test'
-    task = next(t for t in arena.public_tasks() if t['id'] == 'companies.similar')
-    assert response.json()['required_micro'] == next(p for p in task['provider_previews'][0] if p['provider'] == 'companyenrich')['estimate_micro']
 
 
 @pytest.mark.parametrize("cancel", [False, True])

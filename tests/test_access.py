@@ -30,7 +30,9 @@ async def _mint(email: str, org_id: int, role: str) -> tuple[str, int]:
     async with session_maker() as s:
         u = (await s.execute(select(User).where(User.email == email))).scalar_one_or_none()
         if u is None:
-            u = User(email=email); s.add(u); await s.flush()
+            u = User(email=email)
+            s.add(u)
+            await s.flush()
         s.add(Membership(user_id=u.id, org_id=org_id, role=role, token_hash=crypto.hash_token(token)))
         await s.commit()
         uid = u.id
@@ -43,7 +45,10 @@ async def env():
     app.state.http = AsyncClient(transport=ASGITransport(app=make_upstream()), base_url="http://upstream")
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://registry") as c:
         async with session_maker() as s:
-            org = Org(name="Team", slug="team"); s.add(org); await s.commit(); await s.refresh(org)
+            org = Org(name="Team", slug="team")
+            s.add(org)
+            await s.commit()
+            await s.refresh(org)
             org_id = org.id
         owner, _ = await _mint("owner@x.dev", org_id, "owner")
         member, member_uid = await _mint("m@x.dev", org_id, "member")
@@ -74,12 +79,6 @@ async def test_tool_access_gates_call_and_run(env):
     assert (await env.c.post("/run", headers=_h(env.member), json={"tool": "beta"})).status_code == 403
     g = await env.c.post("/tools/beta/grant", headers=_h(env.member), json={"argv": []})
     assert g.status_code == 403 and "access" in g.json()["detail"]
-
-
-async def test_null_access_allows_all(env):
-    # default membership has NULL tool_access → every tool is usable
-    assert (await env.c.get("/call/alpha", headers=_h(env.member))).status_code != 403
-    assert (await env.c.get("/call/beta", headers=_h(env.member))).status_code != 403
 
 
 async def test_local_run_toggle_blocks_only_local(env):

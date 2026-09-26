@@ -25,6 +25,9 @@ platforms:
   # --- AI Search: answer engines (GEO / AEO visibility) ----------------------------------------
   ai-search: {label: "AI Visibility / AEO", category: "SEO/AEO", featured: 6, summary: "Aggregated brand-mention and keyword data across AI answer engines."}
 
+  # --- AI judgment: a typed decision over evidence, not text generation ---------------------------
+  ai-judge: {label: "AI judgment", category: "AI generation", summary: "A label, a score or a yes/no probability over evidence you supply. A judge, not a writer: classify, route, verify, rank."}
+
   # --- AI generation: generated media modalities ------------------------------------------------
   video-gen: {label: "Video generation", category: "AI generation", summary: "Text-to-video and image-to-video across models, with prices side by side."}
   image-gen: {label: "Image generation", category: "AI generation", summary: "Text-to-image and prompt-based image editing across models."}
@@ -827,6 +830,7 @@ capabilities:
 
   # --- taxonomy-fill 2026-07-28 -----------------------------------------------------------------
   # ai-search
+  ai-judge.decide: "Judge evidence: a label with probabilities, a rubric score, or a yes/no probability"
   ai-search.brave.answer: "Get Brave's AI answer"
   ai-search.chatgpt.answer: "Get a ChatGPT answer"
   ai-search.chatgpt.scrape: "Scrape a live ChatGPT answer page for a keyword"

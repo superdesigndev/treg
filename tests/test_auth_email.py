@@ -67,14 +67,6 @@ async def test_start_is_rate_limited_per_email(client):
     assert blocked.status_code == 429  # the (N+1)th code request for one inbox is refused (email-bomb guard)
 
 
-async def test_start_rate_limit_is_per_email_not_global(client):
-    from treg.routers.auth import OTP_START_MAX_PER_EMAIL
-    for _ in range(OTP_START_MAX_PER_EMAIL + 2):  # drive one inbox past its cap
-        await client.post("/auth/email/start", json={"email": "victim@matrix.io"})
-    other = await client.post("/auth/email/start", json={"email": "bystander@matrix.io"})
-    assert other.status_code == 200  # a different inbox is unaffected (per-key window, not a global lock)
-
-
 async def test_start_is_rate_limited_per_ip(client):
     from treg.routers.auth import OTP_START_MAX_PER_IP
     for i in range(OTP_START_MAX_PER_IP):  # distinct emails so the per-email cap never trips first

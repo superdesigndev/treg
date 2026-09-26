@@ -30,6 +30,7 @@ import httpx
 from ... import audit
 from ...config import get_settings
 from ...infra.db import session_maker
+from ...domain.capacity.routes_view import view as overflow_routes_view
 from ...domain.capacity.view import view as capacity_view
 from ...domain.capacity.signatures import classify as classify_capacity
 from ...domain.catalog import stats as endpoint_stats
@@ -42,6 +43,7 @@ from .. import asynctasks as async_task_app
 from . import async_bridge
 from .intake import _tag_telemetry
 from .resolve import _anonymous_offer, _host_of, _marketplace_secret
+from .settle import close_deferred
 from .types import CallContext, CallFailure, GatewayFailed, ResolutionFailed, UpstreamResponse
 
 log = logging.getLogger("treg.route")
@@ -172,7 +174,7 @@ class _Bytes:
 class Attempt:
     endpoint_id: str
     provider: str
-    outcome: str            # hit | miss | error | skipped
+    outcome: str            # hit | weak | miss | error | rejected | skipped
     status: int | None
     charged_micro: int
     detail: str = ""
@@ -296,10 +298,19 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             "platform"
         )
         cv = cat.cost_view(e.get("cost"), e["provider"])
+        direct_exhausted = tier == "platform" and capacity_view.is_exhausted(e["provider"], e["id"])
+        overflow_route = None
+        if (direct_exhausted and get_settings().overflow_mode == "on"
+                and not getattr(caller.org, "platform_overflow_disabled", False)):
+            overflow_route = next(iter(overflow_routes_view.for_endpoint(e["id"])), None)
         price = 0 if tier != "platform" else cost_at(cv, identity, ad)
+        if overflow_route is not None:
+            price = overflow_route.agg_price_micro
         c = Candidate(endpoint=e, adapter=ad, variant=v, tier=tier, price_micro=price, hit_rate=st.get("hit_rate"),
                       ok_rate=st.get("ok_rate"), p50_ms=st.get("p50_ms"), last_ok_days=st.get("last_ok_days"),
-                      exhausted=(tier == "platform" and capacity_view.is_exhausted(e["provider"], e["id"])),
+                      exhausted=direct_exhausted and overflow_route is None,
+                      note=(f"direct account exhausted; overflow via {overflow_route.aggregator}"
+                            if overflow_route is not None else ""),
                       ignored=ignored_filters(ad, contract, identity))
         if tier == "platform" and not cat.platform_eligible(e):
             dropped.append({"endpoint_id": e["id"], "why": "not platform-eligible and no own key"})
@@ -382,7 +393,37 @@ def _header(response: UpstreamResponse, name: str) -> str | None:
 
 async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_header, upstream_client: httpx.AsyncClient,
                      execute_child, *, audit_client: str = "") -> tuple[UpstreamResponse, int]:
-    """Execute a routed call under `parent`. Returns (the assembled response, total charged)."""
+    """Execute a routed call under `parent`. Returns (the assembled response, total charged).
+
+    Every child leaves its hold OPEN in `pending` (CallContext.deferred_settles) and this call
+    closes all of them once, at the end: settled when the routed call answers (a hit, or a 200
+    miss), released when it fails. A routed call that fails charges the caller nothing, even when
+    a provider on the way answered and billed treg (owner decision 2026-09-21)."""
+    pending: list = []
+    try:
+        response, spent = await _run_routed(parent, ep, body_bytes, get_header, upstream_client,
+                                            execute_child, pending, audit_client=audit_client)
+    except CallFailure as exc:
+        released = sum(int(a.get("charged_micro") or 0) for a in (exc.detail.get("tried") or [])
+                       if isinstance(a, dict)) if isinstance(exc.detail, dict) else 0
+        await close_deferred(pending, charge=False, why=f"routed_{exc.kind}")
+        if isinstance(exc.detail, dict):
+            exc.detail["charged_micro"] = 0
+            if released:
+                exc.detail["released_micro"] = released
+            for a in exc.detail.get("tried") or []:
+                if isinstance(a, dict):
+                    a["charged_micro"] = 0
+        raise
+    except BaseException:
+        await close_deferred(pending, charge=False, why="routed_aborted")
+        raise
+    await close_deferred(pending, charge=True)
+    return response, spent
+
+
+async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_header, upstream_client: httpx.AsyncClient,
+                      execute_child, pending: list, *, audit_client: str = "") -> tuple[UpstreamResponse, int]:
     try:
         given = json.loads(body_bytes or b"{}")
     except ValueError:
@@ -392,6 +433,9 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
     contract = catalog_store.load().contracts.get(ep["capability"])
     options = RouteOptions.from_headers(
         get_header, int(round(contract.default_max_cost_usd * 1_000_000)) if contract and contract.default_max_cost_usd else None)
+    await capacity_view.load()
+    if get_settings().overflow_mode != "off":
+        await overflow_routes_view.load()
     plan = await build_plan(ep, given, parent.input.caller, options)
     if not plan.candidates:
         # 503 only when capacity or keys took a candidate away; a strict-filter drop is the
@@ -445,7 +489,8 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
         # also ranks the candidate down.
         ignored = cand.ignored
         remaining = max(0, options.max_cost_micro - spent) if options.max_cost_micro is not None else None
-        child = CallContext(input=_child_input(parent, cand.endpoint, query, body, remaining), call_ref=f"{parent.call_ref}:r{n}", meta=parent.meta)
+        child = CallContext(input=_child_input(parent, cand.endpoint, query, body, remaining), call_ref=f"{parent.call_ref}:r{n}",
+                            meta=parent.meta, deferred_settles=pending)
         try:
             response = await execute_child(child, upstream_client)
         except CallFailure as exc:
@@ -571,13 +616,25 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
             # live 2026-08-28), so the waterfall goes on to providers that are FREE ON FAILURE
             # (per_success / free / ≤ 1¢ per call, another provider, the usual error bound). A dearer
             # paid-per-call provider is never asked to bill the same mistake twice (plan §4).
+            # Another provider already ANSWERED this same question (a hit, a weak hit or a miss), so
+            # the question is valid and this rejection is this provider's own: note it and go on,
+            # like any provider error, instead of ending the whole call as the caller's fault. The
+            # rows already paid for are then still returned (live 2026-09-23: prospeo's 400 after
+            # two companyenrich answers ended a people.search as a 400 and threw the rows away).
+            if any(a.outcome in ("hit", "weak", "miss") for a in tried):
+                tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "rejected", response.status, charged,
+                                     raw[:120].decode("utf-8", "replace")))
+                errors += 1
+                if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
+                    break
+                continue
             tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error", response.status, charged, raw[:120].decode("utf-8", "replace")))
             rejected_by.add(cand.endpoint["provider"])
             errors += 1
             if errors <= MAX_ERROR_FALLBACKS and plan.contract.idempotent and any(
                     _free_on_failure(c) and c.endpoint["provider"] not in rejected_by for c in plan.candidates[n + 1:]):
                 continue
-            _audit_parent(parent, ep, response.status, spent, audit_client)
+            _audit_parent(parent, ep, response.status, 0, audit_client)   # a failed routed call charges nothing
             raise ResolutionFailed("route_caller_fault", status_code=response.status, detail={
                 "error": "route_caller_fault", "endpoint_id": ep["id"], "served_by": cand.endpoint["id"],
                 "tried": [t.view() for t in tried], "charged_micro": spent,
@@ -664,7 +721,8 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
                 "tried": [t.view() for t in tried],
                 "message": "no candidate fits the remaining cost ceiling; nothing was charged",
             })
-        outcome = "miss" if tried and all(t.outcome in ("miss", "skipped", "weak") for t in tried) else "error"
+        outcome = ("miss" if tried and any(t.outcome == "miss" for t in tried)
+                   and all(t.outcome in ("miss", "skipped", "weak", "rejected") for t in tried) else "error")
         if outcome == "miss":
             last = next(t for t in reversed(tried) if t.outcome == "miss")
             body_out = {"output": {k: None for k in plan.contract.output}, "raw": None,
@@ -675,7 +733,7 @@ async def run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_heade
             headers = {"X-Treg-Providers-Tried": ",".join(t.provider for t in tried), "X-Treg-Route-Outcome": "miss",
                        **({"X-Treg-Route-Capped": "true"} if cost_capped else {})}
             return _json(body_out, 200, headers), spent
-        _audit_parent(parent, ep, 502, spent, audit_client)
+        _audit_parent(parent, ep, 502, 0, audit_client)   # a failed routed call charges nothing
         raise GatewayFailed("route_failed", status_code=502, detail={
             "error": "route_failed", "endpoint_id": ep["id"], "tried": [t.view() for t in tried], "charged_micro": spent,
             "dropped": plan.dropped,

@@ -134,12 +134,16 @@ def test_amount_validation_accepts_the_minimum_and_above(amount):
 
 
 # ---- endpoint auth ------------------------------------------------------------------------------
-async def test_billing_endpoints_require_admin_of_this_org(c: AsyncClient):
+async def test_billing_endpoints_require_admin_of_this_org(c: AsyncClient, monkeypatch):
+    """A card and an invoice archive are the org's money, not a member's business."""
     org_id, owner = await _org(c)
     member = await _member(c, org_id, owner, "grunt@superdesign.dev")
+    monkeypatch.setattr(billing, "_sdk", lambda *a, **k: pytest.fail("must not reach Stripe"))
     for method, path, body in (("GET", "/billing", None),
                                ("POST", "/billing/topup", {"amount_usd": 10}),
-                               ("POST", "/billing/autotopup", {"enabled": False})):
+                               ("POST", "/billing/autotopup", {"enabled": False}),
+                               ("GET", "/billing/history", None),
+                               ("POST", "/billing/portal", None)):
         r = await c.request(method, path, json=body, headers=_h(member))
         assert r.status_code == 403, f"{path} let a plain member in: {r.status_code}"
         r = await c.request(method, path, json=body)
@@ -155,16 +159,17 @@ async def test_billing_get_reports_state_for_an_admin(c: AsyncClient, monkeypatc
     assert body["balance_micro"] == get_settings().promo_grant_micro
     assert body["autotopup"]["enabled"] is False and body["autotopup"]["consented_at"] is None
     assert body["topup"]["min_usd"] == 10
-    assert body["topup"]["presets"] == [10, 50, 100, 200]
     assert body["topup"]["default_usd"] == 10  # no history yet
-    assert body["topup"]["bonus_tiers"] == {"10": 0, "50": 5, "100": 10, "200": 15}
 
 
-async def test_billing_is_503_when_stripe_is_not_configured(c: AsyncClient, monkeypatch):
+@pytest.mark.parametrize("method,path,body", [("POST", "/billing/topup", {"amount_usd": 10}),
+                                              ("POST", "/billing/portal", None)])
+async def test_billing_is_503_when_stripe_is_not_configured(c: AsyncClient, monkeypatch, method, path, body):
     """A self-hoster with no Stripe key gets a clear "this deployment doesn't sell balance", not a 500."""
     org_id, owner = await _org(c)
+    await _set_org(org_id, stripe_customer_id="cus_test_1")
     monkeypatch.setattr(get_settings(), "stripe_secret_key", "", raising=False)
-    r = await c.post("/billing/topup", json={"amount_usd": 10}, headers=_h(owner))
+    r = await c.request(method, path, json=body, headers=_h(owner))
     assert r.status_code == 503
     assert (await c.get("/billing", headers=_h(owner))).json()["configured"] is False
 
@@ -199,6 +204,10 @@ async def test_topup_creates_a_usd_checkout_and_never_credits(c: AsyncClient, mo
     assert session_kw["payment_intent_data"]["metadata"]["treg_org_id"] == str(org_id)
     # Dynamic payment methods: never pin the list, let Stripe pick what converts.
     assert "payment_method_types" not in session_kw
+    # An invoice is the document a finance team accepts, and asking for one must not cost the saved
+    # card above. The org travels onto the invoice so one found in Stripe resolves to a team.
+    assert session_kw["invoice_creation"]["enabled"] is True
+    assert session_kw["invoice_creation"]["invoice_data"]["metadata"]["treg_org_id"] == str(org_id)
     after = (await c.get(f"/orgs/{org_id}/balance", headers=_h(owner))).json()["balance_micro"]
     assert after == before, "creating a Checkout session must not move the balance"
 
@@ -227,29 +236,6 @@ async def test_topup_reuses_the_org_stripe_customer(c: AsyncClient, monkeypatch)
     assert len(created) == 1
     async with session_maker() as db:
         assert (await db.get(Org, org_id)).stripe_customer_id == "cus_test_1"
-
-
-async def test_topup_checkout_asks_stripe_for_an_invoice(c: AsyncClient, monkeypatch):
-    """A card receipt proves a charge; an invoice is the document a finance team accepts. The second
-    half of this test is the real guard: the invoice must not cost us `setup_future_usage`, because
-    that is the saved card and the SCA mandate every later auto-top-up charge runs on."""
-    org_id, owner = await _org(c)
-    calls: list[tuple] = []
-
-    async def fake_sdk(fn, /, **kw):
-        calls.append((getattr(fn, "__qualname__", str(fn)), kw))
-        if "Customer" in str(fn):
-            return {"id": "cus_test_1"}
-        return {"id": "cs_1", "url": "https://checkout.stripe.com/c/pay/cs_1"}
-
-    monkeypatch.setattr(billing, "_sdk", fake_sdk)
-    r = await c.post("/billing/topup", json={"amount_usd": 10}, headers=_h(owner))
-    assert r.status_code == 200, r.text
-    session_kw = [kw for name, kw in calls if "Session" in name][0]
-    assert session_kw["invoice_creation"]["enabled"] is True
-    # The org travels onto the invoice too, so one found in the Stripe dashboard resolves to a team.
-    assert session_kw["invoice_creation"]["invoice_data"]["metadata"]["treg_org_id"] == str(org_id)
-    assert session_kw["payment_intent_data"]["setup_future_usage"] == "off_session"
 
 
 async def test_invoice_events_are_acknowledged_but_never_credit(c: AsyncClient):
@@ -285,6 +271,7 @@ async def test_portal_returns_a_one_time_url_for_a_paying_org(c: AsyncClient, mo
     assert "billing_portal" in name.lower() or "Session" in name
     assert kw["customer"] == "cus_test_1"
     assert kw["return_url"].endswith("/app#billing")
+    assert (await c.get("/billing", headers=_h(owner))).json()["portal"] is True
 
 
 async def test_portal_refuses_an_org_with_no_stripe_customer(c: AsyncClient, monkeypatch):
@@ -295,19 +282,6 @@ async def test_portal_refuses_an_org_with_no_stripe_customer(c: AsyncClient, mon
     r = await c.post("/billing/portal", headers=_h(owner))
     assert r.status_code == 422
     assert (await c.get("/billing", headers=_h(owner))).json()["portal"] is False
-
-
-async def test_portal_is_advertised_once_the_org_has_a_customer(c: AsyncClient):
-    org_id, owner = await _org(c)
-    await _set_org(org_id, stripe_customer_id="cus_test_1")
-    assert (await c.get("/billing", headers=_h(owner))).json()["portal"] is True
-
-
-async def test_portal_is_503_when_stripe_is_not_configured(c: AsyncClient, monkeypatch):
-    org_id, owner = await _org(c)
-    await _set_org(org_id, stripe_customer_id="cus_test_1")
-    monkeypatch.setattr(get_settings(), "stripe_secret_key", "", raising=False)
-    assert (await c.post("/billing/portal", headers=_h(owner))).status_code == 503
 
 
 # ---- payment history ----------------------------------------------------------------------------
@@ -383,30 +357,6 @@ async def test_history_survives_a_stripe_outage(c: AsyncClient, monkeypatch):
     assert body["stripe_ok"] is False
     assert body["items"][0]["amount_micro"] == 10_000_000  # the amount is still right
     assert body["items"][0]["invoice_pdf"] == "" and body["items"][0]["receipt_url"] == ""
-
-
-async def test_history_never_moves_money(c: AsyncClient, monkeypatch):
-    org_id, owner = await _org(c)
-    await _set_org(org_id, stripe_customer_id="cus_test_1")
-    async with session_maker() as db:
-        await ledger.topup(db, org_id, 10_000_000, "pi_manual", meta={"source": "stripe"})
-        await db.commit()
-    monkeypatch.setattr(billing, "_sdk", _docs_sdk([_charge("pi_manual", invoice="in_1")], [_invoice("in_1")]))
-    before = (await c.get(f"/orgs/{org_id}/balance", headers=_h(owner))).json()["balance_micro"]
-    await c.get("/billing/history", headers=_h(owner))
-    after = (await c.get(f"/orgs/{org_id}/balance", headers=_h(owner))).json()["balance_micro"]
-    assert after == before
-
-
-async def test_history_and_portal_need_admin_of_this_org(c: AsyncClient, monkeypatch):
-    """A card and an invoice archive are the org's money, not a member's business — the same gate as
-    the rest of /billing."""
-    org_id, owner = await _org(c)
-    member = await _member(c, org_id, owner, "grunt@superdesign.dev")
-    monkeypatch.setattr(billing, "_sdk", lambda *a, **k: pytest.fail("must not reach Stripe"))
-    for method, path in (("GET", "/billing/history"), ("POST", "/billing/portal")):
-        assert (await c.request(method, path, headers=_h(member))).status_code == 403
-        assert (await c.request(method, path)).status_code in (401, 403)
 
 
 async def test_history_of_a_team_that_never_paid_is_empty_not_an_error(c: AsyncClient, monkeypatch):
@@ -647,27 +597,20 @@ def test_the_idempotency_key_collapses_a_burst_but_not_a_changed_card():
     assert billing._idempotency_key(1, 25_000_000, 0, "pm_a") not in burst   # a different amount
 
 
-async def test_auto_topup_refuses_without_recorded_consent(c: AsyncClient, monkeypatch):
+@pytest.mark.parametrize("over,reason", [
+    (lambda: {"autotopup_consented_at": None}, "no_consent"),
+    (lambda: {"stripe_default_pm": None}, "no_card"),
+    # A burst of calls noticing the same low balance must not each fire a charge; the cooldown is
+    # stamped in the DB, so it also holds across web workers.
+    (lambda: {"autotopup_last_attempt_at": billing._now() - timedelta(seconds=60)}, "cooldown"),
+    # Re-read under the lock: a manual top-up (or the winner of a race) may have already funded it.
+    (lambda: {"balance_micro": 50_000_000}, "above_threshold"),
+], ids=["no_consent", "no_card", "cooldown", "above_threshold"])
+async def test_auto_topup_refuses_without_charging(c: AsyncClient, monkeypatch, over, reason):
     org_id, _ = await _org(c)
-    await _armed(org_id, autotopup_consented_at=None)
+    await _armed(org_id, **over())
     monkeypatch.setattr(billing, "_sdk", _no_sdk)
-    assert (await _attempt(org_id))["reason"] == "no_consent"
-
-
-async def test_auto_topup_refuses_without_a_card(c: AsyncClient, monkeypatch):
-    org_id, _ = await _org(c)
-    await _armed(org_id, stripe_default_pm=None)
-    monkeypatch.setattr(billing, "_sdk", _no_sdk)
-    assert (await _attempt(org_id))["reason"] == "no_card"
-
-
-async def test_auto_topup_respects_the_cooldown(c: AsyncClient, monkeypatch):
-    """A burst of calls all noticing the same low balance must not each fire a charge; the cooldown is
-    stamped in the DB, so it also holds across web workers."""
-    org_id, _ = await _org(c)
-    await _armed(org_id, autotopup_last_attempt_at=billing._now() - timedelta(seconds=60))
-    monkeypatch.setattr(billing, "_sdk", _no_sdk)
-    assert (await _attempt(org_id))["reason"] == "cooldown"
+    assert (await _attempt(org_id))["reason"] == reason
 
 
 async def test_auto_topup_stops_at_the_monthly_cap(c: AsyncClient, monkeypatch):
@@ -690,14 +633,6 @@ async def test_monthly_spend_counts_only_automatic_topups(c: AsyncClient, monkey
         await ledger.topup(db, org_id, 10_000_000, "pi_auto", meta={"auto": True})
         await db.commit()
         assert await billing.monthly_autotopup_spend(db, org_id) == 10_000_000
-
-
-async def test_auto_topup_skips_when_the_balance_recovered(c: AsyncClient, monkeypatch):
-    """Re-read under the lock: a manual top-up (or the winner of a race) may have already funded it."""
-    org_id, _ = await _org(c)
-    await _armed(org_id, balance_micro=50_000_000)
-    monkeypatch.setattr(billing, "_sdk", _no_sdk)
-    assert (await _attempt(org_id))["reason"] == "above_threshold"
 
 
 async def test_authentication_required_disables_autotopup_with_a_reason(c: AsyncClient, monkeypatch):
@@ -873,15 +808,6 @@ async def test_analytics_outage_cannot_500_the_webhook(c: AsyncClient, monkeypat
     r = await _deliver(c, _pi_event(org_id, pi="pi_analytics_broken", cents=500))
     assert r.status_code == 200 and r.json()["credited"] is True
     analytics._queue.clear()
-
-
-async def test_no_posthog_key_means_no_events(c: AsyncClient, monkeypatch):
-    from treg import analytics
-    org_id, _owner = await _org(c)
-    monkeypatch.setattr(billing, "_sdk", _no_sdk)
-    analytics._queue.clear()  # default settings: no key
-    assert (await _deliver(c, _pi_event(org_id, pi="pi_no_key", cents=500))).status_code == 200
-    assert analytics._queue == []
 
 
 # ---- Google Ads conversion tracking: first top-up ------------------------------------------------

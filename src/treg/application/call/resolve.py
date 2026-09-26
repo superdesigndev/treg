@@ -346,6 +346,8 @@ class MarketplaceCall:
     # Admitted through an active capacity lock as its probe (domain.capacity.marks): a 2xx clears
     # exactly that lock.
     probe_lock_id: str | None = None
+    # A routed child: settle into this list instead of the ledger (CallContext.deferred_settles).
+    deferred: list | None = None
 
     @property
     def free_owned_poll(self) -> bool:

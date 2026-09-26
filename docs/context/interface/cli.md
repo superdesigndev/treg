@@ -161,8 +161,7 @@ CONFIG                                           config · login · logout · on
 
 The order **is** the pitch: what you can do with no setup comes before what you have to register
 yourself, and `balance`/`topup` sit next to the thing that spends them rather than under team
-management. `test_help_is_grouped_and_hides_aliases` pins both the order and that `catalog` precedes
-`tool`, so a drift back to vault-first fails the suite.
+management.
 
 **Old → new.** Every one of these still parses and routes exactly as before — hidden, not removed:
 

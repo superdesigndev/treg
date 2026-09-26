@@ -413,9 +413,11 @@ session is committed before the relay so none of them ever waits on it, see
 later server loop cannot inherit connections bound to the closed loop. `verify_db()` is the read-only
 lifespan and worker guard: it keeps the missing-Fernet-key refusal, requires a stamp at head, refuses a
 known older revision, and warns but serves on an unknown-newer revision for additive-era rollback.
-`reset_db()` is test-only: it disposes every loop-bound pool, recreates the SQLite schema or truncates
-application tables on Postgres, then writes the Alembic head stamp. Avoiding per-test Alembic runs and
-Postgres DDL keeps the suite fast without weakening the autogenerate drift guard. `get_session()` and
+`reset_db()` is test-only: it disposes every loop-bound pool, deletes every application row (and
+rewinds Postgres sequences), then writes the Alembic head stamp. It rebuilds the schema only when its
+column-and-index fingerprint differs from the one it last built: a fresh database, or a test that
+altered the shared schema. Avoiding per-test Alembic runs and DDL keeps the suite fast without weakening the
+autogenerate drift guard. `get_session()` and
 `get_admin_session()` are the FastAPI dependencies. SQLite locally (`aiosqlite`), Postgres on Render, same code. **Timestamps are
 naive UTC:** `_now()` (the `created_at` default) drops tzinfo because the columns are `TIMESTAMP WITHOUT
 TIME ZONE` and asyncpg rejects tz-aware values on Postgres; the app compares naive UTC throughout.
@@ -485,7 +487,7 @@ module is off** (self-hosters and the test suite send nothing). `$groups: {team:
 browser's `posthog.group('team', slug)`. Every event also carries `build` (`TREG_BUILD`, else the
 commit variable the host exports, else the installed package version; `build_id`) and
 `archive_config` (a 12-hex digest of the archive settings that change what a call does:
-mode, serving allowlist and percentage, repeat price, age ceilings, body storage, change
+mode, serving allowlist and percentage, repeat price, age ceilings, body write and all three read modes, change
 observation; `archive_config_id`), and the lifespan emits one `service_started` per process with
 the role and those archive settings. They exist so an analysis can be bounded to one code version
 or one cache configuration instead of a remembered deploy time: a property that an older build

@@ -249,12 +249,58 @@ async def _asynctasks_settle(args) -> int:
     return 0
 
 
+async def _hub_check(args) -> int:
+    """The scheduled health check (docs/HUB-DECISIONS.md round 2 q8; architecture/hub.md): every
+    live tool's newest version runs its check.json once as its maker. The verdict lands on the
+    row; health is derived from the last three runs. Cron it every 6 hours."""
+    import httpx
+    from sqlalchemy import select
+    from .application.hub import enabled as hub_enabled
+    from .application.hub.health import check_as_maker
+    from .infra.db import session_maker, verify_db
+    from .models import HubTool
+    await verify_db()
+    if not hub_enabled():
+        print("hub is off (TREG_HUB_ENABLED); nothing to check")
+        return 0
+    out = []
+    async with httpx.AsyncClient(timeout=200.0) as upstream:
+        async with session_maker() as db:
+            q = select(HubTool).where(HubTool.status == "live").order_by(HubTool.tool_id, HubTool.version.desc())
+            if args.only:
+                q = q.where(HubTool.tool_id == args.only)
+            rows = (await db.execute(q)).scalars().all()
+            seen: set[str] = set()
+            for row in rows:
+                if row.tool_id in seen:
+                    continue
+                seen.add(row.tool_id)
+                v = await check_as_maker(db, row, upstream)
+                await db.commit()
+                out.append({"tool_id": row.tool_id, "version": row.version, "check": v.get("status"),
+                            "run_id": v.get("run_id"), "charged_micro": v.get("charged_micro", 0),
+                            "error": (v.get("error") or {}).get("error") or (v.get("error") or {}).get("message")})
+    if args.json:
+        print(json.dumps(out, indent=2))
+    else:
+        for o in out:
+            print(f"{o['tool_id']}@{o['version']}  {o['check']}  run {o['run_id']}  {o['charged_micro']} µ$"
+                  + (f"  {o['error']}" if o["error"] else ""))
+        print(f"{len(out)} tool(s) checked")
+    return 0 if all(o["check"] == "passed" for o in out) else 1
 async def _arena_insights(args) -> int:
     from .infra.db import verify_db
     from .application.arena_insights import drain
+    from .bootstrap import archive_object_store
+    from . import analytics
 
-    await verify_db()
-    result = await drain(max_seconds=args.max_seconds)
+    async with archive_object_store():
+        await verify_db()
+        analytics.capture_service_started("arena-worker")
+        try:
+            result = await drain(max_seconds=args.max_seconds)
+        finally:
+            await analytics.drain()
     print(json.dumps(result, sort_keys=True))
     return 1 if result["failed"] else 0
 
@@ -336,6 +382,12 @@ def main(argv: list[str] | None = None) -> int:
     settle = tasksub.add_parser("settle", help="poll due tasks and complete their existing holds")
     settle.add_argument("--limit", type=int, default=50)
     settle.set_defaults(fn=_asynctasks_settle)
+    hub = sub.add_parser("hub", help="the tool hub")
+    hubsub = hub.add_subparsers(dest="cmd", required=True)
+    chk = hubsub.add_parser("check", help="run every live hub tool's check.json once, as its maker (spends the maker's balance at step prices)")
+    chk.add_argument("--only", help="one tool id (default: every live tool, newest version)")
+    chk.add_argument("--json", action="store_true")
+    chk.set_defaults(fn=_hub_check)
     arena = sub.add_parser("arena", help="Enrich Arena database-backed statistics")
     arenasub = arena.add_subparsers(dest="cmd", required=True)
     insights = arenasub.add_parser("insights", help="fold new audit rows into the rolling Arena aggregate")

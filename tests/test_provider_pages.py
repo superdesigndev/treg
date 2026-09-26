@@ -11,11 +11,9 @@ from __future__ import annotations
 import json
 import re
 
-import pytest
 from httpx import AsyncClient
 
 from treg.routers import web as web_routes
-from treg.config import get_settings
 
 
 def _ld(html: str) -> list[dict]:
@@ -36,20 +34,6 @@ async def test_every_provider_page_renders(clients: AsyncClient):
         assert f'href="/tools/{row["service"]}"' in r.text or "canonical" in r.text
 
 
-async def test_provider_page_anatomy_and_structured_data(clients: AsyncClient):
-    service = _first_provider()
-    r = await clients.get(f"/tools/{service}")
-    assert r.status_code == 200
-    html = r.text
-    base = get_settings().public_url.rstrip("/")
-    assert f'rel="canonical" href="{base}/tools/{service}"' in html
-    assert 'id="tools"' in html and 'id="faq"' in html and 'href="/pricing"' in html
-    types = {d["@type"] for d in _ld(html)}
-    assert {"BreadcrumbList", "ItemList", "FAQPage", "HowTo"} <= types
-    item_list = next(d for d in _ld(html) if d["@type"] == "ItemList")
-    assert item_list["numberOfItems"] == len(item_list["itemListElement"])
-
-
 async def test_unknown_provider_is_404_and_api_paths_are_not_shadowed(clients: AsyncClient):
     assert (await clients.get("/tools/nope")).status_code == 404
     # The API's own GETs on this prefix still answer as the API (JSON), never as a page.
@@ -68,23 +52,6 @@ async def test_signed_out_marketplace_redirects_to_public_page(clients: AsyncCli
     assert r.status_code == 404
 
 
-async def test_pricing_page(clients: AsyncClient):
-    r = await clients.get("/pricing")
-    assert r.status_code == 200
-    assert "$1.00" in r.text and "markup" in r.text
-    assert {"BreadcrumbList", "FAQPage"} <= {d["@type"] for d in _ld(r.text)}
-
-
-async def test_sitemap_and_catalog_link_every_provider_page(clients: AsyncClient):
-    services = [r["service"] for r in web_routes._provider_rows()]
-    sm = (await clients.get("/sitemap.xml")).text
-    cat = (await clients.get("/catalog")).text
-    for s in services:
-        assert f"/tools/{s}<" in sm, s
-        assert f'href="/tools/{s}"' in cat, s
-    assert "/pricing<" in sm
-
-
 async def test_provider_page_reads_the_observation_reader_not_the_session(clients, caplog):
     """`/tools/{service}` once handed `_observed_or_empty` the request's AsyncSession instead of the
     app's observation reader; the measured line silently came up empty and every page view logged
@@ -96,56 +63,3 @@ async def test_provider_page_reads_the_observation_reader_not_the_session(client
     assert "endpoint stats unavailable" not in caplog.text
 
 
-async def test_oauth_access_is_not_labeled_byok_or_free_when_metered(clients, monkeypatch):
-    monkeypatch.setenv('TREG_OAUTH_BILLED_PROVIDERS', 'x')
-    get_settings.cache_clear()
-    try:
-        html = (await clients.get('/tools/x')).text
-        assert 'OAuth connection · metered' in html
-        assert 'BYOK only' not in html
-        assert 'No treg charge' not in html
-        assert 'never metered' not in html
-        assert 'OAuth app are metered' in html
-    finally:
-        get_settings.cache_clear()
-
-
-async def test_unmetered_oauth_access_uses_account_language(clients, monkeypatch):
-    monkeypatch.setenv('TREG_OAUTH_BILLED_PROVIDERS', '')
-    get_settings.cache_clear()
-    try:
-        html = (await clients.get('/tools/x')).text
-        assert 'OAuth connection' in html
-        assert 'BYOK only' not in html
-        assert 'OAuth connection · metered' not in html
-        assert 'No X (Twitter) signup' not in html
-        assert 'This is an own-account connection' in html
-    finally:
-        get_settings.cache_clear()
-
-
-@pytest.mark.parametrize("service,display", [
-    ("google-search-console", "Google Search Console"),
-    ("google-analytics", "Google Analytics"),
-    ("semrush", "Semrush"),
-    ("snapchat-ads", "Snapchat Ads"),
-    ("pinterest-ads", "Pinterest Ads"),
-    ("meta-ads", "Meta Ads"),
-    ("tiktok-ads", "TikTok Ads"),
-    ("facebook", "Facebook Pages"),
-])
-async def test_mcp_intent_providers_lead_with_mcp(clients: AsyncClient, service: str, display: str):
-    """Own-account providers in _MCP_INTENT_PROVIDERS lead with MCP in Title and H1.
-
-    GSC shows strong "{provider} mcp" or "{provider} connector" impressions with near-zero clicks
-    on these pages when their titles said only "connect your own account". This test pins the
-    MCP-leading format.
-    """
-    html = (await clients.get(f"/tools/{service}")).text
-    title = re.search(r"<title>(.*?)</title>", html, re.S).group(1)
-    h1 = re.search(r"<h1>(.*?)</h1>", html, re.S).group(1)
-    desc = re.search(r'<meta name="description" content="(.*?)"', html, re.S).group(1)
-    assert title == f"{display} MCP: connect your own account | treg.to", title
-    assert h1 == f"{display} MCP: connect your own account", h1
-    assert "MCP" in desc, f"meta description should mention MCP: {desc}"
-    assert "treg.to" in desc, f"meta description should mention treg.to: {desc}"

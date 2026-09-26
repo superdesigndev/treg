@@ -58,6 +58,7 @@ from .routers import call as call_routes
 from .routers import catalog as catalog_routes
 from .routers import connections as connection_routes
 from .routers import feedback as feedback_routes
+from .routers import hub as hub_routes
 from .routers import media as media_routes
 from .routers import onboard as onboard_routes
 from .routers import orgs as org_routes
@@ -186,10 +187,7 @@ def _app_version() -> str:
     if _app_version_cache is None or _app_version_cache[0] != mtime:
         digest = hashlib.sha256(index.read_bytes()).hexdigest()[:12]
         _app_version_cache = (mtime, digest)
-    settings = get_settings()
-    rollout = (settings.dashboard_rollout_enabled, settings.dashboard_rollout_percent,
-               sorted(settings.dashboard_rollout_user_ids))
-    return hashlib.sha256(f"{_app_version_cache[1]}:{rollout}".encode()).hexdigest()[:12]
+    return _app_version_cache[1]
 
 
 @app.get("/meta")
@@ -311,6 +309,7 @@ async def create_tool_request(
 
 
 router.routes.extend(feedback_routes.app.routes)
+router.routes.extend(hub_routes.app.routes)
 router.routes.extend(media_routes.app.routes)
 router.routes.extend(auth_routes.social_router.routes)
 router.routes.extend(auth_routes.cli_router.routes)         # CLI pairing

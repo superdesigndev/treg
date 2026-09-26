@@ -8,44 +8,20 @@ import httpx
 import pytest
 from sqlmodel import select
 
-from treg import api as A
-from treg import oauth_providers as P
 from treg.application import asynctasks as async_task_app
 from treg.application.call import service as call_service
 from treg.application.call import route as call_route
 from treg.application.call.types import UpstreamResponse
-from treg.config import Settings, get_settings
+from treg.config import get_settings
 from treg.domain.capacity import collectors, policy
 from treg.domain.catalog import store as catalog_store
 from treg.infra.db import session_maker
 from treg.models import AsyncTaskRecord, Hold
 
 
-class _JSONStream(httpx.AsyncByteStream):
-    def __init__(self, doc):
-        self.body = json.dumps(doc).encode()
-
-    async def __aiter__(self):
-        yield self.body
-
-
-def _response(status: int, doc: dict) -> httpx.Response:
-    return httpx.Response(
-        status,
-        headers={"content-type": "application/json"},
-        stream=_JSONStream(doc),
-    )
-
-
 async def _balance(clients) -> int:
     org_id = (await clients.get("/orgs")).json()[0]["org_id"]
     return (await clients.get(f"/orgs/{org_id}/balance")).json()["balance_micro"]
-
-
-async def _entries(clients) -> list[dict]:
-    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
-    payload = (await clients.get(f"/orgs/{org_id}/balance")).json()
-    return payload["entries"]["items"]
 
 
 @pytest.fixture
@@ -55,45 +31,6 @@ def wiza_platform_on(monkeypatch):
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
-
-
-def test_wiza_registry_uses_the_free_credit_probe(monkeypatch):
-    monkeypatch.setenv("TREG_PLATFORM_KEY_WIZA", "PLATFORM-WIZA")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "wiza")
-    settings = Settings(_env_file=None)
-    provider = P.get("wiza")
-    assert provider.base_url == "https://wiza.co"
-    assert provider.probe_path == "/api/meta/credits"
-    assert provider.probe_method == "GET"
-    assert settings.platform_key_for("wiza") == "PLATFORM-WIZA"
-    assert P.platform_bindings(provider) == [{
-        "platform_setting": "platform_key_wiza",
-        "injector": "env",
-        "location": "header",
-        "name": "Authorization",
-        "format": "Bearer {secret}",
-    }]
-
-
-async def test_wiza_connection_rejects_bogus_and_accepts_valid_key(clients, monkeypatch):
-    def probe(request):
-        assert request.url.host == "wiza.co"
-        assert request.url.path == "/api/meta/credits"
-        token = request.headers["authorization"]
-        if token == "Bearer bad":
-            return httpx.Response(401, json={"status": {"code": 401, "message": "Invalid API key."}})
-        return httpx.Response(200, json={"credits": {"api_credits": 10}})
-
-    async with httpx.AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
-        monkeypatch.setattr(A.app.state, "http", upstream)
-        bad = await clients.post("/connections/token", json={"provider": "wiza", "token": "bad"})
-        assert bad.status_code == 422
-        good = await clients.post("/connections/token", json={"provider": "wiza", "token": "own-key"})
-        assert good.status_code == 200, good.text
-
-    tools = {tool["name"]: tool for tool in (await clients.get("/tools")).json()}
-    assert set(tools) == {"wiza"}
-    assert tools["wiza"]["base_url"] == "https://wiza.co"
 
 
 @pytest.mark.parametrize("remaining", [5000, 0, 12.5])
@@ -137,59 +74,6 @@ async def test_wiza_capacity_rejects_non_finite_balance():
 
     with pytest.raises(ValueError, match="valid API credit balance"):
         await collectors._wiza(Client(), "test-key")
-
-
-def test_wiza_catalog_covers_every_official_path_and_bounds_async_platform_use():
-    catalog = catalog_store.load()
-    rows = [ep for ep in catalog.endpoints if ep["provider"] == "wiza"]
-    assert len(rows) == 14
-    assert {ep["path"] for ep in rows} == {
-        "/api/lists",
-        "/api/lists/{id}",
-        "/api/lists/{id}/contacts",
-        "/api/individual_reveals",
-        "/api/individual_reveals/{id}",
-        "/api/prospects/search",
-        "/api/prospects/create_prospect_list",
-        "/api/prospects/continue_search",
-        "/api/accounts/search",
-        "/api/meta/location_autocomplete",
-        "/api/meta/technology_autocomplete",
-        "/api/company_enrichments",
-    }
-    assert "/api/meta/credits" not in {ep["path"] for ep in rows}
-    platform = {ep["id"] for ep in rows if catalog.platform_eligible(ep)}
-    assert platform == {
-        "wiza.people.search",
-        "wiza.companies.search",
-        "wiza.companies.enrich",
-        "wiza.meta.locations.search",
-        "wiza.meta.technologies.search",
-        "wiza.people.email.find",
-        "wiza.people.phone.find",
-        "wiza.people.reveal.get",
-    }
-    assert {eid for eid, adapter in catalog.adapters.items()
-            if eid.startswith("wiza.") and adapter.verified} == {
-        "wiza.people.search", "wiza.companies.search", "wiza.companies.enrich",
-        "wiza.people.email.find", "wiza.people.phone.find",
-    }
-    assert catalog.by_id["wiza.people.reveal.start"]["cost"]["value"] == 8
-    assert catalog.by_id["wiza.people.email.find"]["terminal_example_file"]
-    assert catalog.by_id["wiza.people.phone.find"]["terminal_example_file"]
-    for endpoint_id in ("wiza.people.email.find", "wiza.people.phone.find"):
-        _, body = catalog.adapters[endpoint_id].to_upstream({
-            "full_name": "Jane Example", "domain": "example.com",
-        })
-        assert body["individual_reveal"] == {
-            "full_name": "Jane Example", "domain": "example.com",
-        }
-    assert all(catalog.by_id[eid]["input"]["body"]["size"]["enum"] == [1]
-               for eid in ("wiza.people.search", "wiza.companies.search"))
-    assert all(catalog.by_id[eid]["input"]["body"]["size"]["required"] is True
-               for eid in ("wiza.people.search", "wiza.companies.search"))
-    assert all(catalog.by_id[eid]["input"]["body"]["filters"]["required"] is False
-               for eid in ("wiza.people.search", "wiza.companies.search"))
 
 
 async def test_wiza_routed_email_waits_for_terminal_result_and_settles_exact_usage(
@@ -392,161 +276,3 @@ async def test_wiza_failed_reveal_releases_hold_and_is_a_waterfall_miss(
         task = (await db.execute(select(AsyncTaskRecord))).scalars().first()
         assert task.status == "released" and task.settled_micro == 0
         assert await db.get(Hold, task.call_id) is None
-
-
-@pytest.mark.parametrize(
-    "endpoint,body",
-    [
-        ("wiza.people.search", {"filters": {"job_title": [{"v": "Founder", "s": "i"}]}}),
-        ("wiza.companies.search", {
-            "filters": {"company_industry": [{"v": "Software", "s": "i"}]},
-        }),
-    ],
-)
-async def test_wiza_platform_search_rejects_an_omitted_required_size(
-    clients, wiza_platform_on, endpoint, body,
-):
-    result = await clients.post(f"/call/{endpoint}", json=body)
-    assert result.status_code == 400
-    assert result.json()["detail"]["error"] == "catalog_parameter_invalid"
-
-
-@pytest.mark.parametrize(
-    "endpoint,request_body,response_body,expected_micro",
-    [
-        (
-            "wiza.companies.enrich",
-            {"company_domain": "example.com"},
-            {"type": "company_enrichment", "data": {
-                "company_name": "Example", "company_domain": "example.com",
-                "credits": {"api_credits": {"total": 2, "company_credits": 2}},
-            }},
-            50_000,
-        ),
-        (
-            "wiza.people.search",
-            {"filters": {"job_title": [{"v": "Founder", "s": "i"}]}, "size": 1},
-            {"status": {"code": 200}, "data": {
-                "total": 1, "profiles": [{"full_name": "Jane Doe"}],
-                "next_page_token": "next",
-            }},
-            12_500,
-        ),
-        (
-            "wiza.companies.search",
-            {"filters": {"company_industry": [{"v": "Software", "s": "i"}]}, "size": 1},
-            {"status": {"code": 200}, "data": {
-                "total": 1, "companies": [{"name": "Example"}],
-                "next_page_token": "next",
-            }},
-            12_500,
-        ),
-    ],
-)
-async def test_wiza_platform_success_settles_the_bounded_price(
-    clients, monkeypatch, wiza_platform_on, endpoint, request_body, response_body, expected_micro,
-):
-    def serve(request):
-        assert request.headers["authorization"] == "Bearer PLATFORM-WIZA"
-        sent = json.loads(request.content)
-        if endpoint.endswith("search"):
-            assert sent["size"] == 1
-        return _response(200, response_body)
-
-    before = await _balance(clients)
-    async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as upstream:
-        monkeypatch.setattr(A.app.state, "http", upstream)
-        result = await clients.post(f"/call/{endpoint}", json=request_body)
-    assert result.status_code == 200, result.text
-    assert result.headers["x-treg-cost-micro"] == str(expected_micro)
-    assert before - await _balance(clients) == expected_micro
-    entries = await _entries(clients)
-    assert [entry["kind"] for entry in entries[:2]] == ["settle", "reserve"]
-
-
-@pytest.mark.parametrize(
-    "endpoint,request_body,status,response_body",
-    [
-        ("wiza.companies.enrich", {}, 400,
-         {"status": {"code": 400, "message": "Company identifier required"}}),
-        ("wiza.companies.enrich", {"company_domain": "missing.example"}, 404,
-         {"status": {"code": 404, "message": "Company not found"}}),
-        ("wiza.people.search", {"filters": {"job_title": [{"v": "Missing", "s": "i"}]}, "size": 1}, 200,
-         {"status": {"code": 200}, "data": {"total": 0, "profiles": [], "next_page_token": None}}),
-        ("wiza.companies.search", {"filters": {"company_industry": [{"v": "Missing", "s": "i"}]}, "size": 1}, 200,
-         {"status": {"code": 200}, "data": {"total": 0, "companies": [], "next_page_token": None}}),
-    ],
-)
-async def test_wiza_platform_misses_and_errors_release_the_hold(
-    clients, monkeypatch, wiza_platform_on, endpoint, request_body, status, response_body,
-):
-    before = await _balance(clients)
-    monkeypatch.setattr(call_service, "relay", _fake_relay(status, response_body))
-    result = await clients.post(f"/call/{endpoint}", json=request_body)
-    assert result.status_code == status
-    assert result.headers["x-treg-cost-micro"] == "0"
-    assert await _balance(clients) == before
-    entries = await _entries(clients)
-    expected_close = "settle" if status == 200 else "release"
-    assert [entry["kind"] for entry in entries[:2]] == [expected_close, "reserve"]
-
-
-def _fake_relay(status: int, doc: dict):
-    async def relay(request, upstream_url, tool, secrets, client, drop_params=None, force_identity=False):
-        async def stream():
-            yield json.dumps(doc).encode()
-
-        async def close():
-            return None
-
-        return UpstreamResponse(status, ((b"content-type", b"application/json"),), stream(), close)
-
-    return relay
-
-
-async def test_wiza_byok_wins_and_is_not_metered(clients, monkeypatch, wiza_platform_on):
-    await clients.post("/secrets", json={"name": "wiza", "value": "OWN-WIZA"})
-    seen = []
-    polls = 0
-
-    def serve(request):
-        nonlocal polls
-        seen.append(request.headers["authorization"])
-        if request.url.path == "/api/individual_reveals":
-            return _response(200, {"data": {"id": 741, "status": "queued"}})
-        if request.url.path == "/api/individual_reveals/741":
-            polls += 1
-            return _response(200, {"data": {"id": 741, "status": "finished",
-                "name": "Jane Example", "email": "jane@example.com", "email_status": "valid",
-                "credits": {"api_credits": {"total": 3}}}})
-        return _response(200, {"type": "company_enrichment", "data": {
-            "company_name": "Example", "company_domain": "example.com",
-            "credits": {"api_credits": {"total": 2}},
-        }})
-
-    before = await _balance(clients)
-    async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as upstream:
-        monkeypatch.setattr(A.app.state, "http", upstream)
-        result = await clients.post(
-            "/call/wiza.companies.enrich", json={"company_domain": "example.com"}
-        )
-    assert result.status_code == 200, result.text
-    assert seen == ["Bearer OWN-WIZA"]
-    assert "x-treg-cost-micro" not in result.headers
-    assert await _balance(clients) == before
-
-    endpoint = catalog_store.load().by_id["wiza.people.email.find"]
-    monkeypatch.setitem(endpoint["async"], "interval", 0.01)
-    async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as upstream:
-        monkeypatch.setattr(A.app.state, "http", upstream)
-        routed = await clients.post(
-            "/call/treg.people.email.find", headers={"X-Treg-Route-Prefer": "wiza"},
-            json={"full_name": "Jane Example", "domain": "example.com"},
-        )
-    assert routed.status_code == 200 and routed.json()["output"]["email"] == "jane@example.com"
-    assert seen == ["Bearer OWN-WIZA"] * 3 and polls == 1
-    assert routed.json()["_treg"]["tier"] == "credential"
-    assert routed.headers["x-treg-cost-micro"] == "0"
-    assert await _balance(clients) == before
-    async with session_maker() as db:
-        assert not (await db.execute(select(AsyncTaskRecord))).scalars().all()

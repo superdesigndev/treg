@@ -89,10 +89,7 @@ motion uses static presentation; WebGL failure releases the opening sequence and
 mark. BFCache preserves animation resources; `pageshow` resumes animation and refreshes layout.
 The setup command uses `{BASE}`, and sign-in, local navigation, structured data, attribution
 and deployment-configured support chat retain their existing contracts. Browser coverage lives in
-`frontend/e2e/landing.spec.ts`. Its CDN-backed scene smoke test keeps motion enabled;
-clipboard and scenario interactions run separately with reduced motion so continuous software
-WebGL rendering does not consume their action timeout. Frontend CI uploads Playwright failure
-traces and screenshots for diagnosis.
+`frontend/e2e/landing.spec.ts`.
 Headline totals use `_fill_headline` and `catalog_store.headline_counts` in copy and metadata.
 Signed-in visitors see **Open dashboard** on `/`; the dashboard logo links back here.
 Session-dependent HTML uses `private, no-store` and `Vary: Cookie`. Query deep links keep SPA routing.
@@ -250,8 +247,14 @@ in `frontend/e2e/dashboard.spec.ts` checks public catalog navigation and reachab
 
 ### The no-JS fallback
 
-Vue compiles `#app`'s own innerHTML as its template, so prerendered markup **cannot go inside it**.
-`#prerender` is a sibling, removed by the app on boot.
+Vue replaces `#app`'s content on mount, so prerendered markup **cannot go inside it**. `#prerender`
+is a sibling, removed by the app on boot, and **visually hidden** (`_PRERENDER_HIDDEN`): shown to
+people, the plain list flashed past as an older second page before the app replaced it. It stays in
+the document for readers that run no script, which include most AI crawlers and agent fetchers.
+`/search` keeps its own rule: a full-viewport ground in the page colour, so it opens with no
+loading step at all. The same response embeds the `/catalog/platforms` body as
+`<script id="catalog-platforms" type="application/json">`, which `loadPlatforms` reads instead of
+fetching, so the app's first render already has the shelves.
 
 It is deliberately plainer than the Vue view. The ledger's row-merging is a chain of client-side
 computeds (`platRowsAll` → `platRowsPreDomain` → `platLedger`), and reproducing that server-side

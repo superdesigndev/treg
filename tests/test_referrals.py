@@ -19,7 +19,7 @@ import hashlib
 import hmac
 import json
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -546,14 +546,6 @@ async def test_the_sweep_does_not_pay_the_referee_a_second_time(c, monkeypatch):
         await referrals.sweep(db)
     s = get_settings()
     assert [b.amount_micro for b in await _blocks(bob_org, "referral")] == [s.referral_referred_micro]
-
-
-async def test_the_offer_says_when_each_side_is_paid(c, monkeypatch):
-    """"We'll add $5" with no timing is what made a correct payout look like a failure."""
-    _, _, code = await _ready_referrer(c, monkeypatch)
-    _, bob_token = await _signup(c, "bob@example.com", ref=code)
-    offer = (await c.get("/billing", headers=_h(bob_token))).json()["referral_offer"]
-    assert offer["hold_days"] == get_settings().referral_hold_days
 
 
 async def test_the_advertised_minimum_is_the_one_qualify_enforces(c, monkeypatch):

@@ -27,14 +27,27 @@ export default async function boot(){
       if(pf){ this.openPlatform(pf, true); return; }
       const d=(e.state&&e.state.detail)||this.routeFromPath(location.pathname);
       if(d){ this.openDetail(d.kind, d.name, true); return; }
+      const rid=(e.state&&e.state.run)||this.runFromPath(location.pathname);
+      if(rid){ this.openRun(rid, true); return; }
       let v=(e.state&&e.state.view)||(location.hash||'').replace('#','')||'tools';
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
-      if(['tools','orgs','activity','usage','admin','help','secrets','start','resources','connections','referrals'].includes(v)) this.go(v, true);
+      if(['tools','orgs','activity','usage','admin','help','secrets','start','resources','connections','referrals','hub'].includes(v)) this.go(v, true);
     });
+    // Catalog data does not depend on the session, so a view that shows it starts fetching now,
+    // alongside /meta and /auth/me, instead of after them (the shelves used to arrive last).
+    const catalogShelf=this.catalogFromPath(location.pathname)?.slug || this.platformFromHash();
+    if(this.catalogFromPath(location.pathname) || catalogShelf || location.hash==='#connections') this.loadPlatforms();
+    if(catalogShelf) this.prefetchPlatform(catalogShelf);
     // /search needs no session to draw, so it does not wait for one: the page paints now, and the
     // session (the top bar's buttons, a result clicked before sign-in) follows when /auth/me answers.
     if(this.catalogFromPath(location.pathname)?.view==='find'){ this.publicCatalog=true; this.view='find'; this.bootReady=true; }
-    this.meta = await fetch('/meta',{headers:{'ngrok-skip-browser-warning':'1'}}).then(r=>r.json()).catch(()=>this.meta);
+    // /meta and /auth/me do not depend on each other or on the bundle, so index.html starts both
+    // before this code has even downloaded; a boot without them (tests, a remount) starts its own.
+    const early=window.__tregBoot||{}; delete window.__tregBoot;
+    const headers={'ngrok-skip-browser-warning':'1'};
+    const metaReq=early.meta||fetch('/meta',{headers}).then(r=>r.json());
+    const meReq=early.me||fetch('/auth/me',{credentials:'include',headers}).then(r=>r.ok?r.json():null);
+    this.meta = await metaReq.catch(()=>this.meta);
     this.proxy = this.meta.public_url || location.origin;
     this.initAnalytics();
     // deploy detection: long-lived tabs learn about a new bundle on tab focus + a slow poll,
@@ -54,6 +67,7 @@ export default async function boot(){
     // before an OAuth hop (the callback always lands on /app, which would otherwise drop the path).
     let route=this.routeFromPath(location.pathname);
     let mkRoute=this.mkFromPath(location.pathname);
+    const runRoute=this.runFromPath(location.pathname);   // /app/runs/<id>: the hub's run page, members only
     // A public catalog URL renders the marketplace views with or without a session. Set BEFORE the
     // /auth/me check so the first paint is already in public mode, and drop the server-rendered
     // fallback (see `_spa_catalog_page`) now that the real UI is about to take over.
@@ -66,7 +80,7 @@ export default async function boot(){
         if(route||mkRoute) history.replaceState(null,'',stashed);
       } }
     this._restoreAgent();
-    const me = await fetch('/auth/me',{credentials:'include',headers:{'ngrok-skip-browser-warning':'1'}}).then(r=>r.ok?r.json():null).catch(()=>null);
+    const me = await meReq.catch(()=>null);
     this.sessionChecked=true;
     if(me){ this.sessionMode=true; this.me=me.email; this.isAdmin=!!me.is_superadmin; this.onboarded=!!me.onboarded; this.icHash=me.intercom_user_hash||''; await this.loadAll(); this.analyticsIdentify(); this.initIntercom();
       // Share-born arrival (/app/skills/x?invite_org=N from the invite email): accept silently and
@@ -75,6 +89,7 @@ export default async function boot(){
       // A result clicked on /search before sign-in: continue to it now.
       if(this.findResume()){ this.maybeOnboard(); return; }
       if(mkRoute){ this.maybeOnboard(); this.openProvider(mkRoute, true); return; }
+      if(runRoute){ this.maybeOnboard(); this.openRun(runRoute, true); return; }
       // Signed in on a /catalog URL: the same views, but as a member — so `publicCatalog` is
       // dropped and the shell comes back in full (vault, activity, try-it).
       // /search stays a public page for members too: it is a place to ask, not a dashboard view.
@@ -101,6 +116,7 @@ export default async function boot(){
         this.openCatalogRoute(catRoute);
         return; }
       const pfTok=this.platformFromHash();
+      if(runRoute){ this.openRun(runRoute, true); return; }
       if(mkRoute) this.openProvider(mkRoute, true); else if(pfTok) this.openPlatform(pfTok, true); else if(route) this.openDetail(route.kind, route.name, true);
       else { const hv=this.viewFromHash(); if(hv) this.go(hv, true);
         else { this.go('start', true); history.replaceState({view:'start'},'','/app#start'); } }

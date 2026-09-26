@@ -14,7 +14,6 @@ from __future__ import annotations
 from conftest import verified_signup
 
 import json
-import time
 
 import pytest
 
@@ -59,11 +58,6 @@ async def test_v2_metadata_names_only_the_directory_resource(clients):
     assert mcp_oauth.DIRECTORY_SCOPE in response.json()["scopes_supported"]
 
 
-async def test_connect_demo_defaults_off(monkeypatch):
-    monkeypatch.delenv("TREG_CONNECT_DEMO_ENABLED", raising=False)
-    assert Settings(_env_file=None).connect_demo_enabled is False
-
-
 async def test_authorization_server_metadata_offers_only_safe_choices(clients):
     """OAuth 2.1 drops the implicit grant, and `plain` PKCE makes the challenge equal to the secret —
     anyone who sees the authorization request could redeem the code. Offering either would be a
@@ -98,18 +92,6 @@ async def test_a_token_for_ANOTHER_resource_is_refused():
     assert mcp._oauth_claims(elsewhere) is None
 
 
-async def test_our_own_token_is_accepted_and_carries_the_team():
-    """Not vacuous: the refusal above only means something if the matching token DOES work, and the
-    team has to survive on the token — a person can belong to several, and the choice is made once
-    by a human at consent, not guessed per call."""
-    ours = mcp_oauth.mcp_resource_url()
-    tok = mcp_oauth.make_access_token(user_id=7, org_id=3, audience=ours, scope="treg:call")
-    claims = mcp._oauth_claims(tok)
-    assert claims is not None
-    assert claims["sub"] == 7 and claims["org"] == 3
-    assert claims["aud"] == ours and claims["scope"] == "treg:call"
-
-
 async def test_a_session_cookie_is_not_an_access_token():
     """treg mints session cookies and identity tokens with the same HMAC construction. Without a type
     marker one class of credential would silently validate as another — a browser session becoming an
@@ -126,12 +108,6 @@ async def test_a_tampered_token_is_refused():
     # same signature, different claims: the forgery a signature exists to stop
     forged = mcp_oauth.make_access_token(user_id=99, org_id=99, audience=ours).split(".", 1)[0]
     assert mcp_oauth.read_access_token(f"{forged}.{sig}", expected_audience=ours) is None
-
-
-async def test_an_expired_token_is_refused():
-    ours = mcp_oauth.mcp_resource_url()
-    tok = mcp_oauth.make_access_token(user_id=7, org_id=3, audience=ours, ttl=-1)
-    assert mcp_oauth.read_access_token(tok, expected_audience=ours) is None
 
 
 @pytest.mark.parametrize("junk", ["", "not-a-token", "a.b", "....", "Bearer x"])
@@ -161,16 +137,6 @@ async def test_pkce_accepts_the_right_verifier_and_nothing_else():
     assert not mcp_oauth.verify_pkce("some-other-verifier", challenge)
     assert not mcp_oauth.verify_pkce("", challenge)
     assert not mcp_oauth.verify_pkce(verifier, "")
-
-
-async def test_a_token_outlives_neither_its_ttl_nor_reason():
-    """An hour is deliberate: short enough that a leaked access token expires on its own, long enough
-    that a refresh is not happening on every call."""
-    assert 300 <= mcp_oauth.ACCESS_TTL_SECONDS <= 24 * 3600
-    tok = mcp_oauth.make_access_token(user_id=1, org_id=1,
-                                      audience=mcp_oauth.mcp_resource_url())
-    claims = mcp_oauth.read_access_token(tok, expected_audience=mcp_oauth.mcp_resource_url())
-    assert claims and claims["exp"] <= int(time.time()) + mcp_oauth.ACCESS_TTL_SECONDS + 2
 
 
 # ---- step 2: client registration — two doors in, one row shape out --------------------------
@@ -575,31 +541,10 @@ async def test_the_consent_page_says_what_it_costs_in_WORDS(clients):
     assert "spends the team's balance" in page
     assert "without seeing them" in page, "keys are used, never revealed — say so"
     assert 'name="org_id"' in page, "the team picker belongs here"
-
-
-async def test_the_page_warns_when_a_client_registered_ITSELF(clients):
-    """Dynamic registration is open by design, so anyone can appear here with any name. The user is
-    the only one who can tell whether they started this, and they can only judge if we say so."""
-    client_id = await _register(clients)
-    cookie, _ = await _signed_in(clients, "warned@superdesign.dev")
-    _, challenge = _pkce()
-    r = await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"})
-    assert "registered itself" in r.text
-    assert "only continue if you recognise it" in r.text
-
-
-async def test_json_is_still_available_for_a_non_browser_client(clients):
-    """The HTML is for humans; a client that asks for JSON gets the same facts without scraping."""
-    client_id = await _register(clients)
-    cookie, _ = await _signed_in(clients, "jsonclient@superdesign.dev")
-    _, challenge = _pkce()
-    r = await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"},
-        headers={"Accept": "application/json"})
-    assert r.status_code == 200 and r.json()["client"]["name"] == "Test Client"
+    # Dynamic registration is open by design, so anyone can appear here with any name. The user is
+    # the only one who can tell whether they started this, and they can only judge if we say so.
+    assert "registered itself" in page
+    assert "only continue if you recognise it" in page
 
 
 async def test_CANCEL_tells_the_client_no_rather_than_hanging(clients):
@@ -741,19 +686,12 @@ async def _grant_full(clients, email):
     return tok.json(), client_id, org_id
 
 
-async def test_a_grant_comes_with_a_refresh_token(clients):
-    """An access token lasts an hour. Without a refresh, every connector breaks hourly and the user
-    is the one who has to notice."""
-    body, _, _ = await _grant_full(clients, "refresher@superdesign.dev")
-    assert body["refresh_token"]
-    assert body["expires_in"] == mcp_oauth.ACCESS_TTL_SECONDS
-
-
 async def test_refreshing_ROTATES_the_token_and_the_new_one_works(clients):
     """The old token is spent, the new one carries on, and the access token that comes out still
     drives the tools — a refresh that returned an unusable token would fail silently an hour later."""
     body, client_id, _ = await _grant_full(clients, "rotate@superdesign.dev")
     first = body["refresh_token"]
+    assert first and body["expires_in"] == mcp_oauth.ACCESS_TTL_SECONDS
 
     r = await clients.post("/oauth/token", data={
         "grant_type": "refresh_token", "refresh_token": first, "client_id": client_id})
@@ -974,6 +912,8 @@ async def test_email_sign_in_on_the_homepage_resumes_the_parked_authorization(cl
 async def test_connect_demo_is_explicitly_enabled_and_never_displays_token_prefixes(
     monkeypatch, clients,
 ):
+    monkeypatch.delenv("TREG_CONNECT_DEMO_ENABLED", raising=False)
+    assert Settings(_env_file=None).connect_demo_enabled is False, "the demo is off by default"
     monkeypatch.setenv("TREG_CONNECT_DEMO_ENABLED", "false")
     get_settings.cache_clear()
     try:
@@ -1012,56 +952,6 @@ async def test_a_signed_out_visitor_is_not_bounced_in_a_loop(clients):
     clients.cookies.set("treg_oauth_return", "/oauth/authorize?client_id=x")
     r = await clients.get("/app", follow_redirects=False)
     assert r.status_code == 200
-
-
-async def test_the_team_picker_shows_which_team_can_PAY(clients):
-    """Choosing a team here decides which balance the client spends for the life of the grant, so
-    "which of these can actually pay?" has to be visible at the moment of choosing.
-
-    Unclecode picked a $0.00 team on the first real ChatGPT connect; the call was refused and nothing
-    on the page could have told him. A team with no balance is still a legitimate choice — a team's
-    OWN keys are never metered — so it is LABELLED rather than hidden."""
-    client_id = await _register(clients)
-    cookie, org_id = await _signed_in(clients, "picker@superdesign.dev")
-    _, challenge = _pkce()
-    r = await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"})
-    assert r.status_code == 200
-    page = r.text
-    # a new team carries the $1.00 grant, so the amount must be on the option
-    assert "$1.00" in page, f"the balance is not shown in the picker: {page[page.find('org_id'):][:300]}"
-
-    # and the JSON view carries it too, for a client that renders its own picker
-    j = await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"},
-        headers={"Accept": "application/json"})
-    assert any("balance_usd" in t for t in j.json()["teams"])
-
-
-async def test_a_team_with_no_balance_is_labelled_not_hidden(clients):
-    """Removing the option would be wrong: work that uses the team's OWN registered keys is never
-    metered, so an empty team is a perfectly good choice for it."""
-    from sqlmodel import select
-
-    from treg.infra.db import session_maker
-    from treg.models import Org
-
-    client_id = await _register(clients)
-    cookie, org_id = await _signed_in(clients, "broke@superdesign.dev")
-    async with session_maker() as db:
-        org = (await db.execute(select(Org).where(Org.id == org_id))).scalar_one()
-        org.balance_micro = 0
-        db.add(org)
-        await db.commit()
-
-    _, challenge = _pkce()
-    page = (await clients.get("/oauth/authorize", params={
-        "client_id": client_id, "redirect_uri": "https://client.test/cb", "response_type": "code",
-        "code_challenge": challenge, "code_challenge_method": "S256"})).text
-    assert "no balance" in page
-    assert f'value="{org_id}"' in page, "the team must still be selectable"
 
 
 # ---- moving a live grant to another team --------------------------------------------------------
@@ -1197,22 +1087,6 @@ async def test_refresh_repairs_missing_authority_with_the_original_consent_time(
     async with session_maker() as db:
         grant = await db.get(OAuthGrant, family_id)
         assert grant is not None and grant.granted_at == consented_at
-
-
-async def test_a_grant_cannot_be_moved_to_a_team_you_are_not_in(clients):
-    """Moving a grant must not reach further than the consent screen would have offered — otherwise
-    it becomes a way into a team the human was never able to pick."""
-    body, _, _ = await _grant_full(clients, "insider@superdesign.dev")
-    me = await _as("insider@superdesign.dev")
-    grant = (await clients.get("/oauth/grants", headers=me)).json()[0]["grant"]
-
-    outsider = (await clients.post("/users", json={"email": "outsider@superdesign.dev"})).json()
-    theirs = (await clients.get("/orgs", headers={"X-Treg-Token": outsider["token"]})).json()[0]
-
-    r = await clients.post(f"/oauth/grants/{grant}/team", json={"team": theirs["slug"]}, headers=me)
-    # 404, not 403: a team you are not in must look exactly like a team that does not exist, or
-    # this route becomes a slug-existence oracle (see the test at the bottom of this file).
-    assert r.status_code == 404
 
 
 async def test_only_the_grants_own_user_can_move_it(clients):

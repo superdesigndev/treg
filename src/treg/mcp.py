@@ -148,6 +148,59 @@ class _StaticSurfaceCapabilities:
         return result
 
 
+_HUB_TOOL_NAMES = frozenset({"hub_create", "hub_update", "hub_mine"})
+
+
+async def _hub_reader(token: str) -> tuple[str | None, str | None]:
+    """(team slug, sign-in email) of an MCP caller, for the hub's lists. (None, None) when unknown:
+    an unknown reader only sees no hub."""
+    try:
+        async with _api(token) as client:
+            _org_id, slug, _problem = await _resolve_org(client)
+            me = await client.get("/auth/me")
+            email = _body(me).get("email") if me.status_code == 200 else None
+        return slug, email
+    except Exception:  # noqa: BLE001
+        return None, None
+
+
+class _HubToolsGate:
+    """List the hub tools only to a caller who may use the hub: none while TREG_HUB_ENABLED is off,
+    and while TREG_HUB_TEAMS limits it, only to a caller acting for a listed team. A call to one
+    by anyone else already answers 404 (the /hub routes check the team); this keeps them out of
+    the list an agent reads."""
+
+    async def __call__(
+        self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
+    ) -> HandlerResult:
+        result = await call_next(ctx)
+        if ctx.method != "tools/list" or await self._visible(ctx):
+            return result
+        if isinstance(result, dict) and isinstance(result.get("tools"), list):
+            return {**result, "tools": [t for t in result["tools"]
+                                        if (t.get("name") if isinstance(t, dict) else getattr(t, "name", None))
+                                        not in _HUB_TOOL_NAMES]}
+        tools = getattr(result, "tools", None)
+        if isinstance(tools, list):
+            return result.model_copy(update={"tools": [t for t in tools if getattr(t, "name", None) not in _HUB_TOOL_NAMES]})
+        return result
+
+    @staticmethod
+    async def _visible(ctx: ServerRequestContext[Any, Any]) -> bool:
+        s = get_settings()
+        if not s.hub_enabled:
+            return False
+        if not s.hub_limited:
+            return True
+        headers = getattr(getattr(ctx, "request", None), "headers", None) or {}
+        raw = headers.get("authorization") or headers.get("Authorization") or ""
+        token = raw.removeprefix("Bearer ").removeprefix("bearer ").strip()
+        if not token:
+            return False
+        from .application import hub as hub_app
+        return hub_app.enabled_for(*await _hub_reader(token))
+
+
 # The catalog's size, quoted in the listing text a human reads in a connector directory. Generated,
 # never typed: see `catalog_store.headline_counts`.
 _ENDPOINTS, _PROVIDERS = catalog_store.headline_counts(catalog_store.load())
@@ -171,7 +224,7 @@ mcp = MCPServer(
         "If a call result invites a review, rate that one call with review(call_id, usefulness, "
         "reason?) after using it, then continue."
     ),
-    middleware=[_StaticSurfaceCapabilities()],
+    middleware=[_StaticSurfaceCapabilities(), _HubToolsGate()],
 )
 
 
@@ -197,6 +250,7 @@ mcp = MCPServer(
 # the advertised type into `anyOf [string, null]`, which is the truth of what we send.
 class SearchResult(TypedDict, total=False):
     endpoint_id: str | None
+    kind: str | None             # "hub" for a listed hub tool (docs/hub-listing-decisions.md); absent otherwise
     name: str | None
     provider: str | None
     usd_per_call: float | None
@@ -236,6 +290,24 @@ class ReviewOut(TypedDict, total=False):
 class FeedbackOut(TypedDict, total=False):
     feedback_id: int | None
     status: str | None
+    error: str | None
+    detail: Any
+
+
+class HubPublishOut(TypedDict, total=False):
+    tool_id: str | None
+    version: int | None
+    status: str | None            # live | failed
+    call: str | None              # how a caller runs it, when live
+    check: Any                    # the check run's verdict: run_id, trace, error
+    error: str | None
+    field: str | None             # on manifest_invalid: the field and the rule to fix
+    rule: str | None
+    detail: Any
+
+
+class HubMineOut(TypedDict, total=False):
+    tools: list[dict[str, Any]] | None
     error: str | None
     detail: Any
 
@@ -648,6 +720,21 @@ async def _catalog_search_impl(
         query, cat, min(100, limit * 4) if _steering else limit)
     stats = await _observed_stats([ep["id"] for ep, _ in ranked])
     ranked = catalog_store.rerank(ranked, stats, cat)
+    # Listed hub tools ride in by score, no boost (docs/hub-listing-decisions.md, decision 2).
+    from .application import hub as hub_app
+    from .infra.db import session_maker
+    # While a list limits the hub, only a caller in it (by team or by email) sees hub rows.
+    hub_slug = hub_email = None
+    if get_settings().hub_enabled and get_settings().hub_limited:
+        token = _bearer(ctx) if ctx is not None else ""
+        if token:
+            hub_slug, hub_email = await _hub_reader(token)
+    async with session_maker() as _s:
+        hub_ranked, hub_stats = await hub_app.search_listed(_s, query, cat, org_slug=hub_slug, email=hub_email)
+    if hub_ranked:
+        stats = {**stats, **hub_stats}
+        ranked = catalog_store.merge_by_score(ranked, hub_ranked)
+        total += len(hub_ranked)
     results = []
     # Same order the HTTP route serves: a capability with a ROUTED row shows the parent first and
     # its children right under it (catalog_store.group_routed), so an agent sees "let treg choose"
@@ -685,9 +772,10 @@ async def _catalog_search_impl(
             "shown": len(ranked)})
     for ep, score in ranked:
         obs = stats.get(ep["id"]) or {}
-        cost = cat.cost_view(ep.get("cost"), ep.get("provider")) or {}
+        cost = (ep.get("cost") if ep.get("kind") == "hub" else cat.cost_view(ep.get("cost"), ep.get("provider"))) or {}
         results.append({
             "endpoint_id": ep["id"],
+            **({"kind": "hub"} if ep.get("kind") == "hub" else {}),
             "name": ep.get("name") or (ep.get("summary") or "")[:70],
             "provider": ep.get("provider"),
             # a generated routed row: treg picks among N children (own keys first, then cheapest
@@ -702,7 +790,7 @@ async def _catalog_search_impl(
             # key. Eligible-but-keyless rows used to advertise `no_key_needed: true` here and then
             # refuse at call time — an agent-facing lie the CLI's /access line never told.
             # a routed row is servable when any child is: its children carry the keys
-            "no_key_needed": cat.platform_eligible(ep) and (
+            "no_key_needed": ep.get("kind") == "hub" or cat.platform_eligible(ep) and (
                 ep.get("kind") == "routed"
                 and any(get_settings().platform_key_for((cat.by_id.get(i) or {}).get("provider"))
                         for i in ep.get("routed_children") or [])
@@ -823,6 +911,87 @@ async def _feedback_impl(
     return _body(response)
 
 
+HUB_CREATE_DESCRIPTION = (
+    "Publish a hub tool: a tool made of other tools, in your team's name. Send the four files as "
+    "fields: `manifest` (recipe.json: name, summary, inputs, uses, pricing, and either steps or "
+    "\"script\": \"run.js\"), `script` (run.js, script recipes only), `check` (check.json: sample "
+    "inputs + the output fields the check must find), `readme` (markdown). treg validates them, runs "
+    "check.json ONCE for real on your balance, and the version goes live on pass. On a 422 the answer "
+    "names the exact field and rule to fix. Before you write the manifest: every tool in `uses` must "
+    "exist - a catalog id (catalog_search) or one of your team's own tools; a credential the team does "
+    "not hold yet is NEVER hard-coded into a script - register it first (treg secret add / tool add), "
+    "then name the tool. `pricing`: a steps recipe declares {\"price_usd\": N}, a fixed price per "
+    "successful run; a script declares {\"max_price_usd\": N} and sets its price in run.js with "
+    "ctx.charge(usd, note) (a fee, per result, a margin on ctx.call's cost_usd), never above N. "
+    "Callers run the result with call(tool_id, params)."
+)
+HUB_UPDATE_DESCRIPTION = (
+    "Publish a NEW VERSION of a hub tool your team owns: the same four files as hub_create. The "
+    "newest live version serves by default; `<tool_id>@N` pins an older one for 30 days."
+)
+HUB_MINE_DESCRIPTION = "Your team's hub tools: every version with its status, price, uses, and the check verdict."
+
+
+@mcp.tool(
+    description=HUB_CREATE_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                                idempotent_hint=False),
+    structured_output=True,
+)
+async def hub_create(
+    manifest: dict[str, Any], check: dict[str, Any], readme: str, ctx: Context,
+    script: str | None = None,
+) -> HubPublishOut:
+    return await _hub_publish_impl(ctx, "POST", "/hub/tools",
+                                   {"manifest": manifest, "script": script, "check": check, "readme": readme})
+
+
+@mcp.tool(
+    description=HUB_UPDATE_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True,
+                                idempotent_hint=False),
+    structured_output=True,
+)
+async def hub_update(
+    tool_id: str, manifest: dict[str, Any], check: dict[str, Any], readme: str, ctx: Context,
+    script: str | None = None,
+) -> HubPublishOut:
+    return await _hub_publish_impl(ctx, "PUT", f"/hub/tools/{tool_id}",
+                                   {"manifest": manifest, "script": script, "check": check, "readme": readme})
+
+
+async def _hub_publish_impl(ctx: Context, method: str, path: str, body: dict) -> HubPublishOut:
+    token = _bearer(ctx)
+    async with _api(token) as client:
+        r = await client.request(method, path, json=body, timeout=240.0)
+    payload = _body(r)
+    if r.status_code in (200, 201):
+        return {"tool_id": payload.get("tool_id"), "version": payload.get("version"),
+                "status": payload.get("status"), "call": payload.get("call"), "check": payload.get("check")}
+    detail = payload.get("detail", payload) if isinstance(payload, dict) else payload
+    out: HubPublishOut = {"error": f"http_{r.status_code}", "detail": detail}
+    if isinstance(detail, dict) and detail.get("error") == "manifest_invalid":
+        out.update({"error": "manifest_invalid", "field": detail.get("field"), "rule": detail.get("rule")})
+    return out
+
+
+@mcp.tool(
+    description=HUB_MINE_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=False,
+                                idempotent_hint=True),
+    structured_output=True,
+)
+async def hub_mine(ctx: Context) -> HubMineOut:
+    token = _bearer(ctx)
+    async with _api(token) as client:
+        r = await client.get("/hub/tools/mine")
+    payload = _body(r)
+    if r.status_code == 200:
+        return {"tools": payload}
+    return {"error": f"http_{r.status_code}", "detail": payload.get("detail", payload) if isinstance(payload, dict) else payload}
+
+
+
 async def _catalog_request_impl(
     capability: str, ctx: Context, note: str = "", *, surface: _SurfacePolicy
 ) -> RequestOut:
@@ -901,7 +1070,9 @@ async def _catalog_get_impl(
         "ARRAY of task objects for providers like DataForSEO that expect one) and the query string "
         "for a GET. Either a CATALOG endpoint by its id (from catalog_search), or "
         "one of THIS TEAM'S own tools as '<tool-name>/<path>' (from my_tools) — e.g. "
-        "'render/v1/services'. treg injects the credential server-side and relays the provider's "
+        "'render/v1/services' — or a HUB tool by its id '<team-slug>.<name>' (a maker's tool made of "
+        "tools; `params` are its inputs, see catalog_get for them). treg injects the credential "
+        "server-side and relays the provider's "
         "response unchanged, so you never hold an API key. Catalog calls on treg's key are metered "
         "from the team's prepaid balance; a team's own tool is never metered. Tell the human the "
         "price (from catalog_get) before calling anything that costs more than a cent.\n\n"
@@ -964,7 +1135,14 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     # could see and never call — which is how this gap was found.
     cat = catalog_store.load()
     ep = cat.by_id.get(endpoint_id)
-    if ep is None and (catalog_only or "/" not in endpoint_id):
+    # A hub tool (a maker's tool made of tools, `<team-slug>.<name>[@N]`) is neither a catalog id
+    # nor `<tool>/<path>`; the server resolves it last on /call/. Let it through as a POST with
+    # the inputs as the JSON body - the agent walk of the case study found this verb refusing a
+    # live hub id before the server could answer.
+    from .application import hub as hub_app
+    is_hub = (ep is None and not catalog_only and hub_app.enabled()
+              and hub_app.is_hub_id_shape(endpoint_id))
+    if ep is None and not is_hub and (catalog_only or "/" not in endpoint_id):
         near = catalog_store.near_ids(endpoint_id, cat)
         return {"error": f"unknown endpoint {endpoint_id!r}",
                 "hint": ("did you mean " + ", ".join(near) + "?" if near else
@@ -976,7 +1154,7 @@ async def _call_impl(endpoint_id: str, params: dict | list | None = None,
     # `body` implies POST — curl's convention, and the CLI's: catalog endpoints reject a method
     # mismatch, so making `body` just work beats asking the caller to repeat what the catalog knows.
     method = (method or (ep.get("method") if ep else None)
-              or ("POST" if body is not None else "GET")).upper()
+              or ("POST" if (body is not None or is_hub) else "GET")).upper()
     if allowed_methods is not None and method not in allowed_methods:
         expected = "GET, HEAD or OPTIONS" if "GET" in allowed_methods else "POST, PUT, PATCH or DELETE"
         return {"error": f"{endpoint_id} is {method}; this tool accepts only {expected} endpoints",

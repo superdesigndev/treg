@@ -6,6 +6,8 @@ import asyncio
 from collections import Counter
 import logging
 
+import pytest
+
 from httpx import ASGITransport, AsyncClient
 from sqlmodel import select
 
@@ -810,21 +812,6 @@ async def test_c5_gzip_4xx_body_is_decoded_for_evidence(
 # F group: the relay preserves caller bytes while stripping treg's own session boundary.
 
 
-async def test_f1_duplicate_query_parameters_keep_order(
-    matrix_clients: AsyncClient, fake_provider: FakeProvider,
-) -> None:
-    await _register_echo(matrix_clients)
-    before = await snapshot(matrix_clients, fake_provider)
-
-    response = await matrix_clients.get("/call/echo/search?tag=a&tag=b")
-
-    await assert_outcome(
-        matrix_clients, fake_provider, response, before,
-        Expect(status=200, body=b"{}", audit={"refused_by": None}),
-    )
-    assert fake_provider.hits[-1].query == (("tag", "a"), ("tag", "b"))
-
-
 async def test_f2_encoded_slash_survives_in_raw_path(
     matrix_clients: AsyncClient, fake_provider: FakeProvider,
 ) -> None:
@@ -1014,16 +1001,21 @@ async def test_h2_unexpected_500_is_reported_once_as_treg_owned(
     assert {key: event["properties"][key] for key in expected} == expected
 
 
+@pytest.mark.parametrize(("path", "surface"), [
+    ("/call/tikhub.tiktok.video.comments", "call"),
+    (f"/catalog/call/{EP}?aweme_id=7", "catalog_call"),
+])
 async def test_h3_pool_saturation_before_identity_uses_an_intake_event(
-    matrix_clients: AsyncClient, monkeypatch, posthog_events,
+    matrix_clients: AsyncClient, monkeypatch, posthog_events, path: str, surface: str,
 ) -> None:
     """The first database checkout is authentication. If that checkout times out, no caller or
-    target has been resolved, so the attempt must not enter the attributed `tool_called` funnel."""
+    target has been resolved, so the attempt must not enter the attributed `tool_called` funnel.
+    Pre-identity saturation stays unattributed while retaining its ingress surface."""
     async def _no_auth_slot(*args, **kwargs):
         raise PoolTimeoutError("QueuePool limit of size 5 overflow 10 reached, connection timed out")
 
     monkeypatch.setattr(identity_access, "_membership_by_token", _no_auth_slot)
-    response = await matrix_clients.get("/call/tikhub.tiktok.video.comments")
+    response = await matrix_clients.get(path)
 
     assert response.status_code == 503
     assert response.json()["treg_saturated"] is True
@@ -1036,7 +1028,7 @@ async def test_h3_pool_saturation_before_identity_uses_an_intake_event(
         "outcome": "gateway_failed",
         "failure_kind": "db_pool",
         "phase": "caller_identity",
-        "surface": "call",
+        "surface": surface,
     }
     assert {key: event["properties"][key] for key in expected} == expected
     assert "$groups" not in event["properties"]
@@ -1081,27 +1073,3 @@ async def test_h4_catalog_saturation_releases_idempotency_claim(
     ]
     assert event["properties"]["provider"] == "tikhub"
     assert event["properties"]["endpoint_id"] == EP
-
-
-async def test_h5_catalog_saturation_before_identity_uses_catalog_intake_event(
-    matrix_clients: AsyncClient, monkeypatch, posthog_events,
-) -> None:
-    """Pre-identity saturation stays unattributed while retaining its ingress surface."""
-    original_lookup = identity_access._membership_by_token
-
-    async def _no_auth_slot(*args, **kwargs):
-        raise PoolTimeoutError("QueuePool limit of size 5 overflow 10 reached, connection timed out")
-
-    monkeypatch.setattr(identity_access, "_membership_by_token", _no_auth_slot)
-    response = await matrix_clients.get(f"/catalog/call/{EP}?aweme_id=7")
-    monkeypatch.setattr(identity_access, "_membership_by_token", original_lookup)
-
-    assert response.status_code == 503
-    assert response.headers.get("X-Treg-Call-Id")
-    assert await posthog_events() == []
-    (event,) = await posthog_events("call_intake_failed")
-    assert event["distinct_id"] == "treg-server"
-    assert event["properties"]["surface"] == "catalog_call"
-    assert "$groups" not in event["properties"]
-    assert "own_tool" not in event["properties"]
-    assert "provider" not in event["properties"]
