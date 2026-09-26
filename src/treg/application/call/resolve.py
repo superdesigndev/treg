@@ -810,8 +810,8 @@ def _marketplace_pricing(
         return estimate, credit
     if provider == "apify" and cost.get("type") == "per_result" and cost.get("usd"):
         # The platform guard requires maxTotalChargeUsd, which caps every event Apify bills; the
-        # flat call_fee adds the per-run charge (a start event inside the cap, or Lazada's compute
-        # outside it).
+        # flat call_fee adds the per-run charge (a start event inside the cap, or run compute billed
+        # to the caller outside it).
         cap = _apify_charge_cap(query)
         rows = unit * _PLATFORM_PAGE_DEFAULT if cap is None else _usd_to_micro(cap)
         return _usd_to_micro(float(cost.get("call_fee") or 0)) + rows, unit
