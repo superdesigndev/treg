@@ -153,15 +153,22 @@ _HUB_TOOL_NAMES = frozenset({"hub_create", "hub_update", "hub_mine"})
 
 async def _hub_reader(token: str) -> tuple[str | None, str | None]:
     """(team slug, sign-in email) of an MCP caller, for the hub's lists. (None, None) when unknown:
-    an unknown reader only sees no hub."""
+    an unknown reader only sees no hub. Remembered for a minute (`hub_gate.remember`): catalog_search
+    and tools/list ask on every request."""
+    from .routers import hub_gate
+    key = hub_gate._reader_key("mcp", token)
+    if (hit := hub_gate.remembered(key)) is not None:
+        return hit
     try:
         async with _api(token) as client:
             _org_id, slug, _problem = await _resolve_org(client)
             me = await client.get("/auth/me")
             email = _body(me).get("email") if me.status_code == 200 else None
-        return slug, email
+        who = (slug, email)
     except Exception:  # noqa: BLE001
-        return None, None
+        who = (None, None)
+    hub_gate.remember(key, who)
+    return who
 
 
 class _HubToolsGate:

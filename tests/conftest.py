@@ -480,6 +480,9 @@ def _reset_call_path_caches():
         # with every reset_db(), so a counter left over would ration the NEXT test's team.
         from treg.infra import kv
         kv._store = None
+        # Who a key is, for the hub's lists: remembered a minute, and keys repeat across resets.
+        from treg.routers import hub_gate
+        hub_gate._readers.clear()
     _clear()
     yield
     _clear()
