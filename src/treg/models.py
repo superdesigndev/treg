@@ -1514,7 +1514,7 @@ class SearchLog(SQLModel, table=True):
     """
 
     id: int | None = Field(default=None, primary_key=True)
-    created_at: datetime = Field(default_factory=_now, index=True)
+    created_at: NaiveUTC = Field(default_factory=_now, index=True)
     source: str = Field(default="mcp", index=True)          # mcp | claude-connector
     query: str                                               # capped by the writer
     org_id: int | None = Field(default=None, index=True)

@@ -331,7 +331,8 @@ uses this metadata, never the encrypted token's shape.
 - **`SearchLog`** (0041) - one MCP catalog search under the **discovery experiment** (see
   [search-experiment](search-experiment.md)): `query`, `source`, the caller's `org_id`/`user_email`
   (the outcome is that caller's later `call`, so this row is NOT identity-free), `mode`, `arm`, the
-  `baseline_ids` page, the `judged` page as `[id, probability]` rows, the `shown` page as
+  `baseline_ids` page, the `judged` page as `[id, probability]` rows (probability null for a
+  routed parent that rode in over a judged child), the `shown` page as
   `[id, owner]` rows, `baseline_total` (0 = the lexical gate admitted nothing), `differs`, and the
   judge's `judge_ms` / tokens / `judge_error`. Written fire-and-forget through
   `audit.record_search`; read by `scripts/search_experiment_report.sql` joined to `CallRecord`.
