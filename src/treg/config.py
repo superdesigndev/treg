@@ -461,6 +461,10 @@ class Settings(BaseSettings):
     # production first (decided 2026-09-24). Pages that have no caller (the share page, the
     # agent-facing files) follow the plain flag: they describe the hub, they do not run it.
     hub_teams: str = ""
+    # A comma-separated list of people (sign-in emails) who may use the hub in ANY team they work in,
+    # beside `hub_teams` (owner, 2026-09-26): colleagues try it from their own accounts, with no
+    # shared team. Either list lets a reader in; both empty means every team.
+    hub_users: str = ""
 
     # Additive Claude directory MCP. Default OFF so deploying code cannot publish a new connector
     # surface before its production Inspector and custom-connector gates have passed.
@@ -651,6 +655,16 @@ class Settings(BaseSettings):
     def platform_provider_set(self) -> frozenset[str]:
         """The allow-listed tier-4 providers (comma-separated `TREG_PLATFORM_PROVIDERS`)."""
         return frozenset(p.strip().lower() for p in self.platform_providers.split(",") if p.strip())
+
+    @property
+    def hub_user_set(self) -> frozenset[str]:
+        """`hub_users` parsed: lower-cased emails, empty means no restriction by person."""
+        return frozenset(p.strip().lower() for p in self.hub_users.split(",") if p.strip())
+
+    @property
+    def hub_limited(self) -> bool:
+        """The hub is on only for some readers: a team list or a person list is set."""
+        return bool(self.hub_team_set or self.hub_user_set)
 
     @property
     def hub_team_set(self) -> frozenset[str]:

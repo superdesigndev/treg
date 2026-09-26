@@ -67,8 +67,11 @@ gate that has a caller (`hub_app.enabled_for(slug)`: the hub router, `/call/` of
 share page, the hub sections of `/skill.md` and `/llms.txt`, and the MCP tools `hub_create`,
 `hub_update`, `hub_mine` (`mcp._HubToolsGate` on `tools/list`) resolve the key or session the
 request carries (`routers/hub_gate.reader_team`) and ask `hub_app.visible_to(slug)`; a reader with
-no team sees the hub only when the list is empty. `treg skill bootstrap` sends the key, so a listed
-team's agents get the hub sections. The static plugin files never carry them (`build_plugin.py`).
+no team sees the hub only when no list is set. `TREG_HUB_USERS` (sign-in emails, owner 2026-09-26)
+is a second list beside the team list: a listed person sees the hub in every team they act for,
+and their teammates who are not listed do not (`enabled_for(slug, email)`, `hub_gate.reader`, the
+caller's email on `/call/` and the hub routes). `treg skill bootstrap` sends the key, so a listed
+reader's agents get the hub sections. The static plugin files never carry them (`build_plugin.py`).
 An empty list means every team.
 
 ## Vocabulary

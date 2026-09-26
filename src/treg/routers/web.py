@@ -2216,7 +2216,7 @@ async def hub_page(request: Request, tool_id: str, db: AsyncSession = Depends(ge
     visible, reader = await hub_visible(request, db)
     if not visible:
         raise HTTPException(status_code=404, detail="Not Found")
-    row = await hub_app.tool_for(db, raw, caller_slug=reader)
+    row = await hub_app.tool_for(db, raw, caller_slug=reader[0], caller_email=reader[1])
     if row is None:
         if await hub_app.is_rejected(db, hub_app.split_id(raw)[0]):
             raise HTTPException(status_code=410, detail=(

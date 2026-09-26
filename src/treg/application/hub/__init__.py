@@ -29,26 +29,29 @@ def enabled() -> bool:
     return bool(get_settings().hub_enabled)
 
 
-def enabled_for(org_slug: str | None) -> bool:
-    """The hub exists AND this team may use it: the flag, then `TREG_HUB_TEAMS` when it is set
-    (empty = every team). Every gate that has a caller uses this one, so a team outside the list
-    sees exactly what it sees with the flag off: 404 on the routes, no hub rows in search, the
-    hub ids unknown on /call/ and in MCP."""
+def enabled_for(org_slug: str | None, email: str | None = None) -> bool:
+    """The hub exists AND this reader may use it: the flag, then the lists. With `TREG_HUB_TEAMS`
+    or `TREG_HUB_USERS` set, the reader's team must be in the first or the reader's sign-in email
+    in the second; both empty means every team. Every gate that has a caller uses this one, so a
+    reader outside both lists sees exactly what the flag off shows: 404 on the routes, no hub rows
+    in search, the hub ids unknown on /call/ and in MCP."""
     s = get_settings()
     if not s.hub_enabled:
         return False
-    teams = s.hub_team_set
-    return not teams or (org_slug or "").lower() in teams
+    if not s.hub_limited:
+        return True
+    return ((org_slug or "").lower() in s.hub_team_set
+            or (email or "").strip().lower() in s.hub_user_set)
 
 
-def visible_to(org_slug: str | None) -> bool:
-    """May this reader see the hub at all? A reader with a team is judged by `enabled_for`. A reader
-    with no team (no token, or a public page) sees it only when the hub is open to every team: while
-    `TREG_HUB_TEAMS` limits it, search, catalog get, the share pages and the agent files show no
-    trace of it to anyone outside the list."""
-    if org_slug:
-        return enabled_for(org_slug)
-    return enabled() and not get_settings().hub_team_set
+def visible_to(org_slug: str | None, email: str | None = None) -> bool:
+    """May this reader see the hub at all? A known reader (a team or an email) is judged by
+    `enabled_for`. A reader with neither (no key, a public page) sees it only when no list limits
+    the hub: while one does, search, catalog get, the share pages and the agent files show no trace
+    of it to anyone outside the lists."""
+    if org_slug or email:
+        return enabled_for(org_slug, email)
+    return enabled() and not get_settings().hub_limited
 
 
 def is_hub_id_shape(rest: str) -> bool:
@@ -75,12 +78,14 @@ OLD_VERSION_DAYS = 30   # a pinned old version stays callable this long after a 
 
 
 async def tool_for(db: AsyncSession, rest: str, *, live_only: bool = True,
-                   caller_org_id: int | None = None, caller_slug: str | None = None) -> HubTool | None:
+                   caller_org_id: int | None = None, caller_slug: str | None = None,
+                   caller_email: str | None = None) -> HubTool | None:
     """`_tool_for`, except that a tool whose listing treg REJECTED serves only its maker's team:
     another team's call and the public views get nothing (hub simulation run 3: a rejected
     "Official Hunter.io" tool stayed callable by id and share link). A tool never reviewed stays
     callable by id, so a maker can build and share before asking for search."""
-    row = await _tool_for(db, rest, live_only=live_only, caller_org_id=caller_org_id, caller_slug=caller_slug)
+    row = await _tool_for(db, rest, live_only=live_only, caller_org_id=caller_org_id, caller_slug=caller_slug,
+                          caller_email=caller_email)
     if row is None or (caller_org_id is not None and row.org_id == caller_org_id):
         return row
     return None if await is_rejected(db, row.tool_id) else row
@@ -92,13 +97,14 @@ async def is_rejected(db: AsyncSession, tool_id: str) -> bool:
 
 
 async def _tool_for(db: AsyncSession, rest: str, *, live_only: bool = True,
-                    caller_org_id: int | None = None, caller_slug: str | None = None) -> HubTool | None:
+                    caller_org_id: int | None = None, caller_slug: str | None = None,
+                    caller_email: str | None = None) -> HubTool | None:
     """The version that serves `rest`: the newest `live` one, or `@N` pinned. A pinned version may
     also be the one UNDER CHECK (the check run pins it: HUB-DECISIONS round 2 q10), and a pinned
     old version stays callable for OLD_VERSION_DAYS after a newer live one exists (round 4 q8)."""
     # The public views (catalog get, the share page) pass no caller and get the plain flag: a
     # contract is readable. A CALL names its caller's team and goes through the allow-list.
-    if not visible_to(caller_slug) or not is_hub_id_shape(rest):
+    if not visible_to(caller_slug, caller_email) or not is_hub_id_shape(rest):
         return None
     tool_id, pin = split_id(rest)
     if pin is None:
@@ -446,15 +452,15 @@ async def _apply_price(db: AsyncSession, row: HubTool, price_usd: float) -> HubT
     return row
 
 
-async def search_listed(db: AsyncSession, query: str, cat: Any, *,
-                        org_slug: str | None = None) -> tuple[list[tuple[dict, float]], dict[str, dict]]:
+async def search_listed(db: AsyncSession, query: str, cat: Any, *, org_slug: str | None = None,
+                        email: str | None = None) -> tuple[list[tuple[dict, float]], dict[str, dict]]:
     """The listed live hub tools that match `query` (docs/hub-listing-decisions.md, decision 2):
     the newest live version of every tool with `listed` on, scored by `catalog_store.score_extra`
     (the catalog's own tokens, idf and gate, no boost). Returns `([(row, score)], stats)`; `stats`
     is keyed by id with the 30-day ok rate and sample count of runs by OTHERS, the same shape the
     evidence rerank reads for a catalog row. The row is the public contract: never the script, the
     maker's tools or a key."""
-    if not visible_to(org_slug) or not query.strip():
+    if not visible_to(org_slug, email) or not query.strip():
         return [], {}
     from datetime import timedelta
     from ...domain.catalog import store as catalog_store
@@ -607,12 +613,13 @@ async def decide_listing(db: AsyncSession, *, tool_id: str, approve: bool, reaso
     return lst
 
 
-async def capability_siblings(db: AsyncSession, capability: str, *, exclude: str = "", org_slug: str | None = None) -> list[dict[str, Any]]:
+async def capability_siblings(db: AsyncSession, capability: str, *, exclude: str = "", org_slug: str | None = None,
+                              email: str | None = None) -> list[dict[str, Any]]:
     """The approved, live hub tools that do `capability`, as the sibling rows catalog_get shows
     beside that job's providers (docs/hub-listing-decisions.md round 3). Each carries the public
     contract's price and a seeded `observed` (`seeded_observed`), from runs by other teams in the
     last 30 days. Never routed to: an agent compares and picks (AGENTS.md non-negotiable 4)."""
-    if not visible_to(org_slug) or not capability:
+    if not visible_to(org_slug, email) or not capability:
         return []
     from datetime import timedelta
     from ...models import HubRun

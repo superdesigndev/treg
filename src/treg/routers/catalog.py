@@ -243,8 +243,9 @@ async def catalog_search(request: Request, q: str = "", limit: int = 25,
     # Listed hub tools (docs/hub-listing-decisions.md): scored with the same tokens and idf, merged
     # by score with no boost; their evidence is the 30-day ok rate of runs by others.
     from ..application import hub as hub_app
-    from .hub_gate import reader_team
-    hub_ranked, hub_stats = await hub_app.search_listed(db, q, cat, org_slug=await reader_team(request, db))
+    from .hub_gate import reader
+    slug, email = await reader(request, db)
+    hub_ranked, hub_stats = await hub_app.search_listed(db, q, cat, org_slug=slug, email=email)
     if hub_ranked:
         stats = {**stats, **hub_stats}
         ranked = catalog_store.merge_by_score(ranked, hub_ranked)
@@ -371,8 +372,9 @@ async def catalog_endpoint(
         # A hub tool (a maker's tool made of tools) answers here too, so an agent that holds the
         # id reads its contract the same way it reads a catalog endpoint. Unlisted: never in
         # search, only by id. Flag off ⇒ the branch does not exist.
-        from .hub_gate import reader_team
-        hub_view = await _hub_endpoint_view(endpoint_id, db, observations, org_slug=await reader_team(request, db))
+        from .hub_gate import reader
+        slug, email = await reader(request, db)
+        hub_view = await _hub_endpoint_view(endpoint_id, db, observations, org_slug=slug, email=email)
         if hub_view is not None:
             return hub_view
         # Name the near misses. An id that is one segment off is the common miss, and a bare 404
@@ -407,8 +409,9 @@ async def catalog_endpoint(
     # round 3), with a seeded success rate while they are new. Shown for comparison only: they are
     # never a routed child (AGENTS.md non-negotiable 4).
     from ..application import hub as hub_app
-    from .hub_gate import reader_team
-    siblings += await hub_app.capability_siblings(db, ep.get("capability") or "", org_slug=await reader_team(request, db))
+    from .hub_gate import reader
+    slug, email = await reader(request, db)
+    siblings += await hub_app.capability_siblings(db, ep.get("capability") or "", org_slug=slug, email=email)
 
     routing = None
     if ep.get("kind") == "routed":
@@ -473,16 +476,16 @@ async def catalog_example(endpoint_id: str) -> Response:
 
 async def _hub_endpoint_view(endpoint_id: str, db: AsyncSession,
                              observations: endpoint_stats.EndpointObservationReader | None = None,
-                             *, org_slug: str | None = None) -> dict | None:
+                             *, org_slug: str | None = None, email: str | None = None) -> dict | None:
     """The public contract of one hub tool, in the shape `treg catalog get` and `catalog_get`
     already print: `endpoint` (with `kind: "hub"`), `provider` (the maker's team). Hides the
     script, the maker's tools and every key (docs/HUB-DECISIONS.md round 4 q4, round 5 q7)."""
     from ..application import hub as hub_app
     from ..domain.hub import PAY_NOTE as HUB_PAY_NOTE, fees_label as hub_fees_label, price_label as hub_price_label
     from ..models import Org
-    if not hub_app.visible_to(org_slug) or not hub_app.is_hub_id_shape(endpoint_id):
+    if not hub_app.visible_to(org_slug, email) or not hub_app.is_hub_id_shape(endpoint_id):
         return None
-    row = await hub_app.tool_for(db, endpoint_id, caller_slug=org_slug)
+    row = await hub_app.tool_for(db, endpoint_id, caller_slug=org_slug, caller_email=email)
     if row is None:
         return None
     org = await db.get(Org, row.org_id)
@@ -504,8 +507,8 @@ async def _hub_endpoint_view(endpoint_id: str, db: AsyncSession,
     if siblings and observations is not None:
         stats = await _observed_or_empty(observations, [s["id"] for s in siblings])
         siblings = [s | {"observed": stats.get(s["id"])} for s in siblings]
-    siblings += await hub_app.capability_siblings(db, capability, exclude=row.tool_id, org_slug=org_slug)
-    mine = next(iter(await hub_app.capability_siblings(db, capability, org_slug=org_slug) if capability else []), None)
+    siblings += await hub_app.capability_siblings(db, capability, exclude=row.tool_id, org_slug=org_slug, email=email)
+    mine = next(iter(await hub_app.capability_siblings(db, capability, org_slug=org_slug, email=email) if capability else []), None)
     mine = mine if mine and mine["id"] == row.tool_id else None
     return {
         "endpoint": {

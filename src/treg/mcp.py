@@ -151,6 +151,19 @@ class _StaticSurfaceCapabilities:
 _HUB_TOOL_NAMES = frozenset({"hub_create", "hub_update", "hub_mine"})
 
 
+async def _hub_reader(token: str) -> tuple[str | None, str | None]:
+    """(team slug, sign-in email) of an MCP caller, for the hub's lists. (None, None) when unknown:
+    an unknown reader only sees no hub."""
+    try:
+        async with _api(token) as client:
+            _org_id, slug, _problem = await _resolve_org(client)
+            me = await client.get("/auth/me")
+            email = _body(me).get("email") if me.status_code == 200 else None
+        return slug, email
+    except Exception:  # noqa: BLE001
+        return None, None
+
+
 class _HubToolsGate:
     """List the hub tools only to a caller who may use the hub: none while TREG_HUB_ENABLED is off,
     and while TREG_HUB_TEAMS limits it, only to a caller acting for a listed team. A call to one
@@ -177,7 +190,7 @@ class _HubToolsGate:
         s = get_settings()
         if not s.hub_enabled:
             return False
-        if not s.hub_team_set:
+        if not s.hub_limited:
             return True
         headers = getattr(getattr(ctx, "request", None), "headers", None) or {}
         raw = headers.get("authorization") or headers.get("Authorization") or ""
@@ -185,12 +198,7 @@ class _HubToolsGate:
         if not token:
             return False
         from .application import hub as hub_app
-        try:
-            async with _api(token) as client:
-                _org_id, slug, _problem = await _resolve_org(client)
-        except Exception:  # noqa: BLE001 - an unknown team only hides the hub tools
-            return False
-        return hub_app.enabled_for(slug)
+        return hub_app.enabled_for(*await _hub_reader(token))
 
 
 # The catalog's size, quoted in the listing text a human reads in a connector directory. Generated,
@@ -715,18 +723,14 @@ async def _catalog_search_impl(
     # Listed hub tools ride in by score, no boost (docs/hub-listing-decisions.md, decision 2).
     from .application import hub as hub_app
     from .infra.db import session_maker
-    # While TREG_HUB_TEAMS limits the hub, only a caller acting for a listed team sees hub rows.
-    hub_slug = None
-    if get_settings().hub_enabled and get_settings().hub_team_set:
+    # While a list limits the hub, only a caller in it (by team or by email) sees hub rows.
+    hub_slug = hub_email = None
+    if get_settings().hub_enabled and get_settings().hub_limited:
         token = _bearer(ctx) if ctx is not None else ""
         if token:
-            try:
-                async with _api(token) as client:
-                    _org_id, hub_slug, _problem = await _resolve_org(client)
-            except Exception:  # noqa: BLE001 - an unknown team only hides hub rows
-                hub_slug = None
+            hub_slug, hub_email = await _hub_reader(token)
     async with session_maker() as _s:
-        hub_ranked, hub_stats = await hub_app.search_listed(_s, query, cat, org_slug=hub_slug)
+        hub_ranked, hub_stats = await hub_app.search_listed(_s, query, cat, org_slug=hub_slug, email=hub_email)
     if hub_ranked:
         stats = {**stats, **hub_stats}
         ranked = catalog_store.merge_by_score(ranked, hub_ranked)

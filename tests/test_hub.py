@@ -1647,3 +1647,34 @@ async def test_a_rejected_tool_serves_only_its_maker(clients: AsyncClient, hub_o
     assert (await clients.post(f"/call/{tool_id}", json={"domain": "x"})).status_code == 200      # the maker
     assert (await clients.get(f"/hub/{tool_id}")).status_code == 410
     assert (await clients.get(f"/catalog/endpoints/{tool_id}")).status_code == 404
+
+
+async def test_a_listed_person_sees_the_hub_in_every_team_and_others_in_that_team_do_not(clients: AsyncClient, hub_on, monkeypatch):
+    """TREG_HUB_USERS (owner, 2026-09-26): colleagues use the hub from their own accounts, in any
+    team they work in, with no shared team. A teammate who is not on the list sees nothing."""
+    tool_id = await _publish_live(clients)                  # published while the hub is open
+    await clients.patch(f"/hub/tools/{tool_id}", json={"listed": True})
+    await _decide(clients, monkeypatch, tool_id, "approve")
+    colleague = await funded_user(clients, "colleague@example.com")
+    stranger = await funded_user(clients, "stranger@example.com")
+    monkeypatch.setenv("TREG_HUB_TEAMS", "")
+    monkeypatch.setenv("TREG_HUB_USERS", "Colleague@example.com")
+    get_settings.cache_clear()
+    try:
+        c = {"X-Treg-Token": colleague["token"]}
+        s = {"X-Treg-Token": stranger["token"]}
+        assert (await clients.get("/hub/tools/mine", headers=c)).status_code == 200
+        # the tool is found for the colleague (its steps are not mocked here, so it fails later: 424)
+        assert (await clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers=c)).status_code == 424
+        assert (await clients.get(f"/catalog/endpoints/{tool_id}", headers=c)).status_code == 200
+        assert tool_id in [r["id"] for r in (await clients.get("/catalog/search", params={"q": "leads-db"}, headers=c)).json()["results"]]
+        assert "treg hub publish" in (await clients.get("/skill.md", headers=c)).text
+        assert (await clients.get("/hub/tools/mine", headers=s)).status_code == 404
+        assert (await clients.post(f"/call/{tool_id}", json={"domain": "x"}, headers=s)).status_code == 404
+        assert "treg hub publish" not in (await clients.get("/skill.md", headers=s)).text
+        # the maker's own account is on neither list now: its team sees the hub as off
+        assert (await clients.get("/hub/tools/mine")).status_code == 404
+    finally:
+        monkeypatch.delenv("TREG_HUB_USERS", raising=False)
+        monkeypatch.delenv("TREG_HUB_TEAMS", raising=False)
+        get_settings.cache_clear()

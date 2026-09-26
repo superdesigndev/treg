@@ -146,7 +146,13 @@ async def test_hub_tools_are_listed_only_to_a_team_that_may_use_the_hub(clients,
         get_settings.cache_clear()
         assert hub <= await _tool_names(clients, token)                 # a listed team
         assert not hub & await _tool_names(clients, other)              # everyone else
+        monkeypatch.setenv("TREG_HUB_TEAMS", "")
+        monkeypatch.setenv("TREG_HUB_USERS", "hub-outsider@superdesign.dev")
+        get_settings.cache_clear()
+        assert hub <= await _tool_names(clients, other)                 # a listed person
+        assert not hub & await _tool_names(clients, token)              # not on the person list
     finally:
+        monkeypatch.delenv("TREG_HUB_USERS", raising=False)
         monkeypatch.delenv("TREG_HUB_TEAMS", raising=False)
         monkeypatch.delenv("TREG_HUB_ENABLED", raising=False)
         get_settings.cache_clear()

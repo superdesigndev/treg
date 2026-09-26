@@ -29,9 +29,10 @@ app = APIRouter()
 
 
 def _require_hub(caller: Caller | None = None) -> None:
-    """404 when the hub is off, or on but not for this caller's team (`TREG_HUB_TEAMS`): a team
-    outside the list sees exactly what it sees with the flag off."""
-    if not hub_app.enabled_for(caller.org.slug if caller is not None else None):
+    """404 when the hub is off, or on but not for this caller (`TREG_HUB_TEAMS`, `TREG_HUB_USERS`): a
+    reader outside both lists sees exactly what it sees with the flag off."""
+    if not hub_app.enabled_for(caller.org.slug if caller is not None else None,
+                               caller.email if caller is not None else None):
         raise HTTPException(status_code=404, detail="Not Found")
 
 
