@@ -131,8 +131,13 @@ endpoints:
         sortBy: {type: string, required: false, note: "date | relevance"}
         maxItems: {type: integer, required: false, note: "jobs per query; 0 means every available page (LinkedIn caps at 40 pages ≈ 1,000). Pair with the query-string maxTotalChargeUsd, the spend cap Apify enforces", example: 25}
         page: {type: integer, required: false, note: "starting page, 25 jobs per page"}
+        salary: {type: "array[string]", required: false, note: "salary ranges, e.g. `100k+`"}
+        under10Applicants: {type: boolean, required: false, note: "only jobs with fewer than 10 applicants"}
+        easyApply: {type: boolean, required: false, note: "only jobs with LinkedIn Easy Apply"}
+        industryIds: {type: "array[string]", required: false, note: "LinkedIn industry ids, e.g. `4` for Software Development"}
       bodyType: json
-      note: "the response is the dataset items array directly — no run envelope. Community actor scraping LinkedIn's public job search: no LinkedIn login needed, but expect the flakiness every LinkedIn scraper shows — retry before concluding a company has no openings"
+      note: "only the declared body fields are accepted: geoIds is refused because the actor bills a start for each geo id it searches — name places in `locations` instead. The response is the dataset items array directly — no run envelope. Community actor scraping LinkedIn's public job search: no LinkedIn login needed, but expect the flakiness every LinkedIn scraper shows — retry before concluding a company has no openings"
+    body_allowlist: true
     test_request:
       queryParams: {maxItems: 1, maxTotalChargeUsd: 0.05, timeout: 90}
       body: {jobTitles: ["attorney"], locations: ["Miami, Florida"], maxItems: 1}
