@@ -171,7 +171,10 @@ async def test_a_catalog_search_storm_cannot_starve_calls_of_the_pool(
     monkeypatch.setattr(catalog_stats, "observed", _slow_observed)
     searches = [asyncio.create_task(clients.get("/catalog/search?q=tiktok&limit=25"))
                 for _ in range(100)]
-    await asyncio.wait_for(refresh_started.wait(), timeout=5)
+    # Each search ranks the catalog on the event loop before it asks for observations: 100 of them
+    # take 1.4 s on a laptop, and a CI runner shared by four workers was seen past the old 5 s
+    # (7 CI failures, never locally). The refresh starting late is not what this test is about.
+    await asyncio.wait_for(refresh_started.wait(), timeout=30)
     await asyncio.sleep(0.25)  # let the old path fill all 15 pool slots before calls arrive
 
     try:

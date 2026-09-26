@@ -556,10 +556,13 @@ async def _maker_snapshot(parent: CallContext, tool: HubTool):
     from ..call.types import UserSnapshot
     # The maker's call log must not name the caller (round 3 q10): the own-tool step audits as
     # "hub-caller:<caller org>", the way the scheduled check audits as "hub-check".
+    # The caller's key is theirs, not the maker's: its id, name and prefix stay out of the maker's
+    # log too (found reviewing a CI failure of the privacy test below, 2026-09-26).
     return replace(caller,
                    membership=replace(caller.membership, org_id=tool.org_id, tool_access=None,
                                       project_access=None),
                    user=UserSnapshot(id=caller.user.id, email=f"hub-caller:{caller.org_id}"),
+                   api_key_id=None, api_key_name=None, api_key_prefix=None, api_key_generation=None,
                    org=replace(caller.org, id=org.id, slug=org.slug, demo=org.demo,
                                public_demo=org.public_demo))
 

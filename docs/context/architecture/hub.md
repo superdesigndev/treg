@@ -71,7 +71,9 @@ no team sees the hub only when no list is set. `TREG_HUB_USERS` (sign-in emails,
 is a second list beside the team list: a listed person sees the hub in every team they act for,
 and their teammates who are not listed do not (`enabled_for(slug, email)`, `hub_gate.reader`, the
 caller's email on `/call/` and the hub routes). `treg skill bootstrap` sends the key, so a listed
-reader's agents get the hub sections. The static plugin files never carry them (`build_plugin.py`).
+reader's agents get the hub sections. Who a credential is, is remembered for 60 s (`hub_gate.remember`,
+keyed by a hash of the key, session and team header; MCP too): while a list is set, each open
+request that carries a key would otherwise cost 3 to 5 database reads. Only visibility rides on it. The static plugin files never carry them (`build_plugin.py`).
 An empty list means every team.
 
 ## Vocabulary
@@ -368,6 +370,9 @@ bump; a script's amounts change only with a new version of run.js.
   maker's own runs and checks, marked `price_from_tests` and "(from the maker's own tests)". The
   contract names the hosts of the maker's own tools a version calls (`own_hosts`,
   `sends_inputs_to`): a caller's inputs reach them, and they can change with no new version.
+- **The maker's log never names the caller** (2026-09-26): the own-tool step runs on a snapshot
+  with the email `hub-caller:<org>` and no key (`_maker_snapshot` drops the caller's key id, name
+  and prefix).
 - **What a reviewer sees of an update** (round 5): a maker writes its own check.json, so a check
   can prove little. The update queue compares the output of the approved version's check run with
   the new version's (`_fields_lost`) and names every field the approved one filled and the new one

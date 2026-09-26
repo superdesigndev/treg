@@ -1678,3 +1678,28 @@ async def test_a_listed_person_sees_the_hub_in_every_team_and_others_in_that_tea
         monkeypatch.delenv("TREG_HUB_USERS", raising=False)
         monkeypatch.delenv("TREG_HUB_TEAMS", raising=False)
         get_settings.cache_clear()
+
+
+async def test_an_open_route_looks_up_a_key_once_a_minute(clients: AsyncClient, hub_on, monkeypatch):
+    """While a list limits the hub, each open request that carries a key asks who it is: 3 to 5
+    database reads each. The answer is remembered for a minute (review after the deploy, 2026-09-26)."""
+    from treg.domain.identity import access
+    from treg.routers import hub_gate
+    hub_gate._readers.clear()
+    monkeypatch.setenv("TREG_HUB_USERS", "someone@example.com")
+    get_settings.cache_clear()
+    seen = []
+    real = access.require_member
+
+    async def counting(*a, **kw):
+        seen.append(1)
+        return await real(*a, **kw)
+    monkeypatch.setattr(access, "require_member", counting)
+    try:
+        for _ in range(5):
+            assert (await clients.get("/catalog/search", params={"q": "email"})).status_code == 200
+        assert len(seen) == 1
+    finally:
+        hub_gate._readers.clear()
+        monkeypatch.delenv("TREG_HUB_USERS", raising=False)
+        get_settings.cache_clear()

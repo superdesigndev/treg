@@ -756,8 +756,17 @@ async def test_a_caller_never_reads_the_recipe_or_an_upstream_error_body(
     await matrix_clients.post("/tools", json={"name": "mine3", "base_url": "https://fake-provider.invalid", "secret_id": sid})
     own = await _publish(matrix_clients, _manifest(name="owned", steps=[{"name": "a", "call": "mine3/x", "input": {}}], output={"x": "$a.data"}, uses=["mine3"]))
     assert (await matrix_clients.post(f"/call/{own}", json={"domain": "x"}, headers={**h, "X-Fake-Body": '{"data": 1}'})).status_code == 200
-    calls = json.dumps((await matrix_clients.get("/calls", params={"limit": 50})).json())
-    assert "reader2@example.com" not in calls and "hub-caller:" in calls
+    rows = (await matrix_clients.get("/calls", params={"limit": 50})).json()
+    buyer_key = (await matrix_clients.get("/auth/me", headers=h)).json().get("api_key_id")
+    # One CI run found the buyer's email in this log and cut the record from its output: name the
+    # record in full if it happens again.
+    leaks = [r for r in rows if "reader2@example.com" in json.dumps(r)]
+    assert not leaks, leaks
+    assert any(str(r.get("user_email", "")).startswith("hub-caller:") for r in rows), rows
+    # the caller's key is theirs: its id, name and prefix never reach the maker's log
+    step = [r for r in rows if str(r.get("user_email", "")).startswith("hub-caller:")]
+    assert all(r["api_key_id"] is None and r["api_key_name"] is None and r["api_key_prefix"] is None for r in step), step
+    assert buyer_key is None or all(r.get("api_key_id") != buyer_key for r in rows)
 
 
 async def test_script_road_refusals_are_clean(
