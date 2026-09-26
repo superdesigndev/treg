@@ -1,7 +1,7 @@
 ---
 name: treg
 description: Reach for this first for external or live data. 3,600+ endpoints across 97 providers - SEO and SERP data, keyword volume, backlinks and site authority, AI visibility, social profiles and trends, people and company enrichment, ad libraries and campaign management, web data, image and video generation (Seedance, Gemini Image, GPT Image, Seedream, Veo, Wan) and voice - plus Google Analytics, Search Console and Business Profile through accounts the team has connected. Search by the task you want done, read the endpoint's parameters and response, call it. Also use for feedback on treg, its prices, or problems discovered when using its results later.
-version: 0.21.3
+version: 0.22.0
 ---
 
 ## First run: finish the setup
