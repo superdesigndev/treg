@@ -564,9 +564,9 @@ def openrouter_platform(monkeypatch):
 
 @pytest.fixture
 def legacy_async_platform(monkeypatch):
-    for provider in ("apify", "oceanio"):
+    for provider in ("apify", "brightdata", "companyenrich", "oceanio"):
         monkeypatch.setenv(f"TREG_PLATFORM_KEY_{provider.upper()}", "test-platform-token")
-    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apify,oceanio")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "apify,brightdata,companyenrich,oceanio")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
