@@ -2500,6 +2500,33 @@ TAVILY = OAuthProvider(
     probe_path="/usage",
 )
 
+SEARCH1API = OAuthProvider(
+    service="search1api",
+    display_name="Search1API",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Search1API key",
+    setup_url="https://app.s1.dev/",
+    setup_action_label="Get your Search1API key",
+    setup_steps=(
+        "Sign in at app.s1.dev and open API keys.",
+        "Create or copy a key.",
+    ),
+    setup_note=(
+        "Search, news, crawl, sitemap and trending spend 1 credit. A screenshot spends 2, and "
+        "structured extract spends 10. Deep Search (crawl_results > 0) is not in the catalog rows. "
+        "Connecting checks the free Usage endpoint."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Search the web and news, crawl a page, map a site, capture a screenshot, and read GitHub and Hacker News trends.",
+    base_url="https://api.search1api.com",
+    docs_url="https://s1.dev/docs",
+    probe_path="/usage",
+)
+
 SERPER = OAuthProvider(
     service="serper",
     display_name="Serper",
@@ -3579,7 +3606,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
-        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, TAVILY, KEENABLE, OLOSTEP,
+        DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, TAVILY, SEARCH1API, KEENABLE, OLOSTEP,
         SCRAPEGRAPHAI, SERPER, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO,

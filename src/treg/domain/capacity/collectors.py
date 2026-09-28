@@ -857,6 +857,9 @@ NO_BALANCE_API = {
     "keenable": "no public REST balance or usage endpoint in the official OpenAPI document "
                 "(checked docs.keenable.ai 2026-09-23) — the console shows remaining credits and "
                 "authenticated MCP calls report only per-call usage",
+    "search1api": "GET /usage is a free authenticated statistics read, not a documented remaining-credit "
+                  "balance (checked https://api.search1api.com/openapi.json 2026-09-28). One account's "
+                  "`usage` integer matched its dashboard balance that day; the dashboard remains the meter",
     "limadata": "no free standalone balance or usage endpoint in the official Basic v2 API "
                 "(checked api.limadata.com/docs/basic_v2 2026-09-17) — dashboard only",
     "trestleiq": "no public balance or usage endpoint in the official API reference "

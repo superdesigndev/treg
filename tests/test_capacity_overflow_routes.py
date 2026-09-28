@@ -286,6 +286,7 @@ _UNRECORDED_SIGNATURE = {
     "limadata",  # Starter credits remain; no provider-specific empty-balance body was forced
     "getleadsio",  # promotional allocation was not exhausted; bare 402 remains the generic signal
     "keenable",  # funded request balance remains; documented bare 402 was not forced
+    "search1api",  # documented HTTP 402 was not forced; no empty-balance body was captured
     "olostep",  # funded credit balance remains; documented 402 was not forced
     "scrapegraphai",  # trial credits remain; no provider-specific empty-balance body was forced
     "scrubby",  # funded account not exhausted; no provider-specific empty-balance body recorded
