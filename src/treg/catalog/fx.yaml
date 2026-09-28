@@ -28,6 +28,7 @@
 # NOTE: this block must stay ABOVE `rates_to_usd:` -- catalog_fx_update.py rewrites the file
 # from the text before that key, so anything below it is discarded on the next FX refresh.
 credit_rates_usd:
+  airscale: {usd: 0.01225, basis: "Starter monthly plan: $49/mo / 4,000 credits = $0.01225 per Airscale credit; larger and annual plans are cheaper, so this is the public entry-tier upper bound", source: "https://airscale.io/pricing", checked: "2026-09-29"}
   firecrawl: {usd: 0.005, basis: "Public base-plan extra-credit rate: $5 / 1,000 credits = $0.005 per credit", source: "https://www.firecrawl.dev/pricing", checked: "2026-09-28"}
   scrapegraphai: {usd: 0.004, basis: "Acquired account rate: $4 / 1,000 credits = $0.004 per credit. Subscription versus one-time replenishment is not yet fixed, so this records the actual shared-account acquisition rate", source: "ScrapeGraphAI account purchase rate", checked: "2026-09-24"}
   serper: {usd: 0.001, basis: "Starter top-up replacement cost: $50 / 50,000 credits = $0.001 per credit. The current promotional balance does not reduce the sustainable platform rate", source: "https://serper.dev/#pricing", checked: "2026-09-24"}

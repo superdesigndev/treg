@@ -1308,6 +1308,32 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+AIRSCALE = OAuthProvider(
+    service="airscale",
+    display_name="Airscale",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Airscale API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://v2.airscale.io/?tab=key",
+    setup_action_label="Get your Airscale API key",
+    setup_steps=(
+        "Sign in to Airscale.",
+        "Open Settings → API and copy your workspace API key.",
+    ),
+    setup_note="Credit balance and pre-flight utilities are free; enrichment and returned search rows spend credits.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Search and enrich companies and people, find contacts, and research companies with citations.",
+    base_url="https://api.airscale.io/v1",
+    docs_url="https://docs.airscale.io/api-reference/api-overview",
+    probe_path="/credits",
+    probe_method="POST",
+    probe_json={},
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -3697,7 +3723,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, AIRSCALE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
