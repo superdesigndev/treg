@@ -1,0 +1,36 @@
+provider: brave
+source:
+  docs: https://api-dashboard.search.brave.com/app/documentation/web-search
+  openapi: null
+  curated: '2026-09-25'
+pricing_url: https://brave.com/search/api/
+limits: "Free plan: 1 request/second, 2,000 queries/month, no card required. Paid tiers raise both ceilings; see pricing_url."
+
+endpoints:
+  - id: brave.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /res/v1/web/search
+    name: Search the open web with Brave's independent index
+    summary: Web search over Brave's own index, returning ranked results with title, URL, description, age and optional extra snippets.
+    input:
+      queryParams:
+        q: {type: string, required: true, example: "best crm for small business"}
+        country: {type: string, required: false, note: "Two-letter country code, e.g. us.", example: us}
+        search_lang: {type: string, required: false, default: en, note: "Search language code.", example: en}
+        ui_lang: {type: string, required: false, default: en-US, note: "Interface language, e.g. en-US."}
+        count: {type: integer, required: false, default: 20, max: 20, note: "Results per page, max 20."}
+        offset: {type: integer, required: false, default: 0, max: 9, note: "Zero-based page offset (count x offset must stay under 1000)."}
+        safesearch: {type: string, required: false, default: moderate, enum: [strict, moderate, off]}
+        freshness: {type: string, required: false, note: "pd (last day), pw (last week), pm (last month), py (last year), or a range like 2025-01-01to2025-12-31."}
+        result_filter: {type: string, required: false, note: "Comma-separated verticals to return, e.g. web,news. web is always included."}
+        spellcheck: {type: boolean, required: false, default: true}
+        units: {type: string, required: false, note: "Measurement units for the response, imperial or metric."}
+      note: "The free plan is enough for ~2,000 niche-research searches a month. A bad or missing X-Subscription-Token returns HTTP 422 with error.code SUBSCRIPTION_TOKEN_INVALID (observed live)."
+    test_request:
+      queryParams: {q: "best crm for small business", count: 5}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: https://brave.com/search/api/, checked: '2026-09-25', confidence: documented, note: 'Free plan: 2,000 queries/month at 1 query/second, no card. Paid tiers (Base $3/1k, Pro $5/1k for AI) apply only beyond the free allowance; calls with your own connected key are never metered by treg.'}
+    docs_url: https://api-dashboard.search.brave.com/app/documentation/web-search

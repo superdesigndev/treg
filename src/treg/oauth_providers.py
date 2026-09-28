@@ -2533,6 +2533,133 @@ SERPER = OAuthProvider(
     probe_path="/account",
 )
 
+BRAVE = OAuthProvider(
+    service="brave",
+    display_name="Brave Search",
+    auth_kind="key",
+    token_label="Subscription token",
+    token_placeholder="your Brave subscription token",
+    token_header="X-Subscription-Token",
+    token_format="{secret}",
+    setup_url="https://api-dashboard.search.brave.com/app/subscriptions",
+    setup_action_label="Get your Brave Search API token",
+    setup_steps=(
+        "Register at brave.com/search/api (Free plan, no card) and open the API dashboard.",
+        "Copy the subscription token from your subscription details.",
+    ),
+    setup_note=(
+        "The Free plan allows 1 request/second and 2,000 queries/month. treg checks the key with "
+        "one web search when you connect it."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Search the open web over Brave's own independent index, free up to 2,000 queries/month.",
+    base_url="https://api.search.brave.com",
+    docs_url="https://api-dashboard.search.brave.com/app/documentation/web-search",
+    # Live 2026-09-25: HTTP 422 {"error":{"code":"SUBSCRIPTION_TOKEN_INVALID"}} for a garbage
+    # token; 200 for a valid one. The free plan needs no card.
+    probe_path="/res/v1/web/search?q=test",
+    probe_cost_micro=0,
+)
+GOOGLE_CSE = OAuthProvider(
+    service="google-cse",
+    display_name="Google Custom Search",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Google Cloud API key",
+    token_location="query",
+    token_param="key",
+    token_format="{secret}",
+    setup_url="https://console.cloud.google.com/apis/credentials",
+    setup_action_label="Get your Google API key",
+    setup_steps=(
+        "In Google Cloud Console, enable the Custom Search API and create an API key (no billing needed for 100 queries/day).",
+        "Create a Programmable Search Engine at programmablesearchengine.google.com with 'Search the entire web' enabled, and copy its cx id — every call needs it.",
+    ),
+    setup_note=(
+        "100 queries/day are free forever without billing. The connect probe uses Google's public "
+        "example engine, so it costs nothing against your daily quota."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Real Google organic results via the Custom Search JSON API — 100 free queries/day, no card.",
+    base_url="https://www.googleapis.com",
+    docs_url="https://developers.google.com/custom-search/v1/overview",
+    # Live 2026-09-25: garbage key → HTTP 400 {"error":{"status":"INVALID_ARGUMENT","message":
+    # "API key not valid…"}}; valid key + Google's public example cx → 200.
+    probe_path="/customsearch/v1?q=test&cx=017576662512468239146%3Aomuauf_lfve",
+    token_reject_field="error",
+    probe_cost_micro=0,
+)
+SOCIALCRAWL = OAuthProvider(
+    service="socialcrawl",
+    display_name="SocialCrawl",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your SocialCrawl API key",
+    token_header="x-api-key",
+    token_format="{secret}",
+    setup_url="https://www.socialcrawl.dev",
+    setup_action_label="Get your SocialCrawl API key",
+    setup_steps=(
+        "Sign up at socialcrawl.dev — 100 free credits, no card, credits never expire.",
+        "Open the dashboard and copy an API key.",
+    ),
+    setup_note=(
+        "Every call costs 1 credit. treg checks the key with the free credits/balance route when "
+        "you connect it."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary=(
+        "One API key across 44 platforms — TikTok, Instagram, YouTube, X, Reddit, Douyin, "
+        "Xiaohongshu, LinkedIn, Hacker News, Google, app stores, e-commerce — in one unified schema, "
+        "plus a search-everywhere omni endpoint."
+    ),
+    base_url="https://www.socialcrawl.dev/v1",
+    docs_url="https://www.socialcrawl.dev/docs",
+    # Live 2026-09-25: garbage key → HTTP 401 {"error":{"type":"MISSING_API_KEY"}} on
+    # /v1/tiktok/profile; /v1/openapi.json is public (636 paths) and was used to transcribe params.
+    probe_path="/credits/balance",
+    probe_cost_micro=0,
+)
+FIRECRAWL = OAuthProvider(
+    service="firecrawl",
+    display_name="Firecrawl",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="fc-…",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://www.firecrawl.dev/app",
+    setup_action_label="Get your Firecrawl API key",
+    setup_steps=(
+        "Sign up at firecrawl.dev — 500 free credits, no card.",
+        "Open the app and copy an API key.",
+    ),
+    setup_note=(
+        "Each basic scrape or map costs 1 credit (heavier options more). treg checks the key with "
+        "the free credit-usage route when you connect it."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Scrape pages to clean Markdown and map site URL structures — JS rendering handled, 500 free credits.",
+    base_url="https://api.firecrawl.dev",
+    docs_url="https://docs.firecrawl.dev",
+    # Live 2026-09-25: garbage bearer → HTTP 401 {"success":false,"error":"Unauthorized: Invalid token"}
+    # on GET /v2/team/credit-usage (the free balance route).
+    probe_path="/v2/team/credit-usage",
+    probe_cost_micro=0,
+)
+
 KEENABLE = OAuthProvider(
     service="keenable",
     display_name="Keenable",
@@ -3581,6 +3708,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, TAVILY, KEENABLE, OLOSTEP,
         SCRAPEGRAPHAI, SERPER, CLORO,
+        BRAVE, GOOGLE_CSE, SOCIALCRAWL, FIRECRAWL,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,

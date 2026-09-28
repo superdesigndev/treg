@@ -1,0 +1,60 @@
+provider: firecrawl
+source:
+  docs: https://docs.firecrawl.dev
+  openapi: null
+  curated: '2026-09-25'
+pricing_url: https://www.firecrawl.dev/pricing
+limits: "Free plan: 500 credits, no card. Paid from $19/month. 1 credit scrapes ~1 basic page; stealth/proxy and premium options cost more credits."
+
+endpoints:
+  - id: firecrawl.web.extract
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /v2/scrape
+    body_allowlist: true
+    name: "Scrape one page to clean Markdown"
+    summary: "Fetch one URL and return clean Markdown/HTML plus metadata, with JS rendering handled server-side."
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        onlyMainContent: {type: boolean, required: false, default: true}
+        formats: {type: "array[string]", required: false, note: "Output formats, e.g. markdown, html, screenshot.", example: "markdown"}
+        waitFor: {type: integer, required: false, note: "Milliseconds to wait for JS."}
+        timeout: {type: integer, required: false}
+    test_request: {body: {url: "https://example.com", onlyMainContent: true}}
+    cost: &fc_credit
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.firecrawl.dev/pricing
+      checked: '2026-09-25'
+      confidence: documented
+      note: "1 credit per basic scrape; heavier options (stealth, proxy, screenshot) cost more credits. The free plan includes 500 credits with no card — enough for 500 basic pages. Bad key observed live: HTTP 401 Unauthorized on /v2/team/credit-usage."
+    docs_url: https://docs.firecrawl.dev/features/scrape
+
+  - id: firecrawl.web.map
+    capability: web.map
+    platform: web
+    domain: map
+    scope: any_account
+    method: POST
+    path: /v2/map
+    body_allowlist: true
+    name: "Map a website's URLs"
+    summary: "Discover the URL structure of a site quickly, with optional search and limits."
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        search: {type: string, required: false, note: "Only keep URLs matching this term."}
+        limit: {type: integer, required: false, note: "Max URLs to return."}
+    test_request: {body: {url: "https://example.com", limit: 20}}
+    cost: *fc_credit
+    docs_url: https://docs.firecrawl.dev/features/map

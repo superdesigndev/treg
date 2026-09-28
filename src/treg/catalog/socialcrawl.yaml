@@ -1,0 +1,312 @@
+provider: socialcrawl
+source:
+  docs: https://www.socialcrawl.dev/docs
+  openapi: https://www.socialcrawl.dev/v1/openapi.json
+  curated: '2026-09-25'
+pricing_url: https://www.socialcrawl.dev/pricing
+limits: "No daily cap; credits never expire. Rate limits are generous for burst research (see docs). The public OpenAPI lists 636 endpoints across 44 platforms; this file curates the highest-value ones."
+proposed_capabilities:
+  web.omni.search: "Search every social platform at once and fuse the results"
+  web.forum.search: "Search developer/tech forums (Hacker News first) by keyword"
+
+endpoints:
+  - id: socialcrawl.tiktok.user.profile
+    capability: tiktok.user.profile
+    platform: tiktok
+    domain: social
+    scope: any_account
+    method: GET
+    path: /tiktok/profile
+    name: "Get a TikTok profile"
+    summary: "Public profile by handle or user id — followers, likes, video count, verified status, in the unified SocialCrawl envelope."
+    input:
+      queryParams:
+        handle: {type: string, required: false, note: "TikTok username (one of handle or user_id).", example: "charlidamelio"}
+        user_id: {type: string, required: false, note: "TikTok numeric user id (one of handle or user_id)."}
+    test_request: {queryParams: {handle: nasa}}
+    cost: &one_credit
+      type: per_call
+      value: 0.0076
+      currency: USD
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.socialcrawl.dev/pricing
+      checked: '2026-09-25'
+      confidence: documented
+      note: "1 credit per call. 100 free credits on signup (never expire); paid packs £15/2,500 (~$0.0076/call) down to £299/150,000 (~$0.0026/call). Bad key observed live: HTTP 401 MISSING_API_KEY."
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.tiktok.search.videos
+    capability: tiktok.search.videos
+    platform: tiktok
+    domain: social
+    scope: any_account
+    method: GET
+    path: /tiktok/search
+    name: "Search TikTok videos"
+    summary: "Keyword search over TikTok videos with date, sort and region filters."
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "side hustle"}
+        date_posted: {type: string, required: false, note: "Date filter, e.g. last-week style values per docs."}
+        sort_by: {type: string, required: false}
+        region: {type: string, required: false, example: US}
+        cursor: {type: integer, required: false, note: "Numeric page cursor from the previous response."}
+    test_request: {queryParams: {query: "side hustle"}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.tiktok.video.comments
+    capability: tiktok.video.comments
+    platform: tiktok
+    domain: social
+    scope: any_account
+    method: GET
+    path: /tiktok/post/comments
+    name: "List a TikTok post's comments"
+    summary: "Comments under a TikTok video by URL, with cursor pagination and sort."
+    input:
+      queryParams:
+        url: {type: string, required: true, note: "Full TikTok video URL.", example: "https://www.tiktok.com/@nasa/video/7183788964949498614"}
+        cursor: {type: integer, required: false}
+        sort: {type: string, required: false}
+        scan_pages: {type: integer, required: false, note: "How many comment pages to scan in one call."}
+    test_request: {queryParams: {url: "https://www.tiktok.com/@nasa/video/7183788964949498614"}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.instagram.user.profile
+    capability: instagram.user.profile
+    platform: instagram
+    domain: social
+    scope: any_account
+    method: GET
+    path: /instagram/profile
+    name: "Get an Instagram profile"
+    summary: "Public Instagram profile by handle in the unified envelope."
+    input:
+      queryParams:
+        handle: {type: string, required: true, example: nasa}
+    test_request: {queryParams: {handle: nasa}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.youtube.search.videos
+    capability: youtube.search.videos
+    platform: youtube
+    domain: social
+    scope: any_account
+    method: GET
+    path: /youtube/search
+    name: "Search YouTube videos"
+    summary: "Keyword search over YouTube with upload-date, duration, type, sort and region filters."
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "passive income ideas"}
+        uploadDate: {type: string, required: false}
+        sortBy: {type: string, required: false}
+        type: {type: string, required: false}
+        duration: {type: string, required: false}
+        region: {type: string, required: false, example: US}
+    test_request: {queryParams: {query: "passive income ideas"}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.x.user.profile
+    capability: x.user.profile
+    platform: x
+    domain: social
+    scope: any_account
+    method: GET
+    path: /twitter/profile
+    name: "Get an X profile"
+    summary: "Public X profile by handle in the unified envelope."
+    input:
+      queryParams:
+        handle: {type: string, required: true, example: elonmusk}
+    test_request: {queryParams: {handle: elonmusk}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.x.search.posts
+    capability: x.search.posts
+    platform: x
+    domain: social
+    scope: any_account
+    method: GET
+    path: /twitter/search/tweets
+    name: "Search posts on X"
+    summary: "Search X posts by keyword with sort and cursor pagination."
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "\"ai side hustle\""}
+        sort: {type: string, required: false, note: "e.g. Top or Latest."}
+        cursor: {type: string, required: false}
+    test_request: {queryParams: {query: "\"ai side hustle\""}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.reddit.search.posts
+    capability: reddit.search.posts
+    platform: reddit
+    domain: social
+    scope: any_account
+    method: GET
+    path: /reddit/search
+    name: "Search Reddit posts"
+    summary: "Keyword search across Reddit with sort and timeframe filters."
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "best crm for small business"}
+        sort: {type: string, required: false, note: "e.g. relevance, top, new."}
+        timeframe: {type: string, required: false, note: "e.g. day, week, month, year, all."}
+        after: {type: string, required: false, note: "Pagination cursor (post id)."}
+        include_body: {type: boolean, required: false, note: "Include the post body text."}
+    test_request: {queryParams: {query: "best crm for small business"}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.douyin.search.videos
+    capability: douyin.search.videos
+    platform: douyin
+    domain: social
+    scope: any_account
+    method: GET
+    path: /douyin/search
+    name: "Search Douyin videos"
+    summary: "Keyword search over Douyin (TikTok China) videos with limit, sort, publish-window and duration filters — one of only two catalog providers covering Douyin search alongside TikHub."
+    input:
+      queryParams:
+        query: {type: string, required: true, note: "Douyin search works best in Chinese.", example: "副业"}
+        limit: {type: integer, required: false}
+        sort: {type: string, required: false}
+        published: {type: string, required: false}
+        duration: {type: string, required: false}
+    test_request: {queryParams: {query: "副业"}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.xiaohongshu.search.notes
+    capability: xiaohongshu.search.notes
+    platform: xiaohongshu
+    domain: social
+    scope: any_account
+    method: GET
+    path: /xiaohongshu/search
+    name: "Search Xiaohongshu notes"
+    summary: "Keyword search over Xiaohongshu (RED) notes with type, sort and publish-window filters — a rare API route into RED next to TikHub."
+    input:
+      queryParams:
+        query: {type: string, required: true, note: "Search in Chinese for best results.", example: "副业"}
+        limit: {type: integer, required: false}
+        cursor: {type: string, required: false}
+        sort: {type: string, required: false}
+        type: {type: string, required: false, note: "Content type filter per docs."}
+        published: {type: string, required: false}
+    test_request: {queryParams: {query: "副业"}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.linkedin.search.people
+    capability: linkedin.search.people
+    platform: linkedin
+    domain: social
+    scope: any_account
+    method: GET
+    path: /linkedin/search/people
+    name: "Search people on LinkedIn"
+    summary: "Public people search by keyword, name, title or company. Legal risk in this whole category is real — Proxycurl was shut by LinkedIn's injunction in July 2025; treat this as volatile."
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "growth marketing founder"}
+        page: {type: integer, required: false}
+        first_name: {type: string, required: false}
+        last_name: {type: string, required: false}
+        title: {type: string, required: false}
+        current_company: {type: string, required: false}
+    test_request: {queryParams: {query: "growth marketing founder"}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.google.serp.organic
+    capability: google.serp.organic
+    platform: google
+    domain: search
+    scope: any_account
+    method: GET
+    path: /google/search
+    name: "Google results"
+    summary: "Google organic results for a keyword with region, date filter and pagination."
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "affiliate program coffee subscription"}
+        region: {type: string, required: false, example: US}
+        date_posted: {type: string, required: false}
+        page: {type: integer, required: false}
+        cursor: {type: string, required: false}
+    test_request: {queryParams: {query: "affiliate program coffee subscription"}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /web/search
+    name: "Search the open web"
+    summary: "Federated web search with source, category, country and location filters."
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "best crm for small business"}
+        sources: {type: string, required: false, note: "Comma-separated source filter per docs."}
+        categories: {type: string, required: false}
+        limit: {type: integer, required: false}
+        country: {type: string, required: false}
+        location: {type: string, required: false}
+    test_request: {queryParams: {query: "best crm for small business"}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.web.omni.search
+    capability: web.omni.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /search/everywhere
+    name: "Search everywhere at once"
+    summary: "One call searching many social platforms at once, fused and reranked — the fastest niche-scan in this catalog."
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "side hustle for developers"}
+        lookback_days: {type: integer, required: false}
+        from_date: {type: string, required: false}
+        to_date: {type: string, required: false}
+        sources: {type: string, required: false, note: "Restrict or exclude platforms per docs."}
+        exclude: {type: string, required: false}
+    test_request: {queryParams: {query: "side hustle for developers"}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs
+
+  - id: socialcrawl.web.forum.search
+    capability: web.forum.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: GET
+    path: /hackernews/search
+    name: "Search Hacker News"
+    summary: "Keyword search over Hacker News stories with tags, numeric filters and pagination (Algolia-style)."
+    input:
+      queryParams:
+        query: {type: string, required: true, example: "side project revenue"}
+        tags: {type: string, required: false, note: "e.g. story, comment."}
+        numericFilters: {type: string, required: false, note: "e.g. points>100."}
+        hitsPerPage: {type: integer, required: false}
+        page: {type: integer, required: false}
+    test_request: {queryParams: {query: "side project revenue"}}
+    cost: *one_credit
+    docs_url: https://www.socialcrawl.dev/docs

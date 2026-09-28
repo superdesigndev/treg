@@ -1,0 +1,38 @@
+provider: google-cse
+source:
+  docs: https://developers.google.com/custom-search/v1/overview
+  openapi: null
+  curated: '2026-09-25'
+pricing_url: https://developers.google.com/custom-search/v1/overview
+limits: "100 queries/day free per API key (no card). Beyond that, billing must be enabled on the Google Cloud project and costs $5 per 1,000 queries, up to 10,000/day."
+
+endpoints:
+  - id: google-cse.google.serp.organic
+    capability: google.serp.organic
+    platform: google
+    domain: search
+    scope: any_account
+    method: GET
+    path: /customsearch/v1
+    name: Google organic results via Custom Search JSON API
+    summary: Real Google results for a query against a Programmable Search Engine, 10 results per page with title, snippet, URL and total estimate.
+    input:
+      queryParams:
+        q: {type: string, required: true, example: "affiliate program coffee subscription"}
+        cx: {type: string, required: true, note: "Your Programmable Search Engine ID (create at programmablesearchengine.google.com with 'Search the entire web' enabled). Google's public example value works for testing.", example: "017576662512468239146:omuauf_lfve"}
+        num: {type: integer, required: false, default: 10, min: 1, max: 10, note: "Results per page, max 10."}
+        start: {type: integer, required: false, default: 1, min: 1, max: 91, note: "1-based result index for pagination (start + num <= 100)."}
+        dateRestrict: {type: string, required: false, note: "e.g. d7 (last 7 days), m1 (last month), w2."}
+        exactTerms: {type: string, required: false, note: "Phrase that must appear in every result."}
+        excludeTerms: {type: string, required: false, note: "Phrase that must not appear."}
+        siteSearch: {type: string, required: false, note: "Restrict to or exclude a site, with siteSearchFilter i (include) or e (exclude)."}
+        siteSearchFilter: {type: string, required: false, enum: [i, e]}
+        gl: {type: string, required: false, note: "Two-letter country code for geolocation."}
+        hl: {type: string, required: false, note: "Interface language."}
+        safe: {type: string, required: false, default: off, enum: [active, off]}
+        fileType: {type: string, required: false, note: "e.g. pdf."}
+      note: "Each call returns at most 10 results; paginate with start. A bad API key returns HTTP 400 error.status INVALID_ARGUMENT (observed live). The cx is caller-supplied, so create one engine with 'Search the entire web' ON and reuse its id."
+    test_request:
+      queryParams: {q: "affiliate program coffee subscription", cx: "017576662512468239146:omuauf_lfve", num: 5}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: https://developers.google.com/custom-search/v1/overview, checked: '2026-09-25', confidence: documented, note: 'First 100 queries/day are free forever on a key without billing enabled (no card). $5/1,000 applies only if you enable billing; calls with your own connected key are never metered by treg.'}
+    docs_url: https://developers.google.com/custom-search/v1/reference/rest/v1/cse/list

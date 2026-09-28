@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 # `auth` is the provider's DEFAULT shape; a per-variable form (CLIENT_ID/SECRET → oauth2) can override
 # it. Served at GET /providers.json so the CLI can refresh centrally (bundled copy = offline fallback);
 # bump CATALOG_VERSION whenever entries change so a cache can tell it's stale.
-CATALOG_VERSION = 21  # v21 2026-09-25: Fetchin key detection
+CATALOG_VERSION = 22  # v22 2026-09-28: SocialCrawl and Google CSE key detection
 # `skills` (optional) matches a SKILL FOLDER name for file-credential skills that have no env var to
 # key on (OAuth token files etc.) — see `match_skill`. Such providers carry `tokens: []` so the env
 # scanner never mis-detects them as a simple bearer key (their real auth is OAuth + extra headers).
@@ -180,6 +180,8 @@ CATALOG: list[dict] = [
      "base_url": "https://v2-api.scrapegraphai.com",
      "auth": {"shape": "api_key_header", "header": "SGAI-APIKEY"}, "probe": "api/credits"},
     {"provider": "Firecrawl",   "tokens": ["FIRECRAWL"],           "base_url": "https://api.firecrawl.dev/v1",                    "auth": {"shape": "bearer"}},
+    {"provider": "SocialCrawl",  "tokens": ["SOCIALCRAWL"],        "base_url": "https://www.socialcrawl.dev/v1",                  "auth": {"shape": "api_key_header", "header": "x-api-key"}, "probe": "credits/balance"},
+    {"provider": "Google CSE",   "tokens": ["GOOGLE_CSE"],         "base_url": "https://www.googleapis.com",                    "auth": {"shape": "query", "param": "key"}},
     {"provider": "Exa",         "tokens": ["EXA"],                 "base_url": "https://api.exa.ai",                              "auth": {"shape": "api_key_header", "header": "x-api-key"}},
     {"provider": "cloro",       "tokens": ["CLORO"],               "base_url": "https://api.cloro.dev",                           "auth": {"shape": "bearer"}, "probe": "v1/credits"},
     {"provider": "Serper",      "tokens": ["SERPER"],              "base_url": "https://google.serper.dev",                       "auth": {"shape": "api_key_header", "header": "X-API-KEY"}},
