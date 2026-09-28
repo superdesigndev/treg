@@ -1884,6 +1884,34 @@ PIAPI = OAuthProvider(
     probe_path="/account/info",  # free; a bad key answers 401 {"message":"Failed to verify api key"}
 )
 
+HARMAR = OAuthProvider(
+    service="harmar",
+    display_name="Harmar",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="hk_live_…",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://harmar.ai/app/api",
+    setup_action_label="Get your Harmar API key",
+    setup_steps=(
+        "Sign in to Harmar and open API (harmar.ai/app/api).",
+        "Create a key and copy it — it is shown once. The first key comes with 10 free minutes.",
+    ),
+    setup_note=(
+        "Transcription and captioned-video export are billed per second of media from a prepaid "
+        "balance and refunded in full when a job fails; the balance check is free."
+    ),
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary=("Captions for real speech: word-timed transcripts, SRT/VTT and styled captioned video in 59 "
+             "languages, including mixed-language speech such as Armenian/Russian/English."),
+    base_url="https://api.harmar.ai",
+    docs_url="https://harmar.ai/developers",
+    probe_path="/v1/balance",  # free — a bad key gets a 401 invalid_api_key here
+)
+
 TINYFISH = OAuthProvider(
     service="tinyfish",
     display_name="TinyFish",
@@ -3626,7 +3654,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
         REPLICATE,
-        REAPI, PIAPI, TINYFISH,
+        REAPI, PIAPI, TINYFISH, HARMAR,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers

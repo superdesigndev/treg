@@ -71,7 +71,7 @@ COST_UNITS = ("call", "result", "row", "record", "keyword", "page", "character",
               "section", "employee", "GB", "ad", "month", "line", "target", "domain", "item",
               "post", "user",
               "api_unit", "analysis_unit", "retrieval_unit", "index_item_unit", "quota_row",
-              "verifier_credit", "step")
+              "verifier_credit", "step", "media_second")
 # A platform key spends OUR money on a caller's behalf, so it is allowed only where the price is
 # machine-computable and provenanced. `account`-kind routes are the provider's own bookkeeping —
 # never worth spending on — and `own_account` scope needs the caller's own credential by definition.

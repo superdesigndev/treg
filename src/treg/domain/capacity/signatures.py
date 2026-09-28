@@ -32,6 +32,10 @@ _TABLE: list[tuple[str, int, str, str]] = [
     ("findymail", 402, r"not enough credits", "balance"),
     ("leadsforge", 402, r"insufficient_credits", "balance"),
     ("leadmagic", 402, r"insufficient_credits", "balance"),
+    # Harmar: an empty prepaid balance is a 402 {"error": {"code": "insufficient_credits",
+    # "seconds_needed", "seconds_available"}} from POST /v1/transcripts and the export route
+    # (vendor source, api.harmar.ai routes/apiV1.ts; the same code in its public error table).
+    ("harmar", 402, r"insufficient_credits", "balance"),
     ("thecompaniesapi", 403, r"noCreditsRemaining", "balance"),
     ("companyenrich", 402, r"payment required", "balance"),
     ("akta", 402, r"insufficient credits", "balance"),

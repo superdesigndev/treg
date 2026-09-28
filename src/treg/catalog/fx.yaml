@@ -97,6 +97,8 @@ credit_rates_usd:
 # sales-gated. Majestic's three pools share ONE subscription price, so each pool's rate divides the
 # WHOLE subscription by that pool's allowance -- an upper bound per pool; never sum pools per call.
 unit_rates_usd:
+  harmar:
+    media_second: {usd: 0.001833, basis: "Harmar API Starter pack $54.99 for 500 minutes of media (30,000 seconds); 54.99/30,000 = 0.001833 -- the dearest per-second rate on the pack ladder (Growth $0.001467, Scale $0.001145), so an upper bound. Also served live by GET /v1/pricing (packs[].usd_per_minute)", source: "https://harmar.ai/developers#pricing", checked: "2026-09-28"}
   tinyfish:
     step: {usd: 0.016, basis: "TinyFish Agent is billed at $0.016 for each agent step reported as num_of_steps on the terminal run", source: "https://www.tinyfish.ai/pricing", checked: "2026-09-23"}
   semrush:

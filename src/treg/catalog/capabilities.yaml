@@ -32,6 +32,7 @@ platforms:
   video-gen: {label: "Video generation", category: "AI generation", summary: "Text-to-video and image-to-video across models, with prices side by side."}
   image-gen: {label: "Image generation", category: "AI generation", summary: "Text-to-image and prompt-based image editing across models."}
   voice-gen: {label: "Voice generation", category: "AI generation", summary: "Text-to-speech across voice models, with prices side by side."}
+  speech: {label: "Speech to text & captions", category: "AI generation", summary: "Transcribe audio and video into word-timed text, subtitle files and captioned videos."}
 
   # --- Social: global social & video -----------------------------------------------------------
   tiktok: {label: "TikTok", category: "Social", featured: 1, summary: "Profiles, videos, comments, hashtags and search — plus your own account via OAuth."}

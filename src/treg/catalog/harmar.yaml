@@ -1,0 +1,294 @@
+provider: harmar
+source:
+  docs: https://harmar.ai/developers
+  openapi: null
+  curated: '2026-09-28'
+pricing_url: https://harmar.ai/developers#pricing
+limits: "Built for real, mixed-language speech: 8.1% mean WER vs Whisper large-v3's 34.5% across 57 FLEURS languages (harmar.ai/en/blog/whisper-accuracy-benchmark-59-languages); prefer a social-post transcript tool for Instagram/TikTok/YouTube links, which this API does not fetch. Per-key rate limits per route (transcripts 120/min, export 60/min, reads 600/min). One media_url download and one export in flight per account. Media up to 60 minutes; media_url files up to 2 GB. Transcripts are kept 30 days; source media is deleted when the transcript exists unless keep_media is true."
+cache: forbidden
+proposed_capabilities:
+  speech.transcribe: "Transcribe an audio or video file into word-timed text"
+  speech.transcript.get: "Check a transcription job and read its transcript"
+  speech.subtitles.srt: "Get a transcript as an SRT subtitle file"
+  speech.subtitles.vtt: "Get a transcript as a WebVTT subtitle file"
+  speech.transcript.delete: "Delete a transcript and its media"
+  speech.languages.list: "List the languages a transcription service accepts"
+  speech.captions.render: "Burn styled captions into a video"
+  speech.captions.render.status: "Check a captioned-video render and get its download link"
+  speech.captions.styles.list: "List the caption styles, fonts and limits a render accepts"
+  speech.rates.get: "Get a transcription service's live per-minute rates"
+
+endpoints:
+  - id: harmar.speech.transcribe
+    capability: speech.transcribe
+    platform: speech
+    domain: transcription
+    scope: any_account
+    kind: action
+    method: POST
+    path: /v1/transcripts
+    name: Transcribe audio or video from a link
+    summary: "Measured on FLEURS against Whisper large-v3: 8.1% mean word error rate against 34.5% across 57 languages, lower in 56 of them. On code-switched speech, 1.3% against 54.7% on the English words inside Hindi speech — a borrowed English word stays English instead of being translated. Language identification (\"auto\") is right on 94% of 1,258 FLEURS clips. Full benchmark: harmar.ai/en/blog/whisper-accuracy-benchmark-59-languages"
+    async:
+      id_from: id
+      poll:
+        endpoint: harmar.speech.transcript.get
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        progress: [processing, awaiting_upload]
+        success: [completed]
+        failure: [failed]
+      result:
+        path: text
+      interval: 5
+    input:
+      bodyType: json
+      body:
+        media_url: {type: string, required: true, example: "https://cdn.harmar.ai/api-samples/hy-10s.mp4", note: "A direct file URL, or a Google Drive / Dropbox share link ('anyone with the link'). MP4, MOV, WebM, M4A, MP3 or WAV; up to 2 GB and 60 minutes. Instagram/TikTok/YouTube page links are refused. (The API also accepts media_id from its own upload flow instead; that flow needs a binary PUT to storage and is not catalogued.)"}
+        source_lang: {type: string, required: false, default: hy, example: auto, note: "Language spoken: a code from harmar.speech.languages (59 languages), or \"auto\" to identify it from the audio (94% on 1,258 FLEURS clips). Default hy (Armenian, with Russian/English code-switching kept as spoken, not translated)."}
+        translate_to: {type: string, required: false, example: en, note: "Also produce a translated track in this language (any supported code). No surcharge."}
+        script_text: {type: string, required: false, note: "Align-only mode: the exact spoken text; only timing is computed. Max 100,000 chars."}
+        keep_media: {type: boolean, required: false, default: false, note: "Keep the source so harmar.speech.captions.render can burn captions into it. Otherwise media is deleted as soon as the transcript exists."}
+        webhook_url: {type: string, required: false, note: "HTTPS URL POSTed on completion or failure (Harmar-Signature HMAC)."}
+        options:
+          type: object
+          required: false
+          properties:
+            timestamps: {type: string, required: false, enum: [word, segment, none], default: word}
+            punctuation: {type: boolean, required: false, default: true}
+            speakers: {type: boolean, required: false, default: true}
+            lyrics: {type: string, required: false, enum: [exclude, include], default: exclude}
+    test_request:
+      body: {media_url: "https://cdn.harmar.ai/api-samples/hy-10s.mp4", source_lang: hy, options: {timestamps: segment}}
+    cost:
+      type: per_success
+      value: 60
+      currency: unit
+      unit: media_second
+      fallback: {value: 3600, note: "Media is capped at 60 minutes, billed per second rounded up to the whole second."}
+      settle: usage
+      usage: {path: seconds_charged, unit: media_second}
+      source: observed
+      source_url: https://harmar.ai/developers#pricing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "Billed per second of media, rounded up, claimed before processing and refunded in full on failure (status failed settles at 0). The terminal transcript carries seconds_charged, which settles the call. Rate: $54.99 / 500 min (Starter), $175.99 / 2,000 (Growth), $686.99 / 10,000 (Scale) — live from GET /v1/pricing. Media with no speech completes with empty text and is charged. Observed 2026-09-28: the 10.0 s test clip returned seconds_charged 10 on the 202 and on the terminal document, and the balance moved 600 -> 590 seconds; seven rejected media_url submissions (no link, both ids, Instagram page, loopback, 169.254.169.254, an HTML page, a 404 file) left it at 600."
+    docs_url: https://harmar.ai/developers#transcripts
+
+  - id: harmar.speech.transcript.get
+    async: false
+    kind: utility
+    capability: speech.transcript.get
+    platform: speech
+    domain: transcription
+    scope: any_account
+    method: GET
+    path: /v1/transcripts/{id}
+    name: Check a transcript
+    summary: "Poll until status becomes completed or failed (or use a webhook). Completed responses carry the transcript in every enabled shape."
+    resource_ownership:
+      requires: {kind: "poll:harmar.speech.transcript.get", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "9b2f7c1e-0000-4000-8000-000000000000", note: "The id returned by harmar.speech.transcribe."}
+    test_request: {pathParams: {id: "9b2f7c1e-0000-4000-8000-000000000000"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading a job never charges."}
+    docs_url: https://harmar.ai/developers#results
+
+  - id: harmar.speech.subtitles.srt
+    async: false
+    capability: speech.subtitles.srt
+    platform: speech
+    domain: subtitles
+    scope: any_account
+    method: GET
+    path: /v1/transcripts/{id}/srt
+    name: Download SRT subtitles
+    summary: "Ready-made subtitle files, one cue per sentence segment. Same auth, plain-text responses."
+    resource_ownership:
+      requires: {kind: "poll:harmar.speech.transcript.get", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "9b2f7c1e-0000-4000-8000-000000000000"}
+      queryParams:
+        lang: {type: string, required: false, note: "Omit for the original track; the translate_to code for the translated one."}
+    test_request: {pathParams: {id: "9b2f7c1e-0000-4000-8000-000000000000"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Subtitle files of a finished job are free."}
+    docs_url: https://harmar.ai/developers#subtitles
+
+  - id: harmar.speech.subtitles.vtt
+    async: false
+    capability: speech.subtitles.vtt
+    platform: speech
+    domain: subtitles
+    scope: any_account
+    method: GET
+    path: /v1/transcripts/{id}/vtt
+    name: Download WebVTT subtitles
+    summary: "Ready-made subtitle files, one cue per sentence segment. Same auth, plain-text responses."
+    resource_ownership:
+      requires: {kind: "poll:harmar.speech.transcript.get", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "9b2f7c1e-0000-4000-8000-000000000000"}
+      queryParams:
+        lang: {type: string, required: false, note: "Omit for the original track; the translate_to code for the translated one."}
+    test_request: {pathParams: {id: "9b2f7c1e-0000-4000-8000-000000000000"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Subtitle files of a finished job are free."}
+    docs_url: https://harmar.ai/developers#subtitles
+
+  - id: harmar.speech.transcript.delete
+    async: false
+    kind: action
+    capability: speech.transcript.delete
+    platform: speech
+    domain: transcription
+    scope: any_account
+    method: DELETE
+    path: /v1/transcripts/{id}
+    name: Delete a transcript
+    summary: "Purges the transcript and any retained media now, instead of at the end of the retention window. Idempotent; 409 while the job is still processing."
+    resource_ownership:
+      requires: {kind: "poll:harmar.speech.transcript.get", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "9b2f7c1e-0000-4000-8000-000000000000"}
+    test_request: {pathParams: {id: "9b2f7c1e-0000-4000-8000-000000000000"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Deleting never charges or refunds."}
+    docs_url: https://harmar.ai/developers#retention
+
+  - id: harmar.speech.languages
+    async: false
+    kind: utility
+    capability: speech.languages.list
+    platform: speech
+    domain: transcription
+    scope: any_account
+    method: GET
+    path: /v1/languages
+    name: List supported languages
+    summary: "What source_lang / translate_to accept, live — code, name, native name, script, and whether \"auto\" can identify it."
+    input: {}
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://harmar.ai/developers#languages
+
+  - id: harmar.speech.captions.render
+    capability: speech.captions.render
+    platform: speech
+    domain: captions
+    scope: any_account
+    kind: action
+    method: POST
+    path: /v1/transcripts/{id}/export
+    name: Burn styled captions into the video
+    summary: "Burn styled subtitles into the video and get an MP4 — no watermark, up to 1080p, up to 60 minutes. The transcript must have been submitted with keep_media: true. Charged per second of media at the transcription rate, refunded if the render fails. One export at a time per account."
+    async:
+      id_from: id
+      poll:
+        endpoint: harmar.speech.captions.render.get
+        param: {in: pathParams, name: id}
+      status:
+        path: status
+        progress: [queued, rendering]
+        success: [completed]
+        failure: [failed]
+      result:
+        path: download_url
+      interval: 10
+    resource_ownership:
+      requires: {kind: "poll:harmar.speech.transcript.get", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "9b2f7c1e-0000-4000-8000-000000000000", note: "A completed transcript created with keep_media: true."}
+      bodyType: json
+      body:
+        style: {type: object, required: false, example: {preset: karaoke}, note: "Inline style — preset, font, colours, size, position; fields and ranges from harmar.speech.captions.styles. Send this or style_preset_id."}
+        style_preset_id: {type: string, required: false, note: "A style saved on the account instead of an inline style."}
+        lang: {type: string, required: false, note: "Which track to burn: the source language (default) or the translate_to language."}
+        platform: {type: string, required: false, note: "Optional target platform preset, from harmar.speech.captions.styles."}
+    test_request:
+      pathParams: {id: "9b2f7c1e-0000-4000-8000-000000000000"}
+      body: {style: {preset: karaoke}}
+    cost:
+      type: per_success
+      value: 60
+      currency: unit
+      unit: media_second
+      fallback: {value: 3600, note: "Burn-in is capped at 60 minutes of media."}
+      settle: usage
+      usage: {path: seconds_charged, unit: media_second}
+      source: observed
+      source_url: https://harmar.ai/developers#pricing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "Same per-second rate as transcription (GET /v1/pricing products.rendered_captions). Claimed at request time and refunded in full if the render fails (the failed status carries seconds_refunded). The export status carries seconds_charged. Observed 2026-09-28: a karaoke export of the 10.0 s clip completed in ~20 s (1.46 MB MP4), seconds_charged 10, balance 580 -> 570 seconds."
+    docs_url: https://harmar.ai/developers#export
+
+  - id: harmar.speech.captions.render.get
+    async: false
+    kind: utility
+    capability: speech.captions.render.status
+    platform: speech
+    domain: captions
+    scope: any_account
+    method: GET
+    path: /v1/transcripts/{id}/export
+    name: Check a captioned-video render
+    summary: "queued / rendering (with progress) / completed (with a signed download_url valid for one hour) / failed (with reason and refund). 410 once the file has aged out."
+    resource_ownership:
+      requires: {kind: "poll:harmar.speech.transcript.get", param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "9b2f7c1e-0000-4000-8000-000000000000"}
+    test_request: {pathParams: {id: "9b2f7c1e-0000-4000-8000-000000000000"}}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://harmar.ai/developers#export
+
+  - id: harmar.speech.captions.styles
+    async: false
+    kind: utility
+    capability: speech.captions.styles.list
+    platform: speech
+    domain: captions
+    scope: any_account
+    method: GET
+    path: /v1/styles
+    name: List caption styles and fonts
+    summary: "The presets, every font with the languages it renders, every style field with its range, defaults per orientation, platforms, and the export's limits."
+    input: {}
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://harmar.ai/developers#export
+
+  - id: harmar.speech.rates
+    async: false
+    kind: utility
+    capability: speech.rates.get
+    platform: speech
+    domain: transcription
+    scope: any_account
+    method: GET
+    path: /v1/pricing
+    name: Get live rates
+    summary: "Rates are readable from the API so you can compute your own margin instead of hard-coding a number that goes stale."
+    input: {}
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://harmar.ai/developers#pricing
+
+  - id: harmar.account.balance
+    async: false
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v1/balance
+    name: Check prepaid balance
+    summary: "Seconds and minutes of media the account can still process."
+    input: {}
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://harmar.ai/developers#balance
