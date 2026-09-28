@@ -1,0 +1,404 @@
+# qBraid — quantum computing platform API (devices, OpenQASM tooling, job submission).
+# SELF-VERIFIED 2026-09-22 (vendor run, not a maintainer stamp): params transcribed from the qBraid API
+# source (qbraid-api src/features/{device,composer,job,provider} validators and routes) and the v2 docs;
+# all 10 test_requests were live-called with a vendor key via scripts/catalog_verify.py (10/10 PASS) and
+# the free simulator submit billed 0 credits. No `verified:` stamps here — those are the maintainers' to add.
+#
+# Auth: `X-API-Key: <key>` (keys look like qbr_…). Probe: GET /devices?limit=1 (free, authenticated;
+# a garbage key answers 401 {"success":false,"message":"Invalid API key format",
+# "error":{"code":"INVALID_API_KEY_FORMAT"}}; a well-formed unknown key 401 "API key not found").
+# GET /providers answers 200 WITHOUT a credential, so it is listed but is not the probe.
+#
+# Billing: every route here is free except POST /jobs, which charges qBraid credits
+# (1 credit = $0.01; fx.yaml `qbraid`) at the device's pricing (perTask + perShot × shots, or
+# perMinute for time-billed devices). GET /jobs/cost-estimate is the machine-readable rate card for
+# a (device, shots) pair, so price a job there before submitting. Composer simulation is capped at
+# 20 qubits. The three /jobs/{qrn} routes need a job qrn from a prior POST /jobs, so they carry no
+# test_request until a live submission produces one.
+# Example device qrn `qbraid:qbraid:sim:qir-sv` (the qBraid QIR state-vector simulator) was ONLINE and
+# free (pricing all 0) on the live run; re-check via GET /devices before relying on it.
+provider: qbraid
+source:
+  docs: https://docs.qbraid.com/v2
+  openapi: null  # no public spec URL; qbraid-docs holds an openapi-v2.json locally that could be published
+  curated: 2026-09-22
+pricing_url: https://www.qbraid.com/pricing
+proposed_capabilities:
+  quantum.devices.list: "List quantum devices and simulators"
+  quantum.device.profile: "Get a quantum device's specs, availability and pricing"
+  quantum.device.calibrations: "Get the latest calibration data for a quantum device"
+  quantum.providers.list: "List quantum computing providers"
+  quantum.program.validate: "Check whether an OpenQASM program is well-formed"
+  quantum.program.parse: "Parse an OpenQASM program into a structured circuit"
+  quantum.program.convert: "Convert an OpenQASM program between 2.0 and 3.0"
+  quantum.program.simulate: "Simulate an OpenQASM circuit on a state-vector simulator"
+  quantum.job.estimate: "Estimate the cost of a quantum job before submitting it"
+  quantum.job.submit: "Submit a quantum job to a device or simulator"
+  quantum.job.status: "Get a quantum job's details and status"
+  quantum.job.result: "Get a completed quantum job's measurement results"
+  quantum.job.cancel: "Cancel a pending or running quantum job"
+
+endpoints:
+  - id: qbraid.quantum.devices.list
+    capability: quantum.devices.list
+    platform: quantum
+    domain: devices
+    scope: any_account
+    method: GET
+    path: /devices
+    name: "List quantum devices"
+    summary: "List available quantum computing devices and simulators on qBraid"
+    input:
+      queryParams:
+        qrn: {type: string, required: false, note: "filter by qBraid Resource Name", example: "qbraid:qbraid:sim:qir-sv"}
+        vendor: {type: string, required: false, enum: [aws, azure, ibm, ionq, qbraid]}
+        providerId: {type: string, required: false, note: "provider id from GET /providers"}
+        deviceType: {type: string, required: false, enum: [QPU, SIMULATOR], example: "SIMULATOR"}
+        status: {type: string, required: false, enum: [ONLINE, OFFLINE, RETIRED, UNAVAILABLE]}
+        retired: {type: boolean, required: false}
+        verified: {type: boolean, required: false}
+        directAccess: {type: boolean, required: false}
+        search: {type: string, required: false, note: "matches name, description and about; 1-255 chars"}
+        sortBy: {type: string, required: false, enum: [name, vendor, deviceType, status, numberQubits, createdAt, updatedAt], default: name}
+        sortOrder: {type: string, required: false, enum: [asc, desc], default: asc}
+        page: {type: integer, required: false, default: 1, min: 1}
+        limit: {type: integer, required: false, default: 20, min: 1, max: 100, example: 1}
+    test_request:
+      queryParams: {deviceType: "SIMULATOR", limit: 1}
+    cost:
+      type: per_call
+      value: 0
+      currency: USD
+      source: docs
+      source_url: https://www.qbraid.com/pricing
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Free; only job submissions spend credits."
+    docs_url: https://docs.qbraid.com/v2/api-reference
+
+  - id: qbraid.quantum.device.profile
+    capability: quantum.device.profile
+    platform: quantum
+    domain: devices
+    scope: any_account
+    method: GET
+    path: /devices/{qrn}
+    name: "Get a quantum device"
+    summary: "Get detailed information about a specific quantum device including specs, availability, and pricing"
+    input:
+      pathParams:
+        qrn: {type: string, required: true, note: "device qBraid Resource Name from GET /devices", example: "qbraid:qbraid:sim:qir-sv"}
+    test_request:
+      pathParams: {qrn: "qbraid:qbraid:sim:qir-sv"}
+    cost:
+      type: per_call
+      value: 0
+      currency: USD
+      source: docs
+      source_url: https://www.qbraid.com/pricing
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Free. The response's pricing block (perTask, perShot, perMinute) is what POST /jobs charges."
+    docs_url: https://docs.qbraid.com/v2/api-reference
+
+  - id: qbraid.quantum.device.calibrations
+    capability: quantum.device.calibrations
+    platform: quantum
+    domain: devices
+    scope: any_account
+    method: GET
+    path: /devices/{qrn}/calibrations
+    name: "Get a QPU's latest calibration data"
+    summary: "Retrieve the latest calibration snapshot for a device by its QRN. Returns qubit-level properties (T1, T2, frequency, readout error, gate errors) and edge-level properties (two-qubit gate errors and gate lengths)."
+    input:
+      pathParams:
+        qrn: {type: string, required: true, note: "a real QPU's qrn; simulators have no calibration data and answer 404 NOT_FOUND", example: "aws:aqt:qpu:ibex-q1"}
+    # test target: the AQT IBEX Q1 trapped-ion QPU, which answered a calibration snapshot on
+    # 2026-09-22; the simulator qrn 404s here by design.
+    test_request:
+      pathParams: {qrn: "aws:aqt:qpu:ibex-q1"}
+    cost:
+      type: per_call
+      value: 0
+      currency: USD
+      source: docs
+      source_url: https://www.qbraid.com/pricing
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Free. 404 for a simulator or a device without a calibration snapshot."
+    docs_url: https://docs.qbraid.com/v2/api-reference
+
+  - id: qbraid.quantum.providers.list
+    capability: quantum.providers.list
+    platform: quantum
+    domain: providers
+    scope: any_account
+    method: GET
+    path: /providers
+    name: "List quantum providers"
+    summary: "List the global, publicly visible quantum computing providers on qBraid. Providers owned by an organization, and private or unapproved ones, are not included."
+    input:
+      queryParams: {}
+    test_request:
+      queryParams: {}
+    cost:
+      type: per_call
+      value: 0
+      currency: USD
+      source: docs
+      source_url: https://www.qbraid.com/pricing
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Free. Answers 200 without a credential, so it proves nothing about a key — the registry probe is GET /devices."
+    docs_url: https://docs.qbraid.com/v2/api-reference
+
+  - id: qbraid.quantum.program.validate
+    capability: quantum.program.validate
+    platform: quantum
+    domain: composer
+    scope: any_account
+    kind: utility
+    method: POST
+    path: /composer/validate
+    name: "Validate an OpenQASM program"
+    summary: "Check whether an OpenQASM program is well-formed, and get its shape. Returns valid:true/false, a list of human-readable errors when it is not, and stats: numQubits, numClbits, depth and gateCount."
+    input:
+      bodyType: json
+      body:
+        qasm: {type: string, required: true, note: "OpenQASM 2.0 or 3.0 source, up to 500,000 chars", example: "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;"}
+    test_request:
+      body: {qasm: "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;"}
+    cost:
+      type: per_call
+      value: 0
+      currency: USD
+      source: docs
+      source_url: https://www.qbraid.com/pricing
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Free; purely computational, nothing is stored and no device is contacted."
+    docs_url: https://docs.qbraid.com/v2/api-reference
+
+  - id: qbraid.quantum.program.parse
+    capability: quantum.program.parse
+    platform: quantum
+    domain: composer
+    scope: any_account
+    kind: utility
+    method: POST
+    path: /composer/parse
+    name: "Parse an OpenQASM program into a circuit"
+    summary: "Turn an OpenQASM program into a structured circuit description: qubit and classical-bit counts plus a gate list, each gate carrying its type, target qubits, controls, parameters and column position."
+    input:
+      bodyType: json
+      body:
+        qasm: {type: string, required: true, note: "OpenQASM 2.0 or 3.0 source, up to 500,000 chars", example: "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;"}
+    test_request:
+      body: {qasm: "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;"}
+    cost:
+      type: per_call
+      value: 0
+      currency: USD
+      source: docs
+      source_url: https://www.qbraid.com/pricing
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Free; purely computational."
+    docs_url: https://docs.qbraid.com/v2/api-reference
+
+  - id: qbraid.quantum.program.convert
+    capability: quantum.program.convert
+    platform: quantum
+    domain: composer
+    scope: any_account
+    kind: utility
+    method: POST
+    path: /composer/convert
+    name: "Convert OpenQASM between 2.0 and 3.0"
+    summary: "Translate a program between OpenQASM 2.0 and 3.0 and return the converted source, plus warnings for anything that could not be expressed exactly in the target version."
+    input:
+      bodyType: json
+      body:
+        qasm: {type: string, required: true, note: "OpenQASM source, up to 500,000 chars", example: "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;"}
+        target_version: {type: string, required: true, enum: ['2.0', '3.0'], example: "3.0"}
+    test_request:
+      body: {qasm: "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;", target_version: "3.0"}
+    cost:
+      type: per_call
+      value: 0
+      currency: USD
+      source: docs
+      source_url: https://www.qbraid.com/pricing
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Free; purely computational."
+    docs_url: https://docs.qbraid.com/v2/api-reference
+
+  - id: qbraid.quantum.program.simulate
+    capability: quantum.program.simulate
+    platform: quantum
+    domain: composer
+    scope: any_account
+    method: POST
+    path: /composer/simulate
+    name: "Simulate a circuit (≤20 qubits, free)"
+    summary: "Run an OpenQASM program on qBraid's built-in state-vector simulator and get the output probability distribution keyed by bitstring, along with the qubit count."
+    input:
+      bodyType: json
+      body:
+        qasm: {type: string, required: true, note: "OpenQASM source declaring at most 20 qubits; larger circuits are rejected with 400", example: "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;"}
+    test_request:
+      body: {qasm: "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;"}
+    cost:
+      type: per_call
+      value: 0
+      currency: USD
+      source: docs
+      source_url: https://www.qbraid.com/pricing
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Free: spends no credits and never touches a QPU. Results are exact probabilities, not sampled shot counts."
+    docs_url: https://docs.qbraid.com/v2/api-reference
+
+  - id: qbraid.quantum.job.estimate
+    capability: quantum.job.estimate
+    platform: quantum
+    domain: jobs
+    scope: any_account
+    kind: utility
+    method: GET
+    path: /jobs/cost-estimate
+    name: "Estimate a job's cost in credits"
+    summary: "Price a job in CREDITS before submitting it. Takes the same deviceQrn and shots you would pass to submit a job and returns estimatedCost."
+    input:
+      queryParams:
+        deviceQrn: {type: string, required: true, note: "device qrn from GET /devices", example: "qbraid:qbraid:sim:qir-sv"}
+        shots: {type: integer, required: false, min: 1, note: "pass the same value you intend to submit with", example: 10}
+    test_request:
+      queryParams: {deviceQrn: "qbraid:qbraid:sim:qir-sv", shots: 10}
+    cost:
+      type: per_call
+      value: 0
+      currency: USD
+      source: docs
+      source_url: https://www.qbraid.com/pricing
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Free. This is the rate card for POST /jobs: estimatedCost is in qBraid credits (1 credit = $0.01). Devices without configured or with dynamic pricing answer pricingAvailable:false with a reason."
+    docs_url: https://docs.qbraid.com/v2/api-reference
+
+  - id: qbraid.quantum.job.submit
+    capability: quantum.job.submit
+    platform: quantum
+    domain: jobs
+    scope: any_account
+    kind: action
+    method: POST
+    path: /jobs
+    name: "Submit a quantum job (billed)"
+    summary: "Submit a quantum job to run on a quantum device or simulator. This spends money: the estimated cost in qBraid credits is charged for the job (scaling with shots and device pricing)."
+    input:
+      bodyType: json
+      body:
+        deviceQrn: {type: string, required: true, note: "device qrn from GET /devices", example: "qbraid:qbraid:sim:qir-sv"}
+        shots: {type: integer, required: true, min: 0, example: 10}
+        program: {type: object, required: true, note: "{format, data}; format one of qasm2 | qasm3 | qir.bc | qir.ll | analog | pulser.sequence | quil | ionq.circuit.v0 | problem — or an array of up to 2000 such objects for a batch job", example: {format: "qasm2", data: "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;"}}
+        name: {type: string, required: false, example: "Bell state"}
+        tags: {type: object, required: false, note: "string/number/boolean values", example: {experiment: "bell-state"}}
+        runtimeOptions: {type: object, required: false}
+        groupJobQrn: {type: string, required: false}
+      note: "The response may be HTTP 201 with success:false when the submission failed upstream — read the success flag. The returned data.jobQrn (status INITIALIZING, estimatedCost) feeds the /jobs/{qrn} routes."
+    # BILLED: this test_request spends credits on the qBraid QIR state-vector simulator (the
+    # cheapest simulator seeded in qbraid-api); price it first with qbraid.quantum.job.estimate.
+    test_request:
+      body:
+        deviceQrn: "qbraid:qbraid:sim:qir-sv"
+        shots: 10
+        name: "treg verification: Bell state"
+        program: {format: "qasm2", data: "OPENQASM 2.0;\ninclude \"qelib1.inc\";\nqreg q[2];\ncreg c[2];\nh q[0];\ncx q[0],q[1];\nmeasure q -> c;"}
+    cost:
+      type: per_call
+      value: null
+      currency: credit
+      source: docs
+      source_url: https://www.qbraid.com/pricing
+      checked: '2026-09-22'
+      confidence: unknown
+      note: "Per-job qBraid credits (1 credit = $0.01) set by the device's pricing: perTask + perShot × shots, or perMinute for time-billed devices; some devices price dynamically per circuit. No single figure exists across devices, so GET /jobs/cost-estimate is the rate card — call it with the same deviceQrn and shots first. Observed 2026-09-22: qbraid:qbraid:sim:qir-sv at 10 shots quoted and billed 0 credits; aws:aqt:qpu:ibex-q1 at 100 shots quoted 265 credits ($2.65) — QPU hit price unobserved (not submitted). Not platform-eligible until a per-device price can be computed."
+    docs_url: https://docs.qbraid.com/v2/api-reference
+
+  - id: qbraid.quantum.job.status
+    capability: quantum.job.status
+    platform: quantum
+    domain: jobs
+    scope: any_account
+    kind: utility
+    method: GET
+    path: /jobs/{qrn}
+    name: "Get a quantum job"
+    summary: "Get detailed information about a specific quantum job by its QRN. Fetching a nonterminal job also refreshes its status from the quantum provider, updates the stored status, and may store completed results and finalize the existing job's credit charge or refund."
+    input:
+      pathParams:
+        qrn: {type: string, required: true, note: "data.jobQrn returned by POST /jobs; the job must belong to the calling key's organization. Unknown qrn answers 404 NOT_FOUND", example: "qbraid:qbraid:sim:qir-sv-32de-qjob-6ab2125ea32f8043c5e8e9d9"}
+    # no test_request: needs a live job qrn produced by a prior POST /jobs on the verifying key
+    cost:
+      type: per_call
+      value: 0
+      currency: USD
+      source: docs
+      source_url: https://www.qbraid.com/pricing
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Free."
+    docs_url: https://docs.qbraid.com/v2/api-reference
+
+  - id: qbraid.quantum.job.result
+    capability: quantum.job.result
+    platform: quantum
+    domain: jobs
+    scope: any_account
+    method: GET
+    path: /jobs/{qrn}/result
+    name: "Get a quantum job's results"
+    summary: "Get the measurement results of a completed quantum job. Returns measurementCounts (the histogram over bitstrings) plus the total shot count; the raw per-shot array is NOT included unless you pass includeMeasurements:true, and is capped even then."
+    input:
+      pathParams:
+        qrn: {type: string, required: true, note: "job qrn returned by POST /jobs"}
+      queryParams:
+        includeMeasurements: {type: string, required: false, enum: ['true'], note: "only the literal 'true' opts in to the per-shot array"}
+    # no test_request: needs a live job qrn produced by a prior POST /jobs on the verifying key
+    cost:
+      type: per_call
+      value: 0
+      currency: USD
+      source: docs
+      source_url: https://www.qbraid.com/pricing
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Free. Errors until the completed job has uploaded its result artifact."
+    docs_url: https://docs.qbraid.com/v2/api-reference
+
+  - id: qbraid.quantum.job.cancel
+    capability: quantum.job.cancel
+    platform: quantum
+    domain: jobs
+    scope: any_account
+    kind: action
+    method: POST
+    path: /jobs/{qrn}/cancel
+    name: "Cancel a quantum job"
+    summary: "Cancel a pending or running quantum job. Irreversible: the job cannot be resumed and pending results are forfeited. Only works for jobs that have not yet completed."
+    input:
+      pathParams:
+        qrn: {type: string, required: true, note: "job qrn returned by POST /jobs"}
+    # no test_request: needs a live, still-pending job qrn from a prior POST /jobs on the verifying key
+    cost:
+      type: per_call
+      value: 0
+      currency: USD
+      source: docs
+      source_url: https://www.qbraid.com/pricing
+      checked: '2026-09-22'
+      confidence: documented
+      note: "Free. A job still INITIALIZING answers 409 JOB_CANCEL_CONFLICT (retry in a few moments — a timing outcome, not an API failure); a completed job cannot be cancelled. The credit charge is finalised or refunded on the next status read."
+    docs_url: https://docs.qbraid.com/v2/api-reference
