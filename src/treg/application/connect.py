@@ -116,12 +116,12 @@ async def _autoprovision_provider_tool(
         )
     ).scalars().first()
     bindings = _provider_bindings(provider, secret)
-    # A free registry probe can self-validate on `health --run`. Paid key-verification probes are
-    # connect-only: persisting one here would make every manual or future scheduled health run
-    # spend the connected team's provider wallet without a per-run approval.
+    # The health runner cannot replay a connect probe's JSON body, so only free GET probes can
+    # self-validate on `health --run`. Paid and non-GET key-verification probes are connect-only.
+    is_get_probe = (provider.probe_method or "GET").upper() == "GET"
     health_check = (
         {"method": "GET", "path": provider.probe_path, "expect_status": 200}
-        if provider.probe_path and provider.probe_cost_micro == 0 else None
+        if provider.probe_path and provider.probe_cost_micro == 0 and is_get_probe else None
     )
     examples = _provider_tool_examples(provider)
     if existing is not None:
@@ -130,7 +130,7 @@ async def _autoprovision_provider_tool(
         existing.host = _host_of(provider.base_url)
         # Reconnecting is how an already-provisioned tool picks up a probe — or examples — added
         # to the registry since it was made.
-        if provider.probe_cost_micro:
+        if provider.probe_cost_micro or not is_get_probe:
             existing.health_check = None
         else:
             existing.health_check = health_check or existing.health_check
