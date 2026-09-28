@@ -529,6 +529,39 @@ async def test_platform_eligibility_refuses_everything_it_cannot_prove():
     assert not cat.platform_eligible(blocked)
 
 
+def test_airscale_platform_eligibility_is_partitioned_by_route():
+    cat = cs.load()
+    eligible = {
+        "airscale.find-people.count": ("POST", "/find-people/count"),
+        "airscale.find-companies.filter-values": ("GET", "/find-companies/filter-values"),
+        "airscale.email": ("POST", "/email"),
+        "airscale.phone": ("POST", "/phone"),
+        "airscale.reverse-phone": ("POST", "/reverse-phone"),
+        "airscale.airsearch": ("POST", "/airsearch"),
+    }
+    blocked = {
+        "airscale.find-people": ("POST", "/find-people"),
+        "airscale.find-companies": ("POST", "/find-companies"),
+        "airscale.profile": ("POST", "/profile"),
+        "airscale.company": ("POST", "/company"),
+        "airscale.personal-email": ("POST", "/personal-email"),
+        "airscale.reverse-email": ("POST", "/reverse-email"),
+    }
+    airscale = [ep for ep in cat.endpoints if ep["provider"] == "airscale"]
+    expected = eligible | blocked
+    assert len(airscale) == len(expected) == 12
+    assert {ep["id"] for ep in airscale} == set(expected)
+    for endpoint_id, (method, path) in eligible.items():
+        endpoint = cat.by_id[endpoint_id]
+        assert (endpoint["method"], endpoint["path"]) == (method, path)
+        assert cat.platform_eligible(endpoint), endpoint_id
+    for endpoint_id, (method, path) in blocked.items():
+        endpoint = cat.by_id[endpoint_id]
+        assert (endpoint["method"], endpoint["path"]) == (method, path)
+        assert not cat.platform_eligible(endpoint), endpoint_id
+        assert endpoint.get("platform_blocked"), endpoint_id
+
+
 async def test_eligibility_rides_on_the_served_row(clients: AsyncClient):
     """A client deciding whether a call needs a credential must not have to re-derive the rule."""
     cat = cs.load()

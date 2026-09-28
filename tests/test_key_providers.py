@@ -60,6 +60,15 @@ async def test_perplexity_key_uses_free_model_list_probe(clients, monkeypatch):
     assert response.status_code == 200, response.text
 
 
+def test_airscale_key_is_offerable_without_deployment_credentials():
+    provider = P.get("airscale")
+    assert provider is not None
+    assert provider.auth_kind == "key"
+    assert provider.uses_pasted_secret is True
+    assert provider.is_token_kind is False
+    assert P.is_configured(provider) is True
+
+
 async def test_adyntel_connect_collects_both_credentials_before_provisioning(clients, monkeypatch):
     def probe(request):
         assert request.method == "POST"
