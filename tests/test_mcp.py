@@ -1215,7 +1215,8 @@ async def test_search_survives_missing_a_few_words_of_an_agent_sentence(clients)
     # function words are dropped before the miss allowance is computed, so they cannot crowd out
     # the words that select ("on", "this" are not evidence about any endpoint)
     rows, _ = cs.search("trending repositories on github this week", cat, 3)
-    assert rows and rows[0][0]["id"] == "scrapecreators.x.v1-github-trending-repositories"
+    assert rows and rows[0][0]["capability"] == "github.trending.repositories"
+    assert "scrapecreators.x.v1-github-trending-repositories" in {ep["id"] for ep, _ in rows}
     # single letters can never select: "K&L" must not let k + l decide admission, and the company
     # job ("enrich by name") must lead instead of 67 rows of noise (logged miss, 2026-08-20)
     rows, total = cs.search("K&L Gates company lookup", cat, 8)

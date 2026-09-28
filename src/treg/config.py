@@ -255,6 +255,7 @@ class Settings(BaseSettings):
     platform_key_aviato: str = ""     # Bearer key; $10 auto-top-up buys 1,000 credits
     platform_key_exa: str = ""        # x-api-key; dollar-metered ($7/1k searches, $1/1k pages); settles from costDollars.total
     platform_key_tavily: str = ""     # Bearer; Search reports per-call usage, other tools settle returned successes
+    platform_key_search1api: str = ""  # Bearer; prepaid credits. $5 / 5,000 credits = $0.001 at the no-bonus top-up
     platform_key_serper: str = ""     # X-API-KEY; prepaid Google search credits, exact charge in response.credits
     platform_key_keenable: str = ""   # X-API-Key; $4/1,000-request package, 10 requests/s per organization
     platform_key_olostep: str = ""    # Bearer; prepaid credits, platform price $0.002/credit

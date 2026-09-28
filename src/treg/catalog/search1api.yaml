@@ -1,0 +1,398 @@
+# Search1API's public contract is https://api.search1api.com/openapi.json. API-key calls use
+# Bearer auth and the credit table at https://s1.dev/pricing. The OpenAPI document also carries
+# MPP/x402 prices for callers with no account; those are a different rail and are not the prices
+# below.
+#
+# Excluded from this curated file, with the reason:
+# - POST /search and POST /news with crawl_results > 0. The pricing page bills 1 credit plus one
+#   credit per page that was actually crawled. That charge is not fixed by the request, so these
+#   rows accept only crawl_results 0. Page text is search1api.web.crawl.
+# - image: true on /search and /news. The credit table does not list a surcharge, and the live
+#   checks kept image false.
+# - POST /crawl with a JSON array. A one-URL object is the priced call; a batch is not reserved here.
+# - POST /deepcrawl and GET /deepcrawl/status/{taskId}. Deep crawl is asynchronous, listed at 20
+#   credits, and the status read has no published credit price. The OpenAPI document has no separate
+#   result download.
+# - GET /health. It does not check a credential.
+# - GET /usage. It is the free connect probe, not a catalog tool. On 2026-09-28 its `usage` integer
+#   equalled the dashboard's remaining credits for one account; the published summary still calls it
+#   usage statistics, so this file does not treat it as a balance API.
+provider: search1api
+source:
+  docs: https://s1.dev/docs
+  openapi: https://api.search1api.com/openapi.json
+  curated: '2026-09-28'
+pricing_url: https://s1.dev/pricing
+limits: "Search1API publishes plan concurrency (Standard on Basic, Higher on Professional) and does not publish a numeric per-route limit. The live calls on 2026-09-28 returned no rate-limit headers."
+proposed_capabilities:
+  web.screenshot: Render a web page as an image
+  web.trending.hackernews: List trending Hacker News stories
+endpoints:
+  - id: search1api.web.search
+    capability: web.search
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search
+    body_allowlist: true
+    name: Web search by query — titles, links, snippets
+    summary: Search the web using multiple search engines.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Search1API documentation"}
+        search_service:
+          type: string
+          required: false
+          default: google
+          enum: [google, bing, bingcn, duckduckgo, yahoo, yandex, youtube, x, reddit, github, arxiv, wechat, bilibili, imdb, wikipedia, baidu, "360", quark]
+          example: google
+          note: "Engine id. An empty string is accepted upstream and is omitted here so the row has a default."
+        max_results: {type: integer, required: false, default: 5, min: 1, max: 50, example: 1}
+        crawl_results:
+          type: integer
+          required: false
+          default: 0
+          enum: [0]
+          example: 0
+          note: "Deep Search (crawl_results > 0) bills 1 credit plus one per successfully crawled page. This row is the 1-credit result list."
+        image:
+          type: boolean
+          required: false
+          default: false
+          enum: [false]
+          example: false
+          note: "Image results are not on the published credit table and were not metered."
+        include_sites: {type: "array[string]", required: false, example: ["s1.dev"]}
+        exclude_sites: {type: "array[string]", required: false}
+        language: {type: string, required: false, example: en}
+        time_range: {type: string, required: false, enum: [day, week, month, year]}
+    test_request:
+      body: {query: "Search1API documentation", search_service: google, max_results: 1, crawl_results: 0, image: false}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      unit: call
+      source: observed
+      source_url: https://s1.dev/pricing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "The pricing page lists /search at 1 credit. A google search with max_results 1, crawl_results 0 and image false moved the account balance 92510 → 92509. Failed requests are documented as free."
+    docs_url: https://s1.dev/docs/basic/search
+
+  - id: search1api.web.search.news
+    capability: web.search.news
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /news
+    body_allowlist: true
+    name: News search by query — titles, links, dates
+    summary: Search news articles across multiple sources.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "Search1API"}
+        search_service:
+          type: string
+          required: false
+          default: bing
+          enum: [google, bing, duckduckgo, yahoo, hackernews, reuters]
+          example: bing
+        max_results: {type: integer, required: false, default: 5, min: 1, max: 50, example: 1}
+        crawl_results:
+          type: integer
+          required: false
+          default: 0
+          enum: [0]
+          example: 0
+          note: "crawl_results > 0 adds one credit per successfully crawled page and is not part of this row."
+        image:
+          type: boolean
+          required: false
+          default: false
+          enum: [false]
+          example: false
+        include_sites: {type: "array[string]", required: false}
+        exclude_sites: {type: "array[string]", required: false}
+        language: {type: string, required: false, example: en}
+        time_range: {type: string, required: false, enum: [day, week, month, year]}
+    test_request:
+      body: {query: "Search1API", search_service: bing, max_results: 1, crawl_results: 0, image: false}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      unit: call
+      source: observed
+      source_url: https://s1.dev/pricing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "The pricing page lists /news at 1 credit. A bing news search with max_results 1 moved the account balance 92509 → 92508."
+    docs_url: https://s1.dev/docs/basic/news
+
+  - id: search1api.web.search.publications
+    capability: web.search.publications
+    platform: web
+    domain: search
+    scope: any_account
+    method: POST
+    path: /search
+    body_allowlist: true
+    name: Research papers by query — arXiv titles and links
+    summary: Search arXiv through the web search endpoint.
+    input:
+      bodyType: json
+      body:
+        query: {type: string, required: true, example: "attention is all you need"}
+        search_service: {type: string, required: true, default: arxiv, enum: [arxiv], example: arxiv}
+        max_results: {type: integer, required: false, default: 5, min: 1, max: 50, example: 1}
+        crawl_results: {type: integer, required: false, default: 0, enum: [0], example: 0}
+        image: {type: boolean, required: false, default: false, enum: [false], example: false}
+        include_sites: {type: "array[string]", required: false}
+        exclude_sites: {type: "array[string]", required: false}
+        language: {type: string, required: false}
+        time_range: {type: string, required: false, enum: [day, week, month, year]}
+    platform_request: {body.search_service: arxiv, body.crawl_results: 0, body.image: false}
+    test_request:
+      body: {query: "attention is all you need", search_service: arxiv, max_results: 1, crawl_results: 0, image: false}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      unit: call
+      source: docs
+      source_url: https://s1.dev/pricing
+      checked: '2026-09-28'
+      confidence: documented
+      note: "The pricing page prices /search at 1 credit for every engine. The live 1-credit observation was a google search, not a separate arXiv call."
+    docs_url: https://s1.dev/docs/basic/search
+
+  - id: search1api.web.crawl
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /crawl
+    body_allowlist: true
+    name: Page content by URL — title and text
+    summary: Crawl a URL and extract its content.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        enableFallback:
+          type: boolean
+          required: false
+          default: false
+          enum: [false]
+          example: false
+          note: "The credit table does not price a fallback pass separately. This row keeps it off."
+    test_request:
+      body: {url: "https://example.com", enableFallback: false}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      unit: call
+      source: observed
+      source_url: https://s1.dev/pricing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "The pricing page lists /crawl at 1 credit. Crawling https://example.com moved the account balance 92508 → 92507."
+    docs_url: https://s1.dev/docs/basic/crawl
+
+  - id: search1api.web.extract
+    capability: web.extract
+    platform: web
+    domain: extract
+    scope: any_account
+    method: POST
+    path: /extract
+    body_allowlist: true
+    name: Structured fields from a page by URL
+    summary: Extract structured content from a URL.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        prompt: {type: string, required: false, example: "Return the page title."}
+        response_format:
+          type: object
+          required: true
+          example:
+            type: json_schema
+            json_schema:
+              name: page
+              schema:
+                type: object
+                properties:
+                  title: {type: string}
+                required: [title]
+          note: "The OpenAPI document marks this optional. A call without it, or with type other than json_schema, returned HTTP 502 and cost 0 credits. The working envelope is {type: json_schema, json_schema: {name, schema}}."
+    test_request:
+      body:
+        url: "https://example.com"
+        prompt: "Return the page title."
+        response_format:
+          type: json_schema
+          json_schema:
+            name: page
+            schema:
+              type: object
+              properties:
+                title: {type: string}
+              required: [title]
+    cost:
+      type: per_success
+      value: 10
+      currency: credit
+      unit: call
+      source: observed
+      source_url: https://s1.dev/pricing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "The pricing page lists /extract at 10 credits. A successful json_schema extraction of https://example.com moved the account balance 92501 → 92491. Two HTTP 502 validation failures earlier in the same run cost 0."
+    docs_url: https://s1.dev/docs/basic/extract
+
+  - id: search1api.web.map
+    capability: web.map
+    platform: web
+    domain: map
+    scope: any_account
+    method: POST
+    path: /sitemap
+    body_allowlist: true
+    name: Site URLs from a sitemap
+    summary: Extract sitemap URLs from a website.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://s1.dev"}
+        type:
+          type: string
+          required: false
+          enum: [sitemap, all]
+          example: sitemap
+          note: "sitemap reads the sitemap; all also walks discovered links. The credit table prices the endpoint at 1 credit. The live call used sitemap."
+    test_request:
+      body: {url: "https://s1.dev", type: sitemap}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      unit: call
+      source: observed
+      source_url: https://s1.dev/pricing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "The pricing page lists /sitemap at 1 credit. type sitemap on https://s1.dev moved the account balance 92507 → 92506. type all was not called separately."
+    docs_url: https://s1.dev/docs/basic/sitemap
+
+  - id: search1api.web.screenshot
+    capability: web.screenshot
+    platform: web
+    domain: screenshot
+    scope: any_account
+    method: POST
+    path: /screenshot
+    body_allowlist: true
+    name: Page screenshot by URL — PNG, JPEG, or WebP
+    summary: Render a web page as a PNG, JPEG, or WebP image.
+    input:
+      bodyType: json
+      body:
+        url: {type: string, required: true, format: uri, example: "https://example.com"}
+        format: {type: string, required: false, default: png, enum: [png, jpeg, webp], example: png}
+        full_page: {type: boolean, required: false, default: false, example: false}
+        viewport:
+          type: object
+          required: false
+          note: "width 320–2560 (default 1440), height 200–1440 (default 900), device_scale_factor 1–2 (default 1)."
+        wait_until: {type: string, required: false, default: load, enum: [domcontentloaded, load, networkidle]}
+        wait_for_selector: {type: string, required: false}
+        selector: {type: string, required: false, note: "Capture this element instead of the viewport."}
+        delay_ms: {type: integer, required: false, default: 0, min: 0, max: 5000}
+        timeout_ms: {type: integer, required: false, default: 20000, min: 1000, max: 30000}
+        quality: {type: integer, required: false, min: 1, max: 100, note: "JPEG and WebP quality."}
+        omit_background: {type: boolean, required: false, default: false}
+        color_scheme: {type: string, required: false, default: light, enum: [light, dark]}
+        animations: {type: string, required: false, default: disabled, enum: [disabled, allow]}
+      note: "A successful call returns the image bytes (image/png, image/jpeg, or image/webp), not JSON."
+    test_request:
+      body: {url: "https://example.com", format: png, full_page: false}
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      unit: call
+      source: observed
+      source_url: https://s1.dev/pricing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "The pricing page lists /screenshot at 2 credits for every parameter combination. A PNG viewport capture of https://example.com returned image/png (17883 bytes) and moved the account balance 92504 → 92502. full_page and the other formats were not called separately."
+    docs_url: https://s1.dev/docs/basic/screenshot
+
+  - id: search1api.github.trending.repositories
+    capability: github.trending.repositories
+    platform: github
+    domain: trending
+    scope: any_account
+    method: POST
+    path: /trending
+    body_allowlist: true
+    name: Trending GitHub repositories — title and URL
+    summary: Get trending GitHub repositories.
+    input:
+      bodyType: json
+      body:
+        search_service: {type: string, required: true, default: github, enum: [github], example: github}
+        max_results: {type: integer, required: false, min: 1, max: 50, example: 1, note: "The OpenAPI schema states only minimum 1. This row caps a page at 50."}
+    platform_request: {body.search_service: github}
+    test_request:
+      body: {search_service: github, max_results: 1}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      unit: call
+      source: observed
+      source_url: https://s1.dev/pricing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "The pricing page lists /trending at 1 credit. search_service github with max_results 1 returned a github.com repository URL and moved the account balance 92506 → 92505. A repeat of the same call later moved 92502 → 92501."
+    docs_url: https://s1.dev/docs/basic/trending
+
+  - id: search1api.web.trending.hackernews
+    capability: web.trending.hackernews
+    platform: web
+    domain: trending
+    scope: any_account
+    method: POST
+    path: /trending
+    body_allowlist: true
+    name: Trending Hacker News stories — title and URL
+    summary: Get trending Hacker News stories.
+    input:
+      bodyType: json
+      body:
+        search_service: {type: string, required: true, default: hackernews, enum: [hackernews], example: hackernews}
+        max_results: {type: integer, required: false, min: 1, max: 50, example: 1}
+    platform_request: {body.search_service: hackernews}
+    test_request:
+      body: {search_service: hackernews, max_results: 1}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      unit: call
+      source: observed
+      source_url: https://s1.dev/pricing
+      checked: '2026-09-28'
+      confidence: verified
+      note: "The pricing page lists /trending at 1 credit. search_service hackernews with max_results 1 moved the account balance 92505 → 92504."
+    docs_url: https://s1.dev/docs/basic/trending

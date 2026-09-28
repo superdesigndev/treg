@@ -41,6 +41,12 @@ Contact Finder probe. All six data tools and five lookup utilities were live che
 subscription capacity uses API balance data and is separate from platform list pricing.
 Tests extend the existing auth, capacity and marketplace files. See [catalog](../architecture/catalog.md).
 
+Search1API (2026-09-28) follows the same pasted-key path. `GET /usage` is the free probe and rejects
+a garbage bearer token with HTTP 401. The curated rows keep search and news at `crawl_results: 0`
+because a larger value bills one extra credit per page that was actually crawled. Deep crawl stays
+out of the catalog: it is asynchronous and its status read has no published credit price. The
+platform-key slot is present and empty. See [catalog](../architecture/catalog.md).
+
 ## The two kinds of provider
 - **API-key** (`auth_kind="key"`) — the user pastes a key; self-serve; **the fast path** (research → implement
   → live-test in one session). This is the workhorse and where almost all growth happens.

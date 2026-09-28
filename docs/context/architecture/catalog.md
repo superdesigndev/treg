@@ -19,6 +19,8 @@ sources:
   - src/treg/domain/provider_resources.py
   - src/treg/routers/provider_resources.py
   - src/treg/catalog/tavily.yaml
+  - src/treg/catalog/search1api.yaml
+  - src/treg/web/logos/search1api.svg
   - src/treg/catalog/keenable.yaml
   - src/treg/catalog/olostep.yaml
   - src/treg/catalog/tinyfish.yaml
@@ -126,6 +128,19 @@ related:
 ---
 
 # Endpoint catalog — platform-grouped operations per provider
+
+## Search1API
+
+`search1api.yaml` curates nine bring-your-own-key rows on `https://api.search1api.com`: web search,
+news, an arXiv-pinned search, single-URL crawl, structured extract, sitemap, screenshot, GitHub
+trending repositories, and Hacker News trending stories. Connect verification is `GET /usage`,
+which rejects a bad bearer token with HTTP 401 and does not spend a credit. Prices are Search1API
+credits. The replacement rate in `fx.yaml` is the published no-bonus `$5 / 5,000` top-up
+(`$0.001` per credit). Search and news rows accept only `crawl_results: 0` and `image: false`;
+Deep Search, image results, batched crawl, and asynchronous deep crawl stay off this file because
+their charges are not a single request price. Screenshot returns image bytes. Extract requires a
+`response_format` of `{type: json_schema, ...}` even though the OpenAPI document marks that field
+optional. The platform-key slot is empty; serving on treg's own key stays an ops decision.
 
 ## Fetchin
 
