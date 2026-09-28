@@ -26,24 +26,70 @@ endpoints:
         query: &people_query
           type: object
           required: true
+          minProperties: 1
           example: {jobTitle: {include: [Founder]}}
-          note: >-
-            At least one supported filter. firstname, lastname, jobTitle, school, languages,
-            skills, location, keyword, currentCompanyName, companyDomain, companyLinkedinUrl,
-            currentCompany.type, currentCompany.industry, currentCompany.location,
-            currentCompany.keyword, pastJobTitle, pastCompanyName, pastCompanyId,
-            pastCompanyWebsite, pastCompanyUrn, pastCompany.type, pastCompany.industry,
-            pastCompany.location and pastCompany.keyword use include and/or exclude string arrays
-            of at most 200 items each. totalYearsOfExperience, timeInCurrentCompany,
-            currentCompany.headcount, currentCompany.revenue, pastCompany.headcount and
-            pastCompany.revenue use integer >, >=, < and <= bounds. currentCompany.headcountGrowth
-            and pastCompany.headcountGrowth use timespan 6months|12months|24months and at least
-            one min/max number from -100 to 10000 (min <= max). Past-experience filters apply
-            to the same prior role. Country locations accept names or ISO alpha-2 codes.
+          note: "At least one supported filter. Past-experience filters apply to the same prior role."
+          properties:
+            firstname: &person_text_filter
+              type: object
+              required: false
+              note: "Use include and/or exclude string arrays; empty arrays and empty strings are accepted, but meaningful values are recommended."
+              example: {include: [Example]}
+              properties:
+                include: {type: array, required: false, items: {type: string}, maxItems: 200, example: [Example]}
+                exclude: {type: array, required: false, items: {type: string}, maxItems: 200, example: [Other]}
+            lastname: {<<: *person_text_filter, example: {include: [Person]}}
+            jobTitle: {<<: *person_text_filter, example: {include: [Founder]}}
+            school: {<<: *person_text_filter, example: {include: [Stanford University]}}
+            languages: {<<: *person_text_filter, example: {include: [English]}}
+            skills: {<<: *person_text_filter, example: {include: [Python]}}
+            location: {<<: *person_text_filter, example: {include: [US]}, note: "Person or current-role location; country names and ISO alpha-2 codes are accepted. Supply include and/or exclude."}
+            keyword: {<<: *person_text_filter, example: {include: [payments]}}
+            currentCompanyName: {<<: *person_text_filter, example: {include: [Stripe]}}
+            companyDomain: {<<: *person_text_filter, example: {include: [stripe.com]}, note: "Current-company domain; URL input is normalized to its hostname. Combined with companyLinkedinUrl as OR alternatives. Supply include and/or exclude."}
+            companyLinkedinUrl: {<<: *person_text_filter, example: {include: ["https://www.linkedin.com/company/stripe/"]}, note: "Current-company LinkedIn URL or identifier; combined with companyDomain as OR alternatives. Supply include and/or exclude."}
+            currentCompany.type: {<<: *person_text_filter, example: {include: [Privately Held]}}
+            currentCompany.industry: {<<: *person_text_filter, example: {include: [Software Development]}}
+            currentCompany.location: {<<: *person_text_filter, example: {include: [US]}, note: "Current-company headquarters location; country names and ISO alpha-2 codes are accepted. Supply include and/or exclude."}
+            currentCompany.keyword: {<<: *person_text_filter, example: {include: [payments]}}
+            pastJobTitle: {<<: *person_text_filter, example: {include: [Engineer]}, note: "Previous title; all past-experience filters must match the same prior role. Supply include and/or exclude."}
+            pastCompanyName: {<<: *person_text_filter, example: {include: [Example Company]}}
+            pastCompanyId: {<<: *person_text_filter, example: {include: ["100000002"]}}
+            pastCompanyWebsite: {<<: *person_text_filter, example: {include: [example.org]}}
+            pastCompanyUrn: {<<: *person_text_filter, example: {include: ["urn:li:fsd_company:100000002"]}}
+            pastCompany.type: {<<: *person_text_filter, example: {include: [Privately Held]}}
+            pastCompany.industry: {<<: *person_text_filter, example: {include: [Software Development]}}
+            pastCompany.location: {<<: *person_text_filter, example: {include: [US]}, note: "Previous-company headquarters location; country names and ISO alpha-2 codes are accepted. Supply include and/or exclude."}
+            pastCompany.keyword: {<<: *person_text_filter, example: {include: [software]}}
+            totalYearsOfExperience: &person_integer_range
+              type: object
+              required: false
+              note: "At least one integer bound; use literal >, >=, < or <= keys."
+              example: {">=": 5}
+              properties:
+                ">": {type: integer, required: false, example: 5}
+                ">=": {type: integer, required: false, example: 5}
+                "<": {type: integer, required: false, example: 10}
+                "<=": {type: integer, required: false, example: 10}
+            timeInCurrentCompany: {<<: *person_integer_range, example: {">=": 2}}
+            currentCompany.headcount: {<<: *person_integer_range, example: {">=": 50}}
+            currentCompany.revenue: {<<: *person_integer_range, example: {">": 1000000}}
+            pastCompany.headcount: {<<: *person_integer_range, example: {"<": 500}}
+            pastCompany.revenue: {<<: *person_integer_range, example: {">=": 1000000}}
+            currentCompany.headcountGrowth: &person_growth
+              type: object
+              required: false
+              note: "timespan and at least one min/max bound are required; min must not exceed max."
+              example: {timespan: 12months, min: 10}
+              properties:
+                timespan: {type: string, required: true, enum: [6months, 12months, 24months], example: 12months}
+                min: {type: number, required: false, min: -100, max: 10000, example: 10}
+                max: {type: number, required: false, min: -100, max: 10000, example: 50}
+            pastCompany.headcountGrowth: {<<: *person_growth, example: {timespan: 6months, max: 20}}
       note: "Count accepts the same query as Find people, with no size or cursor."
     test_request: {body: {query: {jobTitle: {include: [Founder]}}}}
-    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/find-people, checked: '2026-09-29', confidence: documented, note: "Count neither reserves nor debits Airscale credits."}
-    docs_url: https://docs.airscale.io/api-reference/find-people
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/find-people/count, checked: '2026-09-29', confidence: documented, note: "Count neither reserves nor debits Airscale credits."}
+    docs_url: https://docs.airscale.io/api-reference/find-people/count
 
   - id: airscale.find-people
     capability: people.search
@@ -103,35 +149,102 @@ endpoints:
         filters:
           type: object
           required: true
+          minProperties: 1
           example: {country: [FR]}
-          note: >-
-            At least one real filter. country, region, city, industry, techStack, keywords,
-            topics and companyName accept a string or nonempty string array. size accepts
-            1-10|11-50|51-200|201-500|501-1000|1001-5000|5001-10000|10001+;
-            revenue accepts 0-500K|500K-1M|1M-5M|5M-10M|10M-25M|25M-75M|75M-200M|
-            200M-500M|500M-1B|1B-10B|10B-100B|100B-1T|1T-10T|10T+;
-            age accepts 0-3|3-6|6-10|10-20|20+; locations accepts
-            0-1|2-5|6-20|21-50|51-100|101-1000|1001+; events accepts
-            increase_in_customer_service_department, hiring_in_finance_department,
-            hiring_in_support_department, increase_in_engineering_department,
-            decrease_in_customer_service_department, hiring_in_operations_department,
-            hiring_in_creative_department, decrease_in_engineering_department,
-            hiring_in_sales_department, increase_in_operations_department,
-            hiring_in_trade_department, decrease_in_marketing_department,
-            increase_in_marketing_department, hiring_in_marketing_department,
-            hiring_in_health_department, hiring_in_education_department,
-            increase_in_all_departments, decrease_in_all_departments,
-            decrease_in_sales_department, decrease_in_operations_department,
-            hiring_in_professional_service_department, hiring_in_human_resources_department,
-            increase_in_sales_department, hiring_in_legal_department,
-            hiring_in_unknown_department, hiring_in_engineering_department, company_award,
-            new_product, employee_joined_company, merger_and_acquisitions,
-            lawsuits_and_legal_issues, outages_and_security_breaches, closing_office,
-            new_investment, new_office, new_partnership, cost_cutting, new_funding_round,
-            award or ipo_announcement. These bucket/event fields accept one enum value or a nonempty
-            array of them. hasWebsite and isPublicCompany are boolean or null. eventWindow
-            accepts 30 days|60 days|90 days (default 30 days); locationMatch accepts
-            hqOnly|hqOperating (default hqOnly). Defaults alone are not filters.
+          note: "At least one real company filter is required; eventWindow and locationMatch defaults alone do not count. Nullable boolean fields count only when set to true or false."
+          properties:
+            country: &company_string_or_array
+              type: "string|array[string]"
+              required: false
+              minLength: 1
+              minItems: 1
+              pattern: "\\S"
+              items: {type: string, minLength: 1, pattern: "\\S"}
+              example: [FR]
+              note: "Recognized country name or ISO alpha-2 code; one value or a nonempty array."
+            region: {<<: *company_string_or_array, example: [us-ca], note: "Canonical region code, Region|Country or region name scoped by country; discover values with filter-values."}
+            city: {<<: *company_string_or_array, example: [San Francisco], note: "Resolvable city value; discover exact values with filter-values."}
+            industry: {<<: *company_string_or_array, example: [Software Development], note: "Canonical industry value; discover with filter-values."}
+            size: &company_bucket
+              type: "string|array[string]"
+              required: false
+              minItems: 1
+              enum: &size_buckets [1-10, 11-50, 51-200, 201-500, 501-1000, 1001-5000, 5001-10000, 10001+]
+              items: {type: string, enum: *size_buckets}
+              example: [11-50]
+              note: "One documented employee-count bucket or a nonempty array of buckets."
+            revenue:
+              <<: *company_bucket
+              enum: &revenue_buckets [0-500K, 500K-1M, 1M-5M, 5M-10M, 10M-25M, 25M-75M, 75M-200M, 200M-500M, 500M-1B, 1B-10B, 10B-100B, 100B-1T, 1T-10T, 10T+]
+              items: {type: string, enum: *revenue_buckets}
+              example: [1M-5M]
+              note: "One documented revenue bucket or a nonempty array of buckets."
+            age:
+              <<: *company_bucket
+              enum: &age_buckets [0-3, 3-6, 6-10, 10-20, 20+]
+              items: {type: string, enum: *age_buckets}
+              example: [6-10]
+              note: "One documented company-age bucket or a nonempty array of buckets."
+            techStack: {<<: *company_string_or_array, example: [HubSpot], note: "Technology used; discover exact values with filter-values."}
+            keywords: {<<: *company_string_or_array, example: [workflow automation], note: "Free text found on the company website."}
+            topics: {<<: *company_string_or_array, example: [workflow automation], note: "Canonical business-intent topic; discover exact values with filter-values."}
+            events:
+              <<: *company_bucket
+              enum: &event_values
+                - increase_in_customer_service_department
+                - hiring_in_finance_department
+                - hiring_in_support_department
+                - increase_in_engineering_department
+                - decrease_in_customer_service_department
+                - hiring_in_operations_department
+                - hiring_in_creative_department
+                - decrease_in_engineering_department
+                - hiring_in_sales_department
+                - increase_in_operations_department
+                - hiring_in_trade_department
+                - decrease_in_marketing_department
+                - increase_in_marketing_department
+                - hiring_in_marketing_department
+                - hiring_in_health_department
+                - hiring_in_education_department
+                - increase_in_all_departments
+                - decrease_in_all_departments
+                - decrease_in_sales_department
+                - decrease_in_operations_department
+                - hiring_in_professional_service_department
+                - hiring_in_human_resources_department
+                - increase_in_sales_department
+                - hiring_in_legal_department
+                - hiring_in_unknown_department
+                - hiring_in_engineering_department
+                - company_award
+                - new_product
+                - employee_joined_company
+                - merger_and_acquisitions
+                - lawsuits_and_legal_issues
+                - outages_and_security_breaches
+                - closing_office
+                - new_investment
+                - new_office
+                - new_partnership
+                - cost_cutting
+                - new_funding_round
+                - award
+                - ipo_announcement
+              items: {type: string, enum: *event_values}
+              example: [new_funding_round]
+              note: "One documented recent event or a nonempty array of events."
+            locations:
+              <<: *company_bucket
+              enum: &location_buckets [0-1, 2-5, 6-20, 21-50, 51-100, 101-1000, 1001+]
+              items: {type: string, enum: *location_buckets}
+              example: [2-5]
+              note: "One documented count-of-locations bucket or a nonempty array of buckets."
+            companyName: {<<: *company_string_or_array, example: [Stripe], note: "Company name; one string or a nonempty string array."}
+            eventWindow: {type: "string|null", required: false, enum: [30 days, 60 days, 90 days, null, ""], default: 30 days, example: 30 days, note: "Blank (including whitespace-only) or null also uses the 30-day default; this alone is not a search filter."}
+            locationMatch: {type: "string|null", required: false, enum: [hqOnly, hqOperating, null, ""], default: hqOnly, example: hqOnly, note: "Blank (including whitespace-only) or null also uses hqOnly; this alone is not a search filter."}
+            hasWebsite: {type: "boolean|null", required: false, example: true, note: "Null leaves this criterion unset; true or false is a real filter."}
+            isPublicCompany: {type: "boolean|null", required: false, example: false, note: "Null leaves this criterion unset; true or false is a real filter."}
         page: {type: integer, required: false, min: 0, default: 0, example: 0, note: "Zero-based; canonical decimal strings also accepted."}
         size: {type: integer, required: false, min: 1, max: 100, default: 50, example: 1, note: "Page size; canonical decimal strings also accepted."}
         cursor: {type: string, required: false, note: "Opaque fc_ next_cursor; its saved page size overrides page and size."}
