@@ -12,9 +12,6 @@ pricing_url: https://docs.crustdata.com/general/pricing
 # response's X-Credits-Used header. All eight curated endpoints were live verified. Batch and
 # sales-enabled routes are intentionally omitted.
 
-proposed_capabilities:
-  companies.search.filters: "List the accepted values for a company-search filter"
-
 endpoints:
   - id: crustdata.companies.search
     domain: companies

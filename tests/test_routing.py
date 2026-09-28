@@ -1274,6 +1274,33 @@ def test_a_per_success_endpoint_with_no_adapter_settles_on_the_providers_own_suc
         assert A._observed_cost_micro(m2, b'{"tasks": [{"status_code": 40501}]}') == 0
         assert A._observed_cost_micro(m2, b'{"tasks": [{"status_code": 20000}]}') is None
 
+
+@pytest.mark.parametrize(("endpoint_id", "hit", "misses"), [
+    ("airscale.email", b'{"status":"success","email":"example@example.org"}',
+     [b'{"status":"not_found","email":null}']),
+    ("airscale.phone", b'{"status":"success","phone_numbers":"+12025550147"}',
+     [b'{"status":"not_found","phone_numbers":null,"all_phone_numbers":[]}']),
+    ("airscale.reverse-phone", b'{"body":{"profile":{"firstName":"Example"}}}',
+     [b'{"status":"not_found"}']),
+    ("airscale.airsearch", b'{"status":"success","response":"Paris"}',
+     [b'{"status":"not_found"}', b'{"status":"timeout"}']),
+])
+def test_airscale_per_success_settlement_uses_documented_response_status(endpoint_id, hit, misses):
+    from test_marketplace_call import _mk
+    from treg.application.call import settle as A
+
+    endpoint = catalog_store.load().by_id[endpoint_id]
+    assert endpoint["cost"]["type"] == "per_success"
+    assert endpoint["cost"]["value"] > 0
+    assert catalog_store.load().adapters.get(endpoint_id) is None
+    mk = _mk("airscale", endpoint_id=endpoint_id, cost_type="per_success")
+    assert A._platform_billable(200, "per_success")
+    assert A._observed_cost_micro(mk, hit) is None  # successful result settles the held price
+    for miss in misses:
+        assert A._observed_cost_micro(mk, miss) == 0
+    if endpoint_id == "airscale.airsearch":
+        assert not A._platform_billable(504, "per_success")  # hard timeout is free
+
 async def test_a_declared_miss_status_is_a_miss_not_a_caller_fault(clients: AsyncClient, enrichment_on, monkeypatch):
     """aviato answers HTTP 404 `Not Found` for a person it has no record of. The endpoint's YAML says
     so (`miss: {status: 404}`), and the router must read it: before this a waterfall in which the

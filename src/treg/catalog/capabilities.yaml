@@ -250,6 +250,7 @@ capabilities:
   # --- Enrichment (B2B data) --------------------------------------------------------------------
   companies.enrich: "Enrich a company from its domain or name"
   companies.search: "Search companies by industry, size or tech — account lists for lead generation"
+  companies.search.filters: "List the accepted values for a company-search filter"
   people.enrich: "Fill in a person's profile from a LinkedIn URL or other identifier you already hold — job title, employer, seniority, location"
   people.search: "Find people by role, company or location — lead lists and prospects (sales leads)"
   people.email.find: "Get, find or look up a person's work email address from their name, company domain or LinkedIn profile"

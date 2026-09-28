@@ -1,0 +1,298 @@
+provider: airscale
+source:
+  docs: https://docs.airscale.io/api-reference/api-overview
+  openapi: https://docs.airscale.io/openapi.json
+  curated: '2026-09-29'
+limits: "Per workspace: people search/count and company search/filter values each share 6 requests/second; email, phone, profile and company 3,000/minute; personal email and reverse phone 2,000/minute; reverse email 25/second; AirSearch 300/minute."
+pricing_url: https://airscale.io/pricing
+
+proposed_capabilities:
+  people.enrich.from_phone: "Enrich a person from a phone number"
+
+endpoints:
+  - id: airscale.find-people.count
+    capability: people.search.count
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /find-people/count
+    body_allowlist: true
+    name: Count matching people
+    summary: Count a filtered people-search audience without retrieving charged leads.
+    input:
+      bodyType: json
+      body:
+        query: &people_query
+          type: object
+          required: true
+          example: {jobTitle: {include: [Founder]}}
+          note: >-
+            At least one supported filter. firstname, lastname, jobTitle, school, languages,
+            skills, location, keyword, currentCompanyName, companyDomain, companyLinkedinUrl,
+            currentCompany.type, currentCompany.industry, currentCompany.location,
+            currentCompany.keyword, pastJobTitle, pastCompanyName, pastCompanyId,
+            pastCompanyWebsite, pastCompanyUrn, pastCompany.type, pastCompany.industry,
+            pastCompany.location and pastCompany.keyword use include and/or exclude string arrays
+            of at most 200 items each. totalYearsOfExperience, timeInCurrentCompany,
+            currentCompany.headcount, currentCompany.revenue, pastCompany.headcount and
+            pastCompany.revenue use integer >, >=, < and <= bounds. currentCompany.headcountGrowth
+            and pastCompany.headcountGrowth use timespan 6months|12months|24months and at least
+            one min/max number from -100 to 10000 (min <= max). Past-experience filters apply
+            to the same prior role. Country locations accept names or ISO alpha-2 codes.
+      note: "Count accepts the same query as Find people, with no size or cursor."
+    test_request: {body: {query: {jobTitle: {include: [Founder]}}}}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/find-people, checked: '2026-09-29', confidence: documented, note: "Count neither reserves nor debits Airscale credits."}
+    docs_url: https://docs.airscale.io/api-reference/find-people
+
+  - id: airscale.find-people
+    capability: people.search
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /find-people
+    body_allowlist: true
+    platform_blocked: "Each returned lead costs 0.1 credit, but the response has no exact charge field and generic settlement cannot count leads in its array."
+    name: Search people
+    summary: Find public people by role, location, company and experience filters.
+    input:
+      bodyType: json
+      body:
+        query: *people_query
+        size: {type: integer, required: false, min: 1, max: 100, default: 100, example: 1, note: "Page size; the documented API also accepts canonical decimal strings."}
+        cursor: {type: string, required: false, minLength: 1, note: "Opaque next_cursor from the preceding page; keep query unchanged."}
+    test_request: {body: {query: {companyDomain: {include: [stripe.com]}}, size: 1}}
+    cost: {type: per_result, value: 0.1, currency: credit, per: 1, unit: record, source: docs, source_url: https://docs.airscale.io/api-reference/find-people, checked: '2026-09-29', confidence: documented, note: "0.1 credit per lead in leads; an empty leads array is free. No exact charge/count field is reported for generic settlement."}
+    docs_url: https://docs.airscale.io/api-reference/find-people
+
+  - id: airscale.find-companies.filter-values
+    capability: companies.search.filters
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /find-companies/filter-values
+    name: Discover company filter values
+    summary: List accepted city, region, industry, topic or technology filter values.
+    input:
+      queryParams:
+        filter: {type: string, required: true, enum: [city, region, industry, topics, techStack], example: industry}
+        q: {type: string, required: false, minLength: 2, maxLength: 120, example: software, note: "Takes precedence over query, even when blank; at least one of q or query is required."}
+        query: {type: string, required: false, minLength: 2, maxLength: 120, example: software, note: "Alias used only when q is absent."}
+        limit: {type: integer, required: false, min: 1, max: 100, default: 20, example: 1, note: "Invalid values default to 20; out-of-range integers clamp to 1–100."}
+        country: {type: "array[string]", required: false, example: [US], note: "Optional repeat or comma-separated country context."}
+        region: {type: "array[string]", required: false, example: [us-ca], note: "Optional repeat or comma-separated region context; a bare region name needs country."}
+      note: "At least one of q or query must contain 2–120 characters after trimming."
+    test_request: {queryParams: {filter: industry, q: software, limit: 1}}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/find-companies/filter-values, checked: '2026-09-29', confidence: documented, note: "Filter suggestions neither reserve nor debit credits."}
+    docs_url: https://docs.airscale.io/api-reference/find-companies/filter-values
+
+  - id: airscale.find-companies
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /find-companies
+    body_allowlist: true
+    platform_blocked: "Each returned company costs 0.1 credit, but the response has no exact charge field and generic settlement cannot count rows in its array."
+    name: Search companies
+    summary: Find public companies by firmographics, location, technology, intent and events.
+    input:
+      bodyType: json
+      body:
+        filters:
+          type: object
+          required: true
+          example: {country: [FR]}
+          note: >-
+            At least one real filter. country, region, city, industry, techStack, keywords,
+            topics and companyName accept a string or nonempty string array. size accepts
+            1-10|11-50|51-200|201-500|501-1000|1001-5000|5001-10000|10001+;
+            revenue accepts 0-500K|500K-1M|1M-5M|5M-10M|10M-25M|25M-75M|75M-200M|
+            200M-500M|500M-1B|1B-10B|10B-100B|100B-1T|1T-10T|10T+;
+            age accepts 0-3|3-6|6-10|10-20|20+; locations accepts
+            0-1|2-5|6-20|21-50|51-100|101-1000|1001+; events accepts
+            increase_in_customer_service_department, hiring_in_finance_department,
+            hiring_in_support_department, increase_in_engineering_department,
+            decrease_in_customer_service_department, hiring_in_operations_department,
+            hiring_in_creative_department, decrease_in_engineering_department,
+            hiring_in_sales_department, increase_in_operations_department,
+            hiring_in_trade_department, decrease_in_marketing_department,
+            increase_in_marketing_department, hiring_in_marketing_department,
+            hiring_in_health_department, hiring_in_education_department,
+            increase_in_all_departments, decrease_in_all_departments,
+            decrease_in_sales_department, decrease_in_operations_department,
+            hiring_in_professional_service_department, hiring_in_human_resources_department,
+            increase_in_sales_department, hiring_in_legal_department,
+            hiring_in_unknown_department, hiring_in_engineering_department, company_award,
+            new_product, employee_joined_company, merger_and_acquisitions,
+            lawsuits_and_legal_issues, outages_and_security_breaches, closing_office,
+            new_investment, new_office, new_partnership, cost_cutting, new_funding_round,
+            award or ipo_announcement. These bucket/event fields accept one enum value or a nonempty
+            array of them. hasWebsite and isPublicCompany are boolean or null. eventWindow
+            accepts 30 days|60 days|90 days (default 30 days); locationMatch accepts
+            hqOnly|hqOperating (default hqOnly). Defaults alone are not filters.
+        page: {type: integer, required: false, min: 0, default: 0, example: 0, note: "Zero-based; canonical decimal strings also accepted."}
+        size: {type: integer, required: false, min: 1, max: 100, default: 50, example: 1, note: "Page size; canonical decimal strings also accepted."}
+        cursor: {type: string, required: false, note: "Opaque fc_ next_cursor; its saved page size overrides page and size."}
+    test_request: {body: {filters: {country: [FR]}, size: 1}}
+    cost: {type: per_result, value: 0.1, currency: credit, per: 1, unit: record, source: docs, source_url: https://docs.airscale.io/api-reference/find-companies, checked: '2026-09-29', confidence: documented, note: "0.1 credit per company in rows; zero returned rows are free. Search requires at least 0.1 credit available to begin."}
+    docs_url: https://docs.airscale.io/api-reference/find-companies
+
+  - id: airscale.profile
+    capability: people.enrich
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /profile
+    body_allowlist: true
+    platform_blocked: "The route accepts /in/, /company/ and /school/ URLs at different prices; the shared-key resolver cannot enforce URL-family pricing."
+    name: Extract a LinkedIn profile
+    summary: Extract public person or organization data from a LinkedIn profile URL.
+    input:
+      bodyType: json
+      body:
+        linkedin_profile_url: {type: string, required: true, minLength: 1, example: "https://www.linkedin.com/in/example-person-000000", note: "LinkedIn /in/, /company/ or /school/ URL; scheme may be omitted and query/extra path segments are canonicalized away."}
+    test_request: {body: {linkedin_profile_url: "https://www.linkedin.com/in/example-person-000000"}}
+    miss: {status: 404, means: "No profile was found for the submitted LinkedIn URL; no credits are charged."}
+    cost: {type: per_success, value: null, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/extract-people-profile, checked: '2026-09-29', confidence: unknown, note: "Documented successful /in/ lookup costs 1 credit; /company/ or /school/ costs 0.5. Failed lookup is free. No single price applies to all accepted URLs. Test target is a documentation-synthetic deliberate miss; hit price is unobserved."}
+    docs_url: https://docs.airscale.io/api-reference/extract-people-profile
+
+  - id: airscale.company
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /company
+    body_allowlist: true
+    platform_blocked: "The route accepts /in/, /company/ and /school/ URLs at different prices; the shared-key resolver cannot enforce URL-family pricing."
+    name: Extract a LinkedIn company
+    summary: Extract public company or school data from a LinkedIn profile URL.
+    input:
+      bodyType: json
+      body:
+        linkedin_profile_url: {type: string, required: true, minLength: 1, example: "https://www.linkedin.com/company/stripe/", note: "LinkedIn /in/, /company/ or /school/ URL; this route requires linkedin_profile_url, not a domain. Scheme may be omitted."}
+    test_request: {body: {linkedin_profile_url: "https://www.linkedin.com/company/stripe/"}}
+    miss: {status: 404, means: "No profile was found for the submitted LinkedIn URL; no credits are charged."}
+    cost: {type: per_success, value: null, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/extract-company-profile, checked: '2026-09-29', confidence: unknown, note: "Documented successful /company/ or /school/ lookup costs 0.5 credit; /in/ costs 1. Failed lookup is free. The public company test target is intended to exercise the 0.5-credit family; no hit price observed."}
+    docs_url: https://docs.airscale.io/api-reference/extract-company-profile
+
+  - id: airscale.email
+    capability: people.email.find
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /email
+    body_allowlist: true
+    name: Find a professional email
+    summary: Find a work email from a LinkedIn person profile or name and company.
+    input:
+      bodyType: json
+      body:
+        linkedin_profile_url: {type: string, required: false, minLength: 1, example: "https://www.linkedin.com/in/example-person-000000", note: "A recognized person profile; sufficient alone."}
+        first_name: {type: string, required: false, minLength: 1, example: Example}
+        last_name: {type: string, required: false, minLength: 1, example: Person}
+        domain: {type: string, required: false, minLength: 1, example: example.org}
+        company_name: {type: string, required: false, minLength: 1, example: Example Company}
+      note: "Provide a profile URL, or both names with domain or company_name; both complete forms may be supplied. JSON body at most 256 KiB."
+    test_request: {body: {linkedin_profile_url: "https://www.linkedin.com/in/example-person-000000"}}
+    expect: {json_path: status, equals: success}
+    cost: {type: per_success, value: 2, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/email-finder, checked: '2026-09-29', confidence: documented, note: "Two credits when status is success; HTTP 200 status:not_found with email:null is free. Test target is a documentation-synthetic deliberate miss; hit price is unobserved."}
+    docs_url: https://docs.airscale.io/api-reference/email-finder
+
+  - id: airscale.personal-email
+    capability: people.email.find.personal
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /personal-email
+    body_allowlist: true
+    platform_blocked: "A success charges 3–12 credits by source without reporting the exact debit, and a 502 may follow a debit; shared-key settlement cannot reconcile either case."
+    name: Find a personal email
+    summary: Find a personal email address from a LinkedIn person profile.
+    input:
+      bodyType: json
+      body:
+        linkedin_profile_url: {type: string, required: true, minLength: 1, example: "https://www.linkedin.com/in/example-person-000000", note: "Recognized LinkedIn /in/ profile URL."}
+        verification: {type: boolean|string, required: false, example: true, note: "Only boolean true or case-insensitive string yes enables verification; other values disable it."}
+    test_request: {body: {linkedin_profile_url: "https://www.linkedin.com/in/example-person-000000"}}
+    cost: {type: per_success, value: null, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/personal-email, checked: '2026-09-29', confidence: unknown, note: "A success costs 3–12 credits depending on source; status:not_found costs zero. A 502 can occur after a debit, so inspect balance before retrying. Test target is a documentation-synthetic deliberate miss; hit price is unobserved."}
+    docs_url: https://docs.airscale.io/api-reference/personal-email
+
+  - id: airscale.phone
+    capability: people.phone.find
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /phone
+    body_allowlist: true
+    name: Find a mobile number
+    summary: Find mobile phone numbers from a LinkedIn person profile.
+    input:
+      bodyType: json
+      body:
+        linkedin_profile_url: {type: string, required: true, minLength: 1, example: "https://www.linkedin.com/in/example-person-000000", note: "Recognized LinkedIn person-profile URL or identifier."}
+    test_request: {body: {linkedin_profile_url: "https://www.linkedin.com/in/example-person-000000"}}
+    expect: {json_path: status, equals: success}
+    cost: {type: per_success, value: 40, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/mobile-finder, checked: '2026-09-29', confidence: documented, note: "Forty credits when status is success; HTTP 200 status:not_found with phone_numbers:null and all_phone_numbers:[] is free. Test target is a documentation-synthetic deliberate miss; hit price is unobserved."}
+    docs_url: https://docs.airscale.io/api-reference/mobile-finder
+
+  - id: airscale.reverse-email
+    capability: linkedin.profile.from_email
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /reverse-email
+    body_allowlist: true
+    platform_blocked: "The free HTTP 200 miss is the scalar JSON string \"not found\"; generic settlement does not recognize it before estimate fallback."
+    name: Find a LinkedIn profile by email
+    summary: Resolve a public person profile from an email address.
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, example: "example.person@example.org", note: "Nonempty local part and dotted domain; trimmed and lowercased before lookup."}
+    test_request: {body: {email: "example.person@example.org"}}
+    cost: {type: per_success, value: 2, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/reverse-email, checked: '2026-09-29', confidence: documented, note: "Two credits for a returned profile. Exact HTTP 200 JSON scalar \"not found\" is a free miss; 503 is free. Generic settlement does not detect that scalar miss. Test target is a documentation-synthetic deliberate miss; hit price is unobserved."}
+    docs_url: https://docs.airscale.io/api-reference/reverse-email
+
+  - id: airscale.reverse-phone
+    capability: people.enrich.from_phone
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /reverse-phone
+    body_allowlist: true
+    name: Enrich a person from a phone number
+    summary: Resolve a public person profile from a mobile phone number.
+    input:
+      bodyType: json
+      body:
+        mobile_phone: {type: string, required: true, minLength: 1, example: "+12025550147", note: "Must contain non-whitespace text; trimmed lowercase null and undefined are invalid. A normalized international number is preferred."}
+    test_request: {body: {mobile_phone: "+12025550147"}}
+    expect: {json_path: status, equals: null}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/reverse-phone, checked: '2026-09-29', confidence: documented, note: "Ten credits for a returned profile, whose success shape has no status field. HTTP 200 {status:not_found} and errors are free. Test number is documentation-synthetic and deliberately expects a miss; hit price is unobserved."}
+    docs_url: https://docs.airscale.io/api-reference/reverse-phone
+
+  - id: airscale.airsearch
+    capability: web.answer
+    platform: web
+    scope: any_account
+    method: POST
+    path: /airsearch
+    body_allowlist: true
+    name: Answer a web research question
+    summary: Research a factual question and return a sourced answer with optional structured fields.
+    input:
+      bodyType: json
+      body:
+        prompt: {type: string, required: true, minLength: 1, example: "What is the capital of France?", note: "Nonempty after trimming."}
+        schema: {type: object, required: false, example: {capital: string}, note: "Map nonempty output field names to nonempty type keywords or descriptions. Reserved names: status, response, reasoning, sources, confidence_score, certainty_tag, duration_ms."}
+    test_request: {body: {prompt: "What is the capital of France?"}}
+    expect: {json_path: status, equals: success}
+    cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/airsearch, checked: '2026-09-29', confidence: documented, note: "One credit for status:success. HTTP 200 status:not_found or status:timeout is free; an initial HTTP 504 timeout is also free."}
+    docs_url: https://docs.airscale.io/api-reference/airsearch
