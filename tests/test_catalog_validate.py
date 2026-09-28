@@ -51,6 +51,40 @@ def test_catalog_body_required_arrays_remain_required():
     assert exc.value.detail["parameter"] == "body.items"
 
 
+@pytest.mark.parametrize(("endpoint_id", "base", "valid", "invalid"), [
+    (
+        "airscale.find-people",
+        {"query": {"jobTitle": {"include": ["Founder"]}}},
+        [{"size": 1}, {"size": 100}],
+        [("size", "1"), ("size", "01"), ("size", "1.0"),
+         ("size", 0), ("size", 101), ("size", True)],
+    ),
+    (
+        "airscale.find-companies",
+        {"filters": {"country": ["FR"]}},
+        [{"page": 0, "size": 1}, {"page": 2, "size": 100}],
+        [("page", "0"), ("page", "01"), ("page", "1.0"),
+         ("page", -1), ("page", True), ("size", "1"),
+         ("size", "01"), ("size", "1.0"), ("size", 0),
+         ("size", 101), ("size", True)],
+    ),
+])
+def test_airscale_catalog_pagination_accepts_bounded_json_integers_only(
+    endpoint_id, base, valid, invalid,
+):
+    endpoint = catalog_store.load().by_id[endpoint_id]
+    assert endpoint["body_allowlist"] is True
+    for pagination in valid:
+        resolve._enforce_catalog_body(endpoint, json.dumps(base | pagination).encode())
+    for name, value in invalid:
+        with pytest.raises(ResolutionFailed) as exc:
+            resolve._enforce_catalog_body(
+                endpoint, json.dumps(base | {name: value}).encode(),
+            )
+        assert exc.value.status_code == 400
+        assert exc.value.detail["parameter"] == f"body.{name}"
+
+
 def test_cost_modifiers_accept_only_supported_declarative_credit_rules():
     base = {
         "type": "per_success", "value": 5, "currency": "credit", "per": 1,
@@ -877,4 +911,3 @@ def test_two_ids_of_one_platform_with_one_description_warn_across_taxonomy_and_p
     )
     assert warnings == ["capabilities ['companies.lookalike', 'companies.similar'] share the description "
                         "'find companies similar to a seed company'; unify them on one id or tell the jobs apart"]
-

@@ -106,7 +106,7 @@ endpoints:
       bodyType: json
       body:
         query: *people_query
-        size: {type: integer, required: false, min: 1, max: 100, default: 100, example: 1, note: "Page size; the documented API also accepts canonical decimal strings."}
+        size: {type: integer, required: false, min: 1, max: 100, default: 100, example: 1, note: "Catalog calls accept JSON integer page sizes from 1 to 100. Airscale also accepts canonical decimal strings through the raw BYOK tool."}
         cursor: {type: string, required: false, minLength: 1, note: "Opaque next_cursor from the preceding page; keep query unchanged."}
     test_request: {body: {query: {companyDomain: {include: [stripe.com]}}, size: 1}}
     cost: {type: per_result, value: 0.1, currency: credit, per: 1, unit: record, source: docs, source_url: https://docs.airscale.io/api-reference/find-people, checked: '2026-09-29', confidence: documented, note: "0.1 credit per lead in leads; an empty leads array is free. No exact charge/count field is reported for generic settlement."}
@@ -245,10 +245,10 @@ endpoints:
             locationMatch: {type: "string|null", required: false, enum: [hqOnly, hqOperating, null, ""], default: hqOnly, example: hqOnly, note: "Blank (including whitespace-only) or null also uses hqOnly; this alone is not a search filter."}
             hasWebsite: {type: "boolean|null", required: false, example: true, note: "Null leaves this criterion unset; true or false is a real filter."}
             isPublicCompany: {type: "boolean|null", required: false, example: false, note: "Null leaves this criterion unset; true or false is a real filter."}
-        page: {type: integer, required: false, min: 0, default: 0, example: 0, note: "Zero-based; canonical decimal strings also accepted."}
-        size: {type: integer, required: false, min: 1, max: 100, default: 50, example: 1, note: "Page size; canonical decimal strings also accepted."}
+        page: {type: integer, required: false, min: 0, default: 0, example: 0, note: "Catalog calls accept zero-based JSON integer pages. Airscale also accepts canonical decimal strings through the raw BYOK tool."}
+        size: {type: integer, required: false, min: 1, max: 100, default: 50, example: 1, note: "Catalog calls accept JSON integer page sizes from 1 to 100. Airscale also accepts canonical decimal strings through the raw BYOK tool."}
         cursor: {type: string, required: false, note: "Opaque fc_ next_cursor; its saved page size overrides page and size."}
-    test_request: {body: {filters: {country: [FR]}, size: 1}}
+    test_request: {body: {filters: {country: [FR]}, page: 0, size: 1}}
     cost: {type: per_result, value: 0.1, currency: credit, per: 1, unit: record, source: docs, source_url: https://docs.airscale.io/api-reference/find-companies, checked: '2026-09-29', confidence: documented, note: "0.1 credit per company in rows; zero returned rows are free. Search requires at least 0.1 credit available to begin."}
     docs_url: https://docs.airscale.io/api-reference/find-companies
 
