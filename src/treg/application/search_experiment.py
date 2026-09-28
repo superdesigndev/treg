@@ -135,7 +135,11 @@ async def run(query: str, cat: catalog_store.Catalog, *, baseline: Rows, baselin
     log = dict(
         mode=current, arm=arm,
         baseline_ids=base_ids,
-        judged=[[eid, round(probs[eid], 3)] for eid in judged_ids if eid in probs] if judged_ids is not None else None,
+        # The whole judged page, in order. A routed parent rode in over a judged child and has no
+        # probability of its own (null) — it must still be listed, or a call to the parent off an
+        # interleaved page reads as "only the baseline had it" and the credit goes the wrong way.
+        judged=[[eid, round(probs[eid], 3) if eid in probs else None] for eid in judged_ids]
+        if judged_ids is not None else None,
         shown=[[ep["id"], owners.get(ep["id"], arm)] for ep, _ in shown],
         baseline_total=int(baseline_total), differs=bool(differs),
         judge_ms=verdict.ms, judge_tokens_in=verdict.tokens_in, judge_tokens_out=verdict.tokens_out,

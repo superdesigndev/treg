@@ -75,7 +75,8 @@ reports, and a low share means little to win as much as it means slow convergenc
 ## What is recorded
 
 `SearchLog` (migration 0041) — one row per MCP search while the mode is not `off`: query, source,
-caller's team and email, mode, arm, the baseline page, the judged page with probabilities, the page
+caller's team and email, mode, arm, the baseline page, the whole judged page with probabilities
+(null for a routed parent, which rode in over a judged child rather than being judged), the page
 served with each row's owner, the lexical match count (`baseline_total`, 0 = the gate admitted
 nothing — the recall stratum), whether the pages differ, and the judge's latency, tokens and error.
 Written fire-and-forget through `audit.record_search`; a dropped row costs one sample.

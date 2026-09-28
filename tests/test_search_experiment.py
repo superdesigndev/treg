@@ -196,9 +196,10 @@ async def test_run_serves_baseline_in_shadow_and_logs_both_pages(monkeypatch):
     out = await se.run(q, cat, baseline=[], baseline_total=0, limit=8, caller="abc", finish=_finish)
     assert out.arm == se.ARM_SHADOW and out.shown == []           # the caller sees the (empty) baseline
     assert out.log["baseline_ids"] == [] and out.log["differs"] is True
-    judged = dict(out.log["judged"])                                  # the judge's kept rows with their probabilities
+    judged = dict(out.log["judged"])                                  # the whole judged page, with probabilities
     assert judged["tiingo.daily.prices"] == 0.9 and judged["marketstack.eod.latest"] == 0.8
-    assert set(judged) == {"tiingo.daily.prices", "marketstack.eod.latest"}   # 0.0 rows dropped below `keep`
+    assert judged["treg.stocks.eod.history"] is None                  # the routed parent rode in: listed, no probability
+    assert set(judged) == {"tiingo.daily.prices", "marketstack.eod.latest", "treg.stocks.eod.history"}   # 0.0 rows dropped
     assert out.log["judge_ms"] == 12 and out.log["judge_error"] is None
     assert all(owner == "shadow" for _, owner in out.log["shown"])
 
@@ -281,7 +282,7 @@ async def test_mcp_shadow_serves_the_baseline_and_records_both_pages(clients, mo
     assert row.query == q and row.source == "mcp" and row.mode == "shadow" and row.arm == "shadow"
     assert row.user_email == "shadow@superdesign.dev" and row.org_id is not None
     assert row.baseline_total == 0 and row.baseline_ids == [] and row.differs is True
-    assert dict(row.judged) == {"tiingo.daily.prices": 0.9}
+    assert dict(row.judged) == {"treg.stocks.eod.history": None, "tiingo.daily.prices": 0.9}
     assert row.shown == [] and row.judge_ms == 12 and row.judge_error is None
     # and the lexical miss is still the miss log's business
     from sqlmodel import select
