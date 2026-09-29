@@ -281,7 +281,7 @@ endpoints:
     added: '2026-09-07'
     example_response: examples/cloro.ai-search.copilot.scrape.json
     cost:
-      type: per_call
+      type: per_success
       value: 7
       currency: credit
       per: 1
@@ -326,7 +326,7 @@ endpoints:
     added: '2026-09-07'
     example_response: examples/cloro.ai-search.perplexity.answer.json
     cost:
-      type: per_call
+      type: per_success
       value: 6
       currency: credit
       per: 1
@@ -369,7 +369,7 @@ endpoints:
     added: '2026-09-07'
     example_response: examples/cloro.ai-search.gemini.scrape.json
     cost:
-      type: per_call
+      type: per_success
       value: 6
       currency: credit
       per: 1
@@ -416,7 +416,7 @@ endpoints:
     added: '2026-09-07'
     example_response: examples/cloro.google.serp.ai_mode.json
     cost:
-      type: per_call
+      type: per_success
       value: 6
       currency: credit
       per: 1
@@ -507,7 +507,7 @@ endpoints:
     added: '2026-09-07'
     example_response: examples/cloro.google.serp.news.json
     cost:
-      type: per_call
+      type: per_success
       value: 5
       currency: credit
       per: 1
