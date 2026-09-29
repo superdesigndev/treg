@@ -1,0 +1,15 @@
+<!-- Official vendor icon: https://github.com/jobspipe/mcp/blob/main/assets/logo.svg (same mark as jobspipe.dev app icon); retrieved 2026-11-09 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#a89bf0"></stop>
+      <stop offset="100%" stop-color="#5a3eed"></stop>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="225" fill="url(#g)"></rect>
+  <g transform="translate(192 224)">
+    <rect x="64" y="128" width="640" height="160" rx="80" fill="#ffffff" opacity="0.45"></rect>
+    <rect x="224" y="368" width="640" height="160" rx="80" fill="#ffffff" opacity="0.78"></rect>
+    <rect x="96" y="608" width="704" height="160" rx="80" fill="#ffffff"></rect>
+  </g>
+</svg>
