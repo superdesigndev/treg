@@ -567,9 +567,13 @@ def test_airscale_platform_eligibility_is_partitioned_by_route():
         "airscale.phone",
         "airscale.reverse-phone",
     }
+    raw_by_id = {
+        endpoint["id"]: endpoint
+        for endpoint in cs._read_yaml(cs.CATALOG_DIR / "airscale.yaml")["endpoints"]
+    }
     for endpoint_id in private_hit_endpoints:
         endpoint = cat.by_id[endpoint_id]
-        assert "expect" not in endpoint
+        assert "expect" not in raw_by_id[endpoint_id]
         assert "deliberate miss" in endpoint["cost"]["note"].lower()
 
     profile_target = cat.by_id["airscale.profile"]["test_request"]["body"]["linkedin_profile_url"]

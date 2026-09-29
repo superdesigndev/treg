@@ -6,6 +6,9 @@ source:
 limits: "Per workspace: people search/count and company search/filter values each share 6 requests/second; email, phone, profile and company 3,000/minute; personal email and reverse phone 2,000/minute; reverse email 25/second; AirSearch 300/minute."
 pricing_url: https://airscale.io/pricing
 
+proposed_capabilities:
+  people.enrich.from_phone: "Enrich a person from a phone number"
+
 endpoints:
   - id: airscale.find-people.count
     capability: people.search.count
@@ -288,6 +291,69 @@ endpoints:
     cost: {type: per_success, value: 0.5, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/extract-company-profile, checked: '2026-09-29', confidence: documented, note: "A successful /company/ or /school/ lookup costs 0.5 credit; /in/ costs 1. Failed lookup is free. The test uses a well-known public company URL and exercises the cheapest supported family."}
     docs_url: https://docs.airscale.io/api-reference/extract-company-profile
 
+  - id: airscale.email
+    capability: people.email.find
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /email
+    body_allowlist: true
+    platform_blocked: "The public test is an intentional free miss; generic shared-key settlement cannot safely distinguish it from a billable success without publishing a stable personal fixture."
+    name: Find a professional email
+    summary: Find a work email from a LinkedIn person profile or name and company.
+    input:
+      bodyType: json
+      body:
+        linkedin_profile_url: {type: string, required: false, minLength: 1, example: "https://www.linkedin.com/in/example-person-000000", note: "A recognized person profile; sufficient alone."}
+        first_name: {type: string, required: false, minLength: 1, example: Example}
+        last_name: {type: string, required: false, minLength: 1, example: Person}
+        domain: {type: string, required: false, minLength: 1, example: example.org}
+        company_name: {type: string, required: false, minLength: 1, example: Example Company}
+      note: "Provide a profile URL, or both names with domain or company_name; both complete forms may be supplied. JSON body at most 256 KiB."
+    test_request: {body: {linkedin_profile_url: "https://www.linkedin.com/in/example-person-000000"}}
+    cost: {type: per_success, value: 2, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/email-finder, checked: '2026-09-29', confidence: documented, note: "Two credits when status is success; HTTP 200 status:not_found with email:null is free. The public test is a deliberate miss; the successful price is verified privately without retaining identity-bearing evidence."}
+    docs_url: https://docs.airscale.io/api-reference/email-finder
+
+  - id: airscale.personal-email
+    capability: people.email.find.personal
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /personal-email
+    body_allowlist: true
+    platform_blocked: "A success charges 3–12 credits by source without reporting the exact debit, and a 502 may follow a debit; shared-key settlement cannot reconcile either case."
+    name: Find a personal email
+    summary: Find a personal email address from a LinkedIn person profile.
+    input:
+      bodyType: json
+      body:
+        linkedin_profile_url: {type: string, required: true, minLength: 1, example: "https://www.linkedin.com/in/example-person-000000", note: "Recognized LinkedIn /in/ profile URL."}
+        verification: {type: boolean|string, required: false, example: true, note: "Only boolean true or case-insensitive string yes enables verification; other values disable it."}
+    test_request: {body: {linkedin_profile_url: "https://www.linkedin.com/in/example-person-000000"}}
+    cost: {type: per_success, value: null, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/personal-email, checked: '2026-09-29', confidence: unknown, note: "A success costs 3–12 credits depending on source; status:not_found costs zero. A 502 can occur after a debit, so inspect balance before retrying. The public test is a deliberate miss; the exact successful debit is recorded privately without retaining identity-bearing evidence."}
+    docs_url: https://docs.airscale.io/api-reference/personal-email
+
+  - id: airscale.phone
+    capability: people.phone.find
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /phone
+    body_allowlist: true
+    platform_blocked: "The public test is an intentional free miss; generic shared-key settlement cannot safely distinguish it from a billable success without publishing a stable personal fixture."
+    name: Find a mobile number
+    summary: Find mobile phone numbers from a LinkedIn person profile.
+    input:
+      bodyType: json
+      body:
+        linkedin_profile_url: {type: string, required: true, minLength: 1, example: "https://www.linkedin.com/in/example-person-000000", note: "Recognized LinkedIn person-profile URL or identifier."}
+    test_request: {body: {linkedin_profile_url: "https://www.linkedin.com/in/example-person-000000"}}
+    cost: {type: per_success, value: 40, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/mobile-finder, checked: '2026-09-29', confidence: documented, note: "Forty credits when status is success; HTTP 200 status:not_found with phone_numbers:null and all_phone_numbers:[] is free. The public test is a deliberate miss; the successful price is verified privately without retaining identity-bearing evidence."}
+    docs_url: https://docs.airscale.io/api-reference/mobile-finder
+
   - id: airscale.reverse-email
     capability: linkedin.profile.from_email
     platform: linkedin
@@ -305,6 +371,25 @@ endpoints:
     test_request: {body: {email: "nobody@airscale.invalid"}}
     cost: {type: per_success, value: 2, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/reverse-email, checked: '2026-09-29', confidence: documented, note: "Two credits for a returned profile. Exact HTTP 200 JSON scalar \"not found\" is a free miss; 503 is free. Generic settlement does not detect that scalar miss. The reserved .invalid test address is a deliberate miss; a previous synthetic example unexpectedly produced a metered hit, so no identity-bearing response is retained."}
     docs_url: https://docs.airscale.io/api-reference/reverse-email
+
+  - id: airscale.reverse-phone
+    capability: people.enrich.from_phone
+    platform: people
+    domain: contacts
+    scope: any_account
+    method: POST
+    path: /reverse-phone
+    body_allowlist: true
+    platform_blocked: "The public test is an intentional free miss; generic shared-key settlement cannot safely distinguish the success shape from a free miss without publishing a stable personal fixture."
+    name: Enrich a person from a phone number
+    summary: Resolve a public person profile from a mobile phone number.
+    input:
+      bodyType: json
+      body:
+        mobile_phone: {type: string, required: true, minLength: 1, example: "+12025550147", note: "Must contain non-whitespace text; trimmed lowercase null and undefined are invalid. A normalized international number is preferred."}
+    test_request: {body: {mobile_phone: "+12025550147"}}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/reverse-phone, checked: '2026-09-29', confidence: documented, note: "Ten credits for a returned profile, whose success shape has no status field. HTTP 200 {status:not_found} and errors are free. The public test is a deliberate miss; the successful price is verified privately without retaining identity-bearing evidence."}
+    docs_url: https://docs.airscale.io/api-reference/reverse-phone
 
   - id: airscale.airsearch
     capability: web.answer
