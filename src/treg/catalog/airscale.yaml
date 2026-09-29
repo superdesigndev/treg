@@ -368,8 +368,8 @@ endpoints:
       bodyType: json
       body:
         email: {type: string, required: true, example: "example.person@example.org", note: "Nonempty local part and dotted domain; trimmed and lowercased before lookup."}
-    test_request: {body: {email: "example.person@example.org"}}
-    cost: {type: per_success, value: 2, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/reverse-email, checked: '2026-09-29', confidence: documented, note: "Two credits for a returned profile. Exact HTTP 200 JSON scalar \"not found\" is a free miss; 503 is free. Generic settlement does not detect that scalar miss. Test target is a documentation-synthetic deliberate miss; hit price is unobserved."}
+    test_request: {body: {email: "nobody@airscale.invalid"}}
+    cost: {type: per_success, value: 2, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/reverse-email, checked: '2026-09-29', confidence: documented, note: "Two credits for a returned profile. Exact HTTP 200 JSON scalar \"not found\" is a free miss; 503 is free. Generic settlement does not detect that scalar miss. The reserved .invalid test address is a deliberate miss; a previous synthetic example unexpectedly produced a metered hit, so no identity-bearing response is retained."}
     docs_url: https://docs.airscale.io/api-reference/reverse-email
 
   - id: airscale.reverse-phone
