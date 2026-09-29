@@ -308,6 +308,7 @@ _UNRECORDED_SIGNATURE = {
     "spidercloud",  # funded dollar balance remains; no empty-balance response was forced
     "perplexity",  # auto top-up is enabled; no empty-credit response was forced
     "trestleiq",  # funded wallet remains; documented 403/429 shapes do not identify empty balance
+    "airscale",  # funded credits remain; no empty-balance response was deliberately forced
     "you",  # funded wallet remains; no provider-specific empty-balance response was forced
 
     "serpapi", "serpstat", "spyfu", "tiingo", "tikhub", "tomba", "twelvedata",
