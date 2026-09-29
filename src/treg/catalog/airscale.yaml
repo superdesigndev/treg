@@ -407,5 +407,5 @@ endpoints:
         schema: {type: object, required: false, example: {capital: string}, note: "Map nonempty output field names to nonempty type keywords or descriptions. Reserved names: status, response, reasoning, sources, confidence_score, certainty_tag, duration_ms."}
     test_request: {body: {prompt: "What is the capital of France?"}}
     expect: {json_path: status, equals: success}
-    cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/airsearch, checked: '2026-09-29', confidence: documented, note: "One credit for status:success. HTTP 200 status:not_found or status:timeout is free; an initial HTTP 504 timeout is also free."}
+    cost: {type: per_success, value: 1, currency: credit, per: 1, unit: call, source: observed, source_url: https://docs.airscale.io/api-reference/airsearch, checked: '2026-09-29', confidence: verified, note: "One credit for status:success, confirmed by a post-release balance delta with a 0.9 fractional remainder preserved. HTTP 200 status:not_found or status:timeout is free; an initial HTTP 504 timeout is also free."}
     docs_url: https://docs.airscale.io/api-reference/airsearch
