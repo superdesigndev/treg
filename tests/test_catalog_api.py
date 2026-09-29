@@ -541,19 +541,16 @@ def test_airscale_platform_eligibility_is_partitioned_by_route():
         "airscale.find-companies": ("POST", "/find-companies"),
         "airscale.profile": ("POST", "/profile"),
         "airscale.company": ("POST", "/company"),
+        "airscale.email": ("POST", "/email"),
+        "airscale.personal-email": ("POST", "/personal-email"),
+        "airscale.phone": ("POST", "/phone"),
+        "airscale.reverse-phone": ("POST", "/reverse-phone"),
         "airscale.reverse-email": ("POST", "/reverse-email"),
-    }
-    deferred = {
-        "airscale.email",
-        "airscale.personal-email",
-        "airscale.phone",
-        "airscale.reverse-phone",
     }
     airscale = [ep for ep in cat.endpoints if ep["provider"] == "airscale"]
     expected = eligible | blocked
-    assert len(airscale) == len(expected) == 8
+    assert len(airscale) == len(expected) == 12
     assert {ep["id"] for ep in airscale} == set(expected)
-    assert deferred.isdisjoint(cat.by_id)
     for endpoint_id, (method, path) in eligible.items():
         endpoint = cat.by_id[endpoint_id]
         assert (endpoint["method"], endpoint["path"]) == (method, path)
@@ -563,6 +560,17 @@ def test_airscale_platform_eligibility_is_partitioned_by_route():
         assert (endpoint["method"], endpoint["path"]) == (method, path)
         assert not cat.platform_eligible(endpoint), endpoint_id
         assert endpoint.get("platform_blocked"), endpoint_id
+
+    private_hit_endpoints = {
+        "airscale.email",
+        "airscale.personal-email",
+        "airscale.phone",
+        "airscale.reverse-phone",
+    }
+    for endpoint_id in private_hit_endpoints:
+        endpoint = cat.by_id[endpoint_id]
+        assert "expect" not in endpoint
+        assert "deliberate miss" in endpoint["cost"]["note"].lower()
 
     profile_target = cat.by_id["airscale.profile"]["test_request"]["body"]["linkedin_profile_url"]
     assert "/company/" in profile_target or "/school/" in profile_target
