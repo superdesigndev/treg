@@ -656,6 +656,20 @@ async def _predictleads(c, key):
             "note": f"{used}/{quota} used, subscription {attrs.get('status', '?')}"}
 
 
+async def _jobspipe(c, key):
+    # Free: GET /v1/account spends no credits and is exempt from the per-key rate limit.
+    d = await _get(c, "https://api.jobspipe.dev/v1/account",
+                   headers={"Authorization": f"Bearer {key}"})
+    left, extra = d.get("credits_remaining"), d.get("extra_credits")
+    value = None
+    if isinstance(left, int) and not isinstance(left, bool):
+        value = left + (extra if isinstance(extra, int) and not isinstance(extra, bool) else 0)
+    return {"value": value, "unit": "credits left this month",
+            "note": f"{d.get('credits_used', '?')}/{d.get('monthly_credits', '?')} used in "
+                    f"{d.get('month', '?')}, extra {extra if extra is not None else '?'}, "
+                    f"plan {d.get('plan', '?')}"}
+
+
 async def _findymail(c, key):
     d = await _get(c, "https://app.findymail.com/api/credits",
                    headers={"Authorization": f"Bearer {key}", "Accept": "application/json"})
@@ -814,6 +828,7 @@ BALANCE_ROUTES = {
     "leadsforge": _leadsforge,
     "oceanio": _oceanio,
     "predictleads": _predictleads,
+    "jobspipe": _jobspipe,
     "tomba": _tomba,
     "dataforseo": _dataforseo,
     "tikhub": _tikhub,

@@ -2918,6 +2918,38 @@ TRESTLEIQ = OAuthProvider(
 )
 
 
+JOBSPIPE = OAuthProvider(
+    service="jobspipe",
+    display_name="JobsPipe",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your JobsPipe API key (starts with jp_live_)",
+    # JobsPipe takes the key only as `Authorization: Bearer jp_live_...` (the default header form);
+    # there is no query-param transport. A missing or unknown key is HTTP 401 with a JSON body.
+    setup_url="https://jobspipe.dev/signup",
+    setup_action_label="Get your JobsPipe API key",
+    setup_steps=(
+        "Sign up at jobspipe.dev with an email code (no card on the Free plan).",
+        "Copy the API key from the dashboard; it starts with jp_live_.",
+    ),
+    setup_note=(
+        "Job and company searches spend 1 credit per returned record the account has not already "
+        "paid for this month; company, tech-stack and technology reads spend 1 per call. "
+        "Connecting checks the free Account endpoint."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Search live job postings from 30+ boards and career sites in one schema, and read the "
+        "companies and tech stacks behind them."
+    ),
+    base_url="https://api.jobspipe.dev",
+    docs_url="https://docs.jobspipe.dev",
+    probe_path="/v1/account",  # free — spends no credits and skips the rate limit; a bad key is 401
+)
+
 PREDICTLEADS = OAuthProvider(
     service="predictleads",
     display_name="PredictLeads",
@@ -3634,7 +3666,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, FIBER_AI, CRUSTDATA, AVIATO,
-        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
+        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, JOBSPIPE, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
