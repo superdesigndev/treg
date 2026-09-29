@@ -457,14 +457,14 @@ endpoints:
         query: "what is a stock split"
         gl: "US"
         pages: 1
-        include: {html: true, aioverview: true, paaAioverview: true, googleGoto: true}
+        include: {html: true, googleGoto: true}
       bodyType: json
-    verified: '2026-09-07'
+    verified: '2026-09-29'
     added: '2026-09-07'
     example_response: examples/cloro.google.serp.organic.json
     cost:
-      type: per_call
-      value: 7
+      type: per_success
+      value: 5
       currency: credit
       per: 1
       unit: call
@@ -472,7 +472,7 @@ endpoints:
       source_url: 'https://cloro.dev/docs/guides/providers'
       checked: '2026-09-05'
       confidence: documented
-      note: "7 = 3 base + 2 for include.aioverview / paaAioverview + the 2-credit sync surcharge, for one page. A plain call without the AI Overview flags is 5. html and googleGoto are free. Each page past the first adds 2, and `pages` is capped at 10, so 23 is the ceiling. A failed extraction is not charged."
+      note: "5 = 3 base + the 2-credit sync surcharge, for one page. include.aioverview or paaAioverview adds 2, which the X-Credits-Charged header bills. html and googleGoto are free. Each page past the first adds 2, and `pages` is capped at 10, so 23 is the ceiling. A failed extraction is not charged."
     docs_url: https://cloro.dev/docs/api-reference/endpoint/monitor-google
 
   - id: cloro.google.serp.news
