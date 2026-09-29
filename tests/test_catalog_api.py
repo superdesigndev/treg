@@ -534,9 +534,6 @@ def test_airscale_platform_eligibility_is_partitioned_by_route():
     eligible = {
         "airscale.find-people.count": ("POST", "/find-people/count"),
         "airscale.find-companies.filter-values": ("GET", "/find-companies/filter-values"),
-        "airscale.email": ("POST", "/email"),
-        "airscale.phone": ("POST", "/phone"),
-        "airscale.reverse-phone": ("POST", "/reverse-phone"),
         "airscale.airsearch": ("POST", "/airsearch"),
     }
     blocked = {
@@ -544,13 +541,19 @@ def test_airscale_platform_eligibility_is_partitioned_by_route():
         "airscale.find-companies": ("POST", "/find-companies"),
         "airscale.profile": ("POST", "/profile"),
         "airscale.company": ("POST", "/company"),
-        "airscale.personal-email": ("POST", "/personal-email"),
         "airscale.reverse-email": ("POST", "/reverse-email"),
+    }
+    deferred = {
+        "airscale.email",
+        "airscale.personal-email",
+        "airscale.phone",
+        "airscale.reverse-phone",
     }
     airscale = [ep for ep in cat.endpoints if ep["provider"] == "airscale"]
     expected = eligible | blocked
-    assert len(airscale) == len(expected) == 12
+    assert len(airscale) == len(expected) == 8
     assert {ep["id"] for ep in airscale} == set(expected)
+    assert deferred.isdisjoint(cat.by_id)
     for endpoint_id, (method, path) in eligible.items():
         endpoint = cat.by_id[endpoint_id]
         assert (endpoint["method"], endpoint["path"]) == (method, path)
@@ -560,6 +563,12 @@ def test_airscale_platform_eligibility_is_partitioned_by_route():
         assert (endpoint["method"], endpoint["path"]) == (method, path)
         assert not cat.platform_eligible(endpoint), endpoint_id
         assert endpoint.get("platform_blocked"), endpoint_id
+
+    profile_target = cat.by_id["airscale.profile"]["test_request"]["body"]["linkedin_profile_url"]
+    assert "/company/" in profile_target or "/school/" in profile_target
+    assert cat.by_id["airscale.reverse-email"]["test_request"] == {
+        "body": {"email": "nobody@airscale.invalid"},
+    }
 
 
 async def test_eligibility_rides_on_the_served_row(clients: AsyncClient):
