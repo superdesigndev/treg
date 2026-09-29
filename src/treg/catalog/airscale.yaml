@@ -312,7 +312,7 @@ endpoints:
         company_name: {type: string, required: false, minLength: 1, example: Example Company}
       note: "Provide a profile URL, or both names with domain or company_name; both complete forms may be supplied. JSON body at most 256 KiB."
     test_request: {body: {linkedin_profile_url: "https://www.linkedin.com/in/example-person-000000"}}
-    cost: {type: per_success, value: 2, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/email-finder, checked: '2026-09-29', confidence: documented, note: "Two credits when status is success; HTTP 200 status:not_found with email:null is free. The public test is a deliberate miss; the successful price is verified privately without retaining identity-bearing evidence."}
+    cost: {type: per_success, value: 2, currency: credit, per: 1, unit: call, source: observed, source_url: https://docs.airscale.io/api-reference/email-finder, checked: '2026-09-29', confidence: verified, note: "Two credits when status is success; HTTP 200 status:not_found with email:null is free. The public test is a deliberate miss; a successful two-credit debit was observed privately on a consenting Airscale-controlled fixture without retaining identity-bearing evidence."}
     docs_url: https://docs.airscale.io/api-reference/email-finder
 
   - id: airscale.personal-email
@@ -332,7 +332,7 @@ endpoints:
         linkedin_profile_url: {type: string, required: true, minLength: 1, example: "https://www.linkedin.com/in/example-person-000000", note: "Recognized LinkedIn /in/ profile URL."}
         verification: {type: boolean|string, required: false, example: true, note: "Only boolean true or case-insensitive string yes enables verification; other values disable it."}
     test_request: {body: {linkedin_profile_url: "https://www.linkedin.com/in/example-person-000000"}}
-    cost: {type: per_success, value: null, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/personal-email, checked: '2026-09-29', confidence: unknown, note: "A success costs 3–12 credits depending on source; status:not_found costs zero. A 502 can occur after a debit, so inspect balance before retrying. The public test is a deliberate miss; the exact successful debit is recorded privately without retaining identity-bearing evidence."}
+    cost: {type: per_success, value: null, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/personal-email, checked: '2026-09-29', confidence: unknown, note: "A success costs 3–12 credits depending on source; status:not_found costs zero. A 502 can occur after a debit, so inspect balance before retrying. The public test is a deliberate miss; one consenting Airscale-controlled fixture produced a three-credit success, but the scalar stays unknown because other sources cost more."}
     docs_url: https://docs.airscale.io/api-reference/personal-email
 
   - id: airscale.phone
@@ -351,7 +351,7 @@ endpoints:
       body:
         linkedin_profile_url: {type: string, required: true, minLength: 1, example: "https://www.linkedin.com/in/example-person-000000", note: "Recognized LinkedIn person-profile URL or identifier."}
     test_request: {body: {linkedin_profile_url: "https://www.linkedin.com/in/example-person-000000"}}
-    cost: {type: per_success, value: 40, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/mobile-finder, checked: '2026-09-29', confidence: documented, note: "Forty credits when status is success; HTTP 200 status:not_found with phone_numbers:null and all_phone_numbers:[] is free. The public test is a deliberate miss; the successful price is verified privately without retaining identity-bearing evidence."}
+    cost: {type: per_success, value: 40, currency: credit, per: 1, unit: call, source: observed, source_url: https://docs.airscale.io/api-reference/mobile-finder, checked: '2026-09-29', confidence: verified, note: "Forty credits when status is success; HTTP 200 status:not_found with phone_numbers:null and all_phone_numbers:[] is free. The public test is a deliberate miss; a successful forty-credit debit was observed privately on a consenting Airscale-controlled fixture without retaining identity-bearing evidence."}
     docs_url: https://docs.airscale.io/api-reference/mobile-finder
 
   - id: airscale.reverse-email
@@ -388,7 +388,7 @@ endpoints:
       body:
         mobile_phone: {type: string, required: true, minLength: 1, example: "+12025550147", note: "Must contain non-whitespace text; trimmed lowercase null and undefined are invalid. A normalized international number is preferred."}
     test_request: {body: {mobile_phone: "+12025550147"}}
-    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/reverse-phone, checked: '2026-09-29', confidence: documented, note: "Ten credits for a returned profile, whose success shape has no status field. HTTP 200 {status:not_found} and errors are free. The public test is a deliberate miss; the successful price is verified privately without retaining identity-bearing evidence."}
+    cost: {type: per_success, value: 10, currency: credit, per: 1, unit: call, source: observed, source_url: https://docs.airscale.io/api-reference/reverse-phone, checked: '2026-09-29', confidence: verified, note: "Ten credits for a returned profile, whose success shape has no status field. HTTP 200 {status:not_found} and errors are free. The public test is a deliberate miss; a successful ten-credit debit was observed privately on a consenting Airscale-controlled fixture without retaining identity-bearing evidence."}
     docs_url: https://docs.airscale.io/api-reference/reverse-phone
 
   - id: airscale.airsearch
