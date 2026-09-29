@@ -1274,6 +1274,25 @@ def test_a_per_success_endpoint_with_no_adapter_settles_on_the_providers_own_suc
         assert A._observed_cost_micro(m2, b'{"tasks": [{"status_code": 40501}]}') == 0
         assert A._observed_cost_micro(m2, b'{"tasks": [{"status_code": 20000}]}') is None
 
+
+def test_airscale_airsearch_per_success_settlement_uses_documented_response_status():
+    from test_marketplace_call import _mk
+    from treg.application.call import settle as A
+
+    endpoint_id = "airscale.airsearch"
+    endpoint = catalog_store.load().by_id[endpoint_id]
+    assert endpoint["cost"]["type"] == "per_success"
+    assert endpoint["cost"]["value"] == 1
+    assert catalog_store.load().adapters.get(endpoint_id) is None
+    mk = _mk("airscale", endpoint_id=endpoint_id, cost_type="per_success")
+    assert A._platform_billable(200, "per_success")
+    assert A._observed_cost_micro(
+        mk, b'{"status":"success","response":"Paris"}',
+    ) is None
+    for miss in (b'{"status":"not_found"}', b'{"status":"timeout"}'):
+        assert A._observed_cost_micro(mk, miss) == 0
+    assert not A._platform_billable(504, "per_success")
+
 async def test_a_declared_miss_status_is_a_miss_not_a_caller_fault(clients: AsyncClient, enrichment_on, monkeypatch):
     """aviato answers HTTP 404 `Not Found` for a person it has no record of. The endpoint's YAML says
     so (`miss: {status: 404}`), and the router must read it: before this a waterfall in which the

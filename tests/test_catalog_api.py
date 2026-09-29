@@ -546,6 +546,62 @@ async def test_platform_eligibility_refuses_everything_it_cannot_prove():
     assert not cat.platform_eligible(blocked)
 
 
+def test_airscale_platform_eligibility_is_partitioned_by_route():
+    cat = cs.load()
+    eligible = {
+        "airscale.find-people.count": ("POST", "/find-people/count"),
+        "airscale.find-companies.filter-values": ("GET", "/find-companies/filter-values"),
+        "airscale.airsearch": ("POST", "/airsearch"),
+    }
+    blocked = {
+        "airscale.find-people": ("POST", "/find-people"),
+        "airscale.find-companies": ("POST", "/find-companies"),
+        "airscale.profile": ("POST", "/profile"),
+        "airscale.company": ("POST", "/company"),
+        "airscale.email": ("POST", "/email"),
+        "airscale.personal-email": ("POST", "/personal-email"),
+        "airscale.phone": ("POST", "/phone"),
+        "airscale.reverse-phone": ("POST", "/reverse-phone"),
+        "airscale.reverse-email": ("POST", "/reverse-email"),
+    }
+    airscale = [ep for ep in cat.endpoints if ep["provider"] == "airscale"]
+    expected = eligible | blocked
+    assert len(airscale) == len(expected) == 12
+    assert {ep["id"] for ep in airscale} == set(expected)
+    for endpoint_id, (method, path) in eligible.items():
+        endpoint = cat.by_id[endpoint_id]
+        assert (endpoint["method"], endpoint["path"]) == (method, path)
+        assert cat.platform_eligible(endpoint), endpoint_id
+    for endpoint_id, (method, path) in blocked.items():
+        endpoint = cat.by_id[endpoint_id]
+        assert (endpoint["method"], endpoint["path"]) == (method, path)
+        assert not cat.platform_eligible(endpoint), endpoint_id
+        assert endpoint.get("platform_blocked"), endpoint_id
+
+    private_hit_endpoints = {
+        "airscale.email",
+        "airscale.personal-email",
+        "airscale.phone",
+        "airscale.reverse-phone",
+    }
+    raw_by_id = {
+        endpoint["id"]: endpoint
+        for endpoint in cs._read_yaml(cs.CATALOG_DIR / "airscale.yaml")["endpoints"]
+    }
+    for endpoint_id in private_hit_endpoints:
+        endpoint = cat.by_id[endpoint_id]
+        assert "expect" not in raw_by_id[endpoint_id]
+        assert "deliberate miss" in endpoint["cost"]["note"].lower()
+
+    profile_target = cat.by_id["airscale.profile"]["test_request"]["body"]["linkedin_profile_url"]
+    assert "/company/" in profile_target or "/school/" in profile_target
+    assert cat.by_id["airscale.profile"]["cost"]["value"] == 0.5
+    assert cat.by_id["airscale.company"]["cost"]["value"] == 0.5
+    assert cat.by_id["airscale.reverse-email"]["test_request"] == {
+        "body": {"email": "nobody@airscale.invalid"},
+    }
+
+
 async def test_eligibility_rides_on_the_served_row(clients: AsyncClient):
     """A client deciding whether a call needs a credential must not have to re-derive the rule."""
     cat = cs.load()

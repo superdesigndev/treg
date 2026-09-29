@@ -60,6 +60,63 @@ async def test_perplexity_key_uses_free_model_list_probe(clients, monkeypatch):
     assert response.status_code == 200, response.text
 
 
+def test_airscale_key_is_offerable_without_deployment_credentials():
+    provider = P.get("airscale")
+    assert provider is not None
+    assert provider.auth_kind == "key"
+    assert provider.uses_pasted_secret is True
+    assert provider.is_token_kind is False
+    assert P.is_configured(provider) is True
+
+
+async def test_airscale_post_verification_never_saves_a_get_health_probe(clients, monkeypatch):
+    from sqlmodel import update
+    from treg.infra.db import session_maker
+    from treg.models import Tool
+
+    methods: list[str] = []
+
+    def probe(request):
+        methods.append(request.method)
+        assert request.url.path == "/v1/credits"
+        if request.method == "GET":
+            return httpx.Response(405, json={"message": "Method not allowed"})
+        assert request.method == "POST"
+        assert json.loads(request.content) == {}
+        assert request.headers["Authorization"] == "Bearer own-key"
+        return httpx.Response(200, json={"credits": 0})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        connected = await clients.post(
+            "/connections/token", json={"provider": "airscale", "token": "own-key"},
+        )
+        assert connected.status_code == 200, connected.text
+        assert connected.json()["health"] == "ok"
+        tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "airscale")
+        assert tool["health_check"] is None
+
+        # A reconnect must also clear a GET check saved by an older registry version.
+        async with session_maker() as db:
+            await db.execute(update(Tool).where(Tool.name == "airscale").values(
+                health_check={"method": "GET", "path": "/credits", "expect_status": 200},
+            ))
+            await db.commit()
+        reconnected = await clients.post(
+            "/connections/token", json={"provider": "airscale", "token": "own-key"},
+        )
+        assert reconnected.status_code == 200, reconnected.text
+        tool = next(t for t in (await clients.get("/tools")).json() if t["name"] == "airscale")
+        assert tool["health_check"] is None
+
+        health_run = await clients.post("/health/run")
+        assert health_run.status_code == 200, health_run.text
+        assert health_run.json()["invalid"] == []
+        assert methods == ["POST", "POST"]
+        health = {row["name"]: row for row in (await clients.get("/health")).json()}
+        assert health["airscale"]["status"] == "ok"
+
+
 async def test_adyntel_connect_collects_both_credentials_before_provisioning(clients, monkeypatch):
     def probe(request):
         assert request.method == "POST"

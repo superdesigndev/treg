@@ -67,6 +67,11 @@ def test_default_capability_is_the_broadest():
     } & requested
 
 
+def test_airscale_is_registered():
+    assert "airscale" in P.REGISTRY
+    assert P.REGISTRY["airscale"].service == "airscale"
+
+
 # ---- X's two quirks ----------------------------------------------------------------------
 async def test_x_consent_url_carries_a_pkce_challenge(clients: AsyncClient, all_apps):
     d = (await clients.post("/oauth/start", json={"provider": "x"})).json()

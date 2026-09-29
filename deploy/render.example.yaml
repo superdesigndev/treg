@@ -51,5 +51,7 @@ services:
         sync: false
       - key: TREG_RESEND_API_KEY
         sync: false
+      - key: TREG_PLATFORM_KEY_AIRSCALE
+        sync: false
       - key: TREG_EMAIL_FROM
         value: registry <no-reply@registry.example.com>
