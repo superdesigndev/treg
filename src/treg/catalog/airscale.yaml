@@ -285,7 +285,7 @@ endpoints:
         linkedin_profile_url: {type: string, required: true, minLength: 1, example: "https://www.linkedin.com/company/stripe/", note: "LinkedIn /in/, /company/ or /school/ URL; this route requires linkedin_profile_url, not a domain. Scheme may be omitted."}
     test_request: {body: {linkedin_profile_url: "https://www.linkedin.com/company/stripe/"}}
     miss: {status: 404, means: "No profile was found for the submitted LinkedIn URL; no credits are charged."}
-    cost: {type: per_success, value: null, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/extract-company-profile, checked: '2026-09-29', confidence: unknown, note: "Documented successful /company/ or /school/ lookup costs 0.5 credit; /in/ costs 1. Failed lookup is free. The public company test target is intended to exercise the 0.5-credit family; no hit price observed."}
+    cost: {type: per_success, value: 0.5, currency: credit, per: 1, unit: call, source: docs, source_url: https://docs.airscale.io/api-reference/extract-company-profile, checked: '2026-09-29', confidence: documented, note: "A successful /company/ or /school/ lookup costs 0.5 credit; /in/ costs 1. Failed lookup is free. The test uses a well-known public company URL and exercises the cheapest supported family."}
     docs_url: https://docs.airscale.io/api-reference/extract-company-profile
 
   - id: airscale.reverse-email

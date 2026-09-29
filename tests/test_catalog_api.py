@@ -566,6 +566,8 @@ def test_airscale_platform_eligibility_is_partitioned_by_route():
 
     profile_target = cat.by_id["airscale.profile"]["test_request"]["body"]["linkedin_profile_url"]
     assert "/company/" in profile_target or "/school/" in profile_target
+    assert cat.by_id["airscale.profile"]["cost"]["value"] == 0.5
+    assert cat.by_id["airscale.company"]["cost"]["value"] == 0.5
     assert cat.by_id["airscale.reverse-email"]["test_request"] == {
         "body": {"email": "nobody@airscale.invalid"},
     }
