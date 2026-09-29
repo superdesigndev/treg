@@ -99,7 +99,7 @@ async def test_adyntel_connect_collects_both_credentials_before_provisioning(cli
 
 def test_paid_key_verification_probe_is_typed_and_unique():
     paid = {p.service: p.probe_cost_micro for p in P.REGISTRY.values() if p.probe_cost_micro}
-    assert paid == {"keenable": 4_000, "trestleiq": 15_000}
+    assert paid == {"keenable": 4_000, "trestleiq": 15_000, "linkedpulse": 20_000}
     assert all(isinstance(p.probe_cost_micro, int) and p.probe_cost_micro >= 0
                for p in P.REGISTRY.values())
     listing = {row["service"]: row for row in P.listing()}
