@@ -286,6 +286,7 @@ _UNRECORDED_SIGNATURE = {
     "limadata",  # Starter credits remain; no provider-specific empty-balance body was forced
     "getleadsio",  # promotional allocation was not exhausted; bare 402 remains the generic signal
     "keenable",  # funded request balance remains; documented bare 402 was not forced
+    "jobspipe",  # free-plan credits remain; the documented 402 (credits_used, credits_included, upgrade_url) was not forced
     "olostep",  # funded credit balance remains; documented 402 was not forced
     "firecrawl",  # credit balance remains; documented 402 was not deliberately forced
     "linkup",  # 429 means either exhausted credit or excess concurrency; balance was not exhausted
