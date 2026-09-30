@@ -3,6 +3,8 @@ import { isJobQuery } from './find.js'
 // The shelf's order: the last 30 days' calls, most first; then the jobs more providers do; then by
 // title, so an unused shelf still reads in a stable order.
 const byTitle = new Intl.Collator()
+// How many of a shelf's most used items lead as cards: two rows at the widest layout.
+const PLAT_TOP = 6
 const byUse = (a, b) => (b.usage - a.usage) || (b.provN - a.provN) || byTitle.compare(a.title, b.title)
 
 // What each comparison column means, on hover or focus of its heading (comparisonColumns).
@@ -132,9 +134,10 @@ platProviders(){  // providers with endpoints here, in catalog order
       for(const sec of (this.platData.domains||[])) for(const r of (sec.rows||[])){
         const eps=r.endpoints||[]; if(!eps.length) continue;
         out.push({...r, domain:sec.domain, endpoints:eps,
-          // The server picks `name` over `summary` where a curated name exists; the clip guards the
-          // rows where one does not yet, whose summary is documentation prose.
-          title:this.clip(r.description, 90),
+          // A compared job may carry a short `title` for people; its `description` is also written for
+          // agents and stays whole (the card's hover). The server picks `name` over `summary` where a
+          // curated name exists; the clip guards the rows where one does not yet.
+          title:this.clip(r.title||r.description, 90),
           mgmt: eps.every(e=>e.kind==='account'||e.kind==='utility'),
           hay: (r.description+' '+r.domain+' '+(r.capability||'')+' '+eps.map(e=>
                  e.provider+' '+(e.provider_display||'')+' '+(e.name||'')+' '+e.path+' '+e.summary).join(' ')).toLowerCase()});
@@ -149,7 +152,7 @@ platProviders(){  // providers with endpoints here, in catalog order
       return this.platRowsAll.filter(r=>r.compare).map(r=>{
         const direct=r.endpoints.filter(e=>e.kind!=='routed'), provs=[...new Set(direct.map(e=>e.provider))];
         const range=this.priceRange(direct);
-        return {job:true, key:r.capability, slug:r.compare, row:r, title:r.description, hay:r.hay, logos:provs.slice(0,5),
+        return {job:true, key:r.capability, slug:r.compare, row:r, title:r.title, hint:r.description, hay:r.hay, logos:provs.slice(0,5), logosFew:provs.slice(0,3), range,
                 routed:r.endpoints.find(e=>e.kind==='routed')||null, provN:provs.length,
                 // An auto-routed call is also recorded on every provider it tries, so the providers'
                 // own calls already count it; adding the routed row too would count it twice.
@@ -171,12 +174,24 @@ platProviders(){  // providers with endpoints here, in catalog order
           out.push({id:e.id, title, e, mgmt:r.mgmt, usage:this.callsOf(e), provN:1,
                     hay:(title+' '+e.provider+' '+(e.provider_display||'')+' '+(e.summary||'')+' '+e.id).toLowerCase()}); } }
       return out.sort(byUse); },
-// The shelf itself: comparisons and single-provider tools in ONE list, most used first. A visitor
-    // comes for a job, not for whether one provider or several serve it; a comparison still reads as
-    // one (its logo stack, and Auto-route where treg can pick).
-    // Sorted once per shelf; the search box only filters it.
+// The shelf itself, most used first, whether one provider serves an item or several: the head of it
+    // as cards, the rest as a list. One grid of equal cards gave the eye nowhere to land; ranking a
+    // comparison above a busier single tool put the eye on the wrong thing. Sorted once per shelf;
+    // the search box only filters it.
     platShelfIndex(){ return [...this.platComparisons, ...this.platToolIndex.filter(t=>!t.mgmt)].sort(byUse); },
 platShelf(){ const q=this.platFilterQ; return q ? this.platShelfIndex.filter(t=>t.hay.includes(q)) : this.platShelfIndex; },
+platTop(){ return this.platShelf.slice(0, PLAT_TOP); },
+platRest(){ return this.platShelf.slice(PLAT_TOP); },
+// Only a measured count earns "Most used"; with none (a fresh server), the order is the tie-break's.
+platTopMeasured(){ return this.platTop.some(t=>t.usage>0); },
+// The lists under the cards. Plumbing is looked up, not browsed: its head until asked for the rest,
+// or all of it while a search is narrowing it.
+platSections(){
+      const setup=this.platPlumbing, fold=!this.platSetupOpen && !this.platFilterQ && setup.length>PLAT_TOP;
+      return [
+        {key:'tools', label:this.platTop.length ? 'More tools' : 'Tools', items:this.platRest, shown:this.platRest, hidden:0},
+        {key:'setup', label:'Account and setup', quiet:true, items:setup, shown:fold ? setup.slice(0, PLAT_TOP) : setup, hidden:fold ? setup.length : 0},
+      ].filter(s=>s.items.length); },
 platPlumbing(){ const q=this.platFilterQ; return this.platToolIndex.filter(t=>t.mgmt && (!q || t.hay.includes(q))); },
 platEpById(){ const m={}; for(const r of this.platRowsAll) for(const e of r.endpoints) m[e.id]=e; return m; },
 // The drawer reads from the list of the view it was opened on.

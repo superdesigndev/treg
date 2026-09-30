@@ -893,19 +893,12 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
 .pl-cmp b{font-size:15.5px;font-weight:500;line-height:1.4}
 /* A comparison's foot is two fixed lines, logos (and Auto-route) over the provider count and price,
    so no card wraps them differently from its neighbour. */
-.pl-cmp-f{display:flex;flex-direction:column;gap:8px;margin-top:auto}
-.pl-cmp-r{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .pl-cmp.sm{gap:6px;padding:15px 18px}
 .pl-cmp.sm b{font-size:14px}
 .pl-meta{font-family:var(--mono);font-size:11.5px;color:var(--muted2);font-variant-numeric:tabular-nums}
-/* Auto-route's look, the tag and the comparison page's card alike: a green light and a dot field. */
-.pl-auto,.pl-autocard{--pl-glow:#5b8a5a38;--pl-dot:#ffffff1c}
-[data-theme="light"] .pl-auto,[data-theme="light"] .pl-autocard{--pl-glow:#dce8d5;--pl-dot:#1a1a1a1a}
-.pl-auto{--pl-auto-ink:#b9d6b4;flex:0 0 auto;padding:3px 9px;
-  border-radius:999px;background:radial-gradient(var(--pl-dot) .6px,transparent .9px) 0 0/4px 4px,var(--pl-glow);
-  box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--pl-auto-ink) 22%,transparent);color:var(--pl-auto-ink);
-  font-size:11px;font-weight:500;letter-spacing:.01em}
-[data-theme="light"] .pl-auto{--pl-auto-ink:#2f5a2e}
+/* Auto-route's look on the comparison page's card: a green light and a dot field. */
+.pl-autocard{--pl-glow:#5b8a5a38;--pl-dot:#ffffff1c}
+[data-theme="light"] .pl-autocard{--pl-glow:#dce8d5;--pl-dot:#1a1a1a1a}
 .pl-logo{display:inline-grid;place-items:center;width:24px;height:24px;flex:0 0 24px;border-radius:7px;background:#fbfaf7;
   box-shadow:0 0 0 1px rgba(0,0,0,.06);overflow:hidden}
 .pl-logo img{width:15px;height:15px;object-fit:contain}
@@ -1035,6 +1028,7 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
 .pl-meta.pl-push{font-family:var(--sans);font-size:13px}
 .pl-sub{display:block;margin-top:2px;font-size:11.5px;color:var(--muted2)}
 .pl-by{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;max-width:100%;color:var(--muted)}
+.pl-more-rows{margin-top:14px;font-size:13px}
 .ui-td .cn-links{flex-wrap:nowrap;justify-content:flex-end;font-family:var(--sans);white-space:nowrap}
 .own-card .cn-id a{color:inherit;text-decoration:none}
 .own-card .cn-id a:hover{text-decoration:underline;text-underline-offset:3px}
@@ -1085,6 +1079,15 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
 .act-stat span{font-size:12.5px;color:var(--muted)}
 .act-pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr));gap:0 24px}
 
+/* A platform shelf: its most used as cards of one height (a long title never stretches a row), the
+   rest as a list. */
+.pl-job{gap:10px;padding:18px 20px}
+.pl-job b{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.8em;
+  font-size:15px;font-weight:500;line-height:1.4}
+.pl-job-f{display:flex;align-items:center;gap:10px;margin-top:4px;min-width:0}
+.pl-job-auto{color:var(--green)}
+.pl-job-p{margin-left:auto;flex:none;font-family:var(--mono);font-size:12.5px;color:var(--ink);font-variant-numeric:tabular-nums}
+.pl-list-quiet .ui-td b{font-weight:400;color:var(--muted)}
 .pv-hero{padding-bottom:36px}
 .pv-id{display:flex;align-items:center;gap:12px}
 .pv-acts{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}

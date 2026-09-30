@@ -80,6 +80,7 @@ export default function data(){
       // Find tools for a job (state/find.js): phase idle | recall | reading | done | error
       find:{...FIND_EMPTY}, findCopied:'', findSoon:false,
       platSlug:null, platData:null, platErr:'', platLoading:false,
+      platSetupOpen:false, // a platform shelf's account-and-setup list has been expanded
       platShelfOpen:{},    // category → its featured shelf has been expanded to the full tile list
       platQ:'',            // the shelf's search box
       epTab:{},            // endpoint id → which pane of its detail is showing ('req' | 'res' | 'rev')

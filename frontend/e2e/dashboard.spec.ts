@@ -131,7 +131,7 @@ test("a tool drawer's primary button is the next step to an agent using the tool
   await page.getByRole('table').getByRole('row').filter({ hasText: 'Ocean' }).first().click()
   await expect(primary()).toHaveText(/^Add your .+ key$/)          // only your own key can call it
   await page.goto('/catalog/google-analytics')
-  await page.locator('.pl-tool').first().click()
+  await page.locator('button.pl-job').first().click()
   await expect(primary()).toHaveText(/^Connect /)                  // an account to connect first
   await expect(drawer.locator('.td-stats')).toContainText('your account')
 })

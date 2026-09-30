@@ -85,8 +85,11 @@ this page keeps what no single file shows. The look follows the root `design.md`
 
 ## Platform shelf, comparison, drawer
 
-- A shelf lists comparisons and single tools most used first (30-day observed calls). A comparison
-  leads with Auto-route when a routed tool exists; its counts are shown in bands, never exact.
+- A shelf ranks everything by 30-day observed calls, whether one provider serves it or several: its
+  six most used are cards of one height, the rest one list, and account plumbing shows its first six.
+  With no counts yet the cards read Featured, not Most used. A compared job's card carries its short
+  title (`capability_titles`, [catalog](../architecture/catalog.md)), the full description on hover.
+- A comparison leads with Auto-route when a routed tool exists; its counts are shown in bands, never exact.
 - The tool drawer is not modal; its primary button is the agent's next step (`drawerNext`). Finding
   tools for a job is [search-experiment](../architecture/search-experiment.md).
 - The `catalog-v2` experiment shows the old ledger (`LegacyPlatformPage.vue`) to its control arm; it

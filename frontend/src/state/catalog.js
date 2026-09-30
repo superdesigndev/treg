@@ -70,6 +70,7 @@ openPlatform(slug, fromPop, cap){ this.resetConfirms();
       // Moving between a shelf and one of its comparisons keeps the loaded shelf: the page is the same
       // payload read another way, so only the address and the view state change.
       const same = this.view==='platform' && this.platSlug===slug && (this.platData || this.platLoading);
+      if(this.platSlug!==slug) this.platSetupOpen=false;
       this.detail=null; this.platSlug=slug; this.view='platform'; this.platCap=cap||null; this.drawerTool=null;
       this.epTab={}; this.platCopied='';
       if(!same){ this.platEx={}; this.platQ=''; this.epInfo={};
