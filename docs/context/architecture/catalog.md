@@ -468,7 +468,8 @@ the Less Restriction row two. Replicate's official `google/nano-banana-pro`, `op
 `openai/gpt-image-2.5-*` models are curated into `replicate.yaml` on the image keys the same way (per
 output image by quality or resolution, from the model pages' price criteria), so each image model
 row compares reAPI, PiAPI and Replicate. Merged rows are titled by the capability description, which for these
-per-model keys is the plain model name ("Seedance 2.5"), not a sentence.
+per-model keys is the plain model name ("Seedance 2.5"), not a sentence. Where a compared job's
+description runs long, `capability_titles` gives the shelf a short title instead (below).
 
 ## Schema
 
@@ -496,6 +497,9 @@ Rules:
   its own file; a proposal that repeats a capabilities.yaml id, or one id proposed with different
   descriptions in different files, is an error; and a proposal that endpoints of two providers use
   is a warning to promote it here, deleting it from every provider file.
+- `capability_titles:` maps an id to a short title people scan on a platform shelf, only where the
+  description runs long. The description stays whole, because agents read it and search ranks on it;
+  the shelf shows it on hover. A title naming no capability fails the catalog load.
 - One job, one id. Two ids of one platform with the same description are a validator warning: they
   split one comparison row in two. Rename the losing id on its rows (endpoint ids do not change) and
   check `contracts.yaml` and `adapters.yaml`, which are keyed by capability. Count-only search

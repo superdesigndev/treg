@@ -162,7 +162,7 @@ async def catalog_platform(slug: str, include_hidden: int = 0,
         # The ledger the platform page renders: sections by subject, ordered and merged server-side
         # so every client shows the same page (see `catalog_store.domain_rows`). A row that is a
         # compared capability (`Catalog.compared`) carries `compare`, its URL key.
-        "domains": _mark_compared(catalog_store.domain_rows(pairs, cat.capabilities), slug, cat),
+        "domains": _mark_compared(catalog_store.domain_rows(pairs, cat.capabilities, cat.capability_titles), slug, cat),
         # Provider-wide facts (limits, pricing page, docs), once per provider rather than copied onto
         # every row — an expanded endpoint needs them and shouldn't cost a second request.
         "providers": {

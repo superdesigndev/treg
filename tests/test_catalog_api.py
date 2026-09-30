@@ -163,7 +163,7 @@ def test_a_curated_name_beats_the_summary_on_a_row(tmp_path):
         "    path: /v3/backlinks/domain_pages/live\n    summary: Domain pages with backlink data\n")
     cat = cs.load(directory=tmp_path)
     pairs = [(e, cs.endpoint_view(e, e["provider"], cat)) for e in cat.endpoints]
-    rows = {r["endpoints"][0]["id"]: r for s in cs.domain_rows(pairs, cat.capabilities) for r in s["rows"]}
+    rows = {r["endpoints"][0]["id"]: r for s in cs.domain_rows(pairs, cat.capabilities, cat.capability_titles) for r in s["rows"]}
     assert rows["dataforseo.x.named"]["description"] == "Anchor text overview"
     assert rows["dataforseo.x.unnamed"]["description"] == "Domain pages with backlink data"
 
@@ -180,9 +180,34 @@ def test_a_job_files_under_the_domain_most_of_its_providers_give_it(tmp_path):
             f"    path: /local\n    summary: Local pack\n    cost: {{usd: {usd}}}\n")
     cat = cs.load(directory=tmp_path)
     pairs = [(e, cs.endpoint_view(e, e["provider"], cat)) for e in cat.endpoints]
-    [section] = cs.domain_rows(pairs, cat.capabilities)
+    [section] = cs.domain_rows(pairs, cat.capabilities, cat.capability_titles)
     assert section["domain"] == "serp"
     assert section["rows"][0]["endpoints"][0]["provider"] == "cheap"
+
+
+def test_a_compared_job_carries_its_short_title_and_keeps_its_description(tmp_path):
+    """A compared job's description is written for agents too and can run long; `capability_titles`
+    gives people a short title beside it, never instead of it."""
+    long = "Get a person's work email address from their name, company domain or LinkedIn profile"
+    (tmp_path / "capabilities.yaml").write_text(
+        f'platforms: {{people: People}}\ncapabilities: {{people.email.find: "{long}"}}\n'
+        'capability_titles: {people.email.find: "Find a person\'s work email"}\n')
+    for prov in ("one", "two"):
+        (tmp_path / f"{prov}.yaml").write_text(
+            f"provider: {prov}\nendpoints:\n  - id: {prov}.email\n    platform: people\n"
+            f"    capability: people.email.find\n    method: GET\n    path: /email\n    summary: Email\n")
+    cat = cs.load(directory=tmp_path)
+    pairs = [(e, cs.endpoint_view(e, e["provider"], cat)) for e in cat.endpoints]
+    [row] = [r for s in cs.domain_rows(pairs, cat.capabilities, cat.capability_titles) for r in s["rows"]]
+    assert row["title"] == "Find a person's work email"
+    assert row["description"] == long
+
+
+def test_a_title_for_no_capability_fails_the_load(tmp_path):
+    (tmp_path / "capabilities.yaml").write_text(
+        "platforms: {people: People}\ncapabilities: {}\ncapability_titles: {people.typo: Short}\n")
+    with pytest.raises(ValueError, match="people.typo"):
+        cs.load(directory=tmp_path)
 
 
 async def test_every_endpoint_carries_a_domain_and_a_call_line(clients: AsyncClient):

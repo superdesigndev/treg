@@ -104,6 +104,8 @@ class Catalog:
     unit_rates: dict[str, dict[str, float | None]] = field(default_factory=dict)
     platforms: dict[str, dict] = field(default_factory=dict)     # slug -> {label, category}
     capabilities: dict[str, str] = field(default_factory=dict)   # id -> description
+    # id -> a short title for people, where the description (written for agents too) runs long
+    capability_titles: dict[str, str] = field(default_factory=dict)
     endpoints: list[dict] = field(default_factory=list)          # normalized endpoint dicts
     # query word -> catalog words that mean the same thing (aliases.yaml) — search-time only
     aliases: dict[str, list[str]] = field(default_factory=dict)
@@ -499,9 +501,13 @@ def _parse(directory: Path) -> Catalog:
                        for meter, v in (meters or {}).items()}
         for service, meters in (fx_doc.get("unit_rates_usd") or {}).items()
     }
+    # A title renames a job for people only, so one naming no job is a typo: fail the load, loudly.
+    capability_titles = dict(taxonomy.get("capability_titles") or {})
+    if unknown := sorted(set(capability_titles) - set(capabilities)):
+        raise ValueError(f"capability_titles name no capability: {', '.join(unknown)}")
     cat = Catalog(fx=fx, credit_rates=credit_rates, unit_rates=unit_rates,
                   shared_plans=shared_plans, trial_pools=trial_pools, platforms=platforms,
-                  capabilities=capabilities, endpoints=endpoints, by_id=by_id,
+                  capabilities=capabilities, capability_titles=capability_titles, endpoints=endpoints, by_id=by_id,
                   provider_meta=provider_meta, aliases=aliases, contracts=contracts, adapters=adapters)
     from .routing.synthetic import routed_endpoint
     for cap, contract in contracts.items():
@@ -924,7 +930,8 @@ def endpoint_context(ep: dict, cat: Catalog) -> dict:
     }
 
 
-def domain_rows(pairs: list[tuple[dict, dict]], capabilities: dict[str, str]) -> list[dict]:
+def domain_rows(pairs: list[tuple[dict, dict]], capabilities: dict[str, str],
+                titles: dict[str, str]) -> list[dict]:
     """One platform's `(endpoint, view)` pairs as the LEDGER the platform page renders: domain
     sections, each holding merged rows (a job several providers do) before single rows.
 
@@ -967,7 +974,9 @@ def domain_rows(pairs: list[tuple[dict, dict]], capabilities: dict[str, str]) ->
             # The row files under the domain most of its providers give it, not the cheapest
             # one's alone: one provider's odd `search` pulled a SERP job out of `serp`.
             domains = [e["domain"] for e in eps]
+            # `title` is the short name a person scans; `description` stays whole for agents.
             rows.append({"kind": "merged", "capability": cap, "description": title,
+                         "title": titles.get(cap),
                          "domain": max(domains, key=domains.count), "endpoints": eps})
             continue
         rows += [{"kind": "single", "capability": cap, "description": e["name"] or e["summary"] or title,

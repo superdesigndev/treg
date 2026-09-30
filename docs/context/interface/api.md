@@ -421,7 +421,8 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
 
   Domain grouping is server-side (`domain_rows`), so CLI and dashboard share grouping and
   comparison semantics; a merged row, and a routed row, file under the domain most of their
-  providers give them. The dashboard's platform shelf reorders those rows by 30-day calls
+  providers give them; a merged row carries `title` where `capability_titles` names one, beside its
+  whole `description`. The dashboard's platform shelf reorders those rows by 30-day calls
   (`interface/dashboard.md`). `call_template` uses the verified test request, then documented examples.
   Dotted body keys (`params.domain`) are expanded into nested JSON by `unflatten_dotted()` so
   the paste-ready `--data` matches the wire body.
