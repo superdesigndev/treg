@@ -323,7 +323,6 @@
   .soon-note:hover::after{opacity:1}
   .chip.demo{border-color:var(--accent);color:var(--accent)}
   .modal .hd{display:flex;justify-content:space-between;align-items:center;padding:15px 18px;border-bottom:1px solid var(--line)}
-  .tabs .act-toggle{margin-left:auto;align-self:center;margin-bottom:6px;padding:4px 11px;font-family:inherit;font-size:12px;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:999px} .tabs .act-toggle:hover{border-color:var(--accent);color:var(--accent)}
   tr.act-row{cursor:pointer} tr.act-row:hover td{background:var(--panel2)} .act-view{font-size:11px;color:var(--accent);margin-left:6px;white-space:nowrap}
   .drawer .hd{display:flex;justify-content:space-between;align-items:center;gap:12px} .drawer .hd b{min-width:0;overflow-wrap:anywhere}
   .drawer{position:fixed;top:0;right:0;height:100vh;width:min(520px,96vw);background:var(--panel);border-left:1px solid var(--line);z-index:50;box-shadow:-12px 0 44px rgba(20,16,10,.34);display:flex;flex-direction:column}
@@ -778,7 +777,7 @@ a:hover{text-decoration-color:var(--muted)}
 .cat-find{position:relative;display:flex;align-items:center;gap:10px;max-width:760px;margin:6px 0 26px;padding:0 8px 0 16px;
   transition:box-shadow .15s}
 /* A search box's surface, shared by the kind switch that sits beside the Connections filter. */
-.cat-find,.seg.cn-kinds{min-height:52px;border:0;border-radius:14px;background:var(--surface,var(--panel));box-shadow:var(--shadow-sm)}
+.cat-find,.seg.cn-kinds,.seg.pl-seg,.pl-select{min-height:52px;border:0;border-radius:14px;background:var(--surface,var(--panel));box-shadow:var(--shadow-sm)}
 .cat-find:focus-within{box-shadow:var(--shadow-sm),0 0 0 1.5px var(--ink)}
 .cat-find-i{flex:none;color:var(--muted)}
 .cat-find input{flex:1;min-width:0;border:0;outline:none;background:none;color:var(--ink);font-family:var(--sans);font-size:15.5px;padding:14px 0}
@@ -884,9 +883,11 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
 /* A card rests on the faintest shadow; hover lifts it one step. A grid of forty with a
    full shadow each read as a pile of floating tiles. */
 .pl-card{display:flex;flex-direction:column;gap:12px;padding:18px 20px;border:0;border-radius:16px;background:var(--surface);
-  box-shadow:var(--shadow-sm);color:var(--ink);text-decoration:none;text-align:left;font:inherit;cursor:pointer;
+  box-shadow:var(--shadow-sm);color:var(--ink);text-decoration:none;text-align:left;font:inherit;
   transition:box-shadow .2s var(--ease),transform .2s var(--ease)}
-.pl-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px);text-decoration:none}
+/* Only a card that opens something lifts and shows a pointer; a panel, a form or a figure stays put. */
+:is(a,button,[role=link],[role=button]).pl-card{cursor:pointer}
+:is(a,button,[role=link],[role=button]).pl-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px);text-decoration:none}
 .pl-card:focus-visible{outline:none;box-shadow:var(--shadow-sm),0 0 0 1.5px var(--ink)}
 .pl-card.on{box-shadow:var(--shadow-sm),0 0 0 1.5px var(--ink)}
 .pl-cmp b{font-size:15.5px;font-weight:500;line-height:1.4}
@@ -1011,10 +1012,79 @@ main.flush,.redesign main.flush{padding:0;max-width:none}
 .cn-filters{display:flex;flex-wrap:wrap;align-items:center;gap:12px 16px;margin:0 0 28px}
 .cn-find{flex:1 1 320px;max-width:560px;margin:0}
 /* The switch sits beside the filter box as its twin: same height, surface and corners. */
-.seg.cn-kinds{height:52px;margin:0;padding:5px;gap:2px}
-.seg.cn-kinds button{height:100%;padding:0 14px;border-radius:10px;font-family:var(--sans);font-size:13.5px}
-.seg.cn-kinds button span{font-family:var(--mono);font-size:11.5px}
+.seg.cn-kinds,.seg.pl-seg{height:52px;margin:0;padding:5px;gap:2px}
+.seg.cn-kinds button,.seg.pl-seg button{height:100%;padding:0 14px;border-radius:10px;font-family:var(--sans);font-size:13.5px}
+.seg.cn-kinds button span,.seg.pl-seg button span{font-family:var(--mono);font-size:11.5px}
+/* A picker beside them is their twin too: a select on the same surface, its own chevron. */
+.pl-select{height:52px;margin:0;padding:0 40px 0 16px;border:0;color:var(--ink);font:14px var(--sans);cursor:pointer;
+  appearance:none;-webkit-appearance:none;background-repeat:no-repeat;background-position:right 16px center;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")}
+.pl-select:focus-visible{outline:none;box-shadow:var(--shadow-sm),0 0 0 1.5px var(--ink)}
 .cn-group{margin:0 0 30px}
+
+/* ---- the shelf's look beyond the catalog: Your own tools, Secrets, Team resources, Activity ---- */
+.pl-hero-row{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px 24px}
+.pl-hero-a{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+.pl-hero-a:empty{display:none}
+/* A hero with a tab row under it hands the row its own spacing; a note under the tabs sits closer. */
+.pl-hero:has(+ .pl-tabs){padding-bottom:26px}
+.pl .pl-tabs{margin:0 0 30px}
+.pl .pl-tabs:has(+ .own-note){margin-bottom:16px}
+.own-note{margin:0 0 28px;max-width:80ch}
+.pl-push{margin-left:auto}
+.pl-meta.pl-push{font-family:var(--sans);font-size:13px}
+.pl-sub{display:block;margin-top:2px;font-size:11.5px;color:var(--muted2)}
+.pl-by{display:inline-flex;flex-wrap:wrap;align-items:center;gap:4px 8px;max-width:100%;color:var(--muted)}
+.ui-td .cn-links{flex-wrap:nowrap;justify-content:flex-end;font-family:var(--sans);white-space:nowrap}
+.own-card .cn-id a{color:inherit;text-decoration:none}
+.own-card .cn-id a:hover{text-decoration:underline;text-underline-offset:3px}
+.own-add{position:relative}
+.own-add-scrim{position:fixed;inset:0;z-index:29}
+.own-add-menu{left:auto;right:0;top:calc(100% + 8px);width:300px;padding:6px;border:0;border-radius:14px;background:var(--surface);box-shadow:var(--shadow-md)}
+.own-add-menu .row{padding:10px 12px;border-radius:10px}
+.own-add-menu .row b{display:block;font-size:13.5px;font-weight:500}
+.own-add-menu .row .sub{display:block;margin-top:2px;font-size:12px}
+.own-form{gap:0;max-width:760px;padding:20px 22px}
+.own-form .field input,.own-form .field select{height:40px;border-radius:10px}
+.own-form-tip{margin:0 0 12px;font-size:13px;color:var(--muted)}
+.own-form-a{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.own-empty{gap:0;max-width:760px;padding:22px 24px}
+.own-empty h2{margin:0 0 8px;font-size:16px;font-weight:600;letter-spacing:-.01em}
+.own-empty>p{margin:0 0 16px;font-size:13.5px;line-height:1.6;color:var(--muted)}
+.own-step{margin-top:12px}
+.own-step-note{margin:0 0 8px;font-size:13px;color:var(--muted)}
+.own-prompt{max-height:220px;overflow:auto}
+.seg.pl-seg.own-empty-seg{align-self:flex-start;height:40px;min-height:40px;margin:0 0 12px;padding:3px;background:var(--bg);box-shadow:inset 0 0 0 1px var(--line)}
+.seg.pl-seg.own-empty-seg button{font-size:12.5px;border-radius:8px}
+.own-pager{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin-top:14px}
+
+/* Activity: the feed's cells, and the usage figures. */
+.act-key{flex:0 1 340px;min-width:0}
+.act-feed .ui-td{vertical-align:top}
+.act-feed .act-static{cursor:default}
+.act-feed .act-static:hover .ui-td{background:none}
+.act-who{display:block;white-space:nowrap}
+.act-dim{color:var(--muted2)}
+.act-tool{font-weight:500}
+.act-kind{margin-left:8px;font-size:11.5px;color:var(--muted2)}
+.act-extra{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:7px}
+.act-link{font-size:12.5px}
+.act-st{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;color:var(--ink)}
+.act-st::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--green)}
+.act-st.bad{color:var(--red)}
+.act-st.bad::before{background:var(--red)}
+.act-st.pending{margin-left:12px;font-family:var(--sans);color:var(--muted)}
+.act-st.pending::before{background:var(--amber)}
+.act-view{margin-left:12px;font-size:12px;color:var(--muted)}
+.ui-tr:hover .act-view{color:var(--ink)}
+.act-cost{font-family:var(--mono);font-size:12.5px}
+.act-cached{margin-right:8px;padding:2px 8px;border-radius:999px;background:var(--hover);font-family:var(--sans);font-size:11px;color:var(--muted)}
+.act-stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin:0 0 52px}
+.act-stat{gap:6px;padding:18px 20px}
+.act-stat b{font-family:var(--mono);font-size:28px;font-weight:500;line-height:1.1;font-variant-numeric:tabular-nums}
+.act-stat span{font-size:12.5px;color:var(--muted)}
+.act-pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(360px,100%),1fr));gap:0 24px}
+
 .pv-hero{padding-bottom:36px}
 .pv-id{display:flex;align-items:center;gap:12px}
 .pv-acts{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}

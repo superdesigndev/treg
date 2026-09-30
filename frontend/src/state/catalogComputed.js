@@ -289,7 +289,8 @@ apiKeyGroups(){
       }
       return groups;
     },
-activityShown(){ return this.actOkOnly ? this.activityRows.filter(a=>a.ok) : this.activityRows; },
+activityOkRows(){ return this.activityRows.filter(a=>a.ok); },
+activityShown(){ return this.actOkOnly ? this.activityOkRows : this.activityRows; },
 callBodyPretty(){ const t=this.callView&&this.callView.response&&this.callView.response.body_text; return t?this.pretty(t):''; },
 // JSON pretty-printed when it parses (a 2 MB parse is ~20 ms)
     callBodyTruncated(){ return !this.callViewFull && this.callBodyPretty.length>262144; },

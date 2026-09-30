@@ -46,9 +46,6 @@ export default { ...controller, components: { ...controller.components, ...dialo
     <span class="rd-sr-only" role="status">{{startCopied ? 'Copied to clipboard' : ''}}</span>
     <div class="layout" :class="{solo:publicCatalog}">
       <main id="maincontent" tabindex="-1" :class="{flush:view==='find'}">
-        <!-- The Catalog page has its own, larger search (CatalogPage.vue): there it also finds tools
-             for a described job. -->
-        <div v-if="!publicCatalog && (view==='tools'||view==='resources')" class="rd-view-search search"><img src="/media/redesign/search.svg" alt=""><input :ref="el => setElement('search', el)" v-model="q" :placeholder="view==='resources'?'Search team resources…':'Search your own tools…'" aria-label="Search"></div>
         <div v-if="err" class="banner">{{err}}</div>
         <div v-if="pendingInvites.length" class="banner" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span>You've been invited:</span>

@@ -62,11 +62,7 @@ body:has(.redesign)::before { display:none; }
 .rd-referral[aria-current="page"] { background:var(--inverse); border-color:var(--inverse); color:var(--inverse-ink); }
 .rd-referral[aria-current="page"] img,[data-theme="dark"] .rd-referral img { filter:brightness(0) invert(1); }
 [data-theme="dark"] .rd-referral[aria-current="page"] img { filter:brightness(0); }
-.redesign .rd-view-search { margin:0 0 22px auto; max-width:320px; min-height:40px; padding:9px 14px; gap:10px; background:var(--surface); box-shadow:none; border:1px solid var(--line); border-radius:999px; }
-.redesign .rd-view-search:hover { border-color:var(--muted2); }
-.rd-view-search img { width:16px; height:16px; flex:none; opacity:.6; }
 .redesign .search input { min-width:0; font-family:var(--sans); }
-.redesign .rd-view-search input { padding:0; line-height:20px; }
 .redesign .search:focus-within { outline:none; border-color:var(--muted); box-shadow:0 0 0 3px color-mix(in srgb,var(--ink) 12%,transparent); }
 /* The wrapper owns the focus indicator, including the global focus-visible shadow. */
 .redesign .search input:focus-visible { outline:none; box-shadow:none; }
@@ -85,7 +81,7 @@ body:has(.redesign)::before { display:none; }
 .rd-welcome h1 { margin:0; }
 .rd-search { display:flex; align-items:center; gap:10px; width:200px; min-height:40px; padding:10px 16px; border:0; border-radius:999px; background:var(--surface); color:var(--muted); font:12.5px var(--sans); text-align:left; }
 .rd-search img { width:13px; height:13px; }
-[data-theme="dark"] .rd-welcome-title img,[data-theme="dark"] .rd-search img,[data-theme="dark"] .rd-view-search img { filter:invert(1); }
+[data-theme="dark"] .rd-welcome-title img,[data-theme="dark"] .rd-search img { filter:invert(1); }
 .rd-start .start-card { background:var(--surface); border:1px solid var(--line); border-radius:24px; }
 .rd-start .rd-setup { display:flex; margin-top:14px; border-radius:32px; }
 .rd-setup-side { width:360px; flex:0 0 360px; padding:24px; border-right:1px solid var(--line); }
@@ -198,7 +194,6 @@ body:has(.redesign)::before { display:none; }
   .rd-build .seg button { flex:1; white-space:normal; }
   .rd-account-panel { position:fixed; top:54px; left:12px; right:12px; width:auto; }
   .rd-start > details { padding:0 8px; }
-  .redesign .rd-view-search { max-width:none; }
 }
 @media(max-width:360px) {
   .rd-nav { padding-inline:8px; font-size:12px; }

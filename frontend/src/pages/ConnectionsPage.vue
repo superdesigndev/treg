@@ -2,12 +2,13 @@
 import { useDashboard } from '../state/context'
 import ProviderLogo from '../components/ProviderLogo.vue'
 import ConnectionCard from '../components/ConnectionCard.vue'
+import FilterBox from '../components/FilterBox.vue'
 
 // Every account and key the team holds, then every provider one can be added for. The catalog says
 // what an agent can call; this page says whose credential it calls with. A provider key saved as a
 // secret named for the provider is listed here too, since the credential ladder treats it the same.
 export default {
-  components: { ProviderLogo, ConnectionCard },
+  components: { ProviderLogo, ConnectionCard, FilterBox },
   setup: useDashboard,
   watch: {
     // The one place a "Bring your own key" jump scrolls: when it lands, and again if the provider list
@@ -44,11 +45,7 @@ export default {
   <section class="pl-sec">
     <h2 class="pl-h"><span>Add a connection</span><i></i><em>{{connectable.length}}</em></h2>
     <div class="cn-filters">
-      <div class="cat-find cn-find">
-        <svg class="cat-find-i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input v-model="connQ" aria-label="Filter providers" placeholder="Filter providers, e.g. Apollo, Google Ads, video" @keydown.esc="connQ=''">
-        <button v-if="connQ" class="cat-find-x" type="button" aria-label="Clear the filter" @click="connQ=''">×</button>
-      </div>
+      <FilterBox v-model="connQ" label="Filter providers" placeholder="Filter providers, e.g. Apollo, Google Ads, video" />
       <!-- Logging in with an account you already have and pasting a key are different errands:
            someone holding a Google Ads login is not scanning for API-key vendors. -->
       <div class="seg cn-kinds" role="radiogroup" aria-label="How you connect">

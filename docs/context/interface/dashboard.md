@@ -68,7 +68,10 @@ this page keeps what no single file shows. The look follows the root `design.md`
 ## Catalog, Connections, a provider
 
 - **Two questions, two pages.** The Catalog says what an agent can call; Connections says whose
-  credential it calls with. They, a platform shelf and a provider's page share one look.
+  credential it calls with. They, a platform shelf, a provider's page, Your own tools and Activity
+  share one look: a display-font title, sections under a rule, a filter row (`FilterBox`, a
+  segmented switch), things as cards, and lists as `DataTable` on a card surface.
+- **A card lifts only when it opens something** (a link or button); a panel, form or figure stays put.
 - **Every credential for a catalog provider is a Connections card**: a connection, or a secret named
   exactly for a pasted-key provider, which the credential ladder uses the same way. Secrets lists
   only what the team's own tools use. Telling the two apart compares lists, so `loadConnections`

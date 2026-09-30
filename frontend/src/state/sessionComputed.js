@@ -19,10 +19,13 @@ filteredTools(){ const q=this.q.toLowerCase(); return this.tools.filter(t=>!q||t
 skillTools(){ const q=this.q.toLowerCase(); return this.tools.filter(t=>t.bundle_id && (!q||t.name.toLowerCase().includes(q)||(t.base_url||'').toLowerCase().includes(q))); },
 recipes(){ const q=this.q.toLowerCase(); const withTool=new Set(this.tools.filter(t=>t.bundle_id!=null).map(t=>t.bundle_id));
       return this.bundles.filter(b=>!withTool.has(b.id) && (!q||b.name.toLowerCase().includes(q))); },
-hasAnyTools(){ return this.endpoints.length||this.skillTools.length||this.recipes.length; },
+ownToolCount(){ return this.endpoints.length+this.skillTools.length+this.recipes.length; },
+hasAnyTools(){ return this.ownToolCount>0; },
+// A personal space whose owner also belongs to a team: an empty list here usually means the wrong space.
+personalWithTeams(){ return this.isPersonal(this.activeOrg) && this.myOrgs.some(o=>!this.isPersonal(o)); },
     toolGroups(){ return [
-      {key:'endpoints', label:'Endpoints/CLI', hint:'APIs and CLIs you registered directly', rows:this.endpoints},
-      {key:'skills', label:'Integration Skills', hint:'tools from a skill package (carry a recipe)', rows:this.skillTools},
+      {key:'endpoints', label:'APIs & CLIs', hint:'Registered directly, one base URL or command each.', rows:this.endpoints},
+      {key:'skills', label:'Integration skills', hint:'Tools that came with a skill package, and carry its recipe.', rows:this.skillTools},
     ]; },
 cliShowHtml(){
       const t = [
