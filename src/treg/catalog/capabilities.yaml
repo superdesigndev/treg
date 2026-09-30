@@ -1264,3 +1264,25 @@ capabilities:
   stocks.company.news: "News for a specific company"
   stocks.fundamentals.metrics: "Fundamental metrics and ratios for a ticker"
   stocks.market.status: "Is the market open right now"
+
+# Short titles people scan on a platform shelf, only where a compared job's description runs long.
+# The description above stays whole: agents read it, and search ranks on it.
+capability_titles:
+  people.enrich: "Enrich a person's profile"
+  people.email.find: "Find a person's work email"
+  people.email.verify: "Verify an email address"
+  people.search: "Find people by role, company or location"
+  people.search.count: "Count a people search before paying"
+  people.search.filters: "List people-search filter values"
+  creators.search: "Find creators by niche and audience"
+  companies.search: "Find companies by industry, size or tech"
+  companies.search.count: "Count a company search before paying"
+  companies.funding.feed: "Browse the latest funding rounds"
+  google.keywords.trends: "Keyword popularity over time"
+  google.serp.ai_overview: "Get Google's AI Overview"
+  google.serp.local: "Get Google local pack results"
+  web.answer: "Answer a question with cited sources"
+  linkedin.profile.from_email: "Find a LinkedIn profile from an email"
+  video-gen.result.retrieve: "Download a finished video"
+  tripadvisor.search.general: "Search places, hotels and restaurants"
+  stocks.quote.live: "Current quote for a ticker"
