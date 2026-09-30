@@ -96,6 +96,43 @@ class _SecurityHeadersMiddleware:
         return await self.app(scope, receive, send_with_security_headers)
 
 
+class _DevTitleMiddleware:
+    """On a local dev server, every page's `<title>` starts with "[dev] ", so its browser tab is told
+    apart from treg.to's at a glance. Registered only when `Settings.local_dev` holds; it buffers an
+    HTML response to rewrite it, and leaves every other response alone."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        start: dict | None = None
+        body: list[bytes] = []
+
+        async def send_marked(message):
+            nonlocal start
+            if message["type"] == "http.response.start":
+                ctype = MutableHeaders(scope=message).get("content-type", "")
+                if not ctype.startswith("text/html"):
+                    return await send(message)
+                start = message
+                return None
+            if start is None:
+                return await send(message)
+            body.append(message.get("body", b""))
+            if message.get("more_body"):
+                return None
+            html = b"".join(body).replace(b"<title>", b"<title>[dev] ", 1)
+            headers = MutableHeaders(scope=dict(start, headers=list(start.get("headers", []))))
+            if "content-length" in headers:
+                headers["content-length"] = str(len(html))
+            await send(dict(start, headers=headers.raw))
+            await send({"type": "http.response.body", "body": html})
+
+        return await self.app(scope, receive, send_marked)
+
+
 _BODY_ENC_HEADER = b"x-treg-body-encoding"
 
 

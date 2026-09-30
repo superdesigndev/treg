@@ -675,10 +675,14 @@ class Settings(BaseSettings):
           - a loopback `public_url` (so it is not fronted by a public domain).
         A stray TREG_SINGLE_USER=true in production therefore does nothing.
         """
-        if not self.single_user or "sqlite" not in self.database_url:
-            return False
+        return self.single_user and self.local_dev
+
+    @property
+    def local_dev(self) -> bool:
+        """A registry on this machine, never a deploy: a LOCAL sqlite database behind a loopback
+        `public_url`. The one test for both; `single_user_ok` and the dev tab marker rest on it."""
         host = (urlsplit(self.public_url).hostname or "").lower()
-        return host in ("localhost", "127.0.0.1", "0.0.0.0", "::1", "")
+        return "sqlite" in self.database_url and host in ("localhost", "127.0.0.1", "0.0.0.0", "::1", "")
 
     @property
     def platform_provider_set(self) -> frozenset[str]:

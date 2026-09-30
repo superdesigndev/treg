@@ -88,7 +88,10 @@ the typed 503; normal HTTP refusals remain responses, not server faults.
 `_BodyDecodeMiddleware` -> `_SecurityHeadersMiddleware` ->
 `_LegacyHostRedirectMiddleware` -> routes/mounts. All three are pure ASGI. The security wrapper adds
 headers at `http.response.start` with case-insensitive setdefault semantics, and the redirect wrapper
-either sends the same 301/302 response as before or calls its child directly. Keeping
+either sends the same 301/302 response as before or calls its child directly. On a local dev server
+(`Settings.local_dev`: local sqlite behind a loopback `public_url`, the same test `single_user_ok`
+rests on) `_DevTitleMiddleware` wraps the stack and prefixes every HTML page's `<title>` with
+`[dev] `, so its tab is told apart from production's; it is never registered anywhere else. Keeping
 `BaseHTTPMiddleware.call_next()` out of this stack matters for streaming and disconnects: an MCP
 client may close while its stateless transport terminates without sending a response, which is a
 normal end to an already-dead connection rather than a server 500.
