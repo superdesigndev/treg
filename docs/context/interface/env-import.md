@@ -160,7 +160,9 @@ hand-verified**; an ingest can only feed *suggestions* a human/LLM confirms.
 `--llm-token` or `TREG_LLM_TOKEN`) sends the **names only** to an **OpenAI-compatible** endpoint
 (`_llm_chat`; default `--llm-model gemini-2.5-flash` via Gemini's compat `--llm-base-url`). The pure
 `providers.llm_prompt`/`llm_parse` build the request + parse the JSON reply (tolerating prose, dropping
-entries without a var/base_url/known shape). Each resolution is shown and **confirmed by the user**
+entries without a var/base_url/known shape). A reasoning model's inline thought (`<think>…</think>`, or
+only `</think>` when the chat template pre-fills the opening tag) is dropped before parsing, since it
+often drafts the JSON too. Each resolution is shown and **confirmed by the user**
 (`LLM suggests … Register? [y/N]`) before a secret + tool are created via `build_binding` — same path as
 a catalog match. The LLM only runs on a real run (not `--dry-run`), and app-internal secrets never reach
 it (they're excluded before this step).

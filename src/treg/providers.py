@@ -672,6 +672,10 @@ def llm_parse(text: str) -> list[dict]:
     """Parse the LLM's JSON reply into resolution dicts, tolerating prose around the JSON. Keeps only
     entries with a var + base_url + a known auth shape."""
     import json
+    # A self-hosted reasoning model can return its chain of thought inline — `<think>…</think>` before
+    # the answer, or just the closing tag when the chat template pre-fills `<think>`. The thought often
+    # drafts the JSON too, so slicing first-{ to last-} would glue the draft to the answer. Keep the answer.
+    text = text.rpartition("</think>")[2]
     try:
         data = json.loads(text)
     except Exception:

@@ -294,6 +294,19 @@ def test_provider_model_and_dsn_are_config(tmp_path):
     assert d["SENTRY_DSN"].kind == "config"
 
 
+@pytest.mark.parametrize("head", [
+    "<think>\n",   # llama.cpp --reasoning-format none: the whole block, opening tag included
+    "",            # vLLM without a reasoning parser: the template pre-filled <think>, only the close remains
+])
+def test_llm_parse_skips_inline_reasoning(head):
+    draft = ('{"resolved":[{"var":"NAME","provider":"Name","base_url":"https://...",'
+             '"auth":{"shape":"bearer"}}]}')
+    answer = ('{"resolved":[{"var":"ACME_API_KEY","provider":"Acme",'
+              '"base_url":"https://api.acme.com","auth":{"shape":"bearer"}}]}')
+    text = f"{head}The format is {draft}. ACME_API_KEY looks like Acme.\n</think>\n\n{answer}"
+    assert [e["var"] for e in prov.llm_parse(text)] == ["ACME_API_KEY"]
+
+
 def test_llm_parse_rejects_unsafe_base_url():
     good = '{"resolved":[{"var":"X","base_url":"https://api.acme.com","auth":{"shape":"bearer"}}]}'
     assert len(prov.llm_parse(good)) == 1
