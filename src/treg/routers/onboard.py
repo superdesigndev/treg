@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from .. import sandbox as demo_sandbox
 from ..application import onboard as onboard_use_cases
+from ..application import signup_profile
 from ..config import get_settings
 from ..domain.identity.access import (
     Caller,
@@ -86,6 +87,34 @@ async def onboard_reset(
 ) -> dict:
     """Remove the caller's demo team(s) + demo teammates from their real teams — a clean exit."""
     return await onboard_use_cases.reset(user_id=user.id)
+
+
+@app.get("/onboard/profile")
+async def onboard_profile(user: User = Depends(require_identity)) -> dict:
+    """"Picked for you": the caller's enriched profile, use case and plays. The first read starts
+    the build and answers `status: pending`; `off` when the feature is not configured."""
+    return await signup_profile.view(user.id, user.email)
+
+
+class UseCaseIn(BaseModel):
+    use_case: str
+
+
+_USE_CASE_HTTP_ERRORS = {
+    "off": (404, "not available on this server"),
+    "unknown_use_case": (400, "unknown use case"),
+    "rate_limited": (429, "too many changes — try again in an hour"),
+}
+
+
+@app.post("/onboard/profile/use-case")
+async def onboard_profile_use_case(body: UseCaseIn, user: User = Depends(require_identity)) -> dict:
+    """The caller says what they are here for; the plays are rebuilt around it."""
+    try:
+        return await signup_profile.answer(user.id, user.email, body.use_case)
+    except signup_profile.AnswerError as exc:
+        status_code, detail = _USE_CASE_HTTP_ERRORS[exc.kind]
+        raise HTTPException(status_code=status_code, detail=detail) from None
 
 
 onboard_entry_router = app

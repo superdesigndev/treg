@@ -49,6 +49,9 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/feedback.py": {API},
     "application/media.py": {API},  # `treg host`: one short write, one short read, no upstream wait
     "application/catalog_find.py": {API},  # one rate-limit write, committed before the judge call
+    # "Picked for you": one short read/write per dashboard read, committed before the build task
+    # starts; the build's own two short transactions bracket its upstream calls, never span them.
+    "application/signup_profile.py": {API},
 
     "application/referrals.py": {API}, "application/signup.py": {API},
     "application/onboard/__init__.py": {API},

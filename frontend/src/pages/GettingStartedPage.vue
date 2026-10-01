@@ -9,8 +9,17 @@ export default {
   // waits for the variant so no one sees one arm and then the other; without PostHog it is control.
   data: () => ({ tryArt: '' }),
   computed: { exampleBanners: () => exampleBanners, exampleIcons: () => exampleIcons },
+  methods: {
+    fmtToolPrice(t){  // "from $0.0012 / hit" — the catalog's own figure, rounded for a card
+      if(!t.usd) return t.routed ? '' : 'Free'
+      const from=t.routed && t.served && t.served.startsWith('treg picks') ? 'from ' : ''
+      const v=t.usd<0.01?t.usd.toPrecision(2):t.usd.toFixed(t.usd<1?3:2)
+      return from+'$'+String(+v)+' / '+({per_result:'result',per_success:'hit'}[t.per]||'call')
+    },
+  },
   mounted(){
     this.loadPlatforms()  // the catalog size in the copy
+    this.loadSignupProfile()
     this.featureVariant('getting-started-example-art').then(v => { this.tryArt = v === 'test' ? 'test' : 'control' })
   },
 }
@@ -64,6 +73,30 @@ export default {
           <div class="start-card rd-try">
             <div class="start-hd"><span class="start-num">2</span><b style="font-size:16px">Try it out</b></div>
             <div class="start-bd">
+              <!-- Picked for you: who they are and the catalog jobs jev matched to them (application/signup_profile.py) -->
+              <section v-if="forYou" class="fy" aria-live="polite">
+                <div class="fy-hd">
+                  <img v-if="forYou.company && forYou.company.logo" class="fy-logo" :src="forYou.company.logo" alt="" @error="$event.target.style.display='none'">
+                  <div class="fy-who">
+                    <b>Tools for {{(forYou.company && forYou.company.name) || 'you'}}</b>
+                    <span v-if="forYouFacts" class="fy-facts">{{forYouFacts}}</span>
+                  </div>
+                </div>
+                <p v-if="forYou.status==='pending' && !forYou.tools" class="fy-wait"><span class="wc-waitdot"></span>Matching the catalog to you…</p>
+                <template v-else-if="forYou.status==='ask'">
+                  <p class="fy-ask">What will your agent do first? Jev will match tools to it.</p>
+                  <div class="wc-usecase-chips">
+                    <button v-for="u in forYou.use_cases" :key="u.key" type="button" class="prov-chip" @click="pickUseCase(u.key,'getting_started_ask')">{{u.label}}</button>
+                  </div>
+                </template>
+                <div v-if="forYou.tools && forYou.tools.length" class="fy-tool-row">
+                  <button v-for="t in forYou.tools" :key="t.id" type="button" class="fy-tool" @click="track('signup_tool_opened',{id:t.id,routed:t.routed,reason:t.reason,p:t.p}); openPlatform(t.platform,false,t.cap_key)">
+                    <span class="fy-tool-hd"><img :src="'/logos/platforms/'+t.platform+'.svg'" alt="" @error="$event.target.style.visibility='hidden'"><span class="fy-tool-prov">{{t.platform_label}}</span><span v-if="t.usd!=null && fmtToolPrice(t)" class="fy-tool-price">{{fmtToolPrice(t)}}</span></span>
+                    <span class="fy-tool-job">{{t.job}}</span>
+                    <span class="fy-tool-why">{{t.served}} · {{t.reason}}</span>
+                  </button>
+                </div>
+              </section>
               <p class="rd-try-intro">Copy an example below and send it to your agent.</p>
               <div v-if="tryArt" class="try-grid" :data-art="tryArt">
                 <button v-for="ex in tryExamples" :key="ex.k" type="button" class="try-card" :class="['rd-task-'+ex.k, {'rd-try-art':tryArt==='test'}]" @click="track('tryit_prompt_copied',{key:ex.k,cat:ex.cat,from:'getting_started',art:tryArt}); copyStart(ex.prompt,'try-'+ex.k)">

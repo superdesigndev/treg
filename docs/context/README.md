@@ -49,7 +49,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Enrich Arena — paid comparisons, one-click feedback, and visible waterfalls](interface/enrich-arena.md) | shipped | arena.py, arena.py, arena.py, models.py, … |
 | [Import — scan a .env AND/OR a skills dir, auto-register as tools + bundles](interface/env-import.md) | in-progress | providers.py, skills.py |
 | [Landing sandbox backend - front-end entry removed](interface/landing-sandbox.md) | shipped | sandbox.py, sandbox_identity.py, pubfeed.py, sandbox.py, … |
-| [Onboarding — the first-run demo team (dashboard + CLI)](interface/onboarding.md) | shipped | auth.py, __init__.py, demo.py, cli.py, … |
+| [Onboarding — the first-run demo team (dashboard + CLI)](interface/onboarding.md) | shipped | auth.py, __init__.py, demo.py, signup_profile.py, … |
 | [Search surfaces — robots, sitemap, the crawlable catalog, and the social card](interface/seo.md) | shipped | api.py, web.py, agent_pages.py, robots.txt, … |
 | [Shell mode (treg shell) — transparent CLI interception](interface/shell.md) | shipped | shell.py, cli.py |
 | [Test cases for the ChatGPT plugin submission](interface/skill-openai-test-cases.md) | reference | — |

@@ -1,4 +1,5 @@
 import { storageGet, storageRemove } from './storage.js'
+import { PERSONAL_MAIL } from './constants.js'
 
 export default {
 maybeOnboard(){  // first-run: a brand-new user with no team yet is asked to NAME THEIR TEAM upfront
@@ -12,7 +13,7 @@ maybeOnboard(){  // first-run: a brand-new user with no team yet is asked to NAM
       // Invited here? Show an ACCEPT-INVITE page (join those teams) instead of forcing them to create a
       // throwaway team of their own (confusing: they'd end up with two). Decline → create-team.
       if(this.pendingInvites.length){ this.openInviteChoice(); return; }
-      this.welcome.name=this._suggestTeamName(); this._welcomeAgentFromRef(); this.welcome.on=true; },
+      this.welcome.name=this._suggestTeamName(); this._welcomeAgentFromRef(); this.welcome.on=true; this.loadSignupProfile(); },
 _welcomeAgentFromRef(){  // /grokbot's "Setup treg" CTA → the welcome already has Grok Bot picked; any other ref is ignored
       const r=storageGet('treg-ref'); storageRemove('treg-ref');
       if(r && this.welcomeAgents.concat(this.welcomeMoreAgents).some(a=>a.id===r)) this.welcome.agent=r; },
@@ -53,17 +54,32 @@ declineInvite(){ this.inviteChoice=false; this.inviteLinkOrg=null;
     },
 _suggestTeamName(){  // a friendly default from the email domain: sam@acme.dev → "Acme"
       const dom=((this.me||'').split('@')[1]||'').split('.')[0]||'';
-      const generic=['gmail','outlook','hotmail','yahoo','icloud','proton','protonmail','me','qq','163'];
-      return (dom && !generic.includes(dom.toLowerCase())) ? dom.charAt(0).toUpperCase()+dom.slice(1) : ''; },
+      return (dom && !PERSONAL_MAIL.includes(dom.toLowerCase())) ? dom.charAt(0).toUpperCase()+dom.slice(1) : ''; },
 async welcomeCreate(){ const name=(this.welcome.name||'').trim(); if(!name){ this.welcome.err='Give your team a name.'; return; }
       this.welcome.busy=true; this.welcome.err='';
       try{ const o=await this.api('/orgs',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({name})});
         this.onboarded=true; try{ await this.api('/onboard/skip',{method:'POST'}); }catch(e){}  // don't re-prompt
         await this.loadAll(); this.switchOrg({slug:o.org});
+        if(this.welcome.useCase) this.pickUseCase(this.welcome.useCase,'welcome');
         this.analyticsIdentify(); this.intercomUpdate(); this.track('onboarding_team_created',{team:o.org});
         this.welcome.step=1; }  // stay in the modal: pick your agent → get the setup line
       catch(e){ this.welcome.err='Could not create the team: '+(e.detail||e.status); }
       finally{ this.welcome.busy=false; } },
+// "Picked for you": the first read starts the server's build, so poll while it is pending
+    async loadSignupProfile(){ if(this.signupProfileTimer) return;
+      let tries=0;
+      const tick=async()=>{
+        try{ this.signupProfile=await this.api('/onboard/profile'); }catch(e){ this.signupProfile={status:'off'}; }
+        const st=this.signupProfile.status;
+        if(st==='pending' && ++tries<24){ this.signupProfileTimer=setTimeout(tick,2500); return; }
+        this.signupProfileTimer=null;
+        if(st==='ready'||st==='ask') this.track('signup_profile_shown',{status:st,answer:this.signupProfile.answer||'',persona:this.signupProfile.persona||'',tools:(this.signupProfile.tools||[]).length});
+      };
+      await tick(); },
+async pickUseCase(key, from){ this.track('signup_use_case_picked',{use_case:key,from});
+      try{ this.signupProfile=await this.api('/onboard/profile/use-case',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({use_case:key})}); }
+      catch(e){ return; }
+      this.loadSignupProfile(); },
 welcomeFinish(){ this.track('onboarding_finished',{agent:this.welcome.agent, step:this.welcome.step}); this.welcome.on=false;
       // Someone who signed up on the way to a platform (a /search result) stays on it; otherwise
       // Getting started, where the setup line lives.

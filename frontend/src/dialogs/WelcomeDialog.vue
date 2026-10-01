@@ -14,6 +14,12 @@ export default { components: { BrandMark, TregAgentPicker, TregSetupInstructions
             <h2 style="margin:0 0 8px;font-size:20px">Welcome{{me?', '+me.split('@')[0]:''}} 👋</h2>
             <p class="sub" style="margin:0 0 18px">Create your team — it's where you keep API keys and skills so your teammates and their agents can call them <b>without holding the keys</b>. You can invite people and add secrets right after.</p>
             <div class="field"><input v-model="welcome.name" placeholder="Team name, e.g. Superdesign" @keyup.enter="welcomeCreate"/></div>
+            <div v-if="personalEmail && forYou" class="wc-usecase">
+              <p class="wc-usecase-q">What will your agent do first? <span class="muted" style="font-weight:400">Optional</span></p>
+              <div class="wc-usecase-chips">
+                <button v-for="u in forYou.use_cases" :key="u.key" type="button" class="prov-chip" :class="{on:welcome.useCase===u.key}" :aria-pressed="welcome.useCase===u.key" @click="welcome.useCase = welcome.useCase===u.key ? '' : u.key">{{u.label}}</button>
+              </div>
+            </div>
             <button class="btn primary" style="width:100%;margin-top:4px" @click="welcomeCreate" :disabled="welcome.busy">{{welcome.busy?'Creating…':'Create team →'}}</button>
           </template>
           <template v-else-if="welcome.step===1">

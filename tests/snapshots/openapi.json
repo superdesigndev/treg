@@ -1655,6 +1655,19 @@
         "title": "UpdateDecisionIn",
         "type": "object"
       },
+      "UseCaseIn": {
+        "properties": {
+          "use_case": {
+            "title": "Use Case",
+            "type": "string"
+          }
+        },
+        "required": [
+          "use_case"
+        ],
+        "title": "UseCaseIn",
+        "type": "object"
+      },
       "UserIn": {
         "properties": {
           "email": {
@@ -8463,6 +8476,142 @@
           }
         },
         "summary": "Onboard Demo"
+      }
+    },
+    "/onboard/profile": {
+      "get": {
+        "description": "\"Picked for you\": the caller's enriched profile, use case and plays. The first read starts\nthe build and answers `status: pending`; `off` when the feature is not configured.",
+        "operationId": "onboard_profile_onboard_profile_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Onboard Profile Onboard Profile Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Onboard Profile"
+      }
+    },
+    "/onboard/profile/use-case": {
+      "post": {
+        "description": "The caller says what they are here for; the plays are rebuilt around it.",
+        "operationId": "onboard_profile_use_case_onboard_profile_use_case_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UseCaseIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Onboard Profile Use Case Onboard Profile Use Case Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Onboard Profile Use Case"
       }
     },
     "/onboard/reset": {

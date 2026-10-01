@@ -291,6 +291,10 @@ class Settings(BaseSettings):
     # receipt is a real bill. `ai_gateway_api_key` is the Vercel AI Gateway key jev answers through.
     jev_treg_token: str = ""
     ai_gateway_api_key: str = ""
+    # "Picked for you" on Getting started (application/signup_profile.py): enrich a signup through
+    # treg on the same `jev_treg_token` team and have jev match it to the catalog's jobs. Off = the
+    # dashboard shows the generic examples only.
+    signup_profile_enabled: bool = False
     platform_key_openrouter: str = ""  # Bearer key for asynchronous routed generation
     platform_key_replicate: str = ""  # Bearer token for official asynchronous models
     platform_key_reapi: str = ""      # Bearer key; prepaid credits at $0.001, Seedance 2.5 + image models

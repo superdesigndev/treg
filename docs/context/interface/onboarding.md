@@ -5,12 +5,14 @@ sources:
   - src/treg/application/auth.py
   - src/treg/application/onboard/__init__.py
   - src/treg/application/onboard/demo.py
+  - src/treg/application/signup_profile.py
   - src/treg/cli.py
   - src/treg/routers/auth.py
   - src/treg/routers/onboard.py
   - frontend/src/state/onboarding.js
   - frontend/src/dialogs/WelcomeDialog.vue
   - frontend/src/pages/GettingStartedPage.vue
+  - frontend/src/state/onboardingComputed.js
 related:
   - interface/api.md
   - interface/cli.md
@@ -166,6 +168,39 @@ modal opened over a platform detail page (arrival via `/search`): `welcomeFinish
 alone so someone mid-signup from a platform page stays on it. `/onboard/seed-tool` and
 `/onboard/accept-teammate` no longer have a dashboard caller (the CLI/demo paths don't use them either);
 **"Remove demo"** (`resetDemo` → `/onboard/reset`) remains in Help. A clay **`demo` chip** marks a demo org.
+
+## Picked for you (`src/treg/application/signup_profile.py`)
+
+Getting started opens step 2 with the tools that fit the signed-in person: one card per catalog
+**job** (capability), named with its platform. `GET /onboard/profile` starts a background build on
+first read and answers `pending`; the dashboard polls it. The build is treg calling itself on the
+`jev_treg_token` team (the same member token as the `/jev` demo), so every step is an ordinary,
+metered, logged call:
+
+1. **Enrich** a work address: `treg.people.enrich` (capped by `X-Treg-Max-Cost-Usd`) and
+   `thecompaniesapi.companies.enrich` in parallel; the company falls back to the summary the person
+   answer carries, and is dropped when its domain is not the address's. A personal mailbox
+   (`FREE_MAIL`) is never enriched: it mostly misses every provider, and a routed miss can still bill.
+2. **Match** in one jev request through `openrouter.ai-judge.decide`: a Choice over `PERSONAS` and a
+   Noul per candidate job, over the profile, what the person said they are here for, and their own
+   recent calls (`CallRecord`, by their email), which the question weighs highest.
+
+A job is served by its routed endpoint when treg routes it (the card says how many providers it
+picks from and quotes the cheapest), else by its cheapest core provider that needs no connection; a
+card never names treg as a vendor. Candidates, one per capability: the routed version of a job the
+person calls one provider for directly, the jobs of their answer, the jobs next to the ones they
+call, then every routed job. `pick` keeps the best six with a bar relative to the top score (jev's
+scale shifts with the person) and never two cards with the same job description. Each card's reason
+is written by code and opens that job's provider comparison on its platform page.
+
+With nothing to go on (a personal address that has not answered, no calls) the status is `ask` and
+the page shows the use cases as chips; the welcome modal asks the same question up front for a
+personal address. `POST /onboard/profile/use-case` stores the answer (rate limited per user) and
+re-matches, reusing the enrichment already paid for. A read after `TOOLS_FRESH_S` re-ranks in the
+background while the current tools stay on screen, so a returning person sees their calls reflected.
+The profile lives in the key-value store (`Ephemeral`, namespace `signup_profile`), is regenerable
+and holds no money; costs and raw probabilities stay server-side. `signup_profile_enabled` is off by
+default, and `off` hides the block entirely.
 
 Getting Started's key is the active team's signed Default key. It is intentionally revealable again:
 the server derives it from signed identity, team, and Default generation, while additional and agent

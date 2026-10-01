@@ -212,6 +212,8 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/onboard/demo', ('POST',), 'onboard_demo'),
     ('/onboard/skip', ('POST',), 'onboard_skip'),
     ('/onboard/reset', ('POST',), 'onboard_reset'),
+    ('/onboard/profile', ('GET',), 'onboard_profile'),
+    ('/onboard/profile/use-case', ('POST',), 'onboard_profile_use_case'),
     ('/demo/sandbox', ('POST',), 'demo_sandbox_mint'),
     ('/demo/sandbox/live', ('GET',), 'demo_sandbox_live'),
     ('/stripe/webhook', ('POST',), 'stripe_webhook'),

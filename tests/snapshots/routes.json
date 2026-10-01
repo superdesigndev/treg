@@ -1381,6 +1381,23 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "onboard_profile",
+    "path": "/onboard/profile"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "onboard_profile_use_case",
+    "path": "/onboard/profile/use-case"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "demo_sandbox_mint",
