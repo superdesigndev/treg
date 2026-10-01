@@ -49,10 +49,10 @@ endpoints:
     type: per_success
     value: 1
     currency: credit
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
     note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
       refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
   docs_url: https://www.socialcrawl.dev/docs/api-reference
@@ -107,10 +107,10 @@ endpoints:
     type: per_success
     value: 1
     currency: credit
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
     note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
       refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
   docs_url: https://www.socialcrawl.dev/docs/api-reference
@@ -153,10 +153,10 @@ endpoints:
     type: per_success
     value: 1
     currency: credit
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
     note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
       refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
   docs_url: https://www.socialcrawl.dev/docs/api-reference
@@ -179,7 +179,7 @@ endpoints:
         type: string
         required: true
         note: Full URL of the TikTok video
-        example: https://www.tiktok.com/@charlidamelio/video/7321485815660738859
+        example: https://www.tiktok.com/@nasa/video/7665075736742530317
       region:
         type: string
         required: false
@@ -191,7 +191,7 @@ endpoints:
       modes are excluded. A connected user can use the raw API for the full surface.
   test_request:
     queryParams:
-      url: https://www.tiktok.com/@charlidamelio/video/7321485815660738859
+      url: https://www.tiktok.com/@nasa/video/7665075736742530317
   expect:
     json_path: success
     equals: true
@@ -199,10 +199,10 @@ endpoints:
     type: per_success
     value: 1
     currency: credit
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
     note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
       refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
   docs_url: https://www.socialcrawl.dev/docs/api-reference
@@ -244,10 +244,10 @@ endpoints:
     type: per_success
     value: 1
     currency: credit
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
     note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
       refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
   docs_url: https://www.socialcrawl.dev/docs/api-reference
@@ -289,10 +289,10 @@ endpoints:
     type: per_success
     value: 1
     currency: credit
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
     note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
       refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
   docs_url: https://www.socialcrawl.dev/docs/api-reference
@@ -334,10 +334,10 @@ endpoints:
     type: per_success
     value: 3
     currency: credit
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
     note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
       refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
   docs_url: https://www.socialcrawl.dev/docs/api-reference
@@ -373,10 +373,10 @@ endpoints:
     type: per_success
     value: 1
     currency: credit
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
     note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
       refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
   docs_url: https://www.socialcrawl.dev/docs/api-reference
@@ -417,10 +417,10 @@ endpoints:
     type: per_success
     value: 1
     currency: credit
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
     note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
       refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
   docs_url: https://www.socialcrawl.dev/docs/api-reference
@@ -456,10 +456,10 @@ endpoints:
     type: per_success
     value: 1
     currency: credit
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
     note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
       refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
   docs_url: https://www.socialcrawl.dev/docs/api-reference
@@ -500,10 +500,10 @@ endpoints:
     type: per_success
     value: 5
     currency: credit
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
     note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
       refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
   docs_url: https://www.socialcrawl.dev/docs/api-reference
@@ -539,10 +539,10 @@ endpoints:
     type: per_success
     value: 1
     currency: credit
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
     note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
       refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
   docs_url: https://www.socialcrawl.dev/docs/api-reference
@@ -568,10 +568,10 @@ endpoints:
     value: 0
     currency: USD
     unit: call
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
   docs_url: https://www.socialcrawl.dev/docs/api-reference
   kind: account
 - id: socialcrawl.account.api.catalog
@@ -619,10 +619,10 @@ endpoints:
     value: 0
     currency: USD
     unit: call
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
   docs_url: https://www.socialcrawl.dev/docs/api-reference
   kind: utility
 - id: socialcrawl.account.api.endpoint
@@ -666,9 +666,9 @@ endpoints:
     value: 0
     currency: USD
     unit: call
-    source: docs
+    source: observed
     source_url: https://www.socialcrawl.dev/openapi.json
     checked: '2026-10-01'
-    confidence: documented
+    confidence: verified
   docs_url: https://www.socialcrawl.dev/docs/api-reference
   kind: utility
