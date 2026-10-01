@@ -277,6 +277,7 @@ _UNRECORDED_SIGNATURE = {
     "apify", "aviato", "branddev", "brightdata", "coingecko", "coresignal", "crustdata", "dataforseo",
     "diffbot", "exa", "fiber-ai", "finnhub", "justoneapi", "marketstack",
     "sumble",  # exhaustion not forced; no overflow route claimed
+    "theirstack",  # documented 402 when API credits run out; exhaustion not forced, no overflow route
     "harvestapi",  # wallet exhaustion unobserved; no overflow route
     "quickenrich",  # subscription exhaustion not observed; do not spend the trial to force it
     "dropleads",  # free trial was not exhausted; no provider-specific 402 body recorded
