@@ -993,6 +993,8 @@ BALANCE_ROUTES = {
 # obtain. Kept explicit so the report names them instead of silently skipping, and so a future probe
 # has a list of what to re-check.
 NO_BALANCE_API = {
+    "socialcrawl": "free /credits/balance exists; a collector awaits live success-payload "
+                   "verification before any shared-key activation",
     "octen": "no account balance or usage endpoint in the published OpenAPI; "
              "PAYG USD balance and usage are visible in the provider dashboard",
     "valyu": "no documented API endpoint for remaining credits or account usage; "
