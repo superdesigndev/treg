@@ -16,11 +16,6 @@ source:
 #   - catalog routes (keywords, industries, locations) and the credit balance are free
 # `limit` is the price dial on both searches. An empty result costs nothing.
 #
-# Both searches can report a match count for free (`include_total_results: true` +
-# `blur_company_data: true` + `limit: 1`). Preview mode blurs company identifiers and does not
-# spend credits; it is on by default for paid workspaces created before 2026-08-11 and enabled on
-# request (support@theirstack.com) for any other workspace.
-#
 # Auth: `Authorization: Bearer <key>`. A bad key returns 401
 # {"request_id":null,"error":{"code":null,"title":"Could not validate credentials","description":null}}.
 # Out of credits returns 402.
@@ -30,7 +25,6 @@ pricing_url: https://theirstack.com/en/pricing?currency=usd&tab=api
 proposed_capabilities:
   companies.tech_stack.users: "Find companies that use a given technology"
   companies.technologies.list: "Browse the catalog of tracked technologies"
-  companies.jobs.search.count: "Count the job postings a search would return, before paying for rows"
   companies.buying_intents: "Topics a company is investing in, inferred from its job postings"
   companies.locations.resolve: "Map a place name to the location ids job and company filters accept"
 
@@ -104,7 +98,6 @@ endpoints:
       company_name_partial_match_or: {type: 'array[string]', required: false, note: 'Company names. Will return companies whose name contain any of the the substrings passed here, case-insensitively. For example, if you pass "google", it will return "Google", "Google LLC", "Google Inc", etc.', example: [google, stripe]}
       company_name_partial_match_not: {type: 'array[string]', required: false, note: 'Company names. Will return companies whose name doesn''t contain any of the the substrings passed here, case-insensitively. For example, if you pass ''google'', it will exclude ''Google'', ''Google LLC'', ''Google Inc'', etc.', example: [google, stripe]}
       company_linkedin_url_or: {type: 'array[string]', required: false, note: 'Return companies whose LinkedIn page matches any of the values passed here. Both forms of LinkedIn company URL work — the vanity slug (`https://www.linkedin.com/company/google/`) and the numeric company ID (`https://www.linkedin.com/company/1038`) — as do a bare slug (`google`) and a bare numeric ID (`1038`). A numeric value is matched against the company''s LinkedIn ID and its slug, so you do not need to know which of the two you are holding. We have a LinkedIn slug for ~26% of companies and a numeric LinkedIn ID for ~14%, so if you have the company''s domain, `company_domain_or` matches more often.', example: ['https://www.linkedin.com/company/google/']}
-      blur_company_data: {type: boolean, required: false, note: 'Enable preview mode to return blurred data without consuming credits in the TheirStack app. Deprecated: preview mode is being retired and will stop working over the API. It still works on paid workspaces created before August 11, 2026 and is not available on any other workspace; new access is only granted to sales intelligence products that preview data to their end users before unlocking it, by opening a support ticket at https://app.theirstack.com/support/new. When enabled, sensitive company fields (name, domain, URLs, descriptions) and job-specific fields (description, URLs) are blurred. Not available when filtering by company identifiers (company_name, company_domain, company_linkedin_url, company_id). Learn more in the [preview mode documentation](https://theirstack.com/en/docs/api-reference/features/preview-data-mode). Preview mode costs no credits.', default: false}
       company_description_pattern_or: {type: 'array[string]', required: false, note: Case-insensitive patterns to match in the company description. Will return companies that match any of the patterns.}
       company_description_pattern_not: {type: 'array[string]', required: false, note: Case-insensitive patterns to match in the company description. Will return companies that match any of the patterns.}
       company_description_pattern_accent_insensitive: {type: boolean, required: false, note: 'Set to True to make company description searches accent insensitive. For example, "á" will match "a" as well.', default: false, example: true}
@@ -141,7 +134,6 @@ endpoints:
       company_revealed_at_lte: {type: string, required: false, note: Filter companies (or jobs by their company) by when the company was revealed in the caller's account. Returns only companies revealed at or before this ISO-8601 timestamp. Scoped to the caller's team — has no effect for companies the team has never revealed.}
       last_funding_round_date_lte: {type: string, required: false, note: 'Only return companies whose last funding round date is before or on this date. Format: ''YYYY-MM-DD''', example: '2025-05-25'}
       last_funding_round_date_gte: {type: string, required: false, note: 'Only return companies whose last funding round date is after or on this date. Format: ''YYYY-MM-DD''', example: '2025-05-25'}
-      include_total_results: {type: boolean, required: false, note: 'When enabled, calculates and returns `total_results` and `total_companies` fields in the response. WARNING: This significantly slows down responses as it requires reading the entire dataset. Recommended usage: enable only for the initial request to get totals, then disable for subsequent pagination requests.', default: false}
     note: 'At least one of posted_at_max_age_days, posted_at_gte, posted_at_lte, company_domain_or, company_linkedin_url_or or company_name_or is required. Every job carries title, description, URLs, location, salary, seniority, the technologies and keywords it mentions, hiring managers when known, and a nested company object with firmographics'
   test_request:
     body:
@@ -163,37 +155,6 @@ endpoints:
     confidence: documented
     note: 1 API credit per job in data[]; an empty page is free. Repeating a request bills again — use posted_at/discovered_at windows or job_id_not to avoid paying twice for the same job
   docs_url: https://theirstack.com/en/docs/api-reference/jobs/search_jobs_v1
-- id: theirstack.jobs.search.count
-  domain: companies
-  capability: companies.jobs.search.count
-  platform: companies
-  scope: any_account
-  method: POST
-  path: /v1/jobs/search
-  name: Count matching job postings for free
-  summary: 'Free count mode of Job Search: the number of jobs matching a filter set, without spending credits.'
-  input:
-    bodyType: json
-    body: *jobs_body
-    note: 'Free count mode of the same endpoint: send include_total_results: true, blur_company_data: true and limit: 1 with any filter set, then read metadata.total_results and metadata.total_companies. Company-identifier filters (company_domain_or, company_name_or…) are not allowed in preview mode. Preview mode is on by default for paid workspaces created before 2026-08-11 and enabled on request for any other workspace'
-  test_request:
-    body:
-      posted_at_max_age_days: 30
-      job_technology_slug_or:
-      - snowflake
-      include_total_results: true
-      blur_company_data: true
-      limit: 1
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
-    source: docs
-    source_url: https://theirstack.com/en/docs/api-reference/features/free-count
-    checked: '2026-10-01'
-    confidence: documented
-  docs_url: https://theirstack.com/en/docs/api-reference/features/free-count
 - id: theirstack.companies.jobs
   domain: companies
   capability: companies.jobs
@@ -249,7 +210,6 @@ endpoints:
       company_name_partial_match_or: {type: 'array[string]', required: false, note: 'Company names. Will return companies whose name contain any of the the substrings passed here, case-insensitively. For example, if you pass "google", it will return "Google", "Google LLC", "Google Inc", etc.', example: [google, stripe]}
       company_name_partial_match_not: {type: 'array[string]', required: false, note: 'Company names. Will return companies whose name doesn''t contain any of the the substrings passed here, case-insensitively. For example, if you pass ''google'', it will exclude ''Google'', ''Google LLC'', ''Google Inc'', etc.', example: [google, stripe]}
       company_linkedin_url_or: {type: 'array[string]', required: false, note: 'Return companies whose LinkedIn page matches any of the values passed here. Both forms of LinkedIn company URL work — the vanity slug (`https://www.linkedin.com/company/google/`) and the numeric company ID (`https://www.linkedin.com/company/1038`) — as do a bare slug (`google`) and a bare numeric ID (`1038`). A numeric value is matched against the company''s LinkedIn ID and its slug, so you do not need to know which of the two you are holding. We have a LinkedIn slug for ~26% of companies and a numeric LinkedIn ID for ~14%, so if you have the company''s domain, `company_domain_or` matches more often.', example: ['https://www.linkedin.com/company/google/']}
-      blur_company_data: {type: boolean, required: false, note: 'Enable preview mode to return blurred data without consuming credits in the TheirStack app. Deprecated: preview mode is being retired and will stop working over the API. It still works on paid workspaces created before August 11, 2026 and is not available on any other workspace; new access is only granted to sales intelligence products that preview data to their end users before unlocking it, by opening a support ticket at https://app.theirstack.com/support/new. When enabled, sensitive company fields (name, domain, URLs, descriptions) and job-specific fields (description, URLs) are blurred. Not available when filtering by company identifiers (company_name, company_domain, company_linkedin_url, company_id). Learn more in the [preview mode documentation](https://theirstack.com/en/docs/api-reference/features/preview-data-mode). Preview mode costs no credits.', default: false}
       property_exists_or: {type: 'array[string]', required: false, note: 'Return companies that have any of these fields not null. For example, if you pass [''domain'', ''linkedin_url''], it will return companies that have a domain OR a linkedin_url set.', enum: [domain, linkedin_url], example: [domain, linkedin_url]}
       property_exists_and: {type: 'array[string]', required: false, note: 'Return companies that have all of these fields not null. For example, if you pass [''domain'', ''linkedin_url''], it will return companies that have both domain AND linkedin_url set.', enum: [domain, linkedin_url], example: [domain, linkedin_url]}
       offset: {type: integer, required: false, note: 'Number of results to skip. Required for [offset-based pagination](https://theirstack.com/en/docs/api-reference/pagination).', default: 0, example: 0, min: 0.0}
@@ -292,7 +252,6 @@ endpoints:
       company_revealed_at_lte: {type: string, required: false, note: Filter companies (or jobs by their company) by when the company was revealed in the caller's account. Returns only companies revealed at or before this ISO-8601 timestamp. Scoped to the caller's team — has no effect for companies the team has never revealed.}
       last_funding_round_date_lte: {type: string, required: false, note: 'Only return companies whose last funding round date is before or on this date. Format: ''YYYY-MM-DD''', example: '2025-05-25'}
       last_funding_round_date_gte: {type: string, required: false, note: 'Only return companies whose last funding round date is after or on this date. Format: ''YYYY-MM-DD''', example: '2025-05-25'}
-      include_total_results: {type: boolean, required: false, note: 'When enabled, calculates and returns `total_results` and `total_companies` fields in the response. WARNING: This significantly slows down responses as it requires reading the entire dataset. Recommended usage: enable only for the initial request to get totals, then disable for subsequent pagination requests.', default: false}
       job_filters: {type: object, required: false}
       min_num_jobs_found: {type: integer, required: false, note: 'Minimum number of jobs matching `job_filters` a company must have to be returned (thresholds the `num_jobs_found` count). Requires `job_filters` with a date filter, so the count is always computed over the date-bounded set of matching jobs.', example: 10, min: 1.0}
       tech_filters: {type: object, required: false, note: 'Filter by technologies and buying intent topics detected for the company — each item is {keyword_slug_or, keyword_category_slug_or, keyword_parent_category_slug_or, technology_slug_or, technology_category_slug_or, technology_parent_category_slug_or, max_rank, min_jobs, max_jobs, min_relative_occurrence, first_date_found_gte, first_date_found_lte, last_date_found_gte, last_date_found_lte, confidence_or (low | medium | high)}'}
@@ -316,36 +275,6 @@ endpoints:
     confidence: documented
     note: 3 API credits per company in data[]; an empty page is free
   docs_url: https://theirstack.com/en/docs/api-reference/companies/search_companies_v1
-- id: theirstack.companies.search.count
-  domain: companies
-  capability: companies.search.count
-  platform: companies
-  scope: any_account
-  method: POST
-  path: /v1/companies/search
-  name: Count matching companies for free
-  summary: 'Free count mode of Company Search: how many companies match, without spending credits.'
-  input:
-    bodyType: json
-    body: *companies_body
-    note: 'Free count mode of the same endpoint: send include_total_results: true, blur_company_data: true and limit: 1 with any filter set, then read metadata.total_results. Same preview-mode availability as theirstack.jobs.search.count'
-  test_request:
-    body:
-      company_technology_slug_or:
-      - snowflake
-      include_total_results: true
-      blur_company_data: true
-      limit: 1
-  cost:
-    type: free
-    value: 0
-    currency: USD
-    unit: call
-    source: docs
-    source_url: https://theirstack.com/en/docs/api-reference/features/free-count
-    checked: '2026-10-01'
-    confidence: documented
-  docs_url: https://theirstack.com/en/docs/api-reference/features/free-count
 - id: theirstack.technologies.users
   domain: companies
   capability: companies.tech_stack.users
@@ -395,7 +324,6 @@ endpoints:
       company_domain: {type: string, required: false, note: 'Only return companies that match this domain exactly. It accepts full urls (https://www.google.com/) and emails (john.polo@gmail.com).', example: google.com}
       company_linkedin_url: {type: string, required: false, note: Return companies whose LinkedIn URL matches this URL exactly., example: 'https://www.linkedin.com/company/openai/'}
       order_by: {type: 'array[object]', required: false, note: 'List of column objects. You can pass several columns to order by, in order of priority. Only `field` is required, `desc` is True by default. — each item is {desc, field (None | jobs | jobs_last_7_days | jobs_last_30_days | jobs_last_180_days | last_date_found | first_date_found | relative_occurrence_within_category | theirstack_score | confidence)}', default: &id001 [{desc: true, field: confidence}, {desc: true, field: jobs}]}
-      include_total_results: {type: boolean, required: false, note: 'When enabled, calculates and returns `total_results` and `total_companies` fields in the response. WARNING: This significantly slows down responses as it requires reading the entire dataset. Recommended usage: enable only for the initial request to get totals, then disable for subsequent pagination requests.', default: false}
       offset: {type: integer, required: false, note: 'Number of results to skip. Required for [offset-based pagination](https://theirstack.com/en/docs/api-reference/pagination).', example: 0, min: 0.0}
       page: {type: integer, required: false, note: 'Page number. Required when using [page-based pagination](https://theirstack.com/en/docs/api-reference/pagination).', example: 0, min: 0.0}
       limit: {type: integer, required: false, note: Number of rows per page; does not change the price (3 API credits per company lookup), example: 50, min: 1.0}
@@ -445,7 +373,6 @@ endpoints:
       company_domain: {type: string, required: false, note: 'Only return companies that match this domain exactly. It accepts full urls (https://www.google.com/) and emails (john.polo@gmail.com).', example: google.com}
       company_linkedin_url: {type: string, required: false, note: Return companies whose LinkedIn URL matches this URL exactly., example: 'https://www.linkedin.com/company/openai/'}
       order_by: {type: 'array[object]', required: false, note: 'List of column objects. You can pass several columns to order by, in order of priority. Only `field` is required, `desc` is True by default. — each item is {desc, field (None | jobs | jobs_last_7_days | jobs_last_30_days | jobs_last_180_days | last_date_found | first_date_found | relative_occurrence_within_category | theirstack_score | confidence)}', default: *id001}
-      include_total_results: {type: boolean, required: false, note: 'When enabled, calculates and returns `total_results` and `total_companies` fields in the response. WARNING: This significantly slows down responses as it requires reading the entire dataset. Recommended usage: enable only for the initial request to get totals, then disable for subsequent pagination requests.', default: false}
       offset: {type: integer, required: false, note: 'Number of results to skip. Required for [offset-based pagination](https://theirstack.com/en/docs/api-reference/pagination).', example: 0, min: 0.0}
       page: {type: integer, required: false, note: 'Page number. Required when using [page-based pagination](https://theirstack.com/en/docs/api-reference/pagination).', example: 0, min: 0.0}
       limit: {type: integer, required: false, note: Number of rows per page; does not change the price (3 API credits per company lookup), example: 50, min: 1.0}
