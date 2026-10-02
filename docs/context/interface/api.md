@@ -337,7 +337,8 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   14-day retention window, which the `treg-worker admin purge-evidence` cron blanks; see [super-admin](../architecture/super-admin.md))
   + `/admin/users/{id}/superadmin|suspend`, `DELETE /admin/users/{id}`,
   `/admin/orgs/{id}/suspend`, `DELETE /admin/orgs/{id}` (Phase-2). See
-  [super-admin](../architecture/super-admin.md).
+  [super-admin](../architecture/super-admin.md). `GET /admin/capacity` (each platform account's
+  latest balance and an alerting status) also accepts the read-only `TREG_CAPACITY_READ_TOKEN`.
 - **Secrets:** `create_secret` / `list_secrets` / `update_secret` (re-encrypts on value change) /
   `delete_secret` (409 if a tool binding references it). Values never returned (`_secret_view`).
 - **Tools:** `create_tool` (bindings via `body.bindings`, or `_flat_binding(body)` sugar, or `[]`;

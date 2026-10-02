@@ -27,6 +27,11 @@ A caller is a super-admin if EITHER:
 Otherwise 403. The env key bootstraps; `POST /admin/users/{id}/superadmin` then grants named users the
 flag (so a web portal can log in with either). Returns a principal string (for audit).
 
+One route has a narrower key: `GET /admin/capacity` also accepts `TREG_CAPACITY_READ_TOKEN`
+(`require_capacity_reader` in `routers/admin.py`, principal `"capacity-reader"`), honored only at
+32+ characters and checked by no other route, so an alerting bot reads balances without holding an
+admin key.
+
 The dependency lives in `domain.identity.access` and every consumer imports it from there; the
 transitional `api.py` re-export retired with the rest of the stage-3 compatibility surface.
 

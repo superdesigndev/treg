@@ -52,6 +52,13 @@ reading below `EMPTY_BELOW` refuses the provider's shared-key calls, so a collec
 that bills overage rather than refusing (SpyFu's monthly allowance) as informational once spent,
 and sums every pool that can pay for a call (Fiber AI's trial and paid pools).
 
+`GET /admin/capacity` (`policy.balance_report`) reads, never collects: per account in
+`policy_population()`, the newest `CapacitySnapshot` and the `latest_state` it implies, the same
+state the call path refuses on. Each row carries a `status` for alerting: `skipped` when treg holds
+no key, `ok` for a provider with no balance API, `issue` when the account is exhausted, the last
+check failed, or no sweep has observed it within `STALE_AFTER` (or ever), else `ok`. Admins and the
+holder of `TREG_CAPACITY_READ_TOKEN` may read it.
+
 Octen's PAYG balance has no account balance or usage endpoint in its published OpenAPI, so
 `NO_BALANCE_API` reports it as dashboard-only. `_KNOWN` classifies the account as manually funded
 cash. The shared-key rate policy spaces calls at five per second, below the Base plan's displayed

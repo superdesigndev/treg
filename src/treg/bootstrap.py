@@ -336,6 +336,7 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/orgs/{org_id}/suspend', ('POST',), 'admin_suspend_org'),
     ('/admin/orgs/{org_id}', ('DELETE',), 'admin_delete_org'),
     ('/admin/orgs/{org_id}/credit', ('POST',), 'admin_credit_org'),
+    ('/admin/capacity', ('GET',), 'admin_capacity'),
     ('/admin/reconcile/drift', ('GET',), 'admin_reconcile_drift'),
     ('/admin/reconcile/spend', ('GET',), 'admin_reconcile_spend'),
     ('/admin/reconcile/repeats', ('GET',), 'admin_reconcile_repeats'),

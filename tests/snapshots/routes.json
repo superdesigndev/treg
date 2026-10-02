@@ -2389,6 +2389,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "admin_capacity",
+    "path": "/admin/capacity"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "admin_reconcile_drift",
     "path": "/admin/reconcile/drift"
   },

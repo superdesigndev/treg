@@ -117,6 +117,11 @@ class Settings(BaseSettings):
     # users can reach /admin). Keep it long + secret; it sees ALL orgs.
     admin_token: str = ""
 
+    # Read-only bearer for GET /admin/capacity alone (env TREG_CAPACITY_READ_TOKEN): an alerting bot
+    # reads every treg-owned account's latest balance without holding admin or vendor keys. Honored
+    # only at 32+ characters and by no other route. Empty = only admins read the report.
+    capacity_read_token: str = ""
+
     # Isolated-runner proof for `treg run --local` (env TREG_RUN_PROOF). A grant that would return a
     # secret the CALLER does NOT own (a shared-key tool a member may run but not read) requires this
     # value in the `X-Treg-Run-Proof` header — held ONLY by the root-installed treg-run runner, never

@@ -6,7 +6,9 @@ from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import hmac
+
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import func, or_
@@ -20,6 +22,7 @@ from ..config import get_settings
 from ..infra import kv
 from ..infra.db import get_admin_session
 from ..domain import money
+from ..domain.capacity import policy as capacity_policy
 from ..models import ArchiveEndpointStat, ArchiveKey, ArchiveSnapshot, Bundle, CallRecord, LedgerEntry, Membership, Org, Referral, Secret, Tool, User
 from ..timeutil import as_naive as _as_naive
 from ..timeutil import utcnow_naive as _utcnow_naive
@@ -273,6 +276,31 @@ reports_router = app
 # ---- reconciliation: is the money real? ----------------------------------------------------
 # Cross-org aggregates over platform spend, so `require_superadmin` and nothing weaker — an org admin
 # may see their own bill (`/orgs/{id}/balance`), never the platform's margin. See reconcile.py.
+async def require_capacity_reader(
+    x_treg_token: str = Header(default=""),
+    treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_admin_session),
+) -> str:
+    """The capacity read token, else the ordinary admin gate. The token opens this one route."""
+    token = get_settings().capacity_read_token
+    if len(token) >= 32 and x_treg_token and hmac.compare_digest(x_treg_token, token):
+        return "capacity-reader"
+    return await require_superadmin(x_treg_token=x_treg_token, treg_session=treg_session, db=db)
+
+
+@app.get("/admin/capacity")
+async def admin_capacity(
+    _: str = Depends(require_capacity_reader), db: AsyncSession = Depends(get_admin_session),
+) -> dict:
+    """Every treg-owned account's latest balance from the capacity sweep, with an alerting status."""
+    now = _utcnow_naive()
+    rows = await capacity_policy.balance_report(db, now)
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row["status"]] = counts.get(row["status"], 0) + 1
+    return {"generated_at": now.isoformat(), "counts": counts, "providers": rows}
+
+
 @app.get("/admin/reconcile/drift")
 async def admin_reconcile_drift(
     since_days: int = 30, min_calls: int = 3,
