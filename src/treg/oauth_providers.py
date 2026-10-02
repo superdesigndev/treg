@@ -3189,7 +3189,9 @@ THEIRSTACK = OAuthProvider(
     setup_note=(
         "Data calls spend API credits: 1 per job returned, 3 per company returned or looked up. "
         "The credit-balance check and the keyword, industry and location catalogs are free. "
-        "The free plan (accounts that have never paid) includes 200 API credits a month."
+        "The free plan, for teams that have never paid for credits, includes 200 API credits a "
+        "month (separate from the 50 company credits the app spends) and serves up to 25 results "
+        "a page and 5 pages a search; paid plans serve up to 500 a page."
     ),
     auth_uri="", token_uri="",
     scopes={},
