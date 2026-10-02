@@ -1,0 +1,674 @@
+provider: socialcrawl
+source:
+  docs: https://www.socialcrawl.dev/docs
+  openapi: https://www.socialcrawl.dev/openapi.json
+  curated: '2026-10-01'
+limits: 600 requests/minute and 50 concurrent requests per key; see https://www.socialcrawl.dev/docs/rate-limits.
+pricing_url: https://www.socialcrawl.dev/pricing
+proposed_capabilities:
+  account.api.catalog: List the API operations available from the connected provider, including credit
+    costs
+  account.api.endpoint: Get parameters, cost and examples for a provider API operation
+endpoints:
+- id: socialcrawl.instagram.user.profile
+  capability: instagram.user.profile
+  platform: instagram
+  scope: any_account
+  method: GET
+  path: /instagram/profile
+  name: Get Instagram user profile
+  summary: Returns public profile information for an Instagram user including the exact integer follower
+    count, following count, bio, profile picture URL, and verification status. `author.posts_count` is
+    the account's lifetime post count, for accounts of any size, in the same call and for the same 1 credit.
+    In the rare case that count cannot be read in time the leaf is null rather than a wrong number, and
+    a repeat call normally fills it. Age-restricted (18+) profiles are supported. When the account publishes
+    a contact address in its bio, it is returned as `author.ext.public_email`; otherwise that leaf is
+    null. Instagram's in-app tap-to-email button is not readable from any public surface, so the bio is
+    the only source for it.
+  strict_query: true
+  input:
+    queryParams:
+      handle:
+        type: string
+        required: true
+        note: Instagram username without the @ symbol
+        example: instagram
+      trim:
+        type: boolean
+        required: false
+        note: Set to true to get a trimmed response
+    note: This curated tool accepts only the declared query parameters; optional paid enrichment and multi-page
+      modes are excluded. A connected user can use the raw API for the full surface.
+  test_request:
+    queryParams:
+      handle: instagram
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+    note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
+      refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+- id: socialcrawl.instagram.search.users
+  capability: instagram.search.users
+  platform: instagram
+  scope: any_account
+  method: GET
+  path: /instagram/search/profiles
+  name: Search Instagram profiles by keyword
+  summary: 'Searches Google for public Instagram results matching a keyword or phrase, then returns matching
+    public profiles mapped to the unified Author schema: `username`, `display_name`, `bio`, `verified`,
+    `followers`, `following`, `posts_count`, `avatar_url`, and the profile `url`. Best-effort against
+    Google''s index, not a native Instagram profile search. The plain call has no account country: Instagram
+    does not put that on a search stub. Send `include=about` to join each row to the About-this-account
+    panel for `author.ext.country`, the join month, and the public email and phone the account publishes,
+    2 extra credits a row filled, default the top 8 (17 credits held), `limit=12` for the page. A row
+    the panel could not fill is refunded. This is not a country filter: a query that surfaces no Korean
+    accounts still returns no Korean accounts after the join. For place-tagged posts, use /v1/instagram/search/location
+    then /v1/instagram/location/posts.'
+  strict_query: true
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        note: Bio or caption keyword/phrase to search for.
+        example: NASA
+      cursor:
+        type: string
+        required: false
+        note: The cursor returned by the previous response. In this version it is the next Google results
+          page number.
+      limit:
+        type: integer
+        required: false
+        note: Cap the rows served, and with `include=about` the credits held. 1 to 12. Default 8 when
+          the token is present so the hold is 17, not 25.
+        example: 1
+        min: 1
+        max: 12
+    note: This curated tool accepts only the declared query parameters; optional paid enrichment and multi-page
+      modes are excluded. A connected user can use the raw API for the full surface.
+  test_request:
+    queryParams:
+      query: NASA
+      limit: 1
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+    note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
+      refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+- id: socialcrawl.tiktok.user.profile
+  capability: tiktok.user.profile
+  platform: tiktok
+  scope: any_account
+  method: GET
+  path: /tiktok/profile
+  name: Get TikTok user profile
+  summary: 'Returns public profile information for a TikTok user: follower count, following count, total
+    likes, bio, avatar URL, verification status, and the ISO 3166-1 alpha-2 region of the account at `author.location`
+    (the same leaf `/v1/tiktok/profile/region` returns, included here so you do not need a second call).
+    `author.followers` is the unrounded integer when the source exposes it. When only the public rounded
+    figure is available, the same integer field is returned and `author.ext.followers_approximate` is
+    true. Pass either `handle` or `user_id`. Profiles behind TikTok''s ''audience controls'' (a login/age
+    wall in the browser) now return their profile record normally; their posts are readable through `/v1/tiktok/profile/videos`
+    with the same handle. A profile with no publicly readable record still returns `404 RESOURCE_NOT_FOUND`
+    with `error.details.reason` set to `account_private`. A handle the platform reports as unused returns
+    the same status with `reason` set to `account_gone`; because TikTok numeric ids are permanent, re-running
+    the lookup with `user_id` tells a renamed account from a removed one. `author.location` can be absent
+    when the region source is unavailable; the rest of the profile is still returned.'
+  strict_query: true
+  input:
+    queryParams:
+      handle:
+        type: string
+        required: true
+        note: 'TikTok username without the @ symbol. (one of: handle, user_id; at least one required)'
+        example: nasa
+    note: This curated tool accepts only the declared query parameters; optional paid enrichment and multi-page
+      modes are excluded. A connected user can use the raw API for the full surface.
+  test_request:
+    queryParams:
+      handle: nasa
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+    note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
+      refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+- id: socialcrawl.tiktok.video.detail
+  capability: tiktok.video.detail
+  platform: tiktok
+  scope: any_account
+  method: GET
+  path: /tiktok/post
+  name: Get TikTok post details
+  summary: 'Returns detailed information about a specific TikTok video including view count, like count,
+    comment count, share count, caption, music info, author details, and video metadata. When the creator
+    added on-screen text with TikTok''s built-in text tool, the overlay text is returned in `data.post.ext.on_screen_texts`
+    (absent when the video has none: text burned in with an external editor is not detectable from post
+    data).'
+  strict_query: true
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        note: Full URL of the TikTok video
+        example: https://www.tiktok.com/@nasa/video/7665075736742530317
+      region:
+        type: string
+        required: false
+        note: Two-letter country code for the proxy region (US, GB, FR, PH). The primary source does not
+          take a region, so it is honoured only when a fallback source serves the request; a region-locked
+          video (commonly from the Philippines) that fails on the primary is retried on the fallback with
+          this value.
+    note: This curated tool accepts only the declared query parameters; optional paid enrichment and multi-page
+      modes are excluded. A connected user can use the raw API for the full surface.
+  test_request:
+    queryParams:
+      url: https://www.tiktok.com/@nasa/video/7665075736742530317
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+    note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
+      refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+- id: socialcrawl.youtube.channel.profile
+  capability: youtube.channel.profile
+  platform: youtube
+  scope: any_account
+  method: GET
+  path: /youtube/channel
+  name: Get YouTube channel info
+  summary: Returns public channel information for a YouTube channel including subscriber count, total
+    video count, total view count, channel description, banner URL, and avatar URL. `author.followers`
+    is YouTube's publicly published subscriber figure. Above 1,000 subscribers YouTube rounds that figure
+    to three significant figures, and `author.ext.followers_approximate` is true. When the channel publishes
+    a contact email in its public description, it is returned as `author.ext.public_email`; otherwise
+    that leaf is null.
+  strict_query: true
+  input:
+    queryParams:
+      handle:
+        type: string
+        required: true
+        note: 'YouTube channel handle without the @ symbol (one of: channelId, handle, url; at least one
+          required)'
+        example: NASA
+      hl:
+        type: string
+        required: false
+        note: Preferred response language for localized text (ISO 639-1, e.g. 'en', 'es', 'fr').
+    note: This curated tool accepts only the declared query parameters; optional paid enrichment and multi-page
+      modes are excluded. A connected user can use the raw API for the full surface.
+  test_request:
+    queryParams:
+      handle: NASA
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+    note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
+      refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+- id: socialcrawl.youtube.video.detail
+  capability: youtube.video.detail
+  platform: youtube
+  scope: any_account
+  method: GET
+  path: /youtube/video
+  name: Get YouTube video details
+  summary: Returns detailed information about a specific YouTube video including title, view count, like
+    count, comment count, description, tags, duration, channel info, and publish date.
+  strict_query: true
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        note: Full URL of the YouTube video
+        example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+      language:
+        type: string
+        required: false
+        note: Preferred response language (mapped to Accept-Language header; not guaranteed due to YouTube
+          localization behavior). 2 letter language code, ie 'en', 'es', 'fr' etc.
+      hl:
+        type: string
+        required: false
+        note: Preferred response language for localized text (ISO 639-1, e.g. 'en', 'es', 'fr').
+    note: This curated tool accepts only the declared query parameters; optional paid enrichment and multi-page
+      modes are excluded. A connected user can use the raw API for the full surface.
+  test_request:
+    queryParams:
+      url: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+    note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
+      refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+- id: socialcrawl.youtube.video.captions
+  capability: youtube.video.captions
+  platform: youtube
+  scope: any_account
+  method: GET
+  path: /youtube/video/transcript
+  name: Get YouTube video transcript
+  summary: 'Returns the transcript of a YouTube video as timestamped segments: each with text, start `offset`
+    and `duration` (seconds), language, word count, and speech rate. Supports multiple languages via `language`.
+    When no transcript exists (the owner disabled captions, the video is login-gated or gone, or no caption
+    track matches the requested language) the endpoint returns 404 RESOURCE_NOT_FOUND with `error.details.reason`
+    set to `captions_disabled`, `login_required`, `no_captions`, or `video_gone`, no credits are charged,
+    and retrying returns the same result.'
+  strict_query: true
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        note: Full URL of the YouTube video
+        example: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+      language:
+        type: string
+        required: false
+        note: 2 letter language code, ie 'en', 'es', 'fr' etc. If no caption track matches the language
+          you specify, the request returns 404 RESOURCE_NOT_FOUND (reason `no_captions`) at 0 credits.
+    note: This curated tool accepts only the declared query parameters; optional paid enrichment and multi-page
+      modes are excluded. A connected user can use the raw API for the full surface.
+  test_request:
+    queryParams:
+      url: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: per_success
+    value: 3
+    currency: credit
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+    note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
+      refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+- id: socialcrawl.x.user.profile
+  capability: x.user.profile
+  platform: x
+  scope: any_account
+  method: GET
+  path: /twitter/profile
+  name: Get Twitter user profile
+  summary: Returns public profile information for a Twitter/X user including follower count, following
+    count, tweet count, bio, profile image URL, verification status, account privacy flag, and join date.
+    The banner image is `author.ext.cover_url` and the website from the bio is `author.ext.bio_link`,
+    resolved to its destination rather than the t.co shortener. `author.url` is the profile permalink;
+    X publishes no total-likes-received figure, so `author.likes_count` is always null.
+  strict_query: true
+  input:
+    queryParams:
+      handle:
+        type: string
+        required: true
+        note: Twitter username without the @ symbol
+        example: NASA
+    note: This curated tool accepts only the declared query parameters; optional paid enrichment and multi-page
+      modes are excluded. A connected user can use the raw API for the full surface.
+  test_request:
+    queryParams:
+      handle: NASA
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+    note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
+      refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+- id: socialcrawl.reddit.subreddit.info
+  capability: reddit.subreddit.info
+  platform: reddit
+  scope: any_account
+  method: GET
+  path: /reddit/subreddit/details
+  name: Get Reddit subreddit details
+  summary: 'Returns detailed information about a subreddit including the subscriber count at `author.followers`,
+    weekly active users and weekly contributions at `author.ext.weekly_active_users` and `author.ext.weekly_contributions`,
+    the description, creation date, rules, and subreddit icon URL. The subscriber count and Reddit''s
+    own community language tag at `author.ext.language` come from a second source that runs only when
+    the main one leaves the count empty, so on a small share of calls they are null while every other
+    field is unchanged. The subreddit name is case-sensitive on the main source: pass the canonical casing
+    (e.g. `AskReddit`, not `askreddit`) to get the whole object. A non-canonical spelling is not a 404
+    — it falls through to the second source, which still answers with the core fields but without the
+    weekly-activity numbers.'
+  strict_query: true
+  input:
+    queryParams:
+      subreddit:
+        type: string
+        required: true
+        note: 'Subreddit name without the r/ prefix. Case-sensitive: use the subreddit''s canonical casing
+          (e.g. `AskReddit`). (one of: subreddit, url; at least one required)'
+        example: AskReddit
+    note: This curated tool accepts only the declared query parameters; optional paid enrichment and multi-page
+      modes are excluded. A connected user can use the raw API for the full surface.
+  test_request:
+    queryParams:
+      subreddit: AskReddit
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+    note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
+      refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+- id: socialcrawl.threads.user.profile
+  capability: threads.user.profile
+  platform: threads
+  scope: any_account
+  method: GET
+  path: /threads/profile
+  name: Get Threads user profile
+  summary: Returns public profile information for a Threads user including follower count, bio, profile
+    picture URL, verification status, and whether the account is private. `author.url` is the account's
+    Threads permalink. The external website set in the bio is returned at `author.ext.bio_link` (null
+    when the account has not set one). Threads does not publish a following count, a post count, a total
+    like count or a join date on this surface, so those four leaves are always null.
+  strict_query: true
+  input:
+    queryParams:
+      handle:
+        type: string
+        required: true
+        note: Threads username without the @ symbol
+        example: zuck
+    note: This curated tool accepts only the declared query parameters; optional paid enrichment and multi-page
+      modes are excluded. A connected user can use the raw API for the full surface.
+  test_request:
+    queryParams:
+      handle: zuck
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+    note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
+      refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+- id: socialcrawl.linkedin.company.profile
+  capability: linkedin.company.profile
+  platform: linkedin
+  scope: any_account
+  method: GET
+  path: /linkedin/company
+  name: Get LinkedIn company page with its full About tab
+  summary: 'Returns public information about a LinkedIn company page. Canonical fields carry the identity
+    and reach: `author.id` (the numeric company_id the other `/company/*` endpoints take), `username`,
+    `display_name`, `bio` (the company description), `avatar_url` (logo), `followers`, `location` (flattened
+    HQ), and `verified`. The complete **About tab** rides in `author.ext`: `website`, `employee_count`
+    and `employee_count_range`, `founded_year`, `specialities[]`, `industries[]`, `headquarters` (structured
+    `{country, city, geographic_area, line1, line2, postal_code}`), `locations[]` (every office LinkedIn
+    lists, with lat/long), `hashtags[]`, `cover_url`, and `page_active`. Fields a page has not filled
+    in come back null rather than omitted, so `founded_year` is null on a company that never set a founding
+    date. `funding` is mapped too, but LinkedIn returned an empty funding block for every company measured
+    on 2026-08-11, so do not depend on it.'
+  strict_query: true
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        note: Full URL of the LinkedIn company page
+        example: https://www.linkedin.com/company/microsoft/
+    note: This curated tool accepts only the declared query parameters; optional paid enrichment and multi-page
+      modes are excluded. A connected user can use the raw API for the full surface.
+  test_request:
+    queryParams:
+      url: https://www.linkedin.com/company/microsoft/
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: per_success
+    value: 5
+    currency: credit
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+    note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
+      refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+- id: socialcrawl.github.repo.profile
+  capability: github.repo.profile
+  platform: github
+  scope: any_account
+  method: GET
+  path: /github/repo
+  name: Get a GitHub repository
+  summary: 'Returns repository metadata (full_name, description, stars, forks, open issues, watchers,
+    language, and creation date) mapped to the unified Author schema. A repo is a follow-able creator-like
+    entity in this API: stars map to `author.followers`, watchers (subscribers) to `author.likes_count`,
+    forks to `author.following`. Use `/v1/github/repo/readme`, `/v1/github/repo/releases`, and `/v1/github/repo/issues`
+    for richer per-repo data.'
+  strict_query: true
+  input:
+    queryParams:
+      url:
+        type: string
+        required: true
+        note: 'GitHub repo URL: `https://github.com/{owner}/{repo}`.'
+        example: https://github.com/octocat/Hello-World
+    note: This curated tool accepts only the declared query parameters; optional paid enrichment and multi-page
+      modes are excluded. A connected user can use the raw API for the full surface.
+  test_request:
+    queryParams:
+      url: https://github.com/octocat/Hello-World
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: per_success
+    value: 1
+    currency: credit
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+    note: Net credits are returned in credits_used. Cache hits cost zero; failed and empty results are
+      refunded. Shared-key activation needs an agreed USD credit rate and reported_charge wiring.
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+- id: socialcrawl.account.usage
+  capability: account.usage
+  platform: account
+  scope: own_account
+  method: GET
+  path: /credits/balance
+  name: Check your credit balance
+  summary: Returns the current credit balance and the number of deduction transactions in the trailing
+    24 hours. Metadata call - costs 0 credits and never hits upstream platforms.
+  input:
+    queryParams: {}
+    note: Free authenticated metadata; uses the connected account key.
+  test_request:
+    queryParams: {}
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+  kind: account
+- id: socialcrawl.account.api.catalog
+  capability: account.api.catalog
+  platform: account
+  scope: own_account
+  method: GET
+  path: /utility/endpoints
+  name: List every available endpoint
+  summary: 'Machine-readable catalog of every active SocialCrawl endpoint: path, method, platform, credit
+    cost, required and optional parameters, response archetype, and a link to the per-endpoint usage guide.
+    Generated from the endpoint registry at request time, so it never drifts from what is callable. Free
+    to call.'
+  strict_query: true
+  input:
+    queryParams:
+      platform:
+        type: string
+        required: false
+        note: Filter the catalog to a single platform slug (e.g. tiktok)
+        example: tiktok
+      search:
+        type: string
+        required: false
+        note: Keyword search over endpoint paths, summaries, parameter names and descriptions, and tags,
+          best match first (data.ranking says keyword)
+      method:
+        type: string
+        required: false
+        note: Filter by HTTP method (GET, POST, PATCH or DELETE)
+        enum:
+        - GET
+        - POST
+        - PATCH
+        - DELETE
+    note: Free authenticated metadata; uses the connected account key.
+  test_request:
+    queryParams:
+      platform: tiktok
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+  kind: utility
+- id: socialcrawl.account.api.endpoint
+  capability: account.api.endpoint
+  platform: account
+  scope: own_account
+  method: GET
+  path: /utility/endpoint
+  name: How to use any endpoint
+  summary: 'Complete usage guide for a single endpoint: every parameter with type, description and example,
+    the exact credit cost, cache behaviour, pagination recipe, a copy-paste example request, an example
+    response, the response schema URL, and related endpoints. Identify the endpoint by id (tiktok/profile)
+    or url (/v1/tiktok/profile). Free to call.'
+  strict_query: true
+  input:
+    queryParams:
+      id:
+        type: string
+        required: true
+        note: 'Endpoint id as platform/resource, e.g. tiktok/profile (one of: id, url; at least one required)'
+        example: tiktok/profile
+      method:
+        type: string
+        required: false
+        note: Disambiguates a resource registered under more than one HTTP method, e.g. /v1/web/monitors/{monitor_id}
+          is GET, PATCH and DELETE. Omit it and the first registered method wins
+        enum:
+        - GET
+        - POST
+        - PATCH
+        - DELETE
+    note: Free authenticated metadata; uses the connected account key.
+  test_request:
+    queryParams:
+      id: tiktok/profile
+  expect:
+    json_path: success
+    equals: true
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: observed
+    source_url: https://www.socialcrawl.dev/openapi.json
+    checked: '2026-10-01'
+    confidence: verified
+  docs_url: https://www.socialcrawl.dev/docs/api-reference
+  kind: utility

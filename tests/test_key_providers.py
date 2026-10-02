@@ -430,3 +430,27 @@ async def test_financialdatasets_connect_accepts_only_valid_key_outcomes_without
                     if t["name"] == "financialdatasets")
         assert tool["health_check"] is None
         assert tool["bindings"][0]["name"] == "X-API-KEY"
+
+
+@pytest.mark.parametrize("valid", [True, False])
+async def test_socialcrawl_key_uses_free_authenticated_balance_probe(clients, monkeypatch, valid):
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://www.socialcrawl.dev/v1/credits/balance"
+        assert request.headers["x-api-key"] == "own-key"
+        assert "authorization" not in request.headers
+        return httpx.Response(
+            200 if valid else 401,
+            json={"success": valid, "credits_used": 0,
+                  **({"data": {"balance": 100}} if valid else
+                     {"error": {"type": "INVALID_API_KEY"}})},
+        )
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "socialcrawl", "token": "own-key"},
+        )
+    assert response.status_code == (200 if valid else 422), response.text
+    connections = (await clients.get("/connections")).json()
+    assert any(c["provider"] == "socialcrawl" for c in connections) is valid
