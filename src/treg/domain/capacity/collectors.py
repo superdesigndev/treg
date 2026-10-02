@@ -725,13 +725,16 @@ async def _predictleads(c, key):
 
 
 async def _theirstack(c, key):
-    # GET /v0/billing/credit-balance is free. api_credits is what the API spends; ui_credits are
-    # the separate app-reveal meter and never move on API calls.
+    # GET /v0/billing/credit-balance is free. api_credits is the API credits granted, not what is
+    # left: the balance is api_credits - used_api_credits. ui_credits are the separate app-reveal
+    # meter and never move on API calls.
     d = await _get(c, "https://api.theirstack.com/v0/billing/credit-balance",
                    headers={"Authorization": f"Bearer {key}"})
+    granted, used = d.get("api_credits"), d.get("used_api_credits")
+    left = max(granted - used, 0) if isinstance(granted, int) and isinstance(used, int) else None
     expires = (d.get("earliest_expiration") or "")[:10]
-    return {"value": d.get("api_credits"), "unit": "API credits",
-            "note": f"{d.get('used_api_credits')} used this cycle"
+    return {"value": left, "unit": "API credits",
+            "note": f"{used} of {granted} used"
                     + (f", earliest expiry {expires}" if expires else "")}
 
 

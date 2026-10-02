@@ -474,7 +474,7 @@ async def test_crustdata_collector_parses_credits_and_recurring():
 
 # ---- theirstack -------------------------------------------------------------------------
 
-async def test_theirstack_collector_reads_api_credits_not_ui_credits():
+async def test_theirstack_collector_reports_api_credits_left_not_ui_credits():
     resp = MockResponse({
         "api_credits": 1200,
         "ui_credits": 50,
@@ -484,9 +484,9 @@ async def test_theirstack_collector_reads_api_credits_not_ui_credits():
     })
     client = MockClient(get_response=resp)
     result = await collectors._theirstack(client, "test-key")
-    assert result["value"] == 1200
+    assert result["value"] == 900, "api_credits is the grant; the balance subtracts what was used"
     assert result["unit"] == "API credits"
-    assert "300 used" in result["note"]
+    assert "300 of 1200 used" in result["note"]
     assert "2027-09-01" in result["note"]
 
 
