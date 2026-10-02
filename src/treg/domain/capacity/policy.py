@@ -33,6 +33,7 @@ _KNOWN: dict[str, tuple[str, str, str]] = {
     "contactout": ("credits", "unknown", "api"),  # independent pools; overages unconfirmed
     "leadmagic": ("credits", "manual", "api"),
     "findymail": ("credits", "manual", "api"),
+    "anymailfinder": ("credits", "manual", "api"),
     "leadsforge": ("credits", "manual", "api"),
     "thecompaniesapi": ("credits", "manual", "api"),
     "tomba": ("monthly_quota", "quota_reset", "api"),

@@ -252,6 +252,7 @@ class Settings(BaseSettings):
     platform_key_oceanio: str = ""        # X-Api-Token; fx.yaml usd is null so tier 4 stays refused until priced
     platform_key_predictleads: str = ""   # base64 of "api_key:api_token" (HTTP Basic, like dataforseo)
     platform_key_findymail: str = ""      # Bearer key
+    platform_key_anymailfinder: str = ""  # raw key (Authorization, no Bearer); one prepaid credit pool, exact charge in response.credits_charged
     platform_key_branddev: str = ""       # Bearer key
     platform_key_icypeas: str = ""        # raw key (Authorization, no Bearer)
     platform_key_leadsforge: str = ""     # Bearer key

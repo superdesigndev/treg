@@ -731,6 +731,14 @@ async def _findymail(c, key):
             "note": f"verifier {d.get('verifier_credits')} left (separate pool)"}
 
 
+async def _anymailfinder(c, key):
+    # GET /v5.1/account is free and is the connect probe too; `credits_left` is the single prepaid
+    # pool that finds (1 credit on a hit, 2 for a decision maker) and verifications (0.2) draw on.
+    d = await _get(c, "https://api.anymailfinder.com/v5.1/account", headers={"Authorization": key})
+    return {"value": _balance(d.get("credits_left"), "Anymail Finder"), "unit": "credits",
+            "note": "1 credit per verified email found; a verification is 0.2"}
+
+
 async def _branddev(c, key):
     # No free account route exists — but a deliberate no-param call is a FREE validation error
     # (400, credits_consumed 0) whose body still carries key_metadata.credits_remaining.
@@ -938,6 +946,7 @@ BALANCE_ROUTES = {
     "twelvedata": _twelvedata,
     "influencersclub": _influencersclub,
     "apollo": _apollo,
+    "anymailfinder": _anymailfinder,
     "branddev": _branddev,
     "companyenrich": _companyenrich,
     "findymail": _findymail,

@@ -30,6 +30,10 @@ BURST_MAX_RETRY_AFTER_S = 60
 # provider → (status, substring-regex on the body, kind). `*` = any provider. First match wins.
 _TABLE: list[tuple[str, int, str, str]] = [
     ("findymail", 402, r"not enough credits", "balance"),
+    # Vendor-documented body (the vendor wrote this listing): 402 {"error":"upgrade_needed","message":"Your
+    # account does not have enough credits. Purchase more at ..."}. Not forced live - the verification
+    # account held ~99k credits. The phrase is also in CAPACITY_PHRASES so it arms the tripwire elsewhere.
+    ("anymailfinder", 402, r"not have enough credits", "balance"),
     ("leadsforge", 402, r"insufficient_credits", "balance"),
     ("leadmagic", 402, r"insufficient_credits", "balance"),
     ("thecompaniesapi", 403, r"noCreditsRemaining", "balance"),
@@ -98,7 +102,7 @@ CAPACITY_PHRASES = (
     r"reached your credit limit", r"exceeded the monthly request limit", r"hit your account maximum for",
     r"insufficient (?:credits?|balance|funds)", r"out of credits?", r"credits? (?:exhausted|remaining|left)",
     r"(?:account |api |credit )?(?:balance|quota)(?: (?:has been|is|was))? (?:exceeded|reached|exhausted|limit)",
-    r"upgrade your plan", r"insufficient-quota", r"not have enough quota",
+    r"upgrade your plan", r"insufficient-quota", r"not have enough quota", r"not have enough credits",
     r"discovery api credit limit reached", r"exceeds your plan's set usage limit",
     r"exceeds the pay-as-you-go limit",
 )

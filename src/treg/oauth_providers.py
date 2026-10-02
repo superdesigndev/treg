@@ -3218,6 +3218,44 @@ FINDYMAIL = OAuthProvider(
     token_verify_field="email",
 )
 
+ANYMAILFINDER = OAuthProvider(
+    service="anymailfinder",
+    display_name="Anymail Finder",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Anymail Finder API key",
+    # The key rides RAW in the Authorization header - no scheme prefix. The API also accepts
+    # `Bearer {key}` and an `X-Api-Key` header, but raw Authorization is what the docs show.
+    token_header="Authorization",
+    token_format="{secret}",
+    setup_url="https://app.anymailfinder.com/settings/api",
+    setup_action_label="Get your Anymail Finder API key",
+    setup_steps=(
+        "Sign in to Anymail Finder and open Settings → API.",
+        "Copy your API key.",
+    ),
+    setup_note=(
+        "Finding an email costs 1 credit, and only when a verified address comes back (2 for a "
+        "decision-maker find); verifying an address you already hold costs 0.2 whatever the verdict. "
+        "Misses and repeats within 30 days are free, and the balance check costs nothing."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find and verify B2B work emails - by name and company, LinkedIn URL, company domain or decision-maker role - and pay only for verified results.",
+    base_url="https://api.anymailfinder.com/v5.1",
+    docs_url="https://anymailfinder.com/email-finder-api/docs",
+    # GET /account is free and returns {credits_left, email}. A bad or missing key answers a clean
+    # 401 {"error":"unauthorized","message":"Missing or invalid API key."} on every route (JSON-only
+    # API, no Accept-header trap), so the default >=400 rule rejects it. `email` - the account
+    # owner's login address, present on every valid response - is the belt to that brace; do NOT use
+    # `credits_left`: an account that has spent its allowance returns 0, which is falsy.
+    # Vendor-supplied listing, self-verified live 2026-10-01.
+    probe_path="/account",
+    token_verify_field="email",
+)
+
 
 BRANDDEV = OAuthProvider(
     service="branddev",
@@ -3845,7 +3883,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPEGRAPHAI, SERPER, LITESCRAPE, CLORO,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
-        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
+        COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, ANYMAILFINDER, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,

@@ -19,8 +19,8 @@ from treg.infra import judge as judge_infra
 from treg.infra.db import session_maker
 from treg.models import SearchLog, SearchMiss
 
-JOB = "people.email.find"            # 24 vendors, a routed row
-JOB2 = "people.email.verify"         # 13 vendors, a routed row
+JOB = "people.email.find"            # 25 vendors, a routed row
+JOB2 = "people.email.verify"         # 14 vendors, a routed row
 PLAIN = "web.crawl"                  # vendors, no routed row
 
 
@@ -130,13 +130,13 @@ async def test_a_strong_answer_lists_the_job_by_vendor_with_a_verdict(clients, m
     monkeypatch.setattr(judge_infra, "judge", _fake_v2({JOB: 0.92}, seen))
     out = await _search("find the work email of a hotel manager in Cape Town", limit=8)
     assert out["verdict"] == "strong" and "reason" not in out
-    assert out["jobs"] == [{"capability": JOB, "providers": 24, "shown": 7}]
+    assert out["jobs"] == [{"capability": JOB, "providers": 25, "shown": 7}]
     rows = out["results"]
     assert len(rows) == 8 and rows[0]["endpoint_id"] == f"treg.{JOB}" and "below" not in rows[0]["routed"]
     assert all(r["job"] == JOB and r["score"] is None for r in rows)
-    assert rows[0]["more_providers"] == 24 - len({r["provider"] for r in rows[1:]})
+    assert rows[0]["more_providers"] == 25 - len({r["provider"] for r in rows[1:]})
     assert "more_providers" not in rows[1]
-    assert out["total_matches"] == 33 and out["hint"].startswith(f"{JOB} does this; catalog_get('treg.{JOB}')")
+    assert out["total_matches"] == 34 and out["hint"].startswith(f"{JOB} does this; catalog_get('treg.{JOB}')")
     assert out["next"].startswith("catalog_get")
     (_, _, kw), = seen
     assert kw["timeout_s"] == get_settings().typesafe_timeout_s        # the agent's budget, not find's

@@ -1,0 +1,9 @@
+{
+  "input": {
+    "email": "support@stripe.com"
+  },
+  "credits_charged": 0.2,
+  "email_status": "valid",
+  "mx_domain": "google.com",
+  "mx_host": "aspmx.l.google.com"
+}

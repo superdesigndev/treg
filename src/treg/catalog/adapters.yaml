@@ -80,6 +80,13 @@ adapters:
     in:  {linkedin_url: body.linkedin_url}
     out: {email: contact.email, first_name: "split_first(contact.name)", last_name: "split_last(contact.name)"}
     miss: "contact.email == null"
+  # Anymail Finder answers a miss as HTTP 200 {email_status: not_found}; `valid_email` is filled only
+  # when the address was SMTP-verified, so a `risky` guess is never a hit. One route serves both jobs.
+  anymailfinder.find-email.person:
+    accepts: [[full_name, domain], [first_name, last_name, domain], [linkedin_url]]
+    in:  {full_name: body.full_name, domain: body.domain, linkedin_url: body.linkedin_url}
+    out: {email: valid_email, verified: "email_status == 'valid'"}
+    miss: "valid_email == null"
   tomba.people.email.find:
     accepts: [[full_name, domain], [first_name, last_name, domain]]
     in:  {full_name: queryParams.full_name, domain: queryParams.domain}
@@ -424,6 +431,11 @@ adapters:
     in:  {email: queryParams.email}
     out: {valid: "data.email.status == 'valid'", status: data.email.status, score: data.email.score}
     miss: "data.email.status == null"
+  anymailfinder.verify-email:
+    accepts: [[email]]
+    in:  {email: body.email}
+    out: {valid: "email_status == 'valid'", status: email_status}
+    miss: "email_status == null"
   hunter.people.email.verify:
     accepts: [[email]]
     in:  {email: queryParams.email}
