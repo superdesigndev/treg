@@ -1143,13 +1143,12 @@ USE_CASE_PAGES["enrich-a-company"] = {
 
 USE_CASE_PAGES["youtube-transcript-api"] = {
     "label": "Get a video's transcript",
-    "sentence": "YouTube transcript API: a video's captions as plain text",
-    "title": "YouTube transcript API: {n} providers compared | treg.to",
+    "sentence": "Get a YouTube video's transcript as text",
+    "title": "YouTube Transcript: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent a YouTube URL and get the spoken words back as text, ready to summarise, "
-        "search or quote. {n} providers do this through one treg.to key, from {cheapest} a video. "
-        "The official YouTube Data API cannot do it for a video you do not own, which is the whole "
-        "reason this job has a price at all."),
+        "Get the spoken words from any YouTube video as text. {n} providers through one treg.to "
+        "key, from {cheapest} a video. The official YouTube Data API cannot do it for videos you "
+        "do not own."),
     "prompt": "Using treg, get the transcript of https://www.youtube.com/watch?v=dQw4w9WgXcQ in "
               "English. Show me the price first, then summarise it into five bullet points.",
     "prompt_why": [
@@ -1245,12 +1244,12 @@ USE_CASE_PAGES["youtube-transcript-api"] = {
 
 USE_CASE_PAGES["video-details-views-and-stats"] = {
     "label": "Video details, views and stats",
-    "sentence": "YouTube video statistics: views, likes and metadata by video id",
-    "title": "YouTube video statistics API: {n} providers | treg.to",
+    "sentence": "Get YouTube video views, likes and metadata",
+    "title": "YouTube Video Stats: from {cheapest} | treg.to",
     "lede": (
-        "Views, likes, comment count, duration, title, description, tags and publish date, for any "
-        "public video. {n} providers do this through one treg.to key, and one of them is Google's "
-        "own API on the account you already have, which is free but rationed."),
+        "Get views, likes, comment count, duration and publish date for any public video. {n} "
+        "providers through one treg.to key, from {cheapest} per lookup. Google's own API is free "
+        "but rationed."),
     "prompt": "Using treg, get the view count, like count and publish date for these 30 YouTube "
               "video ids and put them in a table sorted by views. Show me the price first.",
     "prompt_why": [
@@ -1343,12 +1342,12 @@ USE_CASE_PAGES["video-details-views-and-stats"] = {
 
 USE_CASE_PAGES["youtube-channel-stats"] = {
     "label": "A channel's profile and lifetime stats",
-    "sentence": "YouTube channel stats API: subscribers, total views and profile",
-    "title": "YouTube channel stats API: {n} providers | treg.to",
+    "sentence": "Get YouTube channel subscribers and profile stats",
+    "title": "YouTube Channel Stats: from {cheapest} | treg.to",
     "lede": (
-        "Subscriber count, lifetime views, video count, description, country and links, for any "
-        "public channel. {n} providers do this through one treg.to key, including Google's own API "
-        "on your account, which resolves an @handle without you having to find the UC id first."),
+        "Get subscriber count, lifetime views, video count and profile for any public channel. {n} "
+        "providers through one treg.to key, from {cheapest} per lookup. Google's API resolves "
+        "@handles without you finding the UC id."),
     "prompt": "Using treg, get the subscriber count, total views and video count for @MrBeast and "
               "@mkbhd, and tell me which has more views per video. Show me the price first.",
     "prompt_why": [
@@ -1442,13 +1441,12 @@ USE_CASE_PAGES["youtube-channel-stats"] = {
 
 USE_CASE_PAGES["search-videos-and-channels-by-keyword"] = {
     "label": "Search videos and channels by keyword",
-    "sentence": "YouTube search API: find videos and channels by keyword",
-    "title": "YouTube search API: {n} providers compared | treg.to",
+    "sentence": "Search YouTube videos and channels by keyword",
+    "title": "YouTube Search: from {cheapest} | treg.to",
     "lede": (
-        "Run a YouTube search from your agent and get the results as data: titles, video ids, "
-        "channels, publish dates and thumbnails, with the filters the site itself offers. {n} "
-        "providers do this through one treg.to key. Google's own API is free on your account and "
-        "the single most quota-expensive call it has, which is why the others are here."),
+        "Run a YouTube search from your agent and get results as data: titles, video ids, channels "
+        "and publish dates. {n} providers through one treg.to key, from {cheapest} per search. "
+        "Google's free API burns quota faster than any other call."),
     "prompt": "Using treg, search YouTube for videos about home espresso uploaded in the last month, "
               "sorted by view count. Show me the price first, then give me the top 20 with links.",
     "prompt_why": [
@@ -1540,12 +1538,12 @@ USE_CASE_PAGES["search-videos-and-channels-by-keyword"] = {
 
 USE_CASE_PAGES["youtube-video-comments"] = {
     "label": "A video's comments",
-    "sentence": "YouTube comment scraper: every comment on a video, as data",
-    "title": "YouTube comment scraper API: {n} providers | treg.to",
+    "sentence": "Export every comment on a YouTube video",
+    "title": "YouTube Comments Export: from {cheapest} | treg.to",
     "lede": (
-        "Pull a video's comments with authors, like counts, timestamps and replies, so your agent "
-        "can read the audience instead of you scrolling. {n} providers do this through one treg.to "
-        "key, and Google's own API is free on the account you already have."),
+        "Pull a video's comments with authors, like counts and timestamps so your agent can read "
+        "the audience. {n} providers through one treg.to key, from {cheapest} per call. Google's "
+        "own API is free on the account you already have."),
     "prompt": "Using treg, get the comments on https://www.youtube.com/watch?v=dQw4w9WgXcQ sorted by "
               "relevance. Show me the price first, then group them into the five things people complain about.",
     "prompt_why": [
@@ -3971,15 +3969,12 @@ USE_CASE_PAGES["app-store-search"] = {
 
 USE_CASE_PAGES["transcripts-of-x-and-facebook-video-posts"] = {
     "label": "Transcripts of X and Facebook video posts",
-    "sentence": "Facebook video transcript and X video transcript: the words in a video post, from its URL",
-    "title": "Facebook and X video transcript by URL, per call | treg.to",
+    "sentence": "Get the transcript of an X or Facebook video",
+    "title": "X and Facebook Video Transcript: from {cheapest} | treg.to",
     "lede": (
-        "Paste your agent the URL of a Facebook video post or an X video post and get the "
-        "spoken words back as text, through one treg.to key from {cheapest} a call at the "
-        "provider's own rate with $0.000 added. No download step, no ffmpeg, no Whisper run "
-        "of your own and no developer account on either network. The price is per call, not "
-        "per minute of video, so a fifty minute livestream and a twenty second clip cost the "
-        "same. Public posts only, and a post that has been taken down is gone for everyone."),
+        "Get the spoken words from an X or Facebook video post as text. {n} providers through one "
+        "treg.to key, from {cheapest} per call. No download step, no ffmpeg and no Whisper run of "
+        "your own."),
     "prompt": "Using treg, get the transcript of this Facebook video post and this X video "
               "post, show me the price per call first, then give me the text of each with the "
               "source link above it, and tell me plainly if either one came back empty.",
