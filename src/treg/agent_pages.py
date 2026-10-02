@@ -586,13 +586,12 @@ USE_CASE_PAGES["search-console-queries"] = {
 
 USE_CASE_PAGES["find-creators-by-keyword"] = {
     "label": "Find creators by keyword",
-    "sentence": "Find creators by keyword on Instagram, TikTok, YouTube and X",
-    "title": "Creator search API: 4 platforms compared | treg.to",
+    "sentence": "Find creators by keyword across social",
+    "title": "Creator Search by Keyword: from {cheapest} | treg.to",
     "lede": (
-        "Search each platform's own user index by keyword and get back profiles with follower "
-        "counts, bios and links, so your agent can shortlist creators instead of you scrolling. "
-        "Each platform is served by its own providers; the comparison below is per platform, "
-        "because an Instagram search and a YouTube search are different jobs, not alternatives."),
+        "Get profiles with follower counts, bios and links for any keyword. {n} providers across "
+        "Instagram, TikTok, YouTube and X through one treg.to key, from {cheapest}. Each platform "
+        "is its own index, so the comparison below is per platform."),
     "prompt": "Using treg, find 20 TikTok creators posting about home espresso with between 50k and "
               "500k followers. Show me the price first, then give me handles, follower counts and bios.",
     "prompt_why": [
@@ -1997,14 +1996,12 @@ USE_CASE_PAGES["amazon-product-detail-by-asin"] = {
 
 USE_CASE_PAGES["find-local-businesses-by-keyword-and-location"] = {
     "label": "Find local businesses by keyword and location",
-    "sentence": "Yelp API and Tripadvisor API: local businesses by keyword",
-    "title": "Yelp API and Tripadvisor API, from {cheapest} | treg.to",
+    "sentence": "Find local businesses by keyword and location",
+    "title": "Local Business Search: from {cheapest} | treg.to",
     "lede": (
-        "Ask for a kind of business and a place, and get the listings back as data: names, ratings, "
-        "review counts, addresses and categories. Two sources through one treg.to key, from "
-        "{cheapest} a call, with no Yelp or Tripadvisor developer programme to be admitted to "
-        "first. They are different listings rather than two copies of one, so the comparison below "
-        "groups them rather than ranking them against each other."),
+        "Get names, ratings, review counts and addresses for any keyword and place. {n} providers "
+        "through one treg.to key, from {cheapest}. No Yelp or Tripadvisor developer programme "
+        "required."),
     "prompt": "Using treg, find ramen restaurants in Austin, Texas on Yelp and on Tripadvisor. Show "
               "me the price first, then give me one list with each place's name, rating, review "
               "count and address.",
@@ -2249,14 +2246,11 @@ USE_CASE_PAGES["keywords-a-domain-ranks-for"] = {
 
 USE_CASE_PAGES["how-ai-answers-mention-your-brand"] = {
     "label": "How AI answers mention your brand",
-    "sentence": "AI visibility tracking: how ChatGPT and Perplexity answers mention your brand, run by your agent",
-    "title": "AI visibility tracking API, from {cheapest} a check | treg.to",
+    "sentence": "See how AI answers mention your brand",
+    "title": "AI Visibility Tracking: from {cheapest} | treg.to",
     "lede": (
-        "Every AI visibility tool sells the same loop: run a set of prompts through ChatGPT and "
-        "Perplexity, note who gets named, repeat next week. Your agent can run that loop itself. "
-        "One provider serves it through treg.to, as live answers to a prompt and as aggregated "
-        "mention metrics for a keyword or domain, priced per call from {cheapest}, with no "
-        "subscription and no dashboard to pay for."),
+        "Run prompts through ChatGPT and Perplexity and get back who is named. {n} providers "
+        "through one treg.to key, from {cheapest}. No subscription, no dashboard."),
     "prompt": "Using treg, run these 12 buyer prompts through ChatGPT and Perplexity, US, web search "
               "on, and tell me for each one whether treg.to or any of Composio, Pipedream or Zapier "
               "is named, and in what position. Show me the total price before you start.",
@@ -3502,15 +3496,12 @@ USE_CASE_PAGES["employee-reviews-of-a-company"] = {
 
 USE_CASE_PAGES["keywords-a-domain-bids-on"] = {
     "label": "Keywords a domain bids on",
-    "sentence": "Competitor PPC keywords: the Google Ads keywords a domain bids on, with CPC, from SpyFu or Semrush",
-    "title": "Competitor PPC keywords API: what a domain bids on | treg.to",
+    "sentence": "Get the Google Ads keywords a domain bids on",
+    "title": "Competitor PPC Keywords: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent a competitor's domain and get the Google Ads keywords it bids on "
-        "back as rows: keyword, search volume, cost per click, estimated monthly spend and who "
-        "else bids on it. SpyFu and Semrush answer through one treg.to key, from {cheapest} "
-        "at the provider's own rate with no markup, priced per row rather than per seat. Both "
-        "are estimates built from a crawl of the ads they saw, not Google's own numbers, and "
-        "the page says so before the comparison does."),
+        "Get keyword, search volume, CPC and estimated spend for any competitor domain. "
+        "{n} providers through one treg.to key, from {cheapest}. These are estimates from "
+        "ad crawls, not Google's own numbers."),
     "prompt": "Using treg, get the top 200 Google Ads keywords that competitor.com bids on in "
               "the US, show me the price first, then drop their brand terms and give me the "
               "twenty highest-volume keywords we are not bidding on, with CPC.",
@@ -3734,15 +3725,12 @@ USE_CASE_PAGES["backlink-profile-of-a-domain"] = {
 
 USE_CASE_PAGES["search-posts-by-keyword"] = {
     "label": "Search posts by keyword",
-    "sentence": "Reddit search API and X search API: posts by keyword on Reddit, X, LinkedIn and TikTok, per call",
-    "title": "Reddit and X search API: posts by keyword, per call | treg.to",
+    "sentence": "Search posts by keyword on social platforms",
+    "title": "Social Post Search: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent a keyword and get the posts back as rows: title, text, author, "
-        "score, date and the link, from Reddit, X, LinkedIn or TikTok, each through the same "
-        "treg.to key, from {cheapest} at the provider's own rate with no markup. No Reddit "
-        "developer app to apply for, no X Basic tier to subscribe to, and no account of yours "
-        "on the line. The networks are not alternatives to each other; the platform is the "
-        "choice, and the rows are relayed as the provider returns them."),
+        "Get title, text, author, score and link for any keyword. {n} providers across Reddit, "
+        "X, LinkedIn and TikTok through one treg.to key, from {cheapest}. No Reddit app to apply "
+        "for, no X Basic tier to subscribe to."),
     "prompt": "Using treg, search Reddit and X for posts mentioning our product name from the "
               "last week, show me the price per platform first, then group them by theme, "
               "flag anything that reads as a complaint, and give me the link for each.",
@@ -5222,16 +5210,12 @@ USE_CASE_PAGES["company-email-format"] = {
 
 USE_CASE_PAGES["mine-the-comments"] = {
     "label": "Mine the comments",
-    "sentence": "Social listening API: export the comments on Instagram, YouTube, Reddit and LinkedIn posts as data",
-    "title": "Instagram comment export and social listening API | treg.to",
+    "sentence": "Export comments from social posts as data",
+    "title": "Comment Export: from {cheapest} | treg.to",
     "lede": (
-        "Give your agent a post URL on Instagram, a video on YouTube, a thread on Reddit or a "
-        "post on LinkedIn and get the comments back as rows: author, text, likes, time, "
-        "replies. {n} providers across the four platforms answer through one treg.to key, "
-        "each at its own rate with $0.000 added, from a fraction of a cent per call, and on "
-        "YouTube the official API is free on the Google account you already have. This is the "
-        "raw material of social listening, not the dashboard: the rows come back and your "
-        "agent does the reading."),
+        "Get author, text, likes and replies for any post. {n} providers across Instagram, "
+        "YouTube, Reddit and LinkedIn through one treg.to key, from {cheapest}. YouTube's "
+        "official API is genuinely free on the Google account you already have."),
     "prompt": "Using treg, get every comment on these three Instagram posts and this YouTube "
               "video, show me the price per platform first, then group the comments into "
               "questions, complaints and praise, quote the three most upvoted in each group "
