@@ -1174,6 +1174,19 @@ def test_hunter_email_finder_miss_is_free():
     assert call_settle._observed_cost_micro(f, b"not json") is None
 
 
+def test_theirstack_company_lookup_miss_is_free():
+    """Technographics and buying intents bill one flat lookup per KNOWN company; an unknown one
+    answers 200 with `data: []` and TheirStack charges nothing, so neither may treg."""
+    for endpoint_id in ("theirstack.companies.technographics", "theirstack.companies.buying_intents"):
+        mk = _mk("theirstack", endpoint_id=endpoint_id, cost_type="per_success")
+        assert call_settle._observed_cost_micro(
+            mk, b'{"data": [], "metadata": {"total_results": null}}') == 0
+        assert call_settle._observed_cost_micro(
+            mk, b'{"data": [{"keyword": {"slug": "python"}}], "metadata": {}}') is None, \
+            "a hit settles at the estimate: one lookup, however many rows"
+        assert call_settle._observed_cost_micro(mk, b'{"error": {"title": "x"}}') is None
+
+
 def test_tikhub_envelope_no_charge_settles_at_zero():
     """TikHub reports billing in prose, not a number: a 2xx whose payload is an embedded error
     still says the request will incur a charge — and TikHub really does charge us for it
