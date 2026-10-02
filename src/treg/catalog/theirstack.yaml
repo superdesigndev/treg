@@ -152,11 +152,13 @@ endpoints:
     currency: credit
     per: 1
     unit: record
-    source: docs
+    source: observed
     source_url: https://theirstack.com/en/docs/pricing/credits
-    checked: '2026-10-01'
-    confidence: documented
+    checked: '2026-10-02'
+    confidence: verified
     note: 1 API credit per job in data[]; an empty page is free. Repeating a request bills again — use posted_at/discovered_at windows or job_id_not to avoid paying twice for the same job
+  verified: '2026-10-02'
+  example_response: examples/theirstack.jobs.search.json
   docs_url: https://theirstack.com/en/docs/api-reference/jobs/search_jobs_v1
 - id: theirstack.companies.jobs
   domain: companies
@@ -183,11 +185,13 @@ endpoints:
     currency: credit
     per: 1
     unit: record
-    source: docs
+    source: observed
     source_url: https://theirstack.com/en/docs/pricing/credits
-    checked: '2026-10-01'
-    confidence: documented
+    checked: '2026-10-02'
+    confidence: verified
     note: 1 API credit per job in data[]; a company with no matching jobs costs nothing
+  verified: '2026-10-02'
+  example_response: examples/theirstack.companies.jobs.json
   docs_url: https://theirstack.com/en/docs/api-reference/jobs/search_jobs_v1
 - id: theirstack.companies.search
   domain: companies
@@ -272,11 +276,13 @@ endpoints:
     currency: credit
     per: 1
     unit: record
-    source: docs
+    source: observed
     source_url: https://theirstack.com/en/docs/pricing/credits
-    checked: '2026-10-01'
-    confidence: documented
+    checked: '2026-10-02'
+    confidence: verified
     note: 3 API credits per company in data[]; an empty page is free
+  verified: '2026-10-02'
+  example_response: examples/theirstack.companies.search.json
   docs_url: https://theirstack.com/en/docs/api-reference/companies/search_companies_v1
 - id: theirstack.technologies.users
   domain: companies
@@ -304,11 +310,13 @@ endpoints:
     currency: credit
     per: 1
     unit: record
-    source: docs
+    source: observed
     source_url: https://theirstack.com/en/docs/pricing/credits
-    checked: '2026-10-01'
-    confidence: documented
+    checked: '2026-10-02'
+    confidence: verified
     note: 3 API credits per company in data[]
+  verified: '2026-10-02'
+  example_response: examples/theirstack.technologies.users.json
   docs_url: https://theirstack.com/en/docs/api-reference/companies/search_companies_v1
 - id: theirstack.companies.technographics
   domain: companies
@@ -353,11 +361,13 @@ endpoints:
     currency: credit
     per: 1
     unit: call
-    source: docs
+    source: observed
     source_url: https://theirstack.com/en/docs/api-reference/companies/technographics_v1
-    checked: '2026-10-01'
-    confidence: documented
+    checked: '2026-10-02'
+    confidence: verified
     note: 3 API credits per company lookup however many technologies return; an unknown company costs nothing
+  verified: '2026-10-02'
+  example_response: examples/theirstack.companies.technographics.json
   docs_url: https://theirstack.com/en/docs/api-reference/companies/technographics_v1
 - id: theirstack.companies.buying_intents
   domain: companies
@@ -402,11 +412,13 @@ endpoints:
     currency: credit
     per: 1
     unit: call
-    source: docs
+    source: observed
     source_url: https://theirstack.com/en/docs/api-reference/companies/buying_intents_v1
-    checked: '2026-10-01'
-    confidence: documented
+    checked: '2026-10-02'
+    confidence: verified
     note: 3 API credits per company lookup however many topics return; an unknown company costs nothing
+  verified: '2026-10-02'
+  example_response: examples/theirstack.companies.buying_intents.json
   docs_url: https://theirstack.com/en/docs/api-reference/companies/buying_intents_v1
 - id: theirstack.technologies.list
   domain: companies
@@ -442,10 +454,12 @@ endpoints:
     value: 0
     currency: USD
     unit: call
-    source: docs
+    source: observed
     source_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0
-    checked: '2026-10-01'
-    confidence: documented
+    checked: '2026-10-02'
+    confidence: verified
+  verified: '2026-10-02'
+  example_response: examples/theirstack.technologies.list.json
   docs_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0
 - id: theirstack.industries.list
   domain: companies
@@ -471,10 +485,12 @@ endpoints:
     value: 0
     currency: USD
     unit: call
-    source: docs
+    source: observed
     source_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_industries_v0
-    checked: '2026-10-01'
-    confidence: documented
+    checked: '2026-10-02'
+    confidence: verified
+  verified: '2026-10-02'
+  example_response: examples/theirstack.industries.list.json
   docs_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_industries_v0
 - id: theirstack.locations.search
   domain: companies
@@ -504,10 +520,12 @@ endpoints:
     value: 0
     currency: USD
     unit: call
-    source: docs
+    source: observed
     source_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_locations_v0
-    checked: '2026-10-01'
-    confidence: documented
+    checked: '2026-10-02'
+    confidence: verified
+  verified: '2026-10-02'
+  example_response: examples/theirstack.locations.search.json
   docs_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_locations_v0
 - id: theirstack.account.credit_balance
   kind: account
@@ -528,4 +546,6 @@ endpoints:
     value: 0
     currency: USD
     unit: call
+  verified: '2026-10-02'
+  example_response: examples/theirstack.account.credit_balance.json
   docs_url: https://theirstack.com/en/docs/api-reference/billing/get_billing_credit_balance_v0
