@@ -1438,6 +1438,24 @@ FETCHINIO = OAuthProvider(
     probe_path="/api/v1/subscription",
 )
 
+IMAGESTEP = OAuthProvider(
+    service="imagestep", display_name="ImageStep", auth_kind="key",
+    token_label="API key", token_placeholder="is_sk_…",
+    token_header="Authorization", token_format="ApiKey {secret}",
+    setup_url="https://imagestep.dev/keys",
+    setup_action_label="Get your ImageStep API key",
+    setup_steps=("Sign in to ImageStep and open API keys.",
+                 "Create a key and paste it here. It is shown once."),
+    setup_note=("Metadata reads are free. Deterministic ops are unlimited on paid plans; AI ops "
+                "(background removal, upscaling) are paid per image from the account's credit balance. "
+                "Connection verification reads the free job counts."),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Remove backgrounds, upscale, convert formats and read metadata of images, priced per op in USD.",
+    base_url="https://api.imagestep.dev", docs_url="https://imagestep.dev/docs/api",
+    probe_path="/api/v1/jobs/counts",
+)
+
 DROPLEADS = OAuthProvider(
     service="dropleads", display_name="Dropleads", auth_kind="key",
     token_label="API key", token_placeholder="your Dropleads API key",
@@ -3838,7 +3856,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, IMAGESTEP, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
