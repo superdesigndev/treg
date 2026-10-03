@@ -214,7 +214,10 @@ Bare **`treg connections`** now lists (the subparser is `required=False` with a 
   `/auth/cli/poll` **with no
   code**; the poll result may carry `active_org` = the team picked in the browser, which `cmd_login` adopts
   directly, falling back to `_pick_active_org` only against an older server (where `/start` 404s → a
-  locally-minted `login_id`, no code)),
+  locally-minted `login_id`, no code). A `/start` that cannot be reached at all exits before printing
+  any link and names the way out (network for the command, or `login --token`): a locally-minted id
+  there is a link the server never saw, which agent sandboxes with the network off used to hit as
+  "this login has expired"),
   `login --email you@x.com` (terminal-only email OTP: `POST /auth/email/start` →
   prompts for the 6-digit code → `/auth/email/verify`, storing the identity token), or `login --token <t>`
   for agents/CI — which now **verifies the token via `/auth/me` before saving** (a rejected token exits
