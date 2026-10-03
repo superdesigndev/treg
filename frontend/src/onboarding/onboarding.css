@@ -557,3 +557,15 @@
 .ob2 .opt[aria-checked="true"]{background:#fff;box-shadow:0 1px 2px #0000000a,0 10px 30px -8px #0000001f}
 .ob2 .oe-row:focus-within{background:#ececef;box-shadow:none}
 .ob2 .run-edit .oe-row:focus-within{background:#ececef}
+/* The step's buttons sit in the dock, after the credit, so a sheet taller than the screen never
+   hides them. On a phone they take a row of their own under the progress and credit. */
+.ob2 .dock-act{display:flex;align-items:center;gap:12px;flex:none}
+.ob2 .dock-act:not(:empty){padding-left:24px;border-left:1px solid var(--line)}
+.ob2 .dock-prog+.dock-act{margin-left:auto}
+.ob2 .sh-foot.ob-more>.linkbtn:only-child{margin-left:-4px}
+@media (max-width:700px){
+.ob2 main.wrap{padding-bottom:208px}
+.ob2 .dock-in{flex-wrap:wrap;row-gap:12px}
+.ob2 .dock-act:not(:empty){flex:1 1 100%;padding-left:0;border-left:0}
+.ob2 .dock-act .ob-next{flex:1}
+}

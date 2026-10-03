@@ -206,7 +206,7 @@ which arm it is in is PostHog's.
    the user to the team-name modal. The sheet polls `GET /onboarding` and shows one card per fact (`first_run._facts`):
    a welcome by first name, never by the company; GitHub; the company record; the site, and the tools
    and ad pixels its HTML loads (`page.TOOLS`, `page.PIXELS`); the checked search term, competitor
-   and TikTok topic. Where the user arrived from is never shown. Continue appears at `ready`. When
+   and TikTok topic. Where the user arrived from is never shown. Every step's buttons sit in the dock under the sheet, so a sheet taller than the screen never hides them; here the button reads Skip until `ready`, then Continue. When
    nothing public grounded a task (`ask`), the sheet asks what the agent will do first; the answer
    (`POST /onboarding/answer`, a key of `tasks.USE_CASES`) is kept as `here_for` and its tasks lead.
 2. **A task.** Five of the tasks in `application/onboard/tasks.py` (the rest behind "Show more"),

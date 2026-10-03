@@ -6,7 +6,7 @@ import '@fontsource-variable/geist/index.css'
 //   2. What should your agent do first: five ranked tasks, each a sentence with one editable blank.
 //   3. Your first call: the chosen task runs for real on the team's credit, its answer drawn the way
 //      it is read, and the same tool handed to the agent.
-// The dock under the sheets shows the step and the team's credit.
+// The dock under the sheets shows the step, the team's credit and the step's buttons.
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useDashboard } from '../state/context'
 import ConnectBlock from './ConnectBlock.vue'
@@ -443,9 +443,6 @@ onBeforeUnmount(() => {
               </span>
             </article>
           </div></div>
-          <div v-if="data" class="sh-foot">
-            <button type="button" class="candy ob-next" @click="diagContinue(!lookupDone)">{{lookupDone ? 'Continue' : 'Skip'}} <span class="arrow" aria-hidden="true">→</span></button>
-          </div>
         </section>
 
         <!-- 2. What should your agent do first -->
@@ -471,10 +468,8 @@ onBeforeUnmount(() => {
               <span class="radio" aria-hidden="true"></span>
             </div>
           </div></div>
-          <div class="sh-foot st" style="--i:9">
-            <button type="button" class="linkbtn ob-back" @click="goTo('diag')"><span aria-hidden="true">←</span> Back</button>
-            <button v-if="!showAll && ranked.length > SHOWN" type="button" class="linkbtn" @click="showAll=true">Show {{ranked.length - SHOWN}} more</button>
-            <button type="button" class="candy ob-next" :disabled="!picked || !parses(picked)" @click="advance()">Continue <span class="arrow" aria-hidden="true">→</span></button>
+          <div v-if="!showAll && ranked.length > SHOWN" class="sh-foot ob-more st" style="--i:9">
+            <button type="button" class="linkbtn" @click="showAll=true">Show {{ranked.length - SHOWN}} more</button>
           </div>
         </section>
 
@@ -491,7 +486,7 @@ onBeforeUnmount(() => {
             </form>
             <div class="ob-term">
               <div class="term-h"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span>treg · first call</span>
-                <span class="ob-btn oneclick ob-run" :class="{'ob-done': ran && !runErr}" role="status">
+                <span v-if="running || !runErr" class="ob-btn oneclick ob-run" :class="{'ob-done': ran && !runErr}" role="status">
                   <template v-if="running"><span class="ob-spin"></span> Running</template>
                   <template v-else-if="!runErr">Done ✓</template>
                 </span>
@@ -514,11 +509,6 @@ onBeforeUnmount(() => {
               :say="picked ? library[picked]?.say || '' : ''" :value="picked ? rawSlot(picked) : ''"
               @update:value="v => { if (picked) edits[picked] = v }" @copied="m => track('onboarding_v2_connect_copied', {method: m, task: picked})" />
           </section>
-          <div class="sh-foot">
-            <button type="button" class="linkbtn ob-back" @click="goTo('task')"><span aria-hidden="true">←</span> Back</button>
-            <button v-if="preview" type="button" class="linkbtn" @click="previewAgain">Try another email</button>
-            <button type="button" class="candy ob-next" @click="finish()">{{preview ? 'Close the preview' : 'Open the dashboard'}} <span class="arrow" aria-hidden="true">→</span></button>
-          </div>
         </section>
       </Transition>
     </div>
@@ -537,6 +527,21 @@ onBeforeUnmount(() => {
         </p>
         <!-- A new team's balance is its signup grant: "free credit", the word the rest of treg uses. -->
         <p class="covers">{{(balance ?? 0) > 0 ? 'Free credit' : 'Your credit'}}<template v-if="covers"> · covers about <b>{{covers}}</b></template></p>
+      </div>
+      <!-- The step's buttons live here, not at the end of the sheet: a tall sheet never hides them. -->
+      <div class="dock-act">
+        <template v-if="sheet === 'diag'">
+          <button v-if="data" type="button" class="candy ob-next" @click="diagContinue(!lookupDone)">{{lookupDone ? 'Continue' : 'Skip'}} <span class="arrow" aria-hidden="true">→</span></button>
+        </template>
+        <template v-else-if="sheet === 'task'">
+          <button type="button" class="linkbtn ob-back" @click="goTo('diag')"><span aria-hidden="true">←</span> Back</button>
+          <button type="button" class="candy ob-next" :disabled="!picked || !parses(picked)" @click="advance()">Continue <span class="arrow" aria-hidden="true">→</span></button>
+        </template>
+        <template v-else>
+          <button type="button" class="linkbtn ob-back" @click="goTo('task')"><span aria-hidden="true">←</span> Back</button>
+          <button v-if="preview" type="button" class="linkbtn" @click="previewAgain">Try another email</button>
+          <button type="button" class="candy ob-next" @click="finish()">{{preview ? 'Close the preview' : 'Open the dashboard'}} <span class="arrow" aria-hidden="true">→</span></button>
+        </template>
       </div>
     </div></div>
   </div>
