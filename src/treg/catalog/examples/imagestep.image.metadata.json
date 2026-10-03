@@ -1,0 +1,38 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "image": {
+      "mimeType": "image/webp",
+      "width": 320,
+      "height": 320,
+      "size": 19250,
+      "sha1Hash": "ef4625dbedcd6233c9e291213809d325debb9d91",
+      "colorSpace": "srgb",
+      "density": null,
+      "hasAlpha": false,
+      "hasIccProfile": false,
+      "pages": 1,
+      "animated": false,
+      "dominantColor": "#888878",
+      "opaque": true,
+      "blurhash": "LAD,12WB%1s:0Jk89ajJ~WW;NLM|",
+      "thumbhash": "2PgFFwKnWIiAdHqPZmm3qHd5ifpouHIP",
+      "phash": "b7498c338999abc3"
+    },
+    "durationMs": 163,
+    "metadata": {
+      "FileType": "WEBP",
+      "FileTypeExtension": "webp",
+      "MIMEType": "image/webp",
+      "VP8Version": "0 (bicubic reconstruction, normal loop)",
+      "ImageWidth": "320",
+      "HorizontalScale": "0",
+      "ImageHeight": "320",
+      "VerticalScale": "0",
+      "ImageSize": "320x320",
+      "Megapixels": "0.102"
+    }
+  },
+  "timestamp": "2026-10-03T09:12:09.464877886Z"
+}

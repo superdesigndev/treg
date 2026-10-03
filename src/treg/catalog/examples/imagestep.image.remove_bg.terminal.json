@@ -1,0 +1,45 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "id": "job_1c2d3e4f5a6b7c8d9e0fa1b2c3d4e5f6",
+    "type": "ai-edit",
+    "status": "COMPLETED",
+    "createdAt": "2026-10-03T09:12:36.451518Z",
+    "submittedAt": "2026-10-03T09:12:36.461704Z",
+    "completedAt": "2026-10-03T09:12:44.166345Z",
+    "totalItems": 1,
+    "submittedItems": 1,
+    "settledItems": 1,
+    "completedItems": 1,
+    "failedItems": 0,
+    "cancelledItems": 0,
+    "actualCredits": 227,
+    "model": "fal-ai/bria/background/remove",
+    "presetName": "op:remove_bg",
+    "op": "remove_bg",
+    "expiresAt": "2026-11-02T09:12:36.451Z",
+    "rootJobId": "job_1c2d3e4f5a6b7c8d9e0fa1b2c3d4e5f6",
+    "attemptNumber": 1,
+    "items": [
+      {
+        "status": "COMPLETED",
+        "sourceAssetId": "ast_0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+        "resultAssetId": "ast_8a7b6c5d4e3f20112233445566778899",
+        "startedAt": "2026-10-03T09:12:36.476807Z",
+        "finishedAt": "2026-10-03T09:12:44.158922Z",
+        "provider": "fal",
+        "model": "fal-ai/bria/background/remove",
+        "credits": 227,
+        "timings": {
+          "inputMs": 2751,
+          "storeMs": 2560,
+          "providerMs": 2364
+        },
+        "index": 0,
+        "durationMs": 7682
+      }
+    ]
+  },
+  "timestamp": "2026-10-03T09:12:44.453626331Z"
+}

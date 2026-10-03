@@ -31,6 +31,7 @@ platforms:
   # --- AI generation: generated media modalities ------------------------------------------------
   video-gen: {label: "Video generation", category: "AI generation", summary: "Text-to-video and image-to-video across models, with prices side by side."}
   image-gen: {label: "Image generation", category: "AI generation", summary: "Text-to-image and prompt-based image editing across models."}
+  image-tools: {label: "Image processing", category: "AI generation", summary: "Background removal, upscaling, format conversion and metadata for images you already have."}
   voice-gen: {label: "Voice generation", category: "AI generation", summary: "Text-to-speech across voice models, with prices side by side."}
   music-gen: {label: "Music generation", category: "AI generation", summary: "Songs and short music clips from a text prompt, with prices side by side."}
 

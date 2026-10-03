@@ -1,0 +1,13 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": {
+    "bytes": 19702,
+    "width": 320,
+    "contentType": "image/webp",
+    "expiresInSeconds": 300,
+    "url": "https://<account>.r2.cloudflarestorage.com/<bucket>/tmp/sync/<user id>/<request id>?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=300&X-Amz-Signature=<signature>",
+    "height": 320
+  },
+  "timestamp": "2026-10-03T09:12:12.823079263Z"
+}
