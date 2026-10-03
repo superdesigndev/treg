@@ -724,6 +724,20 @@ async def _predictleads(c, key):
             "note": f"{used}/{quota} used, subscription {attrs.get('status', '?')}"}
 
 
+async def _theirstack(c, key):
+    # GET /v0/billing/credit-balance is free. api_credits is the API credits granted, not what is
+    # left: the balance is api_credits - used_api_credits. ui_credits are the separate app-reveal
+    # meter and never move on API calls.
+    d = await _get(c, "https://api.theirstack.com/v0/billing/credit-balance",
+                   headers={"Authorization": f"Bearer {key}"})
+    granted, used = d.get("api_credits"), d.get("used_api_credits")
+    left = max(granted - used, 0) if isinstance(granted, int) and isinstance(used, int) else None
+    expires = (d.get("earliest_expiration") or "")[:10]
+    return {"value": left, "unit": "API credits",
+            "note": f"{used} of {granted} used"
+                    + (f", earliest expiry {expires}" if expires else "")}
+
+
 async def _findymail(c, key):
     d = await _get(c, "https://app.findymail.com/api/credits",
                    headers={"Authorization": f"Bearer {key}", "Accept": "application/json"})
@@ -944,6 +958,7 @@ BALANCE_ROUTES = {
     "leadsforge": _leadsforge,
     "oceanio": _oceanio,
     "predictleads": _predictleads,
+    "theirstack": _theirstack,
     "tomba": _tomba,
     "dataforseo": _dataforseo,
     "tikhub": _tikhub,

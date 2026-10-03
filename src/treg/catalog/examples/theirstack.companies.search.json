@@ -1,0 +1,108 @@
+{
+  "metadata": {
+    "total_results": null,
+    "truncated_results": 0,
+    "truncated_companies": 0,
+    "total_companies": null
+  },
+  "data": [
+    {
+      "id": "XITNhqrjQ3FCarNrDdJeSQ==",
+      "name": "Siemens",
+      "domain": "siemens.com",
+      "industry": "Automation Machinery Manufacturing",
+      "country": "Germany",
+      "country_code": "DE",
+      "employee_count": 311000,
+      "logo": "https://media.theirstack.com/company/logo/domain/siemens.com.jpeg",
+      "num_jobs": 80612,
+      "num_technologies": 2347,
+      "num_keywords": 7181,
+      "num_buying_intent_topics": 4834,
+      "possible_domains": [
+        "new.siemens.com",
+        "siemens.com"
+      ],
+      "url": "https://siemens.com",
+      "industry_id": 147,
+      "linkedin_url": "https://www.linkedin.com/company/siemens/",
+      "num_jobs_last_30_days": 3621,
+      "num_jobs_found": null,
+      "yc_batch": null,
+      "apollo_id": "5f818b1439273d00bef0a981",
+      "linkedin_id": "1043",
+      "url_source": null,
+      "is_recruiting_agency": false,
+      "founded_year": 1847,
+      "annual_revenue_usd": 72792031000.0,
+      "annual_revenue_usd_readable": "72.8B",
+      "total_funding_usd": null,
+      "last_funding_round_date": "2025-02-20",
+      "last_funding_round_amount_readable": null,
+      "employee_count_range": "10,000+",
+      "long_description": "Siemens AG (Berlin and Munich) is a leading technology company focused on industry, infrastructure, mobility, and healthcare. The company’s purpose is to create technology to transform the everyday, for everyone. By combining the real and the digital worlds, Siemens empowers customers to accelerate their digital and sustainability transformations, making factories more efficient, cities more livable, and transportation more sustainable. Siemens also owns a majority stake in the publicly listed c… [907 chars total]",
+      "seo_description": "Siemens EDA is a leader in IC design, verification and manufacturing software, hardware, and design services.",
+      "city": "Munich",
+      "postal_code": "80333",
+      "company_keywords": [
+        "electrification",
+        "automation",
+        "… 11 more item(s) truncated"
+      ],
+      "company_tags": [
+        "electrification",
+        "automation",
+        "… 11 more item(s) truncated"
+      ],
+      "alexa_ranking": 1971,
+      "publicly_traded_symbol": "SIE",
+      "publicly_traded_exchange": "fra",
+      "investors": [],
+      "funding_stage": "post_ipo_equity",
+      "has_blurred_data": false,
+      "keyword_slugs": [
+        "2-5d-packaging",
+        "3-d-secure",
+        "… 7179 more item(s) truncated"
+      ],
+      "technology_slugs": [
+        "checkmk",
+        "rest-client",
+        "… 2345 more item(s) truncated"
+      ],
+      "technology_names": [
+        "checkmk",
+        "rest-client",
+        "… 2345 more item(s) truncated"
+      ],
+      "technologies_found": [
+        {
+          "technology": {
+            "name": "Snowflake",
+            "category": "Data Warehousing",
+            "type": "technology",
+            "slug": "snowflake",
+            "category_slug": "data-warehousing",
+            "parent_category": "Business Intelligence And Analytics",
+            "parent_category_slug": "business-intelligence-and-analytics",
+            "logo": "https://media.theirstack.com/technology/logo/snowflake/logo.png",
+            "logo_thumbnail": "https://media.theirstack.com/technology/logo/snowflake/thumbnail.png"
+          },
+          "confidence": "high",
+          "jobs": 795,
+          "jobs_last_7_days": 9,
+          "jobs_last_30_days": 45,
+          "jobs_last_180_days": 223,
+          "first_date_found": "2022-03-06",
+          "last_date_found": "2026-10-01",
+          "rank_within_category": 1,
+          "relative_occurrence_within_category": 0.8983050584793091,
+          "theirstack_score": 3.6644444465637207,
+          "company_name": "Siemens"
+        }
+      ],
+      "jobs_found": [],
+      "keywords_found": []
+    }
+  ]
+}

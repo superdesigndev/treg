@@ -472,6 +472,24 @@ async def test_crustdata_collector_parses_credits_and_recurring():
     assert "2026-09-01" in result["note"]
 
 
+# ---- theirstack -------------------------------------------------------------------------
+
+async def test_theirstack_collector_reports_api_credits_left_not_ui_credits():
+    resp = MockResponse({
+        "api_credits": 1200,
+        "ui_credits": 50,
+        "used_api_credits": 300,
+        "used_ui_credits": 0,
+        "earliest_expiration": "2027-09-01T00:00:00Z",
+    })
+    client = MockClient(get_response=resp)
+    result = await collectors._theirstack(client, "test-key")
+    assert result["value"] == 900, "api_credits is the grant; the balance subtracts what was used"
+    assert result["unit"] == "API credits"
+    assert "300 of 1200 used" in result["note"]
+    assert "2027-09-01" in result["note"]
+
+
 # ---- akta -------------------------------------------------------------------------------
 
 async def test_akta_collector_parses_credits_and_tier():

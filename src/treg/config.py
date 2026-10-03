@@ -259,6 +259,7 @@ class Settings(BaseSettings):
     platform_key_tomba: str = ""          # the API key (ta_…); X-Tomba-Key header
     platform_key_tomba_secret: str = ""   # the API secret (ts_…); X-Tomba-Secret — BOTH must be set
     platform_key_trestleiq: str = ""       # raw key; exact lowercase x-api-key header
+    platform_key_theirstack: str = ""      # Bearer key; API credits: 1 per job, 3 per company returned
     # (tomba's data routes need the header pair; TOMBA.platform_extra_setting names this second slot)
     platform_key_influencersclub: str = ""  # Bearer key (dashboard JWT); creator discovery + enrichment, fx.yaml $0.598/credit (our $299/500 plan)
     platform_key_crustdata: str = ""  # Bearer key; every call also needs the pinned x-api-version header

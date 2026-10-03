@@ -1189,11 +1189,11 @@ async def test_search_survives_missing_a_few_words_of_an_agent_sentence(clients)
     from treg.domain.catalog import store as cs
     cat = cs.load()
     # the two logged SearchMiss queries, verbatim
-    # Enrichlayer adds a relevant job-search result ahead of the older ninth-place match.
+    # Enrichlayer and TheirStack each add a relevant job-search result ahead of older tail matches.
     rows, total = cs.search("company job postings hiring open jobs linkedin", cat, 9)
     assert total > 0
     assert {"apollo.companies.jobs", "apify.linkedin.search.jobs", "enrichlayer.jobs.search",
-            "leadmagic.x.jobs-search-v3"} <= {ep["id"] for ep, _ in rows}
+            "theirstack.companies.jobs"} <= {ep["id"] for ep, _ in rows}
     # rank 1 must be the JOB (a companies.search row), never pinned to one provider — any newly
     # added provider of the same capability may legitimately outscore the incumbents
     rows, _ = cs.search("company search filter by location industry headcount growth", cat, 8)

@@ -1,0 +1,55 @@
+{
+  "data": [
+    {
+      "technology": {
+        "name": "Environment, Health and Safety (HSSE)",
+        "category": "Standards & Regulatory",
+        "type": "regulation",
+        "slug": "environment-health-and-safety-hsse",
+        "category_slug": "standards-regulatory",
+        "parent_category": "Energy/Construction/Manufacturing",
+        "parent_category_slug": "energy-construction-manufacturing",
+        "logo": "",
+        "logo_thumbnail": ""
+      },
+      "confidence": "high",
+      "jobs": 9763,
+      "jobs_last_7_days": 93,
+      "jobs_last_30_days": 510,
+      "jobs_last_180_days": 2164,
+      "first_date_found": "2018-12-30",
+      "last_date_found": "2026-10-01",
+      "rank_within_category": 1,
+      "relative_occurrence_within_category": 0.9782565236091614
+    },
+    {
+      "technology": {
+        "name": "Ecology & Environment",
+        "category": "General",
+        "type": "strategic_initiative",
+        "slug": "ecology-environment",
+        "category_slug": "science-general",
+        "parent_category": "Science",
+        "parent_category_slug": "science",
+        "logo": "",
+        "logo_thumbnail": ""
+      },
+      "confidence": "high",
+      "jobs": 7307,
+      "jobs_last_7_days": 70,
+      "jobs_last_30_days": 386,
+      "jobs_last_180_days": 1537,
+      "first_date_found": "2018-12-30",
+      "last_date_found": "2026-10-01",
+      "rank_within_category": 1,
+      "relative_occurrence_within_category": 1.0
+    },
+    "… 3 more item(s) truncated"
+  ],
+  "metadata": {
+    "total_results": null,
+    "truncated_results": 0,
+    "truncated_companies": 0,
+    "total_companies": null
+  }
+}
