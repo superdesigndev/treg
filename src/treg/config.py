@@ -280,6 +280,7 @@ class Settings(BaseSettings):
     platform_key_spidercloud: str = ""   # Bearer; PAYG USD balance, only priced routes may use shared key
     platform_key_perplexity: str = ""    # Bearer; prepaid USD credits, no documented balance API
     platform_key_cloro: str = ""      # Bearer key (sk_live_…); Hobby metered rate $0.0004/credit; settles from X-Credits-Charged
+    platform_key_prerenderbuddy: str = ""  # Bearer; marketplace-only scope, funded standalone prompt checks
     platform_key_minimax: str = ""    # Bearer key for MiniMax voice, image and video generation
     platform_key_fishaudio: str = ""  # Bearer key for Fish Audio speech and private voices
     # Fish API-credit lookups need the workspace selector to read the shared workspace wallet.
