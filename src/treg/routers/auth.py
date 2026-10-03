@@ -20,7 +20,6 @@ from ..application.onboard import first_run
 from ..application.auth import (
     CLI_APPROVE_MAX_TRIES,
     EMAIL_CODE_TTL,
-    HANDSHAKE_TTL,
     MAX_OTP_ATTEMPTS,
     OTP_NS,
     OTP_START_MAX_PER_EMAIL,
@@ -131,13 +130,9 @@ def _client_ip(request: Request) -> str:
     return request.client.host if request.client else "?"
 
 
-# The pairing state machine belongs to the application use case. These aliases keep the staged
-# api.py compatibility exports and the social-login handshake on the exact same mutable objects.
-_cli_states = auth_use_cases._cli_states
-_cli_results = auth_use_cases._cli_results
-_cli_pending = auth_use_cases._cli_pending
+# The pairing state machine belongs to the application use case; these aliases keep the staged
+# api.py compatibility exports.
 _PAIR_ALPHABET = auth_use_cases._PAIR_ALPHABET
-_prune_handshakes = auth_use_cases._prune_handshakes
 _norm_pair_code = auth_use_cases._norm_pair_code
 _orgs_brief = auth_use_cases._orgs_brief
 
@@ -216,7 +211,7 @@ def _social_http_error(exc: auth_use_cases.SocialLoginError) -> HTTPException:
 @app.get("/auth/github")
 async def auth_github(request: Request, cli: str = "", return_to: str = ""):
     try:
-        started = auth_use_cases.start_github_login(cli, lambda: _login_callback_base(request))
+        started = await auth_use_cases.start_github_login(cli, lambda: _login_callback_base(request))
     except auth_use_cases.SocialLoginError as exc:
         raise _social_http_error(exc) from exc
     resp = RedirectResponse(started.url, status_code=302)
@@ -313,7 +308,7 @@ async def auth_github_callback(
 async def auth_google(request: Request, cli: str = "", return_to: str = ""):
     """Human login via Google OAuth — a parallel door to GitHub, same session/CLI-handshake plumbing."""
     try:
-        started = auth_use_cases.start_google_login(cli, lambda: _login_callback_base(request))
+        started = await auth_use_cases.start_google_login(cli, lambda: _login_callback_base(request))
     except auth_use_cases.SocialLoginError as exc:
         raise _social_http_error(exc) from exc
     resp = RedirectResponse(started.url, status_code=302)

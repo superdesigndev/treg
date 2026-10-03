@@ -164,6 +164,24 @@ async def test_approve_completes_the_cli_handshake(web):
     assert again == {"status": "pending"}  # single-use
 
 
+async def test_handshake_lives_in_the_shared_store_not_worker_memory(web):
+    """Prod runs several workers: start, approve and poll land in different processes, so every step
+    must read the shared Ephemeral store. The finished login's token is encrypted at rest there."""
+    from treg import ratestore
+    from treg.application.auth import CLI_PENDING_NS, CLI_RESULT_NS
+    uid = await _seed_user()
+    web.cookies.set("treg_session", sess.make_session(uid))
+    lid, code = await _start(web)
+    async with session_maker() as s:
+        assert (await ratestore.kv_get(s, CLI_PENDING_NS, lid))["code"] == code
+    assert (await web.post("/auth/cli/approve", json={"login_id": lid, "code": code})).status_code == 200
+    async with session_maker() as s:
+        assert await ratestore.kv_get(s, CLI_PENDING_NS, lid) is None  # consumed
+        stored = await ratestore.kv_get(s, CLI_RESULT_NS, lid)
+    d = (await web.get(f"/auth/cli/poll?login_id={lid}")).json()
+    assert stored["token"] != d["token"] and crypto.decrypt(stored["token"]) == d["token"]
+
+
 async def test_approve_requires_a_session(web):
     r = await web.post("/auth/cli/approve", json={"login_id": LID})
     assert r.status_code == 401

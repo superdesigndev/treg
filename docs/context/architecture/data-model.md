@@ -396,13 +396,15 @@ uses this metadata, never the encrypted token's shape.
   [ads-conversions](ads-conversions.md).
 - **`Ephemeral`** - short-lived key/value state that must **survive a restart and stay correct across
   instances**: the emailed OTP code + its brute-force counter, and the auth rate-limit sliding windows.
-  Keyed by `(ns, k)` - a namespace (`otp` | `otp_start` | `sandbox_hit`) plus the key within it - with an
+  Keyed by `(ns, k)` - a namespace (`otp` | `otp_start` | `sandbox_hit` | `cli_pending` | `cli_result` |
+  `cli_state`) plus the key within it - with an
   opaque JSON `v` and an `expires_at` (rows are swept lazily). This is the DB home for what used to be
   per-process dicts in the auth HTTP layer (backlog #3): counters can no longer be reset by a redeploy,
   and a per-IP / per-email cap can't be weakened by running more than one instance. The access helpers live in
-  `ratestore.py` (`kv_put`/`kv_get`/`kv_pop`, `rate_check` sliding-window, `sweep`). NOT the CLI-login
-  handshake - that is deliberately still in-process (`application.auth._cli_pending`, short-lived,
-  self-heals on retry).
+  `ratestore.py` (`kv_put`/`kv_get`/`kv_pop`, `rate_check` sliding-window, `sweep`). The `treg login`
+  handshake lives here too (`application/auth.py`): with several workers per instance, start, approve
+  and poll land in different processes, so per-process state reported live logins as expired. The
+  completed login's identity token is Fernet-encrypted in its row and read once.
 
 - **`DenyRule`** - org policy over what may be CALLED: `org_id`, nullable `user_id` (NULL = the whole
   org, set = one member/agent), nullable `project_id` (NULL = any tool, set = only calls **through**
