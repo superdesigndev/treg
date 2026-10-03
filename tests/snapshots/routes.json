@@ -834,6 +834,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "jev_memory_skill_md",
+    "path": "/skills/jev-memory/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "feedback_md",
     "path": "/feedback.md"
   },
@@ -1209,6 +1218,15 @@
     ],
     "name": "well_known_lead_signals_md",
     "path": "/.well-known/skills/lead-signals/SKILL.md"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "well_known_jev_memory_md",
+    "path": "/.well-known/skills/jev-memory/SKILL.md"
   },
   {
     "kind": "APIRoute",

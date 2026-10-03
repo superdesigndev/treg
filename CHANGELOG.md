@@ -10,6 +10,13 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
+- **`jev-memory`, a memory for Claude Code.** A workflow skill (`npx skills add superdesigndev/treg
+  --skill jev-memory`, or `/skills/jev-memory/SKILL.md`) that installs the Claude Code mod in
+  `examples/claude-code-mods/jev-memory`, or has Claude build the same mod from one prompt. After
+  every answered prompt the mod asks Jev, through one `openrouter.ai-judge.decide` call, whether each
+  sentence is a lasting preference; sentences at 0.8 or higher are saved to `.claude/jev-memory.md`
+  and put back into the first message of later sessions.
+
 - **The tool hub — publish a tool made of other tools.** A team can publish its own tool and let
   other people's agents call it. A hub tool is one folder of four files: `recipe.json` (the
   contract), either a JSON steps recipe or a `run.js` script, `check.json` (sample inputs, run once
