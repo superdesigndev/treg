@@ -1,0 +1,607 @@
+provider: growsurf
+source:
+  docs: https://docs.growsurf.com/developer-tools/rest-api
+  openapi: https://growsurf.com/openapi.yaml
+  curated: '2026-10-03'
+limits: Credential and team rate limits apply; inspect RateLimit, RateLimit-Policy, and Retry-After response
+  headers. At most 3 concurrent connections per IP.
+pricing_url: https://growsurf.com/pricing/referral-programs/
+proposed_capabilities:
+  referral.team.get: Get your team.
+  referral.programs.list: List your programs.
+  referral.program.get: Get a program.
+  referral.program.analytics: Get program analytics.
+  referral.program.rewards.list: List program reward configurations.
+  referral.participants.list: List program participants.
+  referral.program.leaderboard: Get the program leaderboard.
+  referral.participant.get: Get a participant.
+  referral.participant.rewards.list: List a participant’s rewards.
+  referral.referrals.list: List program referrals.
+  referral.program.activation.analytics: Get program activation analytics.
+  referral.participant.analytics: Get participant analytics.
+endpoints:
+- id: growsurf.referral.team.get
+  capability: referral.team.get
+  platform: referral
+  scope: own_account
+  method: GET
+  path: /team
+  name: Get your team
+  summary: Retrieve team
+  input:
+    note: 'Required API-key scope: team:read. Use a dedicated test program for verification.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    source: docs
+    source_url: https://growsurf.com/pricing/referral-programs/
+    checked: '2026-10-03'
+    confidence: documented
+    note: API access is included in the connected team’s plan; no separate per-request price is published.
+      No per-call charge field, credit balance or rate-card endpoint is exposed, so a per-call price is
+      not independently metered. Plan, participant usage and rate limits still apply.
+    unit: call
+  docs_url: https://docs.growsurf.com/developer-tools/rest-api/api-reference
+  kind: account
+  test_request:
+    pathParams: {}
+    queryParams: {}
+- id: growsurf.referral.programs.list
+  capability: referral.programs.list
+  platform: referral
+  scope: own_account
+  method: GET
+  path: /campaigns
+  name: List your programs
+  summary: List campaigns
+  input:
+    note: 'Required API-key scope: program:read. Use a dedicated test program for verification.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    source: docs
+    source_url: https://growsurf.com/pricing/referral-programs/
+    checked: '2026-10-03'
+    confidence: documented
+    note: API access is included in the connected team’s plan; no separate per-request price is published.
+      No per-call charge field, credit balance or rate-card endpoint is exposed, so a per-call price is
+      not independently metered. Plan, participant usage and rate limits still apply.
+    unit: call
+  docs_url: https://docs.growsurf.com/developer-tools/rest-api/api-reference
+  test_request:
+    pathParams: {}
+    queryParams: {}
+- id: growsurf.referral.program.get
+  capability: referral.program.get
+  platform: referral
+  scope: own_account
+  method: GET
+  path: /campaign/{id}
+  name: Get a program
+  summary: Retrieve a campaign
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: GrowSurf program ID.
+    note: 'Required API-key scope: program:read. Use a dedicated test program for verification.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    source: docs
+    source_url: https://growsurf.com/pricing/referral-programs/
+    checked: '2026-10-03'
+    confidence: documented
+    note: API access is included in the connected team’s plan; no separate per-request price is published.
+      No per-call charge field, credit balance or rate-card endpoint is exposed, so a per-call price is
+      not independently metered. Plan, participant usage and rate limits still apply.
+    unit: call
+  docs_url: https://docs.growsurf.com/developer-tools/rest-api/api-reference
+  test_request:
+    pathParams:
+      id: s4hnhx
+    queryParams: {}
+- id: growsurf.referral.program.analytics
+  capability: referral.program.analytics
+  platform: referral
+  scope: own_account
+  method: GET
+  path: /campaign/{id}/analytics
+  name: Get program analytics
+  summary: Retrieve campaign analytics
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: GrowSurf program ID.
+    queryParams:
+      days:
+        type: integer
+        required: false
+        note: Last number of days to retrieve analytics for. Defaults to 365. Maximum 1825.
+      startDate:
+        type: integer
+        required: false
+        note: Start date of the analytics timeframe as a Unix timestamp in milliseconds. Required if `days`
+          is not set.
+      endDate:
+        type: integer
+        required: false
+        note: End date of the analytics timeframe as a Unix timestamp in milliseconds. Required if `days`
+          is not set.
+      interval:
+        type: string
+        required: false
+        note: 'When set to `day`, `week`, or `month`, the response also includes a `series` array with
+          per-period totals and uses the same bucket size for `engagement.series`. Defaults to `total`
+          (no legacy series); `engagement.series` uses daily buckets when `interval` is `total` or omitted.
+          Allowed values: day, week, month, total.'
+      include:
+        type: string
+        required: false
+        note: 'Comma-separated list of optional data to include: `previousPeriod` adds totals for the
+          equal-length window immediately before the requested one; `statusCounts` adds reward (and, for
+          affiliate programs, affiliate/commission/payout) status breakdowns; `rates` adds derived referral
+          rates; `email` adds `sent`, `delivered`, `opened`, `clicked`, `bounced`, `spamComplaints`, and
+          per-email-type metrics; `engagement` adds unique participant engagement, action totals, comparisons,
+          and platform/source/channel breakdowns. When `email` and an interval are both requested, each
+          `series` item also contains counts for emails sent during that period. Combine `email` with
+          `previousPeriod` to include the same email metrics in both windows.'
+        example: previousPeriod,statusCounts,rates,email,engagement
+      timezone:
+        type: string
+        required: false
+        note: IANA timezone used for engagement interval boundaries and distinct-day calculations. Used
+          only when `include` contains `engagement`.
+        example: America/Los_Angeles
+      platform:
+        type: string
+        required: false
+        note: 'Limits engagement events to one client platform. Used only when `include` contains `engagement`.
+          Allowed values: ALL, WEB, IOS, ANDROID.'
+    note: 'Required API-key scope: analytics:read. Use a dedicated test program for verification.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    source: docs
+    source_url: https://growsurf.com/pricing/referral-programs/
+    checked: '2026-10-03'
+    confidence: documented
+    note: API access is included in the connected team’s plan; no separate per-request price is published.
+      No per-call charge field, credit balance or rate-card endpoint is exposed, so a per-call price is
+      not independently metered. Plan, participant usage and rate limits still apply.
+    unit: call
+  docs_url: https://docs.growsurf.com/developer-tools/rest-api/api-reference
+  test_request:
+    pathParams:
+      id: s4hnhx
+    queryParams:
+      days: 1
+- id: growsurf.referral.program.rewards.list
+  capability: referral.program.rewards.list
+  platform: referral
+  scope: own_account
+  method: GET
+  path: /campaign/{id}/reward-configs
+  name: List program reward configurations
+  summary: List campaign rewards
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: GrowSurf program ID.
+    note: 'Required API-key scope: program:read. Use a dedicated test program for verification.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    source: docs
+    source_url: https://growsurf.com/pricing/referral-programs/
+    checked: '2026-10-03'
+    confidence: documented
+    note: API access is included in the connected team’s plan; no separate per-request price is published.
+      No per-call charge field, credit balance or rate-card endpoint is exposed, so a per-call price is
+      not independently metered. Plan, participant usage and rate limits still apply.
+    unit: call
+  docs_url: https://docs.growsurf.com/developer-tools/rest-api/api-reference
+  test_request:
+    pathParams:
+      id: s4hnhx
+    queryParams: {}
+- id: growsurf.referral.participants.list
+  capability: referral.participants.list
+  platform: referral
+  scope: own_account
+  method: GET
+  path: /campaign/{id}/participants
+  name: List program participants
+  summary: List participants
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: GrowSurf program ID.
+    queryParams:
+      nextId:
+        type: string
+        required: false
+        note: ID to start the next paged result set with.
+      limit:
+        type: integer
+        required: false
+        note: Number of results to return. Maximum 100.
+      metadata:
+        type: object
+        required: false
+        note: Return only participants whose metadata matches every given key and value exactly. Send
+          each pair as `metadata[key]=value`. Up to 3 keys per request. Values compare as strings, which
+          is how metadata is stored.
+        example:
+          customerId: '12345'
+    note: 'Required API-key scope: participant:read. Use a dedicated test program for verification.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    source: docs
+    source_url: https://growsurf.com/pricing/referral-programs/
+    checked: '2026-10-03'
+    confidence: documented
+    note: API access is included in the connected team’s plan; no separate per-request price is published.
+      No per-call charge field, credit balance or rate-card endpoint is exposed, so a per-call price is
+      not independently metered. Plan, participant usage and rate limits still apply.
+    unit: call
+  docs_url: https://docs.growsurf.com/developer-tools/rest-api/api-reference
+  test_request:
+    pathParams:
+      id: s4hnhx
+    queryParams:
+      limit: 1
+- id: growsurf.referral.program.leaderboard
+  capability: referral.program.leaderboard
+  platform: referral
+  scope: own_account
+  method: GET
+  path: /campaign/{id}/leaderboard
+  name: Get the program leaderboard
+  summary: List leaderboard participants
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: GrowSurf program ID.
+    queryParams:
+      nextId:
+        type: string
+        required: false
+        note: ID to start the next paged result set with.
+      limit:
+        type: integer
+        required: false
+        note: Number of results to return. Maximum 100.
+      isMonthly:
+        type: boolean
+        required: false
+        note: Deprecated. Use `leaderboardType=CURRENT_MONTH` instead.
+      leaderboardType:
+        type: string
+        required: false
+        note: 'Leaderboard ordering mode. Allowed values: ALL_TIME, CURRENT_MONTH, PREV_MONTH, TOTAL_IMPRESSION_COUNT,
+          UNIQUE_IMPRESSION_COUNT, BY_COMMISSIONS, BY_REVENUE, BY_REFERRALS, BY_LEADS.'
+        example: ALL_TIME
+    note: 'Required API-key scope: participant:read. Use a dedicated test program for verification.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    source: docs
+    source_url: https://growsurf.com/pricing/referral-programs/
+    checked: '2026-10-03'
+    confidence: documented
+    note: API access is included in the connected team’s plan; no separate per-request price is published.
+      No per-call charge field, credit balance or rate-card endpoint is exposed, so a per-call price is
+      not independently metered. Plan, participant usage and rate limits still apply.
+    unit: call
+  docs_url: https://docs.growsurf.com/developer-tools/rest-api/api-reference
+  test_request:
+    pathParams:
+      id: s4hnhx
+    queryParams:
+      limit: 1
+- id: growsurf.referral.participant.get
+  capability: referral.participant.get
+  platform: referral
+  scope: own_account
+  method: GET
+  path: /campaign/{id}/participant/{participantIdOrEmail}
+  name: Get a participant
+  summary: Retrieve participant
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: GrowSurf program ID.
+      participantIdOrEmail:
+        type: string
+        required: true
+        note: GrowSurf participant ID or URL-encoded participant email address.
+    note: 'Required API-key scope: participant:read. Use a dedicated test program for verification.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    source: docs
+    source_url: https://growsurf.com/pricing/referral-programs/
+    checked: '2026-10-03'
+    confidence: documented
+    note: API access is included in the connected team’s plan; no separate per-request price is published.
+      No per-call charge field, credit balance or rate-card endpoint is exposed, so a per-call price is
+      not independently metered. Plan, participant usage and rate limits still apply.
+    unit: call
+  docs_url: https://docs.growsurf.com/developer-tools/rest-api/api-reference
+  test_request:
+    pathParams:
+      id: s4hnhx
+      participantIdOrEmail: k06ewb
+    queryParams: {}
+- id: growsurf.referral.participant.rewards.list
+  capability: referral.participant.rewards.list
+  platform: referral
+  scope: own_account
+  method: GET
+  path: /campaign/{id}/participant/{participantIdOrEmail}/rewards
+  name: List a participant’s rewards
+  summary: List participant rewards
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: GrowSurf program ID.
+      participantIdOrEmail:
+        type: string
+        required: true
+        note: GrowSurf participant ID or URL-encoded participant email address.
+    queryParams:
+      nextId:
+        type: string
+        required: false
+        note: ID to start the next paged result set with.
+      limit:
+        type: integer
+        required: false
+        note: Number of results to return. Maximum 100.
+    note: 'Required API-key scope: reward:read. Use a dedicated test program for verification.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    source: docs
+    source_url: https://growsurf.com/pricing/referral-programs/
+    checked: '2026-10-03'
+    confidence: documented
+    note: API access is included in the connected team’s plan; no separate per-request price is published.
+      No per-call charge field, credit balance or rate-card endpoint is exposed, so a per-call price is
+      not independently metered. Plan, participant usage and rate limits still apply.
+    unit: call
+  docs_url: https://docs.growsurf.com/developer-tools/rest-api/api-reference
+  test_request:
+    pathParams:
+      id: s4hnhx
+      participantIdOrEmail: k06ewb
+    queryParams:
+      limit: 1
+- id: growsurf.referral.referrals.list
+  capability: referral.referrals.list
+  platform: referral
+  scope: own_account
+  method: GET
+  path: /campaign/{id}/referrals
+  name: List program referrals
+  summary: List referrals and invites
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: GrowSurf program ID.
+    queryParams:
+      sortBy:
+        type: string
+        required: false
+        note: 'Field used to sort referral results. Allowed values: updatedAt, createdAt, email, firstName,
+          lastName, referralStatus, referralTriggeredAt.'
+      desc:
+        type: boolean
+        required: false
+        note: Return results in descending order when true.
+      limit:
+        type: integer
+        required: false
+        note: Number of results to return. Maximum 100.
+      offset:
+        type: integer
+        required: false
+        note: Offset number used to skip through a result set.
+      email:
+        type: string
+        required: false
+        note: URL-encoded email value to filter referral results.
+      firstName:
+        type: string
+        required: false
+        note: First name value to filter results.
+      lastName:
+        type: string
+        required: false
+        note: Last name value to filter results.
+      referralStatus:
+        type: string
+        required: false
+        note: 'Referral status to filter results. Allowed values: CREDIT_PENDING, CREDIT_AWARDED, CREDIT_EXPIRED,
+          INVITE_SENT.'
+        example: CREDIT_AWARDED
+      nextId:
+        type: string
+        required: false
+        note: ID to start the next paged result set with.
+    note: 'Required API-key scope: participant:read. Use a dedicated test program for verification.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    source: docs
+    source_url: https://growsurf.com/pricing/referral-programs/
+    checked: '2026-10-03'
+    confidence: documented
+    note: API access is included in the connected team’s plan; no separate per-request price is published.
+      No per-call charge field, credit balance or rate-card endpoint is exposed, so a per-call price is
+      not independently metered. Plan, participant usage and rate limits still apply.
+    unit: call
+  docs_url: https://docs.growsurf.com/developer-tools/rest-api/api-reference
+  test_request:
+    pathParams:
+      id: s4hnhx
+    queryParams:
+      limit: 1
+- id: growsurf.referral.program.activation.analytics
+  capability: referral.program.activation.analytics
+  platform: referral
+  scope: own_account
+  method: GET
+  path: /campaign/{id}/analytics/activation
+  name: Get program activation analytics
+  summary: Retrieve campaign activation analytics
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: GrowSurf program ID.
+    queryParams:
+      cohortFrom:
+        type: integer
+        required: false
+        note: Inclusive cohort start as a Unix timestamp in milliseconds. Provide it together with `cohortTo`,
+          or omit both for the latest fully matured cohort.
+        example: 1767225600000
+      cohortTo:
+        type: integer
+        required: false
+        note: Exclusive cohort end as a Unix timestamp in milliseconds. Provide it together with `cohortFrom`,
+          or omit both for the latest fully matured cohort.
+        example: 1767830400000
+      cohortInterval:
+        type: string
+        required: false
+        note: 'Bucket size for the `cohorts` array. Allowed values: day, week, month.'
+      observationWindowDays:
+        type: integer
+        required: false
+        note: 'Days after each participant''s eligibility date in which stages can count. Allowed values:
+          7, 30.'
+      timezone:
+        type: string
+        required: false
+        note: IANA timezone used to advance cohort bucket boundaries.
+        example: America/Los_Angeles
+    note: 'Required API-key scope: analytics:read. Use a dedicated test program for verification.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    source: docs
+    source_url: https://growsurf.com/pricing/referral-programs/
+    checked: '2026-10-03'
+    confidence: documented
+    note: API access is included in the connected team’s plan; no separate per-request price is published.
+      No per-call charge field, credit balance or rate-card endpoint is exposed, so a per-call price is
+      not independently metered. Plan, participant usage and rate limits still apply.
+    unit: call
+  docs_url: https://docs.growsurf.com/developer-tools/rest-api/api-reference
+  test_request:
+    pathParams:
+      id: s4hnhx
+    queryParams:
+      days: 1
+- id: growsurf.referral.participant.analytics
+  capability: referral.participant.analytics
+  platform: referral
+  scope: own_account
+  method: GET
+  path: /campaign/{id}/participant/{participantIdOrEmail}/analytics
+  name: Get participant analytics
+  summary: Retrieve participant analytics
+  input:
+    pathParams:
+      id:
+        type: string
+        required: true
+        note: GrowSurf program ID.
+      participantIdOrEmail:
+        type: string
+        required: true
+        note: GrowSurf participant ID or URL-encoded participant email address.
+    queryParams:
+      include:
+        type: string
+        required: false
+        note: Comma-separated optional data. `series` returns this participant's own activity per period;
+          `email` returns `sent`, `delivered`, `opened`, `clicked`, `bounced`, `spamComplaints`, and per-email-type
+          metrics attributed to the participant for the requested analytics window (including invitations
+          they sent). Request both in either order to add email counts to every series item for emails
+          sent during that period. `activation` returns covered enrollment, cohort-anchor, and first-milestone
+          values. Request `activation,series` to add `portalViews` and `shareActions`; those values are
+          `null` outside known coverage. Only documented tokens are accepted; an unknown token returns
+          `400`.
+        example: email,series
+      days:
+        type: integer
+        required: false
+        note: Last number of days for optional `series` and `email` analytics. Defaults to 365. Maximum
+          1825. Does not filter the top-level all-time totals.
+      startDate:
+        type: integer
+        required: false
+        note: Start of a custom `series` and `email` analytics window as a Unix timestamp in milliseconds.
+          Set it together with `endDate`. Does not filter the top-level all-time totals.
+      endDate:
+        type: integer
+        required: false
+        note: End of a custom `series` and `email` analytics window as a Unix timestamp in milliseconds.
+          Set it together with `startDate`. Does not filter the top-level all-time totals.
+      interval:
+        type: string
+        required: false
+        note: 'Bucket size for the `series` (only used when `include` contains `series`). Defaults to
+          `day`. Allowed values: day, week, month.'
+    note: 'Required API-key scope: analytics:read. Use a dedicated test program for verification.'
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    source: docs
+    source_url: https://growsurf.com/pricing/referral-programs/
+    checked: '2026-10-03'
+    confidence: documented
+    note: API access is included in the connected team’s plan; no separate per-request price is published.
+      No per-call charge field, credit balance or rate-card endpoint is exposed, so a per-call price is
+      not independently metered. Plan, participant usage and rate limits still apply.
+    unit: call
+  docs_url: https://docs.growsurf.com/developer-tools/rest-api/api-reference
+  test_request:
+    pathParams:
+      id: s4hnhx
+      participantIdOrEmail: k06ewb
+    queryParams:
+      days: 1
