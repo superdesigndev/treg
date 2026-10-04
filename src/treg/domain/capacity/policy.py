@@ -301,3 +301,41 @@ def latest_state(policy: CapacityPolicy, snap: CapacitySnapshot | None,
                            note=snap.note, rate_limit=rl)
     return LatestState(policy.provider, snap.remaining, snap.unit, snap.observed_at,
                        snap.confidence, health="ok", note=snap.note, rate_limit=rl)
+
+
+def report_status(state: LatestState, snap: CapacitySnapshot | None) -> str:
+    """What an alerting reader does with a row: `issue` (empty, the last check failed, or the sweep
+    has not looked within STALE_AFTER or ever), `skipped` (treg holds no key), else `ok`. A provider
+    that publishes no meter is `ok`: its silence is recorded, not a fault."""
+    if snap is None:
+        return "issue"
+    if snap.error == "no_key":
+        return "skipped"
+    if snap.error == "no_balance_api":
+        return "ok"
+    return "issue" if state.health in ("exhausted", "stale") else "ok"
+
+
+async def balance_report(db: AsyncSession, now: datetime | None = None) -> list[dict]:
+    """Every treg-owned account's latest sweep observation and the state it implies, read only:
+    the same `latest_state` the call path is served, so the report and the refusals agree."""
+    from sqlalchemy import func, select
+    now = now or utcnow_naive()
+    policies = {p.provider: p for p in (await db.execute(select(CapacityPolicy))).scalars()}
+    newest = (select(CapacitySnapshot.provider, func.max(CapacitySnapshot.id).label("id"))
+              .group_by(CapacitySnapshot.provider).subquery())
+    snaps = {s.provider: s for s in (await db.execute(
+        select(CapacitySnapshot).join(newest, CapacitySnapshot.id == newest.c.id))).scalars()}
+    rows = []
+    for provider in sorted(set(policy_population()) | set(policies)):
+        snap = snaps.get(provider)
+        policy = policies.get(provider) or default_policy(provider, has_key=False)
+        state = latest_state(policy, snap, now)
+        rows.append({
+            "provider": provider, "status": report_status(state, snap), "health": state.health,
+            "remaining": state.remaining, "unit": state.unit, "note": state.note,
+            "error": snap.error if snap is not None else "",
+            "observed_at": snap.observed_at.isoformat() if snap is not None else None,
+            "exhausted_until": state.exhausted_until.isoformat() if state.exhausted_until else None,
+        })
+    return rows
