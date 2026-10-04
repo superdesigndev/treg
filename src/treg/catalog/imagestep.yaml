@@ -171,13 +171,13 @@ endpoints:
       table:
         - {when: {body.model: fal-ai/bria/background/remove}, value: 0.0227}
         - {when: {body.model: replicate/851-labs/background-remover}, value: 0.0007}
-        - {when: {body.model: replicate/lucataco/remove-bg}, value: 0.0004}
+        - {when: {body.model: replicate/lucataco/remove-bg}, value: 0.0005}
       fallback: {value: 0.0227, note: "The default model, Bria RMBG 2.0, is the dearest background remover in the catalogue."}
       currency: USD
       settle: table
       source: rate_card_api
       source_url: https://api.imagestep.dev/api/pricing/image-models
-      checked: '2026-10-02'
+      checked: '2026-10-04'
       confidence: documented
       note: "Per image, at the model's listed price (at most 1.5x the provider's list price — https://imagestep.dev/pricing). Priced per item: an assetIds list of N is N times the row. Failed items are not charged."
     docs_url: https://imagestep.dev/docs/ops/remove-background
