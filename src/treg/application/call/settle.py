@@ -446,6 +446,8 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
       - companyenrich / icypeas bulk and search / serpstat / thecompaniesapi search / findymail employees:
         DERIVED by counting the rows the vendor bills for, priced at the row's credits and capped
         at the hold (`_rows_billed_micro`): an empty answer never costs the requested page.
+      - theirstack: DERIVED. Searches count the jobs or companies in `data[]`; technographics
+        and buying intents are one flat lookup, free when an unknown company answers `data: []`.
     Everyone else settles at the estimate. This is the same signal the catalog's `observed_cost`
     harvests, which is what lets phase 5's drift detector compare the two numbers directly."""
     provider = mk.provider
@@ -561,6 +563,16 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         # free miss, where the estimate billed the hold.
         if isinstance(doc, list) and mk.cost_type == "per_result" and mk.unit_micro > 0:
             return _rows_billed_micro(mk, ep, sum(item is not None for item in doc))
+        return None
+    if provider == "theirstack" and mk.cost_type == "per_result" and mk.unit_micro > 0:
+        # Searches bill per job or company in `data[]`; an empty page is free.
+        rows = doc.get("data") if isinstance(doc, dict) else None
+        return _rows_billed_micro(mk, ep, len(rows) if isinstance(rows, list) else None)
+    if mk.endpoint_id in ("theirstack.companies.technographics", "theirstack.companies.buying_intents"):
+        # A company TheirStack does not know answers 200 with `data: []` and is not charged
+        # (observed live 2026-10-02); a hit is one flat lookup, settled at the estimate.
+        if isinstance(doc, dict) and doc.get("data") == []:
+            return 0
         return None
     if not isinstance(doc, dict):
         return 0 if provider == "contactout" else None

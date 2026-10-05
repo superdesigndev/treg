@@ -1,0 +1,551 @@
+provider: theirstack
+source:
+  docs: https://theirstack.com/en/docs/api-reference
+  openapi: https://api.theirstack.com/openapi.json # OpenAPI 3.1; every input below is generated from it, minus the fields it marks deprecated
+  curated: '2026-10-01'
+# Job postings and what they reveal about the company behind them. TheirStack indexes jobs from
+# company career sites, ATSs and job boards, then derives each company's technographics and
+# buying-intent topics from the text of those postings — so the tech stack and intent data come
+# with evidence (how many jobs mention it, first and last seen) and a confidence level.
+#
+# Billing is per RECORD RETURNED, in API credits, never per request:
+#   - job search: 1 credit per job in `data[]`
+#   - company search: 3 credits per company in `data[]`
+#   - technographics / buying intents: 3 credits per company looked up, whatever the number of
+#     technologies or topics returned; no credits when the company is not found
+#   - catalog routes (keywords, industries, locations) and the credit balance are free
+# `limit` is the price dial on both searches. An empty result costs nothing.
+#
+# Free plan: only for teams that have never paid for credits. 200 API credits and 50 company
+# (app) credits a month — two separate pools; API calls spend only the API credits. Searches are
+# capped at 25 results a page and 5 pages. Any purchase moves the team to a paid plan.
+#
+# Auth: `Authorization: Bearer <key>`. A bad key returns 401
+# {"request_id":null,"error":{"code":null,"title":"Could not validate credentials","description":null}}.
+# Out of credits returns 402.
+limits: "Searches and technographics share 4 requests/second per user on paid accounts (free accounts: 4/s, 10/min, 50/h, 400/day); HTTP 429 when exceeded. Paid plans serve up to 500 results a page with unlimited pages; the free plan serves 25 a page and 5 pages a search"
+pricing_url: https://theirstack.com/en/pricing?currency=usd&tab=api
+
+proposed_capabilities:
+  companies.tech_stack.users: "Find companies that use a given technology"
+  companies.technologies.list: "Browse the catalog of tracked technologies"
+  companies.buying_intents: "Topics a company is investing in, inferred from its job postings"
+  companies.locations.resolve: "Map a place name to the location ids job and company filters accept"
+
+endpoints:
+- id: theirstack.jobs.search
+  domain: companies
+  capability: companies.jobs.search
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /v1/jobs/search
+  name: Search job postings by title, tech, location or date
+  summary: Search and filter job postings from company career sites and job boards.
+  input:
+    bodyType: json
+    body: &jobs_body
+      offset: {type: integer, required: false, note: 'Number of results to skip. Required for [offset-based pagination](https://theirstack.com/en/docs/api-reference/pagination).', default: 0, example: 0, min: 0.0}
+      page: {type: integer, required: false, note: 'Page number. Required when using [page-based pagination](https://theirstack.com/en/docs/api-reference/pagination).', default: 0, example: 0, min: 0.0}
+      limit: {type: integer, required: false, note: 'Number of results per page — THE PRICE DIAL: 1 API credit per job returned. Up to 500 a page on a paid plan; the free plan caps it at 25 a page and 5 pages a search', default: 25, example: 25, min: 1.0}
+      cursor: {type: string, required: false, note: Cursor for pagination}
+      job_title_or: {type: 'array[string]', required: false, note: 'Keyword-based patterns to match job titles. Case-insensitive. Returns jobs whose title contains all the words in any of the patterns, in any order. For example, `marketing vp` matches titles such as `VP of Marketing` or `Marketing VP, EMEA`. Passing `["software engineer", "data scientist"]` returns jobs matching either pattern.', example: [software engineer, data scientist]}
+      job_title_not: {type: 'array[string]', required: false, note: 'Keyword-based patterns to exclude job titles. Case-insensitive. Excludes jobs whose title contains all the words in any of the patterns, in any order. For example, `marketing vp` excludes titles such as `VP of Marketing` or `Marketing VP, EMEA`.', example: [software engineer, data scientist]}
+      job_title_pattern_and: {type: 'array[string]', required: false, note: Regex patterns to match job titles. Case-insensitive. Only jobs with title that match all of these patterns will be returned., example: [\bsoftware\s+engineer\b, \bdata\s+scientist\b, \bproduct\s+manager\b]}
+      job_title_pattern_or: {type: 'array[string]', required: false, note: 'Regex patterns to match job titles. Case-insensitive. Jobs whose job title matches any of the patterns will be returned.', example: [\bsoftware\s+engineer\b, \bdata\s+scientist\b, \bproduct\s+manager\b]}
+      job_title_pattern_not: {type: 'array[string]', required: false, note: Regex patterns to match job titles. Case-insensitive. Jobs whose job title doesn't match any of the patterns will be returned., example: [\bsoftware\s+engineer\b, \bdata\s+scientist\b, \bproduct\s+manager\b]}
+      job_country_code_or: {type: 'array[string]', required: false, note: 2-letter ISO country code of the location of the job. Can pass more than 1, example: [US, GB]}
+      job_country_code_not: {type: 'array[string]', required: false, note: 2-letter ISO country code of the location of the job. Can pass more than 1. Will exclude jobs from these countries, example: [US, GB]}
+      posted_at_max_age_days: {type: integer, required: false, note: 'Date posted max age in days. If 0, only return jobs posted today. If 1, from today and yesterday, etc.', example: 10}
+      posted_at_gte: {type: string, required: false, note: ISO 8601 date string (yyyy-mm-dd). Only jobs published in this date or after will be returned., example: '2025-05-25'}
+      posted_at_lte: {type: string, required: false, note: ISO 8601 date string (yyyy-mm-dd). Only jobs published in this date or before will be returned., example: '2025-05-25'}
+      discovered_at_max_age_days: {type: integer, required: false, note: 'If 0, only return jobs added to our database in the current day. If 1, from today and yesterday, etc.', example: 10}
+      discovered_at_min_age_days: {type: integer, required: false, note: 'If 1, only return jobs discovered by TheirStack until yesterday. If 2, until 2 days ago, etc.', example: 10}
+      discovered_at_gte: {type: string, required: false, note: Only jobs discovered by TheirStack on this date or datetime or after will be returned. In UTC timezone., example: '2025-05-25'}
+      discovered_at_lte: {type: string, required: false, note: Only jobs discovered by TheirStack on this date or datetime or before will be returned. In UTC timezone., example: '2025-05-25'}
+      job_description_pattern_or: {type: 'array[string]', required: false, note: 'Regex patterns to look for in job descriptions. Case-sensitive. Results will include jobs whose description matches any of these patterns. Use (?i) at the start of a pattern to make it case-insensitive. Can pass more than one.', example: ['(?i)\bdata warehouse\b', '(?i)\bELT\b', '(?i)\bETL\b']}
+      job_description_pattern_not: {type: 'array[string]', required: false, note: 'Regex patterns to look for in job descriptions. Case-sensitive. Results will include jobs whose description doesn''t match any of these patterns. Use (?i) at the start of a pattern to make it case-insensitive. Can pass more than one.', example: ['(?i)\bdata warehouse\b', '(?i)\bELT\b', '(?i)\bETL\b']}
+      job_description_pattern_and: {type: 'array[string]', required: false, note: 'Regex patterns that must ALL match the job description (AND logic). Use (?i) at the start of a pattern to make it case-insensitive. Results will only include jobs whose description matches every pattern in this list.', example: ['(?i)\bML.?Ops\b|\bmachine learning operations\b', '(?i)\bquery optim\w+\b|\bquery performance\b|\bslow quer\w+\b']}
+      job_description_contains_or: {type: 'array[string]', required: false, note: 'Search for whole words in job descriptions using word boundaries (\b). Case-insensitive by default, except for the patterns that are uppercase - in that case we''ll respect it. Only finds complete words (e.g., searching ''quality'' won''t match ''inequality''). Results will include jobs whose description contains any of these words.', example: [python, javascript]}
+      job_description_contains_not: {type: 'array[string]', required: false, note: 'Exclude jobs whose description contains any of these whole words using word boundaries (\b). Case-insensitive by default, except for the patterns that are uppercase - in that case we''ll respect it. Only finds complete words (e.g., searching ''quality'' won''t match ''inequality''). Results will exclude jobs whose description contains any of these words.', example: [python, javascript]}
+      workplace_types_or: {type: 'array[string]', required: false, note: 'Filter jobs by workplace type. Returns jobs that match any of the specified workplace types. `on_site` matches jobs that are neither hybrid nor remote. If no values are provided or an empty list is sent, jobs are not filtered by workplace type.', enum: [on_site, hybrid, remote], example: [hybrid]}
+      job_id_or: {type: 'array[integer]', required: false, note: Get jobs with these IDs only., example: [12423312, 2123123, 3123123]}
+      job_id_not: {type: 'array[integer]', required: false, note: Exclude jobs with these IDs., example: [12423312, 2123123, 3123123]}
+      job_seniority_or: {type: 'array[string]', required: false, note: Will return jobs where the seniority is any of the ones passed here, enum: [c_level, staff, senior, junior, mid_level], example: [junior, mid_level, senior]}
+      min_salary_usd: {type: number, required: false, note: 'Minimum annual salary in USD. For example, 100000 means $100,000.', example: 100000}
+      max_salary_usd: {type: number, required: false, note: 'Maximum annual salary in USD. For example, 150000 means $150,000.', example: 100000}
+      job_technology_slug_or: {type: 'array[string]', required: false, note: 'Will return jobs where any of these technologies appear. Case sensitive. Pass slugs. Check out all the technologies we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0) with `keyword_type=technology`. If you pass more than one technology, we will return jobs that mention at least one of them.'}
+      job_technology_slug_not: {type: 'array[string]', required: false, note: 'Will return jobs where none of these technologies appear. Case sensitive. Pass slugs. Check out all the technologies we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0) with `keyword_type=technology`.'}
+      job_technology_slug_and: {type: 'array[string]', required: false, note: 'Will return jobs where all of these technologies appear. Case sensitive. Pass slugs. Check out all the technologies we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0) with `keyword_type=technology`.'}
+      job_keyword_slug_or: {type: 'array[string]', required: false, note: 'Will return jobs where any of these keyword slugs appear. Case sensitive. Check out all the keywords we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0)'}
+      job_keyword_slug_and: {type: 'array[string]', required: false, note: 'Will return jobs where all of these keyword slugs appear. Case sensitive. Check out all the keywords we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0)'}
+      job_keyword_slug_not: {type: 'array[string]', required: false, note: 'Will return jobs where none of these keyword slugs appear. Case sensitive. Check out all the keywords we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0)'}
+      job_location_or: {type: 'array[object]', required: false, note: 'Filter jobs by location. Returns jobs whose locations match ANY of the specified location criteria. Each location criteria is specified using a JobLocationFilter object. (You can find location IDs using the [locations catalog endpoint](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_locations_v0)) — each item is {id}', example: [{id: 5128581}, {id: 2921044}]}
+      job_location_not: {type: 'array[object]', required: false, note: 'Filter jobs by location. Returns jobs whose locations DO NOT match ANY of the specified location criteria. Each location criteria is specified using a JobLocationFilter object. (You can find location IDs using the [locations catalog endpoint](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_locations_v0)) — each item is {id}', example: [{id: 5128581}, {id: 2921044}]}
+      url_domain_or: {type: 'array[string]', required: false, note: 'Include jobs only if their URL domain (from `url` or `source_url`) is in the provided case-insensitive list. For example, [''greenhouse.io'', ''workable.com''] will match URLs containing ''greenhouse.io'' or ''workable.com''. Refer to our list of sources at https://theirstack.com/en/docs/data/job/sources.', example: [greenhouse.io, workable.com, join.com, lever.co]}
+      url_domain_not: {type: 'array[string]', required: false, note: 'Exclude jobs if their URL domain (from `url` or `source_url`) is in the provided case-insensitive list. For example, [''greenhouse.io'', ''workable.com''] will exclude URLs containing ''greenhouse.io'' or ''workable.com''. Refer to our list of sources at https://theirstack.com/en/docs/data/job/sources.', example: [greenhouse.io, workable.com, join.com, lever.co]}
+      easy_apply: {type: boolean, required: false, note: 'If True, only return jobs that can be applied directly through the job board. If False, only return jobs that require redirecting to the company''s website.', example: true}
+      employment_statuses_or: {type: 'array[string]', required: false, note: 'Filter jobs by employment status. Returns jobs that match any of the specified employment types. If no values are provided or an empty list is sent, all jobs regardless of employment status will be returned.', enum: [full_time, part_time, temporary, internship, contract, freelance, co_founder, apprenticeship, seasonal, volunteer, other], example: [full_time]}
+      is_closed: {type: boolean, required: false, note: 'If True, only return closed jobs (jobs where TheirStack detected the posting was closed). If False, only return open jobs. If None, return all jobs regardless of closure status.', example: true}
+      closed_at_gte: {type: string, required: false, note: ISO 8601 date string (yyyy-mm-dd). Only return jobs closed on this date or after., example: '2025-05-25'}
+      closed_at_lte: {type: string, required: false, note: ISO 8601 date string (yyyy-mm-dd). Only return jobs closed on this date or before., example: '2025-05-25'}
+      property_exists_or: {type: 'array[string]', required: false, note: 'Return jobs that have any of these fields not null. For example, if you pass [''final_url''], it will return jobs that have a final_url set. This field also supports chaining of fields. For example, if you pass [''company_object.domain'', ''company_object.linkedin_url''], it will return jobs that have a company domain or a company linkedin_url set.', enum: [company_object.domain, company_object.linkedin_url, final_url, hiring_team, employment_statuses], example: [company_object.domain, company_object.linkedin_url, final_url]}
+      property_exists_and: {type: 'array[string]', required: false, enum: [company_object.domain, company_object.linkedin_url, final_url, hiring_team, employment_statuses], example: [company_object.domain, company_object.linkedin_url, final_url]}
+      company_name_or: {type: 'array[string]', required: false, note: 'Only return companies that match these names exactly, case-sensitively. This filter acts as an OR filter, so if you pass more than one company name, it will return companies that match any of the names.', example: [Google, Facebook, Apple]}
+      company_name_case_insensitive_or: {type: 'array[string]', required: false, note: 'Only return companies that match these names exactly, case-insensitively.', example: [google, stripe]}
+      company_id_or: {type: 'array[string]', required: false, note: 'Only return companies that match these IDs exactly. This filter acts as an OR filter, so if you pass more than one company ID, it will return companies that match any of the IDs.', example: ['1234567890', '1234567891']}
+      company_id_not: {type: 'array[string]', required: false, note: 'Exclude companies that match these IDs. This filter acts as a NOT filter, so if you pass more than one company ID, it will exclude companies that match any of the IDs.', example: ['1234567890', '1234567891']}
+      company_domain_or: {type: 'array[string]', required: false, note: 'Only return companies that match these domains exactly. It accepts full urls (https://www.google.com/) and emails (andrew@stripe.com). This filter acts as an OR filter, so if you pass more than one company domain, it will return companies that match any of the domains.', example: [google.com, stripe.com]}
+      company_domain_not: {type: 'array[string]', required: false, note: 'Only return companies that don''t match these domains exactly. It accepts full urls (https://www.google.com/) and emails (andrew@stripe.com).', example: [google.com, stripe.com]}
+      company_name_not: {type: 'array[string]', required: false, note: 'Only return companies that don''t match these names exactly, case-sensitively.', example: [Google, Facebook, Apple]}
+      company_name_partial_match_or: {type: 'array[string]', required: false, note: 'Company names. Will return companies whose name contains any of the substrings passed here, case-insensitively. For example, if you pass "google", it will return "Google", "Google LLC", "Google Inc", etc.', example: [google, stripe]}
+      company_name_partial_match_not: {type: 'array[string]', required: false, note: 'Company names. Will return companies whose name doesn''t contain any of the substrings passed here, case-insensitively. For example, if you pass ''google'', it will exclude ''Google'', ''Google LLC'', ''Google Inc'', etc.', example: [google, stripe]}
+      company_linkedin_url_or: {type: 'array[string]', required: false, note: 'Return companies whose LinkedIn page matches any of the values passed here. Both forms of LinkedIn company URL work — the vanity slug (`https://www.linkedin.com/company/google/`) and the numeric company ID (`https://www.linkedin.com/company/1038`) — as do a bare slug (`google`) and a bare numeric ID (`1038`). A numeric value is matched against the company''s LinkedIn ID and its slug, so you do not need to know which of the two you are holding. We have a LinkedIn slug for ~26% of companies and a numeric LinkedIn ID for ~14%, so if you have the company''s domain, `company_domain_or` matches more often.', example: ['https://www.linkedin.com/company/google/']}
+      company_description_pattern_or: {type: 'array[string]', required: false, note: Case-insensitive patterns to match in the company description. Will return companies that match any of the patterns.}
+      company_description_pattern_not: {type: 'array[string]', required: false, note: 'Case-insensitive patterns to match in the company description. Will exclude companies that match any of the patterns.'}
+      company_description_pattern_accent_insensitive: {type: boolean, required: false, note: 'Set to True to make company description searches accent insensitive. For example, "á" will match "a" as well.', default: false, example: true}
+      min_revenue_usd: {type: integer, required: false, note: 'Minimum company revenue, in USD'}
+      max_revenue_usd: {type: integer, required: false, note: 'Maximum company revenue, in USD'}
+      min_employee_count: {type: integer, required: false, note: Minimum number of employees in a company, example: 100}
+      max_employee_count: {type: integer, required: false, note: Maximum number of employees in a company, example: 100}
+      min_employee_count_or_null: {type: integer, required: false, note: 'Minimum number of employees in a company. If we don''t have company size information, we will return it as well.', example: 100}
+      max_employee_count_or_null: {type: integer, required: false, note: 'Maximum number of employees in a company. If we don''t have company size information, we will return it as well.', example: 100}
+      min_funding_usd: {type: integer, required: false, note: 'Minimum company funding, in USD', example: 1000000000}
+      max_funding_usd: {type: integer, required: false, note: 'Maximum company funding, in USD', example: 1000000000}
+      funding_stage_or: {type: 'array[string]', required: false, note: 'Funding stages of companies returned. Possible values: [''angel'', ''convertible_note'', ''debt_financing'', ''equity_crowdfunding'', ''other'', ''private_equity'', ''seed'', ''series_a'', ''series_b'', ''series_c'', ''series_d'', ''series_e'', ''series_f'', ''series_g'', ''series_h'', ''venture_round_not_specified'', ''series_i'', ''series_j'', ''undisclosed'', ''series_unknown'', ''pre_seed'', ''post_ipo_secondary'', ''post_ipo_equity'', ''post_ipo_debt'', ''non_equity_assistance'', ''late_vc'', ''initial_coin_offering'', ''growth_equity_vc'', ''grant'', ''early_vc'', ''corporate_round'', ''secondary_market'', ''product_crowdfunding'']'}
+      industry_id_or: {type: 'array[integer]', required: false, note: 'Industry codes. You can use any of [LinkedIn''s Industry Codes V2](https://learn.microsoft.com/en-us/linkedin/shared/references/reference-tables/industry-codes-v2) or [GET /v0/catalog/industries](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_industries_v0)'}
+      industry_id_not: {type: 'array[integer]', required: false, note: 'Industry ids to exclude. You can use any of [LinkedIn''s Industry Codes V2](https://learn.microsoft.com/en-us/linkedin/shared/references/reference-tables/industry-codes-v2) or [GET /v0/catalog/industries](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_industries_v0)'}
+      industry_id_not_or_null: {type: 'array[integer]', required: false, note: 'Industry ids to exclude. Companies whose industry we don''t know are returned as well. You can use any of [LinkedIn''s Industry Codes V2](https://learn.microsoft.com/en-us/linkedin/shared/references/reference-tables/industry-codes-v2) or [GET /v0/catalog/industries](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_industries_v0)'}
+      company_tags_or: {type: 'array[string]', required: false, note: Return companies that match any of these keywords}
+      company_type: {type: string, required: false, note: Filter by company type., enum: [recruiting_agency, direct_employer, all]}
+      company_investors_or: {type: 'array[string]', required: false, note: Investors of the company}
+      company_investors_partial_match_or: {type: 'array[string]', required: false, note: 'Investors of the company. Will return companies for which any of their investors contains any of the substrings passed here. For example, if you pass ''andree'', all funds that match it (like ''Andreessen Horowitz'', ''Andreessen Horowitz LLC'', etc).'}
+      company_technology_slug_or: {type: 'array[string]', required: false, note: 'Return results from companies that have mentioned any of these technologies in their jobs (in job searches, not necessarily in the jobs returned). Case sensitive. Pass slugs. Check out all the technologies we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0) with `keyword_type=technology`'}
+      company_technology_slug_and: {type: 'array[string]', required: false, note: 'Return results from companies that have mentioned all of these technologies in their jobs (in job searches, not necessarily in the jobs returned). Case sensitive. Pass slugs. Check out all the technologies we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0) with `keyword_type=technology`'}
+      company_technology_slug_not: {type: 'array[string]', required: false, note: 'Return results from companies that haven''t mentioned any of these technologies in their jobs. Case sensitive. Pass slugs. Check out all the technologies we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0) with `keyword_type=technology`'}
+      company_keyword_slug_or: {type: 'array[string]', required: false, note: 'Return results from companies that have mentioned any of these keywords in their jobs. Case sensitive. Pass slugs. Check out all the keywords we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0)'}
+      company_keyword_slug_and: {type: 'array[string]', required: false, note: 'Return results from companies that have mentioned all of these keywords in their jobs. Case sensitive. Pass slugs. Check out all the keywords we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0)'}
+      company_keyword_slug_not: {type: 'array[string]', required: false, note: 'Return results from companies that haven''t mentioned any of these keywords in their jobs. Case sensitive. Pass slugs. Check out all the keywords we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0)'}
+      only_yc_companies: {type: boolean, required: false, note: Only return YC companies, default: false}
+      company_location_pattern_or: {type: 'array[string]', required: false, note: 'Return companies whose city matches any of the patterns passed here. Case insensitive. For example, if you pass ''san francisco'', it will return companies whose city is ''San Francisco'', ''San Francisco Bay Area'', etc.'}
+      company_country_code_or: {type: 'array[string]', required: false, note: 'Return companies whose HQ country code is any of the ones passed here, case sensitive. Pass ISO2 country codes.'}
+      company_country_code_not: {type: 'array[string]', required: false, note: 'Return companies whose HQ country code is not any of the ones passed here, case sensitive. Pass ISO2 country codes.'}
+      company_country_code_not_or_null: {type: 'array[string]', required: false, note: 'Return companies whose HQ country code is not any of the ones passed here, case sensitive. Companies whose country we don''t know are returned as well. Pass ISO2 country codes.'}
+      company_list_id_or: {type: 'array[integer]', required: false, note: Return companies that belong to any of the company lists passed here}
+      company_list_id_not: {type: 'array[integer]', required: false, note: Return companies that don't belong to any of the company lists passed here}
+      company_revealed_at_gte: {type: string, required: false, note: Filter companies (or jobs by their company) by when the company was revealed in the caller's account. Returns only companies revealed at or after this ISO-8601 timestamp. Scoped to the caller's team — has no effect for companies the team has never revealed.}
+      company_revealed_at_lte: {type: string, required: false, note: Filter companies (or jobs by their company) by when the company was revealed in the caller's account. Returns only companies revealed at or before this ISO-8601 timestamp. Scoped to the caller's team — has no effect for companies the team has never revealed.}
+      last_funding_round_date_lte: {type: string, required: false, note: 'Only return companies whose last funding round date is before or on this date. Format: ''YYYY-MM-DD''', example: '2025-05-25'}
+      last_funding_round_date_gte: {type: string, required: false, note: 'Only return companies whose last funding round date is after or on this date. Format: ''YYYY-MM-DD''', example: '2025-05-25'}
+    note: 'At least one of posted_at_max_age_days, posted_at_gte, posted_at_lte, company_domain_or, company_linkedin_url_or or company_name_or is required. Every job carries title, description, URLs, location, salary, seniority, the technologies and keywords it mentions, hiring managers when known, and a nested company object with firmographics'
+  test_request:
+    body:
+      posted_at_max_age_days: 7
+      job_country_code_or:
+      - US
+      job_title_or:
+      - data engineer
+      limit: 1
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: observed
+    source_url: https://theirstack.com/en/docs/pricing/credits
+    checked: '2026-10-02'
+    confidence: verified
+    note: 1 API credit per job in data[]; an empty page is free. Repeating a request bills again — use posted_at/discovered_at windows or job_id_not to avoid paying twice for the same job
+  verified: '2026-10-02'
+  example_response: examples/theirstack.jobs.search.json
+  docs_url: https://theirstack.com/en/docs/api-reference/jobs/search_jobs_v1
+- id: theirstack.companies.jobs
+  domain: companies
+  capability: companies.jobs
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /v1/jobs/search
+  name: A company's job postings by domain — hiring signal
+  summary: 'Job Search scoped to one company: its current and past postings.'
+  input:
+    bodyType: json
+    body: *jobs_body
+    note: 'Job Search scoped to one company: set company_domain_or (or company_linkedin_url_or / company_name_or) and combine it with any other filter. Without a date filter the company''s full job history is searched'
+  test_request:
+    body:
+      company_domain_or:
+      - stripe.com
+      posted_at_max_age_days: 30
+      limit: 1
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: record
+    source: observed
+    source_url: https://theirstack.com/en/docs/pricing/credits
+    checked: '2026-10-02'
+    confidence: verified
+    note: 1 API credit per job in data[]; a company with no matching jobs costs nothing
+  verified: '2026-10-02'
+  example_response: examples/theirstack.companies.jobs.json
+  docs_url: https://theirstack.com/en/docs/api-reference/jobs/search_jobs_v1
+- id: theirstack.companies.search
+  domain: companies
+  capability: companies.search
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /v1/companies/search
+  name: Search companies by tech stack, hiring, size or industry
+  summary: Find companies by firmographics, the technologies they use and the jobs they are hiring for.
+  input:
+    bodyType: json
+    body: &companies_body
+      expand_technology_slugs: {type: 'array[string]', required: false, note: 'Specify technology slugs to include detailed technology usage information for each company. The response will include a ''technologies_found'' field containing metrics like confidence score, ranking, and job count for each specified technology. Note: If a technology is not listed for a company, it means we haven''t detected it in that company''s jobs. This feature is useful for enriching company data with their technology stack details.'}
+      order_by: {type: 'array[object]', required: false, note: 'List of column objects. You can pass several columns to order by, in order of priority. Only `field` is required, `desc` is True by default — each item is {desc, field (relevance | name | num_jobs | num_jobs_last_30_days | num_jobs_found | employee_count | alexa_ranking | founded_year | annual_revenue_usd | total_funding_usd | last_funding_round_date | confidence | jobs | first_date_found)}'}
+      company_name_or: {type: 'array[string]', required: false, note: 'Only return companies that match these names exactly, case-sensitively. This filter acts as an OR filter, so if you pass more than one company name, it will return companies that match any of the names.', example: [Google, Facebook, Apple]}
+      company_name_case_insensitive_or: {type: 'array[string]', required: false, note: 'Only return companies that match these names exactly, case-insensitively.', example: [google, stripe]}
+      company_id_or: {type: 'array[string]', required: false, note: 'Only return companies that match these IDs exactly. This filter acts as an OR filter, so if you pass more than one company ID, it will return companies that match any of the IDs.', example: ['1234567890', '1234567891']}
+      company_id_not: {type: 'array[string]', required: false, note: 'Exclude companies that match these IDs. This filter acts as a NOT filter, so if you pass more than one company ID, it will exclude companies that match any of the IDs.', example: ['1234567890', '1234567891']}
+      company_domain_or: {type: 'array[string]', required: false, note: 'Only return companies that match these domains exactly. It accepts full urls (https://www.google.com/) and emails (andrew@stripe.com). This filter acts as an OR filter, so if you pass more than one company domain, it will return companies that match any of the domains.', example: [google.com, stripe.com]}
+      company_domain_not: {type: 'array[string]', required: false, note: 'Only return companies that don''t match these domains exactly. It accepts full urls (https://www.google.com/) and emails (andrew@stripe.com).', example: [google.com, stripe.com]}
+      company_name_not: {type: 'array[string]', required: false, note: 'Only return companies that don''t match these names exactly, case-sensitively.', example: [Google, Facebook, Apple]}
+      company_name_partial_match_or: {type: 'array[string]', required: false, note: 'Company names. Will return companies whose name contains any of the substrings passed here, case-insensitively. For example, if you pass "google", it will return "Google", "Google LLC", "Google Inc", etc.', example: [google, stripe]}
+      company_name_partial_match_not: {type: 'array[string]', required: false, note: 'Company names. Will return companies whose name doesn''t contain any of the substrings passed here, case-insensitively. For example, if you pass ''google'', it will exclude ''Google'', ''Google LLC'', ''Google Inc'', etc.', example: [google, stripe]}
+      company_linkedin_url_or: {type: 'array[string]', required: false, note: 'Return companies whose LinkedIn page matches any of the values passed here. Both forms of LinkedIn company URL work — the vanity slug (`https://www.linkedin.com/company/google/`) and the numeric company ID (`https://www.linkedin.com/company/1038`) — as do a bare slug (`google`) and a bare numeric ID (`1038`). A numeric value is matched against the company''s LinkedIn ID and its slug, so you do not need to know which of the two you are holding. We have a LinkedIn slug for ~26% of companies and a numeric LinkedIn ID for ~14%, so if you have the company''s domain, `company_domain_or` matches more often.', example: ['https://www.linkedin.com/company/google/']}
+      property_exists_or: {type: 'array[string]', required: false, note: 'Return companies that have any of these fields not null. For example, if you pass [''domain'', ''linkedin_url''], it will return companies that have a domain OR a linkedin_url set.', enum: [domain, linkedin_url], example: [domain, linkedin_url]}
+      property_exists_and: {type: 'array[string]', required: false, note: 'Return companies that have all of these fields not null. For example, if you pass [''domain'', ''linkedin_url''], it will return companies that have both domain AND linkedin_url set.', enum: [domain, linkedin_url], example: [domain, linkedin_url]}
+      offset: {type: integer, required: false, note: 'Number of results to skip. Required for [offset-based pagination](https://theirstack.com/en/docs/api-reference/pagination).', default: 0, example: 0, min: 0.0}
+      page: {type: integer, required: false, note: 'Page number. Required when using [page-based pagination](https://theirstack.com/en/docs/api-reference/pagination).', default: 0, example: 0, min: 0.0}
+      limit: {type: integer, required: false, note: 'Number of results per page — THE PRICE DIAL: 3 API credits per company returned. Up to 500 a page on a paid plan; the free plan caps it at 25 a page and 5 pages a search', default: 25, example: 25, min: 1.0}
+      cursor: {type: string, required: false, note: Cursor for pagination}
+      company_description_pattern_or: {type: 'array[string]', required: false, note: Case-insensitive patterns to match in the company description. Will return companies that match any of the patterns.}
+      company_description_pattern_not: {type: 'array[string]', required: false, note: 'Case-insensitive patterns to match in the company description. Will exclude companies that match any of the patterns.'}
+      company_description_pattern_accent_insensitive: {type: boolean, required: false, note: 'Set to True to make company description searches accent insensitive. For example, "á" will match "a" as well.', default: false, example: true}
+      min_revenue_usd: {type: integer, required: false, note: 'Minimum company revenue, in USD'}
+      max_revenue_usd: {type: integer, required: false, note: 'Maximum company revenue, in USD'}
+      min_employee_count: {type: integer, required: false, note: Minimum number of employees in a company, example: 100}
+      max_employee_count: {type: integer, required: false, note: Maximum number of employees in a company, example: 100}
+      min_employee_count_or_null: {type: integer, required: false, note: 'Minimum number of employees in a company. If we don''t have company size information, we will return it as well.', example: 100}
+      max_employee_count_or_null: {type: integer, required: false, note: 'Maximum number of employees in a company. If we don''t have company size information, we will return it as well.', example: 100}
+      min_funding_usd: {type: integer, required: false, note: 'Minimum company funding, in USD', example: 1000000000}
+      max_funding_usd: {type: integer, required: false, note: 'Maximum company funding, in USD', example: 1000000000}
+      funding_stage_or: {type: 'array[string]', required: false, note: 'Funding stages of companies returned. Possible values: [''angel'', ''convertible_note'', ''debt_financing'', ''equity_crowdfunding'', ''other'', ''private_equity'', ''seed'', ''series_a'', ''series_b'', ''series_c'', ''series_d'', ''series_e'', ''series_f'', ''series_g'', ''series_h'', ''venture_round_not_specified'', ''series_i'', ''series_j'', ''undisclosed'', ''series_unknown'', ''pre_seed'', ''post_ipo_secondary'', ''post_ipo_equity'', ''post_ipo_debt'', ''non_equity_assistance'', ''late_vc'', ''initial_coin_offering'', ''growth_equity_vc'', ''grant'', ''early_vc'', ''corporate_round'', ''secondary_market'', ''product_crowdfunding'']'}
+      industry_id_or: {type: 'array[integer]', required: false, note: 'Industry codes. You can use any of [LinkedIn''s Industry Codes V2](https://learn.microsoft.com/en-us/linkedin/shared/references/reference-tables/industry-codes-v2) or [GET /v0/catalog/industries](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_industries_v0)'}
+      industry_id_not: {type: 'array[integer]', required: false, note: 'Industry ids to exclude. You can use any of [LinkedIn''s Industry Codes V2](https://learn.microsoft.com/en-us/linkedin/shared/references/reference-tables/industry-codes-v2) or [GET /v0/catalog/industries](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_industries_v0)'}
+      industry_id_not_or_null: {type: 'array[integer]', required: false, note: 'Industry ids to exclude. Companies whose industry we don''t know are returned as well. You can use any of [LinkedIn''s Industry Codes V2](https://learn.microsoft.com/en-us/linkedin/shared/references/reference-tables/industry-codes-v2) or [GET /v0/catalog/industries](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_industries_v0)'}
+      company_tags_or: {type: 'array[string]', required: false, note: Return companies that match any of these keywords}
+      company_type: {type: string, required: false, note: Filter by company type., enum: [recruiting_agency, direct_employer, all]}
+      company_investors_or: {type: 'array[string]', required: false, note: Investors of the company}
+      company_investors_partial_match_or: {type: 'array[string]', required: false, note: 'Investors of the company. Will return companies for which any of their investors contains any of the substrings passed here. For example, if you pass ''andree'', all funds that match it (like ''Andreessen Horowitz'', ''Andreessen Horowitz LLC'', etc).'}
+      company_technology_slug_or: {type: 'array[string]', required: false, note: 'Return results from companies that have mentioned any of these technologies in their jobs (in job searches, not necessarily in the jobs returned). Case sensitive. Pass slugs. Check out all the technologies we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0) with `keyword_type=technology`'}
+      company_technology_slug_and: {type: 'array[string]', required: false, note: 'Return results from companies that have mentioned all of these technologies in their jobs (in job searches, not necessarily in the jobs returned). Case sensitive. Pass slugs. Check out all the technologies we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0) with `keyword_type=technology`'}
+      company_technology_slug_not: {type: 'array[string]', required: false, note: 'Return results from companies that haven''t mentioned any of these technologies in their jobs. Case sensitive. Pass slugs. Check out all the technologies we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0) with `keyword_type=technology`'}
+      company_keyword_slug_or: {type: 'array[string]', required: false, note: 'Return results from companies that have mentioned any of these keywords in their jobs. Case sensitive. Pass slugs. Check out all the keywords we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0)'}
+      company_keyword_slug_and: {type: 'array[string]', required: false, note: 'Return results from companies that have mentioned all of these keywords in their jobs. Case sensitive. Pass slugs. Check out all the keywords we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0)'}
+      company_keyword_slug_not: {type: 'array[string]', required: false, note: 'Return results from companies that haven''t mentioned any of these keywords in their jobs. Case sensitive. Pass slugs. Check out all the keywords we track at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0)'}
+      only_yc_companies: {type: boolean, required: false, note: Only return YC companies, default: false}
+      company_location_pattern_or: {type: 'array[string]', required: false, note: 'Return companies whose city matches any of the patterns passed here. Case insensitive. For example, if you pass ''san francisco'', it will return companies whose city is ''San Francisco'', ''San Francisco Bay Area'', etc.'}
+      company_country_code_or: {type: 'array[string]', required: false, note: 'Return companies whose HQ country code is any of the ones passed here, case sensitive. Pass ISO2 country codes.'}
+      company_country_code_not: {type: 'array[string]', required: false, note: 'Return companies whose HQ country code is not any of the ones passed here, case sensitive. Pass ISO2 country codes.'}
+      company_country_code_not_or_null: {type: 'array[string]', required: false, note: 'Return companies whose HQ country code is not any of the ones passed here, case sensitive. Companies whose country we don''t know are returned as well. Pass ISO2 country codes.'}
+      company_list_id_or: {type: 'array[integer]', required: false, note: Return companies that belong to any of the company lists passed here}
+      company_list_id_not: {type: 'array[integer]', required: false, note: Return companies that don't belong to any of the company lists passed here}
+      company_revealed_at_gte: {type: string, required: false, note: Filter companies (or jobs by their company) by when the company was revealed in the caller's account. Returns only companies revealed at or after this ISO-8601 timestamp. Scoped to the caller's team — has no effect for companies the team has never revealed.}
+      company_revealed_at_lte: {type: string, required: false, note: Filter companies (or jobs by their company) by when the company was revealed in the caller's account. Returns only companies revealed at or before this ISO-8601 timestamp. Scoped to the caller's team — has no effect for companies the team has never revealed.}
+      last_funding_round_date_lte: {type: string, required: false, note: 'Only return companies whose last funding round date is before or on this date. Format: ''YYYY-MM-DD''', example: '2025-05-25'}
+      last_funding_round_date_gte: {type: string, required: false, note: 'Only return companies whose last funding round date is after or on this date. Format: ''YYYY-MM-DD''', example: '2025-05-25'}
+      job_filters: {type: object, required: false}
+      min_num_jobs_found: {type: integer, required: false, note: 'Minimum number of jobs matching `job_filters` a company must have to be returned (thresholds the `num_jobs_found` count). Requires `job_filters` with a date filter, so the count is always computed over the date-bounded set of matching jobs.', example: 10, min: 1.0}
+      tech_filters: {type: object, required: false, note: 'Filter by technologies and buying intent topics detected for the company — each item is {keyword_slug_or, keyword_category_slug_or, keyword_parent_category_slug_or, technology_slug_or, technology_category_slug_or, technology_parent_category_slug_or, max_rank, min_jobs, max_jobs, min_relative_occurrence, first_date_found_gte, first_date_found_lte, last_date_found_gte, last_date_found_lte, confidence_or (low | medium | high)}'}
+    note: each company carries domain, LinkedIn URL, employee count, industry, HQ location, funding, revenue estimate, job counts and its technology slugs
+  test_request:
+    body:
+      company_technology_slug_or:
+      - snowflake
+      company_country_code_or:
+      - DE
+      limit: 1
+  cost:
+    type: per_result
+    value: 3
+    currency: credit
+    per: 1
+    unit: record
+    source: observed
+    source_url: https://theirstack.com/en/docs/pricing/credits
+    checked: '2026-10-02'
+    confidence: verified
+    note: 3 API credits per company in data[]; an empty page is free
+  verified: '2026-10-02'
+  example_response: examples/theirstack.companies.search.json
+  docs_url: https://theirstack.com/en/docs/api-reference/companies/search_companies_v1
+- id: theirstack.technologies.users
+  domain: companies
+  capability: companies.tech_stack.users
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /v1/companies/search
+  name: Companies using a given technology — reverse tech lookup
+  summary: Company Search filtered by technology, with the evidence for each match.
+  input:
+    bodyType: json
+    body: *companies_body
+    note: 'Company Search filtered by technology: set company_technology_slug_or (slugs from theirstack.technologies.list) and repeat the slugs in expand_technology_slugs to get, per company, the confidence, the number of jobs mentioning it and the first/last dates it was seen'
+  test_request:
+    body:
+      company_technology_slug_or:
+      - hubspot
+      expand_technology_slugs:
+      - hubspot
+      limit: 1
+  cost:
+    type: per_result
+    value: 3
+    currency: credit
+    per: 1
+    unit: record
+    source: observed
+    source_url: https://theirstack.com/en/docs/pricing/credits
+    checked: '2026-10-02'
+    confidence: verified
+    note: 3 API credits per company in data[]
+  verified: '2026-10-02'
+  example_response: examples/theirstack.technologies.users.json
+  docs_url: https://theirstack.com/en/docs/api-reference/companies/search_companies_v1
+- id: theirstack.companies.technographics
+  domain: companies
+  capability: companies.tech_stack
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /v1/companies/technologies
+  name: A company's tech stack by domain, with evidence
+  summary: Lists the technologies a company uses, with confidence, jobs mentioning each and first/last seen dates.
+  input:
+    bodyType: json
+    body:
+      company_id: {type: string, required: false, note: 'Only return companies that match this TheirStack Company ID exactly. This ID is temporary and internal and will change in the future and become stable. Until then, it is only meant to be used internally by our UI (app.theirstack.com). For deduplication logic, use company_domain or company_linkedin_url instead.', example: '1234567890'}
+      company_name: {type: string, required: false, note: 'Only return companies that match this name exactly, case-sensitively.', example: Google}
+      company_domain: {type: string, required: false, note: 'Only return companies that match this domain exactly. It accepts full urls (https://www.google.com/) and emails (andrew@stripe.com).', example: google.com}
+      company_linkedin_url: {type: string, required: false, note: Return companies whose LinkedIn URL matches this URL exactly., example: 'https://www.linkedin.com/company/openai/'}
+      order_by: {type: 'array[object]', required: false, note: 'List of column objects. You can pass several columns to order by, in order of priority. Only `field` is required, `desc` is True by default. — each item is {desc, field (None | jobs | jobs_last_7_days | jobs_last_30_days | jobs_last_180_days | last_date_found | first_date_found | relative_occurrence_within_category | theirstack_score | confidence)}', default: &id001 [{desc: true, field: confidence}, {desc: true, field: jobs}]}
+      offset: {type: integer, required: false, note: 'Number of results to skip. Required for [offset-based pagination](https://theirstack.com/en/docs/api-reference/pagination).', example: 0, min: 0.0}
+      page: {type: integer, required: false, note: 'Page number. Required when using [page-based pagination](https://theirstack.com/en/docs/api-reference/pagination).', example: 0, min: 0.0}
+      limit: {type: integer, required: false, note: Number of rows per page; does not change the price (3 API credits per company lookup), example: 50, min: 1.0}
+      keyword_slug_or: {type: 'array[string]', required: false, note: 'Only return these keywords (technologies or buying intent topics). Case sensitive. Pass slugs. Check out all keywords at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0)'}
+      keyword_category_slug_or: {type: 'array[string]', required: false, note: 'Only return keywords from any of these categories. Case sensitive. Pass slugs. Check out all keyword categories at [GET /v1/catalog/keywords/categories](https://theirstack.com/en/docs/api-reference/catalog/list_keyword_categories_v1)'}
+      keyword_parent_category_slug_or: {type: 'array[string]', required: false, note: 'Only return keywords from any of these parent categories. Case sensitive. Pass slugs. Check out all keyword categories at [GET /v1/catalog/keywords/categories](https://theirstack.com/en/docs/api-reference/catalog/list_keyword_categories_v1)'}
+      max_rank: {type: integer, required: false, note: 'The rank measures how common a keyword (technology or buying intent topic) is within its category for a company. The keyword most mentioned among similar ones by a company has a rank of 1, the second 2, etc. Useful to keep only the primary technology or topic of each category.'}
+      min_jobs: {type: integer, required: false, note: 'Minimum number of jobs in which each company mentions the keyword (technology or buying intent topic)'}
+      max_jobs: {type: integer, required: false, note: 'Maximum number of jobs in which each company mentions the keyword (technology or buying intent topic)'}
+      min_relative_occurrence: {type: number, required: false, note: 'Minimum value of relative_occurrence_within_category for each keyword (technology or buying intent topic). Higher values increase the probability that the company actually uses the technology or cares about the topic, because a higher share of the mentions within that category are of this keyword.'}
+      first_date_found_gte: {type: string, required: false, note: 'Only return keywords (technologies or buying intent topics) where the first time they were found was after or on this date. Format: "YYYY-MM-DD"'}
+      first_date_found_lte: {type: string, required: false, note: 'Only return keywords (technologies or buying intent topics) where the first time they were found was before or on this date. Format: "YYYY-MM-DD"'}
+      last_date_found_gte: {type: string, required: false, note: 'Only return keywords (technologies or buying intent topics) where the last time they were found was after or on this date. Format: "YYYY-MM-DD"'}
+      last_date_found_lte: {type: string, required: false, note: 'Only return keywords (technologies or buying intent topics) where the last time they were found was before or on this date. Format: "YYYY-MM-DD"'}
+      confidence_or: {type: 'array[string]', required: false, note: 'Only return keywords (technologies or buying intent topics) detected with any of these confidence levels. Available values: "high", "medium", "low"', enum: [low, medium, high]}
+    note: the stack is inferred from the company's job postings, so each row says how many jobs mention it and when it was first and last seen
+  test_request:
+    body:
+      company_domain: stripe.com
+      limit: 5
+  cost:
+    type: per_success
+    value: 3
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://theirstack.com/en/docs/api-reference/companies/technographics_v1
+    checked: '2026-10-02'
+    confidence: verified
+    note: 3 API credits per company lookup however many technologies return; an unknown company costs nothing
+  verified: '2026-10-02'
+  example_response: examples/theirstack.companies.technographics.json
+  docs_url: https://theirstack.com/en/docs/api-reference/companies/technographics_v1
+- id: theirstack.companies.buying_intents
+  domain: companies
+  capability: companies.buying_intents
+  platform: companies
+  scope: any_account
+  method: POST
+  path: /v1/companies/buying_intents
+  name: A company's buying-intent topics from its job postings
+  summary: Lists the buying-intent topics detected for a company, with confidence, jobs mentioning each and first/last seen dates.
+  input:
+    bodyType: json
+    body:
+      company_id: {type: string, required: false, note: 'Only return companies that match this TheirStack Company ID exactly. This ID is temporary and internal and will change in the future and become stable. Until then, it is only meant to be used internally by our UI (app.theirstack.com). For deduplication logic, use company_domain or company_linkedin_url instead.', example: '1234567890'}
+      company_name: {type: string, required: false, note: 'Only return companies that match this name exactly, case-sensitively.', example: Google}
+      company_domain: {type: string, required: false, note: 'Only return companies that match this domain exactly. It accepts full urls (https://www.google.com/) and emails (andrew@stripe.com).', example: google.com}
+      company_linkedin_url: {type: string, required: false, note: Return companies whose LinkedIn URL matches this URL exactly., example: 'https://www.linkedin.com/company/openai/'}
+      order_by: {type: 'array[object]', required: false, note: 'List of column objects. You can pass several columns to order by, in order of priority. Only `field` is required, `desc` is True by default. — each item is {desc, field (None | jobs | jobs_last_7_days | jobs_last_30_days | jobs_last_180_days | last_date_found | first_date_found | relative_occurrence_within_category | theirstack_score | confidence)}', default: *id001}
+      offset: {type: integer, required: false, note: 'Number of results to skip. Required for [offset-based pagination](https://theirstack.com/en/docs/api-reference/pagination).', example: 0, min: 0.0}
+      page: {type: integer, required: false, note: 'Page number. Required when using [page-based pagination](https://theirstack.com/en/docs/api-reference/pagination).', example: 0, min: 0.0}
+      limit: {type: integer, required: false, note: Number of rows per page; does not change the price (3 API credits per company lookup), example: 50, min: 1.0}
+      keyword_slug_or: {type: 'array[string]', required: false, note: 'Only return these keywords (technologies or buying intent topics). Case sensitive. Pass slugs. Check out all keywords at [GET /v0/catalog/keywords](https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0)'}
+      keyword_category_slug_or: {type: 'array[string]', required: false, note: 'Only return keywords from any of these categories. Case sensitive. Pass slugs. Check out all keyword categories at [GET /v1/catalog/keywords/categories](https://theirstack.com/en/docs/api-reference/catalog/list_keyword_categories_v1)'}
+      keyword_parent_category_slug_or: {type: 'array[string]', required: false, note: 'Only return keywords from any of these parent categories. Case sensitive. Pass slugs. Check out all keyword categories at [GET /v1/catalog/keywords/categories](https://theirstack.com/en/docs/api-reference/catalog/list_keyword_categories_v1)'}
+      max_rank: {type: integer, required: false, note: 'The rank measures how common a keyword (technology or buying intent topic) is within its category for a company. The keyword most mentioned among similar ones by a company has a rank of 1, the second 2, etc. Useful to keep only the primary technology or topic of each category.'}
+      min_jobs: {type: integer, required: false, note: 'Minimum number of jobs in which each company mentions the keyword (technology or buying intent topic)'}
+      max_jobs: {type: integer, required: false, note: 'Maximum number of jobs in which each company mentions the keyword (technology or buying intent topic)'}
+      min_relative_occurrence: {type: number, required: false, note: 'Minimum value of relative_occurrence_within_category for each keyword (technology or buying intent topic). Higher values increase the probability that the company actually uses the technology or cares about the topic, because a higher share of the mentions within that category are of this keyword.'}
+      first_date_found_gte: {type: string, required: false, note: 'Only return keywords (technologies or buying intent topics) where the first time they were found was after or on this date. Format: "YYYY-MM-DD"'}
+      first_date_found_lte: {type: string, required: false, note: 'Only return keywords (technologies or buying intent topics) where the first time they were found was before or on this date. Format: "YYYY-MM-DD"'}
+      last_date_found_gte: {type: string, required: false, note: 'Only return keywords (technologies or buying intent topics) where the last time they were found was after or on this date. Format: "YYYY-MM-DD"'}
+      last_date_found_lte: {type: string, required: false, note: 'Only return keywords (technologies or buying intent topics) where the last time they were found was before or on this date. Format: "YYYY-MM-DD"'}
+      confidence_or: {type: 'array[string]', required: false, note: 'Only return keywords (technologies or buying intent topics) detected with any of these confidence levels. Available values: "high", "medium", "low"', enum: [low, medium, high]}
+    note: topics are things a company is hiring to build or adopt (e.g. SOC 2, data warehouse migration), read from the text of its postings
+  test_request:
+    body:
+      company_domain: stripe.com
+      limit: 5
+  cost:
+    type: per_success
+    value: 3
+    currency: credit
+    per: 1
+    unit: call
+    source: observed
+    source_url: https://theirstack.com/en/docs/api-reference/companies/buying_intents_v1
+    checked: '2026-10-02'
+    confidence: verified
+    note: 3 API credits per company lookup however many topics return; an unknown company costs nothing
+  verified: '2026-10-02'
+  example_response: examples/theirstack.companies.buying_intents.json
+  docs_url: https://theirstack.com/en/docs/api-reference/companies/buying_intents_v1
+- id: theirstack.technologies.list
+  domain: companies
+  capability: companies.technologies.list
+  platform: companies
+  scope: any_account
+  method: GET
+  path: /v0/catalog/keywords
+  name: Search the technology and buying-intent catalog
+  summary: Lists the technologies and buying-intent topics TheirStack tracks, with how many companies use each.
+  input:
+    queryParams:
+      keyword_type: {type: string, required: false, note: Keyword type to filter by, enum: [technology, software_product, technology_concept, operational_activity, strategic_initiative, metric_or_concept, product_or_service_offered, regulation, threat_or_risk, event, commodity, industry_vertical, physical_equipment, medical_research, government_body]}
+      keyword_type_not: {type: 'array[string]', required: false, note: Exclude keywords of these types, enum: [technology, software_product, technology_concept, operational_activity, strategic_initiative, metric_or_concept, product_or_service_offered, regulation, threat_or_risk, event, commodity, industry_vertical, physical_equipment, medical_research, government_body]}
+      name_pattern: {type: string, required: false, note: Case-insensitive text to search for in the keyword name}
+      slugs: {type: 'array[string]', required: false, note: Keyword slugs of one or many keywords}
+      category_pattern: {type: string, required: false, note: 'Case-insensitive text to search for in the keyword category. For example, `data` to find ''data tools''.'}
+      category_slug: {type: string, required: false, note: Keyword category slug}
+      parent_category_slug: {type: string, required: false, note: Keyword parent category slug}
+      parent_category_pattern: {type: string, required: false, note: Case-insensitive text to search for in the keyword parent category name}
+      q: {type: string, required: false, note: 'General search query. Searches across keyword name, keyword type, category, and parent category (case-insensitive). Results where the keyword name starts with the query are ranked first.'}
+      starts_with: {type: string, required: false, note: Filter keywords whose name starts with this string (e.g. 'A' for glossary). Special value '__other__' selects keywords whose name does not start with letters A-Z.}
+      page: {type: integer, required: false, note: Page number., default: 0, min: 0}
+      limit: {type: integer, required: false, note: Number of results per page, default: 25, min: 1}
+    note: use it to turn a product name into the slug the search and technographics filters take
+  test_request:
+    queryParams:
+      q: snowflake
+      keyword_type: technology
+      limit: 5
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: observed
+    source_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0
+    checked: '2026-10-02'
+    confidence: verified
+  verified: '2026-10-02'
+  example_response: examples/theirstack.technologies.list.json
+  docs_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_keywords_v0
+- id: theirstack.industries.list
+  domain: companies
+  capability: companies.industry.resolve
+  platform: companies
+  scope: any_account
+  method: GET
+  path: /v0/catalog/industries
+  name: Map an industry name to LinkedIn industry ids
+  summary: Lists LinkedIn Industry Codes V2 with job and company counts; search by name.
+  input:
+    queryParams:
+      industry: {type: string, required: false, note: 'Name of an industry, case-insensitive. Will return industries that contain the given string either in their name, hierarchy or description'}
+      page: {type: integer, required: false, note: Page number., default: 0, min: 0}
+      limit: {type: integer, required: false, note: Number of results per page, default: 25, min: 1}
+    note: the ids feed industry_id_or in both searches
+  test_request:
+    queryParams:
+      industry: software
+      limit: 5
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: observed
+    source_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_industries_v0
+    checked: '2026-10-02'
+    confidence: verified
+  verified: '2026-10-02'
+  example_response: examples/theirstack.industries.list.json
+  docs_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_industries_v0
+- id: theirstack.locations.search
+  domain: companies
+  capability: companies.locations.resolve
+  platform: companies
+  scope: any_account
+  method: GET
+  path: /v0/catalog/locations
+  name: Map a place name to location ids
+  summary: Search geographic locations by name and get the ids the job_location filters take.
+  input:
+    queryParams:
+      id: {type: 'array[integer]|integer', required: false, note: The ids of the locations, example: 1}
+      name: {type: string, required: false, note: 'Search value for the location, this will be used to filter the locations by name', example: Paris}
+      country_code: {type: string, required: false, note: 'The country code of the location, all the returned locations will be filtered by this country code', example: FR}
+      feature_code: {type: 'array[string]|string', required: false, note: 'GeoNames feature code(s) to filter by location type (e.g. PPL=populated place, ADM1=first-order admin division). See https://www.geonames.org/export/codes.html', example: PPL}
+      offset: {type: integer, required: false, note: The offset of the results, default: 0, example: 0, min: 0}
+      limit: {type: integer, required: false, note: The limit of the results, default: 5, example: 10, min: 1, max: 100000}
+    note: 'returns city, region, country and the id to pass as job_location_or: [{id}]'
+  test_request:
+    queryParams:
+      name: Berlin
+      country_code: DE
+      limit: 5
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    source: observed
+    source_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_locations_v0
+    checked: '2026-10-02'
+    confidence: verified
+  verified: '2026-10-02'
+  example_response: examples/theirstack.locations.search.json
+  docs_url: https://theirstack.com/en/docs/api-reference/catalog/get_catalog_locations_v0
+- id: theirstack.account.credit_balance
+  kind: account
+  domain: other
+  capability: account.usage
+  platform: account
+  scope: own_account
+  method: GET
+  path: /v0/billing/credit-balance
+  name: Check your API credit balance
+  summary: Returns the API credits granted to the team and those used this billing cycle.
+  input:
+    note: no parameters. api_credits is the API credits granted and used_api_credits the spend this billing cycle, so what is left is api_credits minus used_api_credits — call it before and after a search to measure what it cost
+  test_request:
+    queryParams: {}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+  verified: '2026-10-02'
+  example_response: examples/theirstack.account.credit_balance.json
+  docs_url: https://theirstack.com/en/docs/api-reference/billing/get_billing_credit_balance_v0

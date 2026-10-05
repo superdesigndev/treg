@@ -574,6 +574,16 @@ _OPENMART_LOOKUP_ENDPOINTS = frozenset({
 })
 _OPENMART_PLATFORM_MAX_RECORDS = 25
 
+# TheirStack's searches bill per record returned, default to 25 a page and serve at most 500 on a
+# paid plan, so the hold must cover the whole page asked for: the shared 100-row cap left rows
+# 101-500 paid by treg and never charged.
+_THEIRSTACK_SEARCH_ENDPOINTS = frozenset({
+    "theirstack.jobs.search", "theirstack.companies.jobs",
+    "theirstack.companies.search", "theirstack.technologies.users",
+})
+_THEIRSTACK_PAGE_DEFAULT = 25
+_THEIRSTACK_PAGE_MAX = 500
+
 _TAVILY_ENDPOINTS = frozenset({
     "tavily.web.search",
     "tavily.web.extract",
@@ -815,6 +825,11 @@ def _marketplace_pricing(
                 and str(raw).strip().isdigit() else 20
             asked = max(1, min(asked, 50))
             return _usd_to_micro(rate * asked), unit
+    if provider == "theirstack" and endpoint_id in _THEIRSTACK_SEARCH_ENDPOINTS and cost.get("usd"):
+        raw = _json_object(body).get("limit", _THEIRSTACK_PAGE_DEFAULT)
+        asked = raw if type(raw) is int and raw > 0 else _THEIRSTACK_PAGE_DEFAULT
+        credit = _usd_to_micro(catalog_store.load().credit_rates["theirstack"])
+        return _usd_to_micro(float(cost["usd"])) * min(asked, _THEIRSTACK_PAGE_MAX), credit
     estimate = _platform_estimate_micro(cost, query, body)
     credit_rate = (catalog_store.load().credit_rates.get(provider)
                    if cost.get("currency") == "credit" else None)

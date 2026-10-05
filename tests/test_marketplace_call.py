@@ -1174,6 +1174,19 @@ def test_hunter_email_finder_miss_is_free():
     assert call_settle._observed_cost_micro(f, b"not json") is None
 
 
+def test_theirstack_company_lookup_miss_is_free():
+    """Technographics and buying intents bill one flat lookup per KNOWN company; an unknown one
+    answers 200 with `data: []` and TheirStack charges nothing, so neither may treg."""
+    for endpoint_id in ("theirstack.companies.technographics", "theirstack.companies.buying_intents"):
+        mk = _mk("theirstack", endpoint_id=endpoint_id, cost_type="per_success")
+        assert call_settle._observed_cost_micro(
+            mk, b'{"data": [], "metadata": {"total_results": null}}') == 0
+        assert call_settle._observed_cost_micro(
+            mk, b'{"data": [{"keyword": {"slug": "python"}}], "metadata": {}}') is None, \
+            "a hit settles at the estimate: one lookup, however many rows"
+        assert call_settle._observed_cost_micro(mk, b'{"error": {"title": "x"}}') is None
+
+
 def test_tikhub_envelope_no_charge_settles_at_zero():
     """TikHub reports billing in prose, not a number: a 2xx whose payload is an embedded error
     still says the request will incur a charge — and TikHub really does charge us for it
@@ -3047,6 +3060,11 @@ def _usd_to_micro_for_test(usd) -> int:
     ("thecompaniesapi.companies.search", {"size": "10"}, None, b'{"companies":[{},{}]}', 2),
     # Findymail employee search: one credit per contact, never above the hold.
     ("findymail.search.employees", None, {"website": "x.io", "job_titles": ["CEO"], "count": 5}, b'[]', 0),
+    # TheirStack searches: 1 credit per job, 3 per company in `data[]`; an empty page is free.
+    ("theirstack.jobs.search", None, {"posted_at_max_age_days": 7, "limit": 10}, b'{"metadata":{},"data":[]}', 0),
+    ("theirstack.jobs.search", None, {"posted_at_max_age_days": 7, "limit": 10}, b'{"metadata":{},"data":[{},{}]}', 2),
+    ("theirstack.companies.search", None, {"limit": 10}, b'{"metadata":{},"data":[{},{},{}]}', 3),
+    ("theirstack.companies.search", None, {"limit": 10}, b'{"error":{"title":"x"}}', None),
 ])
 def test_per_result_search_settles_on_rows_returned_not_rows_requested(endpoint_id, query, req, body, rows):
     """Each reserves the requested page; the body says how many rows the vendor billed. The unit
@@ -3057,6 +3075,17 @@ def test_per_result_search_settles_on_rows_returned_not_rows_requested(endpoint_
         assert observed is None
     else:
         assert observed == min(rows * per_row, estimate), (observed, per_row, estimate)
+
+
+@pytest.mark.parametrize(("req", "rows"), [({}, 25), ({"limit": 5}, 5), ({"limit": 500}, 500),
+                                           ({"limit": 900}, 500), ({"limit": "x"}, 25)])
+def test_theirstack_search_hold_covers_the_page_asked_for(req, rows):
+    """TheirStack serves up to 500 rows a page and 25 by default; the shared 100-row cap would
+    have left rows 101-500 paid by treg and never charged, because a settle never exceeds the hold."""
+    mk, estimate, per_row = _priced("theirstack.companies.search", None, req)
+    assert estimate == rows * per_row
+    full_page = json.dumps({"metadata": {}, "data": [{}] * rows}).encode()
+    assert call_settle._observed_cost_micro(mk, full_page) == estimate
 
 
 def test_row_counts_never_bill_above_the_hold():

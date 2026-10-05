@@ -3178,6 +3178,42 @@ PREDICTLEADS = OAuthProvider(
     probe_path="/api_subscription",
 )
 
+THEIRSTACK = OAuthProvider(
+    service="theirstack",
+    display_name="TheirStack",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your TheirStack API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.theirstack.com/settings/api-key",
+    setup_action_label="Get your TheirStack API key",
+    setup_steps=(
+        "Sign in to TheirStack and open Settings → API key.",
+        "Copy your API key.",
+    ),
+    setup_note=(
+        "Data calls spend API credits: 1 per job returned, 3 per company returned or looked up. "
+        "The credit-balance check and the keyword, industry and location catalogs are free. "
+        "The free plan, for teams that have never paid for credits, includes 200 API credits a "
+        "month (separate from the 50 company credits the app spends) and serves up to 25 results "
+        "a page and 5 pages a search; paid plans serve up to 500 a page."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Job postings, technographics and hiring-based buying intent for companies worldwide — "
+        "search jobs, find companies by the tech they use, or read one company's stack."
+    ),
+    base_url="https://api.theirstack.com",
+    docs_url="https://theirstack.com/en/docs/api-reference",
+    # FREE — the balance route spends no credits. A bad key returns a clean 401 with
+    # {"error":{"title":"Could not validate credentials"}} (observed live 2026-10-01).
+    probe_path="/v0/billing/credit-balance",
+)
+
 
 FINDYMAIL = OAuthProvider(
     service="findymail",
@@ -3852,6 +3888,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
+        THEIRSTACK,
         INFLUENCERSCLUB,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
