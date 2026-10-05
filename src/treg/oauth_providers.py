@@ -1287,6 +1287,32 @@ AKTA = OAuthProvider(
     probe_path="/v1/company/search/?query=canva.com",
 )
 
+GROWSURF = OAuthProvider(
+    service="growsurf",
+    display_name="GrowSurf",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your GrowSurf REST API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.growsurf.com/settings#api-keys",
+    setup_action_label="Get your GrowSurf API key",
+    setup_steps=(
+        "Sign in to GrowSurf and open Settings → API Keys.",
+        "Create a key with team:read for the connection check and the scopes needed for your tools.",
+        "Copy the key and keep it private.",
+    ),
+    setup_note="Tools use your own team's data and plan. The team connection check needs team:read.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Other",
+    summary="Read your referral and affiliate programs, participants, referrals, rewards and analytics.",
+    base_url="https://api.growsurf.com/v2",
+    docs_url="https://docs.growsurf.com/developer-tools/rest-api",
+    probe_path="/team",
+)
+
 HUNTER = OAuthProvider(
     service="hunter",
     display_name="Hunter",
@@ -3838,7 +3864,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, GROWSURF, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
