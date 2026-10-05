@@ -1954,6 +1954,25 @@ TINYFISH = OAuthProvider(
     probe_path="/v1/wallet",
 )
 
+SOCIALCRAWL = OAuthProvider(
+    service="socialcrawl", display_name="SocialCrawl", auth_kind="key",
+    token_label="API key", token_placeholder="your SocialCrawl API key",
+    token_header="x-api-key", token_format="{secret}",
+    setup_url="https://www.socialcrawl.dev/docs/quickstart",
+    setup_action_label="Get your SocialCrawl API key",
+    setup_steps=("Sign in to SocialCrawl or create a self-serve account.",
+                 "Copy your API key from the quickstart page."),
+    setup_note="Data calls spend prepaid credits. Cache hits, failures, empty results and the balance check are free.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Social media",
+    summary="Read public social profiles, posts, videos and transcripts through one API.",
+    base_url="https://www.socialcrawl.dev/v1",
+    docs_url="https://www.socialcrawl.dev/docs",
+    probe_path="/credits/balance",
+    token_verify_field="success",
+)
+
 TIKHUB = OAuthProvider(
     service="tikhub",
     display_name="TikHub",
@@ -3844,7 +3863,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         OPENROUTER,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
-        TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
+        SOCIALCRAWL, TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, SPIDERCLOUD, PERPLEXITY,
