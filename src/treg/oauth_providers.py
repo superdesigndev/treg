@@ -1314,6 +1314,32 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+ATLY = OAuthProvider(
+    service="atly",
+    display_name="Atly",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your Atly API key (atly_…)",
+    # Atly also accepts `Authorization: Bearer <key>`; the header keeps the key out of logged URLs.
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://agentic-api.atly.com/v0/docs",
+    setup_action_label="Get a free Atly API key",
+    setup_steps=(
+        "POST https://agentic-api.atly.com/v0/keys with {\"email\": \"you@example.com\"} — the key comes back at once.",
+        "Optional: POST /v0/keys/verify with {\"email\", \"code\"} (the 6-digit code emailed to you), sending the key as X-API-Key — that key moves to the verified daily quota.",
+    ),
+    setup_note="Free: no operation is charged. Keys are limited only by a daily quota; GET /keys/me is the free probe.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Research & public data",
+    summary="Find places by what you actually want — work friendly, gluten free, great cappuccino — scored from real reviews, with quotable statements.",
+    base_url="https://agentic-api.atly.com/v0",
+    docs_url="https://agentic-api.atly.com/v0/docs",
+    probe_path="/keys/me",  # free — a bad key gets 401 {"error":"unknown API key"}
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -3853,6 +3879,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
         INFLUENCERSCLUB,
+        # Places: intent-scored local search
+        ATLY,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,

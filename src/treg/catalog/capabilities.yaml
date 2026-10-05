@@ -124,6 +124,7 @@ platforms:
   yandex: {label: "Yandex Search Results (SERP)", category: "SEO/AEO", summary: "Organic results and rankings from Yandex."}
   duckduckgo: {label: "DuckDuckGo Search Results (SERP)", category: "SEO/AEO", summary: "Organic results from DuckDuckGo."}
   yelp: {label: "Yelp", category: "Reviews & Apps", summary: "Business listings and reviews from Yelp."}
+  places: {label: "Places by intent (local search)", category: "Reviews & Apps", summary: "Find restaurants, cafes and other places by what people want from them, scored from real reviews."}
   account: {label: "The provider account itself — usage, quota, balance (not a content platform)", category: "Other"}
 
   # --- Market data: prices & financial markets --------------------------------------------------

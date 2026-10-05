@@ -1,0 +1,122 @@
+provider: atly
+source:
+  docs: https://agentic-api.atly.com/v0/docs
+  openapi: https://agentic-api.atly.com/v0/openapi.yaml
+  curated: 2026-10-05
+# Atly scores close to 2 million places (densest in the United States; pockets in Mexico, Israel and
+# Thailand) against 1,400+ intents — "work friendly", "gluten free", "great cappuccino", "dog
+# friendly" — from what real reviewers say, and returns the review statements behind each score.
+#
+# The job is a two-step lookup an agent must not skip: words → category ids (list_categories) and
+# place name → area id (list_areas), then search. Category and area ids are stable UUID-style strings.
+#
+# Billing: FREE. No operation is charged, with or without a key (guide, "Access and quotas"). Use is
+# limited by a daily quota per key — larger once the key's email is verified — and a small hourly
+# quota per IP for anonymous callers; a 429 names the window reset. The same API is served as a
+# remote MCP server at https://agentic-api.atly.com/mcp.
+limits: "free; daily quota per key (higher once the key's email is verified); 429 with reset time when exhausted"
+pricing_url: https://agentic-api.atly.com/v0/docs
+endpoints:
+  - id: atly.places.search.intent
+    capability: places.search.intent
+    platform: places
+    domain: search
+    scope: any_account
+    method: POST
+    path: /places/search
+    name: "Find places that match intents near a location"
+    summary: "Find places for an intent near a location"
+    input:
+      bodyType: json
+      body:
+        categories: {type: array, required: true, note: "1-5 category ids from list_categories, most important first; every result matches all of them (trailing ones are dropped, and named, if nothing does)", example: ["69e178c3-14be-11ee-a9cb-614c6a0a867a"]}
+        area_id: {type: string, required: false, note: "an id from list_areas; give this OR lat+lon", example: "canonical-area::c790a21e-65a4-5e5c-8061-64900cd3fd0e"}
+        lat: {type: number, required: false, note: "with lon and radius_km instead of area_id"}
+        lon: {type: number, required: false}
+        radius_km: {type: number, required: false, note: "search radius around lat/lon, 0.2-50, default 5"}
+        limit: {type: integer, required: false, note: "max places returned, 1-25, default 10", example: 3}
+      note: "Ranked by Atly's 0-10 score for the requested categories; each place carries quotable reasons from reviews and an Atly URL."
+    test_request:
+      body: {categories: ["69e178c3-14be-11ee-a9cb-614c6a0a867a"], area_id: "canonical-area::c790a21e-65a4-5e5c-8061-64900cd3fd0e", limit: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free (guide: 'Pricing: free'); every request, errors included, counts one unit of the key's daily quota"}
+    docs_url: https://agentic-api.atly.com/v0/docs
+
+  - id: atly.places.detail
+    capability: places.detail
+    platform: places
+    domain: places
+    scope: any_account
+    method: GET
+    path: /places/{id}
+    name: "Get a place's details, scores and review statements"
+    summary: "Everything about one place"
+    input:
+      pathParams:
+        id: {type: string, required: true, note: "a place id from places.search.intent", example: "NrSvxJcZJk0"}
+      note: "Profile, opening hours, category scores, up to eight quotable statements, gluten-free safety where known, and the Atly URL."
+    test_request:
+      pathParams: {id: "NrSvxJcZJk0"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free (guide: 'Pricing: free'); every request, errors included, counts one unit of the key's daily quota"}
+    docs_url: https://agentic-api.atly.com/v0/docs
+
+  - id: atly.places.categories
+    capability: places.categories
+    platform: places
+    domain: search
+    kind: utility
+    scope: any_account
+    method: GET
+    path: /categories
+    name: "Look up intent categories (words to ids)"
+    summary: "List intent categories"
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "one concept per call, e.g. coffee, dog friendly, gluten-free; tolerant of plurals and small typos", example: "cappuccino"}
+        limit: {type: integer, required: false, note: "max categories returned, up to 2000 (default: all)", example: 3}
+    test_request:
+      queryParams: {q: "cappuccino", limit: 3}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free (guide: 'Pricing: free'); every request, errors included, counts one unit of the key's daily quota"}
+    docs_url: https://agentic-api.atly.com/v0/docs
+
+  - id: atly.places.areas
+    capability: places.areas
+    platform: places
+    domain: search
+    kind: utility
+    scope: any_account
+    method: GET
+    path: /areas
+    name: "Look up covered cities and neighborhoods (names to ids)"
+    summary: "List supported areas"
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "area name or common abbreviation, e.g. san diego, midtown, nyc", example: "new york"}
+        level: {type: string, required: false, note: "one of city | neighborhood | state", example: "city"}
+        limit: {type: integer, required: false, note: "max areas returned, up to 200, default 50", example: 1}
+    test_request:
+      queryParams: {q: "new york", level: "city", limit: 1}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free (guide: 'Pricing: free'); every request, errors included, counts one unit of the key's daily quota"}
+    docs_url: https://agentic-api.atly.com/v0/docs
+
+  - id: atly.account.usage
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /keys/me
+    name: "Get the key's tier and remaining quota"
+    summary: "Show my key, tier and remaining quota"
+    input:
+      note: "no parameters — the key rides in the X-API-Key header"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free; this is the registry's health probe (a bad key gets 401)"}
+    docs_url: https://agentic-api.atly.com/v0/docs
+
+proposed_capabilities:
+  # No shelf today ranks places by what a visitor wants from them; the review-site platforms
+  # (yelp.business.search, tripadvisor.search.businesses) search by keyword and return listings.
+  places.search.intent: "Find places good for what you want (work friendly, gluten free, great coffee) near a city or point"
+  places.detail: "Get a place's details, opening hours, scores and quotable review statements"
+  places.categories: "Turn words like 'dog friendly' into the intent ids a place search takes"
+  places.areas: "Find the covered city or neighborhood id for a place name"
