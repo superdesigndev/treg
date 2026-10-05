@@ -3741,6 +3741,33 @@ SERPAPI = OAuthProvider(
     probe_path="/account",  # free account/plan snapshot; 401 on bad key
 )
 
+VIDGUY = OAuthProvider(
+    service="vidguy",
+    display_name="VidGuy",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="vf_live_…",
+    # Documented shape. VidGuy also reads X-Api-Key, but only for keys that start with vf_live_;
+    # any other value falls through to Authorization, so the Bearer header is the one contract.
+    setup_url="https://www.vidguy.ai/dashboard/settings",
+    setup_action_label="Get your VidGuy API key",
+    setup_steps=(
+        "Sign in to VidGuy on a Pro or Scale plan (ads on demand are not on Starter).",
+        "Open Settings → API keys and create a key.",
+        "Copy the key; it starts with vf_live_ and is shown once.",
+    ),
+    setup_note="Ads are priced in VidGuy credits per ad and refunded if the job fails; the balance check is free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Advertising",
+    summary="Paid-social ad creatives from a store, service or app URL: static A/B images, UGC, green-screen and animated video ads.",
+    # www, not the apex: vidguy.ai 307s to www and clients drop Authorization on that redirect.
+    base_url="https://www.vidguy.ai/api/v1",
+    docs_url="https://www.vidguy.ai/docs/ads-on-demand",
+    probe_path="/credits",  # free balance read; 401 {"error":"Invalid API key"} on a bad key
+)
+
 # ---- Advertising OAuth platforms (UNCONFIGURED until this deployment registers a dev app) ------
 # These list as `configured: false` until treg holds each platform's client id/secret. Microsoft +
 # Snapchat fit the existing OAuth machinery (Microsoft additionally needs the user's own developer
@@ -3858,6 +3885,8 @@ REGISTRY: dict[str, OAuthProvider] = {
         FINANCIALDATASETS,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
         SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
+        # Advertising: ad creative generation
+        VIDGUY,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
     )
 }
