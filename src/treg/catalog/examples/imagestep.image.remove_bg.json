@@ -1,0 +1,32 @@
+{
+  "success": true,
+  "message": "Job created",
+  "data": {
+    "id": "job_1c2d3e4f5a6b7c8d9e0fa1b2c3d4e5f6",
+    "type": "ai-edit",
+    "status": "PROCESSING",
+    "createdAt": "2026-10-03T09:12:36.451517688Z",
+    "submittedAt": "2026-10-03T09:12:36.461704486Z",
+    "totalItems": 1,
+    "submittedItems": 0,
+    "settledItems": 0,
+    "completedItems": 0,
+    "failedItems": 0,
+    "cancelledItems": 0,
+    "actualCredits": 0,
+    "model": "fal-ai/bria/background/remove",
+    "presetName": "op:remove_bg",
+    "op": "remove_bg",
+    "expiresAt": "2026-11-02T09:12:36.451Z",
+    "rootJobId": "job_1c2d3e4f5a6b7c8d9e0fa1b2c3d4e5f6",
+    "attemptNumber": 1,
+    "items": [
+      {
+        "status": "PENDING",
+        "sourceAssetId": "ast_0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+        "index": 0
+      }
+    ]
+  },
+  "timestamp": "2026-10-03T09:12:36.465916428Z"
+}

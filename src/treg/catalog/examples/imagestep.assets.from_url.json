@@ -1,0 +1,14 @@
+{
+  "success": true,
+  "message": "Success",
+  "data": [
+    {
+      "url": "https://imagestep.dev/landing/input.webp",
+      "id": "ast_0f1e2d3c4b5a69788796a5b4c3d2e1f0",
+      "status": "PROCESSING",
+      "name": "input",
+      "existing": false
+    }
+  ],
+  "timestamp": "2026-10-03T09:12:23.512819669Z"
+}

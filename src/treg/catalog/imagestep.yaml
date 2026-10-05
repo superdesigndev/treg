@@ -1,0 +1,259 @@
+# ImageStep — an image API for automations and agents (https://imagestep.dev).
+#
+# Prices are ImageStep's public catalogue: `GET https://api.imagestep.dev/api/v1/ops` (pricing model
+# per op, no credential) and `GET https://api.imagestep.dev/api/pricing/image-models` (USD per image
+# per model). The exact cost of any job is the same request with `?dryRun=true`.
+provider: imagestep
+source:
+  docs: https://imagestep.dev/docs/api
+  openapi: https://api.imagestep.dev/v3/api-docs/api-key-accessible
+  curated: '2026-10-02'
+limits: >-
+  600 requests per 60 s per account (RateLimit-* headers on every response). The synchronous lane
+  (/images/transform, /images/metadata) also allows 4 calls in flight per account: one more is
+  429 rate_limited with Retry-After: 1. On treg's shared key that is 4 in flight across every team.
+pricing_url: https://imagestep.dev/pricing
+proposed_capabilities:
+  # A new platform: none of treg's platforms covers deterministic image processing (image-gen is
+  # "text-to-image and prompt-based image editing"), so this adds `image-tools` to capabilities.yaml
+  # `platforms:`; the slug and its category are the maintainers' call.
+  image-tools.background.remove: "Remove an image's background (transparent PNG)"
+  image-tools.upscale: "Upscale an image with a model"
+  image-tools.convert: "Convert an image to another format (JPEG, PNG, WebP, AVIF, GIF, TIFF)"
+  image-tools.metadata.read: "Read an image's EXIF, GPS, dimensions, format and SHA-1"
+  # The two utility rows the AI ops need (kind: utility, hidden plumbing on the browse surface).
+  image-tools.assets.from_url: "Store images from public URLs as provider assets"
+  image-tools.jobs.get: "Read an image job's status, results and cost"
+
+# How ImageStep reports failure, and why there is no `miss:` block. treg's `miss` means "asked and
+# answered: no result, don't retry" — ImageStep has no endpoint whose 4xx means that. Every error is
+# {"success": false, "error": {"code", "message", "retryable", "param"}}: `retryable` is the field to
+# branch on, not the status code (429 and 503 are retryable; 400 invalid_param, 402
+# insufficient_credit and 404 asset_not_found are not). A failed job item is never charged — which
+# is what `type: per_success` says — and carries its own errorCode + retryable.
+expect:
+  json_path: success
+  equals: true
+
+endpoints:
+  # ---- synchronous, stateless: URL in, JSON out — platform-eligible --------------------------------
+  - id: imagestep.image.metadata
+    capability: image-tools.metadata.read
+    platform: image-tools
+    domain: metadata
+    scope: any_account
+    kind: data
+    method: POST
+    path: /api/v1/images/metadata
+    name: Read an image's metadata from its URL
+    summary: "EXIF, GPS, dimensions, format and SHA-1 for the image in the request body. Nothing is stored, no credits are spent."
+    input:
+      body:
+        url: {type: string, required: true, example: "https://imagestep.dev/landing/input.webp", note: "http(s) only; private and loopback addresses are refused, redirects are not followed."}
+      bodyType: json
+      note: "Answers {success, data: {image, metadata}} — the same shape GET /api/v1/assets/{id} carries. 25 MB, 50 megapixels, 10 s."
+    test_request:
+      body: {url: "https://imagestep.dev/landing/input.webp"}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Free on every plan and not counted against the processing allowance (GET /api/v1/ops: read_metadata, basis free)."}
+    docs_url: https://imagestep.dev/docs/api/images
+    verified: '2026-10-03'
+    example_response: examples/imagestep.image.metadata.json
+
+  - id: imagestep.image.convert
+    capability: image-tools.convert
+    platform: image-tools
+    domain: convert
+    scope: any_account
+    kind: data
+    method: POST
+    path: /api/v1/images/transform
+    name: Convert an image from its URL to another format
+    summary: "Runs ONE deterministic op on ONE image. Nothing is stored: no job, no asset, no public URL."
+    input:
+      queryParams:
+        response: {type: string, required: true, enum: [url], default: url, note: "url answers JSON with a signed link to the result, valid 5 minutes, instead of the raw bytes."}
+      body:
+        url: {type: string, required: true, example: "https://imagestep.dev/landing/input.webp", note: "http(s) only; private and loopback addresses are refused, redirects are not followed."}
+        op: {type: string, required: true, enum: [convert], default: convert}
+        parameters:
+          type: object
+          required: true
+          properties:
+            format: {type: string, required: true, enum: [webp, jpeg, png, avif, gif, tiff], example: webp}
+            quality: {type: integer, required: false, default: 82, min: 1, max: 100, note: "Lossy formats only."}
+      bodyType: json
+      note: "Answers {success, data: {url, contentType, bytes, expiresInSeconds, width, height}}. GET /api/v1/ops lists every op this endpoint takes (syncEndpoint) and each op's parameter contract; a parameter outside it is 400 invalid_param naming it, before anything is charged."
+    test_request:
+      queryParams: {response: url}
+      body: {url: "https://imagestep.dev/landing/input.webp", op: convert, parameters: {format: webp, quality: 82}}
+    cost:
+      type: per_success
+      value: 0.002
+      currency: USD
+      per: 1
+      unit: call
+      source: rate_card_api
+      source_url: https://api.imagestep.dev/api/v1/ops
+      checked: '2026-10-02'
+      confidence: documented
+      note: "Deterministic op: unlimited on the paid plans; on Free, 200 a month and then $0.002 each from the balance (GET /api/v1/ops: overageCredits FREE 20 at 10,000 credits per USD). $0.002 is therefore the most one call can cost. A failure counts and costs nothing."
+    docs_url: https://imagestep.dev/docs/sync
+    verified: '2026-10-03'
+    example_response: examples/imagestep.image.convert.json
+
+  # ---- AI ops: assets in, a job out — BYOK-only in this first listing ------------------------------
+  # A job runs on asset ids, so a URL becomes an asset first (from_url), then the job is submitted and
+  # polled. On treg's shared key the asset ids ride in the job's BODY, and `resource_ownership.requires`
+  # binds only a path/query parameter, so treg could not prove that the team submitting the job owns
+  # the asset. Until that is settled with the maintainers (the PR's open question 2) these rows are
+  # `platform_blocked` — discoverable, priced, callable with a team's own ImageStep key.
+  - id: imagestep.assets.from_url
+    capability: image-tools.assets.from_url
+    platform: image-tools
+    domain: assets
+    scope: any_account
+    kind: utility
+    method: POST
+    path: /api/v1/assets/from-url
+    name: Store images from URLs as ImageStep assets
+    summary: "Fetches each public image URL here, stores it and creates an asset — in PROCESSING until ingest has written dimensions and metadata."
+    platform_blocked: "Asset ids are consumed in the body of POST /api/v1/jobs, where treg's resource ownership cannot check them; use a team's own ImageStep key."
+    input:
+      body:
+        urls: {type: "array[string]", required: true, example: ["https://imagestep.dev/landing/input.webp"], note: "Public http(s) image URLs; one result per URL, in request order."}
+      bodyType: json
+      note: "Answers {success, data: [{url, id, status, name} | {url, error}]}. A URL that fails carries its own code / retryable / param and fails alone. The same bytes are the same asset: a repeat comes back with existing: true."
+    test_request:
+      body: {urls: ["https://imagestep.dev/landing/input.webp"]}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "No credits. Each new asset counts against the plan's stored-asset allowance (Free 200, Pro 50,000, Max 500,000)."}
+    docs_url: https://imagestep.dev/docs/api/assets
+    verified: '2026-10-03'
+    example_response: examples/imagestep.assets.from_url.json
+
+  - id: imagestep.image.remove_bg
+    capability: image-tools.background.remove
+    platform: image-tools
+    domain: background
+    scope: any_account
+    kind: data
+    method: POST
+    path: /api/v1/jobs
+    name: Remove the background of an ImageStep asset
+    summary: "Submits an async job. remove_bg cuts the subject out and writes a new asset: a PNG with an alpha channel."
+    platform_blocked: "The asset ids ride in the request body, where treg's resource ownership cannot check them; use a team's own ImageStep key."
+    resource_ownership:
+      produces:
+        - {kind: job, path: data.id}
+    async: &job_async
+      id_from: data.id
+      poll:
+        endpoint: imagestep.jobs.get
+        param: {in: pathParams, name: id}
+      status:
+        path: data.status
+        success: [COMPLETED]
+        failure: [FAILED, CANCELLED]
+        progress: [PENDING, PROCESSING, CANCELLING]
+      result:
+        path: data.items
+      interval: 2
+    input:
+      body:
+        op: {type: string, required: true, enum: [remove_bg], default: remove_bg}
+        assetIds: {type: "array[string]", required: true, example: ["ast_…"], note: "From imagestep.assets.from_url. One item per id; each item that fails is not charged."}
+        model: {type: string, required: false, default: fal-ai/bria/background/remove, enum: [fal-ai/bria/background/remove, replicate/851-labs/background-remover, replicate/lucataco/remove-bg]}
+      bodyType: json
+      note: "Price it first: the same request to /api/v1/jobs?dryRun=true returns the exact cost and creates nothing. A finished item carries resultAssetId; GET /api/v1/assets/{id} reads it. Send an Idempotency-Key header so a retried submit replays instead of running twice."
+    test_request:
+      body: {op: remove_bg, assetIds: ["<asset id from imagestep.assets.from_url>"]}  # ids are per account: replay after from_url
+    cost:
+      type: per_success
+      table:
+        - {when: {body.model: fal-ai/bria/background/remove}, value: 0.0227}
+        - {when: {body.model: replicate/851-labs/background-remover}, value: 0.0007}
+        - {when: {body.model: replicate/lucataco/remove-bg}, value: 0.0005}
+      fallback: {value: 0.0227, note: "The default model, Bria RMBG 2.0, is the dearest background remover in the catalogue."}
+      currency: USD
+      settle: table
+      source: rate_card_api
+      source_url: https://api.imagestep.dev/api/pricing/image-models
+      checked: '2026-10-04'
+      confidence: documented
+      note: "Per image, at the model's listed price (at most 1.5x the provider's list price — https://imagestep.dev/pricing). Priced per item: an assetIds list of N is N times the row. Failed items are not charged."
+    docs_url: https://imagestep.dev/docs/ops/remove-background
+    verified: '2026-10-03'
+    example_response: examples/imagestep.image.remove_bg.json
+    terminal_example_response: examples/imagestep.image.remove_bg.terminal.json
+
+  - id: imagestep.image.upscale
+    capability: image-tools.upscale
+    platform: image-tools
+    domain: upscale
+    scope: any_account
+    kind: data
+    method: POST
+    path: /api/v1/jobs
+    name: Upscale an ImageStep asset 2x or 4x
+    summary: "Submits an async job. upscale enlarges the image with a model and writes a new asset."
+    platform_blocked: "The asset ids ride in the request body, where treg's resource ownership cannot check them; use a team's own ImageStep key."
+    resource_ownership:
+      produces:
+        - {kind: job, path: data.id}
+    async: *job_async
+    input:
+      body:
+        op: {type: string, required: true, enum: [upscale], default: upscale}
+        assetIds: {type: "array[string]", required: true, example: ["ast_…"], note: "From imagestep.assets.from_url. One item per id; each item that fails is not charged."}
+        parameters:
+          type: object
+          required: false
+          properties:
+            scaleFactor: {type: integer, required: false, default: 2, enum: [2, 4], note: "The default model takes 2 or 4; any other value is 400 invalid_param on parameters.scaleFactor."}
+      bodyType: json
+      note: "Default model fal-ai/clarity-upscaler (input capped at 1024 px on the long edge). Price it first with /api/v1/jobs?dryRun=true. Other upscalers (body.model) are BYOK-only in this listing because their rows are not priced here."
+    test_request:
+      body: {op: upscale, assetIds: ["<asset id from imagestep.assets.from_url>"], parameters: {scaleFactor: 2}}
+    cost:
+      type: per_success
+      table:
+        - {when: {body.parameters.scaleFactor: 2}, value: 0.1512}
+        - {when: {body.parameters.scaleFactor: 4}, value: 0.6048}
+      fallback: {value: 0.6048, note: "4x on the default model is the dearest supported combination."}
+      currency: USD
+      settle: table
+      source: rate_card_api
+      source_url: https://api.imagestep.dev/api/pricing/image-models
+      checked: '2026-10-02'
+      confidence: documented
+      note: "Per image on fal-ai/clarity-upscaler: $0.1512 at 2x, $0.6048 at 4x (the catalogue's $0.1512 - $0.6048). Failed items are not charged."
+    docs_url: https://imagestep.dev/docs/ops/upscale
+    # Not live-called for this PR: it is the same POST /api/v1/jobs route, async descriptor and poll as
+    # imagestep.image.remove_bg (verified 2026-10-03), at $0.15 a call. Its price was checked the free
+    # way instead: `?dryRun=true` on 2026-10-03 answered 1,512 credits (2x) and 6,048 credits (4x) per
+    # image at 10,000 credits per USD, the two values in the table above.
+
+  - id: imagestep.jobs.get
+    capability: image-tools.jobs.get
+    platform: image-tools
+    domain: jobs
+    scope: any_account
+    kind: utility
+    method: GET
+    path: /api/v1/jobs/{id}
+    name: Read an ImageStep job
+    summary: "A job's status, its items (each with resultAssetId or errorCode + retryable) and what it cost."
+    platform_blocked: "The poll half of jobs that are BYOK-only in this listing."
+    resource_ownership:
+      requires: {kind: job, param: id}
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "job_…"}
+      queryParams:
+        wait: {type: integer, required: false, min: 0, max: 60, note: "Hold the answer until the job is terminal, for at most this many seconds."}
+    test_request:
+      pathParams: {id: "<job id from a submit>"}  # ids are per account: replay after a submit
+      queryParams: {wait: 60}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Reading a job is free."}
+    docs_url: https://imagestep.dev/docs/jobs
+    verified: '2026-10-03'
+    example_response: examples/imagestep.jobs.get.json
