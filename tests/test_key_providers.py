@@ -60,6 +60,33 @@ async def test_search1api_key_uses_free_usage_probe(clients, monkeypatch):
     assert response.status_code == 200, response.text
 
 
+async def test_atly_key_uses_free_key_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/v0/keys/me"
+        assert request.headers["x-api-key"] == "own-key"
+        return httpx.Response(200, json={"key_id": "k1", "tier": "unverified", "email_verified": False})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "atly", "token": "own-key"},
+        )
+    assert response.status_code == 200, response.text
+
+
+async def test_atly_rejects_an_unknown_key(clients, monkeypatch):
+    def probe(request):
+        return httpx.Response(401, json={"error": "unknown API key"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "atly", "token": "bogus"},
+        )
+    assert response.status_code == 422, response.text
+
+
 async def test_enrichlayer_key_uses_free_balance_probe(clients, monkeypatch):
     def probe(request):
         assert request.method == "GET"
