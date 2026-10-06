@@ -9,8 +9,6 @@ __pycache__/
 *.sqlite*-wal
 *.sqlite*-shm
 *.bak
-.env
-.env.*
 .secret/
 .secrets/
 .pytest_cache/
@@ -102,3 +100,4 @@ node_modules
 # Global Vue runtime copied from the npm lockfile during the frontend build.
 /src/treg/web/vendor/*.js
 /src/treg/web/vendor/LICENSE
+config.bat

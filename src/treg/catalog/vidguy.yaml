@@ -4,7 +4,7 @@ source:
   openapi: https://www.vidguy.ai/api/openapi.json
   curated: 2026-10-05
 pricing_url: https://www.vidguy.ai/docs/ads-on-demand
-limits: "Ads on demand need a Pro or Scale plan (403 ads_on_demand_requires_pro otherwise). 30 requests/minute per account on Pro, 100 on Scale; job polls count toward it. The POST reads the page before it answers (usually 15-30 s; allow 90 s), then the job runs 1-3 minutes. Poll GET /jobs/{id}; a job stuck for 15 minutes is failed and refunded. Use the www host: the apex 307s and clients drop Authorization on that redirect."
+limits: "Ads on demand need a Pro or Scale plan (403 ads_on_demand_requires_pro otherwise). 30 requests/minute per account on Pro, 100 on Scale; job polls count toward it. The POST reads the page before it answers (usually 15-30 s; allow 90 s, or 150 s on the green-screen row, which also screenshots the whole page), then the job runs 1-3 minutes. A page read that runs out of time answers 504 shop_read_timeout (free). Poll GET /jobs/{id}; a job stuck for 15 minutes is failed and refunded. Use the www host: the apex 307s and clients drop Authorization on that redirect."
 proposed_capabilities:
   # Job-level ids, not VidGuy-specific: another ad-creative provider that takes a page URL and
   # returns finished ads joins the same row.
