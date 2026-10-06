@@ -1,108 +1,95 @@
 {
   "success": true,
   "result": {
-    "model": "gpt-5-6",
-    "text": "A stock split is when a company increases the number of its shares by dividing existing shares into smaller pieces, while keeping the overall value of the company the same. FINRA+1\nThink of it like cutting a pizza into more slices:\n\n\nBefore the split: You own 1 share worth $100\n\n\nThe company does a 2-for-1 stock split\n\n\nAfter the split: You own 2 shares worth about $50 each\n\n\nYour total investment value is still about $100 (assuming the market price has not otherwise changed) Investor\n\n\nWhy do c… [1438 chars total]",
+    "model": null,
+    "text": "A stock split is when a company increases the number of its shares by dividing existing shares into smaller pieces. The company’s overall value does not change just because of the split; each individual share becomes worth less, while shareholders own more shares.\n\nExample: 2-for-1 stock split\n\nBefore the split:\n\nYou own 10 shares\n\nEach share is worth $100\n\nYour investment is worth $1,000\n\nAfter a 2-for-1 split:\n\nYou own 20 shares\n\nEach share is worth about $50\n\nYour investment is still worth $1,000\n\nYou have twice as many shares, but each share represents a smaller piece of the company.\n\nWhy do companies split their stock?\n\nCompanies often split shares when the stock price becomes high and they want the shares to appear more affordable or easier to trade for investors. A split can change the share price and number of shares, but it does not by itself change the company’s market value or your ownership percentage.\n\nWhat is a reverse stock split?\n\nA reverse stock split does the opposite: it combines shares to create fewer shares with a higher price per share. For example, a 1-for-10 reverse split would turn 100 shares into 10 shares, with the total value remaining roughly the same immediately after the split.\n\nA simple way to think about it: a stock split is like cutting a pizza into more slices—the number of slices changes, but the amount of pizza does not.",
     "sources": [
       {
         "position": 1,
         "label": "Stock Splits | FINRA.org",
         "url": "https://www.finra.org/investors/investing/investment-products/stocks/stock-splits?utm_source=chatgpt.com",
-        "description": "",
-        "footnote": false
+        "footnote": true
       },
       {
         "position": 2,
         "label": "Stock Split | Investor.gov",
         "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary/stock-split?utm_source=chatgpt.com",
-        "description": "",
-        "footnote": false
+        "footnote": true
       },
-      "… 32 more item(s) truncated"
+      {
+        "position": 3,
+        "label": "Stock Splits",
+        "url": "https://www.sec.gov/answers/stocksplit.htm?utm_source=chatgpt.com",
+        "footnote": true
+      },
+      {
+        "position": 4,
+        "label": "What Is a Stock Split? | Chase",
+        "url": "https://www.chase.com/personal/investments/learning-and-insights/article/what-is-a-stock-split?utm_source=chatgpt.com",
+        "footnote": true
+      }
     ],
     "entities": [],
     "map": [],
+    "markdown": "A **stock split** is when a company increases the number of its shares by dividing existing shares into smaller pieces. The company’s overall value does **not** change just because of the split; each individual share becomes worth less, while shareholders own more shares. [Stock Splits | FINRA.org](https://www.finra.org/investors/investing/investment-products/stocks/stock-splits?utm_source=chatgpt.com)\n\n### Example: 2-for-1 stock split\n\nBefore the split:\n- You own **10 shares**\n- Each share is worth **$100**\n- Your investment is worth **$1,000**\n\nAfter a **2-for-1 split**:\n- You own **20 shares**\n- Each share is worth about **$50**\n- Your investment is still worth **$1,000**\n\nYou have twice as many shares, but each share represents a smaller piece of the company. [Stock Splits | FINRA.org](https://www.finra.org/investors/investing/investment-products/stocks/stock-splits?utm_source=chatgpt.com)\n\n### Why do companies split their stock?\nCompanies often split shares when the stock price becomes high and they want the shares to appear more affordable or easier to trade for investors. A split can change the share price and number of shares, but it does not by itself change the company’s market value or your ownership percentage. [Stock Split | Investor.gov](https://www.investor.gov/introduction-investing/investing-basics/glossary/stock-split?utm_source=chatgpt.com)\n\n### What is a reverse stock split?\nA **reverse stock split** does the opposite: it combines shares to create fewer shares with a higher price per share. For example, a 1-for-10 reverse split would turn 100 shares into 10 shares, with the total value remaining roughly the same immediately after the split. [Stock Splits](https://www.sec.gov/answers/stocksplit.htm?utm_source=chatgpt.com)\n\nA simple way to think about it: a stock split is like cutting a pizza into more slices—the number of slices changes, but the amount of pizza does not. [What Is a Stock Split? | Chase](https://www.chase.com/personal/investments/learning-and-insights/article/what-is-a-stock-split?utm_source=chatgpt.com)",
+    "html": "https://cdn.cloro.dev/results/b2a07bf0-ea03-4b30-ba44-7f5921fd99be/page-1.html",
     "citationPills": [
       {
         "url": "https://www.finra.org/investors/investing/investment-products/stocks/stock-splits?utm_source=chatgpt.com",
-        "label": "Stock Splits | FINRA.org",
         "domain": "finra.org",
+        "label": "Stock Splits | FINRA.org",
         "type": "groupedWebpage",
         "citationPillId": 0,
         "position": 1
       },
       {
         "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary/stock-split?utm_source=chatgpt.com",
-        "label": "Stock Split | Investor.gov",
         "domain": "investor.gov",
+        "label": "Stock Split | Investor.gov",
         "type": "groupedWebpage",
         "citationPillId": 0,
         "position": 2
       },
-      "… 6 more item(s) truncated"
-    ],
-    "shoppingCards": [],
-    "inlineProducts": [],
-    "ads": [],
-    "markdown": "A **stock split** is when a company increases the number of its shares by dividing existing shares into smaller pieces, while keeping the overall value of the company the same. [Stock Splits | FINRA.org](https://www.finra.org/investors/investing/investment-products/stocks/stock-splits?utm_source=chatgpt.com)[Stock Split | Investor.gov](https://www.investor.gov/introduction-investing/investing-basics/glossary/stock-split?utm_source=chatgpt.com)\n\nThink of it like cutting a pizza into more slices:\n… [2572 chars total]",
-    "searchQueries": [
-      "what is a stock split definition"
-    ],
-    "mapSearchQueries": [],
-    "rawResponse": [
       {
-        "p": "",
-        "o": "add",
-        "v": {
-          "message": {
-            "id": "0cf31d0d-3d45-4bb2-8248-fe201c8fa7d8",
-            "author": {
-              "role": "user",
-              "name": null,
-              "metadata": {}
-            },
-            "create_time": 1788762025.898,
-            "update_time": null,
-            "content": {
-              "content_type": "text",
-              "parts": [
-                "what is a stock split@Web search "
-              ]
-            },
-            "status": "finished_successfully",
-            "end_turn": null,
-            "weight": 1,
-            "metadata": {
-              "system_hints": [
-                "search"
-              ],
-              "serialization_metadata": {
-                "custom_symbol_offsets": [
-                  {
-                    "id": "search",
-                    "symbol": "ecosystemMention",
-                    "startIndex": 21,
-                    "endIndex": 32
-                  }
-                ]
-              },
-              "request_id": "565562c0-4f75-41fd-9098-d7ae92045449",
-              "message_source": null,
-              "turn_exchange_id": "d718ab0f-d4c5-479b-bc25-1bae2d6bdd6a",
-              "working_turn_id": "d718ab0f-d4c5-479b-bc25-1bae2d6bdd6a",
-              "model_switcher_deny": []
-            },
-            "recipient": "all",
-            "channel": null
-          },
-          "conversation_id": "6a9e57aa-3778-83ea-bb52-ba40f10197f8",
-          "error": null,
-          "error_code": null
-        },
-        "c": 0
+        "url": "https://www.finra.org/investors/investing/investment-products/stocks/stock-splits?utm_source=chatgpt.com",
+        "domain": "finra.org",
+        "label": "Stock Splits | FINRA.org",
+        "type": "groupedWebpage",
+        "citationPillId": 1,
+        "position": 1
       },
-      "… 37 more item(s) truncated"
-    ],
-    "html": "https://cdn.cloro.dev/results/581ed74b-653b-4f6a-a2e1-b76502a6c53c/page-1.html"
+      {
+        "url": "https://www.investor.gov/introduction-investing/investing-basics/glossary/stock-split?utm_source=chatgpt.com",
+        "domain": "investor.gov",
+        "label": "Stock Split | Investor.gov",
+        "type": "groupedWebpage",
+        "citationPillId": 2,
+        "position": 2
+      },
+      {
+        "url": "https://www.sec.gov/answers/stocksplit.htm?utm_source=chatgpt.com",
+        "domain": "sec.gov",
+        "label": "Stock Splits",
+        "type": "groupedWebpage",
+        "citationPillId": 2,
+        "position": 3
+      },
+      {
+        "url": "https://www.sec.gov/answers/stocksplit.htm?utm_source=chatgpt.com",
+        "domain": "sec.gov",
+        "label": "Stock Splits",
+        "type": "groupedWebpage",
+        "citationPillId": 3,
+        "position": 3
+      },
+      {
+        "url": "https://www.chase.com/personal/investments/learning-and-insights/article/what-is-a-stock-split?utm_source=chatgpt.com",
+        "domain": "chase.com",
+        "label": "What Is a Stock Split? | Chase",
+        "type": "groupedWebpage",
+        "citationPillId": 4,
+        "position": 4
+      }
+    ]
   }
 }

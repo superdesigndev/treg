@@ -1609,9 +1609,11 @@ def test_cloro_state_targeting_rider_is_reserved():
     plain = {"prompt": "what is a stock split", "country": "US"}
     assert price("cloro.ai-search.perplexity.answer", plain) == (2_400, 0)            # 6 credits × $0.0004
     assert price("cloro.ai-search.perplexity.answer", {**plain, "state": "CA"}) == (3_200, 0)  # 8
-    assert price("cloro.ai-search.chatgpt.scrape", {**plain, "state": "CA"}) == (4_400, 0)     # 11
-    # AI Mode has no state rider and no modifiers block: the plain estimate, untouched
-    assert price("cloro.google.serp.ai_mode", {"prompt": "x", "gl": "US"}) == (2_400, 0)
+    assert price("cloro.ai-search.chatgpt.scrape", {**plain, "state": "CA"}) == (3_600, 0)     # 9
+    assert price("cloro.ai-search.chatgpt.shopping", {**plain, "state": "CA"}) == (4_400, 0)   # 11
+    # AI Mode has no state rider and no modifiers block: the plain estimate, untouched. As a
+    # per_success row it also carries its price as the unit; X-Credits-Charged still settles.
+    assert price("cloro.google.serp.ai_mode", {"prompt": "x", "gl": "US"}) == (2_400, 2_400)
 
 
 def test_brightdata_estimate_counts_the_body_array():
