@@ -337,6 +337,7 @@ capabilities:
   companies.jobs: "A company's open job postings"
   companies.domain.find: "Find a company's website domain from its name"
   companies.jobs.search: "Search indexed job listings across companies"
+  companies.hiring: "Find companies hiring for a role, from job postings by title"
   companies.news: "Recent news & signals about a company"
   companies.reviews: "Read employee reviews of a company"
   google-play.search.apps: "Search apps by keyword"

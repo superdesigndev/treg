@@ -424,6 +424,7 @@ endpoints:
     domain: companies
     tier: extended
     platform: companies
+    capability: companies.hiring
     method: POST
     path: /v1/jobs/jobs-finder
     name: "Search job postings by company, location or date (basic)"

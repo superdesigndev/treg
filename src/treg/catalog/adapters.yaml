@@ -3244,3 +3244,70 @@ adapters:
     cost_units: "at_most(limit, 10)"
     out: {companies: results, count: total_result_count}
     miss: "results == []"
+
+  # ---- linkedin.search.jobs -----------------------------------------------------------------
+  anyapi.linkedin.search.jobs:
+    accepts: [[q]]
+    additional_capabilities: [companies.hiring]
+    in:  {q: body.query, location: body.location, workplace: body.workplaceType, level: body.experienceLevel}
+    # its own default is 10 rows: ask for its most, as the other providers send a page of 25
+    in_expr: {body.postedLimit: "swap(posted, 'day', '24h')", body.limit: "at_most(coalesce(limit, 25), 25)"}
+    out: {jobs: output.data.items}
+    miss: "coalesce(output.data.items, []) == []"
+  anyapi.linkedin.search.jobs.full:
+    accepts: [[q]]
+    additional_capabilities: [companies.hiring]
+    in:  {q: body.query, location: body.location, workplace: body.workplaceType, level: body.experienceLevel}
+    # its own default is 10 rows: ask for its most, as the other providers send a page of 25
+    in_expr: {body.postedLimit: "swap(posted, 'day', '24h')", body.limit: "at_most(coalesce(limit, 25), 25)"}
+    out: {jobs: output.data.items}
+    miss: "coalesce(output.data.items, []) == []"
+  harvestapi.linkedin.search.jobs:
+    accepts: [[q]]
+    additional_capabilities: [companies.hiring]
+    in:  {q: queryParams.search, location: queryParams.location, level: queryParams.experienceLevel, page: queryParams.page}
+    in_expr: {queryParams.postedLimit: "swap(posted, 'day', '24h')", queryParams.workplaceType: "swap(workplace, 'onsite', 'office')"}
+    out: {jobs: elements}
+    miss: "coalesce(elements, []) == []"
+
+  # ---- companies.hiring (beside the LinkedIn searches above, which serve it too) -------------
+  leadmagic.x.jobs-finder:
+    # bills per row: a page of 10 unless the caller asks for more; gives the company's website
+    accepts: [[q]]
+    in:  {q: body.job_title, location: body.location, page: body.page}
+    in_expr: {body.per_page: "at_most(coalesce(limit, 10), 25)", body.posted_within: "swap(posted, 'day', 1, 'week', 7, 'month', 30)"}
+    test_identity: {q: "Sales Director"}
+    out: {jobs: results}
+    miss: "coalesce(results, []) == []"
+  serpapi.x.google-jobs:
+    accepts: [[q]]
+    in:  {q: queryParams.q, location: queryParams.location}
+    const: {queryParams.engine: google_jobs}
+    out: {jobs: jobs_results}
+    miss: "coalesce(jobs_results, []) == []"
+
+  # ---- linkedin.search.posts ----------------------------------------------------------------
+  anyapi.linkedin.search.posts:
+    accepts: [[q]]
+    in:  {q: body.query}
+    in_expr: {body.datePosted: "swap(posted, 'day', 'last-day', 'week', 'last-week', 'month', 'last-month')"}
+    out: {posts: output.data.posts}
+    miss: "coalesce(output.data.posts, []) == []"
+  anyapi.linkedin.search.posts.full:
+    accepts: [[q]]
+    in:  {q: body.query}
+    in_expr: {body.datePosted: "swap(posted, 'day', 'last-day', 'week', 'last-week', 'month', 'last-month')"}
+    out: {posts: output.data.posts}
+    miss: "coalesce(output.data.posts, []) == []"
+  harvestapi.linkedin.post.search:
+    accepts: [[q]]
+    in:  {q: queryParams.search, page: queryParams.page}
+    in_expr: {queryParams.postedLimit: "swap(posted, 'day', '24h')"}
+    out: {posts: elements}
+    miss: "coalesce(elements, []) == []"
+  scrapecreators.x.v1-linkedin-search-posts:
+    accepts: [[q]]
+    in:  {q: queryParams.query}
+    in_expr: {queryParams.date_posted: "swap(posted, 'day', 'last-day', 'week', 'last-week', 'month', 'last-month')"}
+    out: {posts: posts}
+    miss: "coalesce(posts, []) == []"

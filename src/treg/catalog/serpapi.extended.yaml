@@ -298,6 +298,7 @@ endpoints:
 - id: serpapi.x.google-jobs
   tier: extended
   platform: google
+  capability: companies.hiring
   method: GET
   path: /search
   name: "Google Jobs postings for a query and location"

@@ -1197,6 +1197,57 @@ contracts:
     miss: "videos == []"
     idempotent: true
 
+  # ---- searches that start a list of signals ----------------------------------------------------
+  linkedin.search.jobs:
+    summary: "Search LinkedIn job postings by title or keywords — provider-native job rows in `jobs`"
+    identity:
+      - {q: str}
+    filters:
+      location: {type: str, default: null, note: "city, region or country, as text"}
+      posted: {type: str, default: null, note: "day, week or month: posted within it"}
+      workplace: {type: str, default: null, note: "remote, hybrid or onsite"}
+      level: {type: str, default: null, note: "internship, entry, associate, mid-senior, director or executive"}
+      limit: {type: int, default: null, note: "rows to return, for providers that take it (at most 25); a provider with its own page size ignores it"}
+      page: {type: int, default: null, note: "1-based page, for providers that page; send it with X-Treg-Route-Strict-Filters so one that cannot page is skipped"}
+    output:
+      jobs: {type: list, required: true}
+    miss: "jobs == []"
+    idempotent: true
+    # HarvestAPI answers a page of 25 and pages; AnyAPI, cheaper per search, returns at most 10 rows
+    # whatever limit it is sent, and cannot page
+    prefer: [harvestapi]
+
+  companies.hiring:
+    summary: "Find companies hiring for a role: job postings by title or keywords, from LinkedIn and other job boards — provider-native job rows in `jobs`"
+    identity:
+      - {q: str}
+    filters:
+      location: {type: str, default: null, note: "city, region or country, as text"}
+      posted: {type: str, default: null, note: "day, week or month: posted within it"}
+      workplace: {type: str, default: null, note: "remote, hybrid or onsite"}
+      level: {type: str, default: null, note: "internship, entry, associate, mid-senior, director or executive"}
+      limit: {type: int, default: null, note: "rows to return, for providers that take it (at most 25); a provider with its own page size ignores it"}
+      page: {type: int, default: null, note: "1-based page, for providers that page; send it with X-Treg-Route-Strict-Filters so one that cannot page is skipped"}
+    output:
+      jobs: {type: list, required: true}
+    miss: "jobs == []"
+    idempotent: true
+    # HarvestAPI answers a page of 25 and pages; AnyAPI, cheaper per search, returns at most 10 rows
+    # whatever limit it is sent, and cannot page
+    prefer: [harvestapi]
+
+  linkedin.search.posts:
+    summary: "Search LinkedIn posts by keywords — provider-native post rows in `posts`"
+    identity:
+      - {q: str}
+    filters:
+      posted: {type: str, default: null, note: "day, week or month: posted within it"}
+      page: {type: int, default: null, note: "1-based page, for providers that page; send it with X-Treg-Route-Strict-Filters so one that cannot page is skipped"}
+    output:
+      posts: {type: list, required: true}
+    miss: "posts == []"
+    idempotent: true
+
   # ---- open web -----------------------------------------------------------------------------
   ai-search.perplexity.answer:
     summary: "Ask Perplexity a question — the answer text and its cited sources; `source_kind` says whether it came from the Perplexity website or its model API"
