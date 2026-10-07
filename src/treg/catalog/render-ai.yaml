@@ -1,0 +1,294 @@
+provider: render-ai
+source:
+  docs: https://api.render.ai/docs
+  openapi: https://api.render.ai/openapi.json
+  curated: '2026-10-07'
+pricing_url: https://render.ai/pricing
+limits: Bring your own paid render.ai account key. Decks belong to that account. Poll every 10 seconds.
+  Generation debits 40 credits on acceptance; the observed cancellation did not refund them. No shared-account
+  USD replacement rate has been established.
+proposed_capabilities:
+  presentation-gen.from_text: Generate an editable presentation from text
+  presentation-gen.generations.get: Check presentation generation status and retrieve result links
+  presentation-gen.generations.cancel: Cancel an active presentation generation
+  presentation-gen.themes.list: List presentation themes
+  presentation-gen.usage.get: Check presentation-generation credits and recent activity
+endpoints:
+- id: render-ai.presentation-gen.from_text
+  capability: presentation-gen.from_text
+  platform: presentation-gen
+  scope: own_account
+  cache: forbidden
+  method: POST
+  path: /v1/generations
+  name: Create generation
+  summary: 'Start a new presentation generation. Deducts **40 credits**.
+
+
+    Use the `Idempotency-Key` header to prevent duplicate generations on retries.
+
+    '
+  input:
+    headers:
+      Idempotency-Key:
+        type: string
+        required: false
+        note: Optional. Unique key to prevent duplicate generations. Must contain 1-128 alphanumeric characters,
+          hyphens, or underscores. Repeated requests with the same key return the original result without
+          deducting additional credits. If the header is omitted, every request starts a new generation
+          and no deduplication is applied.
+    body:
+      inputText:
+        type: string
+        required: true
+        note: Topic, content, or text to generate a presentation from. Maximum 10,000 characters — the
+          same limit the render.ai web editor enforces.
+        min: 1
+        max: 10000
+      textMode:
+        type: string
+        required: true
+        enum:
+        - generate
+        - condense
+        - preserve
+        note: 'How the AI should handle the input text:
+
+          - `generate` -- AI creates slides from a topic or prompt
+
+          - `condense` -- AI summarizes longer content into slides
+
+          - `preserve` -- AI formats the text as-is into slides
+
+          '
+      themeId:
+        type: string
+        required: false
+        example: blueprint
+        note: Theme ID from `GET /v1/themes`. If omitted, the platform default theme is used.
+      numCards:
+        type: integer
+        required: false
+        example: 10
+        note: Number of slides to generate (1-75).
+        min: 1
+        max: 75
+      additionalInstructions:
+        type: string
+        required: false
+        note: Extra instructions for the AI. Maximum 2,000 characters.
+        max: 2000
+      exportAs:
+        type: string
+        required: false
+        enum:
+        - pdf
+        note: 'Auto-export format after generation. Only `pdf` is supported.
+
+          - `pdf` -- High-quality PDF, one slide per page. Download URL expires after 48 hours.
+
+
+          Optional, and there is no default: if you omit it, no export is produced and `exportUrl` stays
+          absent. The presentation is still available at `contentUrl` for viewing and editing.
+
+
+          Note: the `generate_presentation` MCP tool differs -- it defaults `exportAs` to `pdf` when the
+          argument is omitted.
+
+          '
+      textOptions:
+        type: object
+        required: false
+        note: Fine-tune text generation behavior.
+        properties:
+          amount:
+            type: string
+            required: false
+            enum:
+            - brief
+            - medium
+            - detailed
+            - extensive
+            note: Controls text density per slide.
+          tone:
+            type: string
+            required: false
+            example: professional
+            note: Desired tone, e.g. "professional", "casual".
+            max: 500
+          audience:
+            type: string
+            required: false
+            example: executives
+            note: Target audience, e.g. "executives", "students".
+            max: 500
+          language:
+            type: string
+            required: false
+            example: en
+            note: Language code, e.g. `en`, `fr`, `es`.
+            max: 10
+      imageOptions:
+        type: object
+        required: false
+        note: Configure image generation for slides.
+        properties:
+          source:
+            type: string
+            required: false
+            enum:
+            - aiGenerated
+            - stock
+            - none
+            note: 'Image source:
+
+              - `aiGenerated` -- AI creates images
+
+              - `stock` -- stock photos
+
+              - `none` -- no images
+
+              '
+          style:
+            type: string
+            required: false
+            enum:
+            - photorealistic
+            - illustration
+            - 3dRendering
+            note: Image style. Only applies when `source` is `aiGenerated`.
+    bodyType: json
+  docs_url: https://api.render.ai/docs
+  test_request:
+    body:
+      inputText: A one-slide overview of renewable energy for a general audience
+      textMode: generate
+      numCards: 1
+      imageOptions:
+        source: none
+      exportAs: pdf
+  cost:
+    type: per_call
+    value: 40
+    currency: credit
+    unit: call
+    source: observed
+    source_url: https://api.render.ai/v1/usage
+    checked: '2026-10-07'
+    confidence: verified
+    note: Observed 40 credits deducted on each accepted generation. The cancelled generation retained
+      that charge; terminal-failure billing was not tested. BYOK only. Poll the status endpoint manually;
+      no per-success async settlement is claimed.
+- id: render-ai.presentation-gen.generations.get
+  capability: presentation-gen.generations.get
+  platform: presentation-gen
+  scope: own_account
+  cache: forbidden
+  method: GET
+  path: /v1/generations/{generationId}
+  name: Get generation status
+  summary: Poll generation status. Returns current state including content and export URLs when completed.
+  input:
+    pathParams:
+      generationId:
+        type: string
+        required: true
+        note: Use a real generationId returned by POST /v1/generations from this account. Replace the
+          vendor test ID with one created by the verifying account.
+  docs_url: https://api.render.ai/docs
+  kind: utility
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    confidence: verified
+    note: Observed no credit-balance change across this request using GET /v1/usage.
+    source: observed
+    source_url: https://api.render.ai/v1/usage
+    checked: '2026-10-07'
+  test_request:
+    pathParams:
+      generationId: gen_64ab0149e83144caa2d0
+- id: render-ai.presentation-gen.generations.cancel
+  capability: presentation-gen.generations.cancel
+  platform: presentation-gen
+  scope: own_account
+  cache: forbidden
+  method: DELETE
+  path: /v1/generations/{generationId}
+  name: Cancel generation
+  summary: Cancel a running generation. Only works for generations with `pending` or `processing` status.
+  input:
+    pathParams:
+      generationId:
+        type: string
+        required: true
+        note: Use a real generationId returned by POST /v1/generations from this account. Cancellation
+          requires pending or processing status. The test ID was cancelled during vendor verification;
+          replace it with a fresh active generation before re-running.
+  docs_url: https://api.render.ai/docs
+  kind: action
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    confidence: verified
+    note: Cancellation returned cancelled with no additional debit. The original 40-credit submission
+      charge was not refunded. Reverification requires a fresh pending or processing generation from the
+      same account.
+    source: observed
+    source_url: https://api.render.ai/v1/usage
+    checked: '2026-10-07'
+  test_request:
+    pathParams:
+      generationId: gen_5657b006456948ecb884
+- id: render-ai.presentation-gen.themes.list
+  capability: presentation-gen.themes.list
+  platform: presentation-gen
+  scope: own_account
+  cache: forbidden
+  method: GET
+  path: /v1/themes
+  name: List themes
+  summary: List all available presentation themes with preview colors.
+  input: {}
+  docs_url: https://api.render.ai/docs
+  kind: utility
+  test_request:
+    queryParams: {}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    confidence: verified
+    note: Observed no credit-balance change across this request using GET /v1/usage.
+    source: observed
+    source_url: https://api.render.ai/v1/usage
+    checked: '2026-10-07'
+- id: render-ai.presentation-gen.usage.get
+  capability: presentation-gen.usage.get
+  platform: presentation-gen
+  scope: own_account
+  cache: forbidden
+  method: GET
+  path: /v1/usage
+  name: Check usage
+  summary: Check credit balance and recent generation history.
+  input: {}
+  docs_url: https://api.render.ai/docs
+  kind: account
+  test_request:
+    queryParams: {}
+  cost:
+    type: free
+    value: 0
+    currency: USD
+    unit: call
+    confidence: verified
+    note: Observed no credit-balance change across this request using GET /v1/usage.
+    source: observed
+    source_url: https://api.render.ai/v1/usage
+    checked: '2026-10-07'

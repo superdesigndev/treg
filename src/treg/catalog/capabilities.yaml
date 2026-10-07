@@ -29,6 +29,7 @@ platforms:
   ai-judge: {label: "AI judgment", category: "AI generation", summary: "A label, a score or a yes/no probability over evidence you supply. A judge, not a writer: classify, route, verify, rank."}
 
   # --- AI generation: generated media modalities ------------------------------------------------
+  presentation-gen: {label: "Presentation generation", category: "AI generation", summary: "Create editable slide decks from text and retrieve presentation exports."}
   video-gen: {label: "Video generation", category: "AI generation", summary: "Text-to-video and image-to-video across models, with prices side by side."}
   image-gen: {label: "Image generation", category: "AI generation", summary: "Text-to-image and prompt-based image editing across models."}
   voice-gen: {label: "Voice generation", category: "AI generation", summary: "Text-to-speech across voice models, with prices side by side."}

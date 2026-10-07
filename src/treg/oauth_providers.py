@@ -1774,6 +1774,30 @@ MINIMAX = OAuthProvider(
     probe_reject_statuses=(401, 403),
 )
 
+RENDER_AI = OAuthProvider(
+    service="render-ai",
+    display_name="render.ai",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="sk-rndr-…",
+    token_header="X-API-Key",
+    token_format="{secret}",
+    setup_url="https://render.ai/team#api-keys",
+    setup_action_label="Get your render.ai API key",
+    setup_steps=(
+        "Sign in to render.ai and open Account → API Keys.",
+        "Create a named key and copy it. API keys require a paid plan.",
+    ),
+    setup_note="Generation spends render.ai credits and creates a deck in your workspace. The usage probe does not generate a deck.",
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="AI generation",
+    summary="Create editable presentations from text, choose themes, track generation and retrieve PDF exports.",
+    base_url="https://api.render.ai",
+    docs_url="https://api.render.ai/docs",
+    probe_path="/v1/usage",
+)
+
 FISHAUDIO = OAuthProvider(
     service="fishaudio",
     display_name="Fish Audio",
@@ -3872,7 +3896,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
-        OPENROUTER,
+        OPENROUTER, RENDER_AI,
         REPLICATE,
         REAPI, PIAPI, GOOGLE_AI, TINYFISH,
         TIKHUB, BRIGHTDATA, SEMRUSH, JUSTONEAPI,

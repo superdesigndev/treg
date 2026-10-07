@@ -30,6 +30,36 @@ def test_key_providers_are_offerable_without_deployment_credentials():
         assert P.is_configured(p) is True, p.service
 
 
+@pytest.mark.parametrize("status", [200, 401, 403])
+async def test_render_ai_connection_verifies_usage_with_api_key(clients, monkeypatch, status):
+    def probe(request):
+        assert request.method == "GET"
+        assert str(request.url) == "https://api.render.ai/v1/usage"
+        assert request.headers["X-API-Key"] == "synthetic-render-key"
+        assert "authorization" not in request.headers
+        payload = ({"credits": {"available": 80}} if status == 200 else
+                   {"error": {"code": "INVALID_API_KEY", "message": "Invalid or revoked API key."}})
+        return httpx.Response(status, json=payload)
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        response = await clients.post(
+            "/connections/token", json={"provider": "render-ai", "token": "synthetic-render-key"},
+        )
+    assert response.status_code == (200 if status == 200 else 422), response.text
+    tools = (await clients.get("/tools")).json()
+    if status == 200:
+        tool = next(tool for tool in tools if tool["name"] == "render-ai")
+        assert tool["base_url"] == "https://api.render.ai"
+        binding = tool["bindings"][0]
+        assert binding["location"] == "header"
+        assert binding["name"] == "X-API-Key"
+        assert binding["format"] == "{secret}"
+    else:
+        assert "rejected" in response.text
+        assert not any(tool["name"] == "render-ai" for tool in tools)
+
+
 async def test_spidercloud_key_uses_free_balance_probe(clients, monkeypatch):
     def probe(request):
         assert request.method == "GET"
