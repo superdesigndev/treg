@@ -311,14 +311,15 @@ async def _relay_answer(request: Request, context, upstream: UpstreamResponse, r
 
 
 async def run_call_surface(rest: str, request: Request, caller: Caller, *, prefix: str, finish,
-                           headers=None) -> Response:
+                           headers=None, hub_unlocked: bool = False) -> Response:
     """One call through the whole call road: the caller's identity stashed for the refusal fallback,
     the context built from the raw request, `execute_call`, and the same bookkeeping on every exit.
     Every call surface (`/call/`, `/catalog/call/`, `/table/`) goes through here; only `finish`,
     which turns the answer into the HTTP response, differs. `finish(request, context, upstream,
     rest)` runs inside the same try, so a fault there is audited and released like any other.
     `headers`, when given, replaces the request's raw headers for the upstream call (`/table/` asks
-    the provider for uncompressed bytes); `/call/` never passes it."""
+    the provider for uncompressed bytes); `/call/` never passes it. `hub_unlocked` is the app page's
+    run route saying it checked the app's unlock (docs/context/architecture/hub-apps.md)."""
     # Identity for the refusal fallback in `_mark_treg_own_errors`: a raise anywhere below (unknown
     # tool, deny rule, daily cap) leaves this handler without an audit row, and the exception handler
     # is the one place every such refusal passes through — but it has no Caller of its own.
@@ -351,6 +352,7 @@ async def run_call_surface(rest: str, request: Request, caller: Caller, *, prefi
         caller=CallerSnapshot.capture(caller),
         client_ip=_client_ip(request),
         catalog_only=bool(getattr(request.state, "catalog_only", False)),
+        hub_unlocked=hub_unlocked,
     )
     try:
         context = create_call_context(call_input)

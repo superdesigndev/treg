@@ -380,6 +380,17 @@ tools`). Over MCP the same three moves are `hub_create`, `hub_update`, `hub_mine
 `call`. A caller runs it with `treg call <team>.<name> --data '{...}'` or `POST {BASE}/call/<id>`;
 the reply carries `output`, `usage` (steps cost + your price), and the `trace`. Read a tool's
 contract, yours or anyone's, with `treg catalog get <id>` / `catalog_get`.
+<!--hubapps-->
+
+**Give a tool a web page (an app).** `treg hub app on <id> [--name <name>]` puts it at
+`{BASE}/apps/<team>/<name>`: a form built from the tool's inputs, the result, and each visitor's own
+runs. A visitor signs in and runs it as their own team, at the same price as a call. `treg hub app
+password <id>` (asked at a prompt, stored only as a hash) guards the page AND the tool while the app
+is on: another team then needs `X-Treg-Tool-Password` (`treg call <id> --tool-password`), and the tool
+leaves catalog search; your own team never needs it. `treg hub app off <id>` takes the page down and
+lifts the lock. Over MCP: `hub_app` turns it on, renames it or turns it off; it never sets a password.
+A call answered `403 hub_tool_locked` means the maker set one: ask the person for it, never guess.
+<!--/hubapps-->
 <!--/hub-->
 ## Task — share your keys & skills so teammates' agents can use them
 **Bulk (the fast path):** run it in the directory the human names. It lists the provider keys it

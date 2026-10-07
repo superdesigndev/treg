@@ -61,6 +61,8 @@ from .routers import catalog as catalog_routes
 from .routers import connections as connection_routes
 from .routers import feedback as feedback_routes
 from .routers import hub as hub_routes
+from .routers import hub_apps as hub_app_routes
+from .routers import vibe as vibe_routes
 from .routers import media as media_routes
 from .routers import onboard as onboard_routes
 from .routers import orgs as org_routes
@@ -216,6 +218,10 @@ async def meta() -> dict:
             # Whether the hub routes exist here at all (TREG_HUB_ENABLED), so the dashboard asks
             # them nothing when they would only answer 404. Per-team access is still probed.
             "hub": bool(s.hub_enabled),
+            # Whether a hub tool can have a web page here (TREG_HUB_APPS_ENABLED, needs the hub).
+            "hub_apps": bool(s.hub_enabled and s.hub_apps_enabled),
+            # Whether vibe-it exists here (TREG_VIBE_ENABLED, needs the hub).
+            "vibe": bool(s.hub_enabled and s.vibe_enabled),
             # Config only, no database: lets the top-bar referral entry name the reward on every page
             # without calling GET /referrals, which mints a code and runs the payout sweep.
             "referral": {"referrer_micro": int(s.referral_referrer_micro),
@@ -316,6 +322,8 @@ async def create_tool_request(
 
 router.routes.extend(feedback_routes.app.routes)
 router.routes.extend(hub_routes.app.routes)
+router.routes.extend(hub_app_routes.app.routes)
+router.routes.extend(vibe_routes.app.routes)
 router.routes.extend(media_routes.app.routes)
 router.routes.extend(auth_routes.social_router.routes)
 router.routes.extend(auth_routes.cli_router.routes)         # CLI pairing

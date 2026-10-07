@@ -452,8 +452,12 @@ async def test_every_tool_declares_what_it_can_do(clients):
 
     ann = {t.name: t.annotations for t in await server.list_tools()}
     assert set(ann) == {"catalog_search", "catalog_get", "call", "call_media", "resources_list", "balance", "my_tools",
-                        "catalog_request", "feedback", "review", "hub_create", "hub_update", "hub_mine"}
+                        "catalog_request", "feedback", "review", "hub_create", "hub_update", "hub_mine", "hub_app"}
     assert all(a.title is None for a in ann.values())
+    # hub_app turns a page on or off on treg itself: idempotent, nothing upstream, nothing destroyed
+    a = ann["hub_app"]
+    assert a.read_only_hint is False and a.idempotent_hint is True
+    assert a.destructive_hint is False and a.open_world_hint is False
     for name in ("catalog_search", "catalog_get", "resources_list", "balance", "my_tools"):
         a = ann[name]
         assert a and a.read_only_hint is True, name

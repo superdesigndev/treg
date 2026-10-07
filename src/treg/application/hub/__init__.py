@@ -91,6 +91,16 @@ async def tool_for(db: AsyncSession, rest: str, *, live_only: bool = True,
     return None if await is_rejected(db, row.tool_id) else row
 
 
+async def locked_ids(db: AsyncSession, tool_ids: list[str]) -> set[str]:
+    """The tools whose app is on with a password (docs/context/architecture/hub-apps.md): out of
+    search, and callable by another team only with the password."""
+    if not tool_ids:
+        return set()
+    from ...models import HubApp
+    return set((await db.execute(select(HubApp.tool_id).where(
+        HubApp.tool_id.in_(tool_ids), HubApp.enabled.is_(True), HubApp.password_hash.is_not(None)))).scalars().all())
+
+
 async def is_rejected(db: AsyncSession, tool_id: str) -> bool:
     lst = await db.get(HubListing, tool_id)
     return lst is not None and lst.state == "rejected"
@@ -476,6 +486,8 @@ async def search_listed(db: AsyncSession, query: str, cat: Any, *, org_slug: str
     newest: dict[str, HubTool] = {}
     for r in rows:
         newest.setdefault(r.tool_id, r)
+    for tid in await locked_ids(db, list(newest)):   # a password-locked app hides its tool from search
+        newest.pop(tid, None)
     if not newest:
         return [], {}
     org_ids = {r.org_id for r in newest.values()}
@@ -633,6 +645,8 @@ async def capability_siblings(db: AsyncSession, capability: str, *, exclude: str
     newest: dict[str, HubTool] = {}
     for r in rows:
         newest.setdefault(r.tool_id, r)
+    for tid in await locked_ids(db, list(newest)):
+        newest.pop(tid, None)
     if not newest:
         return []
     slugs = {o.id: o.slug for o in (await db.execute(

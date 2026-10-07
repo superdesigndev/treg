@@ -7,7 +7,7 @@ export default function data(){
     return {
       // the tool hub: hub.tools is every version of the team's tools (newest first); hub.tool the
       // opened one; hub.tab overview|versions|price|listing|earnings|runs|health; run the opened run
-      hubOn:false, hub:{loading:false, tools:[], tool:null, tab:'overview', earnings:null, health:null, err:'', note:'', confirmRetire:null, runOpen:null},
+      hubOn:false, hub:{loading:false, tools:[], tool:null, tab:'overview', earnings:null, health:null, err:'', note:'', confirmRetire:null, runOpen:null, app:null, appName:'', appPw:'', appSaving:false},
       run:{loading:false, data:null, err:''},
       elements: createElements(),
       bootReady: false, bootFailed: false,

@@ -26,12 +26,14 @@ Regenerate via `scripts/build-map.py`.
 | `examples/claude-code-mods/jev-memory/hooks/jev-memory.mjs` | interface/skill.md |
 | `examples/proxy-demo/server.js` | architecture/local-proxy.md |
 | `external:meetings/2026-06-30-jason-tools-registry.md` | foundation/charter.md, reference/glossary.md |
+| `frontend/apps.html` | architecture/hub-apps.md |
 | `frontend/e2e/catalog-find.spec.ts` | architecture/find.md |
 | `frontend/e2e/landing.spec.ts` | interface/seo.md |
 | `frontend/e2e/layout.spec.ts` | interface/dashboard.md |
 | `frontend/index.html` | interface/seo.md |
 | `frontend/src/App.vue` | interface/dashboard.md, interface/seo.md |
 | `frontend/src/agent-setup/index.ts` | interface/enrich-arena.md |
+| `frontend/src/apps/AppPage.vue` | architecture/hub-apps.md |
 | `frontend/src/components/CatalogSearch.vue` | architecture/find.md |
 | `frontend/src/components/FindAnswer.vue` | architecture/find.md |
 | `frontend/src/components/PublicNavigation.vue` | interface/seo.md |
@@ -46,6 +48,8 @@ Regenerate via `scripts/build-map.py`.
 | `frontend/src/pages/ProviderPage.vue` | architecture/instagram-oauth.md |
 | `frontend/src/pages/SearchPage.vue` | architecture/find.md |
 | `frontend/src/pages/TeamPage.vue` | architecture/auth-secrets.md |
+| `frontend/src/standalone/form.ts` | architecture/hub-apps.md |
+| `frontend/src/standalone/render.ts` | architecture/hub-apps.md |
 | `frontend/src/state/boot.js` | interface/landing-sandbox.md, interface/seo.md |
 | `frontend/src/state/catalog.js` | interface/dashboard.md |
 | `frontend/src/state/connections.js` | architecture/instagram-oauth.md |
@@ -56,7 +60,14 @@ Regenerate via `scripts/build-map.py`.
 | `frontend/src/state/onboarding.js` | interface/onboarding.md |
 | `frontend/src/state/session.js` | architecture/auth-secrets.md |
 | `frontend/src/styles/base.css` | interface/dashboard.md |
+| `frontend/src/vibe/AskCard.vue` | architecture/vibe-it.md |
+| `frontend/src/vibe/EventCard.vue` | architecture/vibe-it.md |
+| `frontend/src/vibe/FilesPanel.vue` | architecture/vibe-it.md |
+| `frontend/src/vibe/StepCard.vue` | architecture/vibe-it.md |
+| `frontend/src/vibe/VibePage.vue` | architecture/vibe-it.md |
+| `frontend/src/vibe/markdown.ts` | architecture/vibe-it.md |
 | `frontend/src/views.ts` | interface/dashboard.md |
+| `frontend/vibe.html` | architecture/vibe-it.md |
 | `hatch_build.py` | ops/deploy.md |
 | `package.json` | interface/skill.md |
 | `plugin/.codex-plugin/plugin.json` | interface/skill.md |
@@ -142,6 +153,8 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/alembic/versions/0059_web_arena_seed_start.py` | interface/web-arena.md |
 | `src/treg/alembic/versions/0060_web_arena_seed_progress.py` | interface/web-arena.md |
 | `src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py` | architecture/data-model.md |
+| `src/treg/alembic/versions/0065_hub_app.py` | architecture/hub-apps.md |
+| `src/treg/alembic/versions/0066_vibe.py` | architecture/vibe-it.md |
 | `src/treg/analytics.py` | architecture/data-model.md |
 | `src/treg/api.py` | architecture/archive.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, architecture/super-admin.md, interface/api.md, interface/landing-sandbox.md, interface/seo.md |
 | `src/treg/application/__init__.py` | architecture/import-boundaries.md |
@@ -165,7 +178,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/call/reserve.py` | architecture/import-boundaries.md, architecture/money.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call/resolve.py` | architecture/import-boundaries.md, architecture/instagram-oauth.md, architecture/money.md, architecture/multi-tenancy.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call/route.py` | architecture/catalog.md, architecture/import-boundaries.md, architecture/money.md |
-| `src/treg/application/call/service.py` | architecture/archive.md, architecture/hub.md, architecture/import-boundaries.md, architecture/instagram-oauth.md, architecture/money.md, architecture/proxy-model.md, interface/api.md |
+| `src/treg/application/call/service.py` | architecture/archive.md, architecture/hub-apps.md, architecture/hub.md, architecture/import-boundaries.md, architecture/instagram-oauth.md, architecture/money.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call/settle.py` | architecture/archive.md, architecture/import-boundaries.md, architecture/money.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/call/types.py` | architecture/import-boundaries.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/application/catalog_find.py` | architecture/find.md |
@@ -177,6 +190,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/find_index.py` | architecture/find.md |
 | `src/treg/application/house_calls.py` | interface/onboarding.md |
 | `src/treg/application/hub/__init__.py` | architecture/hub.md |
+| `src/treg/application/hub/apps.py` | architecture/hub-apps.md |
 | `src/treg/application/hub/health.py` | architecture/hub.md |
 | `src/treg/application/hub/limits.py` | architecture/hub.md, architecture/proxy-model.md |
 | `src/treg/application/hub/runner.py` | architecture/hub.md |
@@ -197,6 +211,9 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/application/search_experiment.py` | architecture/search-experiment.md |
 | `src/treg/application/signup.py` | architecture/ads-conversions.md, architecture/money.md, architecture/multi-tenancy.md, interface/api.md |
 | `src/treg/application/table.py` | architecture/table.md |
+| `src/treg/application/vibe/__init__.py` | architecture/vibe-it.md |
+| `src/treg/application/vibe/agent.py` | architecture/vibe-it.md |
+| `src/treg/application/vibe/status.py` | architecture/vibe-it.md |
 | `src/treg/application/web_arena.py` | interface/web-arena.md |
 | `src/treg/application/web_arena_calls.py` | interface/web-arena.md |
 | `src/treg/application/web_arena_publications.py` | interface/web-arena.md |
@@ -382,6 +399,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/domain/governance/teams.py` | architecture/import-boundaries.md, architecture/multi-tenancy.md, interface/api.md, interface/enrich-arena.md |
 | `src/treg/domain/governance/usage.py` | architecture/import-boundaries.md, architecture/multi-tenancy.md, architecture/proxy-model.md, interface/api.md |
 | `src/treg/domain/hub/__init__.py` | architecture/hub.md |
+| `src/treg/domain/hub/apps.py` | architecture/hub-apps.md |
 | `src/treg/domain/hub/graph.py` | architecture/hub.md |
 | `src/treg/domain/hub/manifest.py` | architecture/hub.md |
 | `src/treg/domain/hub/refs.py` | architecture/hub.md |
@@ -415,7 +433,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/infra/embed.py` | architecture/find.md |
 | `src/treg/infra/judge.py` | architecture/search-experiment.md |
 | `src/treg/infra/kv.py` | architecture/feedback.md |
-| `src/treg/infra/llm.py` | interface/onboarding.md |
+| `src/treg/infra/llm.py` | architecture/vibe-it.md, interface/onboarding.md |
 | `src/treg/infra/oauth_exchange.py` | architecture/auth-secrets.md, architecture/instagram-oauth.md, guides/expanding-a-category.md |
 | `src/treg/infra/oauth_refresh.py` | architecture/auth-secrets.md |
 | `src/treg/infra/object_store.py` | architecture/archive.md |
@@ -448,11 +466,12 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/routers/auth.py` | architecture/composition.md, architecture/mcp-oauth.md, architecture/multi-tenancy.md, architecture/table.md, interface/api.md, interface/enrich-arena.md, interface/onboarding.md |
 | `src/treg/routers/auth_helpers.py` | interface/api.md, interface/cli.md |
 | `src/treg/routers/billing.py` | architecture/composition.md, architecture/money.md, interface/api.md |
-| `src/treg/routers/call.py` | architecture/composition.md, architecture/feedback.md, architecture/instagram-oauth.md, architecture/money.md, architecture/proxy-model.md, architecture/table.md, interface/api.md |
+| `src/treg/routers/call.py` | architecture/composition.md, architecture/feedback.md, architecture/hub-apps.md, architecture/instagram-oauth.md, architecture/money.md, architecture/proxy-model.md, architecture/table.md, interface/api.md |
 | `src/treg/routers/catalog.py` | architecture/catalog.md, architecture/hub.md, interface/api.md |
 | `src/treg/routers/connections.py` | architecture/auth-secrets.md, architecture/composition.md, guides/expanding-a-category.md, interface/api.md |
 | `src/treg/routers/feedback.py` | architecture/feedback.md |
 | `src/treg/routers/hub.py` | architecture/hub.md |
+| `src/treg/routers/hub_apps.py` | architecture/hub-apps.md |
 | `src/treg/routers/hub_gate.py` | architecture/hub.md |
 | `src/treg/routers/media.py` | architecture/media.md, interface/api.md |
 | `src/treg/routers/onboard.py` | architecture/composition.md, interface/api.md, interface/landing-sandbox.md, interface/onboarding.md |
@@ -462,6 +481,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/routers/resources.py` | architecture/auth-secrets.md, architecture/composition.md, architecture/multi-tenancy.md, interface/api.md |
 | `src/treg/routers/signup_cookies.py` | interface/api.md |
 | `src/treg/routers/table.py` | architecture/table.md |
+| `src/treg/routers/vibe.py` | architecture/vibe-it.md |
 | `src/treg/routers/web.py` | architecture/composition.md, architecture/hub.md, interface/api.md, interface/dashboard.md, interface/landing-sandbox.md, interface/seo.md, interface/skill.md |
 | `src/treg/routers/web_arena.py` | interface/web-arena.md |
 | `src/treg/runner.py` | interface/api.md |
@@ -592,6 +612,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_find_recall.py` | architecture/find.md |
 | `tests/test_hints.py` | architecture/feedback.md |
 | `tests/test_hub.py` | architecture/hub.md |
+| `tests/test_hub_apps.py` | architecture/hub-apps.md |
 | `tests/test_hub_sandbox.py` | architecture/hub.md |
 | `tests/test_import_lightness.py` | architecture/import-boundaries.md |
 | `tests/test_influencersclub_overflow.py` | ops/capacity.md |
@@ -624,6 +645,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_team_limit.py` | architecture/multi-tenancy.md |
 | `tests/test_tinyfish.py` | architecture/catalog.md, architecture/money.md, ops/capacity.md |
 | `tests/test_token_revocation.py` | architecture/multi-tenancy.md |
+| `tests/test_vibe.py` | architecture/vibe-it.md |
 | `tests/test_web_arena.py` | interface/web-arena.md |
 | `tests/test_web_arena_calls.py` | interface/web-arena.md |
 | `tests/test_wiza.py` | architecture/catalog.md |
@@ -640,6 +662,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/data-model.md` | `0042_pinned_read_scope.py`, `alembic.ini`, `env.py`, `0001_baseline_current_schema.py`, `0002_archive_tables.py`, `0003_callrecord_cached.py`, `0004_archivekey_request_shape.py`, `0005_capacity_policy_snapshot.py`, `0006_overflow_route.py`, `0007_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `0009_callrecord_hit.py`, `0017_async_task_record.py`, `0018_async_resource_ownership.py`, `0019_async_poll_failures.py`, `0020_callrecord_created_at_indexes.py`, `0021_ledgerentry_org_created_at_index.py`, `0022_org_spent_today_counter.py`, `0023_callrecord_org_user_created_at_index.py`, `0024_membership_calls_today_counter.py`, `0027_enrich_arena.py`, `0028_arena_insights.py`, `0029_arena_verification_snapshot.py`, `0011_callrecord_archive_link.py`, `0015_idempotentcall_membership_cascade.py`, `0053_idempotentcall_membership_expires_index.py`, `0054_callrecord_org_id_id.py`, `0061_remove_redundant_unique_indexes.py`, `0034_managed_api_keys.py`, `0035_default_key_generation.py`, `0036_activity_key_indexes.py`, `0038_endpoint_day_stats.py`, `maintenance.py`, `sitetrack.js`, `models.py`, `0052_async_task_hit.py`, `0031_archive_result_admission.py`, `0032_archive_body_storage.py`, `0039_archive_own_key_and_repeat_pricing.py`, `0043_provider_resources.py`, `provider_resources.py`, `provider_resources.py`, `0033_signup_promo_eligibility.py`, `0041_searchlog.py`, `0055_find_v2_log.py`, `0056_searchlog_verdict.py`, `timeutil.py`, `db.py`, `referrals.py`, `audit.py`, `evidence_retention.py`, `analytics.py`, `bootstrap_handlers.py`, `ratestore.py`, `auth.py`, `test_postgres_reset.py`, `test_alembic_expand_safety.py`, `test_redundant_index_migration.py`, `test_api_keys.py` |
 | `architecture/feedback.md` | `feedback_contract.py`, `__init__.py`, `reports.py`, `reviews.py`, `verdicts.py`, `hints.py`, `config.py`, `call.py`, `invite.py`, `kv.py`, `feedback.py`, `feedback.py`, `0025_feedback.py`, `0026_callreview.py`, `0030_feedback_handling.py`, `test_feedback_handling_schema.py`, `feedback.md`, `test_feedback.py`, `test_reviews.py`, `test_endpoint_verdicts.py`, `test_hints.py`, `test_kv.py` |
 | `architecture/find.md` | `catalog_find.py`, `find_recall.py`, `find_index.py`, `embed.py`, `bootstrap.py`, `test_find_index.py`, `test_embed.py`, `0055_find_v2_log.py`, `0056_searchlog_verdict.py`, `find_bench.py`, `find_bench.yaml`, `test_find_bench.py`, `test_find_recall.py`, `test_catalog_find.py`, `find.js`, `FindAnswer.vue`, `SearchPage.vue`, `CatalogSearch.vue`, `catalog-find.spec.ts` |
+| `architecture/hub-apps.md` | `apps.py`, `apps.py`, `hub_apps.py`, `0065_hub_app.py`, `service.py`, `call.py`, `AppPage.vue`, `form.ts`, `render.ts`, `apps.html`, `test_hub_apps.py` |
 | `architecture/hub.md` | `__init__.py`, `manifest.py`, `refs.py`, `graph.py`, `__init__.py`, `runner.py`, `sandbox.py`, `limits.py`, `health.py`, `hub_sandbox.py`, `hub.py`, `catalog.py`, `web.py`, `hub_gate.py`, `service.py`, `__init__.py`, `mcp.py`, `hub.js`, `HubPage.vue`, `HubRunPage.vue`, `cli.py`, `worker.py`, `models.py`, `index.html`, `skill.md`, `llms.txt`, `0044_hub_tools.py`, `0045_hub_runs.py`, `0046_hubtool_check_result.py`, `0047_hubrun_output.py`, `0048_hubtool_data.py`, `0049_hubtool_listed_public_log.py`, `0050_hub_listing.py`, `run.js`, `run.js`, `run.js`, `test_hub.py`, `test_hub_sandbox.py`, `test_hub_run.py` |
 | `architecture/import-boundaries.md` | `pyproject.toml`, `ci.yml`, `__init__.py`, `__init__.py`, `access.py`, `authorize.py`, `idempotency.py`, `overflow.py`, `route.py`, `__init__.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `client_identity.py`, `__init__.py`, `__init__.py`, `access.py`, `budgets.py`, `publicdemo.py`, `teams.py`, `usage.py`, `__init__.py`, `__init__.py`, `authorization.py`, `oauth_flow.py`, `refresh.py`, `__init__.py`, `__init__.py`, `__init__.py`, `__init__.py`, `__init__.py`, `injectors.py`, `relay.py`, `__init__.py`, `limiter.py`, `test_call_architecture.py`, `test_import_lightness.py` |
 | `architecture/instagram-oauth.md` | `catalog_ingest.py`, `access.py`, `resolve.py`, `service.py`, `instagram.yaml`, `instagram.extended.yaml`, `cli.py`, `store.py`, `authorization.py`, `oauth_flow.py`, `oauth_exchange.py`, `mcp.py`, `call.py`, `connections.js`, `ProviderPage.vue`, `0010_oauth_authorization_method.py`, `test_instagram_oauth_architecture.py` |
@@ -653,6 +676,7 @@ Regenerate via `scripts/build-map.py`.
 | `architecture/search-experiment.md` | `catalog_search.py`, `search_experiment.py`, `interleave.py`, `judge.py`, `0041_searchlog.py`, `0056_searchlog_verdict.py`, `search_experiment_report.sql`, `search_agent_bench.py`, `test_search_experiment.py`, `test_catalog_search.py`, `test_search_agent_bench.py` |
 | `architecture/super-admin.md` | `api.py`, `admin.py`, `evidence_retention.py`, `access.py`, `config.py` |
 | `architecture/table.md` | `__init__.py`, `table.py`, `table.py`, `call.py`, `call_surface.py`, `config.py`, `mcp_oauth.py`, `auth.py`, `auth.py`, `test_table.py`, `test_table_oauth.py` |
+| `architecture/vibe-it.md` | `__init__.py`, `agent.py`, `status.py`, `vibe.py`, `llm.py`, `0066_vibe.py`, `VibePage.vue`, `FilesPanel.vue`, `AskCard.vue`, `EventCard.vue`, `StepCard.vue`, `markdown.ts`, `vibe.html`, `test_vibe.py` |
 | `foundation/charter.md` | `2026-06-30-jason-tools-registry.md`, `README.md` |
 | `guides/expanding-a-category.md` | `oauth_providers.py`, `authorization.py`, `oauth_flow.py`, `oauth_exchange.py`, `connect.py`, `connections.py`, `config.py` |
 | `interface/api.md` | `media.py`, `sitetrack.js`, `api.py`, `bootstrap_handlers.py`, `bootstrap_http.py`, `call_surface.py`, `caller_metadata.py`, `client_identity.py`, `auth.py`, `provider_resources.py`, `access.py`, `authorize.py`, `idempotency.py`, `intake.py`, `resolve.py`, `reserve.py`, `settle.py`, `evidence.py`, `service.py`, `types.py`, `relay.py`, `connect.py`, `__init__.py`, `referrals.py`, `signup.py`, `__init__.py`, `activity.py`, `admin.py`, `auth.py`, `auth_helpers.py`, `billing.py`, `call.py`, `catalog.py`, `connections.py`, `onboard.py`, `orgs.py`, `provider_resources.py`, `api_keys.py`, `resources.py`, `referrals.py`, `signup_cookies.py`, `web.py`, `access.py`, `api_keys.py`, `teams.py`, `access.py`, `budgets.py`, `publicdemo.py`, `usage.py`, `mcp_oauth.py`, `session.py`, `timeutil.py`, `store.py`, `email.py`, `runner.py`, `ratestore.py` |

@@ -16,6 +16,7 @@ from ... import analytics, archive, audit, oauth, oauth_providers
 from ...application import hub as hub_app
 from ...application.hub import runner as hub_runner
 from ...application.hub import limits as hub_limits
+from ...application.hub import apps as hub_apps
 from ... import sandbox as demo_sandbox
 from ...client_identity import _norm_client
 from ...config import get_settings
@@ -647,6 +648,24 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             elif (isinstance(exc.detail, dict)
                     and str(exc.detail.get("hint", "")).startswith("your org has tool ")):
                 own_tool_miss = exc.detail
+    if hub_row is not None:
+        # A tool whose app is on with a password: another team needs it (X-Treg-Tool-Password, or
+        # the app page's checked unlock). The maker's own team never does.
+        # Read the app row, then let the connection go: the tries live in the shared key-value
+        # store and the hash is deliberately slow (AGENTS.md non-negotiable 3).
+        hub_app_row = await hub_apps.app_of(db, hub_row)
+        await db.commit()
+        lock = await hub_apps.call_lock(
+            hub_app_row, hub_row, caller_org_id=caller.org_id, client=request.context.input.client_ip,
+            password=_raw_header(request.context.input.raw_headers, b"x-treg-tool-password"),
+            unlocked=request.context.input.hub_unlocked)
+        if lock is not None:
+            busy = lock == "hub_tool_password_busy"
+            raise AuthorizationFailed(lock, status_code=429 if busy else 403, detail={
+                "error": lock, "tool_id": hub_row.tool_id,
+                "message": ("too many password tries for this tool; wait a few minutes" if busy else
+                            "this hub tool is password protected by its maker: send the password in "
+                            "the X-Treg-Tool-Password header (treg call --tool-password), or run it on its app page")})
     if hub_row is not None:
         # A hub tool: the runner runs every step through THIS use case again (child contexts,
         # own hold ids `{run}:s{n}`), then assembles one reply. The parent owns the idempotency
@@ -1664,3 +1683,10 @@ def _submission_rejected(mk, body: bytes) -> str:
     except asynctasks_rules.ExtractionError:
         return "submission_without_task_id"
     return ""
+
+
+def _raw_header(raw: tuple[tuple[bytes, bytes], ...], name: bytes) -> str | None:
+    for k, v in raw:
+        if k.lower() == name:
+            return v.decode("latin-1")
+    return None

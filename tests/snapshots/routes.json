@@ -478,6 +478,225 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "get_hub_app",
+    "path": "/hub/tools/{tool_id}/app"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "enable_hub_app",
+    "path": "/hub/tools/{tool_id}/app"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "disable_hub_app",
+    "path": "/hub/tools/{tool_id}/app"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "set_hub_app_password",
+    "path": "/hub/tools/{tool_id}/app/password"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "app_page",
+    "path": "/apps/{team}/{name}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "app_contract",
+    "path": "/apps/{team}/{name}/contract"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "app_unlock",
+    "path": "/apps/{team}/{name}/unlock"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "app_run",
+    "path": "/apps/{team}/{name}/run"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "app_runs",
+    "path": "/apps/{team}/{name}/runs"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "app_run_one",
+    "path": "/apps/{team}/{name}/runs/{run_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "vibe_page",
+    "path": "/vibe-it"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "vibe_state",
+    "path": "/vibe/state"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "vibe_new",
+    "path": "/vibe/sessions"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "vibe_get",
+    "path": "/vibe/sessions/{session_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PATCH"
+    ],
+    "name": "vibe_meta",
+    "path": "/vibe/sessions/{session_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "DELETE"
+    ],
+    "name": "vibe_delete",
+    "path": "/vibe/sessions/{session_id}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "vibe_tool_status",
+    "path": "/vibe/sessions/{session_id}/status"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "vibe_message",
+    "path": "/vibe/sessions/{session_id}/messages"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "vibe_regenerate",
+    "path": "/vibe/sessions/{session_id}/regenerate"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "vibe_stop",
+    "path": "/vibe/sessions/{session_id}/stop"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "vibe_action",
+    "path": "/vibe/sessions/{session_id}/actions"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "vibe_draft",
+    "path": "/vibe/sessions/{session_id}/draft"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "vibe_validate",
+    "path": "/vibe/sessions/{session_id}/validate"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "vibe_versions",
+    "path": "/vibe/sessions/{session_id}/versions"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "vibe_version",
+    "path": "/vibe/sessions/{session_id}/versions/{n}"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "vibe_restore",
+    "path": "/vibe/sessions/{session_id}/versions/{n}/restore"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "host_media",

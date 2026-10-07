@@ -19,7 +19,7 @@ hubLive(){ return this.hubNewest().filter(t=>t.status==='live').length; },
 hubEarned30(){ return this.hubNewest().reduce((a,t)=>a+(t.earned_30d_micro||0),0); },
 hubRuns30(){ return this.hubNewest().reduce((a,t)=>a+(t.runs_30d||0),0); },
 hubFailing(){ return this.hubNewest().filter(t=>t.health==='failing').length; },
-async openHubTool(t, tab){ this.hub={...this.hub, tool:t, tab:tab||'overview', earnings:null, health:null, runOpen:null};
+async openHubTool(t, tab){ this.hub={...this.hub, tool:t, tab:tab||'overview', earnings:null, health:null, runOpen:null, app:null, appName:'', appPw:''};
   await Promise.all([this.loadHubEarnings(), this.loadHubHealth()]); },
 closeHubTool(){ this.hub={...this.hub, tool:null, runOpen:null}; },
 async loadHubEarnings(){ if(!this.hub.tool) return; try{ this.hub.earnings=await this.api('/hub/tools/'+encodeURIComponent(this.hub.tool.tool_id)+'/earnings?days=90'); }catch(e){ this.hub.earnings=null; } },
@@ -45,6 +45,21 @@ async setHubFlag(field, value){ if(!this.hub.tool) return; this.hub.flagSaving=t
        setTimeout(()=>{ this.hub.note=''; }, 2500); }
   catch(e){ this.hub.err=this.hubErr(e); await this.loadHub(); }
   this.hub.flagSaving=false; },
+// The tool's web page, `/apps/<team>/<name>` (docs/context/architecture/hub-apps.md). Only when the
+// server has apps (/meta.hub_apps); the password is sent once and never read back.
+async loadHubApp(){ if(!this.hub.tool || !this.meta.hub_apps) return;
+  try{ const a=await this.api('/hub/tools/'+encodeURIComponent(this.hub.tool.tool_id)+'/app'); this.hub.app=a; this.hub.appName=a.name||''; }
+  catch(e){ this.hub.app=null; this.hub.err=this.hubErr(e); } },
+async hubAppCall(path, method, body, note){ if(!this.hub.tool) return; this.hub.appSaving=true; this.hub.err='';
+  try{ this.hub.app=await this.api('/hub/tools/'+encodeURIComponent(this.hub.tool.tool_id)+'/app'+path,
+         {method, headers:{'content-type':'application/json'}, body: body===undefined ? undefined : JSON.stringify(body)});
+       this.hub.appName=this.hub.app.name||this.hub.appName; this.hub.appPw='';
+       this.hub.note=note; setTimeout(()=>{ this.hub.note=''; }, 2500); }
+  catch(e){ const d=e&&e.detail; this.hub.err=(d&&d.rule)?((d.field==='password'?'Password: ':'Name: ')+d.rule):this.hubErr(e); }
+  this.hub.appSaving=false; },
+enableHubApp(){ const name=(this.hub.appName||'').trim(); return this.hubAppCall('', 'PUT', name&&name!==(this.hub.app&&this.hub.app.name)?{name}:{}, 'App is on.'); },
+disableHubApp(){ return this.hubAppCall('', 'DELETE', undefined, 'App is off: the page is down and the tool is callable by id again.'); },
+setHubAppPassword(clear){ return this.hubAppCall('/password', 'PUT', {password: clear?null:this.hub.appPw}, clear?'Password removed.':'Password set. Everyone signed in to the app was signed out.'); },
 async retireHubTool(){ if(!this.hub.tool) return;
   if(this.hub.confirmRetire!==this.hub.tool.tool_id){ this.hub.confirmRetire=this.hub.tool.tool_id; return; }
   this.hub.confirmRetire=null;

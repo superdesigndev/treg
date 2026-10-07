@@ -213,6 +213,7 @@ One concept, one word. Settled deliberately - mixed vocabulary is how the old fr
 | the public half | **the catalog** |
 | the team's half | **your own tools** (your keys and skills) |
 | the server itself | **registry**, and only for that |
+| a hub tool's web page (`/apps/<team>/<name>`) | **an app** |
 
 **Do not** call either half a *vault*, a *marketplace*, or *the registry*. Say what the agent can
 now do, not what we store. Never use a count of endpoints or providers in this file; the catalog

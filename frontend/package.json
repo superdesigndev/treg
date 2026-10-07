@@ -11,10 +11,21 @@
     "predev": "vite build -c vite.agent-setup.config.ts && node scripts/copy-runtime.mjs"
   },
   "dependencies": {
+    "@codemirror/lang-javascript": "6.2.5",
+    "@codemirror/lang-json": "6.0.2",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/language": "6.12.4",
+    "@codemirror/lint": "6.9.7",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/theme-one-dark": "6.1.3",
+    "@codemirror/view": "6.43.13",
     "@fontsource-variable/geist": "5.3.0",
     "@fontsource/dm-mono": "5.3.0",
     "@fontsource/geist-pixel": "5.3.0",
     "@lobehub/icons-static-svg": "1.95.1",
+    "codemirror": "6.0.2",
+    "diff": "9.0.0",
+    "markdown-it": "15.0.2",
     "matter-js": "0.20.0",
     "vue": "3.5.41"
   },

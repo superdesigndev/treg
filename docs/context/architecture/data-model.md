@@ -133,6 +133,15 @@ See [signup eligibility](money.md#signup-credit-eligibility).
 
 ## Registry tables
 
+- **`HubApp`** - a hub tool's web page: `tool_id` (primary key), its name in the team, on or off, an
+  optional scrypt password hash and its version. Revision `0065`; `application/hub/apps.py` is the
+  only writer. See [hub apps](hub-apps.md).
+- **`VibeSession`**, **`VibeMessage`**, **`VibeDraft`**, **`VibeBudget`** - vibe-it's conversations,
+  their turns, every version of their files, and treg's model spend per person. Revision `0066`;
+  `application/vibe/__init__.py` is the only writer. Messages and file versions name only their
+  conversation, so a team's deletion removes them by hand before the conversations. See
+  [vibe-it](vibe-it.md).
+
 - **`OnboardingProfile`** - one new user's first-run lookup: `user_id` (unique, no FK, like
   `ArenaRun`), the team it made, `status` (pending | running | done | failed), an encrypted payload
   (setup rows, evidence, ranked tasks, filled inputs) and what the lookup cost the house team.

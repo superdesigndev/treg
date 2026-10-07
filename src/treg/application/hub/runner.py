@@ -42,6 +42,8 @@ DEFAULT_RUN_MAX_COST_MICRO = 1_000_000      # $1.00 for the whole run, seller pr
 MAX_PARALLEL = 4                            # steps in flight at once inside one run
 _DROP_FROM_CHILD = frozenset({b"content-length", b"content-type", b"transfer-encoding",
                               b"idempotency-key", b"x-treg-run-max-cost", b"host",
+                              # the tool's password opens the parent run only, never a step
+                              b"x-treg-tool-password",
                               # The RUNNER reads every step's bytes itself (a script gets `json`
                               # and `text`), so a step must never be answered compressed: the
                               # caller's accept-encoding is dropped and identity is asked below.

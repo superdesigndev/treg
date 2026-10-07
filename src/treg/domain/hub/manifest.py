@@ -546,6 +546,29 @@ def _validate_output_script(raw: Any) -> dict[str, Any]:
 MAX_CHECK_CASES = 5
 
 
+def as_files(manifest: Any, check: Any) -> tuple[dict[str, Any], dict[str, Any]]:
+    """A stored version's recipe.json and check.json as a maker writes them, so they validate again
+    unchanged: the stored forms carry what validation filled in (the pricing mode, a free script's
+    zero cap, a recipe's price twice, the first check case beside `cases`, an unset cost limit)."""
+    m = {k: v for k, v in (manifest if isinstance(manifest, dict) else {}).items() if k != "version"}
+    pricing = {k: v for k, v in (m.pop("pricing", None) or {}).items() if k != "mode"}
+    price = m.pop("price_usd", None)
+    if "script" in m:
+        if pricing.get("max_price_usd"):
+            m["pricing"] = {"max_price_usd": pricing["max_price_usd"]}
+    else:
+        p = pricing.get("price_usd", price)
+        if p:
+            m["price_usd"] = p
+    if isinstance(m.get("limits"), dict):
+        m["limits"] = {k: v for k, v in m["limits"].items() if v is not None}
+    c = check if isinstance(check, dict) else {}
+    cases = c.get("cases")
+    if isinstance(cases, list) and cases:
+        c = cases[0] if len(cases) == 1 else {"cases": cases}
+    return m, c
+
+
 def validate_check(raw: Any, inputs: dict[str, dict[str, Any]], output_fields: list[str]) -> dict[str, Any]:
     """`check.json`: sample inputs and the least the answer must contain, or `{"cases": [...]}`,
     up to MAX_CHECK_CASES of those, each run at publish (hub simulation run 3: one sample could not

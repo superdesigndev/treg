@@ -509,7 +509,18 @@ treg hub price <id> <usd>                   change the price for later runs; no 
 treg hub retire <id>                        every version off the call road; history and earnings stay readable
 treg hub list <id> · treg hub unlist <id>   ask for a place in catalog search (treg approves), or take it out
 treg hub log <id> --public on|off           show or hide the run log on the share page (default on)
+treg hub app on|off|password|status <id>    a web page for the tool (behind TREG_HUB_APPS_ENABLED), below
 ```
+
+**Apps: a web page for a hub tool** (behind `TREG_HUB_APPS_ENABLED`). `treg hub app on <id>
+[--name N]` puts the tool at `/apps/<team>/<name>`: a form built from its inputs, the result with
+JSON and CSV export, and each visitor's own runs (30 days). A visitor signs in and runs it as their
+own team, at the same price as a call. `off` takes the page down and keeps its name. `password`
+asks for one at a hidden prompt (or reads `TREG_TOOL_PASSWORD`) and stores only a hash; `--clear`
+removes it. While the app is on, the password guards the page and the tool itself: another team's
+call needs it (`treg call <id> --tool-password`, header `X-Treg-Tool-Password`, else
+`403 hub_tool_locked`) and the tool leaves catalog search. Your own team never needs it. Changing
+the password signs everyone out of the app.
 
 **Listing and the public run log.** Neither bumps the version. `list` is a request: once treg
 approves it, the tool is in `treg catalog search` and `catalog_search`, marked `hub` with your team,

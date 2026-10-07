@@ -263,7 +263,7 @@ A feature flag set in the calling shell (`TREG_HUB_ENABLED=1 scripts/dev-local.s
 reach the server on its own: the script starts the server inside a tmux session, and a tmux session
 inherits the **tmux server's** environment, not the calling client's — the server would start and
 answer every hub route `404` with no error. `dev-local.sh` expands a fixed passthrough list
-(the hub, table and onboarding flags) in its own process and bakes the value into the command string
+(the hub, hub apps, table and onboarding flags) in its own process and bakes the value into the command string
 tmux runs; add a flag to that list to pass another one through. Keys never go through that list:
 they go in `scripts/.dev-home/dev-keys.env`, which the server sources. The script's own three env vars
 (`TREG_EMAIL_DEV_MODE`, `TREG_CONNECT_DEMO_ENABLED`, `TREG_DATABASE_URL`) are appended last so they
@@ -390,6 +390,8 @@ without importing the heavy database stack into the light `treg` CLI.
   tool's `check.json` once, as its maker (spends the maker's balance at step prices); a no-op with
   exit 0 when `hub_enabled` is off. Schedule it every 6 hours; health is derived from the last three
   runs.
+- `treg-worker vibe trim` drops the messages of [vibe-it](../architecture/vibe-it.md) conversations
+  idle for `vibe_trim_after_days`, keeping each draft and a short summary. Schedule it daily.
 
 The two analytics commands exist so that no web process aggregates the audit table beside the
 money path; `callrecord` is read only through the persisted cursors they own. Workers call

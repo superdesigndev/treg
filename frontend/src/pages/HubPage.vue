@@ -7,6 +7,7 @@ export default { setup: useDashboard }
           <template v-if="!hub.tool">
             <h1>Hub - {{activeName}}</h1>
             <p class="sub">Tools your team published for other people's agents: a JSON steps recipe or a script in a sandbox. Every step runs through your own tools and keys; callers pay the steps and your price.</p>
+            <p v-if="meta.vibe"><a class="btn sm primary" href="/vibe-it">Build one with vibe-it</a> <span class="sub">Describe a tool in plain words; treg's agent builds it with you.</span></p>
             <p v-if="hub.err" class="err">{{hub.err}}</p>
             <p v-if="hub.note" class="sub">{{hub.note}}</p>
             <div class="statgrid" style="margin:12px 0;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
@@ -49,6 +50,7 @@ export default { setup: useDashboard }
               <button :class="{active:hub.tab==='versions'}" @click="hub.tab='versions'">Versions</button>
               <button :class="{active:hub.tab==='price'}" @click="hub.tab='price'">Price</button>
               <button :class="{active:hub.tab==='listing'}" @click="hub.tab='listing'">Listing</button>
+              <button v-if="meta.hub_apps" :class="{active:hub.tab==='app'}" @click="hub.tab='app'; loadHubApp()">App</button>
               <button :class="{active:hub.tab==='earnings'}" @click="hub.tab='earnings'; loadHubEarnings()">Earnings</button>
               <button :class="{active:hub.tab==='runs'}" @click="hub.tab='runs'; loadHubHealth()">Runs &amp; log</button>
               <button :class="{active:hub.tab==='health'}" @click="hub.tab='health'; loadHubHealth()">Health</button>
@@ -134,6 +136,42 @@ POST {{proxy}}/call/{{hub.tool.tool_id}}    X-Treg-Token · JSON body of inputs<
                 <p class="sub" style="margin:4px 0 0 21px;max-width:70ch">The last 20 runs and runs per day for 30 days: time, outcome, duration, units and the price paid. Never who called, never the inputs, never the output.</p>
               </div>
               <p class="sub">From the terminal: <code>treg hub list {{hub.tool.tool_id}}</code> · <code>treg hub unlist {{hub.tool.tool_id}}</code> · <code>treg hub log {{hub.tool.tool_id}} --public off</code></p>
+            </template>
+
+            <template v-if="hub.tab==='app'">
+              <p class="sub" style="max-width:70ch">A web page for this tool: a form built from its inputs, the result, and each visitor's own runs. Visitors sign in and run it as their own team, at the same price as a call.</p>
+              <p v-if="!hub.app" class="sub">Loading…</p>
+              <template v-else>
+                <div style="margin:14px 0 4px">
+                  <div class="lbl">Page</div>
+                  <p class="sub" style="margin:4px 0;max-width:70ch">
+                    <template v-if="hub.app.enabled"><b class="ok">On</b> at <a :href="hub.app.url" target="_blank" rel="noopener">{{hub.app.url}}</a></template>
+                    <template v-else><b>Off.</b> <template v-if="hub.app.name">It comes back at the same address.</template></template>
+                  </p>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+                    <span class="sub">/apps/{{activeOrg && activeOrg.slug}}/</span>
+                    <input v-model="hub.appName" class="bindinput" style="max-width:220px;flex:none" placeholder="name" aria-label="App name" :disabled="hub.appSaving||!canRegister"/>
+                    <button class="btn sm primary" :disabled="hub.appSaving||!canRegister||hub.tool.status!=='live'" @click="enableHubApp()">{{!hub.app.enabled ? 'Turn on' : 'Save name'}}</button>
+                    <button v-if="hub.app.enabled" class="btn sm" @click="copyText(hub.app.url,'the app URL')">Copy URL</button>
+                    <button v-if="hub.app.enabled" class="btn sm" :disabled="hub.appSaving||!canRegister" @click="disableHubApp()">Turn off</button>
+                  </div>
+                  <p v-if="hub.tool.status!=='live'" class="sub warn">Only a live version can have an app.</p>
+                </div>
+                <div v-if="hub.app.name" style="margin:18px 0 4px">
+                  <div class="lbl">Password</div>
+                  <p class="sub" style="margin:4px 0;max-width:70ch">
+                    <template v-if="hub.app.password"><b>Set.</b> <template v-if="hub.app.locked">While the app is on, other teams need it on the page and to call the tool (<code>X-Treg-Tool-Password</code>), and the tool is out of catalog search.</template><template v-else>It applies again when the app is on.</template></template>
+                    <template v-else>None: anyone with the link can open the page.</template>
+                    Your own team never needs it.
+                  </p>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px">
+                    <input v-model="hub.appPw" type="password" autocomplete="new-password" class="bindinput" style="max-width:260px;flex:none" :placeholder="hub.app.password?'new password':'8 characters or more'" aria-label="App password" :disabled="hub.appSaving||!canRegister"/>
+                    <button class="btn sm primary" :disabled="hub.appSaving||!canRegister||(hub.appPw||'').length<8" @click="setHubAppPassword(false)">{{hub.app.password?'Change password':'Set password'}}</button>
+                    <button v-if="hub.app.password" class="btn sm" :disabled="hub.appSaving||!canRegister" @click="setHubAppPassword(true)">Remove password</button>
+                  </div>
+                </div>
+                <p class="sub">From the terminal: <code>treg hub app on {{hub.tool.tool_id}}</code> · <code>treg hub app password {{hub.tool.tool_id}}</code></p>
+              </template>
             </template>
 
             <template v-if="hub.tab==='earnings'">

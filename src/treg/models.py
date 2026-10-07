@@ -1372,6 +1372,96 @@ class HubListing(SQLModel, table=True):
     reviewed: bool = Field(default=False)
 
 
+class VibeSession(SQLModel, table=True):
+    """One vibe-it conversation (docs/context/architecture/vibe-it.md): a maker and treg's agent
+    shaping one hub tool. `draft` holds the files as they stand ({manifest, script, check, readme,
+    data}); `tool_id` is set once it is published or loaded. Deleted with its user, or by the user.
+    `summary` replaces old messages once the session has been idle long enough (the transcript is
+    trimmed, the work is kept). `pending` is the one action the agent asked the maker to approve;
+    `running_since` marks the agent at work (any instance) under `run_token`, `stop_requested` asks it
+    to stop."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    org_id: int = Field(foreign_key="org.id", index=True)   # the team the tool is built for
+    title: str = Field(default="")
+    draft: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    tool_id: str | None = Field(default=None)
+    summary: str | None = Field(default=None)
+    pinned: bool = Field(default=False)
+    auto_test: bool = Field(default=False)          # the maker let the agent test-run without asking
+    pending: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
+    running_since: datetime | None = Field(default=None)   # refreshed every turn and step while it works
+    run_token: str | None = Field(default=None)            # the run holding the mark; only it may release it
+    stop_requested: bool = Field(default=False)
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now, index=True)
+
+
+class VibeDraft(SQLModel, table=True):
+    """One version of a conversation's files, numbered from 1: who made it (agent, maker, load,
+    restore), the last message when it was made (a regenerate goes back to it), and the hub version
+    it became when published."""
+
+    __table_args__ = (UniqueConstraint("session_id", "n", name="uq_vibedraft_session_n"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="vibesession.id")
+    n: int
+    files: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    author: str
+    note: str = Field(default="")
+    message_id: int | None = Field(default=None)
+    published_version: int | None = Field(default=None)
+    created_at: datetime = Field(default_factory=_now)
+
+
+class VibeMessage(SQLModel, table=True):
+    """One turn of a vibe-it conversation: `role` user | assistant | tool, `content` the text or the
+    tool call and its trimmed result. `cost_micro` is the model's cost of an assistant turn, paid by
+    treg, never by the team."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: int = Field(foreign_key="vibesession.id", index=True)
+    role: str
+    content: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
+    cost_micro: int = Field(default=0, sa_column=Column(BigInteger, nullable=False, server_default="0"))
+    created_at: datetime = Field(default_factory=_now)
+
+
+class VibeBudget(SQLModel, table=True):
+    """What treg has spent on one person's vibe-it agent. Per verified user, never per team, and
+    never restored by deleting a team. Not money in the ledger: treg's own model spend."""
+
+    user_id: int = Field(foreign_key="user.id", primary_key=True)
+    spent_micro: int = Field(default=0, sa_column=Column(BigInteger, nullable=False, server_default="0"))
+    updated_at: datetime = Field(default_factory=_now)
+
+
+class HubApp(SQLModel, table=True):
+    """A hub tool's web page, `/apps/<team slug>/<name>` (docs/context/architecture/hub-apps.md): a
+    form built from the tool's inputs, the visitor's runs, run as the visitor's own team. One per
+    tool. The maker turns it on and off; `enabled` false keeps the row and takes the page down.
+
+    `password_hash` is optional. While the app is on and a password is set, it guards the app page
+    and the tool itself for every other team. `lock_version` moves on each change, so an unlock
+    remembered under the old password stops working. `old_names` keeps the names it had before a
+    rename (newest first), so a link to an old name redirects instead of breaking."""
+
+    __table_args__ = (UniqueConstraint("org_id", "name", name="uq_hubapp_org_name"),)
+
+    tool_id: str = Field(primary_key=True)           # `<slug>.<name>` of the hub tool
+    org_id: int = Field(foreign_key="org.id", index=True)
+    name: str                                        # the last part of the URL; unique per team
+    old_names: list = Field(default_factory=list, sa_column=Column(JSON, nullable=False, server_default="[]"))
+    enabled: bool = Field(default=True)
+    password_hash: str | None = Field(default=None)  # `scrypt$n$r$p$salt$hash`; None = no password
+    lock_version: int = Field(default=0)
+    created_by: str = Field(default="")              # the maker's email
+    created_at: datetime = Field(default_factory=_now)
+    updated_at: datetime = Field(default_factory=_now)
+
+
 class HubRun(SQLModel, table=True):
     """One run of a hub tool: who called, which version, what ran, what it cost. Kept 30 days.
     Every step is ALSO an ordinary CallRecord under `{run_id}:s{n}`, so nothing here is a second

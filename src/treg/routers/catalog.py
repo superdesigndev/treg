@@ -624,6 +624,10 @@ async def _hub_endpoint_view(endpoint_id: str, db: AsyncSession,
                 "headers": {"X-Treg-Token": "<your token>", "Content-Type": "application/json"},
             },
             "page": f"{base}/hub/{row.tool_id}",
+            # The maker's app is on with a password: another team's call needs X-Treg-Tool-Password.
+            **({"password_protected": True,
+                "password_note": "send the maker's password in the X-Treg-Tool-Password header"}
+               if row.tool_id in await hub_app.locked_ids(db, [row.tool_id]) else {}),
             "readme": row.readme,
             "capability": capability or None,
             "capability_description": cat.capabilities.get(capability, "") if capability else "",

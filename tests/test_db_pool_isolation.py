@@ -67,6 +67,10 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "application/call/route.py": {API}, "application/call/service.py": {API},
     "application/call/settle.py": {API},
     "application/hub/runner.py": {API},   # a run lives inside the caller's /call/; its record write is part of that request
+    # vibe-it's agent outlives the message request (a closed tab does not stop it), so the route
+    # opens the agent's own session and the agent reads the stop flag on another while the model
+    # streams; both are a person's request, not background work.
+    "routers/vibe.py": {API}, "application/vibe/agent.py": {API},
     "domain/capacity/marks.py": {API}, "domain/capacity/routes_view.py": {API},
     "domain/capacity/view.py": {API},
     "domain/identity/api_keys.py": {BACKGROUND},

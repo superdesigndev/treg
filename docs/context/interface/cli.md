@@ -413,7 +413,11 @@ Bare **`treg connections`** now lists (the subparser is `required=False` with a 
   (`POST /connections/{id}/resource` — select which one), **`rm <id>`** (`DELETE /connections/{id}` —
   disconnect). The old **`oauth`** namespace stays as a hidden alias of `connect` + `providers`.
 - **`hub`** (`cmd_hub_init`/`_run`/`_publish`/`_ls`/`_earnings`/`_price`/`_retire`/`_list`/`_unlist`/`_log`)
-  — publish a tool made of tools. See [hub](../architecture/hub.md).
+  — publish a tool made of tools. See [hub](../architecture/hub.md). **`hub app on|off|password|status
+  <id>`** (`cmd_hub_app`) gives the tool a web page
+  (`--name` on `on`; `password` reads a hidden prompt twice or `TREG_TOOL_PASSWORD`, `--clear`
+  removes it); **`call --tool-password`** asks for another team's tool password (hidden prompt or
+  `TREG_TOOL_PASSWORD`) and sends it as `X-Treg-Tool-Password`. See [hub apps](../architecture/hub-apps.md).
 - **`whoami`** (`cmd_whoami`, visible but outside every `HELP_GROUPS` row) — the account, active team
   + role, and server this CLI talks to (`GET /auth/me` + `/orgs`); added after an agent ran the
   system `whoami` through `treg with` and printed the machine's user name, which reads like the

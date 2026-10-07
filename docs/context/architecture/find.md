@@ -36,7 +36,10 @@ recall read by one `infra.judge` request, bucketed at `search_judge_keep` / `sea
 served to people. The v2 engine below also answers MCP `catalog_search` in the experiment's `v2`
 mode, laid out for an agent by `application/catalog_search.py`
 ([search-experiment](search-experiment.md)); `/catalog/search` answers from the shipped ranker, and
-nothing here touches `store.search`, its scoring or the evidence rerank.
+nothing here touches `store.search`, its scoring or the evidence rerank. [Vibe-it](vibe-it.md)'s
+agent calls `stream` in-process for its `catalog_search` (the person's id stands in for the client
+address in `admit`, under the same hourly windows) and falls back to `/catalog/search` when find is
+not configured, over its limits, or the judge abstains.
 
 ## Two engines, one switch
 

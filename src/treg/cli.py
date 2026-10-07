@@ -2598,6 +2598,9 @@ def cmd_call(args, cfg) -> None:
     headers = {"content-type": ctype} if ctype else {}
     if authorization_method := getattr(args, "authorization_method", None):
         headers["X-Treg-Authorization-Method"] = authorization_method
+    if getattr(args, "tool_password", False):
+        # A hub tool whose maker locked it with a password; asked here so it never sits in shell history.
+        headers["X-Treg-Tool-Password"] = os.environ.get("TREG_TOOL_PASSWORD") or getpass.getpass("  tool password (hidden): ")
     # Some APIs need a caller-supplied header the binding can't know: Google Ads wants
     # `login-customer-id` naming the manager account whenever you act on a client under an MCC,
     # and it changes per call, so it can't live on the tool. Injected bindings still win — a
@@ -5578,6 +5581,38 @@ def _hub_flag(args, cfg, field: str, value: bool, section: str, line: str) -> No
     _kv(field, line)
 
 
+def cmd_hub_app(args, cfg) -> None:
+    """On, off, password, status of a tool's web page (docs/context/architecture/hub-apps.md)."""
+    path = f"/hub/tools/{args.tool_id}/app"
+    with _client(cfg) as c:
+        if args.action == "on":
+            r = c.put(path, json={"name": args.name} if args.name else {})
+        elif args.action == "off":
+            r = c.delete(path)
+        elif args.action == "password":
+            if args.clear:
+                pw = None
+            else:
+                pw = os.environ.get("TREG_TOOL_PASSWORD") or getpass.getpass("  new app password, 8+ characters (hidden): ")
+                if not os.environ.get("TREG_TOOL_PASSWORD") and getpass.getpass("  again: ") != pw:
+                    sys.exit("the two passwords differ; nothing changed")
+            r = c.put(path + "/password", json={"password": pw})
+        else:
+            r = c.get(path)
+    if r.status_code != 200:
+        _hub_report(r, json_out=getattr(args, "json", False))
+    d = r.json()
+    if getattr(args, "json", False):
+        print(json.dumps(d, indent=2)); return
+    _section("App")
+    _kv("tool", d["tool_id"])
+    _kv("page", (f"{_G}on{_R}  {d['url']}" if d.get("enabled") else f"off{('  (comes back at /' + d['url'].split('/', 3)[-1] + ')') if d.get('url') else ''}"))
+    _kv("password", ("set: other teams need it on the page and to call the tool" if d.get("locked")
+                     else "set, applies while the app is on" if d.get("password") else "none"))
+    if d.get("enabled") and not d.get("password"):
+        _arrow(f"treg hub app password {d['tool_id']}   to require a password")
+
+
 _LISTING_WORDS = {
     "none": "not in search — callable by id and share link only",
     "requested": "requested — it appears in catalog search once treg approves it",
@@ -6504,6 +6539,8 @@ def build_parser() -> argparse.ArgumentParser:
     cl.add_argument("--data", help="request body (string)"); cl.add_argument("--file", help="request body from a file")
     cl.add_argument("--content-type", dest="content_type", metavar="TYPE",
                     help="Content-Type for the body (default: sniffed — a body that parses as JSON sends application/json)")
+    cl.add_argument("--tool-password", dest="tool_password", action="store_true",
+                    help="a hub tool its maker protected with a password: asks for it (or reads TREG_TOOL_PASSWORD)")
     cl.add_argument("--header", action="append", default=[], metavar="'K: V'",
                     help="an extra request header (repeatable), e.g. --header 'login-customer-id: 1234567890'. "
                          "Injected credentials always win.")
@@ -6795,6 +6832,16 @@ def build_parser() -> argparse.ArgumentParser:
                "treg hub log <team>.<name> --public off")
     h_log.add_argument("tool_id"); h_log.add_argument("--public", choices=["on", "off"], required=True)
     h_log.set_defaults(fn=cmd_hub_log)
+    h_app = mk(hs, "app", "A web page for one of your tools, /apps/<team>/<name>: a form, the result, each visitor's own runs. "
+               "Visitors sign in and run it as their own team. An optional password guards the page and the tool while it is on.",
+               "treg hub app on acme.leads-db", "treg hub app on acme.leads-db --name leads",
+               "treg hub app password acme.leads-db", "treg hub app password acme.leads-db --clear",
+               "treg hub app off acme.leads-db", "treg hub app status acme.leads-db")
+    h_app.add_argument("action", choices=["on", "off", "password", "status"])
+    h_app.add_argument("tool_id")
+    h_app.add_argument("--name", help="the last part of the URL (on); default: the tool's name")
+    h_app.add_argument("--clear", action="store_true", help="remove the password (password)")
+    h_app.set_defaults(fn=cmd_hub_app)
     h_ret = mk(hs, "retire", "Take one of your tools off the call road (every version); history and earnings stay readable.",
                "treg hub retire acme.leads-db")
     h_ret.add_argument("tool_id")

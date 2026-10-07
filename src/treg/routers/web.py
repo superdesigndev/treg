@@ -60,6 +60,27 @@ def _dashboard_document(index: Path) -> str:
     return document
 
 
+def page_entry(name: str) -> HTMLResponse:
+    """A standalone page built beside the Dashboard (`frontend/<name>.html`, entry
+    `src/<name>/main.ts`): the hub app page, vibe-it. Same Vue and build, none of the Dashboard's
+    shell. Local frontend development serves Vite's module scripts, like `/app`."""
+    settings = get_settings()
+    if settings.frontend_dev:
+        index = Path(__file__).resolve().parents[3] / "frontend" / f"{name}.html"
+        host = urlsplit(settings.public_url).hostname
+        origin = "http://[::1]:5173" if host == "::1" else f"http://{host}:5173"
+        document = index.read_text(encoding="utf-8").replace(
+            f'<script type="module" src="/src/{name}/main.ts"></script>',
+            f'<script type="module" src="{origin}/app/ui/@vite/client"></script>'
+            f'<script type="module" src="{origin}/app/ui/src/{name}/main.ts"></script>')
+    else:
+        index = _WEB_DIR / "dashboard" / f"{name}.html"
+        if not index.exists():
+            raise HTTPException(503, f"{name} page not bundled")
+        document = index.read_text(encoding="utf-8")
+    return HTMLResponse(document, headers={"Cache-Control": "private, no-store", "X-Robots-Tag": "noindex"})
+
+
 LOCAL_USER_EMAIL = "you@local.treg"   # the single-user identity; a real address is never needed
 
 
@@ -2375,6 +2396,7 @@ async def hub_page(request: Request, tool_id: str, db: AsyncSession = Depends(ge
     caps = m.get("limits", {})
     kind = "script, sandboxed" if row.kind == "script" else f"{len(m.get('steps', []))} steps"
     older = await _hub_older_versions(db, row)
+    locked = row.tool_id in await hub_app.locked_ids(db, [row.tool_id])
     title = f"{row.name} · a hub tool by {maker}"
     desc = _serp_desc(row.summary)
 
@@ -2387,7 +2409,8 @@ async def hub_page(request: Request, tool_id: str, db: AsyncSession = Depends(ge
               row.summary, "", f"**Price:** {price_range} — {range_note}. {price_line} ({per_k}); {HUB_PAY_NOTE}.", "",
               "## Call it", "", "```", f"treg call {row.tool_id} --data '{example_json}'", "",
               f"POST {base}/call/{row.tool_id}    X-Treg-Token · Content-Type: application/json · body {example_json}", "```", "",
-              f"Your agent: `catalog_get(\"{row.tool_id}\")` then `call`. Needs a treg token and balance.", "",
+              f"Your agent: `catalog_get(\"{row.tool_id}\")` then `call`. Needs a treg token and balance."
+              + (" **Password protected:** send the maker's password in the `X-Treg-Tool-Password` header." if locked else ""), "",
               "## Inputs", "", "| name | type | default | example | note |", "|---|---|---|---|---|"]
         for k, v in inputs.items():
             dflt = json.dumps(v["default"]) if "default" in v else "required"
@@ -2438,6 +2461,7 @@ async def hub_page(request: Request, tool_id: str, db: AsyncSession = Depends(ge
     <div style="margin-top:8px;font-size:13px">{e(health_word)}{(' · checked ' + e(checked_at)) if checked_at else ''}</div>
   </div>
 
+  {'<p class="pricecard"><b>Password protected.</b> Its maker asks for a password: send it in the <code>X-Treg-Tool-Password</code> header, or use the app page.</p>' if locked else ''}
   <h2>Call it</h2>
   <pre><code>treg call {e(row.tool_id)} --data '{e(example_json)}'
 
@@ -3586,7 +3610,11 @@ def _strip_routed(text: str, hub_on: bool | None = None) -> str:
     # The hub sections follow the reader: while TREG_HUB_TEAMS limits the hub, only a reader acting
     # for a listed team gets them (`hub_on`, from the route); with no reader, the public answer.
     if hub_on if hub_on is not None else _hub_app_visible(None):
-        return text.replace("<!--hub-->\n", "").replace("\n<!--/hub-->", "")
+        text = text.replace("<!--hub-->\n", "").replace("\n<!--/hub-->", "")
+        # Hub apps sit inside the hub sections, behind their own flag (TREG_HUB_APPS_ENABLED).
+        if get_settings().hub_apps_enabled:
+            return text.replace("<!--hubapps-->\n", "").replace("\n<!--/hubapps-->", "")
+        return re.sub(r"<!--hubapps-->.*?<!--/hubapps-->\n?", "", text, flags=re.S)
     return re.sub(r"<!--hub-->.*?<!--/hub-->\n?", "", text, flags=re.S)
 
 

@@ -554,6 +554,18 @@ class Settings(BaseSettings):
     # beside `hub_teams` (owner, 2026-09-26): colleagues try it from their own accounts, with no
     # shared team. Either list lets a reader in; both empty means every team.
     hub_users: str = ""
+    # A hub tool's web page, `/apps/<team>/<name>` (docs/context/architecture/hub-apps.md). Needs the
+    # hub; the hub's team and person lists limit it the same way. Off by default.
+    hub_apps_enabled: bool = False
+    # Vibe-it (docs/context/architecture/vibe-it.md): a chat page where treg's agent helps a maker
+    # build a hub tool. Needs the hub; the hub's lists limit it. The model answers through the AI
+    # gateway (`ai_gateway_api_key`); treg pays for it, up to `vibe_budget_usd` per verified person.
+    vibe_enabled: bool = False
+    vibe_model: str = "anthropic/claude-sonnet-5.5"
+    vibe_fallback_model: str = "openai/gpt-5"
+    vibe_budget_usd: float = 5.0
+    # A conversation idle this long keeps its draft and a short summary; its messages are dropped.
+    vibe_trim_after_days: int = 30
     # `/table/<tool id>`: the same call as `/call/`, answered as rows and columns (for the Google
     # Sheets add-on). Off by default; with it on, `table_teams` / `table_users` limit it the same
     # way `hub_teams` / `hub_users` limit the hub, and both empty means every team.

@@ -510,6 +510,12 @@ and `200` when it is on.
   per day: time, outcome, ms, steps, units, price paid — never who called, never inputs or output.
 - Versions: the newest live one serves; `<id>@N` pins one for 30 days after a newer lands.
   `treg hub earnings <id>` shows runs and credit per day.
+<!--hubapps-->
+- Apps: `treg hub app on <id>` gives a tool a web page, `{BASE}/apps/<team>/<name>` (a form from its
+  inputs, the result, each visitor's own runs; visitors sign in and pay as their own team). `treg hub
+  app password <id>` guards the page and the tool while the app is on: another team's call then needs
+  `X-Treg-Tool-Password` or gets `403 hub_tool_locked`, and the tool leaves search. MCP: `hub_app`.
+<!--/hubapps-->
 <!--/hub-->
 ## Install the CLI
 
@@ -581,6 +587,9 @@ before relying on one; `none` means the catalog has no tool for it, so file `cat
 instead of rephrasing; `keyword` means ranked by words alone.
 <!--hub-->
 - `hub_create` · `hub_update` · `hub_mine` — publish a tool made of tools (the four files as fields; the check runs once on your balance; live on pass).
+<!--hubapps-->
+- `hub_app` — turn a hub tool's web page on or off, or rename it (`/apps/<team>/<name>`).
+<!--/hubapps-->
 <!--/hub-->
     review           rate a catalog call after using its result
 
@@ -624,6 +633,9 @@ are both supported; you do not need to pre-arrange anything with us.
     treg hub run <dir> --input k=v                run the folder for real on your token; nothing stored
     treg hub publish <dir>                        validate, run check.json once, live on pass (a new version)
     treg hub ls | earnings <id> [--days N] [--csv]   your hub tools; what one earned, per day
+<!--hubapps-->
+    treg hub app on|off|password|status <id>      a web page for a hub tool, /apps/<team>/<name>
+<!--/hubapps-->
 <!--/hub-->
     treg org create "Name"                        make a team, become owner
     treg org ls | org use <slug>                  list / switch the active org

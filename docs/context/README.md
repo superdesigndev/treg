@@ -24,6 +24,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Data model — the registry tables, async DB, audit writer](architecture/data-model.md) | shipped | 0042_pinned_read_scope.py, alembic.ini, env.py, 0001_baseline_current_schema.py, … |
 | [Feedback - private intake for problems and suggestions](architecture/feedback.md) | shipped | feedback_contract.py, __init__.py, reports.py, reviews.py, … |
 | [Find tools for a job - /catalog/find, recall by job and one judge request](architecture/find.md) | building | catalog_find.py, find_recall.py, find_index.py, embed.py, … |
+| [Hub apps — a hub tool's web page](architecture/hub-apps.md) | building; behind `hub_apps_enabled` (TREG_HUB_APPS_ENABLED) and the hub's own flag | apps.py, apps.py, hub_apps.py, 0065_hub_app.py, … |
 | [The tool hub — tools a maker publishes, made of other tools](architecture/hub.md) | built (phases 1–10, 2026-09-09/14; pricing flexibility 9.1–9.5 (`docs/hub-pricing-decisions.md`), listing + public run log 10.1–10.5 (`docs/hub-listing-decisions.md`)); behind `hub_enabled` (TREG_HUB_ENABLED), off in production until the final merge | __init__.py, manifest.py, refs.py, graph.py, … |
 | [Enforced import boundaries](architecture/import-boundaries.md) | shipped | pyproject.toml, ci.yml, __init__.py, __init__.py, … |
 | [Instagram OAuth — direct Login and optional Facebook Page tools](architecture/instagram-oauth.md) | built; Meta configuration and live verification pending | catalog_ingest.py, access.py, resolve.py, service.py, … |
@@ -37,6 +38,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Discovery experiment — a relevance judge behind catalog search, measured on what the caller does next; the job-first answer served to agents](architecture/search-experiment.md) | building | catalog_search.py, search_experiment.py, interleave.py, judge.py, … |
 | [Super-admin — cross-tenant read + control](architecture/super-admin.md) | shipped | api.py, admin.py, evidence_retention.py, access.py, … |
 | [The table layer — one call, answered as rows and columns (`/table/`)](architecture/table.md) | built, behind `table_enabled` (TREG_TABLE_ENABLED), off by default | __init__.py, table.py, table.py, call.py, … |
+| [Vibe-it — build a hub tool in conversation](architecture/vibe-it.md) | building; behind `vibe_enabled` (TREG_VIBE_ENABLED) and the hub's own flag | __init__.py, agent.py, status.py, vibe.py, … |
 
 ## Interfaces (API · CLI · skill)
 

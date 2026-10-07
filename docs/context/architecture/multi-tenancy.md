@@ -300,8 +300,9 @@ bearer path refuses it once expired rather than reviving an expired cookie.
   through `cascade_delete_org` / `ORG_SCOPED_MODELS` in `domain/governance/teams.py` - including any
   pending `AdConversion`: a queued conversion belongs to the team it would be attributed to,
   `Media`: hosted reference files would otherwise outlive the team until their TTL, and
-  `HubListing`/`HubTool`: a maker's published tools and search listings go with the team that owned
-  them).
+  `HubListing`/`HubTool`/`HubApp`: a maker's published tools, search listings and app pages go
+  with the team that owned them; `VibeSession`: a vibe-it conversation goes with the team it built
+  for, its `VibeMessage` rows deleted just before, by hand, since they name only the conversation).
   **That list is the only one**, plus one named exception: `cascade_delete_org` also deletes every
   `HubRun` where `caller_org_id == org.id` before that sweep, because a run names the team that
   CALLED by that foreign key and the maker only by number — a caller's traces go with the caller, a

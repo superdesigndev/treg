@@ -373,6 +373,24 @@ def _positive_int(value: str) -> int:
     return n
 
 
+async def _vibe_trim(args) -> int:
+    """Vibe-it conversations idle for `vibe_trim_after_days` keep their draft, their published tool
+    and a short summary; their messages go (docs/context/architecture/vibe-it.md). Cron it daily."""
+    from .application import vibe as vibe_app
+    from .infra.db import session_maker, verify_db
+    await verify_db()
+    n = 0
+    while True:                          # a batch per transaction, so no run holds one long
+        async with session_maker() as db:
+            done = await vibe_app.trim_idle(db)
+            await db.commit()
+        n += done
+        if not done:
+            break
+    print(f"{n} conversation(s) trimmed")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="treg-worker", description=__doc__)
     sub = ap.add_subparsers(dest="group", required=True)
@@ -408,6 +426,10 @@ def main(argv: list[str] | None = None) -> int:
     chk.add_argument("--only", help="one tool id (default: every live tool, newest version)")
     chk.add_argument("--json", action="store_true")
     chk.set_defaults(fn=_hub_check)
+    vibe = sub.add_parser("vibe", help="vibe-it conversations")
+    vibesub = vibe.add_subparsers(dest="cmd", required=True)
+    trim = vibesub.add_parser("trim", help="drop the messages of idle conversations, keeping each draft and a summary")
+    trim.set_defaults(fn=_vibe_trim)
     arena = sub.add_parser("arena", help="Enrich Arena database-backed statistics")
     arenasub = arena.add_subparsers(dest="cmd", required=True)
     insights = arenasub.add_parser("insights", help="fold new audit rows into the rolling Arena aggregate")

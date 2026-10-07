@@ -84,8 +84,20 @@ export default async function boot(){
         route=this.routeFromPath(stashed); mkRoute=this.mkFromPath(stashed);
         if(route||mkRoute) history.replaceState(null,'',stashed);
       } }
+    // A standalone page (a hub app, vibe-it) sent the visitor here to sign in: `next` names it, and
+    // only those paths are followed, so the parameter cannot become an open redirect.
+    // The path is rebuilt from the matched parts, never passed through as given.
+    const standalone=p=>{
+      if(typeof p!=='string') return null;
+      if(/^\/vibe-it\/?$/.test(p)) return '/vibe-it';
+      const m=/^\/apps\/([a-z0-9-]+)\/([a-z0-9-]+)\/?$/.exec(p);
+      return m ? '/apps/'+encodeURIComponent(m[1])+'/'+encodeURIComponent(m[2]) : null;
+    };
+    const nextPath=standalone(qs.get('next')) || standalone(stashed);
     this._restoreAgent();
     const me = await meReq.catch(()=>null);
+    if(nextPath && me){ location.replace(nextPath); return; }
+    if(nextPath && !me){ storageSet('treg-next', nextPath); history.replaceState(null,'',location.pathname); }
     this.sessionChecked=true;
     if(me){ this.sessionMode=true; this.me=me.email; this.isAdmin=!!me.is_superadmin; this.onboarded=!!me.onboarded; this.onboardingV2=!!me.onboarding_v2; this.onboardingV2Exp=!!me.onboarding_v2_experiment; this.icHash=me.intercom_user_hash||''; await this.loadAll(); this.analyticsIdentify(); this.initIntercom();
       // /app#onboarding-preview: the first-run flow for any email, for the people allowed to run it.
@@ -140,7 +152,7 @@ export default async function boot(){
       // renders blank in an incognito window.
       if(catRoute.view==='find'){ this.view='find'; this.loadPlatforms(); } else if(catRoute.slug) this.openPlatform(catRoute.slug, true); else { this.view='catalog'; this.loadConnections(); }
       return; }
-    if(!inv && !linkOrg && !route && !qs.get('invite_expired') && !ref && !oauthSignin){ location.replace('/'); return; }  // logged-out plain visit → the marketing landing owns the front door. `ref` is a use-case page's CTA (/app?ref=p1), so keep that attribution while opening sign-in in place.
+    if(!inv && !linkOrg && !route && !qs.get('invite_expired') && !ref && !oauthSignin && !nextPath){ location.replace('/'); return; }  // logged-out plain visit → the marketing landing owns the front door. `ref` is a use-case page's CTA (/app?ref=p1), so keep that attribution while opening sign-in in place.
     if(route){ this.shareGate=route; this.demo.signin=true; }  // shared link while logged out: the focused gate (no sandbox mint, no tour); after sign-in the boot lands on it (email verify reloads in place; OAuth restores via the treg-next stash)
     else this.demo.signin=true;  // OAuth returns, use-case CTA arrivals (?ref=) and every other logged-out flow open sign-in; nothing mints a sandbox any more
     if(inv){ this.invitePrefill=inv; this.emailInput=inv; this.emailStage=false; this.demo.signin=true; }  // legacy code link while logged out: prefill + open sign-in; the invite auto-accepts after login (maybeOnboard)

@@ -155,6 +155,22 @@ def test_a_stored_manifest_validates_again_unchanged():
         assert validate(dict(once, name="leads-db"), catalog_ids=CATALOG, own_tools=OWN).manifest == once
 
 
+def test_a_stored_version_reads_back_as_files_that_validate():
+    """vibe-it loads a published tool as files to change: the stored forms (a free script's zero
+    cap, the first check case beside `cases`) must come back as files the validator takes."""
+    from treg.domain.hub import as_files
+    for m in (_script_manifest(), _script_manifest(pricing={"max_price_usd": 0.05}),
+              _no_price(_steps_manifest(pricing={"price_usd": 0.03})), _no_price(_steps_manifest())):
+        once = validate(m, catalog_ids=CATALOG, own_tools=OWN).manifest
+        file, _ = as_files({**once, "version": 3}, {})
+        assert "version" not in file
+        assert validate(file, catalog_ids=CATALOG, own_tools=OWN).manifest == once
+    stored = {"inputs": {"a": 1}, "fields": ["x"], "min_rows": 0, "cases": [{"inputs": {"a": 1}, "fields": ["x"], "min_rows": 0}]}
+    assert as_files({}, stored)[1] == {"inputs": {"a": 1}, "fields": ["x"], "min_rows": 0}
+    two = {**stored, "cases": stored["cases"] * 2}
+    assert as_files({}, two)[1] == {"cases": two["cases"]}
+
+
 @pytest.mark.parametrize("m,field,words", [
     (_steps_manifest(pricing={"price_usd": 0.01}), "price_usd", "not a top-level"),
     (_no_price(_steps_manifest(pricing={"mode": "percent", "percent": 30})), "pricing.mode", "only `price_usd`"),

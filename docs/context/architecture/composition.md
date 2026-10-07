@@ -167,7 +167,13 @@ key file; listed in the ownership table beside `/sitemap.xml`. See `interface/se
 The [tool hub](hub.md)'s management and browse surface (`/hub/tools*`, `/hub/run`, `/hub/runs/{run_id}`,
 `/hub/{tool_id}`, `/app/runs/{run_id}`, and the `/admin/hub/listings*` + `/admin/hub/updates*` review
 routes) joins `_CONTROL_ROUTE_KEYS` alongside the rest of the management surface; `/call/` and
-`/catalog/call/` remain the only dataplane routes a hub run's own steps go through. The legacy
+`/catalog/call/` remain the only dataplane routes a hub run's own steps go through. So do
+[hub apps](hub-apps.md) (`routers/hub_apps.py`: `/hub/tools/{id}/app*` and `/apps/{team}/{name}*`) and
+[vibe-it](vibe-it.md) (`routers/vibe.py`: `/vibe-it` and `/vibe/*`); an app's run route reaches the
+call road in-process through `run_call_surface`, as the hub's check does. Their two pages are Vite
+entries beside the Dashboard (`frontend/apps.html`, `frontend/vibe.html`), served by
+`routers/web.page_entry(name)`: the built `dashboard/<name>.html`, or the Vite dev server's entry
+under `TREG_FRONTEND_DEV`. The legacy
 dashboard's `/app/legacy/assets/{path:path}` mount is gone — see [dashboard](../interface/dashboard.md).
 
 No web process collects Arena statistics any more: `treg-worker arena insights` (a cron) does,

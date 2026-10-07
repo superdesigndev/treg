@@ -152,6 +152,7 @@ class _StaticSurfaceCapabilities:
 
 
 _HUB_TOOL_NAMES = frozenset({"hub_create", "hub_update", "hub_mine"})
+_HUB_APP_TOOL_NAMES = frozenset({"hub_app"})
 
 # OpenAI's clients: ChatGPT and its plugin reviewer send `openai-mcp/...`, Codex `codex-mcp-client/...`.
 # Their plugin review reads an agent-initiated `review`, and the review/feedback invitations in call
@@ -220,15 +221,22 @@ class _HubToolsGate:
         self, ctx: ServerRequestContext[Any, Any], call_next: CallNext
     ) -> HandlerResult:
         result = await call_next(ctx)
-        if ctx.method != "tools/list" or await self._visible(ctx):
+        if ctx.method != "tools/list":
+            return result
+        # hub_app also needs apps on (TREG_HUB_APPS_ENABLED); the other hub tools need only the hub
+        if not await self._visible(ctx):
+            hidden = _HUB_TOOL_NAMES | _HUB_APP_TOOL_NAMES
+        elif not get_settings().hub_apps_enabled:
+            hidden = _HUB_APP_TOOL_NAMES
+        else:
             return result
         if isinstance(result, dict) and isinstance(result.get("tools"), list):
             return {**result, "tools": [t for t in result["tools"]
                                         if (t.get("name") if isinstance(t, dict) else getattr(t, "name", None))
-                                        not in _HUB_TOOL_NAMES]}
+                                        not in hidden]}
         tools = getattr(result, "tools", None)
         if isinstance(tools, list):
-            return result.model_copy(update={"tools": [t for t in tools if getattr(t, "name", None) not in _HUB_TOOL_NAMES]})
+            return result.model_copy(update={"tools": [t for t in tools if getattr(t, "name", None) not in hidden]})
         return result
 
     @staticmethod
@@ -1056,6 +1064,49 @@ async def hub_mine(ctx: Context) -> HubMineOut:
         return {"tools": payload}
     return {"error": f"http_{r.status_code}", "detail": payload.get("detail", payload) if isinstance(payload, dict) else payload}
 
+
+
+HUB_APP_DESCRIPTION = (
+    "Turn on, rename or turn off the web page of one of your team's hub tools: "
+    "`/apps/<team>/<name>`, a form built from its inputs, the result, and each visitor's own runs. "
+    "Visitors sign in and run it as their own team, at the same price as a call. `enabled` false takes "
+    "the page down. Omit both to read its state. A password cannot be set here: the maker sets it in "
+    "the dashboard or with `treg hub app password`."
+)
+
+
+class HubAppOut(TypedDict, total=False):
+    tool_id: str | None
+    enabled: bool | None
+    name: str | None
+    url: str | None
+    password: bool | None
+    locked: bool | None
+    error: str | None
+    detail: Any
+
+
+@mcp.tool(
+    description=HUB_APP_DESCRIPTION,
+    annotations=ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False,
+                                idempotent_hint=True),
+    structured_output=True,
+)
+async def hub_app(tool_id: str, ctx: Context, enabled: bool | None = None, name: str | None = None) -> HubAppOut:
+    token = _bearer(ctx)
+    path = f"/hub/tools/{tool_id}/app"
+    async with _api(token) as client:
+        if enabled is False:
+            r = await client.delete(path)
+        elif enabled is True or name is not None:
+            r = await client.put(path, json={"name": name} if name else {})
+        else:
+            r = await client.get(path)
+    payload = _body(r)
+    if r.status_code == 200:
+        return {k: payload.get(k) for k in ("tool_id", "enabled", "name", "url", "password", "locked")}
+    detail = payload.get("detail", payload) if isinstance(payload, dict) else payload
+    return {"error": f"http_{r.status_code}", "detail": detail}
 
 
 async def _catalog_request_impl(

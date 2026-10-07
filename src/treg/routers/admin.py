@@ -665,6 +665,8 @@ async def admin_delete_user(
     # The USER row is about to go, so member-scoped rules must go from EVERY org — `DenyRule.user_id`
     # is a foreign key, and a surviving row would dangle (a hard error on Postgres).
     await drop_member_deny_rules(db, user_id)
+    from ..application import vibe as vibe_app
+    await vibe_app.forget_user(db, user_id)    # their vibe-it conversations and budget row
     await db.delete(user)
     await db.commit()
     return {"deleted_user": user_id, "deleted_empty_orgs": emptied}

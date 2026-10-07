@@ -243,6 +243,25 @@ run for real as the maker, nothing stored, version 0 on every trace. `PATCH /hub
 inputs with secrets masked, trace, log and the full error; a caller's trace and error never
 carry an upstream error body; any other team 404).
 
+A stored version is not the maker's file: validation fills in what the file left out (the pricing
+`mode`, a free script's zero cap, a recipe's price beside its `pricing` block, the first check case
+beside `cases`, an unset cost limit). `domain/hub.as_files` turns a stored version back into a
+`recipe.json` and `check.json` that validate again unchanged; vibe-it loads a published tool through
+it ([vibe-it](vibe-it.md)).
+
+**A tool id is permanent.** `<team slug>.<name>` is set when a version is stored (`publish`, from
+the team's current slug) and never rewritten, so every agent, pin and saved call line that holds it
+keeps working: a team rename leaves its published versions serving under the old id. A version
+published after a slug change is stored under the new slug, which is a new id and starts at version 1;
+the old id keeps serving what it had. An app follows the team's current slug, and its old path
+redirects there ([hub apps](hub-apps.md)).
+
+**Known gap: a deleted team's slug is free again.** Team deletion removes the `Org` row, slug and
+`previous_slug` with it, so a new team may take the same slug. It can then publish a tool or an app
+under the same id or path a deleted team's callers still hold, and those calls and links would reach
+the new team's tool. Nothing reserves deleted slugs yet; the fix (keep them as taken, as a renamed
+team's old slug already is) touches team deletion for every team and is left to its own change.
+
 Versions: the newest `live` serves `/call/<id>`; `<id>@N` pins one, and a pinned old version
 stays callable for 30 days after a newer live one exists (`application/hub.tool_for`). The call
 road's resolution order is unchanged for everything that exists today and gains a third, last
@@ -287,6 +306,11 @@ day and overall; `avg_price_usd` in the CSV) is how a maker sees where a variabl
 bump; a script's amounts change only with a new version of run.js.
 
 ## The surfaces
+
+- **Hub apps** (behind their own flag): an optional web page per tool, `/apps/<team>/<name>`, with
+  an optional password that, while the app is on, also locks the tool for other teams. See
+  `architecture/hub-apps.md`. **Vibe-it** (behind its own flag) builds a hub tool in conversation
+  with treg's agent; see `architecture/vibe-it.md`.
 
 - **The front door for agents:** `skill.md` and `llms.txt` carry a hub section inside
   `<!--hub-->…<!--/hub-->` blocks that `routers/web.py` strips while the flag is off (as it

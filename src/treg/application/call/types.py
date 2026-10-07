@@ -24,6 +24,8 @@ _BLAME_BY_KIND: dict[str, Blame] = {
     "hub_input_invalid": "caller",
     "hub_run_failed": "upstream",
     "hub_busy": "caller",
+    "hub_tool_locked": "caller",
+    "hub_tool_password_busy": "caller",
     "hub_price_unaffordable": "caller",
     "unknown_endpoint": "caller",
     "target_ambiguous": "caller",
@@ -234,6 +236,9 @@ class CallInput:
     # Set on every child call of a hub run: a child never resolves to a hub tool (no nested
     # runs, no undisclosed second price; 8.1 review).
     child_of: str | None = None
+    # Set only by the app page's run route after it checked the app's unlock cookie: the tool's
+    # password lock (docs/context/architecture/hub-apps.md) is already satisfied. Never from a header.
+    hub_unlocked: bool = False
 
 
 class FinalizationState(Enum):
