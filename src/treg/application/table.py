@@ -114,8 +114,9 @@ async def _hub_fields(context: CallContext, rest: str) -> list[str] | None:
     return [str(k) for k in output] if isinstance(output, dict) else []
 
 
-def _contract(tool_id: str) -> tuple[list[str], str | None] | None:
-    """(output fields in contract order, the required list field or None) for a routed job."""
+def _contract(tool_id: str) -> tuple[list[str], str | None, str] | None:
+    """(output fields in contract order, the required list field or None, the capability) for a
+    routed job."""
     cat = catalog_store.load()
     ep = cat.by_id.get(tool_id)
     if not ep or ep.get("kind") != "routed":
@@ -126,7 +127,7 @@ def _contract(tool_id: str) -> tuple[list[str], str | None] | None:
     fields = list(contract.output)
     list_field = next((f for f, spec in contract.output.items()
                        if (spec or {}).get("type") == "list" and (spec or {}).get("required")), None)
-    return fields, list_field
+    return fields, list_field, contract.capability
 
 
 async def table_answer(context: CallContext, upstream: UpstreamResponse, rest: str) -> tuple[int, dict[str, Any], list[tuple[bytes, bytes]]]:
@@ -157,7 +158,8 @@ async def table_answer(context: CallContext, upstream: UpstreamResponse, rest: s
             tool_id = _tool_id(context, rest)
             contract = _contract(tool_id)
             if contract is not None:
-                table = table_domain.to_table(body, contract_output=contract[0], list_field=contract[1])
+                table = table_domain.to_table(body, contract_output=contract[0], list_field=contract[1],
+                                              capability=contract[2])
             elif tool_id not in catalog_store.load().by_id and (fields := await _hub_fields(context, rest)) is not None:
                 table = table_domain.to_table(body, hub_fields=fields)
             else:
@@ -204,7 +206,7 @@ async def preview(tool_ref: str, *, org_id: int, org_slug: str, email: str) -> d
     cat = catalog_store.load()
     contract = _contract(tool_ref)
     if contract is not None:
-        fields, list_field = contract
+        fields, list_field, capability = contract
         sample: list = []
         if list_field:
             for child in cat.by_id[tool_ref].get("routed_children") or []:
@@ -213,7 +215,8 @@ async def preview(tool_ref: str, *, org_id: int, org_slug: str, email: str) -> d
                 if sample:
                     break
         body = {"output": {list_field: sample} if list_field else {}, "_treg": {}}
-        view = table_domain.columns_only(table_domain.to_table(body, contract_output=fields, list_field=list_field))
+        view = table_domain.columns_only(table_domain.to_table(body, contract_output=fields, list_field=list_field,
+                                                               capability=capability))
         view["coverage"] = _coverage(tool_ref, [list_field] if list_field else fields)
         return view
     ep = cat.by_id.get(tool_ref)

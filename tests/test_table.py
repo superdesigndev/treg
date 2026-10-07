@@ -101,9 +101,9 @@ def test_a_strange_body_never_raises():
 
 
 def test_the_contract_of_a_routed_job_is_found_in_the_catalog():
-    fields, list_field = table_app._contract("treg.people.email.verify")
-    assert fields[:3] == ["valid", "status", "score"] and list_field is None
-    fields, list_field = table_app._contract("treg.people.search")
+    fields, list_field, capability = table_app._contract("treg.people.email.verify")
+    assert fields[:3] == ["valid", "status", "score"] and list_field is None and capability == "people.email.verify"
+    fields, list_field, _ = table_app._contract("treg.people.search")
     assert list_field == "people"
     assert table_app._contract(EP) is None                        # not a routed job
 
@@ -326,3 +326,24 @@ def test_a_one_item_list_is_one_row_unless_it_wraps_tables():
     wrapped = to_table({"tasks": [{"result": [{"k": 1}, {"k": 2}]}]})
     assert wrapped["shape"] == "list" and wrapped["path"] == "tasks[0].result"
 
+
+
+def test_job_and_searched_post_lists_land_in_the_same_columns_whoever_answers():
+    harvest = _example("harvestapi.linkedin.search.jobs")["elements"]
+    anyapi = _example("anyapi.linkedin.search.jobs")["output"]["data"]["items"]
+    for items in (harvest, anyapi):
+        t = to_table({"output": {"jobs": items}}, contract_output=["jobs"], list_field="jobs", capability="linkedin.search.jobs")
+        assert t["columns"][:7] == ["title", "company", "location", "posted_at", "url", "company_url", "company_website"]
+        row = dict(zip(t["columns"], t["rows"][0]))
+        assert row["title"] and row["company"] and str(row["posted_at"]).startswith("20")   # an epoch became ISO time
+    posts = _example("anyapi.linkedin.search.posts.full")["output"]["data"]["posts"]
+    t = to_table({"output": {"posts": posts}}, contract_output=["posts"], list_field="posts", capability="linkedin.search.posts")
+    row = dict(zip(t["columns"], t["rows"][0]))
+    assert row["author"] == "Seth Harris" and row["reactions"] == 25 and row["posted_at"].endswith("Z")
+    x = _example("justoneapi.x.twitter-search-v1")["data"]["timeline"]
+    row = dict(zip(*[(t := to_table({"output": {"posts": x}}, contract_output=["posts"], list_field="posts",
+                                    capability="x.search.posts"))["columns"], t["rows"][0]]))
+    assert row["author"] == "OpenAI" and row["likes"] == 12815
+    # another `posts` list keeps its own columns: the search map is for the search
+    other = to_table({"output": {"posts": [{"caption": "hi"}]}}, contract_output=["posts"], list_field="posts", capability="instagram.user.posts")
+    assert other["columns"] == ["caption"]

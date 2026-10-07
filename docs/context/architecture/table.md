@@ -126,11 +126,16 @@ contract_output=, list_field=, hub_fields=)` never raises: anything it cannot sh
   `catalog.contracts[capability]`). A flat contract: its `output` fields in contract order, then
   `served_by` (from `_treg.served_by`); one row, none when `_treg.outcome == "miss"`. A contract with
   a required `list` field (`people`, `companies`, `results`...): shape `list`, one row per item.
-  Items are the provider's own objects, so `LIST_MAPS` (data, keyed by the list field) maps common
-  names to fixed columns first: `people` to `first_name`, `last_name`, `title`, `company`,
-  `linkedin_url`, `location`; `companies` to `name`, `domain`, `industry`, `employees`, `location`,
-  `linkedin_url` (a bare `url` only as the last domain path: a homepage for one provider, a LinkedIn
-  page for another). A path's numeric part indexes a list (`entities.0.properties.workforce.total`, exa). First matching path that holds text wins (`organization.name` is a path; an object is never
+  Items are the provider's own objects, so `LIST_MAPS` (data, keyed by the capability first, then
+  by the list field) maps common names to fixed columns first: `people` to `first_name`,
+  `last_name`, `title`, `company`, `linkedin_url`, `location`; `companies` to `name`, `domain`,
+  `industry`, `employees`, `location`, `linkedin_url` (a bare `url` only as the last domain path: a
+  homepage for one provider, a LinkedIn page for another); `jobs` to `title`, `company`,
+  `location`, `posted_at`, `url`, `company_url`; the keyword post searches `linkedin.search.posts`
+  and `x.search.posts` to author, text, `posted_at`, url and engagement counts. Those are keyed by
+  capability because other `posts` lists (a profile's posts, a video's) are not shaped like a
+  search's. A mapped column ending in `_at` turns an epoch (seconds or milliseconds) into ISO time,
+  so it reads the same whichever provider answered. A path's numeric part indexes a list (`entities.0.properties.workforce.total`, exa). First matching path that holds text wins (`organization.name` is a path; an object is never
   taken, so an object `company` falls through to `company.name`); every other
   field follows under the provider's own name, minus the paths a mapped column used.
 - **hub**: an id not in the catalog that `hub.tool_for` resolves for this caller (one short read,

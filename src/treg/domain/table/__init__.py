@@ -70,8 +70,42 @@ _COMPANIES_MAP: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("linkedin_url", ("linkedin_url", "linkedinUrl", "company.linkedin_url", "URLs.linkedin",
                       "linkedin_profile_url", "socials.linkedin.url")),
 )
+# Job postings (`jobs`: a search by title, or one company's open roles). `posted_at` is ISO time
+# whichever provider answers (an epoch from `createdUtc` included, see `_mapped`).
+_JOBS_MAP: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("title", ("title", "job_title", "jobTitle", "position", "name")),
+    ("company", ("company.name", "company_name", "companyName", "organization.name", "company")),
+    ("location", ("location.linkedinText", "location.name", "job_location", "location.city", "location")),
+    ("posted_at", ("postedDate", "posted_at", "listed_at", "date_posted", "published_at", "list_date",
+                   "created_at", "first_seen_at", "createdUtc", "detected_extensions.posted_at")),
+    ("url", ("url", "job_url", "linkedinUrl", "linkedin_url", "applyUrl", "share_link")),
+    ("company_url", ("companyUrl", "company.linkedinUrl", "company.linkedin_url", "company.url", "company_url")),
+    ("company_website", ("company.website_url", "company.website", "company_website", "company.domain")),
+)
+# Posts found by a keyword search: who, what, when, where, and how it landed.
+_SEARCHED_POSTS_MAP: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("author", ("authorName", "author.name", "author.fullName", "author.username", "author")),
+    ("text", ("text", "content", "description", "title")),
+    ("posted_at", ("postedAt.date", "datePublished", "created_at", "createdAt", "posted_at", "createdUtc")),
+    ("url", ("url", "linkedinUrl", "shareLinkedinUrl", "permalink")),
+    ("author_url", ("authorUrl", "author.linkedinUrl", "author.profileUrl", "author.url")),
+    ("reactions", ("reactionCount", "engagement.reactions", "engagement.likes", "likeCount", "likes")),
+    ("comments", ("commentCount", "engagement.comments", "comments_count")),
+)
+_X_SEARCH_MAP: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("author", ("authorUsername", "screen_name", "user.screen_name", "author.username", "authorName")),
+    ("text", ("text", "full_text")),
+    ("posted_at", ("createdUtc", "created_at")),
+    ("url", ("url",)),
+    ("likes", ("likeCount", "favorites", "favorite_count")),
+    ("replies", ("replyCount", "replies", "reply_count")),
+)
+# Keyed by a capability first (a search's posts are not every `posts` list), then by the list field.
 LIST_MAPS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {"people": _PEOPLE_MAP,
-                                                                  "companies": _COMPANIES_MAP}
+                                                                  "companies": _COMPANIES_MAP,
+                                                                  "jobs": _JOBS_MAP,
+                                                                  "linkedin.search.posts": _SEARCHED_POSTS_MAP,
+                                                                  "x.search.posts": _X_SEARCH_MAP}
 
 
 # ------------------------------------------------------------------------------------------------
@@ -152,9 +186,10 @@ def _is_record_list(value: Any) -> bool:
 # ------------------------------------------------------------------------------------------------
 # The four kinds of tool
 
-def from_contract(body: Any, output_fields: list[str], list_field: str | None) -> dict[str, Any]:
+def from_contract(body: Any, output_fields: list[str], list_field: str | None,
+                  capability: str | None = None) -> dict[str, Any]:
     """A routed job's answer, `{output, raw, _treg}`. `list_field` names the contract's required
-    list, when it has one."""
+    list, when it has one; `capability` picks a map made for that search (`LIST_MAPS`)."""
     body = body if isinstance(body, dict) else {}
     output = body.get("output") if isinstance(body.get("output"), dict) else {}
     meta = body.get("_treg") if isinstance(body.get("_treg"), dict) else {}
@@ -163,7 +198,7 @@ def from_contract(body: Any, output_fields: list[str], list_field: str | None) -
     if list_field:
         items = output.get(list_field) if not miss else None
         items = _items(items) if isinstance(items, list) else []
-        mapping = LIST_MAPS.get(list_field)
+        mapping = LIST_MAPS.get(capability or "") or LIST_MAPS.get(list_field)
         records = [_mapped(item, mapping) if isinstance(item, dict) else {"value": cell(item)} for item in items]
         columns, rows = _grid(records, [c for c, _ in mapping] if mapping else None)
         return {"shape": "list", "columns": columns, "rows": rows, "column_source": "contract", "_treg": meta}
@@ -185,13 +220,22 @@ def _mapped(item: dict[str, Any], mapping) -> dict[str, Any]:
             # path (`company.name`, `location.city`), never shown as a JSON cell under a fixed name
             if found and value not in (None, "") and not isinstance(value, dict) and not (
                     isinstance(value, list) and any(isinstance(v, (dict, list)) for v in value)):
-                rec[column] = cell(value)
+                rec[column] = _when(value) if column.endswith("_at") else cell(value)
                 used.add(path)
                 break
     for key, value in flatten(item).items():
         if key not in used and key not in rec:
             rec[key] = value
     return rec
+
+
+def _when(value: Any) -> Any:
+    """A time column as ISO text: an epoch (seconds, or milliseconds) becomes UTC; text stays."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 1e9:
+        from datetime import datetime, timezone
+        seconds = value / 1000 if value > 1e12 else value
+        return datetime.fromtimestamp(seconds, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return cell(value)
 
 
 def from_hub(body: Any, output_fields: list[str]) -> dict[str, Any]:
@@ -320,13 +364,13 @@ def raw(text: str, *, truncated: bool = False) -> dict[str, Any]:
 
 
 def to_table(body: Any, *, contract_output: list[str] | None = None, list_field: str | None = None,
-             hub_fields: list[str] | None = None) -> dict[str, Any]:
+             hub_fields: list[str] | None = None, capability: str | None = None) -> dict[str, Any]:
     """The table for one parsed answer. Pass `contract_output` for a routed job (with `list_field`
     when its contract has a required list), `hub_fields` for a hub tool, neither for anything else.
     Never raises on a strange body: anything it cannot shape becomes a `raw` table."""
     try:
         if contract_output is not None:
-            return from_contract(body, contract_output, list_field)
+            return from_contract(body, contract_output, list_field, capability)
         if hub_fields is not None:
             return from_hub(body, hub_fields)
         return generated(body)
