@@ -2,6 +2,10 @@
 title: Endpoint catalog — what you can DO with a connected key, and which provider should do it
 status: shipped
 sources:
+  - src/treg/catalog/anymailfinder.yaml
+  - src/treg/web/logos/anymailfinder.svg
+  - src/treg/catalog/examples/anymailfinder.find-email.person.json
+  - src/treg/catalog/examples/anymailfinder.verify-email.json
   - src/treg/catalog/fetchinio.yaml
   - src/treg/web/logos/fetchinio.svg
   - src/treg/catalog/examples/fetchinio.linkedin.user.profile.json
@@ -171,6 +175,27 @@ related:
 ---
 
 # Endpoint catalog — platform-grouped operations per provider
+
+## Anymail Finder
+
+`anymailfinder.yaml` is a vendor-supplied listing (self-verified 2026-10-01) of six
+bring-your-own-key rows on `https://api.anymailfinder.com/v5.1`: find a work email by name and
+company or by LinkedIn URL alone (one route, `/find-email/person`), or by department
+(`people.decision_makers`, one person back with the email); list up to 20 verified addresses at
+a company; verify an address; a free bad-email report; and the free `GET /account` balance read,
+which is also the connect probe (a bad key answers 401 `{"error":"unauthorized"}` on every
+route). The key rides raw in `Authorization`. Billing is per verified result: a find bills 1
+credit (2 for a decision maker) only when `email_status` is `valid`, a verification bills 0.2
+whatever the verdict, misses and 30-day repeats bill 0, and every paid response carries
+`credits_charged`, which `reported_charge` settles on. Misses are HTTP 200 with
+`email_status: not_found`, so the two routing adapters judge the body: the find adapter reads
+`valid_email`, which is filled only for a verified address, so a `risky` guess (retired upstream
+from 2026-10-05) is never a hit; the verify adapter reads `email_status` and returns `risky` as a
+verdict, like its peers. The `fx.yaml` rate is the smallest one-time credit pack ($1,090 /
+100,000, the entry top-up), to re-base on the purchase treg makes. The separate LinkedIn route,
+bulk files, GeoLead jobs and the per-domain export routes stay off the file as a duplicate and
+as job and purchase products. The platform-key slot is present and empty; serving on treg's key
+is an ops decision.
 
 ## Fetchin
 

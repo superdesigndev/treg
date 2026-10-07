@@ -34,7 +34,7 @@ CATALOG = set(catalog_store.load().by_id)
 def _steps_manifest(**over):
     m = {
         "name": "leads-db",
-        "summary": "Decision makers of a company, with verified emails.",
+        "summary": "Vineyard owners in Tuscany, with verified emails.",
         "inputs": {
             "domain": {"type": "string", "example": "figma.com"},
             "limit": {"type": "int", "default": 10, "max": 25},
@@ -1030,7 +1030,7 @@ async def test_listed_is_a_request_and_the_switches_flip_without_a_version_bump(
     assert "listing" not in (await clients.get(f"/hub/tools/{tool_id}", headers={"X-Treg-Token": token})).json()
 
 
-Q_OWN_WORDS = "decision makers verified emails"     # the test tool's own summary words
+Q_OWN_WORDS = "vineyard owners tuscany"              # the test tool's own summary words; no catalog row shares them
 
 
 async def _search_ids(clients):
@@ -1075,7 +1075,7 @@ async def test_a_rejection_carries_a_reason_and_listing_again_asks_again(clients
     assert (await _decide(clients, monkeypatch, tool_id, "approve")).status_code == 404
 
 
-async def _v2(clients, tool_id, summary="Decision makers of a company, with verified emails, now faster."):
+async def _v2(clients, tool_id, summary="Vineyard owners in Tuscany, with verified emails, now faster."):
     m = _steps_manifest(steps=[{"name": "people", "call": EP, "input": {"aweme_id": "$input.domain"}}],
                         output={"leads": "$people.data"}, summary=summary)
     return await clients.put(f"/hub/tools/{tool_id}", json={"manifest": m, "check": CHECK, "readme": "x"})
@@ -1130,8 +1130,8 @@ async def test_a_rejected_update_keeps_the_approved_version(clients: AsyncClient
     assert mine == {1: "live", 2: "rejected"}
     assert (await clients.get(f"/catalog/endpoints/{tool_id}")).json()["endpoint"]["version"] == 1
     # v3 waits again, and a newer waiting version replaces an older one
-    await _v2(clients, tool_id, summary="Decision makers of a company, with verified emails, v3.")
-    await _v2(clients, tool_id, summary="Decision makers of a company, with verified emails, v4.")
+    await _v2(clients, tool_id, summary="Vineyard owners in Tuscany, with verified emails, v3.")
+    await _v2(clients, tool_id, summary="Vineyard owners in Tuscany, with verified emails, v4.")
     mine = {t["version"]: t["status"] for t in (await clients.get("/hub/tools/mine")).json() if t["tool_id"] == tool_id}
     assert mine == {1: "live", 2: "rejected", 3: "superseded", 4: "review"}
 
@@ -1176,7 +1176,7 @@ async def test_unlisting_an_approved_tool_keeps_it_under_review(clients: AsyncCl
     assert r.json()["listing"]["state"] == "approved" and tool_id in await _search_ids(clients)
     # a rejection that takes the approval back keeps the review too
     await _decide(clients, monkeypatch, tool_id, "reject", "not now")
-    assert (await _v2(clients, tool_id, summary="Decision makers of a company, with verified emails, v3.")).json()["status"] == "review"
+    assert (await _v2(clients, tool_id, summary="Vineyard owners in Tuscany, with verified emails, v3.")).json()["status"] == "review"
 
 
 async def test_a_request_never_approved_is_withdrawn_by_unlisting(clients: AsyncClient, hub_on, platform_on, monkeypatch):

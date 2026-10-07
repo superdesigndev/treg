@@ -1,0 +1,15 @@
+{
+  "input": {
+    "full_name": "Patrick Collison",
+    "domain": "stripe.com"
+  },
+  "credits_charged": 1,
+  "email": "patrick@stripe.com",
+  "email_status": "valid",
+  "mx_domain": "google.com",
+  "mx_host": "aspmx.l.google.com",
+  "person_company_name": null,
+  "person_full_name": "Patrick Collison",
+  "person_job_title": null,
+  "valid_email": "patrick@stripe.com"
+}

@@ -24,7 +24,7 @@ Bare `treg upload` does **both** sides of the dir; `treg upload env` / `treg upl
   each as a tool (+ recipe) or a recipe-only bundle — see "Skill directories" below.
 
 ## The provider catalog (`CATALOG`)
-Curated providers (`CATALOG_VERSION`, now **22** — Spider Bearer-key detection and its free balance probe joined; ScrapeGraphAI, LimaData, MoltSets, Financial Datasets, Exa, Crustdata and Aviato are included, and
+Curated providers (`CATALOG_VERSION`, now **24** - Anymail Finder (raw key in `Authorization`, probe `GET /v5.1/account`) joined on 2026-10-01 and Enrichlayer (v23) before it; Spider Bearer-key detection and its free balance probe joined; ScrapeGraphAI, LimaData, MoltSets, Financial Datasets, Exa, Crustdata and Aviato are included, and
 `required_headers` can describe a fixed protocol header such as Crustdata's API-version pin; `probe`
 remains the cheap authenticated GET path per provider so an imported tool self-validates, followed by
 a wave of `cli` local-run blocks plus the CLI-only
@@ -58,7 +58,7 @@ real machine test (docs lie — Vercel ships an env var it ignores, so it inject
 verified); `beta` marks an unverified entry. Several entries now carry **`deny`** patterns for subcommands
 that would print the injected key or run member code as the isolated runner (`gh extension`/`alias`/`auth
 token`/`--show-token`, `flyctl|turso auth token`, `doppler|infisical run`, …) — enforced by `check_deny` at
-grant (see [local-run](../architecture/local-run.md)). `CATALOG_VERSION` is now **22**. An `unsupported:true` block is first-class: it tells the analyzer
+grant (see [local-run](../architecture/local-run.md)). `CATALOG_VERSION` is now **24**. An `unsupported:true` block is first-class: it tells the analyzer
 WHY and what to do instead (e.g. **Azure** — device-login only → register a service principal as an HTTP tool).
 The catalog can never ENABLE a local run — only the owner's `tool.cli.enabled` does.
 

@@ -1,0 +1,234 @@
+provider: anymailfinder
+source:
+  docs: https://anymailfinder.com/email-finder-api/docs
+  openapi: https://api.anymailfinder.com/openapi.json
+  curated: '2026-10-01'
+# Curated by the vendor (Anymail Finder) and self-verified live on 2026-10-01 against a funded
+# account; the ledger is in the listing PR. `verified:` stamps and example captures are the
+# maintainers' to add from their own run; the two examples shipped here are our raw captures for
+# the adapter rows (a public figure's work address and a role mailbox, nothing to scrub), so the
+# two routing adapters can round-trip at load.
+#
+# WHAT IT IS: a B2B work-email finder and verifier. Every address a find returns was SMTP-verified
+# live before the response, catch-all domains included, and a find is billed only when it returns
+# one. So:
+#   - a find that returns `email_status: valid` costs 1 credit (2 for a decision-maker find),
+#   - `not_found`, `risky` and `blacklisted` cost 0 - a miss is free, which is why every find below
+#     is `per_success`,
+#   - repeating the same find or verification within 30 days costs 0,
+#   - a verification of an address you already hold costs 0.2 credits whatever the verdict.
+# Every paid response carries `credits_charged`, the exact amount this call billed (0 on a miss or a
+# repeat), which is what `reported_charge` settles on.
+#
+# ONE CREDIT POOL: finds, decision-maker finds and verifications all draw on `credits_left`, read for
+# free at GET /account. Credits are sold as monthly plans (from $29 / 400 credits) or one-time
+# packs ($1,090 / 100,000 and up, valid 12 months); fx.yaml carries the smallest pack's rate, the
+# entry top-up, as the other top-up-priced providers here do.
+#
+# AUTH: the raw key in the `Authorization` header (a `Bearer ` prefix is also accepted, as is
+# `X-Api-Key`). A missing or bad key answers 401 {"error":"unauthorized","message":"Missing or
+# invalid API key."} on every route, including the free /account probe. No Accept-header trap:
+# the API is JSON-only. Unknown body fields are dropped silently. Where a row takes `domain` or
+# `company_name`, the domain gives more accurate results; the name is resolved to a domain first.
+#
+# OUTCOMES ARE 200s: a miss is HTTP 200 with `email_status: not_found` (or `blacklisted`), never a
+# 404 - the adapters' `miss` predicates read the body. The errors are 400 bad_request (with the
+# offending rule in `message`), 401 unauthorized and 402 upgrade_needed (balance at zero; the body
+# names the purchase page).
+#
+# `risky` means the check could not determine whether the address is valid or invalid - on a find
+# it is returned in `email`, never in `valid_email`, and is free. It is being retired from finds:
+# from 2026-10-05 those results come back as `not_found`. Read `valid_email` when you want only
+# deliverable addresses.
+#
+# TIMING: real-time SMTP work. Most finds and verifications answer in a few seconds; a slow target
+# mail server can push one to 3 minutes, which is also treg's relay timeout (call_timeout_s 180).
+# A call that outlives the relay still completes and bills upstream if it finds; the identical
+# request within 30 days is free, so one retry after a relay timeout costs nothing. Direct API
+# callers can also send an `x-webhook-url` header for async delivery (the call answers 200 at once
+# with {request_id, webhook_url} and the result is POSTed to that URL); it is deliberately NOT
+# listed as an input here, because through treg the acknowledgement would read as a miss and the
+# result would land where treg cannot see it.
+#
+# NOT LISTED (see the PR's surface map): POST /find-email/linkedin-url (the same job as
+# /find-email/person with `linkedin_url`, listed once), the bulk file routes (/bulk/*: CSV in, job
+# out), the GeoLead routes (/geo-lead/*: async job around a map point, CSV out) and the per-domain
+# export routes (/domain/{domain}/email count, order and download: a purchase of every address at a
+# domain, quoted per domain). They are file, job or purchase products rather than single priced
+# requests.
+limits: "No published rate limit"
+pricing_url: https://anymailfinder.com/pricing
+endpoints:
+  - id: anymailfinder.find-email.person
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    method: POST
+    path: /find-email/person
+    name: "Find a verified work email from a name or a LinkedIn URL"
+    summary: "Find a person's work email from their name and company domain or name, or from their LinkedIn profile URL alone"
+    input:
+      body:
+        full_name: {type: string, required: false, note: "the person's full name (first and last); or send first_name + last_name", example: "Patrick Collison"}
+        first_name: {type: string, required: false, note: "with last_name, instead of full_name", example: "Patrick"}
+        last_name: {type: string, required: false, note: "with first_name, instead of full_name", example: "Collison"}
+        domain: {type: string, required: false, note: "the company domain, no protocol or www - PREFERRED over company_name", example: "stripe.com"}
+        company_name: {type: string, required: false, note: "the company name, used only when no domain is given", example: "Stripe"}
+        linkedin_url: {type: string, required: false, note: "the person's public LinkedIn profile URL. Send it ALONE, without a name or company, and the name and company are read from the profile (the response then fills person_full_name, person_company_name and person_job_title), or send it ON TOP of the name to refine the match", example: "https://www.linkedin.com/in/patrickcollison"}
+      note: "Needs (full_name OR first_name+last_name) AND (domain OR company_name), or linkedin_url on its own, or all of them together. Returns {email, valid_email, email_status, mx_domain, mx_host, person_full_name, person_company_name, person_job_title, credits_charged, input}. `email_status` is valid | risky | not_found | blacklisted; `valid_email` holds the address only when it is `valid`. `person_full_name` echoes the matched name; `person_company_name` and `person_job_title` are filled when a LinkedIn profile was involved, otherwise null"
+    test_request:
+      body: {full_name: "Patrick Collison", domain: "stripe.com"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      reported_charge:
+        path: credits_charged
+        unit: credit
+      source: docs
+      source_url: https://anymailfinder.com/pricing
+      checked: '2026-10-01'
+      confidence: documented
+      note: "1 credit, charged only when `email_status` is `valid`; not_found, risky and blacklisted cost 0, and a repeat of the same find within 30 days costs 0. `credits_charged` on the response is the exact charge. Self-verified 2026-10-01, reading `credits_charged` per call: the request above answered 1; a deliberate miss answered 0; a LinkedIn-only body for a fresh profile answered 1; a LinkedIn-only body for a profile whose address a name find had just paid for answered 0 - the 30-day rule is keyed on the RESULT, not the input"
+    docs_url: https://anymailfinder.com/email-finder-api/docs/find-person-email
+
+  - id: anymailfinder.find-email.decision-maker
+    domain: contacts
+    capability: people.decision_makers
+    platform: people
+    scope: any_account
+    method: POST
+    path: /find-email/decision-maker
+    name: "Find a decision maker by role, with verified email"
+    summary: "Name a company and a department (CEO, finance, HR, sales and so on) and get one decision maker back - name, title, LinkedIn URL - with their verified email, when you have no name to search"
+    input:
+      body:
+        domain: {type: string, required: false, note: "the company domain, no protocol or www - PREFERRED over company_name", example: "shopify.com"}
+        company_name: {type: string, required: false, note: "the company name, used only when no domain is given", example: "Shopify"}
+        decision_maker_category: {type: "array[string]", required: true, enum: [ceo, engineering, finance, hr, it, logistics, marketing, operations, buyer, sales], note: "1 to 5 departments, tried in the order given until one yields a verified email: ceo (CEO / owner / president / founder), engineering, finance, hr, it, logistics, marketing, operations (operations / administration), buyer (procurement), sales. Accounts can add custom categories in their dashboard; any other value is a 400 that lists the accepted ones", example: ["ceo"]}
+      note: "Use this when you know the company but not the person's name or LinkedIn URL - only a department. Returns ONE person: {decision_maker_category, person_full_name, person_first_name, person_last_name, person_job_title, person_linkedin_url, email, valid_email, email_status, mx_domain, mx_host, credits_charged, input}. A miss is 200 with email_status not_found and null person fields. The category is a department, not a free-text title - map a title to the nearest one before calling"
+    test_request:
+      body: {domain: "shopify.com", decision_maker_category: ["ceo"]}
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: call
+      reported_charge:
+        path: credits_charged
+        unit: credit
+      source: docs
+      source_url: https://anymailfinder.com/pricing
+      checked: '2026-10-01'
+      confidence: documented
+      note: "2 credits when a decision maker with a `valid` email is returned (the discovery step and the verification together); 0 on a miss, and 0 when a repeat within 30 days finds the same person at the same company. Self-verified 2026-10-01, reading `credits_charged` per call: the request above answered 2; the same department at a company whose CEO a name find had just paid for answered 0"
+    docs_url: https://anymailfinder.com/email-finder-api/docs/find-decision-maker-email
+
+  - id: anymailfinder.find-email.company
+    domain: companies
+    capability: companies.emails.list
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /find-email/company
+    name: "List verified work emails at a company"
+    summary: "Up to 20 verified email addresses at a company - generic ones like contact@ or sales@ and individual employees' work addresses - from its domain or name"
+    input:
+      body:
+        domain: {type: string, required: false, note: "the company domain, no protocol or www - PREFERRED over company_name", example: "stripe.com"}
+        company_name: {type: string, required: false, note: "the company name, used only when no domain is given", example: "Stripe"}
+        email_type: {type: string, required: false, enum: [any, generic, personal], note: "any (default) returns both kinds; generic returns only role-based addresses like info@, sales@ or support@; personal returns only individual employees' work addresses at that company, like jane.doe@company.com - never a private or personal-provider address", example: "any"}
+      note: "Returns {emails: [...], valid_emails: [...], email_status, mx_domain, mx_host, credits_charged, input}. `emails` holds up to 20 addresses; `valid_emails` is the verified subset and is what to send to. Addresses only, no names"
+    test_request:
+      body: {domain: "stripe.com"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      reported_charge:
+        path: credits_charged
+        unit: credit
+      source: docs
+      source_url: https://anymailfinder.com/pricing
+      checked: '2026-10-01'
+      confidence: documented
+      note: "1 credit for the whole search however many addresses come back, and only when at least one is found; finding nothing is free. A repeat for the same company within 30 days is 0, whichever email_type is used. Self-verified 2026-10-01: `credits_charged: 1` for 20 addresses on stripe.com"
+    docs_url: https://anymailfinder.com/email-finder-api/docs/find-company-email
+
+  - id: anymailfinder.verify-email
+    domain: contacts
+    capability: people.email.verify
+    platform: people
+    scope: any_account
+    method: POST
+    path: /verify-email
+    name: "Verify an email address is deliverable"
+    summary: "Live SMTP check of an address you already hold - valid, invalid or risky - including catch-all domains"
+    input:
+      body:
+        email: {type: string, required: true, note: "the address to verify", example: "support@stripe.com"}
+      note: "Returns {email_status, mx_domain, mx_host, credits_charged, input}. `email_status` is valid (confirmed deliverable) | invalid (does not exist or does not accept mail) | risky (the check could not determine whether it is valid or invalid). `mx_domain` names the mail provider (google.com, outlook.com, mimecast.com), useful for skipping addresses behind a security gateway"
+    test_request:
+      body: {email: "support@stripe.com"}
+    cost:
+      type: per_call
+      value: 0.2
+      currency: credit
+      per: 1
+      unit: call
+      reported_charge:
+        path: credits_charged
+        unit: credit
+      source: docs
+      source_url: https://anymailfinder.com/pricing
+      checked: '2026-10-01'
+      confidence: documented
+      note: "0.2 credits per verification whatever the outcome, risky included, because the check runs either way; a repeat of the same address within 30 days is 0. Self-verified 2026-10-01: `credits_charged: 0.2` on a valid and on an invalid address. Addresses a find returned are already verified - do not re-verify them"
+    docs_url: https://anymailfinder.com/email-finder-api/docs/verify-email
+
+  - id: anymailfinder.report.bad-email
+    kind: utility
+    domain: contacts
+    capability: people.email.report
+    platform: people
+    scope: own_account
+    method: POST
+    path: /report/bad-email
+    name: "Report an address that bounced or reached the wrong person"
+    summary: "Tell the provider an address it returned bounced or went to the wrong person, so it can investigate and improve future results"
+    input:
+      body:
+        email: {type: string, required: true, note: "the address to report", example: "jane.doe@example.com"}
+        additional_info: {type: string, required: true, note: "what went wrong, up to 500 characters", example: "Bounced with 550 5.1.1 user unknown"}
+        bounce_message: {type: string, required: false, note: "the bounce text from your mail server, if you have it"}
+      note: "returns {input}. Free, and does not refund the credit spent on the original find. Not in the vendor ledger except through catalog_verify: a real call files a report against the vendor's own data"
+    test_request:
+      body: {email: "jane.doe@example.com", additional_info: "treg catalog verification - test report, please ignore"}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://anymailfinder.com/email-finder-api/docs/report-bad-email
+
+  - id: anymailfinder.account
+    kind: account
+    domain: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /account
+    name: "Check your credit balance"
+    summary: "Remaining credits on the account behind the key - one pool for finds and verifications"
+    input:
+      note: "no parameters. Returns {credits_left, email}; `email` is the account owner's login address. Free, and the connect-time probe: a bad key answers 401 here"
+    test_request: {queryParams: {}}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://anymailfinder.com/email-finder-api/docs/account
+
+proposed_capabilities:
+  companies.emails.list: "List every work email found on a company domain"
+  people.email.report: "Report an email address that bounced or reached the wrong person"

@@ -41,6 +41,14 @@ Contact Finder probe. All six data tools and five lookup utilities were live che
 subscription capacity uses API balance data and is separate from platform list pricing.
 Tests extend the existing auth, capacity and marketplace files. See [catalog](../architecture/catalog.md).
 
+Anymail Finder (2026-10-01) is a vendor-submitted listing on the pasted-key path: raw key in
+`Authorization`, free `GET /account` probe that 401s a garbage key, six curated rows, two
+routing adapters that judge an HTTP-200 body (the find on `valid_email`, the verify on
+`email_status`), and `reported_charge` on
+every paid row because the response states the exact `credits_charged`. The vendor's live ledger
+rides in the PR; `verified:` stamps and the maintainers' own captures follow their run. The
+platform-key slot is present and empty. See [catalog](../architecture/catalog.md).
+
 ## The two kinds of provider
 - **API-key** (`auth_kind="key"`) — the user pastes a key; self-serve; **the fast path** (research → implement
   → live-test in one session). This is the workhorse and where almost all growth happens.
