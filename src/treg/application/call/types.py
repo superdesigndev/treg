@@ -282,6 +282,9 @@ class IdempotentReplay:
     media_type: str
     charged_micro: int
     call_ref: str
+    # `(key_hash, content_hash)` when the row dropped its own copy: the bytes are read by
+    # `idempotency.resolve_archived_replay` AFTER the request's session closes (non-negotiable 3).
+    archive: tuple[str, str] | None = None
 
 
 @dataclass(frozen=True)

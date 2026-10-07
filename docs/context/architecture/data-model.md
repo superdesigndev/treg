@@ -29,6 +29,7 @@ sources:
   - src/treg/alembic/versions/0011_callrecord_archive_link.py
   - src/treg/alembic/versions/0015_idempotentcall_membership_cascade.py
   - src/treg/alembic/versions/0053_idempotentcall_membership_expires_index.py
+  - src/treg/alembic/versions/0065_idempotentcall_archive_link.py
   - src/treg/alembic/versions/0054_callrecord_org_id_id.py
   - src/treg/alembic/versions/0061_remove_redundant_unique_indexes.py
   - src/treg/alembic/versions/0034_managed_api_keys.py
@@ -49,6 +50,7 @@ sources:
   - src/treg/alembic/versions/0041_searchlog.py
   - src/treg/alembic/versions/0055_find_v2_log.py
   - src/treg/alembic/versions/0056_searchlog_verdict.py
+  - src/treg/application/call/idempotency.py
   - src/treg/timeutil.py
   - src/treg/infra/db.py
   - src/treg/domain/referrals.py
@@ -356,6 +358,30 @@ uses this metadata, never the encrypted token's shape.
   `size_bytes`) instead. The caller already received the full answer; a retry never runs again.
   The per-call expired-label sweep reads `(membership_id, expires_at)` (Alembic `0053`), so its
   cost is the expired rows, not every label the caller holds.
+  `prune_expired_idempotency` additionally sweeps completed, expired responses globally from the
+  hourly `treg-worker idempotency prune` cron. Caller-scoped lazy cleanup remains for immediate key
+  reuse. Each run fixes its UTC cutoff and upper ID, walks the primary key in batches of 200, and
+  commits before its 250 ms pause; pending claims and answers valid at the cutoff are untouched.
+  ID pages are selected before expiry filtering, so a page of live responses cannot force an
+  unbounded scan searching for expired matches. The DELETE applies the expiry and status guards.
+  Postgres transactions use a 1-second lock timeout; the page SELECT uses a 60-second statement
+  timeout and the DELETE uses 15 seconds. On a page timeout the cursor advances
+  by batch_size and the sweep continues. Three consecutive page timeouts stop the run to prevent
+  infinite loops. The `page_timeouts` field tracks skipped pages; any skipped page makes the worker exit nonzero. A failed DELETE batch rolls back,
+  earlier batches remain committed, and the next run retries remaining rows. `--dry-run` counts
+  eligible rows without writes. Counts accumulate within the metadata-only ID pages, never from a
+  separate full-table aggregate; `complete` requires traversal to reach the fixed upper ID without skipped pages.
+  An interrupted or bounded partial sweep exits nonzero and the next run starts from the front.
+  No retention index or schema migration is needed for this single cursor traversal. After a large
+  first prune, run `VACUUM (ANALYZE) idempotentcall` once to reclaim dead tuple space; routine hourly
+  cleanup leaves vacuuming to Postgres autovacuum.
+  The same run then calls `trim_archived_answers`: a live `done` 2xx row at least ten minutes old
+  drops `response_body` when its call's `CallRecord` names an archive answer, `archive.bytes_on_file`
+  confirms that answer still carries bytes, and the row's own sha256 equals it. The row keeps
+  `archive_key_hash` / `archive_content_hash` (Alembic `0065`); a replay reads the bytes back with
+  `archive.answer_bytes` (hash-checked) and answers the 410 `idempotency_response_lost` when they are
+  gone, never a new run. `--skip-trim` runs only the expiry delete.
+
 - **`ToolRequest`** - a "the catalog doesn't have X" report (`POST /tool-requests`, open + per-IP
   rate-limited): `capability` (the headline, ≤200 chars), `query` (the search that came up empty -
   auto-filled by agents, the dedup/priority signal), `note`, `contact`, `source` (`web` | `cli` |

@@ -3,6 +3,7 @@
     treg-worker capacity sweep [--only provider,...] [--json]
     treg-worker overflow sync [--live]          # seed (+ live aggregator catalogs) → overflow_route
     treg-worker overflow verify [--all] [--max-usd 0.02]   # weekly re-verify of enabled routes
+    treg-worker idempotency prune [--dry-run]       # expired completed replay answers
     treg-worker asynctasks settle [--limit 50]       # complete deferred metered-call holds
     treg-worker arena insights [--max-seconds 110]   # fold new audit rows into the Arena aggregate
     treg-worker catalog stats [--max-rows 500000]    # fold new audit rows into per-day endpoint stats
@@ -371,6 +372,30 @@ def _positive_int(value: str) -> int:
     if n < 1:
         raise argparse.ArgumentTypeError("must be >= 1")
     return n
+async def _idempotency_prune(args) -> int:
+    from dataclasses import asdict
+    import logging
+
+    from .infra.db import verify_db
+    from .application.call.idempotency import prune_expired_idempotency, trim_archived_answers
+
+    await verify_db()
+    logging.basicConfig(level=logging.INFO)
+    result = await prune_expired_idempotency(
+        batch_size=args.batch_size, pause_s=args.pause_seconds,
+        max_batches=args.max_batches, dry_run=args.dry_run,
+    )
+    out = asdict(result)
+    trim = None
+    if not getattr(args, "skip_trim", False):
+        # Live rows whose answer the archive holds byte for byte drop their own copy.
+        trim = await trim_archived_answers(
+            batch_size=args.batch_size, pause_s=args.pause_seconds,
+            max_batches=args.max_batches, dry_run=args.dry_run,
+        )
+        out["trim"] = asdict(trim)
+    print(json.dumps(out, default=str, sort_keys=True))
+    return 0 if result.complete and (trim is None or trim.complete) else 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -439,6 +464,16 @@ def main(argv: list[str] | None = None) -> int:
     purge.add_argument("--batch-size", type=_positive_int, default=5000,
                        help="rows to update per transaction (default 5000)")
     purge.set_defaults(fn=_admin_purge_evidence)
+    idem = sub.add_parser("idempotency", help="expired replay-cache maintenance")
+    idemsub = idem.add_subparsers(dest="cmd", required=True)
+    prune = idemsub.add_parser("prune", help="delete completed answers past their 24-hour window")
+    prune.add_argument("--dry-run", action="store_true")
+    prune.add_argument("--batch-size", type=int, default=200)
+    prune.add_argument("--pause-seconds", type=float, default=0.25)
+    prune.add_argument("--max-batches", type=int, default=10000)
+    prune.add_argument("--skip-trim", action="store_true",
+                       help="only delete expired rows; keep live rows' copies of archived answers")
+    prune.set_defaults(fn=_idempotency_prune)
     args = ap.parse_args(argv)
     _need_server()
     return asyncio.run(args.fn(args))

@@ -860,6 +860,11 @@ still in flight.
 Over MCP the same thing is the optional `idempotency_key` argument to the `call` tool, and a replayed
 result carries `replayed: true`.
 
+A stored answer may live in the archive instead of the retry row (the row's own copy is dropped once
+the archive holds the same bytes). The replay reads it there, after the request's database session
+has closed. If it can no longer be read, the replay is a 410 `idempotency_response_lost` naming the
+`call_id` and the charge; the label is never run again.
+
 Reasoning, storage rules and the concurrency guard: `architecture/money.md`.
 
 ## Caller tags, budgets and per-tag usage

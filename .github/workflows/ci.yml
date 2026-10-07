@@ -129,6 +129,7 @@ jobs:
           tests/test_cache_result_admission.py
           tests/test_archive_r2.py
           tests/test_call_cancellation.py
+          tests/test_idempotency_retention.py
           tests/test_call_pool_discipline.py
           tests/test_api_keys.py
           tests/test_postgres_reset.py

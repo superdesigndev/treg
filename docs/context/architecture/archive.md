@@ -210,7 +210,9 @@ different version. Authorization, key scope and result selection precede body re
 Lookup selects `result_snapshot_id` under the existing result-state
 and observed-version guards, then classifies the resolved body after closing the session. Unknown
 results retain the decisive snapshot; empty results invalidate serving without deleting history.
-Pruning protects the decisive snapshot and DB carriers of surviving versions. Eligible `both`
+Pruning protects the decisive snapshot, DB carriers of surviving versions, and every version (and its
+carrier) whose `content_hash` an unexpired trimmed `IdempotentCall` row names: that row replays
+from here through `archive.answer_bytes`, read once per pass over Alembic 0066's partial index. Eligible `both`
 rows lose DB bytes and become `r2`; their objects remain untouched. `db` does not contact R2,
 including for R2-only rows. Admin and Arena follow the result read switch; comparison and lazy
 initialization follow lookup. Admin fallback uses the admin pool; observation/initialization use

@@ -1163,6 +1163,15 @@ async def prune_once() -> int:
             .order_by((ArchiveKey.ttl_s == TTL_NEVER).desc(), ArchiveKey.last_requested_at)
             .limit(2000))).scalars().all()
 
+        # Answers a live retry row points to instead of holding its own copy (idempotency trim,
+        # Alembic 0065/0066): stripping one would turn that row's replay into a 410 for an answer the
+        # team paid for, inside its window. Read once per pass, over the partial index.
+        from .models import IdempotentCall
+        retry_needed = set((await s.execute(
+            select(IdempotentCall.archive_content_hash).distinct()
+            .where(IdempotentCall.archive_content_hash.is_not(None),
+                   IdempotentCall.expires_at > _utcnow()))).scalars().all())
+
         for key in keys:
             if stripped >= batch:
                 break
@@ -1180,8 +1189,9 @@ async def prune_once() -> int:
                           and v.body is not None
                           and (key.ttl_s == TTL_NEVER or v.fetched_at <= min_age)]
             surviving = [v for v in versions if v not in candidates]
-            protected = ({v.id for v in surviving}
-                         | {v.body_of for v in surviving if v.body_of is not None})
+            needed = [v for v in versions if v.content_hash in retry_needed]
+            protected = ({v.id for v in surviving} | {v.id for v in needed}
+                         | {v.body_of for v in [*surviving, *needed] if v.body_of is not None})
             freed_bytes = 0
             freed_n = 0
             for v in candidates:
@@ -1255,6 +1265,47 @@ async def resolve_result(key_hash: str, content_hash: str) -> dict[str, Any] | N
                      "origin": snap.origin, "version": snap.version,
                      "body_text": _decode(body)},
     }
+
+
+async def bytes_on_file(session, pairs: set[tuple[str, str]]) -> set[tuple[str, str]]:
+    """Which `(key_hash, content_hash)` answers still carry their bytes: in object storage, in the
+    row, or through a `body_of` carrier. A hash-only version (licence or size refused the bytes) is
+    not on file. Metadata only: no body is read. For retry rows dropping their own copy."""
+    from sqlalchemy import or_, select
+
+    from .models import ArchiveKey, ArchiveSnapshot
+
+    if not pairs:
+        return set()
+    rows = (await session.execute(
+        select(ArchiveKey.key_hash, ArchiveSnapshot.content_hash)
+        .join(ArchiveSnapshot, ArchiveSnapshot.key_id == ArchiveKey.id)
+        .where(ArchiveKey.key_hash.in_({k for k, _ in pairs}),
+               ArchiveSnapshot.content_hash.in_({c for _, c in pairs}),
+               or_(ArchiveSnapshot.body_storage.in_(("r2", "both")), ArchiveSnapshot.body.is_not(None),
+                   ArchiveSnapshot.body_of.is_not(None))))).all()
+    return {(k, c) for k, c in rows} & pairs
+
+
+async def answer_bytes(key_hash: str, body_hash: str) -> bytes | None:
+    """The exact bytes of one archived answer, or None when they are gone or do not match the hash.
+    No DB connection is held while object storage is read."""
+    from sqlalchemy import select
+
+    from .infra.db import session_maker
+    from .models import ArchiveKey, ArchiveSnapshot
+
+    async with session_maker() as session:
+        snap = (await session.execute(
+            select(ArchiveSnapshot).options(*archive_bodies.read_options("result"))
+            .join(ArchiveKey, ArchiveKey.id == ArchiveSnapshot.key_id)
+            .where(ArchiveKey.key_hash == key_hash, ArchiveSnapshot.content_hash == body_hash)
+            .order_by(ArchiveSnapshot.version.desc()).limit(1))).scalars().first()
+        if snap is None:
+            return None
+        pointer = await archive_bodies.pointer(session, snap, "result")
+    body = await archive_bodies.read(pointer, "result")
+    return body if body is not None and content_hash(body) == body_hash else None
 
 
 # ---------------------------------------------------------------------------------------------

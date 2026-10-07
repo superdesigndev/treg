@@ -1256,6 +1256,10 @@ class IdempotentCall(SQLModel, table=True):
         UniqueConstraint("membership_id", "key", name="uq_idem_caller_key"),
         # The per-call expired-label sweep in `_claim_idempotent` (Alembic 0053).
         Index("ix_idempotentcall_membership_id_expires_at", "membership_id", "expires_at"),
+        # Only rows that dropped their copy: the archive pruner's "still needed" read (Alembic 0066).
+        Index("ix_idempotentcall_archive_live", "expires_at",
+              postgresql_where=text("archive_content_hash IS NOT NULL"),
+              sqlite_where=text("archive_content_hash IS NOT NULL")),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -1279,6 +1283,11 @@ class IdempotentCall(SQLModel, table=True):
     charged_micro: int = Field(default=0)
     created_at: NaiveUTC = Field(default_factory=_now)
     expires_at: NaiveUTC
+    # Set when the hourly `treg-worker idempotency prune` dropped `response_body` because the archive
+    # holds the same bytes (`ArchiveKey.key_hash`, `ArchiveSnapshot.content_hash`); a replay then
+    # reads them from there, instead of the same answer being stored twice.
+    archive_key_hash: str | None = Field(default=None)
+    archive_content_hash: str | None = Field(default=None)
 
 
 class Feedback(SQLModel, table=True):

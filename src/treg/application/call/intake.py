@@ -17,6 +17,7 @@ from .idempotency import (
     _idempotency_key,
     _replay_idempotent,
     _request_fingerprint,
+    resolve_archived_replay,
     _scoped_idempotency_key,
 )
 from .types import IdempotencyFailed, IdempotentReplay, IntakeFailed
@@ -162,15 +163,17 @@ async def prepare_call_intake(
     fingerprint = _request_fingerprint(method, rest, body, raw_query)
     async with session_maker() as db:
         replay = await _replay_idempotent(key, fingerprint, caller, db)
-        if replay is not None:
-            return IntakeResult(key, fingerprint, replay, None)
-        # Claim it now, before anything reaches a provider. Two retries can arrive together and both
-        # miss the lookup above; the unique constraint is what makes the loser wait instead of making
-        # a second upstream call. A check-then-act in Python would leave exactly the window this
-        # feature exists to close — the same reasoning as the conditional UPDATE in ledger.reserve.
-        if not await _claim_idempotent(key, fingerprint, rest, caller, db, call_ref=call_ref):
-            raise IdempotencyFailed(
-                "idempotency_in_progress", status_code=409,
-                detail=(f"a call with Idempotency-Key {_idem_display(key)!r} "
-                        "is already in progress — retry shortly"))
+        if replay is None:
+            # Claim it now, before anything reaches a provider. Two retries can arrive together and both
+            # miss the lookup above; the unique constraint is what makes the loser wait instead of making
+            # a second upstream call. A check-then-act in Python would leave exactly the window this
+            # feature exists to close — the same reasoning as the conditional UPDATE in ledger.reserve.
+            if not await _claim_idempotent(key, fingerprint, rest, caller, db, call_ref=call_ref):
+                raise IdempotencyFailed(
+                    "idempotency_in_progress", status_code=409,
+                    detail=(f"a call with Idempotency-Key {_idem_display(key)!r} "
+                            "is already in progress — retry shortly"))
+    if replay is not None:
+        # Outside the session on purpose: a trimmed row's bytes may come from object storage.
+        return IntakeResult(key, fingerprint, await resolve_archived_replay(replay, key), None)
     return IntakeResult(key, fingerprint, None, (caller.membership.id, key, call_ref))
