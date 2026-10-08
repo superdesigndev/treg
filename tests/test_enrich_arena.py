@@ -1069,11 +1069,11 @@ async def test_company_people_batch_preserves_each_list_and_settles_once(clients
 
 async def test_similar_companies_uses_saved_adapter_and_renders_company_rows(clients, enrichment_on, monkeypatch):
     seen=[]
-    monkeypatch.setattr(service,'relay',_relay_by_provider({'tomba':[(200,{'data':[{'name':'Example Peer','website_url':'https://peer.test'}]})]},seen))
-    response=await clients.post('/arena/plans',json={'capability':'companies.similar','identity':{'domain':'seed.test'},'providers':['tomba'],'mode':'compare','max_cost_micro':1_000_000})
+    monkeypatch.setattr(service,'relay',_relay_by_provider({'findymail':[(200,{'companies':[{'name':'Example Peer','domain':'peer.test'}],'total':1})]},seen))
+    response=await clients.post('/arena/plans',json={'capability':'companies.similar','identity':{'domain':'seed.test'},'providers':['findymail'],'mode':'compare','max_cost_micro':1_000_000})
     assert response.status_code==200,response.text
     result=await finish(clients,response.json())
-    assert seen[0][2]['domain']=='seed.test'
+    assert seen[0][3]['seed']=='seed.test'
     row=result['results'][0]
     assert row['state']=='hit' and row['output']['companies']==[{'name':'Example Peer','domain':'peer.test'}]
 

@@ -18,6 +18,12 @@ def _used_keys(adapter: Adapter) -> set[str]:
     return set(adapter.in_map) | {n for e in (adapter.in_expr or {}).values() for n in re.findall(r"[A-Za-z_]\w*", e)}
 
 
+def applied_filters(adapter: Adapter) -> tuple[str, ...]:
+    """The contract filters this adapter sends on (the rest it ignores): what strict mode keeps it for."""
+    used = _used_keys(adapter)
+    return tuple(k for k in (adapter._filter_keys or ()) if k in used)
+
+
 def ignored_filters(adapter: Adapter, contract: Contract, identity: dict[str, Any]) -> tuple[str, ...]:
     """Filters the caller supplied that this adapter has no place for — the provider will answer a
     LOOSER question than the one asked. Pure, and knowable before the call, so ranking can use it.

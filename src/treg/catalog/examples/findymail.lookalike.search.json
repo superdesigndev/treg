@@ -1,0 +1,21 @@
+{
+  "companies": [
+    {
+      "domain": "mk-mediaconsulting.com",
+      "name": "Mk Media Consulting",
+      "linkedin_url": "https://www.linkedin.com/company/mk-mediaconsulting/",
+      "company_size": "1-10",
+      "country": null
+    },
+    {
+      "domain": "rootline.com",
+      "name": "Rootline",
+      "linkedin_url": "https://www.linkedin.com/company/rootline/",
+      "company_size": "11-50",
+      "country": "Netherlands"
+    },
+    "… 8 more item(s) truncated"
+  ],
+  "total": 10,
+  "credits_used": 1
+}

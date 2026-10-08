@@ -1907,7 +1907,7 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   is deliberately tiny: dotted paths with `[i]` (root `[0]`, `.` = the whole body), `coalesce`
   (first non-empty argument, else the last one),
   `/ N`, `==`/`!=` against literals, and named transforms (`split_first`, `split_last`, `join`,
-  `has_type`, `len`, `list`, `obj`, `fmt`, `csv`, `lower`/`upper`, `at_least`, `at_most`, `null_if`, `choose`, `linkedin_handle`/
+  `has_type`, `len`, `list`, `obj`, `fmt`, `csv`, `lower`/`upper` (each item of a list), `at_least`, `at_most`, `null_if`, `choose`, `swap` (a provider's own spelling of some values, as old/new pairs), `linkedin_handle`/
   `linkedin_url`, `email_domain`, `host`, `dfs_location`, `seranking_source`, `tca_filter`).
   `values` reads rows from object-keyed or list responses; `get` applies dotted/indexed lookup
   to another expression result (for example, the first company in a domain-keyed response).

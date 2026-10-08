@@ -275,6 +275,12 @@ def canonical_identity(contract: Contract, given: dict[str, Any]) -> tuple[dict[
         # `linkedin.com/in/x` reached quickenrich as-is and 422'd "must be a valid URL"
         # (311 routed calls in two days, 2026-09-18); a handle becomes the public URL.
         ident["linkedin_url"] = P.linkedin_url(ident["linkedin_url"]) or ident["linkedin_url"]
+    for k in ("domain", "company_domain"):
+        # a pasted website (`https://www.ramp.com/`) is a domain to the caller; most providers
+        # want the bare host and 400 on the URL. A LinkedIn company URL stays: it is an identifier
+        # (harvestapi takes it in `company_domain`), not a website
+        if isinstance(ident.get(k), str) and "linkedin.com/" not in ident[k].lower():
+            ident[k] = P.host(ident[k]) or ident[k]
     for _ in range(2):  # derive until stable (join needs first+last; split needs full_name)
         for k, expr in contract.derive.items():
             if ident.get(k) in (None, ""):

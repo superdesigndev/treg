@@ -366,8 +366,13 @@ endpoints:
       checked: '2026-08-20'
       confidence: documented
       note: "1 finder credit per 10 results, rounded up — so the minimum useful call is 1 credit. The response echoes `credits_used`."
-    note: "not live-tested to preserve trial credits"
+    miss:
+      status: 422
+      when: "error == 'seed_not_processable'"
+      means: "Findymail holds no lookalike data for this seed domain (422 seed_not_processable): a normal no-result, so a route goes on to the next provider; other 422 bodies are real request errors"
+    verified: '2026-10-06'
     docs_url: https://app.findymail.com/docs/
+    example_response: examples/findymail.lookalike.search.json
 
   - id: findymail.intellimatch.search
     domain: companies

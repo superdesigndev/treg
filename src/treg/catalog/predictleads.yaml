@@ -537,9 +537,9 @@ endpoints:
     platform: companies
     scope: any_account
     method: GET
-    path: /companies/{company_id_or_domain}/website_evolution
+    path: /companies/{company_id_or_domain}/subpages
     name: "How a company's website changed"
-    summary: "Returns a list of company's Website Evolution."
+    summary: "Returns a list of company's Subpages, each with when it was first and last seen."
     input:
       pathParams:
         company_id_or_domain: {type: string, required: true, note: "company domain or PredictLeads company UUID", example: "stripe.com"}
@@ -553,9 +553,9 @@ endpoints:
       pathParams: {company_id_or_domain: "stripe.com"}
       queryParams: {limit: 1}
     cost: {type: per_call, value: 1, currency: credit, per: 1, unit: call, source: docs, source_url: "https://predictleads.com/pricing", checked: '2026-08-20', confidence: documented, note: "docs label this endpoint '1 Credit / Response'"}
-    verified: '2026-08-20'
+    verified: '2026-10-06'
     example_response: examples/predictleads.companies.website_evolution.json
-    docs_url: https://docs.predictleads.com/v3/api_endpoints/website_evolution_dataset/retrieve_company_s_website_evolution
+    docs_url: https://docs.predictleads.com/v3/api_endpoints/subpages_dataset/get_subpages
 
   - id: predictleads.companies.github_repositories
     domain: companies

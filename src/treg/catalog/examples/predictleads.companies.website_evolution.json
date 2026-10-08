@@ -1,14 +1,14 @@
 {
   "data": [
     {
-      "id": "6b50e00f-65d8-4455-8df6-bf61ec5a57ee",
+      "id": "b03432d8-bb9c-4078-83d6-3d27a58dc3dd",
       "type": "subpage",
       "attributes": {
-        "category": "leadership",
-        "url": "https://stripe.com/money-management/availability",
+        "category": "products",
+        "url": "https://stripe.com/products",
         "text_content": null,
-        "first_seen_at": "2026-08-05T18:20:13Z",
-        "last_seen_at": "2026-08-15T18:52:16Z",
+        "first_seen_at": "2026-10-02T08:17:14Z",
+        "last_seen_at": "2026-10-01T18:40:15Z",
         "last_extraction_states": []
       },
       "relationships": {
@@ -36,7 +36,7 @@
     "schema_version": "3.1",
     "record_state": "active",
     "message_type": "ok",
-    "message": "You can try running the same query on any subsidiary company domain (bridge.xyz, chargeforstripe.com, chargestripe.com, financialnigeria.com, lemonsqueezy.com, metronome.com, ngx-stripe.dev, okayhq.com, openchannel.io, orum.io, ...). You can also try news_events, job_openings, technologies or connec …[truncated]",
+    "message": "You can try running the same query on any subsidiary company domain (bridge.xyz, chargeforstripe.com, chargestripe.com, financialnigeria.com, lemonsqueezy.com, metronome.com, ngx-stripe.dev, okayhq.com, openchannel.io, orum.io, ...). You can also try news_events, job_openings, technologies or connections endpoint.",
     "redirects_to_domain": null,
     "parent_company_domain": null
   }

@@ -682,21 +682,34 @@ adapters:
     in: {domain: queryParams.domain}
     out: {companies: data, count: "len(data)"}
     miss: "data == []"
+    route: false   # answers with unrelated companies (a seed AI startup got a college, a shoe shop, a cartoon), name and domain only
   companyenrich.companies.similar:
     accepts: [[domain]]
     in: {domain: body.domains}
-    in_expr: {body.domains: "list(domain)"}
-    const: {body.page: 1, body.pageSize: 10}
+    in_expr: {body.domains: "list(domain)", body.pageSize: "at_most(limit, 100)"}
+    const: {body.page: 1}
     out: {companies: items, count: totalItems}
     miss: "items == []"
   oceanio.companies.lookalike:
     accepts: [[domain]]
     in: {domain: body.companiesFilters.lookalikeDomains}
-    in_expr: {body.companiesFilters.lookalikeDomains: "list(domain)"}
     # The shared key requires an explicit size of 1-100, and size is the whole price.
-    const: {body.size: 10}
-    cost_units: "10"
+    in_expr: {body.companiesFilters.lookalikeDomains: "list(domain)", body.size: "at_most(limit, 100)"}
+    cost_units: "at_most(limit, 100)"
     out: {companies: companies, count: total}
+    miss: "companies == []"
+  findymail.lookalike.search:
+    accepts: [[domain]]
+    in: {domain: body.seed}
+    in_expr: {body.limit: limit}
+    out: {companies: companies, count: total}
+    miss: "companies == []"
+  leadsforge.companies.lookalike.search:
+    accepts: [[domain]]
+    in: {domain: body.domains}
+    in_expr: {body.domains: "list(domain)", body.pageSize: "at_most(limit, 100)"}
+    const: {body.page: 1}
+    out: {companies: companies, count: totalCount}
     miss: "companies == []"
 
   # ---- people.search ------------------------------------------------------------------------
@@ -710,7 +723,7 @@ adapters:
       body.filters.cities: "list(location)"
       body.filters.keywords: "list(keywords)"
       body.pagination.limit: limit
-    const: {body.pagination.page: 1}
+      body.pagination.page: "choose(page, page, 1)"
     out: {people: data.leads, count: data.total}
     miss: "data.leads == []"
   prospeo.people.search:
@@ -723,7 +736,7 @@ adapters:
       body.filters.person_job_title.include: "list(title)"
       body.filters.person_job_title.match_mode: "choose(title, 'CONTAINS', null)"
       body.filters.person_location_search.include: "list(country_name(country))"
-    const: {body.page: 1}
+      body.page: "choose(page, page, 1)"
     # Prospeo fixes pages at 25, so there is no honest `limit` input to forward. Return its total.
     out: {people: results, count: pagination.total_count}
     miss: "results == []"
@@ -761,7 +774,8 @@ adapters:
   companyenrich.people.search:
     accepts: [[company_domain, title], [company_domain]]
     in:  {company_domain: body.domains, title: body.positionQuery}
-    in_expr: {body.domains: "list(company_domain)", body.positionQuery: "list(title)", body.pageSize: limit, body.page: "1"}
+    in_expr: {body.domains: "list(company_domain)", body.positionQuery: "list(title)", body.pageSize: limit,
+              body.page: "choose(page, page, 1)", body.seniority: "swap(list(seniority), 'c_suite', 'c-suite')"}
     out: {people: items, count: totalItems}
     miss: "items == []"
   hunter.companies.emails:
@@ -860,9 +874,9 @@ adapters:
     in: {domain: body.domains, name: body.companyNames}
     in_expr: {body.domains: "list(domain)", body.companyNames: "list(name)"}
     out: {name: "data.companies[0].name", domain: "data.companies[0].domain",
-          website: "data.companies[0].websiteUrl", description: "data.companies[0].description",
+          website: "data.companies[0].websiteUrl",
           industry: "data.companies[0].industry", employees: "data.companies[0].employees",
-          founded: "data.companies[0].yearFounded",
+          founded: "data.companies[0].foundedYear",
           location: "join(data.companies[0].city, data.companies[0].country)",
           linkedin_url: "data.companies[0].linkedinUrl"}
     miss: "data.companies == []"
@@ -1047,7 +1061,7 @@ adapters:
       body.filters.technologies: "list(technology)"
       body.filters.countries: "obj('include', list(country_name(country)))"
       body.pagination.limit: limit
-    const: {body.pagination.page: 1}
+      body.pagination.page: "choose(page, page, 1)"
     out: {companies: data.companies, count: data.total}
     miss: "data.companies == []"
   prospeo.companies.search:
@@ -1061,7 +1075,7 @@ adapters:
       body.filters.company_industry.include: "list(industry)"
       body.filters.company_technology.include: "list(technology)"
       body.filters.company_location_search.include: "list(country_name(country))"
-    const: {body.page: 1}
+      body.page: "choose(page, page, 1)"
     # Prospeo fixes pages at 25, so there is no honest `limit` input to forward. Return its total.
     out: {companies: results, count: pagination.total_count}
     miss: "results == []"
@@ -1112,9 +1126,22 @@ adapters:
     out: {companies: items, count: count}
     miss: "items == []"
   companyenrich.companies.search:
-    accepts: [[technology]]
+    accepts: [[technology], [naics], [technologies], [keywords], [countries], [employee_ranges], [revenue_ranges],
+              [company_type], [category], [funding_rounds]]
     in:  {technology: body.technologies, country: body.countries}
-    in_expr: {body.technologies: "list(technology)", body.countries: "list(country)", body.pageSize: limit, body.page: "1"}
+    in_expr:
+      body.technologies: "list(coalesce(technologies, technology))"
+      body.countries: "list(coalesce(countries, country))"
+      body.naicsCode: "list(naics)"
+      body.keywords: "list(keywords)"
+      body.employees: "list(employee_ranges)"
+      body.revenue: "list(revenue_ranges)"
+      body.type: "list(company_type)"
+      body.category: "list(category)"
+      body.fundingRounds: "list(funding_rounds)"
+      body.foundedYear: "obj('min', founded_min, 'max', founded_max)"
+      body.pageSize: limit
+      body.page: "choose(page, page, 1)"
     out: {companies: items, count: totalItems}
     miss: "items == []"
   icypeas.companies.search:
@@ -1171,7 +1198,7 @@ adapters:
   thecompaniesapi.companies.search:
     accepts: [[industry]]
     in:  {}
-    in_expr: {queryParams.query: "tca_filter('about.industries', industry)", queryParams.size: limit}
+    in_expr: {queryParams.query: "tca_filter('about.industries', industry)", queryParams.size: limit, queryParams.page: page}
     test_identity: {industry: fintech}
     out: {companies: companies, count: meta.total}
     miss: "companies == []"
@@ -2353,9 +2380,37 @@ adapters:
     out: {people: "list(obj('name', name, 'profile_url', profile_url, 'first_name', first_name, 'last_name', last_name, 'company_name', company_name))", count: "len(list(name))"}
     miss: "name == null"
   leadsforge.people.search:
-    accepts: [[company_domain]]
+    accepts: [[company_domain], [title], [titles], [department], [company_industry], [company_keywords],
+              [company_technology], [company_location]]
     in:  {company_domain: body.companyDomains.include}
-    in_expr: {body.companyDomains.include: "list(company_domain)", body.limit: limit, body.keywords.include: "list(keywords)"}
+    in_expr:
+      body.companyDomains.include: "list(company_domain)"
+      body.companyDomains.exclude: "list(company_domain_exclude)"
+      body.limit: limit
+      body.keywords.include: "list(keywords)"
+      body.leadJobTitles.include: "list(coalesce(titles, title))"
+      body.leadJobTitles.exclude: "list(title_exclude)"
+      body.leadSeniorities.include: "list(seniority)"
+      body.leadSeniorities.exclude: "list(seniority_exclude)"
+      body.leadDepartments.include: "list(department)"
+      body.leadDepartments.exclude: "list(department_exclude)"
+      body.leadLocations.include: "list(location)"
+      body.leadLocations.exclude: "list(location_exclude)"
+      body.leadTenure: "obj('min', tenure_min, 'max', tenure_max)"
+      body.maxContactsPerCompany: per_company
+      body.companyEmployeeNumberRange: "obj('min', employees_min, 'max', employees_max)"
+      body.companyIndustries.include: "list(company_industry)"
+      body.companyIndustries.exclude: "list(company_industry_exclude)"
+      # its ids for the shared company types and funding rounds
+      body.companyTypes.include: "upper(swap(list(company_type), 'private', 'PRIVATELY_HELD', 'public', 'PUBLIC_COMPANY', 'nonprofit', 'NON_PROFIT', 'government', 'GOVERNMENT_AGENCY', 'self-employed', 'SELF_EMPLOYED', 'self-owned', 'SELF_OWNED'))"
+      body.companyFundingRounds.include: "upper(swap(list(funding_rounds), 'venture', 'venture_series_unknown'))"
+      body.companyRevenueRanges: "list(company_revenue)"
+      body.companyFoundedYearRange: "obj('min', founded_min, 'max', founded_max)"
+      body.companyLocations.include: "list(company_location)"
+      body.companyLocations.exclude: "list(company_location_exclude)"
+      body.companyTechnologies.any: "list(company_technology)"
+      body.companyKeywords.include: "list(company_keywords)"
+      body.companyKeywords.exclude: "list(company_keywords_exclude)"
     out: {people: leads, next_cursor: cursor}
     miss: "leads == []"
   findymail.search.employees:
@@ -2477,6 +2532,7 @@ adapters:
       body.country_code: "obj('include', list(upper(country)), 'exclude', choose(country, [], null))"
       body.locality: "obj('include', list(location), 'exclude', choose(location, [], null))"
       body.per_page: limit
+      body.page: page
     out: {people: data, count: "len(data)", next_cursor: meta.next_cursor}
     miss: "coalesce(data, []) == []"
   quickenrich.companies.search:
@@ -2487,6 +2543,7 @@ adapters:
       body.industry: "obj('include', list(industry), 'exclude', choose(industry, [], null))"
       body.country_code: "obj('include', list(upper(country)), 'exclude', choose(country, [], null))"
       body.per_page: limit
+      body.page: page
     out: {companies: data, count: "len(data)", next_cursor: meta.next_cursor}
     miss: "coalesce(data, []) == []"
 
@@ -3179,7 +3236,8 @@ adapters:
   enrichlayer.people.search:
     accepts: [[full_name], [company_domain], [title, company_domain], [title]]
     in: {title: queryParams.current_role_title, company_domain: queryParams.current_company_domain_name,
-         country: queryParams.country}
+         country: queryParams.country, employees_min: queryParams.current_company_employee_count_min,
+         employees_max: queryParams.current_company_employee_count_max}
     in_expr: {queryParams.first_name: "split_first(full_name)", queryParams.last_name: "split_last(full_name)",
               queryParams.page_size: "at_most(limit, 10)"}
     const: {queryParams.enrich_profiles: skip, queryParams.use_cache: if-present}
@@ -3190,7 +3248,8 @@ adapters:
   enrichlayer.companies.search:
     accepts: [[name], [industry], [domain]]
     in: {name: queryParams.name, industry: queryParams.industry,
-         domain: queryParams.domain_name, country: queryParams.country}
+         domain: queryParams.domain_name, country: queryParams.country,
+         employees_min: queryParams.employee_count_min, employees_max: queryParams.employee_count_max}
     in_expr: {queryParams.page_size: "at_most(limit, 10)"}
     const: {queryParams.enrich_profiles: skip, queryParams.use_cache: if-present}
     cost_units: "at_most(limit, 10)"

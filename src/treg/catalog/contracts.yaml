@@ -275,11 +275,44 @@ contracts:
       - {title: str, company_domain: str}
       - {title: str}
       - {full_name: str}
+      # a search by firmographics or role alone, with no company or title named
+      - {titles: list}
+      - {department: list}
+      - {company_industry: list}
+      - {company_keywords: list}
+      - {company_technology: list}
+      - {company_location: list}
     filters:
       country: {type: str, default: null, note: "ISO country code, where the provider supports it"}
       location: {type: str, default: null, note: "free-text place ('London, United Kingdom', 'Greater Phoenix') passed through to providers that take one; finer than country, never normalised"}
       limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row"}
       keywords: {type: list, default: null, note: "skills, topics or domain terms the person must match ('microservices', 'match analysis') — the SUBSTANCE of most briefs; a provider with no keyword field answers a looser question and ranks below one that has it"}
+      page: {type: int, default: null, note: "1-based page of results, for providers that page; send it with X-Treg-Route-Strict-Filters so a provider that cannot page is skipped rather than answering page 1 again (a provider with a fixed page size, prospeo's 25, pages in its own size)"}
+      seniority: {type: list, default: null, note: "any of owner, founder, c_suite, partner, vp, head, director, manager, senior, entry, intern"}
+      employees_min: {type: int, default: null, note: "current company has at least this many employees"}
+      employees_max: {type: int, default: null, note: "current company has at most this many employees"}
+      titles: {type: list, default: null, note: "job titles, any of (title takes one)"}
+      title_exclude: {type: list, default: null, note: "job titles to leave out"}
+      seniority_exclude: {type: list, default: null, note: "seniorities to leave out (the seniority values)"}
+      department: {type: list, default: null, note: "any of the department ids from leadsforge.people.search.filters.departments (sales, engineering_technical, finance…)"}
+      department_exclude: {type: list, default: null, note: "department ids to leave out"}
+      location_exclude: {type: list, default: null, note: "places the person must not be in"}
+      tenure_min: {type: int, default: null, note: "at least this many years in the current role"}
+      tenure_max: {type: int, default: null, note: "at most this many years in the current role"}
+      per_company: {type: int, default: null, note: "at most this many people from one company"}
+      company_domain_exclude: {type: list, default: null, note: "company domains to leave out"}
+      company_industry: {type: list, default: null, note: "industries, any of, as named by leadsforge.people.search.filters.industries (exact, case-sensitive)"}
+      company_industry_exclude: {type: list, default: null, note: "industries to leave out"}
+      company_type: {type: list, default: null, note: "any of private, public, nonprofit, educational, government, partnership, self-employed, self-owned"}
+      funding_rounds: {type: list, default: null, note: "the company's funding rounds, any of seed, angel, venture, debt_financing, series_a … series_h"}
+      company_revenue: {type: list, default: null, note: "revenue bands from leadsforge.people.search.filters.revenue_ranges (very_small … super_enterprise)"}
+      founded_min: {type: int, default: null, note: "company founded in or after this year"}
+      founded_max: {type: int, default: null, note: "company founded in or before this year"}
+      company_location: {type: list, default: null, note: "places the company is in, any of (country, state or city names)"}
+      company_location_exclude: {type: list, default: null, note: "places the company must not be in"}
+      company_technology: {type: list, default: null, note: "technologies the company uses, any of"}
+      company_keywords: {type: list, default: null, note: "words the company is described by, any of"}
+      company_keywords_exclude: {type: list, default: null, note: "words that rule a company out"}
     # A company-blind provider (lusha, wiza: title only) returns the same strangers for every domain.
     scoping: [company_domain]
     output:
@@ -326,7 +359,8 @@ contracts:
     summary: "Find companies similar to a seed domain"
     identity:
       - {domain: str}
-    filters: {}
+    filters:
+      limit: {type: int, default: 10, note: "companies to return — the price dial: each provider bills per result (up to its own maximum)"}
     output:
       companies: {type: list, required: true}
       count: {type: int}
@@ -341,9 +375,33 @@ contracts:
       - {industry: str}
       - {technology: str}
       - {domain: str}
+      # a search by firmographics alone
+      - {naics: list}
+      - {technologies: list}
+      - {keywords: list}
+      - {countries: list}
+      - {employee_ranges: list}
+      - {revenue_ranges: list}
+      - {company_type: list}
+      - {category: list}
+      - {funding_rounds: list}
     filters:
       country: {type: str, default: null, note: "ISO country code, where the provider supports it"}
       limit: {type: int, default: 10, note: "rows to return — THE price dial: most providers bill per row"}
+      page: {type: int, default: null, note: "1-based page of results, for providers that page; send it with X-Treg-Route-Strict-Filters so a provider that cannot page is skipped rather than answering page 1 again (a provider with a fixed page size, prospeo's 25, pages in its own size)"}
+      employees_min: {type: int, default: null, note: "has at least this many employees"}
+      employees_max: {type: int, default: null, note: "has at most this many employees"}
+      naics: {type: list, default: null, note: "NAICS codes, any of; a short code matches its children (companyenrich.industries.list names them)"}
+      technologies: {type: list, default: null, note: "technologies used, any of (technology takes one); names from companyenrich.technologies.autocomplete"}
+      keywords: {type: list, default: null, note: "description keywords, any of; names from companyenrich.keywords.autocomplete"}
+      countries: {type: list, default: null, note: "ISO country codes, any of (country takes one)"}
+      employee_ranges: {type: list, default: null, note: "headcount bands, any of 1-10, 11-50, 51-200, 201-500, 501-1K, 1K-5K, 5K-10K, over-10K"}
+      revenue_ranges: {type: list, default: null, note: "revenue bands, any of under-1m, 1m-10m, 10m-50m, 50m-100m, 100m-200m, 200m-1b, over-1b"}
+      company_type: {type: list, default: null, note: "any of private, public, nonprofit, educational, government, partnership, self-employed, self-owned"}
+      category: {type: list, default: null, note: "any of b2b, b2c, b2g, e-commerce, media, service-provider, mobile, saas"}
+      funding_rounds: {type: list, default: null, note: "funding rounds raised, any of seed, angel, venture, debt_financing, series_a … series_h, other"}
+      founded_min: {type: int, default: null, note: "founded in or after this year"}
+      founded_max: {type: int, default: null, note: "founded in or before this year"}
     output:
       companies: {type: list, required: true, note: "the provider's own company rows (name, domain, industry, size, location…) — shapes differ per provider; raw is the same body"}
       count: {type: int}

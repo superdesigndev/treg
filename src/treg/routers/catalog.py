@@ -221,6 +221,10 @@ def _plan_row(c) -> dict:
     ride only when they exist; the unmeasured case says nothing rather than four nulls."""
     row = {"endpoint_id": c.endpoint["id"], "accepts": [list(v) for v in c.adapter.accepts],
            "usd": (c.price_micro / 1_000_000) if c.price_micro is not None else None}
+    from ..domain.catalog.routing.plan import applied_filters
+    # the contract filters this provider applies; a search using any other skips it under strict mode
+    if filters := [k for k in applied_filters(c.adapter) if k != "limit"]:
+        row["filters"] = filters
     if c.hit_rate is not None:
         row["hit_rate"] = c.hit_rate
         row["usd_per_hit"] = c.expected_cost_per_hit / 1_000_000
