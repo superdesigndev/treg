@@ -1297,6 +1297,38 @@ AKTA = OAuthProvider(
     probe_path="/v1/company/search/?query=canva.com",
 )
 
+PRERENDERBUDDY = OAuthProvider(
+    service="prerenderbuddy",
+    display_name="Prerender Buddy",
+    auth_kind="key",
+    token_label="Scoped PB API key",
+    token_placeholder="your Prerender Buddy API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://app.prerenderbuddy.com/api-keys",
+    setup_action_label="Create a scoped Developer API key",
+    setup_steps=(
+        "Create a free PB account or sign in to your existing workspace.",
+        "Open the user-avatar menu and choose Developer API keys.",
+        "For standalone answers, choose Standalone AI checks and add separate API credit.",
+        "For private saved evidence, use an entitled workspace and its sites, usage, health, activity, visibility and content read scopes.",
+        "Copy the key and keep it server-side.",
+    ),
+    setup_note=(
+        "Standalone answers need the marketplace scope and API credit, with no PB subscription. "
+        "Private evidence reads require Developer API entitlement and matching read scopes. "
+        "Your own key always takes priority and spends PB credit directly; treg does not meter it."
+    ),
+    auth_uri="", token_uri="", scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="SEO",
+    summary="Collect AI answers with citations and brand evidence, or read your own saved website findings.",
+    base_url="https://api.prerenderbuddy.com/v1/developer",
+    docs_url="https://api.prerenderbuddy.com/v1/developer/marketplace/docs",
+    probe_path="/connection",
+)
+
+
 HUNTER = OAuthProvider(
     service="hunter",
     display_name="Hunter",
@@ -3935,7 +3967,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         SCRAPECREATORS,
         # SEO API-key providers
         DATAFORSEO, SERANKING, MOZ, MAJESTIC, SERPSTAT, EXA, SEARCH1API, TAVILY, OCTEN, LINKUP, YOU, VALYU, KEENABLE, OLOSTEP, FIRECRAWL, CRAWL4AI, SPIDERCLOUD, PERPLEXITY,
-        SCRAPEGRAPHAI, SERPER, LITESCRAPE, CLORO,
+        SCRAPEGRAPHAI, SERPER, LITESCRAPE, CLORO, PRERENDERBUDDY,
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
