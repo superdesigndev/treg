@@ -1273,6 +1273,7 @@ async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str 
     total = 0
     try:
         async with session_maker() as db:
+            await ledger.lock_hold_orgs_in_transaction(db, (d.call_id for d in pending))
             for d in pending:
                 if charge and d.billable:
                     total += await ledger.settle_in_transaction(db, d.call_id, d.actual_micro, meta=d.meta)

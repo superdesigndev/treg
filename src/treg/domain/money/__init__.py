@@ -43,6 +43,7 @@ to strand in the first place.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
 from typing import NamedTuple
 
@@ -161,6 +162,33 @@ async def _add_balance(db: AsyncSession, org_id: int, delta_micro: int, *,
     await db.execute(update(Org).where(Org.id == org_id).values(**values))
 
 
+async def lock_orgs_in_transaction(db: AsyncSession, org_ids: Iterable[int]) -> None:
+    """Serialize money writers before they claim holds or write blocks, until commit/rollback.
+
+    A transaction touching multiple orgs must lock the complete set here BEFORE its first money
+    operation. Sorting each individual operation's subset would still allow opposite transfers to
+    deadlock. NO KEY UPDATE is sufficient for balance writes and compatible with foreign-key checks.
+    Do not autoflush pending ORM writes ahead of these locks. SQLite keeps its single-writer rules.
+    """
+    ids = sorted(set(org_ids))
+    if ids:
+        with db.no_autoflush:
+            await db.execute(select(Org.id).where(Org.id.in_(ids)).order_by(Org.id)
+                             .with_for_update(key_share=True))
+
+
+async def lock_hold_orgs_in_transaction(db: AsyncSession, call_ids: Iterable[str]) -> None:
+    """Lock every org in a batch before closing any hold; this does not claim the holds."""
+    ids = set(call_ids)
+    if not ids:
+        return
+    with db.no_autoflush:
+        org_ids = set((await db.execute(
+            select(Hold.org_id).where(Hold.id.in_(ids)))).scalars())
+        org_ids.update(row.org_id for row in db.new if isinstance(row, Hold) and row.id in ids)
+        await lock_orgs_in_transaction(db, org_ids)
+
+
 # ---- funding -----------------------------------------------------------------------------------
 async def grant(
     db: AsyncSession, org_id: int, *, amount_micro: int | None = None,
@@ -170,15 +198,14 @@ async def grant(
     transaction - the caller commits.
 
     `once=True` (the default) makes it idempotent per (org, kind): an org that already holds a block
-    of this kind gets nothing and `None` comes back. That is what lets the org-creation hook be safe
-    to call from more than one door, and what keeps a retry from double-granting. The `once` check
-    remains a check-then-act with no backing unique index, so it is NOT safe under concurrency:
-    callers racing for money owed to a third party pass `once=False` and bring their own unique row
-    to arbitrate (see `Referral`).
+    of this kind gets nothing and `None` comes back. The org lock serializes this check with the
+    credit on PostgreSQL. Callers paying multiple rewards of the same kind pass `once=False` and
+    bring their own unique row to arbitrate each reward (see `Referral`).
     """
     amount = get_settings().promo_grant_micro if amount_micro is None else int(amount_micro)
     if amount <= 0:
         return None
+    await lock_orgs_in_transaction(db, [org_id])
     if once:
         existing = (await db.execute(
             select(CreditBlock.id).where(CreditBlock.org_id == org_id, CreditBlock.kind == kind)
@@ -208,9 +235,11 @@ async def topup(
         raise ValueError("topup amount must be positive")
     if not payment_ref:
         raise ValueError("topup requires a payment reference (the idempotency key)")
-    existing = await _block_for_payment(db, payment_ref)
+    with db.no_autoflush:
+        existing = await _block_for_payment(db, payment_ref)
     if existing is not None:
         return existing  # already credited — a redelivered webhook, not a second purchase
+    await lock_orgs_in_transaction(db, [org_id])
     block = CreditBlock(id=_id(), org_id=org_id, kind="purchased", amount_micro=int(amount_micro),
                         remaining_micro=int(amount_micro), stripe_payment_intent=payment_ref)
     # A SAVEPOINT, not a session rollback: this runs inside the CALLER's transaction now, and a
@@ -327,7 +356,9 @@ class _ClaimedHold(NamedTuple):
     created_at: datetime
 
 
-async def _claim_hold(db: AsyncSession, call_id: str) -> _ClaimedHold | None:
+async def _claim_hold(
+    db: AsyncSession, call_id: str, *, payee_org_id: int | None = None,
+) -> _ClaimedHold | None:
     """Take exclusive ownership of one open hold, or return None if it is gone or already claimed.
 
     CLAIM the hold before any money moves: the DELETE's rowcount is what decides which of
@@ -339,14 +370,21 @@ async def _claim_hold(db: AsyncSession, call_id: str) -> _ClaimedHold | None:
     Same idiom as `reserve`'s conditional UPDATE, for the same reason: where two paths read before
     either writes, the database has to be the one that says no.
     """
-    hold = await db.get(Hold, call_id)
-    if hold is None:
-        return None
+    with db.no_autoflush:
+        # Reading the owner only locates the coordination lock. DELETE below still decides who
+        # won. Include an unflushed reservation when the caller composes money operations.
+        hold = next((row for row in db.new if isinstance(row, Hold) and row.id == call_id), None)
+        if hold is None:
+            hold = await db.get(Hold, call_id)
+        if hold is None:
+            return None
+        org_ids = [hold.org_id] if payee_org_id is None else [hold.org_id, payee_org_id]
+        await lock_orgs_in_transaction(db, org_ids)
     claimed = _ClaimedHold(hold.amount_micro, hold.org_id, hold.endpoint_id, hold.created_at)
     result = await db.execute(delete(Hold).where(Hold.id == call_id))
     if result.rowcount != 1:
         # Lost the claim: somebody else is closing this hold. Deliberately NO rollback — the DELETE
-        # matched nothing and only a read precedes it, so there is nothing to discard, and rolling
+        # matched nothing; the caller still owns the transaction (and its org locks). Rolling
         # back would EXPIRE every object in the session. `reap_stale_holds` shares one session across
         # a loop of preloaded Hold rows, so that expiry made the next `hold.id` attempt implicit async
         # I/O (MissingGreenlet) and killed the rest of the sweep.
@@ -439,7 +477,7 @@ async def settle_to_in_transaction(
     rise together. No margin: the seller's price is the seller's, whole (round 3 q4). Returns the
     amount moved; 0 when the hold was already closed (a double settle moves nothing twice). Does not
     commit."""
-    hold = await _claim_hold(db, call_id)
+    hold = await _claim_hold(db, call_id, payee_org_id=payee_org_id)
     if hold is None:
         return 0
     amount = hold.amount_micro
@@ -558,6 +596,9 @@ async def reap_stale_holds(db: AsyncSession, *, org_id: int | None = None, limit
     if org_id is not None:
         q = q.where(Hold.org_id == org_id)
     stale = (await db.execute(q)).scalars().all()
+    # A lost claim does not commit, so its org lock can survive into the next iteration. Keep the
+    # oldest-N selection above, but process that set in org order even for an all-org sweep.
+    stale.sort(key=lambda hold: (hold.org_id, hold.created_at, hold.id))
     for hold in stale:
         await release(db, hold.id, reason="stale_hold_reaped",
                       meta={"age_s": int((_now() - hold.created_at).total_seconds())})

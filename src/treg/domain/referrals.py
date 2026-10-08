@@ -17,9 +17,9 @@ paying for: every top-up, and the Referrals page itself.
 
 WHAT ARBITRATES A DOUBLE PAYOUT
 -------------------------------
-The `Referral` row, via two UNIQUE constraints — NOT `ledger.grant(once=True)`, whose check is a
-SELECT with no backing index and which therefore cannot survive two concurrent redemptions. So
-every grant here passes `once=False` and the database decides. Same reasoning as the conditional
+The `Referral` row, via two UNIQUE constraints, identifies each reward; `ledger.grant(once=True)`
+instead checks whether the org has ever received that block kind. Every grant here therefore
+passes `once=False` and the referral claim decides. Same reasoning as the conditional
 UPDATE in `ledger.reserve` and the unique `stripe_payment_intent` in `ledger.topup`.
 
 WHAT THIS DELIBERATELY DOES NOT DO
@@ -439,6 +439,9 @@ async def _pay(db: AsyncSession, row: Referral) -> bool:
     if claimed != 1:
         return False  # another sweep claimed it between our SELECT and here
 
+    # The grants share one transaction; lock both recipients before either grant takes its locks.
+    # This must follow the claim commit above, which releases all of that transaction's locks.
+    await ledger.lock_orgs_in_transaction(db, [referred_org.id, referrer_org.id])
     meta = {"referral_id": row.id, "code": row.code}
     # Only if the instant grant did not already land it — see the docstring.
     referred_block = None
