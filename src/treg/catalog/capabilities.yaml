@@ -102,6 +102,7 @@ platforms:
   douyin-xingtu: {label: "Xingtu — Douyin's creator marketplace (influencer rates, audience data)", category: "Advertising", summary: "Influencer rates, audience breakdowns and campaign performance."}
   xiaohongshu-pugongying: {label: "Pugongying — Xiaohongshu's creator marketplace", category: "Advertising", summary: "Creator pricing, audience and note performance from Xiaohongshu's creator marketplace."}
   qq-huxuan: {label: "QQ Huxuan — Tencent's creator marketplace", category: "Advertising", summary: "Creator and placement data from Tencent's Huxuan marketplace."}
+  ugc: {label: "UGC video clips (real humans)", category: "Advertising", summary: "Search and license real-human UGC reaction clips for ads and organic posts."}
 
   # --- Community -------------------------------------------------------------------------------
   slack: {label: "Slack", category: "Community", featured: 1, summary: "Read channels and post messages in your own Slack workspace via your bot token."}

@@ -1324,6 +1324,33 @@ HUNTER = OAuthProvider(
     probe_path="/account",  # free — consumes no search/verification/enrichment credits
 )
 
+DANSUGC = OAuthProvider(
+    service="dansugc",
+    display_name="DansUGC",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="dsk_…",
+    # Bearer header only; DansUGC accepts no query-param key.
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://dansugc.com/dashboard/api-keys",
+    setup_action_label="Get your DansUGC API key",
+    setup_steps=(
+        "Sign in to DansUGC on a Scale plan and open Dashboard → API keys.",
+        "Create a secret key (it starts with dsk_) and copy it; it is shown once.",
+    ),
+    setup_note="The REST API needs a Scale subscription. Licensing a clip spends account credits; "
+               "search, filters, clip details and the key check are free.",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Advertising",
+    summary="Search and license real-human UGC reaction clips (never AI) for ads and organic posts.",
+    base_url="https://dansugc.com/api/v1",
+    docs_url="https://dansugc.com/docs",
+    probe_path="/broll/filters",  # free, read-only — a bad key gets 401 {"error":"Invalid API key"}
+)
+
 ANYAPI = OAuthProvider(
     service="anyapi",
     display_name="AnyAPI",
@@ -3944,7 +3971,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
         # Advertising: API-key ad intelligence + unconfigured OAuth ad platforms
-        SPYFU, APIFY, META_AD_LIBRARY, SERPAPI,
+        SPYFU, APIFY, META_AD_LIBRARY, SERPAPI, DANSUGC,
         MICROSOFT_ADS, SNAPCHAT_ADS, TIKTOK_ADS, PINTEREST_ADS,
     )
 }
