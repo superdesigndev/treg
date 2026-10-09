@@ -118,6 +118,7 @@ jobs:
           tests/test_team_limit.py
           tests/test_ledger.py
           tests/test_ledger_claim_review.py
+          tests/test_money_lock_order.py
           tests/test_asynctasks.py
           tests/test_alembic_baseline.py
           tests/test_redundant_index_migration.py

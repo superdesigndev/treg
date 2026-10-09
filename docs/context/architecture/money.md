@@ -42,6 +42,7 @@ sources:
   - tests/test_call_architecture.py
   - tests/test_marketplace_call.py
   - tests/test_asynctasks.py
+  - tests/test_money_lock_order.py
 related:
   - architecture/catalog.md
   - architecture/proxy-model.md
@@ -218,6 +219,30 @@ locking. It is independent of consumption priority: the subsequent `blocks.sort`
 promotional credit first, then age and ID. Keep both the row lock (which prevents lost deductions)
 and that business sort. This is the repository's sole explicit CreditBlock row-lock query.
 
+**Money writers coordinate on Org before claiming holds or writing blocks.**
+`lock_orgs_in_transaction` acquires `FOR NO KEY UPDATE` locks in ascending org ID order, without
+autoflushing pending ORM writes ahead of them. This mode serializes balance writers while remaining
+compatible with foreign-key `KEY SHARE` checks. Settlement and release locate the hold's org without
+claiming it, acquire the org lock, then retain the atomic DELETE claim; only its rowcount authorizes
+money movement. Grant and top-up acquire the same lock before staging a block. Reserve's conditional
+UPDATE already takes the org lock before its new hold, after the independent stale-hold releases.
+
+Every transaction touching multiple orgs must acquire its complete org set before its first money
+operation. `settle_to_in_transaction` locks both payer and payee; `close_deferred` resolves and locks
+all open holds' orgs before closing its batch; referral payout locks both recipients after its claim
+commit. Acquiring separately sorted subsets as each operation runs is insufficient. Batch commits,
+funding savepoints, amount calculations and block consumption priority stay unchanged. A lost hold
+claim remains a no-op without rolling back the caller's work; its org lock lasts until the caller
+ends the transaction. The reaper still selects the oldest limited set and commits each successful
+release independently, but visits that set in org order so lost claims cannot accumulate locks in
+reverse order during an all-org sweep.
+
+This protocol prevents opposite lock ordering among participating money writers. It does not bound
+transaction duration or eliminate ordinary lock waits, and is not a claim about unrelated writers
+such as organization deletion. Deploy all participating writers together: old block-first settlement
+and new org-first writers can still deadlock while mixed versions are running. Drain old transactions
+before enabling the new writers; rollback requires the same coordination.
+
 **Margin is applied inside the module** (`with_margin`), at reserve AND settle, and the rate in force
 is recorded on every entry - so a rate change cannot retroactively rewrite what a call cost, and two
 call sites cannot disagree.
@@ -349,8 +374,9 @@ same function; there is one reading of the descriptor, not a mirror. `/calls`,
 **Idempotency on `topup` is enforced by the database.** `stripe_payment_intent` is UNIQUE, and `topup`
 FLUSHES its INSERT inside a SAVEPOINT, before the balance moves: the loser of a race rolls back only
 that savepoint - the caller's other staged work survives - and its re-SELECT returns the winner's
-committed block, the same answer as the sequential path. The loser's flush blocks until the winner's
-transaction commits, which is why the caller must commit promptly after `topup` returns. The
+committed block, the same answer as the sequential path. Concurrent deliveries for the same org now
+wait on its coordination lock before inserting; the unique constraint remains the final payment
+deduplication guard. The caller must commit promptly after `topup` returns. The
 application-level SELECT is an optimisation, not the guarantee - two concurrent deliveries of one
 PaymentIntent both miss it. (Fixed in #45; the unique constraint is part of the Alembic baseline
 schema - the legacy startup migration that once added it is deleted.)
@@ -625,6 +651,10 @@ Tests inspect both concurrent settlements' compiled PostgreSQL lock order and ve
 priority; SQLite cannot exercise row locks. PostgreSQL runs exercise concurrent settlements and
 real driver-wrapped SQLSTATE injection after staged writes, checking rollback and retry exhaustion.
 SQLSTATE injection tests recovery, not the production planner's original deadlock schedule.
+`tests/test_money_lock_order.py` separately forces real PostgreSQL lock waits between a mixed
+release/settle batch and an ordinary settlement, and between opposite Hub transfers. It verifies
+completion, exactly-once hold closure, balances, tag spend and transaction rollback. SQLite skips
+these tests; they run in the PostgreSQL CI job.
 
 The request session must be committed before relay so settlement cannot wait on a connection held by that same request. See [connection discipline](proxy-model.md#connection-discipline-a-call-in-flight-holds-no-db-connection).
 
@@ -895,8 +925,8 @@ Referral credit burns alongside promotional credit before purchased credit. The 
 guards its grant; the lazy sweep retries a missed instant grant.
 
 Database uniqueness on `referred_org_id` and `qualifying_payment_intent` prevents duplicate
-qualification. Referral grants use `once=False`: `grant(once=True)` is a SELECT check without
-a unique constraint and is not a concurrency guard.
+qualification. Referral grants use `once=False`: money's per-org/per-kind `once` check does not
+identify individual referral rewards, so the referral's unique claim remains their payout guard.
 
 `_pay` commits the paid claim before granting, then commits grants and block-id stamps together.
 A crash between those transactions can leave a paid row with missing block ids, visible through
