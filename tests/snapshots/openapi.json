@@ -3401,7 +3401,7 @@
     },
     "/admin/share": {
       "get": {
-        "description": "Who served each job over the last `minutes` (at most 360). `requests` counts what callers\nasked (direct calls and routed parents, never a routed attempt); `by_provider` counts the 2xx\nanswers each provider gave, directly or as a routed attempt. One read over an id range.",
+        "description": "Who served each job over the last `minutes` (at most 360). `requests` counts what callers\nasked (direct calls and routed parents, never a routed attempt); `by_provider` counts the 2xx\nanswers each provider gave, directly or as a routed attempt, that its adapter did not judge a\nmiss (`CallRecord.hit` False: an empty page under a 200 is not an answer). One read over an\nid range.",
         "operationId": "admin_share_admin_share_get",
         "parameters": [
           {

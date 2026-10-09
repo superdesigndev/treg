@@ -67,6 +67,7 @@ endpoints:
   - id: crawl4ai.web.scrape
     async: false
     capability: web.extract
+    not_found: {status: [404, 410], when: "starts_with(reason, 'origin-error')", means: "the site itself answered 404 or 410: the page does not exist"}
     platform: web
     domain: extract
     scope: any_account

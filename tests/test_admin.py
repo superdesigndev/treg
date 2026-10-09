@@ -314,7 +314,8 @@ async def test_admin_calls_reads_new_rows_after_a_cursor_by_provider(c):
 
 async def test_admin_share_counts_requests_per_job_and_answers_per_provider(c):
     """A routed call counts once as a request, and its successful attempt credits the provider that
-    answered; a direct call credits its own provider; a failed attempt credits nobody."""
+    answered; a direct call credits its own provider; a failed attempt, or a 200 its adapter judged
+    empty, credits nobody."""
     from treg.models import CallRecord
     async with session_maker() as s:
         def add(ep, prov, status, ref):
@@ -326,8 +327,13 @@ async def test_admin_share_counts_requests_per_job_and_answers_per_provider(c):
         add("treg.web.extract", "treg", 200, "p2")
         add("crawl4ai.web.scrape", "crawl4ai", 200, "p2:r0")
         add("crawl4ai.web.scrape", "crawl4ai", 200, "d1")
+        add("treg.web.extract", "treg", 200, "p3")
+        s.add(CallRecord(org_id=1, user_email="u@example.com", tool_name="tinyfish.web.fetch", method="POST",
+                         path="/call/x", status_code=200, endpoint_id="tinyfish.web.fetch", provider="tinyfish",
+                         call_ref="p3:r0", hit=False))   # a 200 its adapter judged empty: not an answer
+        add("crawl4ai.web.scrape", "crawl4ai", 200, "p3:r1")
         await s.commit()
     body = (await c.get("/admin/share?minutes=60", headers=_a())).json()
     job = next(j for j in body["jobs"] if j["capability"] == "web.extract")
-    assert job["requests"] == 3 and job["answered"] == 3
-    assert job["by_provider"] == {"crawl4ai": 2, "tinyfish": 1}
+    assert job["requests"] == 4 and job["answered"] == 4
+    assert job["by_provider"] == {"crawl4ai": 3, "tinyfish": 1}

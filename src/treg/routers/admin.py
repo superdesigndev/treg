@@ -11,7 +11,7 @@ import re
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
-from sqlalchemy import case, func, or_, text
+from sqlalchemy import and_, case, func, or_, text
 from sqlalchemy.orm import defer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -193,14 +193,17 @@ async def admin_share(
 ) -> dict:
     """Who served each job over the last `minutes` (at most 360). `requests` counts what callers
     asked (direct calls and routed parents, never a routed attempt); `by_provider` counts the 2xx
-    answers each provider gave, directly or as a routed attempt. One read over an id range."""
+    answers each provider gave, directly or as a routed attempt, that its adapter did not judge a
+    miss (`CallRecord.hit` False: an empty page under a 200 is not an answer). One read over an
+    id range."""
     from ..application import catalog_stats
     from ..domain.catalog import store as catalog_store
     minutes = max(1, min(minutes, 360))
     since = _utcnow_naive() - timedelta(minutes=minutes)
     first = await catalog_stats._first_id_at(db, since)
     attempt = CallRecord.call_ref.like("%:r%")
-    ok = case((CallRecord.status_code.between(200, 299), 1), else_=0)
+    ok = case((and_(CallRecord.status_code.between(200, 299), or_(CallRecord.hit.is_(None), CallRecord.hit.is_(True))), 1),
+              else_=0)
     rows = (await db.execute(
         select(CallRecord.endpoint_id, CallRecord.provider, attempt, func.count(), func.sum(ok))
         .where(CallRecord.id >= first, CallRecord.endpoint_id.is_not(None))

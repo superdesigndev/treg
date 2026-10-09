@@ -130,6 +130,7 @@ endpoints:
   - id: tinyfish.web.fetch
     async: false
     capability: web.extract
+    not_found: {status: 200, when: "errors[0].error == 'page_not_found'", means: "the site itself answered 404: the page does not exist"}
     platform: web
     domain: extract
     scope: any_account

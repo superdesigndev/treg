@@ -1743,6 +1743,15 @@ Five rules worth keeping:
   a daily-cap 429 — see the data-model fragment) never reached the provider; they are excluded even
   from `samples`, or a burst of refused calls dresses itself up as traffic. The 2026-08-12 Hunter
   incident — 309 refusals next to 488 real calls — is why.
+- **`not_found` ends a routed call.** A miss says "this provider has no answer"; `not_found:
+  {status, when?, means}` says "the target itself does not exist" (a scraped site answered 404 or
+  410), so every other provider can only find the same nothing or answer an empty page that reads
+  as a success. `routing.contracts.declared_not_found` reads it (`status` is one status or a list,
+  a 2xx allowed only with a `when` predicate, for providers that answer 200 and name the target's
+  404 in the body); `route.py` ends the call with `route_not_found` at that status (404 for a 2xx
+  declaration), charging nothing and asking no one else. `endpoint_view` shows `status` and
+  `means` on the tools that declare it. Each scrape adapter's `miss` predicate reads that
+  provider's own text field, so an empty page is a miss for every provider, not a hit.
 - **`miss` semantics ride on the endpoint.** Some providers answer "asked and answered: no result"
   with an error status (PDL 404s a person it has no record of; Hunter's combined-find does the
   same). Endpoints with evidenced miss behaviour carry a `miss: {status, means}` block in their

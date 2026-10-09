@@ -767,6 +767,9 @@ def _normalize(raw: dict, provider: str, directory: Path) -> dict:
         # 404s a person it has no record of). Only endpoints with evidenced miss semantics carry
         # it; for everything else an error status means what it says.
         "miss": raw.get("miss") or None,
+        # {status, when?, means} — the provider's answer for "the target itself does not exist" (a
+        # scraped site's own 404): a routed call ends with it instead of asking the next provider.
+        "not_found": raw.get("not_found") or None,
         # A provider can retire/move a route after an agent has cached its id. Keep that id in
         # `by_id`, but remove it from discovery and return the migration story on direct lookup.
         "status": str(raw.get("status") or "").strip().lower(),
@@ -859,6 +862,8 @@ def endpoint_view(ep: dict, provider_display: str, cat: Catalog | None = None) -
         # "no match" semantics, when the endpoint has them — an agent that reads `miss` stops
         # treating an expected empty answer as a failed call (and stops retrying it).
         "miss": ({k: v for k, v in ep["miss"].items() if k != "when"} if isinstance(ep.get("miss"), dict) else ep.get("miss")),
+        # "the target does not exist" semantics, only on the tools that declare them
+        **({"not_found": {k: v for k, v in ep["not_found"].items() if k != "when"}} if isinstance(ep.get("not_found"), dict) else {}),
         # Only direct-id lookups can return a marked row; discovery surfaces never include one.
         "status": ep.get("status") or None,
         "status_note": ep.get("status_note") or None,

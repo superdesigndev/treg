@@ -9,7 +9,8 @@ core `output` (via the child's adapter), the child's `raw` body, and `_treg: {se
 Fallback follows the overflow rules: on an ERROR (our 5xx/503, a vendor 5xx/429/402) the next
 candidate is tried, at most two extra, idempotent contracts only; a caller-caused refusal (4xx)
 stops at once — it would be the same 4xx everywhere — unless the endpoint's YAML declares that
-status as its "no result" answer (`miss: {status: 404}`), which is a MISS. Child-local treg authorization failures and
+status as its "no result" answer (`miss: {status: 404}`), which is a MISS. A declared
+`not_found:` (the target itself does not exist) ends the call with that answer. Child-local treg authorization failures and
 platform vendor 401/403 responses are errors because another child may work. A MISS (2xx,
 `adapter.miss`) stops unless the
 caller turned the waterfall off (`X-Treg-Route-Waterfall: 0`). The waterfall is ON by default —
@@ -42,7 +43,7 @@ from ...domain.catalog import results as catalog_results
 from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import paths as P
-from ...domain.catalog.routing.contracts import canonical_identity, declared_miss, miss_status
+from ...domain.catalog.routing.contracts import canonical_identity, declared_miss, declared_not_found, miss_status
 from ...domain.catalog.routing.plan import (
     MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank, unscoped,
 )
@@ -186,7 +187,7 @@ class _Bytes:
 class Attempt:
     endpoint_id: str
     provider: str
-    outcome: str            # hit | weak | miss | error | rejected | skipped
+    outcome: str            # hit | weak | miss | not_found | error | rejected | skipped
     status: int | None
     charged_micro: int
     detail: str = ""
@@ -638,6 +639,18 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 continue
             winner = (cand, {}, {}, raw)
             break
+        if declared_not_found(cand.endpoint, response.status, raw):
+            # The provider reports that the TARGET does not exist (the scraped site answered 404 or
+            # 410). Every other provider can only find the same nothing, or answer an empty page that
+            # reads as a success, so the call ends here with that answer, charging nothing.
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "not_found", response.status, charged))
+            status = response.status if 400 <= response.status < 500 else 404
+            _audit_parent(parent, ep, status, 0, audit_client)
+            raise ResolutionFailed("route_not_found", status_code=status, detail={
+                "error": "route_not_found", "endpoint_id": ep["id"], "served_by": cand.endpoint["id"],
+                "tried": [t.view() for t in tried], "charged_micro": spent,
+                "message": f"{cand.endpoint['id']} reports that the target does not exist",
+                "provider_response": raw[:600].decode("utf-8", "replace")})
         capacity_signal = classify_capacity(cand.endpoint["provider"], response.status, body=raw)
         temporary_capacity = capacity_signal is not None and capacity_signal.kind in ("burst", "unknown")
         platform_auth_failure = cand.tier == "platform" and response.status in (401, 403)

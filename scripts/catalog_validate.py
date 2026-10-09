@@ -1249,6 +1249,17 @@ def main(argv: list[str]) -> int:
                     fail(errors, where, f"miss.when must be a comparison or call in the adapter expression language, got {when!r}")
                 elif miss.get("status") is None:
                     fail(errors, where, "miss.when needs miss.status (the 4xx it narrows)")
+            nf = ep.get("not_found")
+            if nf is not None:
+                statuses = nf.get("status") if isinstance(nf, dict) else None
+                statuses = statuses if isinstance(statuses, list) else [statuses]
+                if not isinstance(nf, dict) or not nf.get("means") or not all(isinstance(s, int) and 200 <= s < 500 for s in statuses):
+                    fail(errors, where, "not_found needs status (a 2xx/4xx or a list of them) and means")
+                elif nf.get("when") is not None and not (isinstance(nf["when"], str) and (
+                        _paths._CMP.match(nf["when"].strip()) or _paths._CALL.match(nf["when"].strip()))):
+                    fail(errors, where, f"not_found.when must be a comparison or call in the adapter expression language, got {nf['when']!r}")
+                elif any(200 <= s < 300 for s in statuses) and nf.get("when") is None:
+                    fail(errors, where, "not_found with a 2xx status needs a `when` predicate, or every success would end the call")
             if eid in seen_ids:
                 fail(errors, where, f"duplicate id (also in {seen_ids[eid]})")
             seen_ids[eid] = name

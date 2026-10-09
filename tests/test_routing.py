@@ -1830,6 +1830,33 @@ async def test_crawl4ai_answers_scrape_and_search_first_by_default(clients, monk
     get_settings.cache_clear()
 
 
+async def test_a_declared_not_found_ends_the_job_and_an_empty_page_is_a_miss(clients, monkeypatch):
+    """A scraped page that does not exist: the first provider's declared "the site answered 404"
+    (`not_found:`) ends the call with that 404, charging nothing, instead of asking providers that
+    answer the same page with an empty "success". An empty page is a miss, so the job goes on."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_CRAWL4AI", "PLATFORM-C4AI")
+    monkeypatch.setenv("TREG_PLATFORM_KEY_FIRECRAWL", "PLATFORM-FIRECRAWL")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "crawl4ai,firecrawl")
+    get_settings.cache_clear()
+    seen = []
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"crawl4ai": [(404, {"ok": False, "reason": "origin-error:404"})], "*": [(200, {"data": {"markdown": ""}})]}, seen))
+    before = await _balance(clients)
+    r = await clients.post("/call/treg.web.extract", json={"url": "https://example.com/gone"})
+    assert r.status_code == 404 and r.json()["detail"]["error"] == "route_not_found", r.text
+    assert [s[0] for s in seen] == ["crawl4ai"], "no other provider is asked"
+    assert [t["outcome"] for t in r.json()["detail"]["tried"]] == ["not_found"]
+    assert await _balance(clients) == before
+    # a 404 that is not the site's own answer keeps its old meaning: the job goes on
+    seen.clear()
+    monkeypatch.setattr(call_service, "relay", _relay_by_provider(
+        {"crawl4ai": [(404, {"ok": False, "reason": "something-else"})], "*": [(200, {"data": {"markdown": ""}})]}, seen))
+    r = await clients.post("/call/treg.web.extract", json={"url": "https://example.com/gone"})
+    assert [s[0] for s in seen] == ["crawl4ai", "*"]
+    assert r.status_code == 502 and r.json()["detail"]["tried"][-1]["outcome"] == "miss", "an empty page is a miss, not a hit"
+    get_settings.cache_clear()
+
+
 # ---- web.extract.structured: a new routed job, crawl4ai first ----------------------------------------
 _SCHEMA = {"type": "object", "properties": {"title": {"type": "string"}}, "required": ["title"]}
 

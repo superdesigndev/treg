@@ -2942,48 +2942,48 @@ adapters:
     accepts: [[url]]
     in: {url: body.url}
     out: {pages: "list(results)", count: "len(list(results))"}
-    miss: "results == null"
+    miss: "coalesce(results.content, '') == ''"
   you.web.contents:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
     test_identity: {url: "https://example.com"}
     const: {body.formats: [markdown]}
     out: {pages: ".", count: "len(.)"}
-    miss: ". == []"
+    miss: "coalesce([0].markdown, '') == ''"
   tinyfish.web.fetch:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
     test_identity: {url: "https://example.com"}
     const: {body.format: markdown, body.links: true, body.ttl: 0}
     out: {pages: results, count: "len(results)"}
-    miss: "coalesce(results, []) == []"
+    miss: "coalesce(results[0].text, '') == ''"
   exa.web.contents.get:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
     test_identity: {url: "https://en.wikipedia.org/wiki/Hierarchical_navigable_small_world"}
     const: {body.text: true}
     out: {pages: results, count: "len(results)"}
-    miss: "coalesce(results, []) == []"
+    miss: "coalesce(results[0].text, '') == ''"
   olostep.web.scrape:
     accepts: [[url]]
     in: {url: body.url_to_scrape}
     const: {body.formats: [markdown], body.max_age: 604800}
     out: {pages: "list(result)", count: "len(list(result))"}
-    miss: "result == null"
+    miss: "coalesce(result.markdown_content, '') == ''"
   scrapegraphai.web.scrape:
     accepts: [[url]]
     in: {url: body.url}
     test_identity: {url: "https://example.com"}
     const: {body.formats: [{type: markdown}], body.allowedTypes: [text/html]}
     out: {pages: "results.markdown.data", count: "len(results.markdown.data)"}
-    miss: "coalesce(results.markdown.data, []) == []"
+    miss: "coalesce(results.markdown.data[0], '') == ''"
   tavily.web.extract:
     accepts: [[url]]
     in_expr: {body.urls: "list(url)"}
     test_identity: {url: "https://example.com"}
     const: {body.extract_depth: basic}
     out: {pages: results, count: "len(results)"}
-    miss: "coalesce(results, []) == []"
+    miss: "coalesce(results[0].raw_content, '') == ''"
   linkup.web.fetch:
     accepts: [[url]]
     in: {url: body.url}
@@ -2996,7 +2996,7 @@ adapters:
     in: {url: queryParams.url}
     const: {queryParams.live: false}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: ". == null"
+    miss: "coalesce(content, '') == ''"
   serper.web.extract:
     accepts: [[url]]
     in: {url: body.url}
@@ -3035,19 +3035,19 @@ adapters:
     in: {url: body.url}
     const: {body.format: md}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: "coalesce(markdown, '') == null"
+    miss: "coalesce(markdown, '') == ''"
   firecrawl.web.scrape:
     accepts: [[url]]
     in: {url: body.url}
     const: {body.formats: [markdown], body.parsers: []}
     out: {pages: "list(data)", count: "len(list(data))"}
-    miss: "coalesce(data.markdown, '') == null"
+    miss: "coalesce(data.markdown, '') == ''"
   branddev.web.scrape:
     accepts: [[url]]
     in: {url: body.url}
     const: {body.formats: {markdown: true}}
     out: {pages: "list(.)", count: "len(list(.))"}
-    miss: "markdown.success == false"
+    miss: "coalesce(markdown.data, '') == ''"
 
   search1api.web.sitemap:
     accepts: [[url]]
