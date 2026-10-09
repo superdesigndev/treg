@@ -26,7 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from treg import api as A
-from treg.domain.catalog import stats as catalog_stats
+from treg.infra.catalog_observations import PostgresEndpointObservationReader
 from treg.application.call import service as call_service
 from treg.routers import call as call_routes
 from treg import audit
@@ -153,22 +153,23 @@ async def test_a_catalog_search_storm_cannot_starve_calls_of_the_pool(
     old request-owned query filled every slot and the calls timed out with pool 503s. Search now
     returns from an empty/stale process cache while one task owns the only refresh connection.
     """
-    original = catalog_stats.observed
+    original = PostgresEndpointObservationReader.get_many
     refresh_started = asyncio.Event()
     release_refresh = asyncio.Event()
     refresh_calls = 0
 
-    async def _slow_observed(db, endpoint_ids, **kwargs):
+    async def _slow_read(self, endpoint_ids):
         nonlocal refresh_calls
         refresh_calls += 1
-        # Force a real checkout before holding the refresh open. One connection is expected; one
-        # per search request is the production defect this test reproduces.
-        await db.execute(select(CallRecord.id).limit(1))
-        refresh_started.set()
-        await asyncio.wait_for(release_refresh.wait(), timeout=15)
-        return await original(db, endpoint_ids, **kwargs)
+        # Hold the actual configured pool at the reader boundary: synchronous endpoints no longer
+        # reach observed() when folds are missing. Query deadlines have their own regression tests.
+        async with self._session_factory() as db:
+            await db.execute(select(CallRecord.id).limit(1))
+            refresh_started.set()
+            await asyncio.wait_for(release_refresh.wait(), timeout=15)
+        return await original(self, endpoint_ids)
 
-    monkeypatch.setattr(catalog_stats, "observed", _slow_observed)
+    monkeypatch.setattr(PostgresEndpointObservationReader, "get_many", _slow_read)
     searches = [asyncio.create_task(clients.get("/catalog/search?q=tiktok&limit=25"))
                 for _ in range(100)]
     # Each search ranks the catalog on the event loop before it asks for observations: 100 of them
@@ -200,20 +201,21 @@ async def test_http_and_mcp_catalog_search_share_one_nonblocking_refresh(
     clients: AsyncClient, monkeypatch, dispose_exhausted_pool_on_its_own_loop,
 ):
     """The agent entry point must share HTTP's cache, task, and single refresh connection."""
-    original = catalog_stats.observed
+    original = PostgresEndpointObservationReader.get_many
     refresh_started = asyncio.Event()
     release_refresh = asyncio.Event()
     refresh_calls = 0
 
-    async def _slow_observed(db, endpoint_ids, **kwargs):
+    async def _slow_read(self, endpoint_ids):
         nonlocal refresh_calls
         refresh_calls += 1
-        await db.execute(select(CallRecord.id).limit(1))
-        refresh_started.set()
-        await asyncio.wait_for(release_refresh.wait(), timeout=15)
-        return await original(db, endpoint_ids, **kwargs)
+        async with self._session_factory() as db:
+            await db.execute(select(CallRecord.id).limit(1))
+            refresh_started.set()
+            await asyncio.wait_for(release_refresh.wait(), timeout=15)
+        return await original(self, endpoint_ids)
 
-    monkeypatch.setattr(catalog_stats, "observed", _slow_observed)
+    monkeypatch.setattr(PostgresEndpointObservationReader, "get_many", _slow_read)
     token = clients.headers["X-Treg-Token"]
     async with mcp_session(clients) as mcp_client:
         http_search = asyncio.create_task(clients.get("/catalog/search?q=backlinks&limit=8"))
