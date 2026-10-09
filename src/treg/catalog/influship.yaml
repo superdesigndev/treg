@@ -1,0 +1,835 @@
+provider: influship
+source:
+  docs: https://docs.influship.com
+  openapi: https://api.influship.com/openapi.json
+  curated: '2026-10-09'
+limits: Credit-based limits per key and trust tier; see https://docs.influship.com/concepts/quotas-and-limits. 429
+  responses carry Retry-After. Authentication and HTTP 4xx/5xx errors are unbilled.
+pricing_url: https://docs.influship.com/concepts/pricing
+endpoints:
+- id: influship.searchcreators
+  capability: creators.search
+  platform: creators
+  scope: any_account
+  method: POST
+  path: /v1/search
+  name: AI-Powered Creator Search
+  summary: Find Instagram creators from a natural-language brief. Each result includes ranking, reasons, and available
+    evidence.
+  input:
+    body:
+      query:
+        type: string
+        required: true
+        example: fitness influencers with 100k+ followers who post workout videos
+        note: Natural language search query; minLength=1; maxLength=500
+      platforms:
+        type: array[string]
+        required: false
+        example:
+        - instagram
+        note: 'Filter results to specific platforms; JSON schema: {"description":"Filter results to specific platforms","example":["instagram"],"type":"array","items":{"$ref":"#/components/schemas/Platform"}}'
+      filters:
+        type: object
+        required: false
+        note: 'Additional filters; JSON schema: {"type":"object","properties":{"followers":{"description":"Filter
+          by follower count","$ref":"#/components/schemas/FollowersFilter"},"engagement_rate":{"description":"Filter
+          by engagement rate","$ref":"#/components/schemas/EngagementRateFilter"},"verified":{"description":"Filter
+          by verified status","example":true,"type":"boolean"}},"description":"Additional filters"}'
+      limit:
+        type: integer
+        required: false
+        default: 25
+        example: 5
+        min: 1
+        max: 100
+        note: Maximum results to return. Start with 5 for a small trial; default is 25.
+      creator_kinds:
+        type: array[string]
+        required: false
+        example:
+        - INFLUENCER
+        minItems: 1
+        note: 'Restrict results to specific creator kinds (e.g. INFLUENCER vs THEME_PAGE). Omit for no filter.;
+          JSON schema: {"description":"Restrict results to specific creator kinds (e.g. INFLUENCER vs THEME_PAGE).
+          Omit for no filter.","example":["INFLUENCER"],"minItems":1,"type":"array","items":{"type":"string","enum":["INFLUENCER","THEME_PAGE"]}}'
+  test_request:
+    body:
+      query: space science and astronomy educators
+      limit: 1
+      platforms:
+      - instagram
+  cost:
+    type: per_result
+    value: 2
+    currency: credit
+    per: 1
+    unit: result
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free. A successful empty search still costs 25 credits; reserve 25 + 2 × requested limit, settle exact
+      header. Saved pagination is free.
+    request_count:
+      location: body
+      field: limit
+      mode: value
+      default: 25
+      maximum: 100
+    base_value: 25
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+- id: influship.findlookalikecreators
+  capability: creators.lookalike
+  platform: creators
+  scope: any_account
+  method: POST
+  path: /v1/creators/lookalike
+  name: Find Similar Creators
+  summary: Find creators similar to provided seed creators using AI-powered similarity matching. Analyzes content
+    themes, audience overlap, posting style, and engagement patterns.
+  input:
+    body:
+      seeds:
+        type: array[object]
+        required: true
+        minItems: 1
+        maxItems: 10
+        note: 'Seed creators to find similar creators for; JSON schema: {"minItems":1,"maxItems":10,"type":"array","items":{"$ref":"#/components/schemas/LookalikeSeed"},"description":"Seed
+          creators to find similar creators for"}'
+      filters:
+        type: object
+        required: false
+        note: 'Additional filters; JSON schema: {"type":"object","properties":{"followers":{"description":"Filter
+          by follower count","$ref":"#/components/schemas/FollowersFilter"},"engagement_rate":{"description":"Filter
+          by engagement rate","$ref":"#/components/schemas/EngagementRateFilter"},"verified":{"description":"Filter
+          by verified status","example":true,"type":"boolean"}},"description":"Additional filters"}'
+      limit:
+        type: integer
+        required: false
+        default: 25
+        example: 25
+        min: 1
+        max: 100
+        note: Maximum results to return
+      cursor:
+        type: string
+        required: false
+        note: Pagination cursor for next page
+  test_request:
+    body:
+      seeds:
+      - platform: instagram
+        username: physicsuncovered
+      limit: 1
+  cost:
+    type: per_result
+    value: 1.5
+    currency: credit
+    per: 1
+    unit: result
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free.
+    request_count:
+      location: body
+      field: limit
+      mode: value
+      default: 25
+      maximum: 100
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+- id: influship.matchcreators
+  capability: creators.campaign.fit
+  platform: creators
+  scope: any_account
+  method: POST
+  path: /v1/creators/match
+  name: Score Campaign Fit
+  summary: Evaluate how well creators match a specific campaign using AI analysis. Returns a fit score (0-1), decision
+    recommendation (good/neutral/avoid), and evidence-based explanations.
+  input:
+    body:
+      creators:
+        type: array[object]
+        required: true
+        minItems: 1
+        maxItems: 100
+        note: 'Creators to evaluate; JSON schema: {"minItems":1,"maxItems":100,"type":"array","items":{"$ref":"#/components/schemas/MatchCreatorInput"},"description":"Creators
+          to evaluate"}'
+      intent:
+        type: object
+        required: true
+        note: 'Campaign intent for creator matching; JSON schema: {"type":"object","properties":{"query":{"type":"string","minLength":1,"maxLength":500,"description":"Campaign
+          description","example":"Looking for fitness influencers to promote our new protein bar"},"context":{"description":"Additional
+          context about the campaign","example":"Target audience is health-conscious millennials","type":"string","maxLength":2000}},"required":["query"],"description":"Campaign
+          intent for creator matching"}'
+  test_request:
+    body:
+      creators:
+      - &id001
+        platform: instagram
+        username: nasa
+      intent:
+        query: Space science education campaign
+  cost:
+    type: per_result
+    value: 1
+    currency: credit
+    per: 1
+    unit: result
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free. Charged for successful delivered items; hold assumes all requested items succeed.
+    request_count:
+      location: body
+      field: creators
+      mode: length
+      default: 100
+      maximum: 100
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+- id: influship.autocompletecreators
+  capability: creators.autocomplete
+  platform: creators
+  scope: any_account
+  method: GET
+  path: /v1/creators/autocomplete
+  name: Autocomplete Search
+  summary: Find creators by name or username as a user types. Results identify the matching field and value.
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        example: fitness
+        note: Search query (min 2 characters); minLength=2; maxLength=100
+      platform:
+        type: string
+        required: false
+        example: instagram
+        enum: &id002
+        - instagram
+        note: Filter by platform
+      limit:
+        type: integer
+        required: false
+        default: 5
+        example: 5
+        min: 1
+        max: 50
+        note: Maximum results to return
+      scope:
+        type: string
+        required: false
+        default: all_platforms
+        example: all_platforms
+        enum:
+        - creator_only
+        - matched_platforms
+        - all_platforms
+        note: Which platforms to include in results
+  test_request:
+    queryParams:
+      q: nasa
+      limit: 1
+  cost:
+    type: per_success
+    value: 0.05
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free.
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+- id: influship.getprofilebyplatformusername
+  capability: creators.profile
+  platform: creators
+  scope: any_account
+  method: GET
+  path: /v1/profiles/{platform}/{username}
+  name: Get Profile by Platform and Username
+  summary: Retrieve an Instagram profile's identity, metrics, growth statistics, and activity information.
+  input:
+    pathParams:
+      platform:
+        type: string
+        required: true
+        example: instagram
+        note: Platform name; minLength=1
+      username:
+        type: string
+        required: true
+        example: fitness_coach_jane
+        note: Username on the platform; minLength=1; maxLength=50
+  test_request:
+    pathParams: *id001
+  cost:
+    type: per_success
+    value: 0.1
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free.
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+  miss:
+    status: 404
+    means: The requested stored profile was not found; response error.code=not_found and no credits are charged.
+- id: influship.lookupprofiles
+  capability: creators.profile
+  platform: creators
+  scope: any_account
+  method: POST
+  path: /v1/profiles/lookup
+  name: Batch Lookup Profiles
+  summary: Look up multiple profiles in a single request. Efficiently retrieve data for up to 100 profiles at once.
+  input:
+    body:
+      profiles:
+        type: array[object]
+        required: true
+        minItems: 1
+        maxItems: 100
+        note: 'Profiles to lookup; JSON schema: {"minItems":1,"maxItems":100,"type":"array","items":{"$ref":"#/components/schemas/ProfileLookupItem"},"description":"Profiles
+          to lookup"}'
+  test_request:
+    body:
+      profiles:
+      - *id001
+  cost:
+    type: per_result
+    value: 0.1
+    currency: credit
+    per: 1
+    unit: result
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free. Charged for successful delivered items; hold assumes all requested items succeed.
+    request_count:
+      location: body
+      field: profiles
+      mode: length
+      default: 100
+      maximum: 100
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+- id: influship.getposts
+  capability: creators.posts
+  platform: creators
+  scope: any_account
+  method: GET
+  path: /v1/posts
+  name: Get Posts
+  summary: Retrieve Instagram posts for a creator or profile with engagement metrics and media data. Only Instagram
+    posts are returned.
+  input:
+    queryParams:
+      platform:
+        type: string
+        required: false
+        example: instagram
+        enum: *id002
+        note: Platform (required with username)
+      username:
+        type: string
+        required: false
+        example: fitness_coach_jane
+        note: Username (required with platform); minLength=1; maxLength=50
+      creator_id:
+        type: string
+        required: false
+        example: 123e4567-e89b-12d3-a456-426614174000
+        note: Creator ID (use this OR platform+username); pattern=^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+      limit:
+        type: integer
+        required: false
+        default: 12
+        example: 12
+        min: 1
+        max: 50
+        note: Maximum posts to return
+      sort:
+        type: string
+        required: false
+        default: recent
+        example: recent
+        enum:
+        - recent
+        - top_engagement
+        - most_likes
+        - most_views
+        - most_comments
+        note: Sort order
+      cursor:
+        type: string
+        required: false
+        note: Opaque keyset cursor from next_cursor. A cursor is bound to the sort order that produced it; using
+          it with another sort returns 400.
+  test_request:
+    queryParams:
+      platform: instagram
+      username: nasa
+      limit: 1
+  cost:
+    type: per_result
+    value: 0.05
+    currency: credit
+    per: 1
+    unit: result
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free.
+    request_count:
+      location: queryParams
+      field: limit
+      mode: value
+      default: 12
+      maximum: 50
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+- id: influship.getliveinstagramprofile
+  capability: instagram.user.profile
+  platform: instagram
+  scope: any_account
+  method: GET
+  path: /v1/raw/instagram/profile/{username}
+  name: Get Live Instagram Profile
+  summary: Retrieve Instagram profile details, follower counts, bio, and recent activity.
+  input:
+    queryParams:
+      include_posts:
+        type: boolean
+        required: false
+        example: true
+        note: Include recent posts in response
+      post_limit:
+        type: integer
+        required: false
+        default: 12
+        example: 12
+        min: 1
+        max: 50
+        note: Number of posts to include
+    pathParams:
+      username:
+        type: string
+        required: true
+        example: fitness_coach_jane
+        note: Username on the platform; minLength=1; maxLength=50
+  test_request:
+    pathParams:
+      username: nasa
+  cost:
+    type: per_success
+    value: 0.5
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free.
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+- id: influship.getlivetiktokprofile
+  capability: tiktok.user.profile
+  platform: tiktok
+  scope: any_account
+  method: GET
+  path: /v1/raw/tiktok/profile/{username}
+  name: Get Live TikTok Profile
+  summary: Fetch a normalized TikTok profile with current identity, biography, verification, and audience metrics.
+  input:
+    pathParams:
+      username:
+        type: string
+        required: true
+        example: creator
+        note: TikTok username, with or without a leading @
+  test_request:
+    pathParams:
+      username: nasa
+  cost:
+    type: per_success
+    value: 0.2
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free.
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+- id: influship.listlivetiktokprofilevideos
+  capability: tiktok.user.videos
+  platform: tiktok
+  scope: any_account
+  method: GET
+  path: /v1/raw/tiktok/profile/{username}/videos
+  name: List Live TikTok Profile Videos
+  summary: Fetch one cursor-paginated page of normalized TikTok videos. Signed media URLs are temporary and should
+    be downloaded promptly.
+  input:
+    queryParams:
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor from the previous response; minLength=1; maxLength=2048
+      sort_by:
+        type: string
+        required: false
+        default: latest
+        example: latest
+        enum:
+        - latest
+        - popular
+        note: Video ordering
+      region:
+        type: string
+        required: false
+        default: US
+        example: US
+        enum:
+        - US
+        note: TikTok resolution region (US only)
+    pathParams:
+      username:
+        type: string
+        required: true
+        example: creator
+        note: TikTok username, with or without a leading @
+  test_request:
+    pathParams:
+      username: nasa
+  cost:
+    type: per_success
+    value: 0.2
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free.
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+- id: influship.searchlivetiktokvideos
+  capability: tiktok.search.videos
+  platform: tiktok
+  scope: any_account
+  method: GET
+  path: /v1/raw/tiktok/search/videos
+  name: Search TikTok Videos
+  summary: Fetch one relevance-ordered page of TikTok videos matching a query. Continue with next_cursor and the
+    same query; cursors are opaque. Duplicate results are preserved. Each successful page, including an empty page,
+    is charged once. Media links are temporary.
+  input:
+    queryParams:
+      query:
+        type: string
+        required: true
+        note: minLength=1; maxLength=100; pattern=^[^\u0000-\u001f\u007f-\u009f]+$
+      cursor:
+        type: string
+        required: false
+        note: minLength=1; maxLength=2048
+  test_request:
+    queryParams:
+      query: NASA
+  cost:
+    type: per_success
+    value: 0.2
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free.
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+- id: influship.getliveyoutubechannel
+  capability: youtube.channel.profile
+  platform: youtube
+  scope: any_account
+  method: GET
+  path: /v1/raw/youtube/channel/{handle}
+  name: Get Live YouTube Channel
+  summary: Fetch fresh YouTube channel data including subscriber count, video count, and total views.
+  input:
+    queryParams:
+      include_videos:
+        type: boolean
+        required: false
+        example: true
+        note: Include recent videos in response
+      video_limit:
+        type: integer
+        required: false
+        default: 12
+        example: 12
+        min: 1
+        max: 50
+        note: Number of videos to include
+    pathParams:
+      handle:
+        type: string
+        required: true
+        example: '@techreviews'
+        note: YouTube channel handle or channel ID. Accepts a bare handle, an @handle, a UC-prefixed channel ID,
+          or the corresponding full channel URL.; minLength=1
+  test_request:
+    pathParams:
+      handle: NASA
+  cost:
+    type: per_success
+    value: 0.5
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free.
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+- id: influship.getliveyoutubetranscript
+  capability: youtube.video.captions
+  platform: youtube
+  scope: any_account
+  method: GET
+  path: /v1/raw/youtube/transcript/{video_id}
+  name: Get YouTube Video Transcript
+  summary: Fetch YouTube video transcript/captions. Returns timestamped segments and full text. Useful for content
+    analysis.
+  input:
+    queryParams:
+      language:
+        type: string
+        required: false
+        default: auto
+        example: en
+        note: Language code or "auto" for automatic detection
+    pathParams:
+      video_id:
+        type: string
+        required: true
+        example: dQw4w9WgXcQ
+        note: YouTube video ID; pattern=^[A-Za-z0-9_-]{11}$
+  test_request:
+    pathParams:
+      video_id: jNQXAC9IVRw
+    queryParams:
+      language: auto
+  cost:
+    type: per_success
+    value: 0.5
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free.
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+- id: influship.searchyoutube
+  capability: youtube.search.videos
+  platform: youtube
+  scope: any_account
+  method: GET
+  path: /v1/raw/youtube/search
+  name: Search YouTube
+  summary: Search YouTube videos and channels.
+  input:
+    queryParams:
+      q:
+        type: string
+        required: true
+        example: fitness workout
+        note: Search query; minLength=1; maxLength=500
+      limit:
+        type: integer
+        required: false
+        default: 20
+        example: 20
+        min: 1
+        max: 50
+        note: Maximum number of results to return
+      country_code:
+        type: string
+        required: false
+        default: US
+        example: US
+        note: Country code for localized results (ISO 3166-1 alpha-2); minLength=2; maxLength=2
+      language_code:
+        type: string
+        required: false
+        default: en
+        example: en
+        note: Language code for results; minLength=2; maxLength=5
+      upload_date:
+        type: string
+        required: false
+        default: any
+        example: this_week
+        enum:
+        - any
+        - last_hour
+        - today
+        - this_week
+        - this_month
+        - this_year
+        note: Only return results uploaded within the selected window
+      sort_by:
+        type: string
+        required: false
+        default: relevance
+        example: popular
+        enum:
+        - relevance
+        - popular
+        note: Order results by relevance or view popularity
+      content_type:
+        type: string
+        required: false
+        default: all
+        example: videos
+        enum:
+        - all
+        - videos
+        note: Return all result types or only videos
+      duration:
+        type: string
+        required: false
+        default: any
+        example: long
+        enum:
+        - any
+        - short
+        - medium
+        - long
+        note: Filter videos by YouTube duration band
+      cursor:
+        type: string
+        required: false
+        note: Opaque cursor from next_cursor to fetch the next result page; minLength=1; maxLength=4000
+  test_request:
+    queryParams:
+      q: NASA space science
+      limit: 1
+      content_type: videos
+  cost:
+    type: per_success
+    value: 0.5
+    currency: credit
+    per: 1
+    unit: call
+    source: docs
+    source_url: https://docs.influship.com/concepts/pricing
+    checked: '2026-10-09'
+    confidence: documented
+    reported_charge:
+      header: X-Credits-Charged
+      unit: credit
+    note: API-key pricing; 1 credit = $0.01. Calculated credit meter checked 2026-10-09 using a billing-exempt verification
+      account; no paid acquisition receipt. Independent maintainer verification is pending. HTTP 4xx/5xx responses
+      are free.
+  added: '2026-10-09'
+  docs_url: https://docs.influship.com/api-reference
+proposed_capabilities:
+  creators.lookalike: Find creators similar to a reference creator
+  creators.campaign.fit: Score creator suitability for a campaign with supporting evidence
+  creators.autocomplete: Find creator names and usernames by prefix
+  creators.profile: Get a creator's profile, contacts and stats
+  creators.posts: List a creator's recent posts with engagement

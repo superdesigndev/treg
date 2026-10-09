@@ -45,6 +45,12 @@ related:
 
 # Provider capacity
 
+Influship exposes a free authenticated credential check at `/v1/auth/test`, but its public
+OpenAPI has no balance or usage-reading endpoint. `NO_BALANCE_API` records that decision;
+usage and billing are inspected in its developer dashboard. The first catalog submission does
+not claim a funded-account exhaustion signature or an overflow route. Shared-key deployment
+still requires a separately verified and funded account.
+
 Every platform-key slot is either on `BALANCE_ROUTES` (a free collector reads its balance) or on
 `NO_BALANCE_API` (with the reason none exists), under the slot's spelling;
 `test_every_platform_key_has_a_balance_decision` fails a new slot that is on neither. A sweep

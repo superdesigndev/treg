@@ -3453,6 +3453,23 @@ LEADSFORGE = OAuthProvider(
 
 # ---- Creator / influencer data (Enrichment shelf, 2026-08-21) ---------------------------------
 
+INFLUSHIP = OAuthProvider(
+    service="influship", display_name="Influship", auth_kind="key",
+    token_label="API key", token_placeholder="your Influship API key (inf_…)",
+    token_header="X-API-Key", token_format="{secret}",
+    setup_url="https://developers.influship.com/api/keys",
+    setup_action_label="Get your Influship API key",
+    setup_steps=("Sign up or sign in to Influship Developers.",
+                 "Open API Keys and create a key; copy it when shown."),
+    setup_note="Create a key in the developer dashboard. Credential verification is free; HTTP 4xx/5xx errors are unbilled.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Find Instagram creators from a brief, score campaign fit, find lookalikes, and research social profiles, posts and transcripts.",
+    base_url="https://api.influship.com", docs_url="https://docs.influship.com",
+    probe_path="/v1/auth/test",
+)
+
+
 INFLUENCERSCLUB = OAuthProvider(
     service="influencersclub",
     display_name="influencers.club",
@@ -3968,7 +3985,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB,
+        INFLUENCERSCLUB, INFLUSHIP,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
