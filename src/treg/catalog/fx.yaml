@@ -28,6 +28,7 @@
 # NOTE: this block must stay ABOVE `rates_to_usd:` -- catalog_fx_update.py rewrites the file
 # from the text before that key, so anything below it is discarded on the next FX refresh.
 credit_rates_usd:
+  reversecontact: {usd: 0.02, basis: "Pay-as-you-go entry pack on the public pricing page: $100 / 5,000 credits = $0.02 per credit; larger packs go down to $5,000 / 1,000,000 = $0.005. Pay-as-you-go credits stay valid 3 months", source: "https://www.reversecontact.com/pricing", checked: "2026-10-09"}
   enrichlayer: {usd: 0.1, basis: "Pay-as-you-go replacement cost: $0.1000 per credit with vendor auto top-up enabled", source: "https://enrichlayer.com/pricing", checked: "2026-10-01"}
   search1api: {usd: 0.001, basis: "Base top-up replacement cost: $1 / 1,000 credits = $0.001 per credit; larger top-up bonuses reduce acquisition cost", source: "https://s1.dev/docs/essentials/credits-and-limits", checked: "2026-09-30"}
   valyu: {usd: 1.0, basis: "Pay-as-you-go replacement cost: $1 per credit. Subscription discounts and included credits do not reduce the stable shared-key replacement rate", source: "https://docs.valyu.ai/pricing", checked: "2026-09-30"}

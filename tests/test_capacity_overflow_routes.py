@@ -296,6 +296,7 @@ _UNRECORDED_SIGNATURE = {
     "bounceban",  # verification credits remain; exhaustion was not forced and no overflow is claimed
     "zerobounce",  # credits remain; exhaustion was not forced and no overflow is claimed
     "datagma",  # prepaid credits remain; exhaustion was not forced and no overflow is claimed
+    "reversecontact",  # funded credits remain; documented 402 INSUFFICIENT_CREDITS was not forced
     "moltsets",  # rolling allowance exhaustion was not forced; no overflow route claimed
     "openmart",  # funded subscription was not exhausted; shared-key exhaustion was not forced
     # Bare 402 is already the generic balance signal; the real empty-Credits body was not forced.
