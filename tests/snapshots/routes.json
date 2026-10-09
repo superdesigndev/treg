@@ -1862,6 +1862,15 @@
   {
     "kind": "APIRoute",
     "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "api_key_spend",
+    "path": "/orgs/{org_id}/api-keys/spend"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
       "POST"
     ],
     "name": "create_api_key",
@@ -1914,6 +1923,15 @@
     ],
     "name": "hide_api_key",
     "path": "/orgs/{org_id}/api-keys/{key_id}/hide"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "api_key_daily_spend",
+    "path": "/orgs/{org_id}/api-keys/{key_id}/spend"
   },
   {
     "kind": "APIRoute",

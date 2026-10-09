@@ -18,7 +18,7 @@ async loadOrgAdmin(){ this.orgMembers=[]; this.orgMembersLoaded=false; this.orgI
       if(!this.canAdmin && !['keys','danger'].includes(this.orgTab)) this.orgTab='keys';
       this.orgErr=''; this.confirmDel=''; this.confirmLeave=false; this.confirmRemove=null;
       if(!this.activeOrgId) return; const id=this.activeOrgId, live=this.ticket('orgAdmin');
-      const keys=this.loadApiKeys();
+      const keys=this.loadApiKeys(); this.loadApiKeySpend();
       if(!this.canAdmin){ await keys; return; }
       this.agentErr=''; this.confirmAgent=null;
       const get=path=>this.api('/orgs/'+id+path);

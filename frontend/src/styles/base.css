@@ -165,6 +165,18 @@
   .key-actions-menu button.danger{color:var(--red)}
   .key-table .key-identity{min-width:220px}
   .key-table td{padding-top:12px;padding-bottom:12px;vertical-align:middle}
+  .key-table .key-spend{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .key-table .key-spend-btn{position:relative;margin-left:8px;vertical-align:middle}
+  .key-table .key-spend-btn[aria-expanded="true"]{background:var(--panel2);color:var(--accent)}
+  .key-table .key-spend-btn::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);white-space:nowrap;background:var(--ink);color:var(--bg);font-size:11.5px;padding:4px 8px;border-radius:6px;opacity:0;pointer-events:none;transition:opacity .12s}
+  .key-table .key-spend-btn:hover::after,.key-table .key-spend-btn:focus-visible::after{opacity:1}
+  .key-table tr.key-open td{border-bottom-color:transparent}
+  .key-table .key-spend-row td{padding-top:0}
+  /* Spend chart series: the validated categorical order, stepped per theme (dark is the default
+     theme here). Slot 8 is never a hue: everything past seven series folds into a neutral Other. */
+  .spend-bars{--sb-1:#3987e5;--sb-2:#d95926;--sb-3:#199e70;--sb-4:#c98500;--sb-5:#d55181;--sb-6:#008300;--sb-7:#9085e9;--sb-other:#7d776b}
+  [data-theme="light"] .spend-bars{--sb-1:#2a78d6;--sb-2:#eb6834;--sb-3:#1baf7a;--sb-4:#eda100;--sb-5:#e87ba4;--sb-6:#008300;--sb-7:#4a3aa7;--sb-other:#a39b8b}
+  .key-table .key-spend-card > p{padding:14px 16px;border:1px solid var(--line);border-radius:var(--r)}
   .key-primary{display:flex;align-items:center;gap:7px;white-space:nowrap}
   .key-primary b{font-size:13px}
   .key-meta{margin-top:4px;color:var(--muted);font-size:11.5px;line-height:1.3}

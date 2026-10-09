@@ -10121,6 +10121,88 @@
         "summary": "Create Api Key"
       }
     },
+    "/orgs/{org_id}/api-keys/spend": {
+      "get": {
+        "description": "Billed spend per key over the last `days` (the `/usage` window), from the ledger.\n\nRows carry the key's own name and state, so a revoked or hidden key that spent money still has\na readable line. A member sees only their own keys, as on the list. The not-attributed line is\nteam-wide ledger detail, so it is admin+ like the ledger on `/orgs/{id}/balance`.",
+        "operationId": "api_key_spend_orgs__org_id__api_keys_spend_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Api Key Spend Orgs  Org Id  Api Keys Spend Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Api Key Spend"
+      }
+    },
     "/orgs/{org_id}/api-keys/{key_id}": {
       "patch": {
         "operationId": "rename_api_key_orgs__org_id__api_keys__key_id__patch",
@@ -10692,6 +10774,97 @@
           }
         },
         "summary": "Rotate Api Key"
+      }
+    },
+    "/orgs/{org_id}/api-keys/{key_id}/spend": {
+      "get": {
+        "description": "One key's billed spend per day over the last `days`, from the ledger. Same audience as the\nkey's audit trail: its assigned identity or an admin.",
+        "operationId": "api_key_daily_spend_orgs__org_id__api_keys__key_id__spend_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "title": "Org Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Token",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-treg-org",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Treg-Org",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "treg_session",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "Treg Session",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Api Key Daily Spend Orgs  Org Id  Api Keys  Key Id  Spend Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Api Key Daily Spend"
       }
     },
     "/orgs/{org_id}/balance": {

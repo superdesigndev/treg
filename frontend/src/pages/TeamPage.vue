@@ -1,7 +1,9 @@
 <script>
 import { useDashboard } from '../state/context'
+import KeySpendChart from '../components/KeySpendChart.vue'
 // The new agent's check-in poll lives as long as this page (state/agents.js).
 export default {
+  components: { KeySpendChart },
   setup: useDashboard,
   mounted() { this.resumeAgentPoll() },
   beforeUnmount() { this.stopAgentPoll() },
@@ -18,7 +20,7 @@ export default {
           <div v-if="activeOrg" style="margin-top:20px">
             <div class="tabs" style="margin:4px 0 16px">
               <button v-if="canAdmin" :class="{active:orgTab==='members'}" @click="orgTab='members'">Members</button>
-              <button :class="{active:orgTab==='keys'}" @click="orgTab='keys'; loadApiKeys()">API Keys</button>
+              <button :class="{active:orgTab==='keys'}" @click="orgTab='keys'; loadApiKeys(); loadApiKeySpend()">API Keys</button>
               <button v-if="canAdmin" :class="{active:orgTab==='projects'}" @click="orgTab='projects'">Projects</button>
               <button v-if="canAdmin" :class="{active:orgTab==='policy'}" @click="orgTab='policy'">Policy</button>
               <button v-if="canAdmin" :class="{active:orgTab==='billing'}" @click="orgTab='billing'">Billing</button>
@@ -240,16 +242,29 @@ export default {
               <div v-if="activeRole!=='viewer'" class="field" style="max-width:620px;margin-bottom:18px"><input v-model="keyName" :class="{'field-invalid':keyNameInvalid}" :aria-invalid="keyNameInvalid" placeholder="New key name" maxlength="80" @input="keyNameInvalid=false" @keyup.enter="createApiKey"/><button class="btn primary" :disabled="keyBusy" @click="createApiKey">{{keyBusy?'…':'Create key'}}</button></div>
               <template v-for="group in apiKeyGroups" :key="group.identity">
                 <div class="lbl" style="margin-top:16px">{{group.name}} <span class="chip">{{group.type}}</span><span v-if="group.type==='agent' && group.name!==group.identity" class="muted mono" style="margin-left:8px;text-transform:none">{{group.identity}}</span></div>
-                <table class="key-table"><tr><th>Key</th><th>Status</th><th>Created</th><th>Last used</th><th></th></tr>
-                  <tr v-for="k in group.rows" :key="k.id">
+                <table class="key-table"><tr><th>Key</th><th>Status</th><th style="text-align:right" title="Billed charges in the last 30 days, from the ledger">Spent · 30 days</th><th>Created</th><th>Last used</th><th></th></tr>
+                  <template v-for="k in group.rows" :key="k.id">
+                  <tr :class="{'key-open':keySpendOpen===k.id}">
                     <td class="key-identity"><input v-if="editKey===k.id" v-model="editKeyName" maxlength="80" class="msel" @keyup.enter="renameApiKey(k)"/><template v-else><div class="key-primary"><span v-if="group.type==='human' && k.assigned_type==='agent'" class="muted" aria-hidden="true">↳</span><b>{{group.type==='human' && k.assigned_type==='agent'?k.assigned_name:k.name}}</b><span class="chip">{{keyKind(k.kind)}}</span></div><div class="key-meta mono">{{maskedKey(k)}}</div></template>
                     </td>
-                    <td><span class="badge" :class="k.state==='active'?'ok':'invalid'">{{k.state}}</span></td><td class="muted">{{k.created_at?when(k.created_at):'Unknown'}}</td><td class="muted">{{k.last_used_at?when(k.last_used_at):'Never'}}</td>
+                    <td><span class="badge" :class="k.state==='active'?'ok':'invalid'">{{k.state}}</span></td>
+                    <td class="key-spend"><template v-if="keySpend(k)">{{money(keySpend(k).spend_micro)}}<button class="btn sm ico key-spend-btn" data-tip="See more" :aria-label="'See more: daily spend for '+k.name" :aria-expanded="keySpendOpen===k.id" @click="toggleKeySpend(k)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 14h12M4 12V8M8 12V4M12 12V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg></button></template><span v-else class="muted">—</span></td>
+                    <td class="muted">{{k.created_at?when(k.created_at):'Unknown'}}</td><td class="muted">{{k.last_used_at?when(k.last_used_at):'Never'}}</td>
                     <td style="text-align:right;white-space:nowrap"><span v-if="editKey===k.id" class="row-actions"><button class="btn sm primary" @click="renameApiKey(k)">Save</button><button class="btn sm" @click="editKey=null">Cancel</button></span><span v-else class="row-actions">
                       <button class="btn sm" @click="showKeyActivity(k)">Activity</button><button v-if="k.can_rotate" class="btn sm" @click="requestKeyAction(k,'rotate')">Rotate</button><button v-if="keyHasMore(k)" class="btn sm ico" aria-haspopup="menu" :aria-expanded="keyMenu&&keyMenu.key.id===k.id" :aria-label="'More actions for '+k.name" @click.stop="toggleKeyMenu(k,$event)">⋮</button>
                     </span></td>
                   </tr>
+                  <tr v-if="keySpendOpen===k.id" class="key-spend-row"><td colspan="6"><div class="key-spend-card">
+                    <p v-if="!keyDaily" class="muted" style="margin:0">Loading…</p>
+                    <p v-else-if="keyDaily.error" class="muted" style="margin:0">{{keyDaily.error}}</p>
+                    <KeySpendChart v-else :spend="keyDaily" :key-name="k.name" :busy="keyDailyBusy" @days="d => loadKeyDaily(k.id, d)" />
+                  </div></td></tr>
+                  </template>
                 </table>
+              </template>
+              <template v-if="apiKeySpend && apiKeySpend.unattributed && apiKeySpend.unattributed.spend_micro && apiKeys.length">
+                <div class="lbl" style="margin-top:16px">Not attributed</div>
+                <table class="key-table"><tr><td class="key-identity"><span class="muted">Charges with no API key on record</span></td><td class="key-spend">{{money(apiKeySpend.unattributed.spend_micro)}}</td></tr></table>
               </template>
               <p v-if="!keyBusy && !apiKeys.length" class="sub">No keys are available.</p>
             </template>

@@ -11,6 +11,7 @@ sources:
   - src/treg/caller_metadata.py
   - src/treg/client_identity.py
   - src/treg/application/auth.py
+  - src/treg/application/key_spend.py
   - src/treg/application/provider_resources.py
   - src/treg/application/call/access.py
   - src/treg/application/call/authorize.py
@@ -82,6 +83,19 @@ and revokes all its keys; revoking a human key does not remove the human members
 
 `GET /calls` and `GET /runs` accept `api_key_id` and return the retained key id, name, and safe prefix.
 Billing, balance, and daily-cap checks still use the resolved membership.
+
+`GET /orgs/{id}/api-keys/spend?days=30` returns each key's billed spend and billed call count over
+the `/usage` window (today plus the prior `days - 1`, UTC; 1 to 365). The money is the ledger's
+`settle` entries, never `CallRecord` costs; the audit row supplies only the key, joined on
+`call_ref` = ledger `call_id`. A suffixed child hold (`<ref>:overflow`, `<ref>:r1`) falls back to
+its parent ref and counts as part of that call. Charges with no keyed audit row (shed, older than
+key tracking, or keyless) form one `unattributed` line, so the lines add up to the ledger. Rows
+carry the key's name and state, so a revoked or hidden key keeps its line. Members see only their
+own keys; the unattributed line is admin+ like the ledger itself.
+`GET /orgs/{id}/api-keys/{key_id}/spend?days=30` returns that one key's spend and billed calls per
+UTC day, for the key's own identity or an admin; it reads only that key's audit rows. The dashboard
+shows the 30-day figure as the Team → API keys "Spent" column, and the column's "See more" button
+opens the per-day chart under the row, fetched only when opened.
 
 ## Feedback
 

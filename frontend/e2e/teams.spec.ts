@@ -54,3 +54,28 @@ test('a member with no daily cap reads as no limit, and a cap can be set and cle
     await expect(cap).toHaveValue(value)
   }
 })
+
+test('a key\'s spend opens into its daily chart below the row, and closes again', async ({ page }) => {
+  const asked: string[] = []
+  await page.route(url => /\/api-keys\/\d+\/spend$/.test(url.pathname), route => {
+    const days = Number(new URL(route.request().url()).searchParams.get('days'))
+    asked.push(String(days))
+    const by_day = days === 7 ? [{ day: '2026-10-06', spend_micro: 410000, calls: 1 }]
+      : [{ day: '2026-09-14', spend_micro: 95000, calls: 1 }, { day: '2026-10-06', spend_micro: 410000, calls: 1 }]
+    return route.fulfill(json({ id: 1, days, since: days === 7 ? '2026-10-03T00:00:00' : '2026-09-10T00:00:00', by_day }))
+  })
+  await signIn(page, 'key-spend')
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('button', { name: 'Team', exact: true }).click()
+  await page.getByRole('button', { name: 'API Keys', exact: true }).click()
+  await expect(page.getByRole('columnheader', { name: 'Spent · 30 days' })).toBeVisible()
+  const open = page.getByRole('button', { name: /^See more: daily spend for / })
+  await open.click()
+  await expect(open).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.getByText(/over last 30 days · 2 billed calls/)).toBeVisible()
+  await expect(page.getByRole('img', { name: /Billed spend per day for .*: \$0\.505 over 30 days/ })).toBeVisible()
+  await page.getByRole('combobox', { name: 'Date range' }).selectOption('7')
+  await expect(page.getByText(/over last 7 days · 1 billed call/)).toBeVisible()
+  expect(asked).toEqual(['30', '7'])
+  await open.click()
+  await expect(page.getByText(/billed call/)).toHaveCount(0)
+})

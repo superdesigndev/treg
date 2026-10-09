@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from ..application import key_spend
 from ..domain.governance import teams
 from ..domain.identity import api_keys as managed
 from ..domain.identity import session as identity_session
@@ -185,6 +186,48 @@ async def list_api_keys(
             safe_prefix,
         ))
     return views
+
+
+@router.get("/orgs/{org_id}/api-keys/spend")
+async def api_key_spend(
+    org_id: int,
+    days: int = Query(default=30),
+    caller: Caller = Depends(require_member),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """Billed spend per key over the last `days` (the `/usage` window), from the ledger.
+
+    Rows carry the key's own name and state, so a revoked or hidden key that spent money still has
+    a readable line. A member sees only their own keys, as on the list. The not-attributed line is
+    team-wide ledger detail, so it is admin+ like the ledger on `/orgs/{id}/balance`.
+    """
+    if caller.org_id != org_id:
+        raise HTTPException(status_code=403, detail="use this team's credential")
+    days = max(1, min(days, 365))
+    since = key_spend.window_start(utcnow_naive(), days)
+    spend = await key_spend.spend_by_api_key(db, org_id, since)
+    admin = _admin(caller)
+    query = select(ApiKey).where(ApiKey.org_id == org_id, ApiKey.id.in_(list(spend["keys"])))
+    if not admin:
+        query = query.where(ApiKey.membership_id == caller.membership.id)
+    keys = (await db.execute(query)).scalars().all() if spend["keys"] else []
+    org = await db.get(Org, org_id)
+    rows = []
+    for key in keys:
+        assigned_name = key.identity_label
+        if key.kind == managed.AGENT_KIND and org is not None:
+            assigned_name = _agent_display_name(key.identity_label, org.slug, org.previous_slug)
+        rows.append({"id": key.id, "name": key.name, "kind": key.kind, "state": key.state,
+                     "identity": key.identity_label, "assigned_name": assigned_name,
+                     "assigned_type": "agent" if key.kind == managed.AGENT_KIND else "human",
+                     **spend["keys"][key.id]})
+    rows.sort(key=lambda row: (-row["spend_micro"], row["id"]))
+    return {
+        "days": days,
+        "since": since.isoformat(),
+        "keys": rows,
+        "unattributed": spend["unattributed"] if admin else None,
+    }
 
 
 @router.post("/orgs/{org_id}/api-keys")
@@ -406,6 +449,23 @@ async def hide_api_key(
         managed.audit_event(db, row, caller.email, "hidden")
     await db.commit()
     return {"id": row.id, "hidden": True}
+
+
+@router.get("/orgs/{org_id}/api-keys/{key_id}/spend")
+async def api_key_daily_spend(
+    org_id: int, key_id: int, days: int = Query(default=30),
+    caller: Caller = Depends(require_member),
+    db: AsyncSession = Depends(get_session),
+) -> dict:
+    """One key's billed spend per day over the last `days`, from the ledger. Same audience as the
+    key's audit trail: its assigned identity or an admin."""
+    row = await _key(org_id, key_id, db, caller)
+    if not (_assigned(caller, row) or _admin(caller)):
+        raise HTTPException(status_code=403, detail="you cannot view this key's spend")
+    days = max(1, min(days, 365))
+    since = key_spend.window_start(utcnow_naive(), days)
+    by_day = await key_spend.daily_spend_of_key(db, org_id, key_id, since)
+    return {"id": key_id, "days": days, "since": since.isoformat(), "by_day": by_day}
 
 
 @router.get("/orgs/{org_id}/api-keys/{key_id}/events")

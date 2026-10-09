@@ -3,6 +3,21 @@ export default {
 async loadApiKeys(){ if(!this.activeOrgId) return; this.keyErr=''; const live=this.ticket('apiKeys');
       try{ const keys=await this.api('/orgs/'+this.activeOrgId+'/api-keys'); if(live()) this.apiKeys=keys; }
       catch(e){ if(live()) this.keyErr='Could not load keys: '+(e.detail||e.status); } },
+// Billed spend per key over the last 30 days, from the ledger. A failed read leaves the column
+// blank rather than replacing the key list's own error.
+async loadApiKeySpend(){ this.apiKeySpend=null; this.keySpendOpen=null; this.keyDaily=null; if(!this.activeOrgId) return; const live=this.ticket('apiKeySpend');
+      const spend=await this.api('/orgs/'+this.activeOrgId+'/api-keys/spend?days=30').catch(()=>null);
+      if(live()) this.apiKeySpend=spend; },
+keySpend(k){ const s=this.apiKeySpend; if(!s) return null;
+      return (s.keys||[]).find(row=>row.id===k.id)||{id:k.id,spend_micro:0,calls:0}; },
+// One key's spend per day, fetched only when its row is opened: one key's rows, not the team's.
+// A new window keeps the old chart up (dimmed) until the new one arrives.
+async toggleKeySpend(k){ if(this.keySpendOpen===k.id){ this.keySpendOpen=null; return; }
+      this.keySpendOpen=k.id; this.keyDaily=null; await this.loadKeyDaily(k.id, 30); },
+async loadKeyDaily(id, days){ this.keyDailyBusy=true; const live=this.ticket('keyDaily');
+      try{ const daily=await this.api('/orgs/'+this.activeOrgId+'/api-keys/'+id+'/spend?days='+days); if(live()) this.keyDaily=daily; }
+      catch(e){ if(live()) this.keyDaily={error:'Could not load daily spend: '+(e.detail||e.status)}; }
+      finally{ if(live()) this.keyDailyBusy=false; } },
 async loadDefaultToken(){ const live=this.ticket('defaultToken');
       const issued=await this.api('/auth/cli-token').catch(()=>null);
       if(!live()) return;
