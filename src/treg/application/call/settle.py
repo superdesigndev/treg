@@ -483,6 +483,19 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         # the catalog base. Aviato simple search earned this rule from two multi-row live probes:
         # enrich=true returned only id rows and charged the same 0.25-credit base both times.
         return _usd_to_micro(float(cost["usd"]))
+    reported = (ep.get("cost") or {}).get("reported_charge") if ep else None
+    if reported and reported.get("header") and headers is not None:
+        raw = headers.get(reported["header"])
+        if isinstance(raw, (int, float, str)) and not isinstance(raw, bool):
+            try:
+                value = Decimal(str(raw))
+                unit_micro = (1_000_000 if reported["unit"] == "usd"
+                              else mk.reported_charge_unit_micro)
+                if value.is_finite() and value >= 0 and unit_micro > 0:
+                    return int((value * unit_micro).quantize(
+                        Decimal("1"), rounding=ROUND_HALF_UP))
+            except (InvalidOperation, ValueError, OverflowError):
+                pass
     header_spec = _CREDIT_HEADERS.get(provider)
     if header_spec and headers is not None:
         header_name, charge_multiplier = header_spec
@@ -597,7 +610,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
         if isinstance(metadata, dict) and metadata.get("ai_overview_state") == "not_served":
             return 0
     reported = (ep.get("cost") or {}).get("reported_charge") if ep else None
-    if reported:
+    if reported and reported.get("path"):
         amount = _dig(doc, reported["path"])
         if isinstance(amount, (int, float, str)) and not isinstance(amount, bool):
             try:

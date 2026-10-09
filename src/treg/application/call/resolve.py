@@ -518,7 +518,23 @@ def _platform_estimate_micro(cost: dict, query, body: bytes = b"") -> int:
     if usd is None:
         return 0
     n = 1
-    if cost.get("unit") == "character":
+    count = cost.get("request_count")
+    if count:
+        values = _json_object(body) if count["location"] == "body" else query
+        raw = values.get(count["field"])
+        if raw is None:
+            n = count["default"]
+        elif count["mode"] == "length":
+            n = len(raw) if isinstance(raw, list) else 0
+        else:
+            try:
+                n = int(raw) if not isinstance(raw, bool) and str(raw).isdigit() else 0
+            except (TypeError, ValueError):
+                n = 0
+        if not 1 <= n <= count["maximum"]:
+            raise ResolutionFailed("catalog_parameter_invalid", status_code=422,
+                                   detail="Billable count is outside the catalog's bounds")
+    elif cost.get("unit") == "character":
         n = _body_text_characters(body)
     elif cost.get("unit") == "utf8_byte":
         n = _body_text_utf8_bytes(body)
@@ -539,7 +555,7 @@ def _platform_estimate_micro(cost: dict, query, body: bytes = b"") -> int:
         n = max(1, min(asked or _PLATFORM_PAGE_DEFAULT, _PLATFORM_PAGE_MAX))
     # Round to 9 dp BEFORE the ceil: float artifacts (0.0015 × 3 → 4500.000000001) must not
     # over-reserve a phantom micro-dollar.
-    raw_micro = round(usd * n * 1_000_000, 9)
+    raw_micro = round((usd * n + float(cost.get("base_usd") or 0)) * 1_000_000, 9)
     whole = int(raw_micro)
     return whole + 1 if raw_micro > whole else whole
 
