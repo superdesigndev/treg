@@ -15,9 +15,9 @@ always younger than the lag and everything from the first young row onward is de
 lossy by design (`audit.py` sheds rows under load), so the one remaining race, a row queued for
 longer than the lag before its insert, only ever undercounts a day by a row it already might have
 lost. The first run starts at the id of the first row inside the window, found by bisection on
-the primary key so the backfill never scans a row older than the window; until a run drains the
-backlog the reader keeps computing observations live, so nothing changes for a deployment that
-has not scheduled the worker.
+the primary key so the backfill never scans a row older than the window. Until a run drains the
+backlog, synchronous catalog observations are unavailable; the reader never substitutes an
+unbounded live aggregate for an incomplete fold.
 
 This module is the only writer of `endpointdaystat` and `endpointstatcursor`. It reads
 `callrecord` and nothing else, commits once per batch, and holds no session across anything but

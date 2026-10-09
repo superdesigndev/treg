@@ -1365,9 +1365,12 @@ async def test_the_SEARCH_TOOL_itself_ranks_on_evidence_not_just_the_helper(clie
     """The helpers were tested; the wiring was not. `rerank()` could have been dropped from both
     call sites and every ranking test would still have passed, because they call the helper
     directly. This one goes through the MCP tool with real rows in the database."""
+    from datetime import timedelta
+    from treg.application import catalog_stats
     from treg.domain.catalog import stats as endpoint_stats
     from treg.infra.db import session_maker
     from treg.models import CallRecord
+    from treg.timeutil import utcnow_naive
 
     broken = "apify.tiktok-ads.library.search"  # earlier in file order: rerank must move it
     good = "tikhub.x.tiktok-ads-search-ads"
@@ -1380,6 +1383,7 @@ async def test_the_SEARCH_TOOL_itself_ranks_on_evidence_not_just_the_helper(clie
                               status_code=405, endpoint_id=broken, duration_ms=100))
         await db.commit()
     assert endpoint_stats.MIN_SAMPLES <= 5
+    await catalog_stats.refresh(now=utcnow_naive() + timedelta(minutes=2))
 
     token = (await clients.post("/users", json={"email": "ranker@superdesign.dev"})).json()["token"]
     async with mcp_session(clients) as c:

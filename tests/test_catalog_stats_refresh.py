@@ -3,8 +3,8 @@
 What these pin: that the buckets say exactly what the live aggregate says for the same rows (the
 judgement calls live once, in `stats.publish`, and the fold mirrors the SQL predicates); that the
 cursor never consumes a row still inside the commit lag; that the first run starts inside the
-window and later runs resume; that the reader stays on the live aggregate until the worker has
-caught up, so a deployment without the cron changes nothing.
+window and later runs resume; that the reader publishes synchronous evidence only once the
+worker has caught up, without falling back to an audit-table aggregate.
 """
 
 from __future__ import annotations
@@ -143,19 +143,19 @@ async def test_async_per_success_uses_terminal_hits_including_failed_attempts(cl
     assert observation["hit_rate"] == 0.6
 
 
-async def test_the_reader_stays_live_until_the_worker_has_caught_up(clients):
-    """No cron, no change: a deployment that never schedules the worker keeps the live aggregate."""
+async def test_the_reader_waits_for_complete_folds_without_scanning_live(clients):
+    """No cron means no synchronous evidence; a partial backfill is not a complete sample."""
     for _ in range(6):
         await _record(EP, 200, 100, ago=timedelta(hours=1))
     reader = PostgresEndpointObservationReader(session_maker)
-    assert (await reader.get_many([EP]))[EP]["samples"] == 6     # nothing folded yet: live
+    assert await reader.get_many([EP]) == {}
     assert await _cursor() is None
 
     # A run that stops on its row budget before draining does not flip the reader either.
     partial = await catalog_stats.refresh(session_maker, max_rows=2, batch_rows=2, now=_now())
     assert partial["rows"] == 2 and not partial["caught_up"]
     assert (await _cursor()).caught_up_at is None
-    assert (await reader.get_many([EP]))[EP]["samples"] == 6     # still live, not the two folded rows
+    assert await reader.get_many([EP]) == {}  # do not publish the two-row partial backfill
 
     drained = await catalog_stats.refresh(session_maker, now=_now())
     assert drained["rows"] == 4 and drained["caught_up"]
@@ -217,9 +217,8 @@ async def test_an_overlapping_run_cannot_erase_what_the_other_folded(clients):
     assert folded[EP]["samples"] == 8         # 4 (outer) + 2 (intruder) + 2 (outer), nothing erased
 
 
-async def test_a_dead_worker_sends_the_reader_back_to_the_live_aggregate(clients, caplog):
-    """A cron that stopped must not leave the catalog on buckets that quietly age out of the
-    window. Past the staleness threshold the reader computes live again, and says so."""
+async def test_a_dead_worker_omits_evidence_without_scanning_live(clients, caplog):
+    """A stopped cron emits a health warning and omits evidence instead of increasing DB load."""
     for _ in range(6):
         await _record(EP, 200, 100, ago=timedelta(hours=1))
     assert (await catalog_stats.refresh(session_maker, now=_now()))["caught_up"]
@@ -232,9 +231,8 @@ async def test_a_dead_worker_sends_the_reader_back_to_the_live_aggregate(clients
         db.add(cursor)
         await db.commit()
     with caplog.at_level("WARNING", logger="treg.catalog"):
-        got = (await reader.get_many([EP]))[EP]
-    assert got["samples"] == 7 and got["ok_rate"] == round(6 / 7, 4)   # live: sees the seventh row
-    assert "computing observations live" in caplog.text
+        assert await reader.get_many([EP]) == {}
+    assert "catalog_stats_unavailable reason=stale" in caplog.text
 
 
 async def test_an_empty_audit_table_caught_up_immediately(clients):

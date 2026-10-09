@@ -15,7 +15,8 @@ from collections.abc import Callable, Collection
 from contextlib import suppress
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ..domain.catalog import stats
@@ -23,12 +24,22 @@ from ..domain.catalog import stats
 FRESH_TTL_S = 5 * 60
 STALE_TTL_S = 30 * 60
 REFRESH_RETRY_S = 5
-# The folded read model is trusted only while its worker keeps running. Generous against a cron
-# scheduled every few minutes, so a slow backfill or one failed run never flips the catalog back
-# to the live aggregate; short enough that a dead cron is noticed within a working day.
+REFRESH_TIMEOUT_RETRY_S = 60
+READ_TIMEOUT_S = 3
+STATEMENT_TIMEOUT_MS = 1000
+LIVE_BATCH_ENDPOINTS = 8
+# Missing or old folds mean unavailable evidence, never permission to scan the audit table.
 STALE_AFTER_S = 2 * 3600
 
 log = logging.getLogger("treg.catalog")
+
+
+class EndpointObservationTimeout(TimeoutError):
+    """A read deadline with complete endpoint observations already obtained before it expired."""
+
+    def __init__(self, completed: stats.ObservationSnapshot) -> None:
+        super().__init__("catalog observation read budget exhausted")
+        self.completed = completed
 
 
 @dataclass(frozen=True)
@@ -51,21 +62,31 @@ class _Entry:
 class PostgresEndpointObservationReader:
     """Authoritative reader whose session exists only for one small read.
 
-    Once `treg-worker catalog stats` has caught up with the audit table (the cursor row says so),
-    a synchronous observation is thirty `EndpointDayStat` rows per endpoint, summed and published
-    through the same floors as the live aggregate. Async endpoints still read `CallRecord` live
-    because their terminal hit can arrive after the fold cursor passes the submission. Until then,
-    on any deployment that never schedules the
-    worker, and whenever the worker has not run for `STALE_AFTER_S` (it stopped, or every run is
-    failing), it is the live thirty-day aggregate over `callrecord` it always was, so the numbers
-    the catalog publishes never depend on an operator remembering a cron or noticing a dead one.
-    The fallback is logged: it is the expensive path this table exists to retire.
+    Synchronous observations require a recently caught-up fold. Missing, incomplete or stale
+    folds publish no evidence and emit a worker-health warning. Async endpoints still read
+    `CallRecord` because terminal hits can arrive after the fold cursor passes a submission.
+    Those reads use small endpoint batches and the same statement and total read deadlines.
+    A failed read propagates to the process cache, which retains stale evidence and backs off.
     """
 
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self._session_factory = session_factory
+        self._warn_after = 0.0
 
     async def get_many(self, endpoint_ids: Collection[str]) -> stats.ObservationSnapshot:
+        completed: stats.ObservationSnapshot = {}
+        try:
+            async with asyncio.timeout(READ_TIMEOUT_S):
+                return await self._get_many(endpoint_ids, completed)
+        except TimeoutError as exc:
+            raise EndpointObservationTimeout(completed) from exc
+        except DBAPIError as exc:
+            if getattr(exc.orig, "sqlstate", None) == "57014":
+                raise EndpointObservationTimeout(completed) from exc
+            raise
+
+    async def _get_many(self, endpoint_ids: Collection[str],
+                        completed: stats.ObservationSnapshot) -> stats.ObservationSnapshot:
         ids = list(dict.fromkeys(endpoint_ids))
         if not ids:
             return {}
@@ -82,28 +103,41 @@ class PostgresEndpointObservationReader:
         per_success = {i for i in folded_ids
                        if ((cat.by_id.get(i) or {}).get("cost") or {}).get("type") == "per_success"}
         async with self._session_factory() as db:
+            if db.get_bind().dialect.name == "postgresql":
+                # Transaction-local: session exit rolls this back before returning the connection.
+                await db.execute(text(f"SET LOCAL statement_timeout = '{STATEMENT_TIMEOUT_MS}ms'"))
             cursor = await db.get(EndpointStatCursor, "callrecord")
+            reason = None
             if cursor is None or cursor.caught_up_at is None:
-                return await stats.observed(db, ids, per_success=per_success)
-            if (utcnow_naive() - cursor.updated_at).total_seconds() > STALE_AFTER_S:
-                log.warning("catalog stats worker last ran at %s; computing observations live",
-                            cursor.updated_at.isoformat())
-                return await stats.observed(db, ids, per_success=per_success)
-            rows = (await db.execute(
-                select(EndpointDayStat).where(EndpointDayStat.endpoint_id.in_(folded_ids),
-                                              EndpointDayStat.day >= stats.window_days()))).scalars().all()
-            live_async = (await stats.observed(db, async_ids, per_success=set())
-                          if async_ids else {})
-        # `observed_from` on an entry drops the days before it: the provider replaced the service,
-        # and those calls measured the old one.
-        since = {i: str((cat.by_id.get(i) or {}).get("observed_from") or "") for i in folded_ids}
-        rows = [row for row in rows if row.day >= since.get(row.endpoint_id, "")]
-        tallies = stats.merged((row.endpoint_id, stats.Tally(
-            n=row.n, ok=row.ok, bad=row.bad, last_ok=row.last_ok_at, hits=row.hits,
-            hit_decided=row.hit_decided, paid_hits=row.paid_hits, free_misses=row.free_misses,
-            latency_seen=row.latency_seen, latencies=list(row.latency_sample or []),
-        )) for row in rows)
-        return stats.publish(folded_ids, tallies, per_success=per_success) | live_async
+                reason = "missing" if cursor is None else "backfill"
+            elif (utcnow_naive() - min(cursor.updated_at, cursor.caught_up_at)).total_seconds() > STALE_AFTER_S:
+                # A worker that still runs but never drains its backlog is stale too.
+                reason = "stale"
+            if reason and time.monotonic() >= self._warn_after:
+                self._warn_after = time.monotonic() + FRESH_TTL_S
+                log.warning("catalog_stats_unavailable reason=%s last_run=%s caught_up_at=%s",
+                            reason, cursor.updated_at if cursor else None,
+                            cursor.caught_up_at if cursor else None)
+            available_ids = folded_ids if reason is None else []
+            rows = []
+            if available_ids:
+                rows = (await db.execute(
+                    select(EndpointDayStat).where(EndpointDayStat.endpoint_id.in_(available_ids),
+                                                 EndpointDayStat.day >= stats.window_days()))).scalars().all()
+            # Keep completed folds even when a later async batch times out. No partial aggregate
+            # from that failed batch is ever published, and the cache keeps its previous values.
+            since = {i: str((cat.by_id.get(i) or {}).get("observed_from") or "") for i in available_ids}
+            rows = [row for row in rows if row.day >= since.get(row.endpoint_id, "")]
+            tallies = stats.merged((row.endpoint_id, stats.Tally(
+                n=row.n, ok=row.ok, bad=row.bad, last_ok=row.last_ok_at, hits=row.hits,
+                hit_decided=row.hit_decided, paid_hits=row.paid_hits, free_misses=row.free_misses,
+                latency_seen=row.latency_seen, latencies=list(row.latency_sample or []),
+            )) for row in rows)
+            completed.update(stats.publish(available_ids, tallies, per_success=per_success))
+            for start in range(0, len(async_ids), LIVE_BATCH_ENDPOINTS):
+                completed.update(await stats.observed(
+                    db, async_ids[start:start + LIVE_BATCH_ENDPOINTS], per_success=set()))
+        return completed
 
     def pending(self, endpoint_ids: Collection[str]) -> bool:
         return False   # every read waits on the database, so nothing is ever still on its way
@@ -212,10 +246,17 @@ class CachedEndpointObservationReader:
                     refreshed = await self._source.get_many(endpoint_ids)
                 except asyncio.CancelledError:
                     raise
-                except Exception:  # noqa: BLE001 - optional telemetry always degrades to stale/empty
+                except Exception as exc:  # noqa: BLE001 - optional telemetry always degrades to stale/empty
                     async with self._lock:
                         self._refresh_failure += 1
-                        self._retry_not_before = self._clock() + self._retry_s
+                        retry_s = self._retry_s
+                        if isinstance(exc, TimeoutError):
+                            retry_s = max(retry_s, REFRESH_TIMEOUT_RETRY_S)
+                        self._retry_not_before = self._clock() + retry_s
+                        if isinstance(exc, EndpointObservationTimeout):
+                            for endpoint_id, value in exc.completed.items():
+                                if endpoint_id in self._inflight:
+                                    self._entries[endpoint_id] = _Entry(value=value, stored_at=self._clock())
                     log.warning("endpoint stats refresh unavailable", exc_info=True)
                 else:
                     stored_at = self._clock()

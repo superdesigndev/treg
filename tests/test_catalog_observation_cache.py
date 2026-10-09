@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from treg.infra.catalog_observations import CachedEndpointObservationReader
+from treg.infra.catalog_observations import CachedEndpointObservationReader, EndpointObservationTimeout
 
 
 class _Source:
@@ -114,6 +114,48 @@ async def test_shutdown_cancels_the_bootstrap_owned_refresh_task():
     await reader.aclose()
     assert reader.counts.refresh == 1
     assert await reader.get_many(["endpoint.a"]) == {}
+
+
+async def test_timeout_keeps_stale_data_and_waits_a_minute_before_retry():
+    now = [0.0]
+    source = _Source()
+    reader = CachedEndpointObservationReader(source, clock=lambda: now[0], fresh_ttl_s=5)
+    await reader.get_many(["endpoint.a"])
+    await reader.wait_for_idle()
+    now[0] = 6
+    source.failure = TimeoutError("observation deadline exceeded")
+    await reader.get_many(["endpoint.a"])
+    await reader.wait_for_idle()
+    assert reader.counts.refresh_failure == 1
+    now[0] = 65
+    assert (await reader.get_many(["endpoint.a"]))["endpoint.a"]["ok_rate"] == 1.0
+    assert len(source.calls) == 2
+    now[0] = 66
+    source.failure = None
+    source.value = 0.8
+    await reader.get_many(["endpoint.a"])
+    await reader.wait_for_idle()
+    assert (await reader.get_many(["endpoint.a"]))["endpoint.a"]["ok_rate"] == 0.8
+    assert len(source.calls) == 3
+    await reader.aclose()
+
+
+async def test_async_timeout_preserves_new_folds_and_previous_async_evidence():
+    now = [0.0]
+    source = _Source()
+    reader = CachedEndpointObservationReader(source, clock=lambda: now[0], fresh_ttl_s=5)
+    ids = ["sync.endpoint", "async.endpoint"]
+    await reader.get_many(ids)
+    await reader.wait_for_idle()
+    now[0] = 6
+    source.failure = EndpointObservationTimeout({"sync.endpoint": {"samples": 10, "ok_rate": 0.8}})
+    await reader.get_many(ids)
+    await reader.wait_for_idle()
+    result = await reader.get_many(ids)
+    assert result["sync.endpoint"]["samples"] == 10
+    assert result["async.endpoint"]["ok_rate"] == 1.0
+    assert reader.counts.refresh_failure == 1
+    await reader.aclose()
 
 
 async def test_an_endpoint_nobody_called_is_read_once_and_pending_only_until_then():

@@ -1675,8 +1675,13 @@ closes it as soon as that finishes. HTTP `/catalog/search`, both MCP catalog-sea
 routed planning in `application.call.route.build_plan`, and the prose pages that print observed stats
 (`/use-cases/*`, `/workflows` and `/workflows/*`) receive the same reader instance from bootstrap, so
 their request paths have no observation DB dependency, check out zero connections, and join the same
-refresh Task. A refresh failure keeps stale
-entries, backs off before retry, and never changes the Catalog response status; a failure with no
+refresh Task. The adapter applies a transaction-local one-second PostgreSQL statement timeout and
+a three-second total read deadline, including connection acquisition. Async endpoints still need
+live terminal-hit evidence because a submission can finish after the fold cursor passes it; those
+queries use at most eight endpoint ids per batch under the same deadlines. An incomplete endpoint
+batch never publishes partial aggregates; completed folds or earlier batches can still enter the
+cache when a later batch times out. A refresh failure keeps stale
+entries, backs off before retry (at least sixty seconds for timeouts), and never changes the Catalog response status; a failure with no
 cached entry is honest emptiness. The adapter exposes entry-level `fresh`, `stale`, and `miss`
 counters plus `refresh` and `refresh_failure` counts. Its invalidation story is the two TTLs: deploys
 and process restarts begin cold, and no cross-instance correctness depends on the cache.
@@ -1696,13 +1701,16 @@ not evidence and are not folded, exactly as the live query excludes them. An ent
 `observed_from: YYYY-MM-DD` when its provider replaced the service behind it: the folded reader
 (`PostgresEndpointObservationReader.get_many`) then drops that endpoint's day buckets before the
 date, so its published reliability describes only the current service. The YAML line carries the
-reason as a comment; the live fallback query does not apply it. The first run bisects the
-primary key to the first row inside the window rather than reading older pages, consumes at most
-`--max-rows` per run, and the reader keeps computing the live aggregate until a run reports it
-has caught up (`caught_up_at`), so a deployment that never schedules the worker behaves as before.
-The same fallback applies when the worker stops: a cursor not updated for `STALE_AFTER_S` (two
-hours) sends the reader back to the live aggregate with a warning, so a dead cron degrades to the
-old cost rather than to buckets that silently age out of the window. Each batch is one
+reason as a comment; the live async query does not apply it. The first run bisects the
+primary key to the first row inside the window rather than reading older pages and consumes at most
+`--max-rows` per run. Synchronous observations are unavailable until a run reports it
+has caught up (`caught_up_at`); missing workers and partial backfills never trigger live scans.
+If either the last update or last caught-up time exceeds `STALE_AFTER_S` (two hours), synchronous
+observations are omitted again. A running worker that cannot drain the backlog is therefore stale
+too. `catalog_stats_unavailable` logs `reason=missing|backfill|stale`, the last run and caught-up
+timestamps, at most once per five minutes per reader. This is the worker-health alert signal;
+operators must schedule the worker and monitor it independently of web deployments. A cold web
+process uses healthy persisted folds immediately when its background refresh runs. Each worker batch is one
 transaction under the cursor row's lock and re-reads every bucket it touches inside that lock;
 nothing about a bucket is carried between batches, so two overlapping runs (a slow backfill
 still going when the next schedule fires) serialize cleanly instead of one erasing the other's

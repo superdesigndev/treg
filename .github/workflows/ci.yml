@@ -147,6 +147,8 @@ jobs:
           tests/test_hub.py
           tests/test_hub_sandbox.py
           tests/test_mcp.py
+          tests/test_catalog_observation_bounds.py
+          tests/test_catalog_stats_refresh.py
       - name: Dump Postgres activity on failure
         # Three CI-only hangs at archive drains were undiagnosable from Python stacks alone; this
         # shows the DATABASE's view: every session, its state (idle in transaction = a leaked or

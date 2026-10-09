@@ -2027,9 +2027,9 @@ class EndpointDayStat(SQLModel, table=True):
 
 class EndpointStatCursor(SQLModel, table=True):
     """Where `application.catalog_stats.refresh` has got to in `callrecord`, and whether it has
-    caught up. One row (`id = "callrecord"`). `caught_up_at` is NULL until a run drains the backlog,
-    and the catalog keeps computing observations live until then, so a fresh install or a
-    deployment that has not scheduled the worker yet behaves exactly as before.
+    caught up. One row (`id = "callrecord"`). `caught_up_at` is NULL until a run drains the backlog.
+    The catalog omits synchronous observations until then, and again if the worker has not
+    caught up recently, rather than running an audit-table aggregate in a web process.
     """
 
     id: str = Field(primary_key=True)

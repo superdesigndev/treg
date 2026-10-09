@@ -287,8 +287,9 @@ async def observed(
     already `reconcile.price_drift`, computed over the same rows for a different audience. Two
     implementations of one number is how they start disagreeing.
 
-    `endpoint_ids` is expected to be small — one endpoint and its capability siblings — so this is
-    two bounded queries, not a scan of the audit table.
+    This aggregates every matching audit row in the window; a small endpoint list alone does not
+    bound its cost. The runtime adapter uses it only for async endpoints, in small batches under
+    statement and overall read deadlines. Synchronous endpoints use the worker's folded stats.
 
     A 4xx counts as a **failure of the call**, not of the endpoint: it usually means the caller sent
     the wrong parameters. It is excluded from `ok_rate` entirely rather than counted against the

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 from copy import deepcopy
+from datetime import timedelta
 import json
 from types import SimpleNamespace
 
@@ -14,6 +15,7 @@ from httpx import AsyncClient
 from sqlmodel import select
 
 from treg import audit
+from treg.application import catalog_stats
 from treg.domain import money as ledger
 from treg.application.call import overflow as call_overflow
 from treg.application.call import resolve as call_resolve
@@ -28,6 +30,7 @@ from treg.domain.catalog.routing.contracts import canonical_identity
 from treg.domain.catalog.routing.plan import Candidate, cost_at, rank
 from treg.infra.catalog_observations import CachedEndpointObservationReader
 from treg.models import CallRecord, Hold, LedgerEntry, OverflowRoute
+from treg.timeutil import utcnow_naive
 
 from test_marketplace_call import _balance, firecrawl_platform_on, platform_on  # noqa: F401
 
@@ -382,6 +385,7 @@ async def test_routed_plan_keeps_per_success_hit_fallback_from_the_cache(
             ))
         await db.commit()
     monkeypatch.setattr(stats, "MIN_HIT_SAMPLES", 3)
+    await catalog_stats.refresh(now=utcnow_naive() + timedelta(minutes=2))
     reader = A.app.state.endpoint_observation_reader
     assert await reader.get_many([endpoint_id]) == {}
     await reader.wait_for_idle()
@@ -909,6 +913,7 @@ async def test_hit_verdict_is_recorded_and_becomes_a_hit_rate(clients: AsyncClie
     monkeypatch.setattr(stats, "MIN_HIT_SAMPLES", 3)
     # the catalog reads observations through the process cache: a cold entry answers nothing and
     # refreshes in the background, so warm it the way test_endpoint_stats does
+    await catalog_stats.refresh(now=utcnow_naive() + timedelta(minutes=2))
     from treg import api as A
     monkeypatch.setattr(call_route, "_endpoint_observation_reader", A.app.state.endpoint_observation_reader)
     await clients.get(f"/catalog/endpoints/{ROUTED}")
