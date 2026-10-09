@@ -1,9 +1,24 @@
 
 export default {
-async loadUsage(){ if(!this.canAdmin || !this.activeOrgId) return; this.usage=null; const live=this.ticket('usage');
-      try{ const usage=await this.api('/orgs/'+this.activeOrgId+'/usage?days='+this.usageDays); if(live()) this.usage=usage; }
-      catch(e){ if(live()) this.err='Failed to load usage: '+(e.detail||e.status); }
-      await this.loadTagUsage(); },
+// The Usage window as a query: a preset (`days=30`) or a custom range (`from=…&to=…`, UTC days).
+usageQuery(){ const r=this.usageRange; return r.preset==='custom' ? 'from='+r.from+'&to='+r.to : 'days='+r.preset; },
+// Every section loads on its own and shows itself when ready: the page never waits for the slowest
+// one, and a failed section does not take the others with it.
+async loadUsage(){ if(!this.canAdmin || !this.activeOrgId) return;
+      this.usageToolPage=0; this.usageDayPage=0;
+      await Promise.all([this.loadUsageCounts(), this.loadUsageSpend(), this.loadTagUsage()]); },
+async loadUsageCounts(){ if(!this.canAdmin || !this.activeOrgId) return; this.usage=null; this.usageErr=''; const live=this.ticket('usage');
+      try{ const usage=await this.api('/orgs/'+this.activeOrgId+'/usage?'+this.usageQuery()); if(live()) this.usage=usage; }
+      catch(e){ if(live()) this.usageErr='Could not load usage counts: '+(e.detail||e.status); } },
+// The spend chart keeps its last answer on screen (dimmed) while a filter change loads the next.
+async loadUsageSpend(){ if(!this.canAdmin || !this.activeOrgId) return; const live=this.ticket('usageSpend'), f=this.spendFilter;
+      if(!f.provider) f.stack='key';
+      const q=this.usageQuery()+'&group='+f.group+'&stack='+f.stack+(f.key?'&key='+f.key:'')+(f.provider?'&provider='+encodeURIComponent(f.provider):'');
+      this.usageSpendBusy=true; this.usageSpendErr=''; this.spendRankPage=0;
+      try{ const spend=await this.api('/orgs/'+this.activeOrgId+'/usage/spend?'+q); if(live()) this.usageSpend=spend; }
+      catch(e){ if(live()) this.usageSpendErr='Could not load spend: '+(e.detail||e.status); }
+      finally{ if(live()) this.usageSpendBusy=false; } },
+setUsageRange(value){ this.usageRange=value; this.loadUsage(); },
 async loadTagUsage(){ if(!this.canAdmin || !this.activeOrgId) return;
       this.tagUsage={}; const live=this.ticket('tagUsage'), org=this.activeOrgId;
       try{
@@ -20,7 +35,7 @@ async loadTagUsage(){ if(!this.canAdmin || !this.activeOrgId) return;
         // One request per key. Bounded by the 5-key cap on the header, and they run together.
         const got=await Promise.all(keys.map(key=>
           this.api('/orgs/'+org+'/usage/by-tag?key='+encodeURIComponent(key)+
-                   '&days='+this.usageDays).catch(()=>null)));
+                   '&'+this.usageQuery()).catch(()=>null)));
         if(!live()) return;
         const out={};
         keys.forEach((key,i)=>{ if(got[i]) out[key]=got[i]; });

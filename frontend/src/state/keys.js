@@ -49,5 +49,6 @@ async keyAction(k,action){ this.keyBusy=true; this.keyErr=''; this.keyMsg=null;
         if(k.kind==='default_human' && action!=='rotate') await this.loadDefaultToken();
         if(r.agent_revoked) await this.loadOrgAdmin(); else await this.loadApiKeys(); }
       catch(e){ this.keyErr='Key action failed: '+(e.detail||e.status); } finally{ this.keyBusy=false; } },
-showKeyActivity(k){ this.activityKey=String(k.id); this.go('activity'); }
+// A key's Activity button opens its calls, with the key picked: '#activity/calls?key=<id>'.
+showKeyActivity(k){ this._tabRoute={view:'activity', tab:'feed', key:String(k.id)}; this.go('activity'); }
 }

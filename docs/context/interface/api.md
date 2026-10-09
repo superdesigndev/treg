@@ -354,9 +354,18 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   (admin+, read-only) reports each CLI tool's effective argv deny patterns with their source (skill
   `treg.json` vs catalog) so the Policy screen shows every deny layer in one place.
 - **Usage metering + caps** (usage-metering v1, `docs/USAGE-METERING-PLAN.md`): `org_usage`
-  (`GET /orgs/{id}/usage?days=`, admin+) rolls up `CallRecord` + `RunRecord` since the window start into
-  **by-user** (with a `call`/`local_run`/`server_run` split), **by-tool**, **by-day**, and totals - pure
-  `GROUP BY`, **no request/response bodies** (they aren't stored). `set_member_cap`
+  (`GET /orgs/{id}/usage?days=` or `?from=&to=` in UTC days, admin+) rolls up `CallRecord` + `RunRecord`
+  over the window into **by-user** (with a `call`/`local_run`/`server_run` split), **by-tool**,
+  **by-day**, and totals - pure `GROUP BY`, **no request/response bodies** (they aren't stored). One pass
+  groups by member, kind and tool together; the per-day count is a second, index-only pass.
+  `usage_spend` (`GET /orgs/{id}/usage/spend?days=|from=&to=&group=day|week|month&key=&provider=&stack=key|tool`,
+  admin+) is the Usage spend chart: settled ledger money bucketed and stacked by API key (plus the
+  unattributed money) or, within one provider, by tool, the seven biggest series kept and the rest
+  folded into Other (each bucket's `others` breaks that slice down). Each shown series carries a color
+  `slot` its own id prefers, so a key keeps its color when the range or a filter changes; `ranking`
+  lists every series unfolded, for the list under the chart and the CSV export. Its `options` list
+  every key and provider with spend in the window, unfiltered.
+  Every Usage section loads on its own request, so the page never waits for its slowest part. `set_member_cap`
   (`PATCH /orgs/{id}/members/{user}/cap`, admin+) sets `Membership.daily_call_cap` (`-1` = unlimited,
   rejects `< -1`). `my_usage` (`GET /usage/me`, any member) returns the caller's own `used_today` + `cap`.
   `list_members` also returns each member's `daily_call_cap` + `used_today`. **Enforcement:**
@@ -947,7 +956,7 @@ if returning the hold itself fails, the money comes back when the hold is reaped
 | `GET /activity?before=&limit=&api_key_id=` | the dashboard's feed: calls, server runs and local runs merged newest first, `{rows, next}`; each row says its `source` (`call`/`run`); pass `next` as `before` for the page after, null on the last |
 | `GET /calls/{call_ref}` | one call by its `X-Treg-Call-Id`, plus the ledger entries for it and its `async_task` view when it was a metered generation |
 | `GET /calls/{id}/result` | `id` is the row id or the `X-Treg-Call-Id`; what one call asked and what came back - the archive's copy; recorded catalog 2xx only (platform or own key), `stored: false` + `note` otherwise |
-| `GET /orgs/{id}/usage/by-tag?key=&days=` | per-value spend for one tag key. **Money from the ledger**; admin+ |
+| `GET /orgs/{id}/usage/by-tag?key=&days=` (or `from=&to=`) | per-value spend for one tag key. **Money from the ledger**; admin+ |
 | `GET/PUT/DELETE /orgs/{id}/budgets[/{dim}/{val}]` | per-tag limits and blocking; admin+ |
 | `PATCH /orgs/{id}` | (admin+) rename the team: `name` and/or `slug`; the old slug stays an alias so existing keys keep working |
 | `GET/PATCH /orgs/{id}/settings` | the team's daily spend cap, budget dimensions and primary dimension |

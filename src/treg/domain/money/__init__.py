@@ -736,11 +736,13 @@ async def tag_calls_since(db: AsyncSession, org_id: int, dim: str, val: str, sin
     return int(total)
 
 
-async def calls_by_tag(db: AsyncSession, org_id: int, dim: str, since: datetime) -> dict[str, int]:
+async def calls_by_tag(db: AsyncSession, org_id: int, dim: str, since: datetime,
+                       until: datetime | None = None) -> dict[str, int]:
     """Billable call counts for every value of one tag key, grouped in SQL over the same index."""
     rows = (await db.execute(
         select(TagSpend.val, func.count()).where(
-            TagSpend.org_id == org_id, TagSpend.dim == dim, TagSpend.created_at >= since)
+            TagSpend.org_id == org_id, TagSpend.dim == dim, TagSpend.created_at >= since,
+            *_before(TagSpend.created_at, until))
         .group_by(TagSpend.val)
     )).all()
     return {val: int(n) for val, n in rows}
@@ -777,26 +779,33 @@ async def tag_invoice_since(db: AsyncSession, org_id: int, dim: str, val: str, s
     return int(total)
 
 
-async def spend_by_tag(db: AsyncSession, org_id: int, dim: str, since: datetime) -> dict[str, int]:
+async def spend_by_tag(db: AsyncSession, org_id: int, dim: str, since: datetime,
+                       until: datetime | None = None) -> dict[str, int]:
     """Settled spend for every value of one tag key — `{"cust_8123": 41234, ...}`. What a builder
     invoices from. Grouped in SQL over the same index the cap uses; no JSON folding, so it stays
     portable across sqlite and Postgres (see reconcile.py's docstring for why that matters)."""
     rows = (await db.execute(
         select(TagSpend.val, func.coalesce(func.sum(TagSpend.amount_micro), 0)).where(
             TagSpend.org_id == org_id, TagSpend.dim == dim,
-            TagSpend.settled.is_(True), TagSpend.created_at >= since)
+            TagSpend.settled.is_(True), TagSpend.created_at >= since, *_before(TagSpend.created_at, until))
         .group_by(TagSpend.val)
     )).all()
     return {val: int(total) for val, total in rows}
 
 
-async def spend_since(db: AsyncSession, org_id: int, since: datetime) -> dict:
+def _before(column, until: datetime | None) -> list:
+    """The optional upper bound of a report window: nothing when the window runs to now."""
+    return [] if until is None else [column < until]
+
+
+async def spend_since(db: AsyncSession, org_id: int, since: datetime, until: datetime | None = None) -> dict:
     """What this org has actually SPENT on platform keys since `since`: total micro-USD and how many
     calls it took. One aggregate over the settle entries — the ledger, not the audit table, is the
     authority on money (audit rows are allowed to be lost; ledger rows are not)."""
     row = (await db.execute(
         select(func.coalesce(func.sum(LedgerEntry.amount_micro), 0), func.count()).where(
-            LedgerEntry.org_id == org_id, LedgerEntry.kind == "settle", LedgerEntry.created_at >= since)
+            LedgerEntry.org_id == org_id, LedgerEntry.kind == "settle", LedgerEntry.created_at >= since,
+            *_before(LedgerEntry.created_at, until))
     )).first()
     total, calls = (row[0] or 0, row[1] or 0) if row else (0, 0)
     return {"spend_micro": int(-total), "spend_usd": usd(int(-total)), "billed_calls": int(calls)}

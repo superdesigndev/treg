@@ -112,11 +112,15 @@ function initialView(): View {
   if (route.mkFromPath!(path)) return 'provider'
   if (route.routeFromPath!(path)) return 'detail'
   if (route.platformFromHash!()) return 'platform'
-  return route.viewFromHash!.call({}) || 'start'
+  const view = route.viewFromHash!.call({}) || 'start'
+  return (view as string) === 'usage' ? 'activity' : view  // `#usage` is the Activity page's tab
 }
 
+// A guess only: a name with no page (an old alias) preloads nothing rather than stopping the
+// app from mounting, which an exception here, before mount, would do.
 export function preloadInitialView() {
-  void prefetch(pages[initialView()])
+  const page = pages[initialView()]
+  if (page) void prefetch(page)
 }
 
 const idle = () => new Promise<void>(resolve => {

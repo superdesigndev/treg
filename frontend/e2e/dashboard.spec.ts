@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { readFileSync } from 'node:fs'
 import { json, signIn } from './helpers'
 
 test('sign in, create team, switch pages, refresh and navigate back', async ({ page }) => {
@@ -18,7 +19,7 @@ test('sign in, create team, switch pages, refresh and navigate back', async ({ p
   await expect(navigation.getByRole('button', { name: 'Team', exact: true })).toHaveAttribute('aria-current', 'page')
   await page.locator('.rd-account-menu summary').click()
   await page.locator('.rd-account-menu').getByRole('button', { name: 'Billing', exact: true }).click()
-  await expect(page).toHaveURL(/#orgs$/)
+  await expect(page).toHaveURL(/#orgs\/billing$/)  // the Billing menu item opens Team on its Billing tab, and the address says so
   const referral = page.getByRole('link', { name: 'Referral: Give $5, get $5, or become an affiliate partner', exact: true })
   await expect(referral).toHaveText('Referral')
   await referral.click()
@@ -176,6 +177,7 @@ test('Activity pages the merged feed with the cursor the server returns', async 
   })
   await signIn(page)
   await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('button', { name: 'Activity', exact: true }).click()
+  await page.getByRole('tab', { name: 'Calls' }).click()  // an admin lands on Usage; the feed is the Calls tab
   const all = page.getByRole('radio', { name: /^All/ })
   await expect(all).toHaveText('All 100')
   await page.getByRole('button', { name: 'Load older activity' }).click()
@@ -203,10 +205,80 @@ test('Activity offers no older page while a new filter is loading', async ({ pag
     { id: 7, name: 'ci', identity: 'bot', assigned_type: 'agent', prefix: 'tr_x' }])))
   await signIn(page)
   await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('button', { name: 'Activity', exact: true }).click()
+  await page.getByRole('tab', { name: 'Calls' }).click()  // an admin lands on Usage; the feed is the Calls tab
   const all = page.getByRole('radio', { name: /^All/ })
   await expect(all).toHaveText('All 100')
-  await page.getByRole('combobox', { name: 'API key' }).selectOption('7')
+  await page.getByRole('button', { name: /^API key:/ }).click()
+  await page.getByRole('option', { name: 'bot', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Load older activity' })).toHaveCount(0)
   release()
   await expect(all).toHaveText('All 3')
+})
+
+test('Usage charts spend per API key, filters by provider and stacks by tool, over a custom range', async ({ page }) => {
+  const asked: URLSearchParams[] = []
+  await page.route(url => url.pathname.endsWith('/usage/spend'), route => {
+    const q = new URL(route.request().url()).searchParams
+    asked.push(q)
+    const byTool = q.get('stack') === 'tool'
+    return route.fulfill(json({
+      from: '2026-10-07', to: '2026-10-09', group: q.get('group'), stack: q.get('stack'), spend_micro: 505000, calls: 3,
+      series: byTool ? [{ id: 'acme.search', name: 'search', spend_micro: 505000 }]
+        : [{ id: '3', name: 'CI runner · dev', spend_micro: 410000 }, { id: 'none', name: 'No API key', spend_micro: 95000 }],
+      buckets: [{ start: '2026-10-07', parts: byTool ? { 'acme.search': 505000 } : { 3: 410000, none: 95000 }, calls: 3 },
+        { start: '2026-10-08', parts: {}, calls: 0 }, { start: '2026-10-09', parts: {}, calls: 0 }],
+      ranking: byTool ? [{ id: 'acme.search', name: 'search', spend_micro: 505000, calls: 3 }]
+        : [{ id: '3', name: 'CI runner · dev', spend_micro: 410000, calls: 2 }, { id: 'none', name: 'No API key', spend_micro: 95000, calls: 1 }],
+      options: {
+        keys: [{ id: 3, name: 'CI runner · dev', spend_micro: 410000 },
+          ...Array.from({ length: 9 }, (_, i) => ({ id: 20 + i, name: `Worker ${i} · dev`, spend_micro: 1 }))],
+        providers: [{ id: 'acme', name: 'Acme', spend_micro: 505000 }],
+      },
+    }))
+  })
+  await signIn(page, 'usage-spend')
+  await page.getByRole('navigation', { name: 'Primary navigation' }).getByRole('button', { name: 'Activity', exact: true }).click()
+  await page.getByRole('tab', { name: 'Usage' }).click()
+  await expect(page.getByRole('img', { name: /Billed spend by day: \$0\.505/ })).toBeVisible()
+  await expect(page.locator('.sb-legend')).toContainText('No API key')
+  await page.locator('.sb-legend').getByRole('button', { name: 'About No API key' }).hover()
+  await expect(page.locator('.sb-legend').getByRole('tooltip')).toContainText('MCP connector')
+  await expect(page.getByRole('button', { name: /^Stack by:/ })).toHaveCount(0)
+  // Every key with spend is a row under the chart; clicking one filters the chart to that key.
+  const toggle = page.getByRole('button', { name: 'Spend per API key' })
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await toggle.click()
+  await expect(page.locator('.us-ranking')).toContainText('CI runner · dev')
+  await page.locator('.us-ranking').getByText('CI runner · dev').click()
+  await expect.poll(() => asked.at(-1)?.get('key')).toBe('3')
+  // Past eight choices the dropdown searches.
+  await page.getByRole('button', { name: /^API key:/ }).click()
+  await page.getByRole('combobox', { name: 'Search api key' }).fill('worker 7')
+  await expect(page.getByRole('option')).toHaveText(['Worker 7 · dev'])
+  await page.getByRole('option', { name: 'Worker 7 · dev' }).click()
+  await expect.poll(() => asked.at(-1)?.get('key')).toBe('27')
+  await page.getByRole('button', { name: 'Clear filters' }).click()
+  // The export is what the card shows, one row per period and series.
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export CSV' }).click()
+  const csv = readFileSync(await (await download).path(), 'utf8')
+  expect(csv.split('\n')[0]).toBe('period_start,group,api_key_id,api_key,spend_usd,spend_micro')
+  expect(csv).toContain('2026-10-07,day,3,CI runner · dev,0.410000,410000')
+  await page.getByRole('button', { name: /^Provider:/ }).click()
+  await page.getByRole('option', { name: 'Acme' }).click()
+  await page.getByRole('button', { name: /^Stack by:/ }).click()
+  await page.getByRole('option', { name: 'Tools' }).click()
+  await expect.poll(() => asked.at(-1)?.get('stack')).toBe('tool')
+  await expect(page.locator('.sb-legend')).toHaveCount(0)  // one series: the title names it, no legend
+  // A custom range is two clicks on the calendar and Apply; nothing reloads before Apply.
+  const day = (back: number) => new Date(Date.now() - back * 86_400_000).toISOString().slice(0, 10)
+  await page.getByRole('button', { name: /^Date range:/ }).click()
+  const before = asked.length
+  await page.getByRole('button', { name: day(2), exact: true }).click()
+  await page.getByRole('button', { name: day(0), exact: true }).click()
+  expect(asked.length).toBe(before)
+  await page.getByRole('button', { name: 'Apply' }).click()
+  await expect.poll(() => asked.at(-1)?.get('from')).toBe(day(2))
+  const last = asked.at(-1)!
+  expect([last.get('to'), last.get('provider'), last.get('stack'), last.get('days')]).toEqual([day(0), 'acme', 'tool', null])
 })

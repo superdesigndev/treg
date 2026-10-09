@@ -1589,6 +1589,15 @@
       "GET",
       "HEAD"
     ],
+    "name": "usage_spend",
+    "path": "/orgs/{org_id}/usage/spend"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "org_balance",
     "path": "/orgs/{org_id}/balance"
   },

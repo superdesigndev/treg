@@ -1,9 +1,12 @@
 <script>
 import { useDashboard } from '../state/context'
 import KeySpendChart from '../components/KeySpendChart.vue'
+import InfoTip from '../components/ui/InfoTip.vue'
+import { NO_KEY } from '../state/constants.js'
 // The new agent's check-in poll lives as long as this page (state/agents.js).
 export default {
-  components: { KeySpendChart },
+  components: { KeySpendChart, InfoTip },
+  data: () => ({ NO_KEY }),
   setup: useDashboard,
   mounted() { this.resumeAgentPoll() },
   beforeUnmount() { this.stopAgentPoll() },
@@ -242,7 +245,7 @@ export default {
               <div v-if="activeRole!=='viewer'" class="field" style="max-width:620px;margin-bottom:18px"><input v-model="keyName" :class="{'field-invalid':keyNameInvalid}" :aria-invalid="keyNameInvalid" placeholder="New key name" maxlength="80" @input="keyNameInvalid=false" @keyup.enter="createApiKey"/><button class="btn primary" :disabled="keyBusy" @click="createApiKey">{{keyBusy?'…':'Create key'}}</button></div>
               <template v-for="group in apiKeyGroups" :key="group.identity">
                 <div class="lbl" style="margin-top:16px">{{group.name}} <span class="chip">{{group.type}}</span><span v-if="group.type==='agent' && group.name!==group.identity" class="muted mono" style="margin-left:8px;text-transform:none">{{group.identity}}</span></div>
-                <table class="key-table"><tr><th>Key</th><th>Status</th><th style="text-align:right" title="Billed charges in the last 30 days, from the ledger">Spent · 30 days</th><th>Created</th><th>Last used</th><th></th></tr>
+                <table class="key-table"><tr><th>Key</th><th>Status</th><th style="text-align:right" title="Billed charges in the last 30 days, from the ledger">Spent last 30 days</th><th>Created</th><th>Last used</th><th></th></tr>
                   <template v-for="k in group.rows" :key="k.id">
                   <tr :class="{'key-open':keySpendOpen===k.id}">
                     <td class="key-identity"><input v-if="editKey===k.id" v-model="editKeyName" maxlength="80" class="msel" @keyup.enter="renameApiKey(k)"/><template v-else><div class="key-primary"><span v-if="group.type==='human' && k.assigned_type==='agent'" class="muted" aria-hidden="true">↳</span><b>{{group.type==='human' && k.assigned_type==='agent'?k.assigned_name:k.name}}</b><span class="chip">{{keyKind(k.kind)}}</span></div><div class="key-meta mono">{{maskedKey(k)}}</div></template>
@@ -263,8 +266,8 @@ export default {
                 </table>
               </template>
               <template v-if="apiKeySpend && apiKeySpend.unattributed && apiKeySpend.unattributed.spend_micro && apiKeys.length">
-                <div class="lbl" style="margin-top:16px">Not attributed</div>
-                <table class="key-table"><tr><td class="key-identity"><span class="muted">Charges with no API key on record</span></td><td class="key-spend">{{money(apiKeySpend.unattributed.spend_micro)}}</td></tr></table>
+                <div class="lbl" style="margin-top:16px">{{NO_KEY.title}} <InfoTip :title="NO_KEY.title" :text="NO_KEY.text" /></div>
+                <table class="key-table"><tr><td class="key-identity"><span class="muted">Charges on calls made without an API key</span></td><td class="key-spend">{{money(apiKeySpend.unattributed.spend_micro)}}</td></tr></table>
               </template>
               <p v-if="!keyBusy && !apiKeys.length" class="sub">No keys are available.</p>
             </template>

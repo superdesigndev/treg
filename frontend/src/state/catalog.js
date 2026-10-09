@@ -1,3 +1,4 @@
+import { parseTabHash } from './navigation.js'
 import { markRaw } from 'vue'
 
 // Agents' verdicts read the way Steam reads user reviews: the positive share (a partly useful verdict
@@ -55,6 +56,8 @@ platUrl(slug, cap){ const tail=cap ? '/'+encodeURIComponent(cap) : '';
     // not only via back/forward. '#billing' is the name 402 bodies and emails use for "add funds";
     // billing lives on the Team pane's Billing tab, so it aliases there.
     viewFromHash(){ let v=(location.hash||'').replace('#','');
+      const tabbed=parseTabHash(location.hash);
+      if(tabbed){ this._tabRoute=tabbed; return tabbed.view; }
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
       return ['tools','orgs','activity','usage','admin','help','secrets','start','resources','catalog','connections','referrals','hub'].includes(v)?v:null; },
 // Land on a public catalog URL (see catalogFromPath): the finder page, a platform shelf, or the index.

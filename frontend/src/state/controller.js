@@ -49,6 +49,12 @@ export default {
     // Dialog focus (in on open, trapped, back to the trigger on close) and Escape: v-dialog (dialogs/dialog.ts)
     'welcome.agent'(v){ storageSet('treg-agent', v); },  // see _restoreAgent
     activeOrgId(){ this.resetRenameForm(); },  // team switch or first load: prefill the rename form
+    // The address follows the tab and key, however they changed (a tab button, a link inside the
+    // page, a filter); syncTabUrl ignores every view but Activity and Team.
+    actTab(){ this.syncTabUrl(); },
+    orgTab(){ this.syncTabUrl(); },
+    activityKey(){ this.syncTabUrl(); },
+    'spendFilter.key'(){ this.syncTabUrl(); },
     // Editing the box after a find starts a new question: the answer to the old one goes away
     // and the shelves go back to filtering by name.
     q(v){ if(this.findActive && this.view==='catalog' && v.trim()!==this.find.q) this.findExit(); },

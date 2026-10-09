@@ -6,6 +6,8 @@ sources:
   - frontend/src/views.ts
   - frontend/src/state/controller.js
   - frontend/src/state/catalog.js
+  - frontend/src/state/navigation.js
+  - frontend/src/state/boot.js
   - frontend/src/styles/base.css
   - frontend/e2e/layout.spec.ts
   - src/treg/web/media/redesign/dashboard.css
@@ -47,12 +49,20 @@ this page keeps what no single file shows. The look follows the root `design.md`
 | Connections; a provider | `#connections`; `/app/marketplace/<service>` | `ConnectionsPage.vue`, `ProviderPage.vue` |
 | Your own tools | `#tools`, `#secrets`, `#resources` | `ToolsPage.vue`, `SecretsPage.vue`, `TeamResourcesPage.vue` |
 | A shared skill or tool | `/app/skills/<name>`, `/app/tools/<name>` | `DetailPage.vue` |
-| Activity, Team, Hub, Referrals, Admin; find a tool | `#activity`, `#orgs`, `#hub`, `#referrals`, `#admin`; public `/search` | the matching page, `SearchPage.vue` |
+| Activity and its tabs | `#activity` (Usage for an admin, Calls for a member), `#activity/usage`, `#activity/calls`, either with `?key=<api key id>`; old `#usage` | `ActivityPage.vue` |
+| Team and its tabs | `#orgs` (the tab open last), `#orgs/members`, `/keys`, `/projects`, `/policy`, `/billing`, `/settings`; old `#billing` | `TeamPage.vue` |
+| Hub, Referrals, Admin; find a tool | `#hub`, `#referrals`, `#admin`; public `/search` | the matching page, `SearchPage.vue` |
 
 ## Rules every change keeps
 
 - **A hash view is in both whitelists**, `viewFromHash()` (`state/catalog.js`) and the `popstate` list
   (`state/boot.js`). A click works without them; reload and Back silently do not.
+- **Only Activity and Team carry a tab in the address.** `parseTabHash` (`state/navigation.js`) reads
+  `#activity/<tab>[?key=<id>]` and `#orgs/<tab>` for load, Back and the page preloader (`views.ts`,
+  which calls it before the app exists, so it is a plain function); every other hash, the catalog's
+  slashed `#platform/…` included, never reaches it. A tab or key change replaces the current history
+  entry (`syncTabUrl`, watched in `controller.js`), so Back leaves the page rather than replaying tabs.
+  A key is addressed by its id: names repeat and change on rename.
 - **Dialogs mount at the App root**, never inside a page (a nested one failed to render), with
   `v-dialog` and a label: focus in, Tab trapped, Escape closes unless the decision is required.
 - **A late answer never overwrites a newer one**: a loader a newer call or a team switch can overtake

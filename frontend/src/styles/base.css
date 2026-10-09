@@ -174,8 +174,8 @@
   .key-table .key-spend-row td{padding-top:0}
   /* Spend chart series: the validated categorical order, stepped per theme (dark is the default
      theme here). Slot 8 is never a hue: everything past seven series folds into a neutral Other. */
-  .spend-bars{--sb-1:#3987e5;--sb-2:#d95926;--sb-3:#199e70;--sb-4:#c98500;--sb-5:#d55181;--sb-6:#008300;--sb-7:#9085e9;--sb-other:#7d776b}
-  [data-theme="light"] .spend-bars{--sb-1:#2a78d6;--sb-2:#eb6834;--sb-3:#1baf7a;--sb-4:#eda100;--sb-5:#e87ba4;--sb-6:#008300;--sb-7:#4a3aa7;--sb-other:#a39b8b}
+  :root{--sb-1:#3987e5;--sb-2:#d95926;--sb-3:#199e70;--sb-4:#c98500;--sb-5:#d55181;--sb-6:#008300;--sb-7:#9085e9;--sb-other:#7d776b}
+  [data-theme="light"]{--sb-1:#2a78d6;--sb-2:#eb6834;--sb-3:#1baf7a;--sb-4:#eda100;--sb-5:#e87ba4;--sb-6:#008300;--sb-7:#4a3aa7;--sb-other:#a39b8b}
   .key-table .key-spend-card > p{padding:14px 16px;border:1px solid var(--line);border-radius:var(--r)}
   .key-primary{display:flex;align-items:center;gap:7px;white-space:nowrap}
   .key-primary b{font-size:13px}
@@ -1251,4 +1251,92 @@ a.td-prov:hover{color:var(--ink);text-decoration:underline;text-underline-offset
   .ui-data-table .ui-td[data-mobile="field"]::before,.ui-data-table .ui-td[data-mobile="wide"]::before{content:attr(data-label);display:block;margin-bottom:2px;font-family:var(--mono);
     font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)}
   .ui-data-table .ui-trunc{max-width:none!important}
+}
+
+/* Activity → Usage: the range bar, the spend card and its filters, and table pagers. */
+.us-range{flex-wrap:wrap;gap:10px;align-items:center;position:relative;z-index:5}
+.us-card{border-radius:var(--r);background:var(--surface,var(--panel));box-shadow:var(--shadow-sm);margin:0 0 40px}
+.us-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;padding:20px 24px 4px}
+.us-card-head h2{margin:0;font-size:17px}
+.us-card-head p{margin:4px 0 0;font-size:12.5px}
+.us-totals{display:flex;gap:28px}
+.us-totals div{display:grid;gap:2px;text-align:right}
+.us-totals b{font-family:var(--mono);font-size:22px;font-weight:500;font-variant-numeric:tabular-nums}
+.us-totals span{font-size:12px;color:var(--muted)}
+.us-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 14px;padding:14px 24px 18px;border-bottom:1px solid var(--line)}
+.us-filter{display:grid;gap:6px}
+.us-filter>span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.us-sel{height:40px;min-height:40px;font-size:13.5px;border:1px solid var(--line);box-shadow:none;border-radius:10px}
+.us-clear{align-self:flex-end;display:flex;align-items:center;height:40px;padding:0 4px}
+.us-card-body{padding:24px 24px 18px;transition:opacity .12s}
+.us-card-body.busy{opacity:.5}
+.us-card-body .pl-empty{margin:0}
+/* The ranked list under the chart, and the range bar's export. */
+/* Closed by default behind a quiet text toggle; opens with the transitions.dev accordion motion
+   (grid rows 0fr → 1fr, chevron flipped with scaleY so it works in every browser). */
+.us-rank-toggle{display:inline-flex;align-items:center;gap:4px;margin-top:14px;padding:4px 0;border:0;background:none;color:var(--muted);font:12.5px var(--sans);cursor:pointer}
+.us-rank-toggle:hover,.us-rank-toggle:focus-visible{color:var(--ink)}
+.us-rank-toggle svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;
+  transition:transform var(--dropdown-open-dur,250ms) var(--dropdown-ease,ease)}
+.us-rank-toggle[aria-expanded="true"] svg{transform:scaleY(-1)}
+.us-ranking{display:grid;grid-template-rows:0fr;transition:grid-template-rows var(--dropdown-open-dur,250ms) var(--dropdown-ease,ease)}
+.us-ranking.open{grid-template-rows:1fr}
+.us-ranking-inner{overflow:hidden;min-height:0}
+.us-ranking.open .us-ranking-inner{padding-top:10px}
+@media (prefers-reduced-motion: reduce){.us-ranking,.us-rank-toggle svg{transition:none}}
+.us-rank-name{display:inline-flex;align-items:center;gap:8px;max-width:340px;min-width:0}
+.us-rank-name>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.us-rank-name s{flex:none;width:9px;height:9px;border-radius:2px;text-decoration:none}
+.us-share{display:inline-block;width:90px;height:6px;margin-right:8px;border-radius:3px;background:var(--panel2);vertical-align:middle;overflow:hidden}
+.us-share i{display:block;height:100%;background:var(--ink);opacity:.55;border-radius:3px}
+.us-export{display:inline-flex;align-items:center;gap:8px;height:40px}
+.us-export svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.us-pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:10px;font-size:12.5px}
+
+/* ===== Motion: transitions.dev menu dropdown + tooltip timing (the shared tuned values) ===== */
+:root {
+  --dropdown-open-dur: 250ms;
+  --dropdown-close-dur: 150ms;
+  --dropdown-pre-scale: 0.97;
+  --dropdown-closing-scale: 0.99;
+  --dropdown-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tt-in-dur: 150ms;
+  --tt-out-dur: 50ms;
+  --tt-scale: 0.98;
+  --tt-delay: 80ms;
+  --tt-in-ease: ease-out;
+  --tt-out-ease: ease-out;
+}
+.t-dropdown {
+  transform-origin: top left;
+  transform: scale(var(--dropdown-pre-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-open-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-open-dur) var(--dropdown-ease);
+  will-change: transform, opacity;
+}
+.t-dropdown[data-origin="top-right"]     { transform-origin: top right; }
+.t-dropdown[data-origin="top-center"]    { transform-origin: top center; }
+.t-dropdown[data-origin="bottom-left"]   { transform-origin: bottom left; }
+.t-dropdown[data-origin="bottom-center"] { transform-origin: bottom center; }
+.t-dropdown[data-origin="bottom-right"]  { transform-origin: bottom right; }
+
+.t-dropdown.is-open {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.t-dropdown.is-closing {
+  transform: scale(var(--dropdown-closing-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-close-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-close-dur) var(--dropdown-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-dropdown { transition: none !important; }
 }

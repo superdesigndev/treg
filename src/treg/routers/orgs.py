@@ -2,7 +2,7 @@
 
 import re
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
 from .. import analytics, crypto, email as email_sender, health, localrun
+from .. import oauth_providers
 from .. import providers as _providers
+from ..application import key_spend
 from ..application.onboard import demo as demo_seed
 from ..application import signup as signup_use_cases
 from ..caller_metadata import TAG_DEFAULT, _MAX_BUDGET_DIMS, _META_KEY_RE, _client_of, _norm_client
@@ -228,51 +230,54 @@ async def _enforce_deny(
         raise HTTPException(status_code=403, detail=exc.detail) from exc
 
 
-async def _usage_rollup(db: AsyncSession, org_id: int, since: datetime) -> dict:
-    """Aggregate usage since `since` into by-user (with a per-kind split), by-tool, by-day, and totals.
-    CallRecord carries `kind` ("call"/"local_run"); every RunRecord is a "server_run". Pure GROUP BY —
-    no request/response bodies are read (we don't store them). See docs/USAGE-METERING-PLAN.md."""
+async def _usage_rollup(db: AsyncSession, org_id: int, since: datetime, until: datetime | None = None) -> dict:
+    """Aggregate usage in `[since, until)` into by-user (with a per-kind split), by-tool, by-day, and
+    totals. CallRecord carries `kind` ("call"/"local_run"); every RunRecord is a "server_run". Pure
+    GROUP BY — no request/response bodies are read (we don't store them). See docs/USAGE-METERING-PLAN.md.
+
+    ONE pass over the window's call rows answers by-user, by-kind and by-tool together: they read the
+    same rows, and three separate GROUP BYs read them three times. The per-day count is the second
+    pass, and the cheap one: it needs only `(org_id, created_at)`, which its index already holds."""
     KINDS = ("call", "local_run", "server_run")
     totals = {k: 0 for k in KINDS}
     users: dict[str, dict] = {}
+    tools: dict[str, int] = {}
 
-    def _bump(email: str, kind: str, n: int) -> None:
+    def _in_window(table):
+        clause = [table.org_id == org_id, table.created_at >= since]
+        return clause + ([table.created_at < until] if until is not None else [])
+
+    def _bump(email: str, kind: str, tool: str, n: int) -> None:
         u = users.setdefault(email, {"user_email": email, **{k: 0 for k in KINDS}})
         u[kind] += n
         totals[kind] += n
+        tools[tool] = tools.get(tool, 0) + n
 
-    for email, kind, n in (await db.execute(select(CallRecord.user_email, CallRecord.kind, func.count()).where(
-            CallRecord.org_id == org_id, CallRecord.created_at >= since
-    ).group_by(CallRecord.user_email, CallRecord.kind))).all():
-        _bump(email, kind if kind in KINDS else "call", n)  # guard an unexpected kind into "call"
-    for email, n in (await db.execute(select(RunRecord.user_email, func.count()).where(
-            RunRecord.org_id == org_id, RunRecord.created_at >= since).group_by(RunRecord.user_email))).all():
-        _bump(email, "server_run", n)
+    for email, kind, tool, n in (await db.execute(
+            select(CallRecord.user_email, CallRecord.kind, CallRecord.tool_name, func.count()).where(
+                *_in_window(CallRecord)).group_by(CallRecord.user_email, CallRecord.kind, CallRecord.tool_name))).all():
+        _bump(email, kind if kind in KINDS else "call", tool, n)  # guard an unexpected kind into "call"
+    for email, tool, n in (await db.execute(
+            select(RunRecord.user_email, RunRecord.bundle_name, func.count()).where(
+                *_in_window(RunRecord)).group_by(RunRecord.user_email, RunRecord.bundle_name))).all():
+        _bump(email, "server_run", tool, n)
 
     by_user = sorted(
         ({**u, "total": sum(u[k] for k in KINDS)} for u in users.values()),
         key=lambda r: -r["total"])
     totals["total"] = sum(totals[k] for k in KINDS)
-
-    tools: dict[str, int] = {}
-    for name, n in (await db.execute(select(CallRecord.tool_name, func.count()).where(
-            CallRecord.org_id == org_id, CallRecord.created_at >= since).group_by(CallRecord.tool_name))).all():
-        tools[name] = tools.get(name, 0) + n
-    for name, n in (await db.execute(select(RunRecord.bundle_name, func.count()).where(
-            RunRecord.org_id == org_id, RunRecord.created_at >= since).group_by(RunRecord.bundle_name))).all():
-        tools[name] = tools.get(name, 0) + n
-    by_tool = sorted(({"name": k, "total": v} for k, v in tools.items()), key=lambda r: -r["total"])
+    by_tool = sorted(({"name": k, "total": v} for k, v in tools.items()), key=lambda r: (-r["total"], r["name"]))
 
     days: dict[str, int] = {}  # func.date() → 'YYYY-MM-DD' on sqlite, a date on Postgres; str() both
     for tbl in (CallRecord, RunRecord):
         for d, n in (await db.execute(select(func.date(tbl.created_at), func.count()).where(
-                tbl.org_id == org_id, tbl.created_at >= since).group_by(func.date(tbl.created_at)))).all():
+                *_in_window(tbl)).group_by(func.date(tbl.created_at)))).all():
             days[str(d)] = days.get(str(d), 0) + n
     by_day = sorted(({"day": k, "total": v} for k, v in days.items()), key=lambda r: r["day"])
 
     # What those calls COST the team on treg's own keys — read from the ledger (the authority on money)
     # rather than from the audit rows, which are fire-and-forget and may be incomplete. One aggregate.
-    spend = await ledger.spend_since(db, org_id, since)
+    spend = await ledger.spend_since(db, org_id, since, until)
     return {"totals": totals, "by_user": by_user, "by_tool": by_tool, "by_day": by_day, "spend": spend}
 
 
@@ -1229,18 +1234,69 @@ app = APIRouter()
 org_usage_router = app
 
 
+def _usage_window(days: int, from_: str | None, to: str | None) -> tuple[date, date]:
+    """The report's first and last UTC day, inclusive. `from`/`to` (YYYY-MM-DD) win over `days`, which
+    means today plus the prior `days - 1`. A range ends no later than today and spans at most 366 days."""
+    today = _day_start_utc().date()
+    if from_ or to:
+        try:
+            last = date.fromisoformat(to) if to else today
+            first = date.fromisoformat(from_) if from_ else last - timedelta(days=29)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="from and to are dates: YYYY-MM-DD")
+        last = min(last, today)
+        if first > last:
+            raise HTTPException(status_code=422, detail="from must not be after to")
+        if (last - first).days > 365:
+            raise HTTPException(status_code=422, detail="a range spans at most 366 days")
+        return first, last
+    days = max(1, min(days, 365))
+    return today - timedelta(days=days - 1), today
+
+
+def _window_bounds(first: date, last: date) -> tuple[datetime, datetime]:
+    return datetime.combine(first, datetime.min.time()), datetime.combine(last + timedelta(days=1), datetime.min.time())
+
+
 @app.get("/orgs/{org_id}/usage")
 async def org_usage(
     org_id: int, days: int = 30,
+    from_: str | None = Query(default=None, alias="from"), to: str | None = None,
     caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
 ) -> dict:
-    """Usage rollups for an org over the last `days` (admin/owner): by user (with a call/local/server
-    split), by tool, by day, and totals — counts only, no request/response bodies. Powers the dashboard
-    Usage view."""
+    """Usage rollups for an org over the last `days`, or `from`..`to` (admin/owner): by user (with a
+    call/local/server split), by tool, by day, and totals — counts only, no request/response bodies.
+    Powers the dashboard Usage view."""
     _require_admin_of(org_id, caller)
-    days = max(1, min(days, 365))
-    since = _day_start_utc() - timedelta(days=days - 1)  # inclusive of today + the prior days-1
-    return {"days": days, "since": since.isoformat(), **await _usage_rollup(db, org_id, since)}
+    first, last = _usage_window(days, from_, to)
+    since, until = _window_bounds(first, last)
+    return {"days": (last - first).days + 1, "since": since.isoformat(), "from": first.isoformat(),
+            "to": last.isoformat(), **await _usage_rollup(db, org_id, since, until)}
+
+
+@app.get("/orgs/{org_id}/usage/spend")
+async def usage_spend(
+    org_id: int, days: int = 30,
+    from_: str | None = Query(default=None, alias="from"), to: str | None = None,
+    group: str = "day", key: int | None = None, provider: str | None = None, stack: str = "key",
+    caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
+) -> dict:
+    """The team's billed spend over a window, bucketed by day, week or month and stacked by API key
+    or (within one provider) by tool — from the ledger, never from audit costs (admin/owner)."""
+    _require_admin_of(org_id, caller)
+    if group not in key_spend.GROUPS:
+        raise HTTPException(status_code=422, detail="group is day, week or month")
+    if stack not in ("key", "tool"):
+        raise HTTPException(status_code=422, detail="stack is key or tool")
+    if stack == "tool" and not provider:
+        raise HTTPException(status_code=422, detail="stack by tool needs a provider")
+    first, last = _usage_window(days, from_, to)
+    report = await key_spend.spend_report(db, org_id, first, last, group=group, key_id=key,
+                                          provider=provider or None, stack=stack)
+    for option in report["options"]["providers"]:
+        known = oauth_providers.get(option["id"])
+        option["name"] = known.display_name if known else option["id"]
+    return report
 
 
 app = APIRouter()
@@ -1269,6 +1325,7 @@ async def list_tag_keys(
 @app.get("/orgs/{org_id}/usage/by-tag")
 async def usage_by_tag(
     org_id: int, key: str | None = None, days: int = 30,
+    from_: str | None = Query(default=None, alias="from"), to: str | None = None,
     caller: Caller = Depends(require_member), db: AsyncSession = Depends(get_session),
 ) -> dict:
     """What each value of one tag consumed — the numbers a reselling builder invoices from.
@@ -1283,16 +1340,17 @@ async def usage_by_tag(
     two sets of books stop agreeing without anybody noticing.
     """
     _require_admin_of(org_id, caller)
-    days = max(1, min(days, 365))
-    since = _day_start_utc() - timedelta(days=days - 1)
+    first, last = _usage_window(days, from_, to)
+    since, until = _window_bounds(first, last)
+    days = (last - first).days + 1
     dim = (key or _primary_dim_of(caller)).strip().lower()
 
-    by_value = await ledger.spend_by_tag(db, org_id, dim, since)
-    org_total = (await ledger.spend_since(db, org_id, since))["spend_micro"]
+    by_value = await ledger.spend_by_tag(db, org_id, dim, since, until)
+    org_total = (await ledger.spend_since(db, org_id, since, until))["spend_micro"]
     # Counts come from the tag rows too. `CallRecord` holds only the primary dimension, so counting
     # there reported 0 for every non-primary key while the money column was correct — a report that
     # disagrees with itself is worse than one that admits its grain.
-    counts = await ledger.calls_by_tag(db, org_id, dim, since)
+    counts = await ledger.calls_by_tag(db, org_id, dim, since, until)
     rows = [{"value": val, "charged_micro": micro, "charged_usd": ledger.usd(micro),
              "calls": int(counts.get(val, 0))}
             for val, micro in sorted(by_value.items(), key=lambda kv: -kv[1])]

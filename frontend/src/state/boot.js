@@ -1,3 +1,4 @@
+import { parseTabHash } from './navigation.js'
 import { storageGet, storageSet, storageRemove } from './storage.js'
 export default async function boot(){
     const lifecycle = new AbortController();
@@ -35,6 +36,8 @@ export default async function boot(){
       const cr=!(e.state&&e.state.view) && !location.hash && this.catalogFromPath(location.pathname);
       if(cr){ this.openCatalogRoute(cr); return; }
       let v=(e.state&&e.state.view)||(location.hash||'').replace('#','')||'tools';
+      const tabbed=parseTabHash(location.hash);
+      if(tabbed){ this._tabRoute=tabbed; v=tabbed.view; }
       if(v==='billing'){ this.orgTab='billing'; v='orgs'; }
       if(['tools','orgs','activity','usage','admin','help','secrets','start','resources','catalog','connections','referrals','hub'].includes(v)) this.go(v, true);
     });
