@@ -314,6 +314,7 @@ class Settings(BaseSettings):
     platform_key_google_ai: str = ""  # x-goog-api-key; token-billed Gemini API project (image output $120/M tokens)
     platform_key_piapi: str = ""      # X-API-Key; prepaid USD balance, Seedance 2.5 less-restriction + image models
     platform_key_tinyfish: str = ""   # X-API-Key; free Search/Fetch plus Agent billed per terminal step
+    platform_key_vidguy: str = ""     # Bearer vf_live_ key on a Pro/Scale account; ads billed in plan credits, free GET /credits balance
     # Overflow aggregators (docs/PROVIDER-CAPACITY-PLAN.md §4.3): treg-owned accounts that serve the
     # SAME vendor endpoint when our direct account is out. Env only, never a Secret row, never logged.
     # Not platform_key_* on purpose: they are a credential RUNG (platform-overflow), not a provider.

@@ -864,6 +864,17 @@ async def _crustdata(c, key):
     return {"value": acct.get("credits"), "unit": "credits", "note": note}
 
 
+async def _vidguy(c, key):
+    # GET /credits is free and returns the spendable balance plus the plan's period usage.
+    d = await _get(c, "https://www.vidguy.ai/api/v1/credits",
+                   headers={"Authorization": f"Bearer {key}"}, params={"limit": 1})
+    plan = d.get("plan") if isinstance(d.get("plan"), dict) else {}
+    note = (f"plan {plan.get('type')}, {plan.get('creditsUsedThisPeriod')} of "
+            f"{plan.get('creditsIncluded')} used, period ends {(plan.get('periodEnd') or '')[:10]}"
+            if plan else "no active plan")
+    return {"value": d.get("balance"), "unit": "credits", "note": note}
+
+
 async def _enrichlayer(c, key):
     d = await _get(c, "https://enrichlayer.com/api/v2/credit-balance",
                    headers={"Authorization": f"Bearer {key}"})
@@ -995,6 +1006,7 @@ BALANCE_ROUTES = {
     "apify": _apify,
     "serpstat": _serpstat,
     "thecompaniesapi": _thecompaniesapi,
+    "vidguy": _vidguy,
 }
 
 # Verified to publish NO free standalone balance/credits API. Some are dashboard-only; Scrubby

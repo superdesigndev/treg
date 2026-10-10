@@ -1,0 +1,259 @@
+provider: vidguy
+source:
+  docs: https://www.vidguy.ai/docs/ads-on-demand
+  openapi: https://www.vidguy.ai/api/openapi.json
+  curated: 2026-10-05
+pricing_url: https://www.vidguy.ai/docs/ads-on-demand
+limits: "Ads on demand need a Pro or Scale plan (403 ads_on_demand_requires_pro otherwise). 30 requests/minute per account on Pro, 100 on Scale; job polls count toward it. The POST reads the page before it answers (usually 15-30 s; allow 90 s, or 150 s on the green-screen row, which also screenshots the whole page), then the job runs 1-3 minutes. A page read that runs out of time answers 504 shop_read_timeout (free). Poll GET /jobs/{id}; a job stuck for 15 minutes is failed and refunded. Use the www host: the apex 307s and clients drop Authorization on that redirect."
+proposed_capabilities:
+  # Job-level ids, not VidGuy-specific: another ad-creative provider that takes a page URL and
+  # returns finished ads joins the same row.
+  image-gen.ad.from_url: "Make ready-to-run static ad images from a store, product or app page URL"
+  video-gen.ugc-ad.from_url: "Make a UGC-style presenter video ad from a store, service or app page URL"
+  video-gen.greenscreen-ad.from_url: "Make a green-screen reaction video ad over a product page from its URL"
+  video-gen.animated-ad.from_url: "Make a narrated animated story video ad from a store, service or app page URL"
+  video-gen.music-ad.from_url: "Make an animated music-video ad with an original song from a store, service or app page URL"
+async:
+  id_from: jobId
+  poll:
+    endpoint: vidguy.jobs.get
+    param: {in: pathParams, name: id}
+  status:
+    path: status
+    success: [completed]
+    failure: [failed, cancelled]
+    progress: [queued, processing]
+  result:
+    path: result.renderedAssets
+    ttl_note: "Files are served from media.vidguy.ai with no guaranteed retention; download them when the job completes."
+  interval: 15
+endpoints:
+  - id: vidguy.ads.static.from_url
+    capability: image-gen.ad.from_url
+    platform: image-gen
+    domain: ads
+    scope: any_account
+    method: POST
+    path: /snacks/on-demand
+    name: "VidGuy: static ads from a URL (2 A/B variants)"
+    summary: "Two finished static ad images for one product from a store or product page, in two different layouts for A/B testing, with every quoted review, rating and offer verified against the page."
+    # One ad type per row so each row has one price. The shared key only serves the pinned shape.
+    platform_request:
+      body.types: [static-ad]
+      body.count: 1
+      body.render: true
+    input:
+      body:
+        shopUrl: {type: string, required: true, example: "https://drinkolipop.com", note: "A store home page (we pick its best seller), one product page, or an App Store / Google Play listing. Bare domains work. A site with no products (a service business) returns a free 400 shop_no_products: use the video ad rows."}
+        types: {type: array, required: true, enum: [["static-ad"]], example: ["static-ad"], note: "Fixed to [\"static-ad\"] on this row."}
+        count: {type: integer, required: true, enum: [1], example: 1, note: "One ad slot (two image variants)."}
+        render: {type: boolean, required: true, enum: [true], example: true, note: "Returns finished PNGs in result.renderedAssets."}
+        adAspectRatio: {type: string, required: false, default: "4:5", enum: ["4:5", "1:1", "9:16"], example: "4:5", note: "4:5 = Meta feed (1080x1350), 1:1 = 1080x1080, 9:16 = Stories/Reels (1080x1920)."}
+        adFormats: {type: array, required: false, example: ["review_card", "us_vs_them"], note: "Pin the layouts, in order: review_card, us_vs_them, benefit_callouts, platform_native, offer_stack, problem_solution, reasons_listicle, ugc_photo, social_proof_stat, press_bar, product_hero. Layouts the page has no data for (a review card without reviews) are skipped."}
+        prompt: {type: string, required: false, example: "Halloween party theme", note: "Creative steer for the ad (theme, audience, angle). It cannot override the claim rules."}
+        language: {type: string, required: false, default: en, example: es, note: "ISO 639-1. Ads are in English unless set; store facts and reviews are translated, names, prices and codes kept verbatim."}
+        name: {type: string, required: false, example: "Olipop static test"}
+      bodyType: json
+    test_request:
+      body: {shopUrl: "https://drinkolipop.com", types: ["static-ad"], count: 1, render: true}
+    cost:
+      type: per_success
+      value: 8
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.vidguy.ai/docs/ads-on-demand
+      checked: 2026-10-05
+      confidence: documented
+      note: "1 credit to read the page + 6 for the static-ad slot (two image variants) + 1 for render = 8 credits per call. Reserved on submit and refunded in full if the job fails; validation errors, unreadable pages and service sites (400) are never charged."
+    docs_url: https://www.vidguy.ai/docs/ads-on-demand
+
+  - id: vidguy.ads.ugc.from_url
+    capability: video-gen.ugc-ad.from_url
+    platform: video-gen
+    domain: ads
+    scope: any_account
+    method: POST
+    path: /snacks/on-demand
+    name: "VidGuy: UGC video ad from a URL"
+    summary: "A 9:16, 12-19 s talking-presenter ad: a licensed library actor shown with the real product, a hook-benefit-proof-CTA script voiced by ElevenLabs and lip-synced, with a burned-in hook caption. Works for stores, service businesses and app listings."
+    platform_request:
+      body.types: [ugc-ad]
+      body.count: 1
+      body.render: true
+    input:
+      body:
+        shopUrl: {type: string, required: true, example: "https://drinkolipop.com", note: "A store, one product page, a service business's site, or an App Store / Google Play listing. Bare domains work."}
+        types: {type: array, required: true, enum: [["ugc-ad"]], example: ["ugc-ad"], note: "Fixed to [\"ugc-ad\"] on this row."}
+        count: {type: integer, required: true, enum: [1], example: 1}
+        render: {type: boolean, required: true, enum: [true], example: true, note: "Returns the finished MP4 (1080x1920, H.264 + AAC) in result.renderedAssets."}
+        prompt: {type: string, required: false, example: "target new parents"}
+        language: {type: string, required: false, default: en, example: de, note: "ISO 639-1. The script and voice-over follow it, voiced by a native speaker where the voice library has one."}
+        name: {type: string, required: false}
+      bodyType: json
+    test_request:
+      body: {shopUrl: "https://drinkolipop.com", types: ["ugc-ad"], count: 1, render: true}
+    cost:
+      type: per_success
+      value: 13
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.vidguy.ai/docs/ads-on-demand
+      checked: 2026-10-05
+      confidence: documented
+      note: "1 (page read) + 11 (ugc-ad) + 1 (render) = 13 credits per call; refunded in full if the job fails."
+    docs_url: https://www.vidguy.ai/docs/ads-on-demand
+
+  - id: vidguy.ads.greenscreen.from_url
+    capability: video-gen.greenscreen-ad.from_url
+    platform: video-gen
+    domain: ads
+    scope: any_account
+    method: POST
+    path: /snacks/on-demand
+    name: "VidGuy: green-screen reaction ad from a URL"
+    summary: "A 9:16, 12-19 s green-screen reaction ad: a presenter keyed over a real, auto-scrolling phone screenshot of the product or home page, pointing at the product, price, rating or offer."
+    platform_request:
+      body.types: [greenscreen-ad]
+      body.count: 1
+      body.render: true
+    input:
+      body:
+        shopUrl: {type: string, required: true, example: "https://drinkolipop.com", note: "A store, product page or service site; the page itself becomes the background."}
+        types: {type: array, required: true, enum: [["greenscreen-ad"]], example: ["greenscreen-ad"], note: "Fixed to [\"greenscreen-ad\"] on this row."}
+        count: {type: integer, required: true, enum: [1], example: 1}
+        render: {type: boolean, required: true, enum: [true], example: true, note: "Returns the keyed MP4 in result.renderedAssets."}
+        prompt: {type: string, required: false}
+        language: {type: string, required: false, default: en}
+        name: {type: string, required: false}
+      bodyType: json
+    test_request:
+      body: {shopUrl: "https://drinkolipop.com", types: ["greenscreen-ad"], count: 1, render: true}
+    cost:
+      type: per_success
+      value: 13
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.vidguy.ai/docs/ads-on-demand
+      checked: 2026-10-05
+      confidence: documented
+      note: "1 (page read) + 11 (greenscreen-ad) + 1 (render) = 13 credits per call; refunded in full if the job fails."
+    docs_url: https://www.vidguy.ai/docs/ads-on-demand
+
+  - id: vidguy.ads.animated.from_url
+    capability: video-gen.animated-ad.from_url
+    platform: video-gen
+    domain: ads
+    scope: any_account
+    method: POST
+    path: /snacks/on-demand
+    name: "VidGuy: animated story ad from a URL"
+    summary: "A ~30 s, 9:16 narrated animated story ad (claymation, Pixar-style 3D, felt stop-motion or 2D cartoon): a relatable story first, then the real product or the brand's logo as the reveal, ending on a hero shot and CTA."
+    platform_request:
+      body.types: [animated-ad]
+      body.count: 1
+      body.render: true
+    input:
+      body:
+        shopUrl: {type: string, required: true, example: "https://www.mollymaid.com", note: "A store, product page, service business's site or app listing."}
+        types: {type: array, required: true, enum: [["animated-ad"]], example: ["animated-ad"], note: "Fixed to [\"animated-ad\"] on this row."}
+        count: {type: integer, required: true, enum: [1], example: 1}
+        render: {type: boolean, required: true, enum: [true], example: true}
+        animationStyle: {type: string, required: false, enum: [claymation, pixar_3d, felt_stop_motion, cartoon_2d], example: claymation, note: "Omit to let the planner pick a style for the brand."}
+        prompt: {type: string, required: false, example: "spring cleaning, funny"}
+        language: {type: string, required: false, default: en}
+        name: {type: string, required: false}
+      bodyType: json
+    test_request:
+      body: {shopUrl: "https://www.mollymaid.com", types: ["animated-ad"], count: 1, render: true}
+    cost:
+      type: per_success
+      value: 39
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.vidguy.ai/docs/ads-on-demand
+      checked: 2026-10-05
+      confidence: documented
+      note: "1 (page read) + 37 (animated-ad) + 1 (render) = 39 credits per call; refunded in full if the job fails. Usually finishes in about 2 minutes."
+    docs_url: https://www.vidguy.ai/docs/ads-on-demand
+
+  - id: vidguy.ads.music.from_url
+    capability: video-gen.music-ad.from_url
+    platform: video-gen
+    domain: ads
+    scope: any_account
+    method: POST
+    path: /snacks/on-demand
+    name: "VidGuy: animated music-video ad from a URL"
+    summary: "A ~30 s, 9:16 animated music video: a character sings an original song about a relatable moment, the product (or logo) is revealed in the last section and the brand name is sung in the hook."
+    platform_request:
+      body.types: [music-ad]
+      body.count: 1
+      body.render: true
+    input:
+      body:
+        shopUrl: {type: string, required: true, example: "https://drinkolipop.com"}
+        types: {type: array, required: true, enum: [["music-ad"]], example: ["music-ad"], note: "Fixed to [\"music-ad\"] on this row."}
+        count: {type: integer, required: true, enum: [1], example: 1}
+        render: {type: boolean, required: true, enum: [true], example: true}
+        prompt: {type: string, required: false, example: "moody late-night jazz club", note: "Ask for a genre, a look or a story; otherwise the agent picks them for the product."}
+        language: {type: string, required: false, default: en, note: "Lyrics are written in this language."}
+        name: {type: string, required: false}
+      bodyType: json
+    test_request:
+      body: {shopUrl: "https://drinkolipop.com", types: ["music-ad"], count: 1, render: true}
+    cost:
+      type: per_success
+      value: 52
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://www.vidguy.ai/docs/ads-on-demand
+      checked: 2026-10-05
+      confidence: documented
+      note: "1 (page read) + 50 (music-ad) + 1 (render) = 52 credits per call; refunded in full if the job fails. Usually finishes in 2-3 minutes."
+    docs_url: https://www.vidguy.ai/docs/ads-on-demand
+
+  - id: vidguy.jobs.get
+    kind: utility
+    capability: video-gen.task.status
+    platform: video-gen
+    scope: any_account
+    method: GET
+    path: /jobs/{id}
+    name: "Check a VidGuy ad job"
+    summary: "Status of an ad job; when completed, the finished files (result.renderedAssets), the ad copy per slot (headline, primary text, CTA, script) and which reviews and offers each ad quotes."
+    resource_ownership:
+      requires: {kind: "poll:vidguy.jobs.get", param: id}
+    async: false
+    input:
+      pathParams:
+        id: {type: string, required: true, example: "fac7373e-e63d-4d60-aaab-566c2f924d5f", note: "The jobId returned by an ad row."}
+    test_request: {pathParams: {id: "fac7373e-e63d-4d60-aaab-566c2f924d5f"}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "Polling is free; it counts toward the account's per-minute request limit."}
+    docs_url: https://www.vidguy.ai/docs/api-reference
+
+  - id: vidguy.account.credits
+    kind: account
+    capability: account.usage
+    platform: account
+    scope: own_account
+    method: GET
+    path: /credits
+    name: "Get credit balance and plan"
+    summary: "Your VidGuy credit balance, plan, credits used this period and recent credit transactions (free)."
+    async: false
+    input:
+      queryParams:
+        limit: {type: integer, required: false, default: 10, example: 5, note: "How many recent transactions to return."}
+    test_request: {queryParams: {limit: 5}}
+    cost: {type: free, value: 0, currency: USD, unit: call, note: "free; this is the registry's health probe"}
+    docs_url: https://www.vidguy.ai/docs/api-reference
