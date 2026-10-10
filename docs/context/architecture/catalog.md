@@ -2113,7 +2113,9 @@ to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog st
   (`to_upstream`, `from_upstream`, `is_miss`) that throws is recorded as an error attempt and the
   waterfall continues; the identity's `linkedin_url` is normalised once at planning time
   (`canonical_identity`: scheme-less URL or bare handle → public URL) so no adapter forwards an
-  invalid URL. Our 5xx/503/429 or a vendor 5xx/429/402 = error →
+  invalid URL. HTTP scheme detection and LinkedIn host matching ignore case; URL pass-through
+  preserves the supplied URL, and profile paths and derived handles retain their case.
+  Our 5xx/503/429 or a vendor 5xx/429/402 = error →
   next candidate, at most two extra, only for idempotent contracts. A treg-side
   `tool_access_denied`, `policy_denied`, or `capability_pinned` refusal is local to that child and
   follows the same error fallback. A platform child's vendor 401/403 also falls back because it

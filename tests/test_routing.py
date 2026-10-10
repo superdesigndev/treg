@@ -1944,3 +1944,192 @@ async def test_when_crawl4ai_fails_linkup_answers_with_the_same_schema(clients, 
     assert r.status_code == 200, r.text
     assert [s[0] for s in seen] == ["crawl4ai", "linkup"] and r.json()["_treg"]["provider"] == "linkup"
     assert seen[1][3]["schema"] == _SCHEMA and seen[1][3]["mode"] == "standard"
+
+@pytest.mark.parametrize(
+    ("raw", "expected_url"),
+    [
+        (
+            "HTTPS://www.linkedin.com/in/Patrick/",
+            "HTTPS://www.linkedin.com/in/Patrick/",
+        ),
+        (
+            "https://WWW.LinkedIn.com/in/Patrick/",
+            "https://WWW.LinkedIn.com/in/Patrick/",
+        ),
+        (
+            "https://www.linkedin.com/in/Patrick/",
+            "https://www.linkedin.com/in/Patrick/",
+        ),
+        ("WWW.LinkedIn.com/in/Patrick/", "https://www.linkedin.com/in/Patrick/"),
+        ("Patrick", "https://www.linkedin.com/in/Patrick"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("parent", "child", "provider", "query_key", "upstream_doc"),
+    [
+        (
+            "treg.people.email.find",
+            "quickenrich.people.email.find",
+            "quickenrich",
+            "linkedin_url",
+            {
+                "data": {
+                    "email": "found@example.test",
+                    "first_name": "Example",
+                    "last_name": "Person",
+                }
+            },
+        ),
+        (
+            "treg.people.enrich",
+            "hunter.people.enrich",
+            "hunter",
+            "linkedin_handle",
+            {"data": {"name": {"fullName": "Example Person"}}},
+        ),
+    ],
+)
+async def test_linkedin_case_identity_reaches_the_own_key_child(
+    clients,
+    monkeypatch,
+    raw,
+    expected_url,
+    parent,
+    child,
+    provider,
+    query_key,
+    upstream_doc,
+):
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "")
+    get_settings.cache_clear()
+    try:
+        secret = await clients.post(
+            "/secrets",
+            json={
+                "name": provider,
+                "value": f"MY-{provider.upper()}-KEY",
+            },
+        )
+        assert secret.status_code == 200, secret.text
+        before = await _balance(clients)
+        async with session_maker() as db:
+            ledger_before = set(
+                (await db.execute(select(LedgerEntry.id))).scalars().all()
+            )
+
+        plans = []
+        original_build_plan = call_route.build_plan
+
+        async def observe_plan(*args, **kwargs):
+            plan = await original_build_plan(*args, **kwargs)
+            plans.append(plan)
+            return plan
+
+        monkeypatch.setattr(call_route, "build_plan", observe_plan)
+        seen = []
+        monkeypatch.setattr(
+            call_service,
+            "relay",
+            _relay_by_provider(
+                {
+                    provider: [(200, upstream_doc)],
+                },
+                seen,
+            ),
+        )
+        response = await clients.post(
+            f"/call/{parent}",
+            json={"linkedin_url": raw},
+            headers={"X-Treg-Route-Waterfall": "0"},
+        )
+        await audit.drain()
+        call_ref = response.headers["X-Treg-Call-Id"]
+        async with session_maker() as db:
+            holds = (await db.execute(select(Hold))).scalars().all()
+            entries = (await db.execute(select(LedgerEntry))).scalars().all()
+            rows = (
+                (
+                    await db.execute(
+                        select(CallRecord).where(
+                            CallRecord.call_ref.in_((call_ref, call_ref + ":r0")),
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        after = await _balance(clients)
+        print(
+            "linkedin_identity_receipt="
+            + json.dumps(
+                {
+                    "raw": raw,
+                    "parent": parent,
+                    "status": response.status_code,
+                    "plans": [
+                        {
+                            "identity": plan.identity,
+                            "variant": plan.variant,
+                            "candidates": [
+                                candidate.endpoint["id"]
+                                for candidate in plan.candidates
+                            ],
+                        }
+                        for plan in plans
+                    ],
+                    "seen": seen,
+                    "response": response.json(),
+                    "balance_delta": before - after,
+                    "open_holds": len(holds),
+                    "new_ledger_entries": [
+                        entry.kind for entry in entries if entry.id not in ledger_before
+                    ],
+                    "audit": [
+                        {
+                            "endpoint": row.endpoint_id,
+                            "tier": row.credential_tier,
+                            "status": row.status_code,
+                            "ref": row.call_ref,
+                        }
+                        for row in rows
+                    ],
+                },
+                sort_keys=True,
+            )
+        )
+        assert response.status_code == 200, response.text
+        assert len(plans) == 1
+        assert plans[0].variant == ("linkedin_url",)
+        assert plans[0].identity["linkedin_url"] == expected_url
+        assert plans[0].identity.get("linkedin_handle") == "Patrick"
+        assert plans[0].candidates[0].endpoint["id"] == child
+        assert plans[0].candidates[0].tier == "credential"
+        expected_value = expected_url if query_key == "linkedin_url" else "Patrick"
+        assert seen == [(provider, "GET", {query_key: expected_value}, None)]
+        result = response.json()
+        assert result["raw"] == upstream_doc
+        assert result["_treg"]["served_by"] == child
+        assert result["_treg"]["tier"] == "credential"
+        assert result["_treg"]["outcome"] == "hit"
+        assert result["_treg"]["charged_micro"] == 0
+        assert result["_treg"]["tried"] == [
+            {
+                "endpoint_id": child,
+                "provider": provider,
+                "outcome": "hit",
+                "status": 200,
+                "charged_micro": 0,
+            }
+        ]
+        assert before == after
+        assert holds == []
+        assert {entry.id for entry in entries} == ledger_before
+        assert {
+            (row.endpoint_id, row.credential_tier, row.status_code, row.call_ref)
+            for row in rows
+        } == {
+            (parent, "routed", 200, call_ref),
+            (child, "credential", 200, call_ref + ":r0"),
+        }
+    finally:
+        get_settings.cache_clear()
