@@ -287,6 +287,39 @@ def test_each_people_provider_fills_the_fixed_columns(provider, expect):
         assert not (isinstance(row[column], str) and row[column].startswith("{")), (provider, column)
 
 
+@pytest.mark.parametrize("provider, expect", [
+    ("prospeo.companies.search", {"name": "company.name", "domain": "company.domain",
+                                  "employees": "company.employee_count", "location": "company.location.city"}),
+    ("crustdata.companies.search", {"name": "basic_info.name", "domain": "basic_info.primary_domain"}),
+    ("leadmagic.x.companies-search-v3", {"name": "company_name", "domain": "company_domain",
+                                          "industry": "company_industry_linkedin", "location": "hq_city"}),
+    ("thecompaniesapi.companies.search", {"name": "about.name", "domain": "domain.domain"}),
+    ("aviato.companies.search", {"domain": "URLs.website", "linkedin_url": "URLs.linkedin"}),
+    ("exa.companies.search", {"name": "title", "domain": "url"}),
+    ("contactout.companies.search", {"domain": "domain"}),            # its `url` is the LinkedIn page
+])
+def test_each_company_provider_fills_the_fixed_columns(provider, expect):
+    from treg.domain.catalog import store as catalog_store
+    from treg.domain.table import flatten, sample_items
+    items = sample_items(table_app._example_body(catalog_store.load().by_id[provider]))
+    t = to_table({"output": {"companies": items}, "_treg": {}}, contract_output=["companies"],
+                 list_field="companies")
+    assert t["columns"][:6] == ["name", "domain", "industry", "employees", "location", "linkedin_url"]
+    row = dict(zip(t["columns"], t["rows"][0]))
+    source = flatten(items[0])
+    for column, path in expect.items():
+        assert row[column] == source[path], (provider, column, path)
+
+
+def test_a_path_reads_into_a_list_by_index():
+    # exa keeps a company's facts in `entities[0].properties`
+    item = {"title": "B2B Rocket", "url": "https://b2brocket.ai/", "entities": [{"properties": {
+        "workforce": {"total": 150}, "headquarters": {"address": "Lewes, DE 19958, US"}}}]}
+    t = to_table({"output": {"companies": [item]}, "_treg": {}}, contract_output=["companies"], list_field="companies")
+    row = dict(zip(t["columns"], t["rows"][0]))
+    assert (row["employees"], row["location"]) == (150, "Lewes, DE 19958, US")
+
+
 def test_a_one_item_list_is_one_row_unless_it_wraps_tables():
     t = to_table({"data": [{"name": "a", "email": "a@x.com"}], "total": 1})
     assert t["shape"] == "list" and t["columns"] == ["name", "email"] and t["rows"] == [["a", "a@x.com"]]

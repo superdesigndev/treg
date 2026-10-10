@@ -34,19 +34,44 @@ ENVELOPE_KEYS = frozenset({"summary", "tasks", "result", "results", "data", "res
 # Provider-native rows of a routed list job, mapped to fixed columns first. Each entry: the column,
 # then the item paths that may hold it, first match wins. Keyed by the contract's list field.
 _PEOPLE_MAP: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("first_name", ("first_name", "firstname", "firstName", "profile.first_name")),
-    ("last_name", ("last_name", "lastname", "lastName", "last_name_obfuscated", "profile.last_name")),
+    ("first_name", ("first_name", "firstname", "firstName", "profile.first_name", "person.first_name")),
+    ("last_name", ("last_name", "lastname", "lastName", "last_name_obfuscated", "profile.last_name", "person.last_name")),
     # `headline` last: a profile tagline, used only when no job title field exists
     ("title", ("title", "job_title", "jobTitle", "jobTitle.title", "position", "profile.title",
-               "basic_profile.current_title", "lastJobTitle", "headline")),
+               "basic_profile.current_title", "lastJobTitle", "person.current_job_title",
+               "currentPositions.0.title", "headline")),
     ("company", ("company", "company_name", "companyName", "organization_name", "organization.name",
-                 "company.name", "job_company_name", "lastCompanyName")),
+                 "company.name", "job_company_name", "lastCompanyName", "companyName",
+                 "currentPositions.0.companyName")),
     ("linkedin_url", ("linkedin_url", "linkedinUrl", "profileUrl", "linkedin", "employee_linkedin",
-                      "URLs.linkedin", "socials.linkedin_url", "link.linkedin", "socialLinks.linkedin")),
+                      "URLs.linkedin", "socials.linkedin_url", "link.linkedin", "socialLinks.linkedin",
+                      "person.linkedin_url", "profile_url",
+                      "social_handles.professional_network_identifier.profile_url")),
     ("location", ("location", "location_name", "basic_profile.location.full_location", "location.linkedinText",
-                  "location.address", "city", "location.city", "address")),
+                  "location.address", "city", "location.city", "address", "location.country",
+                  "person.location.country", "country_code")),
 )
-LIST_MAPS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {"people": _PEOPLE_MAP}
+# `title` and `url` come last: exa names a company `title` and its homepage `url`, while other
+# providers' `url` is the LinkedIn page, read only after every domain field has been tried
+_COMPANIES_MAP: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("name", ("name", "company_name", "basic_info.name", "company.name", "about.name", "organization",
+              "display_name", "title")),
+    ("domain", ("domain", "company_domain", "basic_info.primary_domain", "company.domain", "domain.domain",
+                "email_domain", "website", "website_url", "company_website", "company.website", "URLs.website",
+                "websiteUrl", "url")),
+    ("industry", ("industry", "company_industry_linkedin", "company.industry", "about.industry", "industryList",
+                  "product_category")),
+    ("employees", ("employee_count", "employees", "company.employee_count", "linkedin_employee_count",
+                   "numberOfEmployees", "about.totalEmployeesExact", "employee_range", "size",
+                   "about.totalEmployees", "company_size", "entities.0.properties.workforce.total")),
+    ("location", ("location.name", "location_name", "headquarter", "hq_city", "company.location.city", "city",
+                  "locality", "location", "address", "location.country", "country",
+                  "locations.headquarters.city.name", "entities.0.properties.headquarters.address")),
+    ("linkedin_url", ("linkedin_url", "linkedinUrl", "company.linkedin_url", "URLs.linkedin",
+                      "linkedin_profile_url", "socials.linkedin.url")),
+)
+LIST_MAPS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {"people": _PEOPLE_MAP,
+                                                                  "companies": _COMPANIES_MAP}
 
 
 # ------------------------------------------------------------------------------------------------
@@ -86,9 +111,12 @@ def flatten(obj: Any, prefix: str = "", depth: int = 0) -> dict[str, Any]:
 def _get_path(obj: Any, path: str) -> tuple[bool, Any]:
     cur = obj
     for part in path.split("."):
-        if not isinstance(cur, dict) or part not in cur:
+        if isinstance(cur, list) and part.isdigit() and int(part) < len(cur):   # `entities.0.name`
+            cur = cur[int(part)]
+        elif isinstance(cur, dict) and part in cur:
+            cur = cur[part]
+        else:
             return False, None
-        cur = cur[part]
     return True, cur
 
 

@@ -152,7 +152,8 @@ async def catalog_platform(slug: str, include_hidden: int = 0,
         # this is the shape the CLI has been written against since the catalog shipped, and the same
         # endpoints appear in both — a client picks the axis it wants, neither is a subset.
         "capabilities": [
-            {"id": cap, "description": cat.capabilities.get(cap, ""), "endpoints": grouped[cap]}
+            {"id": cap, "description": cat.capabilities.get(cap, ""), "title": cat.capability_titles.get(cap),
+             "endpoints": grouped[cap]}
             for cap in sorted(grouped)
         ],
         "extended": extended,
