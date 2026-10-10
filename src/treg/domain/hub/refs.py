@@ -125,11 +125,11 @@ def resolve(value: Any, scope: dict[str, Any], positions: dict[str, str] | None 
             return value
         if len(refs) == 1 and refs[0].text == value:
             return read(refs[0], scope, positions)
-        out = value
-        for r in refs:
-            v = read(r, scope, positions)
-            out = out.replace(r.text, "" if v is None else (v if isinstance(v, str) else _plain(v)), 1)
-        return out
+        def substitute(match: re.Match[str]) -> str:
+            v = read(parse(match.group(0)), scope, positions)
+            return "" if v is None else (v if isinstance(v, str) else _plain(v))
+
+        return _REF.sub(substitute, value)
     if isinstance(value, dict):
         return {k: resolve(v, scope, positions) for k, v in value.items()}
     if isinstance(value, list):
