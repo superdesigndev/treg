@@ -763,3 +763,260 @@ async def test_waterfall_stops_at_first_result_even_with_low_quality_score(clien
         assert [s[0] for s in seen] == ["firecrawl"]
     finally:
         get_settings.cache_clear()
+
+
+async def _probability_arena_run(
+    clients, monkeypatch, *, task, link=0.8, recent=0, fact=1, other_fact=1, jev=True
+):
+    """Run real admission, judge parsing, and persistence against inert HTTP responses."""
+    import httpx
+    from treg.models import WebArenaJudgeBudget, WebArenaRun
+
+    monkeypatch.setenv("TREG_WEB_ARENA_ENABLED", "true")
+    monkeypatch.setenv("TREG_AI_GATEWAY_API_KEY", "TEST-ARENA-JUDGE")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "")
+    # Exercise the real persisted judge budget, including on SQLite: local_dev is false.
+    monkeypatch.setenv("TREG_PUBLIC_URL", "https://registry.example")
+    get_settings.cache_clear()
+    provider_seen, judge_seen, judge_errors = [], [], []
+    fire_text = "Apples are fruit."
+    olo_text = "Apples are fruit. They grow on trees."
+    providers = ["firecrawl"] if task == "search" else ["firecrawl", "olostep"]
+
+    def judge_response(request):
+        body = json.loads(request.content)
+        assert request.method == "POST"
+        assert request.headers["authorization"] == "Bearer TEST-ARENA-JUDGE"
+        judge_seen.append((str(request.url), body))
+        if str(request.url) == web_arena_quality.CHAT_URL:
+            assert task == "fetch"
+            assert body["model"] == get_settings().web_arena_fact_model
+            assert fire_text in body["messages"][0]["content"]
+            assert olo_text in body["messages"][0]["content"]
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {"message": {"content": json.dumps({"facts": [fire_text]})}}
+                    ],
+                    "usage": {"total_tokens": 20},
+                },
+            )
+        assert str(request.url) == web_arena_quality.JEV_URL
+        assert request.headers["ai-model-id"] == "typesafe-ai/jev"
+        assert all(
+            question["type"] == "boolean" for question in body["questions"].values()
+        )
+        if task == "search":
+            assert set(body["questions"]) == {"link0", "recent"}
+            assert body["state"]["query"] == "probability fixture query"
+            assert body["state"]["links"][0]["url"] == "https://example.com/a"
+            answers = {
+                "link0": {"probability": link},
+                "recent": {"probability": recent},
+            }
+        else:
+            assert set(body["questions"]) == {"fact0"}
+            extract = body["state"]["extract"]
+            assert extract in {fire_text, olo_text}
+            answers = {
+                "fact0": {"probability": fact if extract == fire_text else other_fact}
+            }
+        return httpx.Response(
+            200, json={"answers": answers, "usage": {"inputTokens": 1000}}
+        )
+
+    def recorded_judge_response(request):
+        try:
+            return judge_response(request)
+        except Exception as exc:
+            # The product catches optional-check errors. Never let it hide a fixture error.
+            judge_errors.append(type(exc).__name__)
+            raise
+
+    transport = httpx.MockTransport(recorded_judge_response)
+
+    def judge_client(**kwargs):
+        return httpx.AsyncClient(transport=transport, **kwargs)
+
+    # Replace this module's binding, not the shared httpx module or the judge functions.
+    monkeypatch.setattr(
+        web_arena_quality,
+        "httpx",
+        SimpleNamespace(AsyncClient=judge_client, HTTPError=httpx.HTTPError),
+    )
+    if task == "search":
+        answers = {
+            "firecrawl": [
+                (
+                    200,
+                    {
+                        "success": True,
+                        "data": {
+                            "web": [
+                                {
+                                    "url": "https://example.com/a",
+                                    "title": "Preserved search fixture",
+                                }
+                            ]
+                        },
+                        "creditsUsed": 1,
+                    },
+                )
+            ]
+        }
+    else:
+        answers = {
+            "firecrawl": [(200, {"success": True, "data": {"markdown": fire_text}})],
+            "olostep": [(200, {"result": {"markdown_content": olo_text}})],
+        }
+    monkeypatch.setattr(service, "relay", _relay_by_provider(answers, provider_seen))
+    worker = None
+    try:
+        for provider in providers:
+            secret = await clients.post(
+                "/secrets", json={"name": provider, "value": "TEST-ARENA-OWN-KEY"}
+            )
+            assert secret.status_code == 200, secret.text
+        balance = await _balance(clients)
+        quoted = await clients.post(
+            "/web-arena/api/quotes",
+            json={
+                "task": task,
+                "value": "probability fixture query"
+                if task == "search"
+                else "https://example.com",
+                "mode": "battle",
+                "providers": providers,
+                "jev": jev,
+            },
+        )
+        assert quoted.status_code == 200, quoted.text
+        quote = quoted.json()
+        assert {p["provider"] for p in quote["providers"]} == set(providers)
+        assert all(p["tier"] == "credential" for p in quote["providers"])
+        assert quote["required_micro"] == 0
+        assert provider_seen == judge_seen == []
+        started = await clients.post(f"/web-arena/api/runs/{quote['id']}/start")
+        assert started.status_code == 200, started.text
+        worker = app._owners.get(quote["id"])
+        if worker is not None:
+            await asyncio.wait_for(asyncio.shield(worker), 15)
+        finished = await clients.get(f"/web-arena/api/runs/{quote['id']}")
+        assert finished.status_code == 200, finished.text
+        run = finished.json()
+        assert run["state"] == "completed"
+        assert {a["provider"] for a in run["attempts"]} == set(providers)
+        assert all(
+            a["state"] == "hit" and a["charged_micro"] == 0 for a in run["attempts"]
+        )
+        assert sorted(row[0] for row in provider_seen) == sorted(providers)
+        assert await _balance(clients) == balance
+        by_provider = {a["provider"]: a for a in run["attempts"]}
+        if task == "search":
+            assert by_provider["firecrawl"]["output"]["results"][0] == {
+                "url": "https://example.com/a",
+                "title": "Preserved search fixture",
+            }
+        else:
+            assert web_arena.fetch_text(by_provider["firecrawl"]["output"]) == fire_text
+            assert web_arena.fetch_text(by_provider["olostep"]["output"]) == olo_text
+        async with session_maker() as db:
+            row = await db.get(WebArenaRun, quote["id"])
+            assert row is not None and row.state == "completed" and row.task == task
+            stored = app.arena._unpack(row.payload)
+            assert stored["attempts"] == run["attempts"]
+            assert stored["input"] == run["input"] and stored["jev"] is jev
+            budgets = (await db.execute(select(WebArenaJudgeBudget))).scalars().all()
+            expected_calls = 0 if not jev else 1 if task == "search" else 3
+            assert len(judge_seen) == expected_calls
+            assert judge_errors == [], judge_errors
+            assert sorted(b.calls for b in budgets) == (
+                [] if not jev else [expected_calls] * 2
+            )
+        return run, stored
+    finally:
+        if worker is not None and not worker.done():
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+        get_settings.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "link,recent",
+    [(2, 0), (-0.2, 0), (0.8, 2), (0.8, -0.2)],
+    ids=["link-above-one", "link-below-zero", "recent-above-one", "recent-below-zero"],
+)
+async def test_search_rejects_out_of_range_judge_probabilities(
+    clients, monkeypatch, link, recent
+):
+    run, stored = await _probability_arena_run(
+        clients, monkeypatch, task="search", link=link, recent=recent
+    )
+    quality = run["attempts"][0]["quality"]
+    assert quality["state"] == "unknown", quality
+    assert quality["estimated_match"] is None and quality["recent_data_needed"] is None
+    assert run["quality_state"] == stored["quality_state"] == "unknown"
+
+
+@pytest.mark.parametrize("probability", [0, 0.5, 1], ids=["zero", "half", "one"])
+async def test_search_preserves_valid_judge_probabilities(
+    clients, monkeypatch, probability
+):
+    run, stored = await _probability_arena_run(
+        clients, monkeypatch, task="search", link=probability, recent=probability
+    )
+    quality = run["attempts"][0]["quality"]
+    assert quality["state"] == "checked"
+    assert quality["estimated_match"] == {0: 0, 0.5: 50, 1: 100}[probability]
+    assert quality["recent_data_needed"] is (probability >= 0.5)
+    assert quality["freshness_percent"] is None
+    assert run["quality_state"] == stored["quality_state"] == "checked"
+
+
+@pytest.mark.parametrize("probability", [2, -0.2], ids=["above-one", "below-zero"])
+async def test_fetch_rejects_out_of_range_fact_probabilities(
+    clients, monkeypatch, probability
+):
+    run, stored = await _probability_arena_run(
+        clients, monkeypatch, task="fetch", fact=probability, other_fact=1
+    )
+    attempts = {a["provider"]: a for a in run["attempts"]}
+    malformed = attempts["firecrawl"]["quality"]
+    assert malformed.get("state") != "checked", malformed
+    assert malformed["relative_coverage"] is None
+    assert malformed.get("token_efficiency") is None
+    assert attempts["olostep"]["quality"]["state"] == "checked"
+    assert attempts["olostep"]["quality"]["relative_coverage"] == 100
+    assert run["quality_state"] == stored["quality_state"] == "checked"
+
+
+@pytest.mark.parametrize("probability", [0, 0.5, 1], ids=["zero", "half", "one"])
+async def test_fetch_preserves_valid_fact_probabilities(
+    clients, monkeypatch, probability
+):
+    run, stored = await _probability_arena_run(
+        clients, monkeypatch, task="fetch", fact=probability, other_fact=probability
+    )
+    for attempt in run["attempts"]:
+        quality = attempt["quality"]
+        assert quality["state"] == "checked"
+        assert quality["relative_coverage"] == (0 if probability == 0 else 100)
+        assert quality["kept_facts"] == (0 if probability == 0 else 1)
+        assert quality["compared_facts"] == 1
+        if probability == 0:
+            assert quality["tokens_per_kept_fact"] is None
+            assert quality.get("token_efficiency") is None
+        else:
+            assert 0 < quality["token_efficiency"] <= 100
+    assert run["quality_state"] == stored["quality_state"] == "checked"
+
+
+@pytest.mark.parametrize("task", ["search", "fetch"])
+async def test_disabled_judge_preserves_provider_results(clients, monkeypatch, task):
+    run, stored = await _probability_arena_run(
+        clients, monkeypatch, task=task, jev=False
+    )
+    assert run["quality_state"] == stored["quality_state"] == "off"
+    for attempt in run["attempts"]:
+        assert (attempt.get("quality") or {}).get("state") != "checked"
