@@ -415,6 +415,12 @@ def _usage_document(body: bytes):
         return None
 
 
+def _aviato_successful_rows(rows: list) -> int:
+    """Aviato bulk enrich bills a row only when it says so: a failed lookup comes back as
+    `{"lookupSuccessful": false}`, not null, so a non-null row is no evidence of a charge."""
+    return sum(isinstance(row, dict) and row.get("lookupSuccessful") is True for row in rows)
+
+
 def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int | None:
     """The provider's OWN reported charge for this call, in micro-USD, or None when it doesn't say.
 
@@ -555,7 +561,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
             mk.settlement_basis["enrichlayer_unit_micro"], doc, mk.estimate_micro)
     if provider == "aviato" and mk.endpoint_id == "aviato.people.enrich.bulk":
         if isinstance(doc, list) and mk.unit_micro > 0:
-            return sum(item is not None for item in doc) * mk.unit_micro
+            return _aviato_successful_rows(doc) * mk.unit_micro
         return None
     if provider == "companyenrich" and mk.cost_type == "per_result" and mk.unit_micro > 0:
         return _rows_billed_micro(mk, ep, _companyenrich_record_count(mk.endpoint_id, doc))
@@ -668,7 +674,7 @@ def _observed_cost_micro(mk: MarketplaceCall, body: bytes, headers=None) -> int 
     if provider == "aviato" and mk.endpoint_id == "aviato.companies.enrich.bulk":
         rows = doc.get("companies")
         if isinstance(rows, list) and mk.unit_micro > 0:
-            return sum(item is not None for item in rows) * mk.unit_micro
+            return _aviato_successful_rows(rows) * mk.unit_micro
         return None
     if provider == "aviato" and cost and cost.get("settle") == "modifiers" and mk.unit_micro > 0:
         # The request-time unit excludes catalog modifiers marked reserve_only. Bulk routes above
