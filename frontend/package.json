@@ -16,7 +16,7 @@
     "@fontsource/geist-pixel": "5.3.0",
     "@lobehub/icons-static-svg": "1.95.1",
     "matter-js": "0.20.0",
-    "vue": "3.5.41"
+    "vue": "3.5.43"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0",
