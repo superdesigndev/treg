@@ -491,6 +491,7 @@ Idempotent — re-run any time (skips what's registered; `--replace` updates). N
 | Command | Options | What it does |
 |---|---|---|
 | `treg oauth connect NAME` | `--client-secret PATH`, `--scopes S1 S2 …` | browser consent → treg captures the first token and stores it as an oauth secret |
+| `treg connections connect --provider P` | `--key-stdin` | a key-based provider (Moz, Hunter, …): prompts for the key with input hidden, or reads it from stdin with `--key-stdin`; treg verifies it with the provider before storing it |
 | `treg health` | `--run` | show every credential's status; `--run` re-checks now (refresh oauth, probe tools, alert owners) |
 
 ```bash

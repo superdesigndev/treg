@@ -720,6 +720,8 @@ are both supported; you do not need to pre-arrange anything with us.
                                                   bulk on-ramp: scan a .env AND/OR a skills folder,
                                                   auto-register everything you pick (see Upload below)
     treg oauth connect <name> --client-secret S --scopes <scope…>   mint an auto-refreshed OAuth cred
+    treg connections connect --provider P [--key-stdin]             connect a key-based provider: hidden
+                                                  prompt, or the key piped on stdin (verified first)
     treg health [--run]                           validate every secret against its tool's health check
     treg admin stats | orgs | users | grant <user_id> | …           super-admin (cross-tenant)
 

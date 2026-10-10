@@ -664,7 +664,9 @@ validated before resolving the shared HTTP client. `/auth/logout` remains an HTT
   (`GET /oauth/callback`, open) exchanges the code and creates/updates the oauth secret; `oauth_status`
   polls. **Two modes** (`OAuthStartIn`): **BYO** (supply `client_id`/`client_secret`/`auth_uri`/
   `token_uri`/`scopes`) or **REGISTRY** (supply `provider` + optional `capability`) where treg fills
-  everything from **its own approved OAuth app** - the marketplace. `oauth_providers_list`
+  everything from **its own approved OAuth app** - the marketplace. REGISTRY mode refuses a
+  pasted-secret provider (422 `pasted_secret_provider`, naming `POST /connections/token`): it has
+  no consent screen and no scopes to request. `oauth_providers_list`
   (`GET /oauth/providers`) lists the providers treg holds an app for, each flagged `configured` (false
   when this deployment hasn't set that provider's client credentials) and `metered` (true when the
   provider's upstream bills treg's app per use AND this deployment charges for it - then

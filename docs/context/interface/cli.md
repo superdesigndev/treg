@@ -54,6 +54,23 @@ line pointing to that tool; `--json` puts it in `_treg.routed_tool`, and MCP ret
 with a `suggestion` sentence beside the result, leaving the invitation `hint` slot alone. Call responses
 retain the existing `_show` formatting on stdout, including pretty-printed JSON.
 
+## Pasted-key connect
+
+`treg connections connect --provider <service>` (and the hidden `oauth connect`) first reads
+`GET /oauth/providers`. A provider whose `auth_kind` is `key` or `token` has no consent screen, so
+`_connect_pasted_key` reads the key with `getpass` at a terminal, or all of stdin with
+`--key-stdin`, which keeps it off the command line and out of shell history, and posts it to
+`POST /connections/token`; the server verifies it against the provider before storing it. A
+provider that signs with a pair (`needs_extra_credential`, e.g. Tomba's key + secret) reads both
+halves first (a second hidden prompt, or the second piped line) and then posts the other half to
+`POST /connections/{id}/extra-credential`, so a half-built connection is never the outcome. Without
+a terminal and without `--key-stdin` it exits with that instruction rather than reading stdin: an
+agent's idle pipe would otherwise hang the read, the same intent rule `upload` follows for
+credentials. A `name`, `--capability`, `--client-secret` or `--scopes` is refused locally, because a
+pasted key is one per team. An unreadable listing (an older server, an error, a proxy page) falls
+back to `POST /oauth/start`, which itself refuses a pasted-key provider and names this path; every
+other provider takes the consent flow there.
+
 ## Instagram grants
 
 `TREG_OAUTH_REVIEW_PENDING` and provider-registry metadata control the CLI's effective default and

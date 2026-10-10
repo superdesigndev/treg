@@ -39,6 +39,15 @@ async def test_registry_connect_uses_tregs_own_app(clients: AsyncClient, treg_go
     assert q["state"] == [d["state"]]
 
 
+async def test_a_pasted_key_provider_is_pointed_at_the_key_path(clients: AsyncClient):
+    """Moz has no consent screen; starting OAuth for it used to fail "moz has no capability ''"."""
+    r = await clients.post("/oauth/start", json={"provider": "moz"})
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert "pasted AccessID:SecretKey" in detail
+    assert "treg connections connect --provider moz" in detail and "/connections/token" in detail
+
+
 async def test_the_broadest_capability_is_the_default(clients: AsyncClient, treg_google_app):
     """A plain Connect asks for write. Least-privilege-by-default meant most users had to connect
     twice — once for read, then again to widen it — which is worse than one honest consent screen."""

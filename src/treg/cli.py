@@ -6142,8 +6142,79 @@ def _byo_body(args) -> dict:
             "token_uri": block.get("token_uri", "https://oauth2.googleapis.com/token"), "scopes": args.scopes}
 
 
+def _pasted_key_provider(cfg, service: str) -> dict | None:
+    """The registry entry for `service` when it is connected by pasting a key (Moz, Hunter, Slack's
+    bot token), else None. Unknown, unreachable or an unreadable listing: None, so `/oauth/start`
+    gives the server's own answer."""
+    try:
+        with _client(cfg) as c:
+            r = c.get("/oauth/providers")
+        listing = r.json() if r.status_code == 200 else []
+    except (httpx.HTTPError, ValueError):
+        return None
+    if not isinstance(listing, list):
+        return None
+    entry = next((p for p in listing if isinstance(p, dict) and p.get("service") == service), None)
+    return entry if entry and entry.get("auth_kind") in ("key", "token") else None
+
+
+def _connect_pasted_key(args, cfg, provider: dict) -> None:
+    """A pasted-key provider has no consent screen: read the key without echoing it, or from stdin
+    with --key-stdin (agents/CI, so it never lands on the command line), and let the server verify
+    and store it. Unattended, stdin is read only on request: an idle pipe would otherwise hang.
+    A provider signing with a pair (Tomba's key + secret) reads both before anything is sent; piped,
+    the key is the first line and the second credential the next."""
+    label = provider.get("token_label") or "API key"
+    display = provider.get("display_name") or provider["service"]
+    extra_label = provider.get("extra_credential_label") if provider.get("needs_extra_credential") else None
+    if args.name or args.capability or args.client_secret or args.scopes:
+        sys.exit(f"{display} is connected with a pasted {label}; a name, --capability, "
+                 "--client-secret and --scopes don't apply")
+    if args.key_stdin:
+        if sys.stdin.isatty():
+            sys.exit(f"--key-stdin reads a piped {label}; at a terminal, drop it to get a hidden prompt")
+        piped = sys.stdin.read()
+        lines = [line.strip() for line in piped.splitlines() if line.strip()]
+        key, extra = (lines[0] if lines else "", lines[1] if len(lines) > 1 else "") if extra_label \
+            else (piped, "")
+    elif sys.stdin.isatty():
+        if provider.get("setup_url"):
+            print(f"Get your {label}: {provider['setup_url']}")
+        try:
+            key = getpass.getpass(f"Paste your {display} {label} (input hidden): ")
+            extra = getpass.getpass(f"Paste your {display} {extra_label} (input hidden): ") if extra_label else ""
+        except (EOFError, KeyboardInterrupt):
+            sys.exit("\ncancelled — nothing was connected")
+    else:
+        sys.exit(f"no terminal to prompt for the {label}: pipe it in with --key-stdin, e.g. "
+                 f"`pbpaste | treg connections connect --provider {provider['service']} --key-stdin`")
+    if not key.strip():
+        sys.exit(f"no {label} given — nothing was connected")
+    if extra_label and not extra.strip():
+        sys.exit(f"{display} also needs your {extra_label}"
+                 + (f": pipe it as the second line after the {label}" if args.key_stdin else "")
+                 + " — nothing was connected")
+    with _client(cfg) as c:
+        r = c.post("/connections/token", json={"provider": provider["service"], "token": key.strip()})
+        if r.status_code == 200 and extra_label:
+            secret_id = r.json().get("id")
+            r = c.post(f"/connections/{secret_id}/extra-credential", json={"value": extra.strip()})
+    if r.status_code != 200:
+        _show(r)
+        sys.exit(1)  # `_show` exits only on >= 400; any other non-200 still connected nothing
+    d = r.json()
+    print(f"✅ Connected {display}. Connection id: {d.get('id')} ({d.get('name')})")
+
+
 def cmd_oauth_connect(args, cfg) -> None:
     if args.provider:  # registry mode — treg's own approved app supplies the credentials
+        pasted = _pasted_key_provider(cfg, args.provider)
+        if pasted:
+            _connect_pasted_key(args, cfg, pasted)
+            return
+        if args.key_stdin:
+            sys.exit(f"--key-stdin is for providers connected with a pasted key; {args.provider} "
+                     "isn't one here (see `treg connections providers`)")
         body = {"provider": args.provider}
         if args.name:
             body["name"] = args.name
@@ -7026,6 +7097,8 @@ def build_parser() -> argparse.ArgumentParser:
         parser.add_argument("--capability", help="scope set to request (default: provider-specific)")
         parser.add_argument("--client-secret", help="path to your own OAuth client-secret JSON (bring-your-own-app)")
         parser.add_argument("--scopes", nargs="+", default=[], help="one or more OAuth scopes (with --client-secret)")
+        parser.add_argument("--key-stdin", action="store_true",
+                            help="a pasted-key provider: read the key from stdin (agents/CI) instead of a hidden prompt")
         parser.set_defaults(fn=cmd_oauth_connect)
 
     cnp = mk(sub, "connections", "Your connected accounts: connect providers, health, expiry.",
@@ -7039,6 +7112,8 @@ def build_parser() -> argparse.ArgumentParser:
     _connect_args(mk(cn, "connect", "Connect a provider: browser OAuth consent — or a pasted API key for key-based providers.",
                      "treg connections connect --provider google-search-console          # treg's app, read scope",
                      "treg connections connect --provider google-search-console --capability write",
+                     "treg connections connect --provider hunter                         # a key: prompts, input hidden",
+                     "echo \"$HUNTER_KEY\" | treg connections connect --provider hunter --key-stdin   # agents/CI",
                      "treg connections connect gsc --client-secret ./client_secret.json --scopes <scope>  # your own app"),
                  "treg connections")
     mk(cn, "providers", "List providers treg holds its own OAuth app for (what you can connect).",
@@ -7057,7 +7132,7 @@ def build_parser() -> argparse.ArgumentParser:
                ).add_subparsers(dest="sub", required=True, metavar="<subcommand>")
     mk(oa, "providers", "List providers treg holds its own OAuth app for.",
        "treg oauth providers").set_defaults(fn=cmd_oauth_providers)
-    _connect_args(mk(oa, "connect", "Mint an auto-refreshed OAuth secret through browser consent.",
+    _connect_args(mk(oa, "connect", "(alias) Connect a provider: browser consent, or a pasted key for key-based providers.",
                      "treg oauth connect --provider google-search-console"), "treg oauth")
 
     # ---- super-admin ----

@@ -338,6 +338,17 @@ async def start_oauth_connection(
                     f"unknown provider {provider_name!r} (known: {known})",
                 )
             _refuse_paused(provider_name)
+            # A pasted-key provider has no consent screen and no scopes, so the capability lookup
+            # below would fail with "has no capability ''". Name the path that does connect it.
+            if provider.uses_pasted_secret:
+                raise ConnectError(
+                    "pasted_secret_provider",
+                    f"{provider.display_name} is connected with a pasted "
+                    f"{provider.token_label or 'API key'}, not browser consent. Paste it on the "
+                    "dashboard's Connections page, with "
+                    f"`treg connections connect --provider {provider.service}` on an up-to-date "
+                    "CLI (`treg update`), or via POST /connections/token",
+                )
             chosen_capability = capability or provider.connect_default_capability
             try:
                 scopes = provider.scopes_for(chosen_capability)

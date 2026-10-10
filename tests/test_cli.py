@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import io
 import json
 import stat
 
+import httpx
 import pytest
 
 from treg import cli
@@ -457,11 +459,17 @@ def test_oauth_connect_prints_provider_guidance_from_the_api(monkeypatch, capsys
         def json(self):
             return {"status": "done", "secret_id": 7, "name": "future-provider"}
 
+    class ProvidersResponse:
+        status_code = 200
+
+        def json(self):
+            return [{"service": "future-provider", "auth_kind": "oauth"}]
+
     class Client:
         def __enter__(self): return self
         def __exit__(self, *args): return False
         def post(self, path, json): return Response()
-        def get(self, path): return StatusResponse()
+        def get(self, path): return ProvidersResponse() if path == "/oauth/providers" else StatusResponse()
 
     monkeypatch.setattr(cli, "_client", lambda cfg: Client())
     monkeypatch.setattr(cli.time, "sleep", lambda seconds: None)
@@ -471,6 +479,175 @@ def test_oauth_connect_prints_provider_guidance_from_the_api(monkeypatch, capsys
     cli.cmd_oauth_connect(args, {"base_url": "http://x"})
     output = capsys.readouterr().out
     assert "Use the linked workspace administrator grant." in output
+
+
+_MOZ = {"service": "moz", "display_name": "Moz", "auth_kind": "key",
+        "token_label": "AccessID:SecretKey", "setup_url": "https://moz.com/api/dashboard"}
+_TOMBA = {"service": "tomba", "display_name": "Tomba", "auth_kind": "key", "token_label": "API key",
+          "needs_extra_credential": True, "extra_credential_label": "API secret"}
+_LISTING = [_MOZ, _TOMBA, {"service": "google-search-console", "auth_kind": "oauth"}]
+
+
+def _registry(monkeypatch, *, providers=None, connect_status=200, connect_body=None):
+    """A fake registry over MockTransport that lists Moz as a pasted-key provider. `providers` is
+    the `/oauth/providers` answer: an httpx.Response, or an exception to raise. Returns the requests
+    it saw so a test can assert what was (and was not) sent."""
+    seen = []
+
+    def handle(request):
+        seen.append(request)
+        if request.url.path == "/oauth/providers":
+            if isinstance(providers, Exception):
+                raise providers
+            return providers or httpx.Response(200, json=_LISTING)
+        if request.url.path == "/connections/token":
+            return httpx.Response(connect_status, json=connect_body or {"id": 12, "name": "moz"})
+        if request.url.path == "/connections/12/extra-credential":
+            return httpx.Response(200, json={"id": 12, "name": "tomba", "ready": True})
+        if request.url.path == "/oauth/start":
+            return httpx.Response(422, json={"detail": "the server's own answer"})
+        return httpx.Response(500, json={"detail": f"unexpected {request.url.path}"})
+
+    monkeypatch.setattr(cli, "_client", lambda cfg: httpx.Client(
+        transport=httpx.MockTransport(handle), base_url="https://registry.example.test"))
+    return seen
+
+
+class _Tty(io.StringIO):
+    def isatty(self): return True
+
+
+def _connect(*argv):
+    cli.cmd_oauth_connect(cli.build_parser().parse_args(["connections", "connect", *argv]),
+                          {"base_url": "http://x"})
+
+
+def _posted(seen):
+    return [r.url.path for r in seen if r.method == "POST"]
+
+
+def test_a_key_provider_connects_with_a_piped_key_not_oauth(monkeypatch, capsys):
+    """The bug: `connect --provider moz` went to /oauth/start and failed "moz has no capability ''"."""
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO("  access-id:secret-key\n"))
+    _connect("--provider", "moz", "--key-stdin")
+    assert _posted(seen) == ["/connections/token"]
+    assert json.loads(seen[-1].content) == {"provider": "moz", "token": "access-id:secret-key"}
+    assert "Connected Moz. Connection id: 12 (moz)" in capsys.readouterr().out
+
+
+def test_a_key_typed_at_a_terminal_is_read_hidden(monkeypatch, capsys):
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", _Tty())
+    prompts = []
+    monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: prompts.append(prompt) or "typed-key")
+    _connect("--provider", "moz")
+    assert prompts == ["Paste your Moz AccessID:SecretKey (input hidden): "]
+    assert json.loads(seen[-1].content)["token"] == "typed-key"
+    out = capsys.readouterr().out
+    assert "https://moz.com/api/dashboard" in out and "typed-key" not in out
+
+
+@pytest.mark.parametrize("interrupt", [KeyboardInterrupt, EOFError])
+def test_cancelling_the_prompt_exits_cleanly(monkeypatch, interrupt):
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", _Tty())
+
+    def cancel(prompt):
+        raise interrupt
+    monkeypatch.setattr(cli.getpass, "getpass", cancel)
+    with pytest.raises(SystemExit, match="cancelled"):
+        _connect("--provider", "moz")
+    assert not _posted(seen)
+
+
+def test_unattended_stdin_is_read_only_with_key_stdin(monkeypatch):
+    """An agent whose stdin is an idle pipe must get an answer, not a hang on a read."""
+    seen = _registry(monkeypatch)
+
+    class IdlePipe(io.StringIO):
+        def read(self, *a): pytest.fail("stdin must not be read without --key-stdin")
+        readline = read
+    monkeypatch.setattr(cli.sys, "stdin", IdlePipe())
+    with pytest.raises(SystemExit, match="--key-stdin"):
+        _connect("--provider", "moz")
+    assert not _posted(seen)
+
+
+@pytest.mark.parametrize("argv,stdin", [
+    pytest.param(("--provider", "moz", "--key-stdin"), io.StringIO("  \n"), id="empty-key"),
+    pytest.param(("--provider", "moz", "--key-stdin"), _Tty("k"), id="key-stdin-at-a-terminal"),
+    pytest.param(("--provider", "moz", "--key-stdin", "--capability", "write"), io.StringIO("k"),
+                 id="capability-on-a-key"),
+    pytest.param(("my-moz", "--provider", "moz", "--key-stdin"), io.StringIO("k"), id="name-on-a-key"),
+    pytest.param(("--provider", "moz", "--key-stdin", "--client-secret", "s.json"), io.StringIO("k"),
+                 id="client-secret-on-a-key"),
+    pytest.param(("--provider", "google-search-console", "--key-stdin"), io.StringIO("k"),
+                 id="key-stdin-on-an-oauth-provider"),
+])
+def test_bad_connect_input_is_refused_before_anything_is_sent(monkeypatch, argv, stdin):
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", stdin)
+    with pytest.raises(SystemExit):
+        _connect(*argv)
+    assert not _posted(seen)
+
+
+def test_a_paired_key_provider_sends_both_halves(monkeypatch, capsys):
+    """Tomba signs with key + secret; connecting only the key left a tool that could not be called."""
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO("ta_key\n ts_secret \n"))
+    _connect("--provider", "tomba", "--key-stdin")
+    assert _posted(seen) == ["/connections/token", "/connections/12/extra-credential"]
+    assert json.loads(seen[-2].content) == {"provider": "tomba", "token": "ta_key"}
+    assert json.loads(seen[-1].content) == {"value": "ts_secret"}
+    assert "Connected Tomba" in capsys.readouterr().out
+
+
+def test_a_paired_key_provider_prompts_for_both_at_a_terminal(monkeypatch):
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", _Tty())
+    answers = iter(["ta_key", "ts_secret"])
+    prompts = []
+    monkeypatch.setattr(cli.getpass, "getpass", lambda prompt: prompts.append(prompt) or next(answers))
+    _connect("--provider", "tomba")
+    assert prompts == ["Paste your Tomba API key (input hidden): ",
+                       "Paste your Tomba API secret (input hidden): "]
+    assert json.loads(seen[-1].content) == {"value": "ts_secret"}
+
+
+def test_a_paired_key_provider_without_its_second_half_sends_nothing(monkeypatch):
+    seen = _registry(monkeypatch)
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO("ta_key\n"))
+    with pytest.raises(SystemExit, match="second line"):
+        _connect("--provider", "tomba", "--key-stdin")
+    assert not _posted(seen)
+
+
+@pytest.mark.parametrize("status,code", [(422, 1), (307, 1)])
+def test_a_key_that_did_not_connect_exits_nonzero(monkeypatch, capsys, status, code):
+    """A rejected key shows the server's reason; a redirect (not followed) is not a success either."""
+    _registry(monkeypatch, connect_status=status, connect_body={"detail": "Moz rejected that key (HTTP 401)"})
+    monkeypatch.setattr(cli.sys, "stdin", io.StringIO("bad"))
+    with pytest.raises(SystemExit) as exc:
+        _connect("--provider", "moz", "--key-stdin")
+    assert exc.value.code == code
+    out = capsys.readouterr().out
+    assert "Moz rejected that key" in out and "Connected" not in out
+
+
+@pytest.mark.parametrize("providers", [
+    pytest.param(httpx.Response(404, json={"detail": "Not Found"}), id="older-server"),
+    pytest.param(httpx.Response(200, text="<html>proxy</html>"), id="not-json"),
+    pytest.param(httpx.Response(200, json={"providers": []}), id="not-a-list"),
+    pytest.param(httpx.ConnectError("refused"), id="unreachable"),
+])
+def test_an_unreadable_provider_listing_falls_back_to_oauth_start(monkeypatch, capsys, providers):
+    seen = _registry(monkeypatch, providers=providers)
+    with pytest.raises(SystemExit):
+        _connect("--provider", "moz")
+    assert _posted(seen) == ["/oauth/start"]
+    assert "the server's own answer" in capsys.readouterr().out
 
 
 def test_clear_active_only_when_targeted(monkeypatch):
