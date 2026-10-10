@@ -139,6 +139,13 @@ awards per team even after this additive migration.
 
 ## Units: integer micro-USD, everywhere
 
+Catalog `reported_charge` meters may read a JSON body path or response header, using the same
+frozen credit-to-USD conversion. A bounded `request_count` and optional `base_value` reserve the
+fixed per-call component plus the declared count ceiling. Finite nonnegative reported amounts
+settle the real charge, including zero, under the existing hold and overage rules. Missing or
+invalid meter evidence retains the estimate. The schema and rules are detailed in
+[the catalog fragment](catalog.md).
+
 1 micro = 1e-6 USD. A catalog call costs ~600 micro ($0.0006), so **cents cannot represent one call**
 and floats cannot be summed for a year without drifting. The only float is the margin *rate*, turned
 into an integer immediately (`with_margin`). Stripe speaks integer **cents**, so 1 cent = 10,000

@@ -837,16 +837,40 @@ def check_cost(cost: dict, where: str, errors: list[str], warnings: list[str],
         fail(errors, where, f"cost.per '{per}' must be a positive integer (the quantity `value` covers)")
     reported = cost.get("reported_charge")
     if reported is not None:
-        if (not isinstance(reported, dict) or set(reported) != {"path", "unit"}
-                or not isinstance(reported.get("path"), str)
-                or not JSON_PATH.fullmatch(reported["path"])
-                or reported.get("unit") not in {"usd", "credit"}):
-            fail(errors, where, "cost.reported_charge requires a JSON path and unit: usd or credit")
-        if reported.get("unit") == "credit" and not _finite_number(_credit_rate(provider)):
-            fail(errors, where, "cost.reported_charge unit credit needs a numeric "
-                                "fx.yaml credit_rates_usd entry")
+        valid = isinstance(reported, dict) and reported.get("unit") in {"usd", "credit"}
+        if valid:
+            valid = (set(reported) == {"path", "unit"}
+                     and isinstance(reported.get("path"), str)
+                     and bool(JSON_PATH.fullmatch(reported["path"]))) or (
+                     set(reported) == {"header", "unit"}
+                     and isinstance(reported.get("header"), str)
+                     and bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9-]*", reported["header"])))
+        if not valid:
+            fail(errors, where, "cost.reported_charge requires exactly one JSON path or header and unit: usd or credit")
+        if isinstance(reported, dict) and reported.get("unit") == "credit" and not _finite_number(_credit_rate(provider)):
+            fail(errors, where, "cost.reported_charge unit credit needs a numeric fx.yaml credit_rates_usd entry")
         if "settle" in cost or cost.get("type") == "free":
             fail(errors, where, "cost.reported_charge requires a paid price without cost.settle")
+    if "base_value" in cost:
+        if (not _finite_number(cost["base_value"]) or cost["base_value"] < 0
+                or cost.get("type") != "per_result" or not reported):
+            fail(errors, where, "cost.base_value requires a nonnegative per_result base with reported_charge")
+    count = cost.get("request_count")
+    if count is not None:
+        fields = _input_fields(input_schema)
+        valid = isinstance(count, dict) and set(count) == {"location", "field", "mode", "default", "maximum"}
+        if valid:
+            spec = fields.get(f"{count['location']}.{count['field']}", {})
+            valid = (count["location"] in {"body", "queryParams"}
+                     and count["mode"] in {"value", "length"}
+                     and type(count["default"]) is int and type(count["maximum"]) is int
+                     and 1 <= count["default"] <= count["maximum"] <= 10_000
+                     and bool(spec) and cost.get("type") == "per_result"
+                     and bool(reported)
+                     and ((count["mode"] == "value" and spec.get("type") == "integer")
+                          or (count["mode"] == "length" and str(spec.get("type", "")).startswith("array"))))
+        if not valid:
+            fail(errors, where, "cost.request_count requires a declared bounded integer or array input on a reported per_result price")
     if "call_fee" in cost:
         fee = cost["call_fee"]
         if (provider != "apify" or cost.get("type") != "per_result"

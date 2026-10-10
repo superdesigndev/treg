@@ -53,3 +53,6 @@ services:
         sync: false
       - key: TREG_EMAIL_FROM
         value: registry <no-reply@registry.example.com>
+      # Optional shared provider account; leave unset until live verification and funding.
+      - key: TREG_PLATFORM_KEY_INFLUSHIP
+        sync: false

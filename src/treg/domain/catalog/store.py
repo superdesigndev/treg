@@ -193,6 +193,9 @@ class Catalog:
         usd = (round(value * rate / per, 9)
                if isinstance(value, (int, float)) and rate is not None and per > 0 else None)
         out = {**cost, "usd": usd}
+        base = cost.get("base_value")
+        if isinstance(base, (int, float)) and rate is not None:
+            out["base_usd"] = round(base * rate, 9)
         # Optional presentation metadata describes the charge unit without changing billing.
         display = cost.get("display") or {}
         if usd is not None and display:
