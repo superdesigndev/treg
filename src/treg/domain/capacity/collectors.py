@@ -591,6 +591,22 @@ async def _datagma(c, key):
     return {"value": value, "unit": "credits", "note": "Prepaid balance; replenished manually"}
 
 
+async def _reversecontact(c, key):
+    """Spendable credits from the free usage route (no credit spent, not rate-counted)."""
+    d = await _get(c, "https://api.reversecontact.com/v2/usage",
+                   headers={"Authorization": f"Bearer {key}"})
+    quotas = d.get("quotas") if isinstance(d, dict) and d.get("success") is True else None
+    workspace = quotas.get("workspace") if isinstance(quotas, dict) else None
+    credits = workspace.get("credits") if isinstance(workspace, dict) else None
+    left = credits.get("left") if isinstance(credits, dict) else None
+    if type(left) not in (int, float) or not math.isfinite(left) or left < 0:
+        left = None
+    unlimited = workspace.get("hasUnlimitedCredits") is True if isinstance(workspace, dict) else False
+    return {"value": left, "unit": "credits",
+            "note": "unlimited-credits plan" if unlimited
+            else "credits.left is the spendable balance; pay-as-you-go credits stay valid 3 months"}
+
+
 async def _leadmagic(c, key):
     r = await c.post("https://api.leadmagic.io/v1/credits", headers={"X-API-Key": key})
     r.raise_for_status()
@@ -989,6 +1005,7 @@ BALANCE_ROUTES = {
     "bounceban": _bounceban,
     "zerobounce": _zerobounce,
     "datagma": _datagma,
+    "reversecontact": _reversecontact,
     "leadmagic": _leadmagic,
     "lusha": _lusha,
     "diffbot": _diffbot,

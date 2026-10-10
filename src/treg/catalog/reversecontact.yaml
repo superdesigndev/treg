@@ -1,0 +1,599 @@
+provider: reversecontact
+source:
+  docs: https://docs.reversecontact.com
+  openapi: https://api.reversecontact.com/openapi.json   # OpenAPI 3.1, public, no auth
+  curated: '2026-10-09'
+limits: "Per-workspace requests per minute set by the plan, read live from GET /v2/usage (quotas.workspace.minuteRateLimit); optional per-key minute and daily caps. Over a limit: HTTP 429 RATE_LIMIT_EXCEEDED or DAILY_LIMIT_EXCEEDED. GET /v2/usage, GET /v2/webhooks/{webhookId} and the two available-fields routes are not counted."
+pricing_url: https://www.reversecontact.com/pricing
+
+# CURATED BY THE VENDOR and self-verified live on 2026-10-09 with a pay-as-you-go workspace key
+# (ledger in the PR). No `verified:` stamp and no example response: those are the maintainers' to add.
+#
+# BILLING. One credit pool. The public pricing page lists the per-endpoint credit price, and every
+# response reports what the call charged in `quotas.creditsConsumed` (async jobs: the reservation on
+# the acknowledgement, the net figure in the poll body's `data.creditsConsumed`). On 2026-10-09 the
+# fourteen credits spent across the paid test calls matched the workspace balance delta exactly
+# (701,565 -> 701,551).
+#   enrich (email, name or domain) 2 · fetch cached 1 · fetch live 2 · people search 1 per profile
+#   lookalike 1 per profile · company search 1 per page (up to 100 companies) · work email 3
+#   direct phone 20 · count, check, available-fields, usage and polling 0
+# A miss is free: enrich and fetch answer HTTP 404 at 0 credits, and the email and phone finders
+# refund their reservation when nothing is found. Every 4xx/5xx other than 404 is free as well.
+#
+# FREE PRE-FLIGHT ROUTES. /v2/search/people/count sizes a search, the available-fields routes list
+# every filter and its accepted values, and the /check routes say whether a profile is on file and
+# how fresh it is. An agent can shape a whole query for nothing and pay only for rows.
+#
+# ASYNC. Live fetch and the contact finders answer at once with {status: created, webhookId,
+# pollUrl}; GET /v2/webhooks/{webhookId} is the free poll (results kept 72 hours). Webhook delivery
+# (`webhookUrl`) is optional and not modelled: the poll is the honest interface for a proxy.
+#
+# NOT MODELLED (deliberate, see the surface map in the PR):
+#   - POST /v2/fetch/companies/live: same job as the cached company fetch, re-sourced in real time.
+#     Company pages change slowly; one live row (people) shows the async shape.
+#   - POST /v2/search/people/prompt: plain-language prompt turned into people-search filters by an
+#     LLM (1 credit per request + 1 per profile). Agents compose the filters themselves through the
+#     search row and its free filter list.
+#   - /v2/lists/* (11 routes): saved-list workspace CRUD and bulk enrich, bound to the dashboard.
+#   - POST /v2/search/persons (legacy, retired 2026-10-13) and /v2/resolve/* (retired, HTTP 410).
+
+proposed_capabilities:
+  people.profile.check: "Check a person's profile is on file and how fresh it is, before paying to fetch it"
+  companies.profile.check: "Check a company's profile is on file and how fresh it is, before paying to fetch it"
+  companies.search.filters: "List the accepted values for a company-search filter"
+  account.jobs.get: "Get one background job's details"
+
+endpoints:
+
+  # ---------------------------------------------------------------------------------------------
+  # People
+  # ---------------------------------------------------------------------------------------------
+  - id: reversecontact.people.enrich
+    added: '2026-10-09'
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    miss:
+      status: 404
+      means: "`Could not resolve the provided identifiers to a profile`: nobody matches, an expected outcome. Free (quotas.creditsConsumed 0); observed 2026-10-09, 555 ms"
+    method: POST
+    path: /v2/enrich/persons
+    name: "Enrich a person from email or name + company domain"
+    summary: "Enrich person"
+    input:
+      body:
+        email: {type: string, required: false, note: "work or personal email", example: "jane.doe@acme.com"}
+        firstName: {type: string, required: false, example: "Satya"}
+        lastName: {type: string, required: false, example: "Nadella"}
+        companyDomain: {type: string, required: false, note: "current employer's domain, sharpens a name match", example: "microsoft.com"}
+        companyName: {type: string, required: false, note: "current employer's name, when the domain is unknown", example: "Microsoft"}
+      note: "at least one field. An email alone works (reverse lookup); a name works best with companyDomain. Returns the full profile in data.person (experience, education, skills, location, current company) plus data.alternativePersons when the match is ambiguous."
+    test_request:
+      body: {firstName: "Satya", lastName: "Nadella", companyDomain: "microsoft.com"}
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: record
+      reported_charge: {path: quotas.creditsConsumed, unit: credit}
+      source: observed
+      source_url: https://www.reversecontact.com/pricing
+      checked: '2026-10-09'
+      confidence: verified
+      note: "2 credits per profile found, observed 2026-10-09 (quotas.creditsConsumed 2). A 404 miss costs 0."
+    docs_url: https://docs.reversecontact.com/endpoints/enrich-person
+
+  - id: reversecontact.linkedin.profile.from_email
+    added: '2026-10-09'
+    capability: linkedin.profile.from_email
+    platform: linkedin
+    scope: any_account
+    miss:
+      status: 404
+      means: "`Could not resolve the provided identifiers to a profile`: no profile behind this email, an expected outcome. Free (quotas.creditsConsumed 0); observed 2026-10-09, 4.1 s (an email-only miss searches longer than a name miss)"
+    method: POST
+    path: /v2/enrich/persons
+    name: "LinkedIn profile from a work or personal email"
+    summary: "Enrich person"
+    input:
+      body:
+        email: {type: string, required: true, note: "work or personal email", example: "jane.doe@acme.com"}
+      note: "the reverse email lookup the product is named after: same route as reversecontact.people.enrich, called with the email only. The answer carries the LinkedIn URL (data.person.linkedinUrl) and the full profile."
+    test_request:
+      body: {email: "nobody.treg.probe@example.com"}
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: record
+      reported_charge: {path: quotas.creditsConsumed, unit: credit}
+      source: observed
+      source_url: https://www.reversecontact.com/pricing
+      checked: '2026-10-09'
+      confidence: verified
+      note: "DELIBERATE MISS test_request (an example.com address, 404 at 0 credits) so no real person's email sits in this public file. The hit price, 2 credits, was observed on the same route 2026-10-09 (reversecontact.people.enrich)."
+    docs_url: https://docs.reversecontact.com/endpoints/enrich-person
+
+  - id: reversecontact.people.enrich.linkedin
+    added: '2026-10-09'
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    miss:
+      status: 404
+      means: "`Person not found in database`: the profile is not on file, an expected outcome. Free (quotas.creditsConsumed 0); observed 2026-10-09, 161 ms. Try reversecontact.people.enrich.live"
+    method: POST
+    path: /v2/fetch/persons
+    name: "Person profile by LinkedIn URL: experience, education"
+    summary: "Person profile"
+    input:
+      body:
+        url: {type: string, required: false, note: "LinkedIn profile URL (linkedin.com/in/… or /sales/lead/…)", example: "https://www.linkedin.com/in/williamhgates"}
+        id: {type: string, required: false, note: "Reverse Contact person id from an earlier answer", example: "prs_01jbd5vewyenebxgaz869ffe5t"}
+      note: "exactly one of url | id. Reads the cached profile: experience, education, skills, languages, certifications, location, followers."
+    test_request:
+      body: {url: "https://www.linkedin.com/in/williamhgates"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      reported_charge: {path: quotas.creditsConsumed, unit: credit}
+      source: observed
+      source_url: https://www.reversecontact.com/pricing
+      checked: '2026-10-09'
+      confidence: verified
+      note: "1 credit per profile returned, observed 2026-10-09. A 404 miss costs 0."
+    docs_url: https://docs.reversecontact.com/endpoints/fetch-profile
+
+  - id: reversecontact.people.enrich.live
+    added: '2026-10-09'
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    resource_ownership:
+      produces: [{kind: job, path: data.webhookId}]
+    async:
+      id_from: data.webhookId
+      poll:
+        endpoint: reversecontact.account.jobs.get
+        param: {in: pathParams, name: webhookId}
+      status:
+        path: data.status
+        progress: [created, in_progress]
+        success: [succeeded]
+        failure: []
+        billed_failure: [errored]
+      result: {path: data.result}
+      interval: 5
+    method: POST
+    path: /v2/fetch/persons/live
+    name: "Live person profile by LinkedIn URL, re-sourced now"
+    summary: "Person profile live"
+    input:
+      body:
+        url: {type: string, required: false, note: "LinkedIn profile URL", example: "https://www.linkedin.com/in/williamhgates"}
+        id: {type: string, required: false, note: "Reverse Contact person id", example: "prs_01jbd5vewyenebxgaz869ffe5t"}
+      note: "exactly one of url | id. Re-sources the profile in real time; use it when the cached fetch misses or a /check shows a stale lastUpdate. Answers {status: created, webhookId, pollUrl}; the profile arrives in the poll body's data.result."
+    test_request:
+      body: {url: "https://www.linkedin.com/in/williamhgates"}
+    cost:
+      type: per_call
+      value: 2
+      currency: credit
+      per: 1
+      unit: record
+      settle: usage
+      usage: {path: data.creditsConsumed, unit: credit}
+      fallback: {value: 2, note: "the acknowledgement reserves 2 credits"}
+      source: observed
+      source_url: https://www.reversecontact.com/pricing
+      checked: '2026-10-09'
+      confidence: verified
+      note: "2 credits, reserved on the acknowledgement and settled from the terminal poll body's data.creditsConsumed (observed 2 on a succeeded job, 2026-10-09). An errored job whose profile does not exist stays billed; invalid input and upstream fetch errors are refunded to 0, hence billed_failure + usage settlement."
+    docs_url: https://docs.reversecontact.com/endpoints/fetch-profile-live
+
+  - id: reversecontact.people.profile.check
+    added: '2026-10-09'
+    capability: people.profile.check
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/fetch/persons/check
+    name: "Check a person profile is on file and fresh, free"
+    summary: "Person profile status"
+    input:
+      body:
+        url: {type: string, required: false, note: "LinkedIn profile URL", example: "https://www.linkedin.com/in/williamhgates"}
+        id: {type: string, required: false, note: "Reverse Contact person id", example: "prs_01jbd5vewyenebxgaz869ffe5t"}
+      note: "exactly one of url | id. Returns exists, lastUpdate and section counts (experience, skills, schools): decide between the cached fetch (1 credit) and the live one (2) before paying."
+    test_request:
+      body: {url: "https://www.linkedin.com/in/williamhgates"}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://docs.reversecontact.com/endpoints/check-person
+
+  - id: reversecontact.people.search
+    added: '2026-10-09'
+    capability: people.search
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/search/people
+    name: "Search people by title, seniority, company or location"
+    summary: "Search people"
+    input:
+      body:
+        currentPositionTitle: {type: string, required: false, note: "current job title, string or array", example: "Head of Sales"}
+        currentSeniority: {type: string, required: false, note: "string or array, closed taxonomy (Director, VP, …): see the free filter list", example: "VP"}
+        currentFunction: {type: string, required: false, note: "string or array, closed taxonomy", example: "Sales"}
+        currentCompanyName: {type: string, required: false, note: "string or array", example: "Stripe"}
+        currentCompanyIndustry: {type: string, required: false, note: "string or array, closed list"}
+        location: {type: object, required: false, note: "{countryCode, country, state, city}, each a string or array", example: {countryCode: "FR"}}
+        cursor: {type: string, required: false, note: "metadata.nextCursor of the previous page"}
+        perPage: {type: integer, required: false, note: "1-100, default 25. The page size caps the charge", example: 25}
+      note: "40+ filters combined with AND; GET /v2/search/people/available-fields lists every one with its accepted values, and /v2/search/people/count sizes the query, both free. An unknown filter or a value outside a closed list answers HTTP 422 with suggestions, at 0 credits. Each row is a full profile."
+    test_request:
+      body: {currentCompanyName: "Stripe", currentSeniority: ["VP"], perPage: 1}
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      reported_charge: {path: quotas.creditsConsumed, unit: credit}
+      source: observed
+      source_url: https://www.reversecontact.com/pricing
+      checked: '2026-10-09'
+      confidence: verified
+      note: "1 credit per profile delivered, observed 2026-10-09 (perPage 1, 1 credit). An empty page costs 0; quotas.creditsConsumed carries the exact count."
+    docs_url: https://docs.reversecontact.com/endpoints/search-people
+
+  - id: reversecontact.people.search.count
+    added: '2026-10-09'
+    capability: people.search.count
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/search/people/count
+    name: "Count a people search before paying, free"
+    summary: "Count people"
+    input:
+      body:
+        currentSeniority: {type: string, required: false, note: "same filters as reversecontact.people.search", example: "VP"}
+        currentCompanyName: {type: string, required: false, example: "Stripe"}
+      note: "accepts every filter of the search route, without cursor or perPage. Returns data.count."
+    test_request:
+      body: {currentCompanyName: "Stripe", currentSeniority: ["VP"]}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://docs.reversecontact.com/endpoints/search-people-count
+
+  - id: reversecontact.people.search.filters
+    added: '2026-10-09'
+    capability: people.search.filters
+    platform: people
+    scope: any_account
+    method: GET
+    path: /v2/search/people/available-fields
+    name: "People-search filters and accepted values, free"
+    summary: "People search available fields"
+    input: {}
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://docs.reversecontact.com/endpoints/search-people-available-fields
+
+  - id: reversecontact.people.lookalike
+    added: '2026-10-09'
+    capability: people.lookalike
+    platform: people
+    scope: any_account
+    miss:
+      status: 404
+      means: "the seed profile is not indexed yet, an expected outcome. Free (quotas.creditsConsumed 0)"
+    method: POST
+    path: /v2/search/people/lookalike
+    name: "People similar to a seed LinkedIn profile"
+    summary: "People lookalike"
+    input:
+      body:
+        url: {type: string, required: false, note: "seed LinkedIn profile URL", example: "https://www.linkedin.com/in/williamhgates"}
+        id: {type: string, required: false, note: "seed Reverse Contact person id"}
+        cursor: {type: string, required: false, note: "metadata.nextCursor of the previous page"}
+        perPage: {type: integer, required: false, note: "1-100. The page size caps the charge", example: 10}
+      note: "exactly one of url | id. Returns full profiles of people close to the seed in role, seniority and company."
+    test_request:
+      body: {url: "https://www.linkedin.com/in/williamhgates", perPage: 1}
+    cost:
+      type: per_result
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      reported_charge: {path: quotas.creditsConsumed, unit: credit}
+      source: observed
+      source_url: https://www.reversecontact.com/pricing
+      checked: '2026-10-09'
+      confidence: verified
+      note: "1 credit per profile delivered, observed 2026-10-09 (perPage 1, 1 credit)."
+    docs_url: https://docs.reversecontact.com/endpoints/search-people-lookalike
+
+  - id: reversecontact.people.email.find
+    added: '2026-10-09'
+    capability: people.email.find
+    platform: people
+    scope: any_account
+    resource_ownership:
+      produces: [{kind: job, path: data.webhookId}]
+    async:
+      id_from: data.webhookId
+      poll:
+        endpoint: reversecontact.account.jobs.get
+        param: {in: pathParams, name: webhookId}
+      status:
+        path: data.status
+        progress: [created, in_progress]
+        success: [succeeded]
+        failure: []
+        billed_failure: [errored]
+      result: {path: data.result}
+      interval: 5
+    method: POST
+    path: /v2/contact/email
+    name: "Find a verified work email from name + company domain"
+    summary: "Find contact email"
+    input:
+      body:
+        url: {type: string, required: false, note: "LinkedIn profile URL", example: "https://www.linkedin.com/in/janedoe"}
+        fullName: {type: string, required: false, note: "with companyDomain", example: "Jane Doe"}
+        firstName: {type: string, required: false, note: "with lastName and companyDomain", example: "Jane"}
+        lastName: {type: string, required: false, example: "Doe"}
+        companyDomain: {type: string, required: false, example: "acme.com"}
+      note: "one of: url | fullName + companyDomain | firstName + lastName + companyDomain. Answers {status: created, webhookId, pollUrl}; the emails arrive in the poll body's data.result. A miss ends errored with errorCode email-not-found or person-not-found."
+    test_request:
+      body: {firstName: "Zzqvx", lastName: "Nonexistentprobe", companyDomain: "example.com"}
+    cost:
+      type: per_success
+      value: 3
+      currency: credit
+      per: 1
+      unit: result
+      settle: usage
+      usage: {path: data.creditsConsumed, unit: credit}
+      fallback: {value: 3, note: "the acknowledgement reserves 3 credits"}
+      source: observed
+      source_url: https://www.reversecontact.com/pricing
+      checked: '2026-10-09'
+      confidence: verified
+      note: "DELIBERATE MISS test_request (a person who cannot exist at example.com): the job ends errored, email-not-found, data.creditsConsumed 0, observed 2026-10-09. The hit price was observed once on a real public figure the same day: 3 credits, settled from data.creditsConsumed."
+    docs_url: https://docs.reversecontact.com/endpoints/contact-email
+
+  - id: reversecontact.people.phone.find
+    added: '2026-10-09'
+    capability: people.phone.find
+    platform: people
+    scope: any_account
+    resource_ownership:
+      produces: [{kind: job, path: data.webhookId}]
+    async:
+      id_from: data.webhookId
+      poll:
+        endpoint: reversecontact.account.jobs.get
+        param: {in: pathParams, name: webhookId}
+      status:
+        path: data.status
+        progress: [created, in_progress]
+        success: [succeeded]
+        failure: []
+        billed_failure: [errored]
+      result: {path: data.result}
+      interval: 5
+    method: POST
+    path: /v2/contact/phone
+    name: "Find a direct phone number from LinkedIn URL or name"
+    summary: "Find contact phone"
+    input:
+      body:
+        url: {type: string, required: false, note: "LinkedIn profile URL", example: "https://www.linkedin.com/in/janedoe"}
+        fullName: {type: string, required: false, note: "with companyDomain", example: "Jane Doe"}
+        firstName: {type: string, required: false, note: "with lastName and companyDomain", example: "Jane"}
+        lastName: {type: string, required: false, example: "Doe"}
+        companyDomain: {type: string, required: false, example: "acme.com"}
+      note: "one of: url | fullName + companyDomain | firstName + lastName + companyDomain. Async like the email finder; a miss ends errored with errorCode phone-not-found. A workspace that opted out of the phone finder gets HTTP 410 endpoint_unavailable."
+    test_request:
+      body: {firstName: "Zzqvx", lastName: "Nonexistentprobe", companyDomain: "example.com"}
+    cost:
+      type: per_success
+      value: 20
+      currency: credit
+      per: 1
+      unit: result
+      settle: usage
+      usage: {path: data.creditsConsumed, unit: credit}
+      fallback: {value: 20, note: "the acknowledgement reserves 20 credits"}
+      source: docs
+      source_url: https://www.reversecontact.com/pricing
+      checked: '2026-10-09'
+      confidence: documented
+      note: "20 credits per phone number found (pricing page). DELIBERATE MISS test_request: errored, phone-not-found, the 20-credit reservation refunded to data.creditsConsumed 0, observed 2026-10-09. Hit price unobserved."
+    docs_url: https://docs.reversecontact.com/endpoints/contact-phone
+
+  # ---------------------------------------------------------------------------------------------
+  # Companies
+  # ---------------------------------------------------------------------------------------------
+  - id: reversecontact.companies.enrich
+    added: '2026-10-09'
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    miss:
+      status: 404
+      means: "`Company not found for <domain>`: no company behind this domain, an expected outcome. Free (quotas.creditsConsumed 0); observed 2026-10-09, 253 ms"
+    method: POST
+    path: /v2/enrich/companies
+    name: "Enrich a company by domain: headcount, industry, HQ"
+    summary: "Enrich company"
+    input:
+      body:
+        domain: {type: string, required: true, note: "company website domain, no protocol", example: "stripe.com"}
+      note: "returns data.company: name, LinkedIn URL and id, description, industry, employee count and range, headquarters, locations, founding year, followers."
+    test_request:
+      body: {domain: "stripe.com"}
+    cost:
+      type: per_success
+      value: 2
+      currency: credit
+      per: 1
+      unit: record
+      reported_charge: {path: quotas.creditsConsumed, unit: credit}
+      source: observed
+      source_url: https://www.reversecontact.com/pricing
+      checked: '2026-10-09'
+      confidence: verified
+      note: "2 credits per company found, observed 2026-10-09. A 404 miss costs 0."
+    docs_url: https://docs.reversecontact.com/endpoints/enrich-company
+
+  - id: reversecontact.companies.enrich.linkedin
+    added: '2026-10-09'
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    miss:
+      status: 404
+      means: "the company profile is not on file, an expected outcome. Free (quotas.creditsConsumed 0)"
+    method: POST
+    path: /v2/fetch/companies
+    name: "Company profile by LinkedIn URL: headcount, industry, HQ"
+    summary: "Company profile"
+    input:
+      body:
+        url: {type: string, required: false, note: "LinkedIn company page URL", example: "https://www.linkedin.com/company/microsoft"}
+        id: {type: string, required: false, note: "Reverse Contact company id", example: "com_01jbd5vewyenebxgaz869ffe5t"}
+      note: "exactly one of url | id. Reads the cached company profile."
+    test_request:
+      body: {url: "https://www.linkedin.com/company/microsoft"}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: record
+      reported_charge: {path: quotas.creditsConsumed, unit: credit}
+      source: observed
+      source_url: https://www.reversecontact.com/pricing
+      checked: '2026-10-09'
+      confidence: verified
+      note: "1 credit per company returned, observed 2026-10-09. A 404 miss costs 0."
+    docs_url: https://docs.reversecontact.com/endpoints/fetch-company
+
+  - id: reversecontact.companies.profile.check
+    added: '2026-10-09'
+    capability: companies.profile.check
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v2/fetch/companies/check
+    name: "Check a company profile is on file and fresh, free"
+    summary: "Company profile status"
+    input:
+      body:
+        url: {type: string, required: false, note: "LinkedIn company page URL", example: "https://www.linkedin.com/company/microsoft"}
+        id: {type: string, required: false, note: "Reverse Contact company id", example: "com_01jbd5vewyenebxgaz869ffe5t"}
+      note: "exactly one of url | id. Returns exists and lastUpdate before paying for the profile."
+    test_request:
+      body: {url: "https://www.linkedin.com/company/microsoft"}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://docs.reversecontact.com/endpoints/check-company
+
+  - id: reversecontact.companies.search
+    added: '2026-10-09'
+    capability: companies.search
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v2/search/companies
+    name: "Search companies by industry, size, location or domain"
+    summary: "Search companies"
+    input:
+      body:
+        companyName: {type: string, required: false, example: "Stripe"}
+        companyDomain: {type: string, required: false, example: "stripe.com"}
+        industry: {type: string, required: false, note: "string or array, closed list: see the free filter list"}
+        employeeCountRange: {type: object, required: false, note: "{min, max}", example: {min: 50, max: 200}}
+        location: {type: object, required: false, note: "headquarters location filter"}
+        maxDataAgeDate: {type: string, required: false, note: "ISO date: only profiles refreshed since then"}
+        page: {type: integer, required: false, note: "1-50"}
+        perPage: {type: integer, required: false, note: "1-100, default 100", example: 100}
+      note: "filters combine with AND; GET /v2/search/companies/available-fields lists them, free."
+    test_request:
+      body: {companyDomain: "stripe.com", perPage: 1}
+    cost:
+      type: per_call
+      value: 1
+      currency: credit
+      per: 1
+      unit: page
+      reported_charge: {path: quotas.creditsConsumed, unit: credit}
+      source: observed
+      source_url: https://www.reversecontact.com/pricing
+      checked: '2026-10-09'
+      confidence: verified
+      note: "1 credit per page of up to 100 companies, whatever perPage, observed 2026-10-09 (perPage 1, 1 credit)."
+    docs_url: https://docs.reversecontact.com/endpoints/search-companies
+
+  - id: reversecontact.companies.search.filters
+    added: '2026-10-09'
+    capability: companies.search.filters
+    platform: companies
+    scope: any_account
+    method: GET
+    path: /v2/search/companies/available-fields
+    name: "Company-search filters and accepted values, free"
+    summary: "Company search available fields"
+    input: {}
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://docs.reversecontact.com/endpoints/search-companies-available-fields
+
+  # ---------------------------------------------------------------------------------------------
+  # Account plumbing
+  # ---------------------------------------------------------------------------------------------
+  - id: reversecontact.account.jobs.get
+    added: '2026-10-09'
+    capability: account.jobs.get
+    platform: account
+    scope: any_account
+    kind: utility
+    resource_ownership:
+      requires: {kind: job, param: webhookId}
+    miss:
+      status: 404
+      means: "WEBHOOK_EVENT_NOT_FOUND: unknown job id (410 WEBHOOK_EVENT_EXPIRED after 72 hours)"
+    method: GET
+    path: /v2/webhooks/{webhookId}
+    name: "Async job status and result by webhook id"
+    summary: "Poll async job"
+    input:
+      pathParams:
+        webhookId: {type: string, required: true, note: "data.webhookId of a live fetch, email or phone acknowledgement", example: "00000000-0000-0000-0000-000000000000"}
+      note: "returns data.status (created, in_progress, succeeded, errored), data.result, data.errorCode and the job's net data.creditsConsumed."
+    test_request:
+      pathParams: {webhookId: "00000000-0000-0000-0000-000000000000"}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://docs.reversecontact.com/guides/polling
+
+  - id: reversecontact.account.usage
+    added: '2026-10-09'
+    capability: account.usage
+    platform: account
+    scope: own_account
+    kind: account
+    method: GET
+    path: /v2/usage
+    name: "Credit balance, rate limits and daily quotas"
+    summary: "Usage"
+    input: {}
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, unit: call}
+    docs_url: https://docs.reversecontact.com/endpoints/usage

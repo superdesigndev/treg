@@ -675,6 +675,29 @@ async def test_dropleads_balance_collector_uses_total_available(payload, expecte
     assert row["unit"] == "credits"
 
 
+@pytest.mark.parametrize(
+    "payload,expected",
+    [
+        ({"success": True, "data": None, "quotas": {"workspace": {
+            "credits": {"total": 5000, "used": 1200, "left": 3800}, "hasUnlimitedCredits": False}}}, 3800),
+        ({"success": True, "data": None, "quotas": {"workspace": {"credits": {"left": 0}}}}, 0),
+        ({"success": True, "quotas": {"workspace": {"credits": {"left": -1}}}}, None),
+        ({"success": True, "quotas": {"workspace": {"credits": {"left": True}}}}, None),
+        ({"success": False, "data": None, "error": {"code": "API_KEY_INVALID"}}, None),
+    ],
+)
+async def test_reversecontact_balance_collector_reads_workspace_credits_left(payload, expected):
+    def serve(request):
+        assert request.url.path == "/v2/usage"
+        assert request.headers["authorization"] == "Bearer test-key"
+        return httpx.Response(200, json=payload)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(serve)) as upstream:
+        row = await collectors._reversecontact(upstream, "test-key")
+    assert row["value"] == expected
+    assert row["unit"] == "credits"
+
+
 @pytest.mark.parametrize("remaining,expected", [(1987, 1987), (0, 0), (-1, None), (True, None)])
 async def test_prospeo_balance_collector_uses_remaining_credits(remaining, expected):
     def serve(request):

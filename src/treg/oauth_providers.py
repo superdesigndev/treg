@@ -1659,6 +1659,27 @@ DATAGMA = OAuthProvider(
     probe_path="/api/ingress/v1/mine", probe_method="GET",
 )
 
+REVERSECONTACT = OAuthProvider(
+    service="reversecontact", display_name="Reverse Contact", auth_kind="key",
+    token_label="API key", token_placeholder="your Reverse Contact API key (rc_...)",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://app.reversecontact.com/api-keys",
+    setup_action_label="Get your Reverse Contact API key",
+    setup_steps=("Sign in to Reverse Contact and open API keys.",
+                 "Create a key and paste it here."),
+    setup_note=("Enrich, fetch, search and contact calls spend prepaid credits, and a miss is free. "
+                "The connection check reads the free usage route and spends nothing."),
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=("Turn an email, a name or a LinkedIn URL into a full person or company profile, "
+             "search people and companies, and find work emails and phones."),
+    base_url="https://api.reversecontact.com",
+    docs_url="https://docs.reversecontact.com",
+    # Live 2026-10-09: a valid key returned 200 here and a bogus key returned 401 API_KEY_INVALID.
+    # Free route: no credit spent, not counted against the rate or daily limits.
+    probe_path="/v2/usage", probe_method="GET",
+)
+
 TRYKITT = OAuthProvider(
     service="trykitt",
     display_name="Kitt AI",
@@ -3955,7 +3976,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
         ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
-        QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
+        QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA, REVERSECONTACT,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
         REPLICATE,

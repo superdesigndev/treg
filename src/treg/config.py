@@ -239,6 +239,7 @@ class Settings(BaseSettings):
     platform_email_adyntel: str = ""  # JSON body email paired with the Adyntel API key
     platform_key_scrubby: str = ""  # x-api-key; prepaid verification credits
     platform_key_zerobounce: str = ""  # api_key query param; PAYG validation credits, Auto-Pay managed upstream
+    platform_key_reversecontact: str = ""  # Bearer rc_ key; prepaid pay-as-you-go credits, valid 3 months
     platform_key_datagma: str = ""  # apiId query param; prepaid purchased credits, replenished manually
     platform_key_leadmagic: str = ""
     platform_key_lusha: str = ""
