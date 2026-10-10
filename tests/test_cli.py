@@ -107,6 +107,27 @@ def test_is_loopback_url_detects_localhost_variants():
     assert cli._is_loopback_url("") is False  # empty URL shouldn't crash
 
 
+def test_login_exits_instead_of_printing_a_dead_link_when_offline(monkeypatch):
+    """A sandboxed agent shell has no network. Login used to mint a local id the server never saw
+    and print a link that could only answer "this login has expired"."""
+    import httpx
+    import webbrowser
+
+    def fake_post(url, **kw):
+        raise httpx.ConnectError("[Errno 1] Operation not permitted")
+
+    opened = []
+    monkeypatch.setattr(httpx, "post", fake_post)
+    monkeypatch.setattr(webbrowser, "open", opened.append)
+    args = type("A", (), {"token": None, "email": None})()
+    with pytest.raises(SystemExit) as exc_info:
+        cli.cmd_login(args, {"base_url": "https://treg.to", "token": None})
+    assert "Cannot reach https://treg.to" in str(exc_info.value)
+    assert "treg login --token" in str(exc_info.value)
+    assert 'prefix_rule(pattern = ["treg"], decision = "allow")' in str(exc_info.value)
+    assert opened == []
+
+
 def test_login_exits_with_helpful_message_when_localhost_unreachable(monkeypatch):
     """When base_url is localhost and the server can't be reached, login must fail early with
     a message that tells the user how to fix it (point at production), not silently open a
