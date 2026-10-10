@@ -1297,6 +1297,34 @@ AKTA = OAuthProvider(
     probe_path="/v1/company/search/?query=canva.com",
 )
 
+LINKEDPULSE = OAuthProvider(
+    service="linkedpulse",
+    display_name="LinkedPulse",
+    auth_kind="key",
+    token_label="API key",
+    token_placeholder="your LinkedPulse API key",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://linkedpulse.ai/app/api",
+    setup_action_label="Get your LinkedPulse API key",
+    setup_steps=(
+        "Create a LinkedPulse account and verify your email.",
+        "Add prepaid credit, then create and copy an API key in your workspace.",
+    ),
+    setup_note="Uses your prepaid LinkedPulse wallet; no subscription required. Connecting runs one Activity Check ($0.02 on success).",
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary="Check observable LinkedIn activity and generate engagement topics and outreach context.",
+    base_url="https://api.linkedpulse.ai",
+    docs_url="https://linkedpulse.ai/docs",
+    probe_path="/v1/activity-check",
+    probe_method="POST",
+    probe_json={"linkedin_url": "https://www.linkedin.com/in/williamhgates"},
+    probe_cost_micro=20_000,
+)
+
 HUNTER = OAuthProvider(
     service="hunter",
     display_name="Hunter",
@@ -3954,7 +3982,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
+        ANYAPI, APOLLO, PDL, AKTA, HUNTER, LINKEDPULSE, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
