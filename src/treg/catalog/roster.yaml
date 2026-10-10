@@ -1,0 +1,208 @@
+{
+  "provider": "roster",
+  "source": {
+    "docs": "https://api.ugcroster.com/docs",
+    "openapi": "https://api.ugcroster.com/v1/openapi.json",
+    "curated": "2026-10-04"
+  },
+  "limits": "Prepaid access: 60 requests/minute without a monthly subscription. Existing subscription plans retain 60/120/300 requests per minute; usage has separate 60/min budget.",
+  "pricing_url": "https://api.ugcroster.com/pricing",
+  "endpoints": [
+    {
+      "id": "roster.creators.search",
+      "capability": "creators.search",
+      "platform": "creators",
+      "scope": "any_account",
+      "method": "GET",
+      "path": "/creators/search",
+      "name": "Search the creator directory",
+      "summary": "Search the creator directory",
+      "input": {
+        "queryParams": {
+          "q": {
+            "type": "string",
+            "required": false,
+            "note": "Free-text search across username, name and bio. Max 120 chars.",
+            "example": "fitness"
+          },
+          "niche": {
+            "type": "string",
+            "required": false,
+            "note": "Niche keyword, e.g. skincare, fitness, personal finance.",
+            "example": "skincare"
+          },
+          "category": {
+            "type": "string",
+            "required": false,
+            "note": "Top-level category, e.g. Beauty, Fitness, Food.",
+            "example": "Beauty"
+          },
+          "follower_min": {
+            "type": "integer",
+            "required": false,
+            "note": "Minimum follower count.",
+            "example": 10000
+          },
+          "follower_max": {
+            "type": "integer",
+            "required": false,
+            "note": "Maximum follower count.",
+            "example": 100000
+          },
+          "has_email": {
+            "type": "boolean",
+            "required": false,
+            "note": "true / 1: only creators with an extracted contact email.",
+            "example": false
+          },
+          "city": {
+            "type": "string",
+            "required": false,
+            "note": "City name, e.g. Austin.",
+            "example": "Austin"
+          },
+          "state": {
+            "type": "string",
+            "required": false,
+            "note": "State / region, e.g. TX or Texas.",
+            "example": "TX"
+          },
+          "country": {
+            "type": "string",
+            "required": false,
+            "note": "Country, e.g. US.",
+            "example": "US"
+          },
+          "gender": {
+            "type": "string",
+            "required": false,
+            "note": "Creator gender where known.",
+            "example": "female"
+          },
+          "age_min": {
+            "type": "integer",
+            "required": false,
+            "note": "Minimum age where known.",
+            "example": 18
+          },
+          "age_max": {
+            "type": "integer",
+            "required": false,
+            "note": "Maximum age where known.",
+            "example": 40
+          },
+          "sort": {
+            "type": "string",
+            "required": false,
+            "note": "followers (default) or engagement, descending.",
+            "example": "followers"
+          },
+          "page": {
+            "type": "integer",
+            "required": false,
+            "note": "1-based page number. Default 1.",
+            "example": 1
+          },
+          "limit": {
+            "type": "integer",
+            "required": false,
+            "note": "Items per page. Default 20, maximum 100 \u2014 values above 100 are clamped, not rejected.",
+            "example": 1
+          },
+          "offset": {
+            "type": "integer",
+            "required": false,
+            "note": "Alternative to page. Converted internally to page = floor(offset / limit) + 1. When both page and offset are present, offset wins.",
+            "example": 0
+          }
+        }
+      },
+      "cost": {
+        "type": "per_call",
+        "value": 10,
+        "currency": "credit",
+        "per": 1,
+        "unit": "call",
+        "source": "docs",
+        "source_url": "https://api.ugcroster.com/docs/credits",
+        "checked": "2026-10-04",
+        "confidence": "documented",
+        "note": "Vendor self-check October 4, 2026: five first-page searches, limit=100, each HTTP200 and 10 credits observed from /usage delta. Catalog uses a smaller limit=1 for maintainer verification; that exact smaller request has not yet been observed. USD procurement remains pending."
+      },
+      "docs_url": "https://api.ugcroster.com/docs",
+      "test_request": {
+        "queryParams": {
+          "q": "fitness",
+          "page": 1,
+          "limit": 1
+        }
+      }
+    },
+    {
+      "id": "roster.creators.profile",
+      "capability": "creators.profile",
+      "platform": "creators",
+      "scope": "any_account",
+      "method": "GET",
+      "path": "/creators/{pk}",
+      "name": "Get one creator profile",
+      "summary": "Get one creator profile",
+      "input": {
+        "pathParams": {
+          "pk": {
+            "type": "string",
+            "required": true,
+            "note": "Creator primary key from search results."
+          }
+        }
+      },
+      "cost": {
+        "type": "per_call",
+        "value": 1,
+        "currency": "credit",
+        "per": 1,
+        "unit": "call",
+        "source": "docs",
+        "source_url": "https://api.ugcroster.com/docs/credits",
+        "checked": "2026-10-04",
+        "confidence": "documented",
+        "note": "Vendor self-check October 4, 2026: HTTP200 on a real pk from search; /usage credits.used increased 50 to 51. Not-found charge remains documented, not observed. USD procurement remains pending."
+      },
+      "docs_url": "https://api.ugcroster.com/docs",
+      "untestable": "Real-hit profile verified by vendor with a pk from preceding search; no creator identifier retained in evidence. Maintainer must select a real pk from own authorized search for independent verification."
+    },
+    {
+      "id": "roster.account.usage",
+      "capability": "account.usage",
+      "platform": "account",
+      "scope": "own_account",
+      "method": "GET",
+      "path": "/usage",
+      "name": "Current-period usage for the calling key",
+      "summary": "Current-period usage for the calling key",
+      "input": {
+        "note": "Free authenticated usage probe; no parameters."
+      },
+      "cost": {
+        "type": "free",
+        "value": 0,
+        "currency": "USD",
+        "per": 1,
+        "unit": "call",
+        "source": "docs",
+        "source_url": "https://api.ugcroster.com/docs/credits",
+        "checked": "2026-10-04",
+        "confidence": "documented",
+        "note": "Vendor self-check October 4, 2026: authenticated /usage returned HTTP200 around metered calls. This account route is not platform discovery traffic."
+      },
+      "docs_url": "https://api.ugcroster.com/docs",
+      "test_request": {
+        "queryParams": {}
+      },
+      "kind": "account"
+    }
+  ],
+  "proposed_capabilities": {
+    "creators.profile": "Get a creator's profile, contacts and stats"
+  }
+}

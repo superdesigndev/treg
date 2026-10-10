@@ -3947,6 +3947,19 @@ PINTEREST_ADS = OAuthProvider(
     probe_path="/user_account",  # cheap token check once configured; auto-provisions a Bearer tool
 )
 
+ROSTER = OAuthProvider(
+    service="roster", display_name="Roster Creator Data", auth_kind="key",
+    token_label="Data API key", token_placeholder="your Roster data API key",
+    token_header="Authorization", token_format="Bearer {secret}",
+    setup_url="https://api.ugcroster.com/keys", setup_action_label="Get a Roster data key",
+    setup_steps=("Sign in and buy prepaid credits.", "Create a data key in the API console."),
+    setup_note="Prepaid access starts at $25/5,000 credits without a monthly subscription, 60 requests/minute; no automatic recharge. Search: 10 credits/page; profile: 1 credit/read; usage probe: free.",
+    auth_uri="", token_uri="", scopes={}, client_id_setting="", client_secret_setting="",
+    category="Enrichment", summary="Find creators by niche, followers and creator location; retrieve stored directory profiles.",
+    base_url="https://api.ugcroster.com/v1", docs_url="https://api.ugcroster.com/docs", probe_path="/usage",
+)
+
+
 REGISTRY: dict[str, OAuthProvider] = {
     p.service: p
     for p in (
@@ -3954,7 +3967,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         GOOGLE_ADS, YOUTUBE,
         LINKEDIN, SLACK, X, TIKTOK, FACEBOOK, INSTAGRAM, META_ADS,
         # API-key providers
-        ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
+        ROSTER, ANYAPI, APOLLO, PDL, AKTA, HUNTER, SUMBLE, MOLTSETS, OPENMART, HARVESTAPI, FETCHINIO, DROPLEADS,
         QUICKENRICH, PROSPEO, AIARK, WIZA, LIMADATA, GETLEADSIO, SCRUBBY, ZEROBOUNCE, DATAGMA,
         TRYKITT, CONTACTOUT, MILLIONVERIFIER, BOUNCEBAN, CRUNCHBASE, MINIMAX, FISHAUDIO,
         OPENROUTER,
