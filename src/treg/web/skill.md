@@ -37,8 +37,8 @@ treg login --email you@company.com    # terminal-only alternative (emailed 6-dig
 treg login --token <per-org-token>    # non-interactive (agents/CI)
 ```
 Everything runs in your **active org** (after first login, create or join a team). Team invites arrive by
-email — see them with `treg invites`, accept with `treg accept` (or `treg org join <code>`). Switch
-teams: `treg org switch <slug>`.
+email — see them with `treg invites`, accept with `treg accept <org-slug>` (or `treg org join <code>`).
+Switch teams: `treg org use <slug>`.
 
 ## Already connected over MCP? Then you have the tools, not the CLI
 
@@ -62,7 +62,8 @@ spend it** — matters more here, because `call` returns `cost_usd` and you can 
 actually cost rather than estimating.
 
 A `call` on a catalog endpoint spends the team's balance. A `call` on one of the team's own tools
-spends nothing: that key belongs to them.
+spends nothing: that key belongs to them. The exception is an X connection made through treg's app,
+which is billed per call (see above).
 
 ## Task — the catalog: what treg can do for you (start here)
 
@@ -481,7 +482,7 @@ treg org create "Team A"                       # you become owner (auto-active)
 treg org rename --name "Team B" --slug team-b   # admin+; existing keys keep working
 treg org invite bob@company.com --role member  # admin+; emails the invite (a one-time code is the fallback)
 treg org members                               # admin+; who's in the active org
-treg org ls / treg org switch <slug>           # your orgs / switch active
+treg org ls / treg org use <slug>              # your orgs / switch active
 ```
 **Give an agent its own identity** (admin+). An agent doesn't have to borrow the human's token — mint
 it one, and every call it makes is capped, scoped and logged as *itself*:
@@ -497,10 +498,11 @@ read** — it can never sign in, create a team, or be an owner. If you are an ag
 your own token, use it instead of the machine owner's: your work then shows up under your own name in
 `treg calls`.
 
-The invitee signs in with the invited email and runs `treg accept` — no code handling needed
-(the code path still works: `treg org join <code>`). A brand-new invitee also gets their own
-**personal org** (no empty state), so removing them from a team never locks them out. Give a tool
-a probe so treg can validate it: `health_check: {method, path, expect_status}` (e.g. intercom `{"path":"me"}`).
+The invitee signs in with the invited email and runs `treg accept <org-slug>` (`treg invites` shows
+the slug) — no code handling needed (the code path still works: `treg org join <code>`). Removing
+someone from a team leaves their account: they can still sign in and make their own team with
+`treg org create`. Give a tool a probe so treg can validate it:
+`health_check: {method, path, expect_status}` (e.g. intercom `{"path":"me"}`).
 
 ## Feedback
 
