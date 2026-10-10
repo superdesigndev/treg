@@ -1,0 +1,548 @@
+# Village.ai authenticates with the user's personal API token, sent as a Bearer header; it acts as
+# that user. A failed call (any 4xx or 5xx) is never charged. The own_account rows answer from the
+# caller's own network or synced contacts, so their answers stay per connection, and the network
+# rows answer only once that network has synced (village.account.identity reports
+# is_sync_complete). Real-time enrich fetches are debited after the response, so their charge is
+# not in the response metadata.
+provider: village
+source:
+  docs: https://docs.village.ai/api-reference/introduction
+  openapi: https://api.village.ai/v2/docs/openapi.json
+  curated: '2026-10-09'
+limits: "100 requests per second per token (docs). A 402 insufficient_credits answer stops a call before any work is done."
+pricing_url: https://docs.village.ai/api-reference/credits
+proposed_capabilities:
+  people.intro_paths: "Find the warm path to a person: who on your team, or which mutual connection, can introduce you, ranked by connection strength"
+  companies.intro_paths: "Find the warm path into a company: the people there you can reach and who can introduce you, ranked by connection strength"
+  companies.intro_paths.check: "Check whether you have a warm path into a company before paying for the full paths"
+  people.connection_rank: "Sort the people you name by how strongly you are connected to them"
+  companies.connection_rank: "Sort the companies you name by how strongly you are connected to people there"
+endpoints:
+  - id: village.people.search
+    added: '2026-10-09'
+    domain: contacts
+    capability: people.search
+    platform: people
+    scope: own_account
+    method: POST
+    path: /v2/people/search
+    body_allowlist: true
+    name: Search people in plain language, network or global
+    summary: Search for people using natural language queries.
+    input:
+      bodyType: json
+      body:
+        prompt: {type: string, required: false, example: "VP Engineering at Series B fintechs in NYC", note: "Natural language search query. Send it as prompt, not query. Optional when filters or list_filter is sent."}
+        filters: {type: object, required: false, note: "Structured search filters. Multi-value keys accept an array of values (preferred) or a legacy comma-separated / JSON-array string. Keys include name, linkedinUrl, position, seniority, department, function, company, companyDomain, companyIndustry, companySize, country, city and yearsOfExperienceMin; the docs list them all."}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100, example: 25, note: "Maximum number of results per page. The price scales with the results returned."}
+        mode: {type: string, required: false, enum: [auto, lookup, simple, complex], note: "auto classifies the query into lookup, simple or complex. lookup is for direct matches, simple for firmographic queries, complex for multi-step or subjective queries."}
+        scope: {type: string, required: false, enum: [network, global, specific_list], note: "Defaults: lookup=global, simple=network, complex=network. network searches your connections first, global searches everyone, specific_list needs specific_list_data."}
+        cursor: {type: "string|object", required: false, note: "Pagination cursor from the previous response (encoded string or cursor object)."}
+        network_filters: {type: object, required: false, note: "Network filtering options: connection_degrees, introducer_linkedin_ids, user_to_introducer_types, user_to_introducer_min_score, introducer_to_target_types, introducer_to_target_min_score, exclude_teams, exclude_community."}
+        include_counts: {type: string, required: false, enum: [global, network, all], note: "Inline count scopes computed on the first page only. Ignored when cursor is sent, and adds latency."}
+        specific_list_data: {type: object, required: false, note: "Required when scope is specific_list: people_linkedin_identifiers, 1 to 50,000 entries, each a bare LinkedIn identifier or {id, score}. limit is then ignored and every match comes back in one response."}
+        list_filter: {type: object, required: false, example: {people_list_id: 123}, note: "Search within your saved lists: people_list_id, company_list_id, or both. A list alone is a valid search. Lists must belong to your active workspace."}
+        screening_handoff: {type: boolean, required: false, example: false, note: "Complex searches keep only objective constraints in SQL and return the subjective ones as metadata.screening_criteria for a downstream screening step."}
+      note: "Search 775M+ people in plain language, across your network or globally, to build lead lists, prospect lists, candidate shortlists and investor target lists. scope defaults to network for the simple and complex modes and to global for lookup, so pass scope global to search everyone. The Free plan returns at most 10 results. Complex searches usually take 20 to 60 seconds; wait rather than retry. Streaming (stream) is not accepted by this tool."
+    test_request: {body: {prompt: "CEO of Microsoft", scope: global, limit: 1}}
+    cost:
+      type: per_result
+      value: 3
+      currency: credit
+      per: 10
+      unit: result
+      source: docs
+      source_url: https://docs.village.ai/api-reference/people/search-people
+      checked: '2026-10-09'
+      confidence: inferred
+      note: "A floor: 3 credits per 10 results returned (0.3 per result, rounded up per call), and every call also pays for the AI work, metered on tokens with no cap (docs: 2 to 3 credits). Observed 2026-10-09: 10 results cost 4 credits on a first-time search (3 for results, 1 for AI) and 3 on an identical repeat; 1 result cost 2, then 1 on repeat. A search that returns no results pays for the AI work only. With scope specific_list, limit is ignored and every match is returned and charged."
+    docs_url: https://docs.village.ai/api-reference/people/search-people
+
+  - id: village.companies.search
+    added: '2026-10-09'
+    domain: companies
+    capability: companies.search
+    platform: companies
+    scope: own_account
+    method: POST
+    path: /v2/companies/search
+    body_allowlist: true
+    name: Search companies in plain language, network or global
+    summary: Search for companies using natural language queries.
+    input:
+      bodyType: json
+      body:
+        prompt: {type: string, required: false, example: "Find B2B SaaS companies with 50-200 employees in California", note: "Natural language search query. Send it as prompt, not query. Optional when filters or list_filter is sent."}
+        filters: {type: object, required: false, note: "Structured company filters, compiled deterministically. Send filters without a prompt. Keys include name, domain, linkedinUrl, industry, companySize, companyType, country, city, fundingStage, foundedAfter, hiring and totalFundingMinUsd; the docs list them all."}
+        limit: {type: integer, required: false, default: 25, min: 1, max: 100, example: 25, note: "Maximum number of results per page. The price scales with the results returned."}
+        mode: {type: string, required: false, default: auto, enum: [auto, lookup, simple, complex], example: auto, note: "Search mode for prompt-only searches: auto lets the system decide, lookup is a direct match, simple is LLM-powered, complex adds thinking and high-reasoning SQL generation. Structured filters always compile deterministically."}
+        scope: {type: string, required: false, enum: [network, global], note: "network searches companies connected to your network first, global searches all companies."}
+        cursor: {type: "string|object", required: false, note: "Pagination cursor from the previous response (encoded string or cursor object)."}
+        network_filters: {type: object, required: false, note: "Network path and relationship filters: connection_degrees, introducer_linkedin_ids, user_to_introducer_types, user_to_introducer_min_score, introducer_to_target_types, introducer_to_target_min_score, exclude_teams, exclude_community."}
+        include_counts: {type: string, required: false, enum: [global, network, all], note: "Inline count scopes computed on the first page only. Ignored when cursor is sent, and adds latency."}
+        list_filter: {type: object, required: false, example: {company_list_id: 123}, note: "Search within your saved lists: company_list_id, people_list_id, or both. A list alone is a valid search. Lists must belong to your active workspace."}
+        screening_handoff: {type: boolean, required: false, example: false, note: "Complex searches keep only objective constraints in SQL and return the subjective ones as metadata.screening_criteria for a downstream screening step."}
+      note: "Search 52M+ companies in plain language, across your network or globally, to build account and investor target lists. By default this searches only companies connected to your network; pass scope global to search everyone. Results carry relevance scores and connection strength. Complex searches usually take 20 to 60 seconds; wait rather than retry. Streaming (stream) is not accepted by this tool."
+    test_request: {body: {prompt: "Stripe", scope: global, limit: 1}}
+    cost:
+      type: per_result
+      value: 3
+      currency: credit
+      per: 10
+      unit: result
+      source: docs
+      source_url: https://docs.village.ai/api-reference/companies/search-companies
+      checked: '2026-10-09'
+      confidence: inferred
+      note: "A floor: 3 credits per 10 results returned (0.3 per result, rounded up per call), and every call also pays for the AI work, metered on tokens with no cap (docs: 2 to 3 credits). Observed 2026-10-09: 10 results cost 4 credits on a first-time search (3 for results, 1 for AI) and 3 on an identical repeat; 1 result cost 2. A search that returns no results pays for the AI work only."
+    docs_url: https://docs.village.ai/api-reference/companies/search-companies
+
+  - id: village.people.enrich
+    added: '2026-10-09'
+    domain: contacts
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/enrich
+    name: "Enrich a person by LinkedIn URL: title, company, location"
+    summary: Get detailed profile information for a person.
+    miss:
+      status: 404
+      means: "Village could not find this person, even with a live fetch. Nothing was charged."
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false, example: "https://linkedin.com/in/johndoe", note: "LinkedIn person profile URL. Send this or url."}
+        url: {type: string, required: false, example: "https://linkedin.com/in/johndoe", note: "Generic URL (auto-detected). Send this or linkedin_url."}
+        mode: {type: string, required: false, default: cached_first, enum: [cached_first, cached_only, realtime_only], example: cached_first, note: "cached_first returns the profile Village holds when it is recent and otherwise fetches it live. realtime_only always fetches live. cached_only never fetches and is free; village.people.enrich.stored is that tier."}
+      note: "One of linkedin_url or url is required. Returns full name, job title or headline, current company, location, profile photo URL and LinkedIn URL. A profile Village does not hold is fetched live from public LinkedIn data and saved to Village."
+    test_request: {body: {linkedin_url: "https://www.linkedin.com/in/satyanadella"}}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.village.ai/api-reference/people/enrich-person
+      checked: '2026-10-09'
+      confidence: verified
+      note: "Cached lookups are unlimited and free. 1 credit only for a real-time fetch that returns data; a fetch that finds nothing is free. Observed 2026-10-09: the test call was a cached lookup for 0 credits; realtime_only on the same profile moved the balance by 1 credit, debited after the response; an unknown profile answered 404 for 0."
+    docs_url: https://docs.village.ai/api-reference/people/enrich-person
+
+  - id: village.people.enrich.stored
+    added: '2026-10-09'
+    domain: contacts
+    capability: people.enrich
+    platform: people
+    scope: any_account
+    method: POST
+    path: /v2/people/enrich
+    body_allowlist: true
+    name: Person profile by LinkedIn URL, free cached lookup
+    summary: Get detailed profile information for a person.
+    miss:
+      status: 404
+      means: "This person is not in the cache. Nothing was charged; village.people.enrich can fetch the profile live."
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false, example: "https://linkedin.com/in/johndoe", note: "LinkedIn person profile URL. Send this or url."}
+        url: {type: string, required: false, example: "https://linkedin.com/in/johndoe", note: "Generic URL (auto-detected). Send this or linkedin_url."}
+        mode: {type: string, required: true, enum: [cached_only], note: "Fixed to cached_only: answer from the cache only, never fetch live."}
+      note: "One of linkedin_url or url is required. Returns the same profile as village.people.enrich from the cache only: cached lookups are unlimited and free. A person not in the cache answers 404."
+    test_request: {body: {linkedin_url: "https://www.linkedin.com/in/satyanadella", mode: cached_only}}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: observed
+      source_url: https://docs.village.ai/api-reference/people/enrich-person
+      checked: '2026-10-09'
+      confidence: verified
+      note: "Never charged: this tier never fetches live. Observed 2026-10-09: the test call and a 404 for an unknown profile both cost 0."
+    docs_url: https://docs.village.ai/api-reference/people/enrich-person
+
+  - id: village.companies.enrich
+    added: '2026-10-09'
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v2/companies/enrich
+    name: "Enrich a company by domain or URL: headcount, industry"
+    summary: Get detailed information about a company.
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: false, example: "acme.com", note: "Company domain (normalized, without www prefix). Send one of domain, linkedin_url or url."}
+        linkedin_url: {type: string, required: false, example: "https://linkedin.com/company/acme-corp", note: "LinkedIn company page URL."}
+        url: {type: string, required: false, note: "Generic URL (auto-detected)."}
+        mode: {type: string, required: false, default: cached_first, enum: [cached_first, cached_only, realtime_only], example: cached_first, note: "cached_first returns the company Village holds when it is recent and otherwise fetches it live. realtime_only always fetches live. cached_only never fetches and is free; village.companies.enrich.stored is that tier."}
+      note: "One of domain, linkedin_url or url is required. Returns company name, website, LinkedIn URL, logo, employee count, industry, founded year and description. A company Village does not hold is fetched live from LinkedIn data or, for an unknown domain, from the company's public website, and saved to Village."
+    test_request: {body: {domain: "stripe.com"}}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.village.ai/api-reference/companies/enrich-company
+      checked: '2026-10-09'
+      confidence: verified
+      note: "Cached lookups are unlimited and free. 1 credit only for a real-time fetch that returns data; a fetch that finds nothing is free. Observed 2026-10-09: the test call was a cached lookup for 0 credits; realtime_only on the same domain moved the balance by 1 credit, debited after the response."
+    docs_url: https://docs.village.ai/api-reference/companies/enrich-company
+
+  - id: village.companies.enrich.stored
+    added: '2026-10-09'
+    domain: companies
+    capability: companies.enrich
+    platform: companies
+    scope: any_account
+    method: POST
+    path: /v2/companies/enrich
+    body_allowlist: true
+    name: Company profile by domain or URL, free cached lookup
+    summary: Get detailed information about a company.
+    miss:
+      status: 404
+      means: "This company is not in the cache. Nothing was charged; village.companies.enrich can fetch the profile live."
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: false, example: "acme.com", note: "Company domain (normalized, without www prefix). Send one of domain, linkedin_url or url."}
+        linkedin_url: {type: string, required: false, example: "https://linkedin.com/company/acme-corp", note: "LinkedIn company page URL."}
+        url: {type: string, required: false, note: "Generic URL (auto-detected)."}
+        mode: {type: string, required: true, enum: [cached_only], note: "Fixed to cached_only: answer from the cache only, never fetch live."}
+      note: "One of domain, linkedin_url or url is required. Returns the same profile as village.companies.enrich from the cache only: cached lookups are unlimited and free. A company not in the cache answers 404."
+    test_request: {body: {domain: "stripe.com", mode: cached_only}}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: observed
+      source_url: https://docs.village.ai/api-reference/companies/enrich-company
+      checked: '2026-10-09'
+      confidence: verified
+      note: "Never charged: this tier never fetches live. Observed 2026-10-09: the test call and a 404 for an unknown domain both cost 0."
+    docs_url: https://docs.village.ai/api-reference/companies/enrich-company
+
+  - id: village.people.email.find
+    added: '2026-10-09'
+    domain: contacts
+    capability: people.email.find
+    platform: people
+    scope: own_account
+    method: POST
+    path: /v2/people/enrich/emails
+    name: Find a person's email address by LinkedIn URL
+    summary: Find the email address for a person.
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false, example: "https://linkedin.com/in/johndoe", note: "LinkedIn person profile URL. Send this or url."}
+        url: {type: string, required: false, example: "https://linkedin.com/in/johndoe", note: "Generic URL (auto-detected). Send this or linkedin_url."}
+        search_deeper: {type: boolean, required: false, example: true, note: "Skip the private-contact tier and query the provider even when Village already holds an address for this person. Charged only when it returns one."}
+      note: "One of linkedin_url or url is required. Returns email (the best address, or null when none was found) and emails, every address Village holds for the person, best first. Addresses come from Village, your own synced contacts, or a live Apollo.io lookup whose result is saved to Village."
+    test_request: {body: {linkedin_url: "https://www.linkedin.com/in/satyanadella"}}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.village.ai/api-reference/people/get-person-email
+      checked: '2026-10-09'
+      confidence: verified
+      note: "Pay-on-success: 1 credit per email found; no email found, no credit (it answers 200 with email null). Observed 2026-10-09: the test call found an email for 1 credit; an unknown profile cost 0."
+    docs_url: https://docs.village.ai/api-reference/people/get-person-email
+
+  - id: village.people.from_email
+    added: '2026-10-09'
+    domain: contacts
+    capability: linkedin.profile.from_email
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /v2/people/enrich/by-email
+    name: "Reverse email-to-profile lookup: LinkedIn URL, job title"
+    summary: "Reverse email lookup: find out who an email address belongs to."
+    miss:
+      status: 404
+      means: "No person matches this email. Nothing was charged."
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, format: email, example: "satyan@microsoft.com", note: "Work or personal email address of the person to look up."}
+        mode: {type: string, required: false, default: cached_first, enum: [cached_first, cached_only, realtime_only], example: cached_first, note: "cached_first returns the profile Village holds when it is recent and otherwise fetches it live. realtime_only always fetches live. cached_only answers from the cache only, for free; village.people.from_email.stored is that tier."}
+      note: "Returns the same profile as village.people.enrich: full name, job title or headline, current company, location, profile photo URL and LinkedIn URL. An address Village does not know is sent to Apollo.io to identify its owner, and the match is saved to Village."
+    test_request: {body: {email: "satyan@microsoft.com"}}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: docs
+      source_url: https://docs.village.ai/api-reference/people/reverse-lookup-by-email
+      checked: '2026-10-09'
+      confidence: inferred
+      note: "A floor: 1 credit per person found, plus 1 credit for a real-time profile fetch when Village does not already hold the profile. An email Village has already resolved is free, and no match is free. The call needs a balance of at least 1 credit to start. Observed 2026-10-09: the test address was already resolved, so it answered 200 for 0 credits, and an unknown address answered 404 for 0. The 1-credit price of a new match was not observed."
+    docs_url: https://docs.village.ai/api-reference/people/reverse-lookup-by-email
+
+  - id: village.people.from_email.stored
+    added: '2026-10-09'
+    domain: contacts
+    capability: linkedin.profile.from_email
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /v2/people/enrich/by-email
+    body_allowlist: true
+    name: Reverse email-to-profile lookup, free cached lookup
+    summary: "Reverse email lookup: find out who an email address belongs to."
+    miss:
+      status: 404
+      means: "This email or its profile is not in the cache. Nothing was charged; village.people.from_email can look it up live."
+    input:
+      bodyType: json
+      body:
+        email: {type: string, required: true, format: email, example: "satyan@microsoft.com", note: "Work or personal email address of the person to look up."}
+        mode: {type: string, required: true, enum: [cached_only], note: "Fixed to cached_only: answer from the cache only, never look up live."}
+      note: "Returns the same profile as village.people.from_email from the cache only: cached lookups are unlimited and free. An email or profile not in the cache answers 404. The call still needs a balance of at least 1 credit to start."
+    test_request: {body: {email: "satyan@microsoft.com", mode: cached_only}}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: observed
+      source_url: https://docs.village.ai/api-reference/people/reverse-lookup-by-email
+      checked: '2026-10-09'
+      confidence: verified
+      note: "Never charged: this tier never looks up live. Observed 2026-10-09: the test call and a 404 for an unknown address both cost 0."
+    docs_url: https://docs.village.ai/api-reference/people/reverse-lookup-by-email
+
+  - id: village.people.posts
+    added: '2026-10-09'
+    domain: social
+    capability: linkedin.user.posts
+    platform: linkedin
+    scope: any_account
+    method: POST
+    path: /v2/people/posts
+    name: Recent LinkedIn posts by profile URL, with engagement
+    summary: Fetch a person's recent LinkedIn activity.
+    miss:
+      status: 404
+      means: "Village found no posts for this profile. Nothing was charged."
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: true, example: "https://linkedin.com/in/johndoe", note: "LinkedIn person profile URL."}
+        cursor: {type: string, required: false, note: "Pagination token from a previous response's pagination.cursor."}
+        limit: {type: integer, required: false, min: 1, max: 50, note: "Posts to return per call (1-50, default 20). Follow pagination.cursor to reach the rest."}
+      note: "Returns posts newest first with content, author, engagement, mentions and links. The feed mixes the person's own posts with posts they reshared from others, so check author and reposted_by before attributing a post to them."
+    test_request: {body: {linkedin_url: "https://www.linkedin.com/in/satyanadella", limit: 1}}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: page
+      source: observed
+      source_url: https://docs.village.ai/api-reference/people/get-person-linkedin-posts
+      checked: '2026-10-09'
+      confidence: verified
+      note: "1 credit per live page of posts fetched (up to 50 posts per page). Paging within a page already fetched is free, and a failed lookup is free. Observed 2026-10-09: the test call fetched a live page for 1 credit; an unknown profile answered 404 for 0."
+    docs_url: https://docs.village.ai/api-reference/people/get-person-linkedin-posts
+
+  - id: village.people.intro_paths
+    added: '2026-10-09'
+    domain: intros
+    capability: people.intro_paths
+    platform: people
+    scope: own_account
+    method: POST
+    path: /v2/people/paths
+    name: Warm intro paths to a person by LinkedIn URL
+    summary: Find introduction paths to reach a specific person through your professional network.
+    miss:
+      status: 404
+      means: "Village knows no path from your network to this person, or does not know the person. Nothing was charged."
+    input:
+      bodyType: json
+      body:
+        linkedin_url: {type: string, required: false, example: "https://linkedin.com/in/johndoe", note: "LinkedIn person profile URL. Send this or url."}
+        url: {type: string, required: false, example: "https://linkedin.com/in/johndoe", note: "Generic URL (auto-detected). Send this or linkedin_url."}
+      note: "One of linkedin_url or url is required. Finds who on your team, or which mutual connection, can introduce you, ranked by connection strength (0-100), with the reason each path exists (for example a shared employer, alumni network, community or VC portfolio). Answers 404 when the person is not found or no path exists."
+    test_request: {body: {linkedin_url: "https://www.linkedin.com/in/patrickcollison"}}
+    cost:
+      type: per_success
+      value: 5
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.village.ai/api-reference/people/get-person-paths
+      checked: '2026-10-09'
+      confidence: verified
+      note: "5 credits per request. A 404 (person not found or no path) is free. Observed 2026-10-09: a path to the test target cost 5 credits; a person with no path answered 404 for 0. The test target is in the test account's network, so from another account it can be a 404 miss."
+    docs_url: https://docs.village.ai/api-reference/people/get-person-paths
+
+  - id: village.companies.intro_paths
+    added: '2026-10-09'
+    domain: intros
+    capability: companies.intro_paths
+    platform: companies
+    scope: own_account
+    method: POST
+    path: /v2/companies/paths
+    name: Warm intro paths into a company by domain or URL
+    summary: Find introduction paths to people at a specific company.
+    miss:
+      status: 404
+      means: "Village does not know this company. Nothing was charged."
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: false, example: "acme.com", note: "Company domain (normalized, without www prefix). Send one of domain, linkedin_url or url."}
+        linkedin_url: {type: string, required: false, example: "https://linkedin.com/company/acme-corp", note: "LinkedIn company page URL."}
+        url: {type: string, required: false, note: "Generic URL (auto-detected)."}
+        cursor: {type: string, required: false, note: "Opaque cursor for pagination (from previous response)."}
+        limit: {type: integer, required: false, min: 1, max: 50, example: 25, note: "Number of results per page (default 25, max 50)."}
+        connection_degrees: {type: "array[integer]", required: false, example: [1, 2], note: "Filter by connection degree: 1 direct, 2 second-degree, 3 third-degree."}
+      note: "One of domain, linkedin_url or url is required. Returns up to 50 people at the company you can reach, who on your team or which mutual connection can introduce you to each, and connection strength scores, strongest first."
+    test_request: {body: {domain: "stripe.com", limit: 1}}
+    cost:
+      type: per_success
+      value: 5
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.village.ai/api-reference/companies/get-company-paths
+      checked: '2026-10-09'
+      confidence: verified
+      note: "5 credits per request. A failed call, including a 404 for an unknown company, is free. Observed 2026-10-09: stripe.com with limit 1 cost 5 credits; an unknown domain answered 404 for 0."
+    docs_url: https://docs.village.ai/api-reference/companies/get-company-paths
+
+  - id: village.companies.intro_paths.check
+    added: '2026-10-09'
+    domain: intros
+    capability: companies.intro_paths.check
+    platform: companies
+    scope: own_account
+    method: POST
+    path: /v2/companies/paths/check
+    name: Check a company for warm intro paths by domain or URL
+    summary: Quickly check if you have connections to a company without fetching full details.
+    input:
+      bodyType: json
+      body:
+        domain: {type: string, required: false, example: "acme.com", note: "Company domain (normalized, without www prefix). Send one of domain, linkedin_url or url."}
+        linkedin_url: {type: string, required: false, example: "https://linkedin.com/company/acme-corp", note: "LinkedIn company page URL."}
+        url: {type: string, required: false, note: "Generic URL (auto-detected)."}
+      note: "One of domain, linkedin_url or url is required. Returns whether paths exist, an overall connection score, the count of reachable people and avatar thumbnails of top connectors. Much faster than village.companies.intro_paths; use it to screen a list before paying for full paths."
+    test_request: {body: {domain: "stripe.com"}}
+    cost:
+      type: per_success
+      value: 1
+      currency: credit
+      per: 1
+      unit: call
+      source: observed
+      source_url: https://docs.village.ai/api-reference/companies/check-company-paths
+      checked: '2026-10-09'
+      confidence: verified
+      note: "1 credit per request, whether or not paths exist. Observed 2026-10-09: stripe.com cost 1 credit, and an unknown domain also answered 200 and cost 1. A failed call is free."
+    docs_url: https://docs.village.ai/api-reference/companies/check-company-paths
+
+  - id: village.people.connection_rank
+    added: '2026-10-09'
+    domain: intros
+    capability: people.connection_rank
+    platform: people
+    scope: own_account
+    method: POST
+    path: /v2/people/sort
+    name: Sort LinkedIn profiles by how strongly you're connected
+    summary: Rank a list of people by how well-connected you are to them.
+    input:
+      bodyType: json
+      body:
+        people: {type: "array[string]", required: true, minItems: 1, example: ["https://linkedin.com/in/johndoe", "https://linkedin.com/in/janedoe"], note: "LinkedIn person profile URLs to rank."}
+      note: "Ranks only the people you send, strongest connection first. Each result carries score (0-100), score_label (for example Strong or Weak) and the original URL. It finds no one new."
+    test_request: {body: {people: ["https://www.linkedin.com/in/patrickcollison"]}}
+    cost:
+      type: per_result
+      value: 5
+      currency: credit
+      per: 10
+      unit: result
+      source: observed
+      source_url: https://docs.village.ai/api-reference/people/sort-people
+      checked: '2026-10-09'
+      confidence: verified
+      note: "0.5 credits per person ranked, rounded up per call (5 per 10). A call that ranks nobody is free. Observed 2026-10-09: ranking one person in the test account's network cost 1 credit; a person with no connection was not ranked and cost 0."
+    docs_url: https://docs.village.ai/api-reference/people/sort-people
+
+  - id: village.companies.connection_rank
+    added: '2026-10-09'
+    domain: intros
+    capability: companies.connection_rank
+    platform: companies
+    scope: own_account
+    method: POST
+    path: /v2/companies/sort
+    name: Sort companies by how strongly you're connected
+    summary: Rank a list of companies by how well-connected you are to people there.
+    input:
+      bodyType: json
+      body:
+        companies: {type: "array[string]", required: true, minItems: 1, maxItems: 100, example: ["stripe.com", "https://linkedin.com/company/openai"], note: "Company LinkedIn URLs or domains to rank, up to 100 per call."}
+      note: "Ranks only the companies you send, strongest connection first, so you can screen target accounts for warm paths 100 at a time. Each result carries score, score_label and the company's LinkedIn URL and domain. It finds no one new."
+    test_request: {body: {companies: ["stripe.com"]}}
+    cost:
+      type: per_result
+      value: 5
+      currency: credit
+      per: 10
+      unit: result
+      source: observed
+      source_url: https://docs.village.ai/api-reference/companies/sort-companies
+      checked: '2026-10-09'
+      confidence: verified
+      note: "0.5 credits per company ranked, rounded up per call (5 per 10). A call that ranks nothing is free. Observed 2026-10-09: ranking stripe.com cost 1 credit; an unknown domain was not ranked and cost 0."
+    docs_url: https://docs.village.ai/api-reference/companies/sort-companies
+
+  - id: village.account.identity
+    added: '2026-10-09'
+    kind: utility
+    capability: account.identity
+    platform: account
+    scope: own_account
+    method: GET
+    path: /v2/user/me
+    name: Check the connected Village.ai user and network sync status
+    summary: Get profile information for the authenticated user.
+    input:
+      note: "No parameters. Returns the user id, email, name, account creation date and is_sync_complete, which says whether the user's network is ready for the network and introduction-path tools."
+    test_request: {queryParams: {}}
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      source: observed
+      source_url: https://docs.village.ai/api-reference/user/get-current-user
+      checked: '2026-10-09'
+      confidence: verified
+      note: "Free (observed 2026-10-09). treg checks a pasted token with this call."
+    docs_url: https://docs.village.ai/api-reference/user/get-current-user

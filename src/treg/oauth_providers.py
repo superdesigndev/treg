@@ -3451,6 +3451,38 @@ LEADSFORGE = OAuthProvider(
 )
 
 
+VILLAGE = OAuthProvider(
+    service="village",
+    display_name="Village.ai",
+    auth_kind="key",
+    token_label="API token",
+    token_placeholder="your Village.ai API token",
+    token_header="Authorization",
+    token_format="Bearer {secret}",
+    setup_url="https://village.ai/settings#api-token",
+    setup_action_label="Get your Village.ai API token",
+    setup_steps=(
+        "Sign in to Village.ai and open Settings, then API Token.",
+        "Copy your personal API token. It acts as you, so keep it private.",
+    ),
+    setup_note=(
+        "Cached lookups are unlimited and free, every account gets 100 credits a month with no "
+        "credit card, and email reveals are pay-on-success: no email found, no credit."
+    ),
+    auth_uri="", token_uri="",
+    scopes={},
+    client_id_setting="", client_secret_setting="",
+    category="Enrichment",
+    summary=(
+        "Find the warmest intro path through your team to any person or company. Unlimited free "
+        "people, company and reverse email enrichment for sales, recruiting, fundraising and job search."
+    ),
+    base_url="https://api.village.ai",
+    docs_url="https://docs.village.ai/api-reference/introduction",
+    probe_path="/v2/user/me",  # free; a bad token gets HTTP 401 (verified live 2026-10-07)
+)
+
+
 # ---- Creator / influencer data (Enrichment shelf, 2026-08-21) ---------------------------------
 
 INFLUENCERSCLUB = OAuthProvider(
@@ -3968,7 +4000,7 @@ REGISTRY: dict[str, OAuthProvider] = {
         # more Enrichment API-key providers
         LUSHA, CORESIGNAL, DIFFBOT, THECOMPANIESAPI, LEADMAGIC, ENRICHLAYER, FIBER_AI, CRUSTDATA, AVIATO,
         COMPANYENRICH, OCEANIO, ADYNTEL, TOMBA, TRESTLEIQ, HLRLOOKUP, PREDICTLEADS, FINDYMAIL, BRANDDEV, ICYPEAS, LEADSFORGE,
-        INFLUENCERSCLUB,
+        INFLUENCERSCLUB, VILLAGE,
         # Market data API-key providers
         COINGECKO, POLYGON, FINNHUB, TWELVEDATA, FMP, EODHD, MARKETSTACK, TIINGO,
         FINANCIALDATASETS,
