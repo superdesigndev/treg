@@ -19,10 +19,12 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    # A throttled shared runner once turned the 5-minute suite into 20+ (log showed 68s before the
+    # A throttled shared runner once turned the suite into 20+ minutes (log showed 68s before the
     # first test started). Die loudly instead of eating half an hour; a re-run usually lands on a
-    # healthier machine.
-    timeout-minutes: 15
+    # healthier machine. The bound tracks the suite: at 4,600 tests a healthy runner takes 8 to
+    # 11 minutes, and a 15-minute cap turned ordinary slow runners into a red main (three
+    # timeouts in one morning, each still passing tests at the cut). Keep about 2x headroom.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
