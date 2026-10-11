@@ -260,6 +260,7 @@ class Settings(BaseSettings):
     platform_key_twelvedata: str = ""   # FREE Basic key (800/day TOTAL) — trial pool, 20 calls/team/day
     platform_key_tiingo: str = ""       # FREE Starter key (1,000/day total) — trial pool, 20 calls/team/day
     platform_key_financialdatasets: str = ""  # X-API-KEY; prepaid Credits with vendor auto-reload
+    platform_key_lopjlb: str = ""  # X-LOPJLB-API-Key; flat Enterprise subscription, no per-call meter
     # ---- Enrichment expansion (2026-08-20). Slots only — fund the accounts and set the keys before
     # naming any of these in TREG_PLATFORM_PROVIDERS.
     platform_key_companyenrich: str = ""  # Bearer key

@@ -1,0 +1,303 @@
+provider: lopjlb
+source:
+  docs: https://www.lopjlb.com/api/llms.txt
+  # Public OpenAPI covers anonymous routes only. Pro and Enterprise paths are in the llms reference.
+  openapi: https://www.lopjlb.com/openapi.json
+  curated: '2026-10-11'
+pricing_url: https://www.lopjlb.com/pricing
+# No per-call meter. Public and freemium routes are $0. An Enterprise key is a flat subscription
+# ($1,599/mo, or $1,039/mo annual) and is what unlocks peers and depth=full scorecards.
+# Anonymous: 120/minute and 10,000/day per IP. Freemium ticker routes: 30/minute and 500/day per IP.
+# Enterprise key: 600/minute and 50,000/day. Public routes do not read the key, so they stay on the IP cap.
+limits: "Anonymous 120/minute and 10,000/day per IP. Freemium ticker routes 30/minute and 500/day per IP. Enterprise key 600/minute and 50,000/day. No per-call charge."
+proposed_capabilities:
+  stocks.regime.current: "Read the current US equity market regime"
+  stocks.screener.preview: "Preview a stock screen before opening the full book"
+  stocks.signals.scorecard: "Read a ticker's systematic signal scorecard"
+  stocks.earnings.brief: "Read an earnings-call synthesis for a ticker"
+  stocks.macro.treasury-curve: "Get the US Treasury yield curve"
+  stocks.congress.trades: "List recent US Congress stock disclosures"
+  stocks.options.cash-secured-puts: "List cash-secured put observations"
+  stocks.peers.compare: "Compare a ticker with its sector peers"
+  markets.prediction.summary: "Summarize finance and macro prediction markets"
+endpoints:
+  - id: lopjlb.regime.latest
+    domain: stocks
+    capability: stocks.regime.current
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /hmm/latest
+    name: "Current HMM regime"
+    summary: "Current HMM regime classification"
+    test_request: {}
+    cost: &free
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      note: "No per-call meter. Observed 2026-10-11 with an Enterprise key: HTTP 200, no charge header and no cost field in the body."
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.tickers.search
+    domain: stocks
+    capability: stocks.tickers.search
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /bigfive/search
+    name: "Search tickers by name"
+    summary: "Ticker/name search"
+    input:
+      queryParams:
+        q: {type: string, required: false, note: "ticker or company name", example: apple}
+        limit: {type: integer, required: false, note: "max matches", example: 1}
+    test_request: {queryParams: {q: apple, limit: 1}}
+    cost: *free
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.screener.preview
+    domain: stocks
+    capability: stocks.screener.preview
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /bigfive/universe-preview
+    name: "Screener preview"
+    summary: "Top-N screener preview"
+    test_request: {}
+    cost: *free
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.quote.live
+    domain: stocks
+    capability: stocks.quote.live
+    platform: stocks
+    scope: any_account
+    method: POST
+    path: /bigfive/live-quotes
+    name: "Live quote for tickers"
+    summary: "Batch quotes (anon ≤50 symbols; Pro/key ≤200)"
+    input:
+      bodyType: json
+      body:
+        symbols:
+          type: "array[string]"
+          required: true
+          note: "Ticker symbols. Anonymous callers are clamped to 50; an Enterprise key allows 200."
+          example: ["AAPL"]
+    test_request: {body: {symbols: ["AAPL"]}}
+    cost: *free
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.company.profile
+    domain: stocks
+    capability: stocks.company.profile
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /bigfive/company-info/{symbol}
+    name: "Company profile"
+    summary: "Profile, employees, float, executives"
+    input:
+      pathParams:
+        symbol: {type: string, required: true, example: AAPL}
+    test_request: {pathParams: {symbol: AAPL}}
+    cost: *free
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.fundamentals
+    domain: stocks
+    capability: stocks.fundamentals.metrics
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /bigfive/detail/{symbol}
+    name: "Ticker fundamentals"
+    summary: "Ticker detail (anon freemium ticker budget applies)"
+    input:
+      pathParams:
+        symbol: {type: string, required: true, example: AAPL}
+    test_request: {pathParams: {symbol: AAPL}}
+    cost: *free
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.company.news
+    domain: stocks
+    capability: stocks.company.news
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /bigfive/company-news/{symbol}
+    name: "Company news"
+    summary: "Ticker-specific headlines"
+    input:
+      pathParams:
+        symbol: {type: string, required: true, example: AAPL}
+      queryParams:
+        limit: {type: integer, required: false, note: "max headlines", example: 1}
+    test_request: {pathParams: {symbol: AAPL}, queryParams: {limit: 1}}
+    cost: *free
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.earnings.brief
+    domain: stocks
+    capability: stocks.earnings.brief
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /bigfive/earnings-intel/{symbol}
+    name: "Earnings-call synthesis"
+    summary: "CallCard rollup; anon freemium ticker budget (30/min · 500/day)"
+    input:
+      pathParams:
+        symbol: {type: string, required: true, example: AAPL}
+      queryParams:
+        year: {type: integer, required: false, note: "fiscal year of the call"}
+        quarter: {type: integer, required: false, note: "fiscal quarter of the call"}
+        request: {type: integer, required: false, note: "1 enqueues LLM generation and needs auth. Leave it off to read the stored rollup."}
+    test_request: {pathParams: {symbol: AAPL}}
+    cost: *free
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.market.status
+    domain: stocks
+    capability: stocks.market.status
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /market/exchange-hours
+    name: "Exchange open status"
+    summary: "Global exchange open/closed status"
+    test_request: {}
+    cost: *free
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.treasury.yields
+    domain: stocks
+    capability: stocks.macro.treasury-curve
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /market/treasury-rates
+    name: "US Treasury yield curve"
+    summary: "US Treasury yield curve (1M–30Y)"
+    test_request: {}
+    cost: *free
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.congress.trades
+    domain: stocks
+    capability: stocks.congress.trades
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /congress/trades
+    name: "Congress stock disclosures"
+    summary: "Paginated STOCK Act disclosures"
+    input:
+      queryParams:
+        symbol: {type: string, required: false, note: "ticker filter", example: AAPL}
+        chamber: {type: string, required: false, note: "senate | house", example: senate}
+        trade_type: {type: string, required: false, note: "Purchase | Sale | …", example: Purchase}
+        q: {type: string, required: false, note: "politician name or ticker search"}
+        limit: {type: integer, required: false, example: 1}
+        offset: {type: integer, required: false, example: 0}
+    test_request: {queryParams: {symbol: AAPL, limit: 1}}
+    cost: *free
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.options.cash-secured-puts
+    domain: stocks
+    capability: stocks.options.cash-secured-puts
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /cash-secured-puts/opportunities
+    name: "Cash-secured put observations"
+    summary: "Filterable 7–45 DTE short-put observations"
+    input:
+      queryParams:
+        symbol: {type: string, required: false, note: "ticker filter", example: AAPL}
+        limit: {type: integer, required: false, note: "page size; use 1 to size the book before reading rows", example: 1}
+        sort: {type: string, required: false}
+        cursor: {type: string, required: false, note: "opaque cursor from next_cursor"}
+        dte_min: {type: integer, required: false}
+        dte_max: {type: integer, required: false}
+        apy_min: {type: number, required: false}
+    test_request: {queryParams: {limit: 1}}
+    cost: *free
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.prediction.summary
+    domain: markets
+    capability: markets.prediction.summary
+    platform: markets
+    scope: any_account
+    method: GET
+    path: /prediction-markets/summary
+    name: "Prediction-market summary"
+    summary: "Kalshi + Polymarket finance/macro aggregates"
+    test_request: {}
+    cost: *free
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.signals.scorecard
+    domain: stocks
+    capability: stocks.signals.scorecard
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /bigfive/signal-card/{symbol}
+    name: "Signal scorecard"
+    summary: "Thin teaser (depth=public); full pack with Pro session or Enterprise key (depth=full)"
+    input:
+      pathParams:
+        symbol: {type: string, required: true, example: AAPL}
+    test_request: {pathParams: {symbol: AAPL}}
+    # A missing or invalid key still returns 200 at depth=public. This route cannot validate a key.
+    platform_blocked: "depth=full is included in the flat Enterprise subscription and has no per-call price. Serving it on a shared key at $0 would give the paid scorecard away. Connect your own key. Without a key the same path returns the public teaser."
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      note: "No per-call meter. Observed 2026-10-11: Enterprise key HTTP 200 depth=full (5442 bytes); no key HTTP 200 depth=public (605 bytes). Neither response carried a charge."
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
+
+  - id: lopjlb.peers
+    domain: stocks
+    capability: stocks.peers.compare
+    platform: stocks
+    scope: any_account
+    method: GET
+    path: /bigfive/peers/{symbol}
+    name: "Peer comparison"
+    summary: "Peer comparison"
+    input:
+      pathParams:
+        symbol: {type: string, required: true, example: AAPL}
+    test_request: {pathParams: {symbol: AAPL}}
+    platform_blocked: "Peers requires an Enterprise key and is included in the flat subscription ($1,599/mo). There is no per-call price, so a shared key would serve it at $0. Connect your own key."
+    cost:
+      type: free
+      value: 0
+      currency: USD
+      unit: call
+      note: "No per-call meter. Observed 2026-10-11 with an Enterprise key: HTTP 200, 62238 bytes, no charge header and no cost field. A garbage key on this path returns 401 {\"error\":\"invalid_api_key\"}."
+    added: '2026-10-11'
+    docs_url: https://www.lopjlb.com/api/llms.txt
