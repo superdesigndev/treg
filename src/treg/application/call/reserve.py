@@ -16,6 +16,8 @@ from ...domain.governance import budgets as budget_policy
 from ...domain.governance.usage import _day_start_utc
 from ...domain.identity.access import Caller
 from ...infra.db import session_maker
+from ...infra import money_admission
+from ...infra.money_session import money_session
 from ...infra.money_timing import observe_money
 from ...infra.money_trace import mark_money, money_stage
 from ...models import CallRecord, Org, TagBudget
@@ -237,9 +239,18 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
     # attribute load while constructing the refusal would otherwise escape the application session.
     auto_on = bool(caller.org.autotopup_enabled and caller.org.autotopup_consented_at)
     prefs = billing.autotopup_prefs(caller.org) if auto_on else None
+    # Loaded inside the session, scheduled only after the lease is gone. The refill task opens
+    # its own session and may call Stripe; that work is not part of this reserve.
+    refused_org = None
     try:
         with observe_money("reserve", org_id=caller.org_id, call_id=call_ref) as timing:
-            async with session_maker() as db:
+            # Admit before checkout. The lease covers this session only, including the lazy
+            # reaper's releases on the same org; upstream work happens after this returns.
+            async with (
+                money_admission.admit(
+                    money_admission.require_balance_orgs([caller.org_id]), operation="reserve"),
+                money_session(session_maker()) as db,
+            ):
                 mark_money(db, "reserve", org_id=caller.org_id, call_id=call_ref)
                 # The builder's own per-tag ceilings first: a refusal that belongs to ONE of their users
                 # must not surface as the team-wide balance error, which names the builder's private numbers.
@@ -263,9 +274,7 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                     if auto_on:
                         mark_money(db, "reserve_refusal_read", org_id=caller.org_id, call_id=call_ref)
                         with money_stage(db, "post_refusal_read"):
-                            org = await db.get(Org, caller.org_id)
-                            if org is not None:
-                                billing.maybe_schedule_autotopup(org)
+                            refused_org = await db.get(Org, caller.org_id)
                     raise
                 with timing.phase("commit"):
                     await db.commit()
@@ -274,9 +283,11 @@ async def _platform_reserve(mk: MarketplaceCall, caller: Caller, meta: CallMeta 
                 mark_money(db, "reserve_post_commit", org_id=caller.org_id, call_id=call_ref)
                 with timing.phase("post_commit"), money_stage(db, "post_commit_read"):
                     org = await db.get(Org, caller.org_id)
-                    if org is not None:
-                        billing.maybe_schedule_autotopup(org)
+            if org is not None:
+                billing.maybe_schedule_autotopup(org)
     except ledger.InsufficientBalance as exc:
+        if refused_org is not None:
+            billing.maybe_schedule_autotopup(refused_org)
         wallet = f"treg's {mk.provider} " + ("app (pay-per-use)" if mk.billed_oauth else "key")
         # For a billed OAuth call "connect your own key" is not the fix — the connection already
         # exists; the way off the meter is bringing your OWN developer app to /oauth/start.

@@ -4,6 +4,7 @@ Off by default; shadow mode never changes the caller's answer."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
@@ -343,13 +344,104 @@ async def test_cancellation_cleanup_releases_both_holds_exactly_once(clients: As
     assert len(await _holds()) == 2
     mk = MarketplaceCall(tool=Tool(org_id=org_id, name=EP, owner="x", base_url="https://x", host="x"),
                          upstream="https://x", consumed=set(), endpoint_id=EP, provider="tikhub",
-                         tier="platform", estimate_micro=1_000, call_id="REF")
+                         tier="platform", estimate_micro=1_000, call_id="REF",
+                         payer_org_id=org_id, reserved_micro=1_000)
     await _finish_cancelled_call(None, mk, "REF")
     assert await _holds() == []
     releases = [e for e in await _rows(LedgerEntry) if e.kind == "release"]
     assert sorted(e.call_id for e in releases) == ["REF", "REF:overflow"]
     await _finish_cancelled_call(None, mk, "REF")  # again: nothing to release, nothing breaks
     assert len([e for e in await _rows(LedgerEntry) if e.kind == "release"]) == 2
+
+
+def _exhaust_tikhub():
+    now = utcnow_naive()
+    return LatestState(
+        "tikhub", 0.0, "USD", now, "exact", exhausted_until=now + timedelta(hours=1),
+        health="exhausted",
+    )
+
+
+async def _watch_cancel(monkeypatch):
+    """Record the parent payer and the trusted org the real cancel path actually used."""
+    observed: dict = {}
+    original = call_service.finish_cancelled_call
+
+    async def spy(claim, mk, call_ref, response=None, *, trusted_org_id=None):
+        observed["payer_org_id"] = None if mk is None else mk.payer_org_id
+        observed["trusted_org_id"] = trusted_org_id
+        return await original(claim, mk, call_ref, response, trusted_org_id=trusted_org_id)
+
+    monkeypatch.setattr(call_service, "finish_cancelled_call", spy)
+    return observed
+
+
+async def test_skip_direct_cancel_releases_the_child_hold_without_a_parent_payer(
+    clients: AsyncClient, overflow_on, monkeypatch,
+):
+    """Empty parent payer, real skip-direct path. The test must not invent that payer."""
+    await _route(price_micro=3_000)
+    state = _exhaust_tikhub()
+    async with session_maker() as db:
+        await ratestore.kv_put(db, STATE_NS, "tikhub", state.to_json(), ttl_s=3600)
+        await db.commit()
+    capacity_view.invalidate()
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+
+    async def never(*_a, **_k):
+        raise AssertionError("the direct relay must not run")
+
+    async def cancelled(_client, _req):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(call_service, "relay", never)
+    monkeypatch.setattr(O, "_send", cancelled)
+    observed = await _watch_cancel(monkeypatch)
+    before = await _balance(clients)
+    with pytest.raises(asyncio.CancelledError):
+        await clients.get(f"/call/{EP}?aweme_id=skip-direct-cancel")
+    assert observed["payer_org_id"] is None
+    assert observed["trusted_org_id"] == org_id
+    assert await _balance(clients) == before
+    assert await _holds() == []
+    entries = [e for e in await _rows(LedgerEntry) if e.kind != "grant"]
+    assert len(entries) == 2
+    overflow_id = next(e.call_id for e in entries if e.kind == "reserve")
+    assert overflow_id.endswith(":overflow")
+    assert sorted((e.kind, e.call_id) for e in entries) == [
+        ("release", overflow_id), ("reserve", overflow_id),
+    ]
+    assert not any(e.call_id == overflow_id.removesuffix(":overflow") for e in entries)
+
+
+async def test_overflow_cancel_uses_the_trusted_caller_for_both_holds(
+    clients: AsyncClient, overflow_on, monkeypatch,
+):
+    """Parent reserve captures the caller. This test does not construct a payer."""
+    await _route(price_micro=3_000)
+    org_id = (await clients.get("/orgs")).json()[0]["org_id"]
+    monkeypatch.setattr(call_service, "relay", _fake_relay(402, b'{"detail":"Insufficient balance"}'))
+
+    async def cancelled(_client, _req):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(O, "_send", cancelled)
+    observed = await _watch_cancel(monkeypatch)
+    before = await _balance(clients)
+    with pytest.raises(asyncio.CancelledError):
+        await clients.get(f"/call/{EP}?aweme_id=trusted-cancel")
+    assert observed["trusted_org_id"] == org_id
+    assert observed["payer_org_id"] == org_id
+    assert await _balance(clients) == before
+    assert await _holds() == []
+    entries = [e for e in await _rows(LedgerEntry) if e.kind != "grant"]
+    ids = {e.call_id for e in entries}
+    assert len(ids) == 2
+    parent = next(call_id for call_id in ids if not str(call_id).endswith(":overflow"))
+    assert sorted((e.kind, e.call_id) for e in entries) == sorted([
+        ("reserve", parent), ("release", parent),
+        ("reserve", f"{parent}:overflow"), ("release", f"{parent}:overflow"),
+    ])
 
 
 async def test_an_exhausted_account_with_a_route_skips_the_direct_attempt(clients: AsyncClient, overflow_on, monkeypatch):

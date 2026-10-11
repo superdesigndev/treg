@@ -408,8 +408,12 @@ async def _reserve_price(parent: CallContext, tool: HubTool, run_id: str, reserv
     from ...domain import money as ledger
     caller = parent.input.caller
     if reserve_micro <= 0 or caller.org_id == tool.org_id:
-        return 0
-    async with session_maker() as s:
+        return 0  # no session and no balance row
+    async with (
+        money_admission.admit(
+            money_admission.require_balance_orgs([caller.org_id]), operation="reserve"),
+        money_session(session_maker()) as s,
+    ):
         try:
             await ledger.reserve_in_transaction(
                 s, caller.org_id, tool.tool_id, reserve_micro, call_id=f"{run_id}:price",
@@ -433,10 +437,16 @@ async def _close_price(tool: HubTool, run_id: str, held: int, *, success: bool, 
     amount is refunded to the caller. `None` settles the full held amount (a flat price). Returns
     what the maker earned."""
     if held <= 0:
-        return 0
+        return 0  # no session and no balance row
     from ...domain import money as ledger
-    admission_orgs = [payer_org_id] if success and (actual is None or actual > 0) else []
-    async with money_admission.admit(admission_orgs, operation="hub"), money_session(session_maker()) as s:
+    # A positive seller payment keeps the hub lease (payer only). A failure or a zero actual
+    # refunds the price hold; that balance update takes the release lease. Not both.
+    operation = "hub" if success and (actual is None or actual > 0) else "release"
+    async with (
+        money_admission.admit(
+            money_admission.require_balance_orgs([payer_org_id]), operation=operation),
+        money_session(session_maker()) as s,
+    ):
         if success:
             earned = await ledger.settle_to_in_transaction(
                 s, f"{run_id}:price", tool.org_id, actual_micro=actual,

@@ -273,7 +273,7 @@ nor accounting behavior.
 
 ### Optional admission before the settlement session
 
-`infra.money_admission.admit` optionally queues CreditBlock consumers by payer Org before their
+`infra.money_admission.admit` optionally queues same-org balance work by payer Org before the
 application opens a database session. A process-local async lock limits Redis polling within that
 process; contended Redis acquisition retries after a random 3–10 ms async delay. A token-owned,
 expiring Redis lease coordinates participating processes. Multi-org batches
@@ -285,20 +285,42 @@ original failure. It does not introduce a commit or change the application's com
 Waiting for admission holds no database connection.
 
 The application supplies the already-known payer identity through `MarketplaceCall` and
-`DeferredSettle`, an asynchronous task snapshot, or the Hub caller. The gate covers ordinary
-positive settlements, charged deferred batches, potentially billable asynchronous terminal
-settlement, and the Hub payer's positive seller payment. Async admission is conservative: the
-locked task row still decides whether and how much to charge. Reserve, pure release, grants and
-top-ups do not acquire this gate, and a Hub payee is not an additional admission key. Direct
-ledger callers retain their existing database behavior.
+`DeferredSettle`, an asynchronous task snapshot, the Hub caller, or the org on a reserve.
+Skip-direct overflow does not reserve a parent and does not write `payer_org_id` on that
+parent. Before that child can be reserved, and again before overflow cancellation cleanup,
+the authenticated caller's org is required. That org admits the release of `{call_ref}` and
+`{call_ref}:overflow`. A missing caller refuses before checkout.
+The gate covers ordinary positive settlements (`close`), charged deferred batches (`deferred`),
+potentially billable asynchronous terminal settlement (`async`), the Hub payer's positive seller
+payment (`hub`), balance-row reserves (`reserve`), and balance-row release, refund, and cancel
+(`release`). A deferred batch that draws blocks keeps operation `deferred` and also leases every
+payer that same session refunds. A batch or close that only releases or refunds uses `release`.
+Async admission is conservative: the locked task row still decides whether and how much to charge,
+and a release discovered only after that lock stays inside the admit already taken. Missing usage
+skips admission only for a non-expired success or billed failure that keeps the hold. A failure,
+including one observed with `require_usage`, and any terminal state already past the window,
+admits as `release` before the session that returns the hold. One admit wraps
+the session; nothing inside it calls `admit` again. The lease ends after the session closes and
+before upstream work. A reserve loads the org for auto-top-up inside that session and schedules
+the refill only after the lease is released. Grants, top-ups, signup credit, referral payouts, and
+billing auto-top-up do not acquire this gate. A Hub payee is not an additional admission key. Direct ledger callers retain
+their existing database behavior.
+
+`require_balance_orgs` refuses an empty, missing, or non-positive org before checkout on every
+application session that will touch a balance row. `admit` does the same for operations `reserve`
+and `release`, and does not yield into the body. That refusal is not a fallback and not an HTTP
+429. Wait timeouts and key-value failures still enter the original database path for every
+operation, including `reserve` and `release`.
 
 The feature defaults off; `money_admission_org_ids` selects an opt-in subset, or all orgs when
 empty and enabled. Non-selected operations supply the disabled timing baseline. Admission never
-replaces Hold claims, CreditBlock locks or transaction atomicity. A missing identity, unavailable
-Redis, or expired acquisition budget releases any partially acquired gates and executes the
-original database path. Lost renewal does not cancel or restart a money transaction already in
-progress. These paths preserve database correctness but give up admission isolation; they are
-counted separately. Owner-checked renewal and deletion prevent an old lease holder from extending
+replaces Hold claims, CreditBlock locks or transaction atomicity. For `close`, `deferred`, `async`,
+and `hub`, a missing identity, unavailable Redis, or expired acquisition budget releases any
+partially acquired gates and executes the original database path. `reserve` and `release` share the
+Redis and wait-budget fallback, but a missing identity refuses instead of executing that path.
+Lost renewal does not cancel or restart a money transaction already in
+progress. These fallback paths preserve database correctness but give up admission isolation; they are
+counted separately and are not a successful rollout. Owner-checked renewal and deletion prevent an old lease holder from extending
 or deleting a newer owner's lease. TTL and renewal cannot prove that an old database transaction
 has stopped, which is why database locks remain necessary.
 
@@ -358,10 +380,12 @@ For a tier-4 endpoint carrying `async`, a successful submission keeps its hold a
 `AsyncTaskRecord` whose `settlement_basis` freezes the whole price rule with the request it was
 applied to, so the settlement replays from the row alone. BYOK calls create neither hold nor task
 row. An authorized caller poll and the fallback worker share `_finish_terminal`: terminal 2xx
-evidence settles the original task once under its row lock. Caller success without required usage
-only learns result ownership and leaves the hold for a later observation; worker fallback retains
-its reserve-based settlement with a reconciliation alert. Settlement errors leave the provider
-response unchanged and cron retries. Only the winning finalizer archives terminal evidence.
+evidence settles the original task once under its row lock. An unexpired caller success or
+billed failure without required usage only learns result ownership and leaves the hold for a
+later observation. A failure, or a terminal state already past the window, releases the hold
+under admission. Worker fallback retains its reserve-based settlement with a reconciliation alert.
+Settlement errors leave the provider response unchanged and cron retries. Only the winning
+finalizer archives terminal evidence.
 For a successful task, the same transaction stores the terminal adapter hit verdict on the task;
 a confirmed terminal failure stores `false` when the endpoint has verified hit rules, while
 pending and timed-out tasks remain undecided. This counts failed attempts in routing's hit rate.
@@ -1057,7 +1081,8 @@ and `cost_source: "aggregator"` + `served_via` in the ledger `meta`, so `reconci
 accounting for the per-aggregator daily budget, not a balance. That budget is
 `TREG_OVERFLOW_DAILY_BUDGET_USD`: the code default is $20 per aggregator. A deployment may set a
 different value in its private operational configuration. Shadow mode places no hold and charges
-nothing.
+nothing. Skip-direct places no parent hold and leaves `payer_org_id` empty; cancellation of the
+child requires the authenticated caller and releases `{call_ref}:overflow` under that org.
 
 **The relay price is disclosed wherever a price is read.** `/call/` says `X-Treg-Served-Via:
 overflow:<aggregator>` with `X-Treg-Cost-Micro` the child's charge; the MCP `call` result (both

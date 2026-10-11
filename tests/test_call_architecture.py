@@ -21,11 +21,14 @@ from treg.domain.governance import usage as usage_policy
 _SRC = Path(__file__).parents[1] / "src" / "treg"
 
 _DATAPLANE_DERIVED_WRITES = {
-    # A best-effort external admission lease precedes the existing money session.
+    # A best-effort external admission lease precedes the balance session.
     "money_admission_lease": (
+        (reserve._platform_reserve, "money_admission.admit"),
         (settle._platform_settle, "money_admission.admit"),
         (settle.close_deferred, "money_admission.admit"),
-        (task_app._finish_terminal, "money_admission.admit"),
+        (settle._finish_cancelled_call, "money_admission.admit"),
+        (task_app._finish_balance, "money_admission.admit"),
+        (hub_runner._reserve_price, "money_admission.admit"),
         (hub_runner._close_price, "money_admission.admit"),
     ),
     # Body objects preserve the paid response. Upload completes before the archive DB transaction
@@ -131,7 +134,9 @@ _DERIVED_WRITE_FILES = {
         "publicdemo_policy.enforce_public_demo_ip_cap", "usage_policy.enforce_daily_cap",
     },
     _SRC / "domain" / "governance" / "usage.py": {"take_daily_slot"},
-    _SRC / "application" / "call" / "reserve.py": {"billing.maybe_schedule_autotopup"},
+    _SRC / "application" / "call" / "reserve.py": {
+        "billing.maybe_schedule_autotopup", "money_admission.admit",
+    },
     _SRC / "application" / "call" / "settle.py": {
         "money_admission.admit", "adsconv.queue", "capacity_marks.strike", "capacity_marks.clear",
         "capacity_marks.clear_sweep_state",
@@ -158,10 +163,14 @@ _DERIVED_WRITE_FILES = {
     _SRC / "domain" / "money" / "__init__.py": {"reap_stale_holds", "release"},
 }
 _EXPECTED_DERIVED_WRITE_SITES = {
+    ("application/call/reserve.py", "_platform_reserve", "money_admission.admit"),
     ("application/call/settle.py", "_platform_settle", "money_admission.admit"),
     ("application/call/settle.py", "_close", "money_admission.admit"),
     ("application/call/settle.py", "close_deferred", "money_admission.admit"),
-    ("application/asynctasks.py", "_finish_terminal", "money_admission.admit"),
+    ("application/call/settle.py", "_finish_cancelled_call", "money_admission.admit"),
+    ("application/call/settle.py", "_cleanup", "money_admission.admit"),
+    ("application/asynctasks.py", "_finish_balance", "money_admission.admit"),
+    ("application/hub/runner.py", "_reserve_price", "money_admission.admit"),
     ("application/hub/runner.py", "_close_price", "money_admission.admit"),
     ("application/call/service.py", "_execute_call", "archive.record"),
     ("archive.py", "_store", "archive_bodies.prepare"),

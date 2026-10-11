@@ -70,8 +70,9 @@ class Settings(BaseSettings):
     # The shared key-value store (Redis protocol). Empty = an in-process fallback; see infra/kv.py.
     kv_url: str = ""
 
-    # Optional database-external admission for CreditBlock consumers. Keep accounting protected
-    # by database transactions even when a lease expires or the shared store is unavailable.
+    # Optional same-org admission in front of a balance session (settlement, reserve, release).
+    # A lease expiry or an unavailable store still runs the database path. A reserve or release
+    # with no positive org id refuses before checkout; that refusal is not an HTTP 429.
     money_admission_enabled: bool = False
     money_admission_org_ids: list[PositiveInt] = Field(default_factory=list)
     money_admission_wait_s: float = Field(default=5.0, gt=0, le=60)

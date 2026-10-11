@@ -64,9 +64,9 @@ async def test_deferred_records_repeated_questions_in_one_round_trip(archive_db,
     event.listen(engine, "before_cursor_execute", capture)
     try:
         assert await close_deferred([
-            DeferredSettle(holds[0], True, 40, (org_id, "same"), "", {}),
-            DeferredSettle(holds[1], True, 50, (org_id, "other"), "", {}),
-            DeferredSettle(holds[2], True, 60, (org_id, "same"), "", {}),
+            DeferredSettle(holds[0], True, 40, (org_id, "same"), "", {}, payer_org_id=org_id),
+            DeferredSettle(holds[1], True, 50, (org_id, "other"), "", {}, payer_org_id=org_id),
+            DeferredSettle(holds[2], True, 60, (org_id, "same"), "", {}, payer_org_id=org_id),
         ], charge=True) == 150
     finally:
         event.remove(engine, "before_cursor_execute", capture)
