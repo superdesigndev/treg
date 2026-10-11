@@ -396,6 +396,14 @@ async def _finish(call_id: str, outcome: str, document: object | None, now, *,
         return row.status
 
 
+async def _finish_balance(org_id: int | None, operation: str, call_id: str, outcome: str,
+                          document: object | None, now, **kwargs) -> str:
+    """Admit one balance-row finish, then open its session. Not used around a second admit."""
+    orgs = money_admission.require_balance_orgs([org_id])
+    async with money_admission.admit(orgs, operation=operation):
+        return await _finish(call_id, outcome, document, now, **kwargs)
+
+
 async def _finish_terminal(snapshot: AsyncTaskRecord, outcome: str, document: object,
                            status_code: int, body: bytes, now, *, require_usage: bool = False,
                            expected_attempt: int | None = None) -> str:
@@ -408,16 +416,22 @@ async def _finish_terminal(snapshot: AsyncTaskRecord, outcome: str, document: ob
     # Only a finished answer carries a verdict word; a failure has nothing to judge.
     terminal_verdict = verdict(snapshot.endpoint_id, status_code, body) if outcome == "success" else None
     # The snapshot only selects admission. _finish rechecks the locked row and remains the
-    # authority for charging; a successful zero-cost task may conservatively pass the gate.
+    # authority for charging; a release inside an already-admitted success scope is not a second admit.
     awaiting_usage = (require_usage and snapshot.settlement_basis["amount"]["kind"] == "usage"
                       and settlement.usage_evidence(snapshot.settlement_basis, {"terminal": document}) is None)
-    admission_orgs = [snapshot.org_id] if (
-        outcome in ("success", "billed_failure") and not awaiting_usage
-        and not asynctasks.expired(snapshot.created_at, now)) else []
-    async with money_admission.admit(admission_orgs, operation="async"):
-        result = await _finish(snapshot.call_id, outcome, document, now, require_usage=require_usage,
-                               expected_attempt=expected_attempt, terminal_hit=terminal_hit,
-                               terminal_verdict=terminal_verdict)
+    expired = asynctasks.expired(snapshot.created_at, now)
+    finish_args = dict(require_usage=require_usage, expected_attempt=expected_attempt,
+                       terminal_hit=terminal_hit, terminal_verdict=terminal_verdict)
+    if awaiting_usage:
+        # Task-row update only: the hold stays, and the balance row is not touched.
+        result = await _finish(snapshot.call_id, outcome, document, now, **finish_args)
+    elif outcome in ("success", "billed_failure") and not expired:
+        result = await _finish_balance(
+            snapshot.org_id, "async", snapshot.call_id, outcome, document, now, **finish_args)
+    else:
+        # Failure, or an already-expired success that _finish will release in full.
+        result = await _finish_balance(
+            snapshot.org_id, "release", snapshot.call_id, outcome, document, now, **finish_args)
     expected = asynctasks.SETTLED if outcome in ("success", "billed_failure") else asynctasks.RELEASED
     if result == expected:
         if terminal_hit is not None:
@@ -445,7 +459,8 @@ async def _process(call_id: str, client: httpx.AsyncClient, attempt: int) -> str
                 return "backed_off"
         snapshot = row.model_copy()
     if asynctasks.expired(snapshot.created_at, now, snapshot.descriptor):
-        return await _finish(call_id, "timed_out", None, now, expected_attempt=attempt)
+        return await _finish_balance(
+            snapshot.org_id, "release", call_id, "timed_out", None, now, expected_attempt=attempt)
     try:
         async with asyncio.timeout(POLL_TIMEOUT_S):
             status, body = await _poll(snapshot, client)
@@ -461,6 +476,8 @@ async def _process(call_id: str, client: httpx.AsyncClient, attempt: int) -> str
             return await _finish_terminal(snapshot, outcome, document, status, body, utcnow_naive(),
                                           expected_attempt=attempt)
         return await _finish(call_id, outcome, document, utcnow_naive(), expected_attempt=attempt)
+    except money_admission.AdmissionRefused:
+        raise
     except Exception as exc:  # noqa: BLE001 - one row's failure must never abort the tick
         # relay() raises GatewayFailed (an unset platform key, an SSRF refusal), httpx raises its
         # own, JSON raises ValueError: all mean "no evidence this tick". Back off and say why; the

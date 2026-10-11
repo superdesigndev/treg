@@ -48,6 +48,15 @@ from .types import GatewayFailed, UpstreamResponse
 _NOT_THE_CALLERS_FAULT = frozenset({401, 402, 403, 405, 407, 408, 429})
 
 
+def _consumes_blocks(*, billable: bool, actual_micro: int | None, reserved_micro: int | None) -> bool:
+    """True when this close will draw credit blocks, the existing close/deferred admission case."""
+    if not billable:
+        return False
+    if actual_micro is not None:
+        return actual_micro > 0
+    return reserved_micro is None or reserved_micro > 0
+
+
 def _apify_call_fee_micro(mk: MarketplaceCall, cost: dict) -> int:
     """The flat per-run charge, once per run the request starts. An actor that bills its start per
     query (LinkedIn jobs: one actor-start per job title x location) names those body arrays in
@@ -1207,13 +1216,24 @@ async def _platform_settle(
                  else ledger.with_margin(mk.estimate_micro)) if billable else 0
         return would, observed
 
-    consumes_blocks = billable and (
-        actual > 0 if actual is not None else mk.reserved_micro is None or mk.reserved_micro > 0)
-    admission_orgs = [mk.payer_org_id] if consumes_blocks else []
+    # A block draw keeps the close lease. A release or a full refund still updates the balance
+    # row, so it takes the release lease instead of an empty admit. One admit, around this session.
+    consumes_blocks = _consumes_blocks(
+        billable=billable, actual_micro=actual, reserved_micro=mk.reserved_micro)
+    admission_operation = "close" if consumes_blocks else "release"
+    try:
+        admission_orgs = money_admission.require_balance_orgs([mk.payer_org_id])
+    except money_admission.AdmissionRefused:
+        logging.getLogger("treg.ledger").error(
+            "settle/release refused before checkout for call %s: missing org identity", call_id)
+        return charged, observed
 
     async def _close() -> int:
         with observe_money("close", call_id=call_id) as timing:
-            async with money_admission.admit(admission_orgs, operation="close"), money_session(session_maker()) as db:
+            async with (
+                money_admission.admit(admission_orgs, operation=admission_operation),
+                money_session(session_maker()) as db,
+            ):
                 mark_money(db, "close", call_id=call_id)
                 with timing.phase("ledger"):
                     if billable:
@@ -1287,12 +1307,20 @@ async def close_deferred(items: list[DeferredSettle], *, charge: bool, why: str 
     if not items:
         return 0
     pending, items[:] = list(items), []
-    admission_orgs = [d.payer_org_id for d in pending if charge and d.billable and (
-        d.actual_micro > 0 if d.actual_micro is not None else d.reserved_micro is None or d.reserved_micro > 0)]
+    # One session closes every hold. A batch that draws blocks stays `deferred` and also leases
+    # orgs that this same session only refunds. A batch that only releases or refunds is `release`.
+    consumes = any(_consumes_blocks(
+        billable=charge and d.billable, actual_micro=d.actual_micro, reserved_micro=d.reserved_micro)
+        for d in pending)
+    admission_operation = "deferred" if consumes else "release"
     total = 0
     try:
+        admission_orgs = money_admission.require_balance_orgs([d.payer_org_id for d in pending])
         with observe_money("deferred", batch_size=len(pending)) as timing:
-            async with money_admission.admit(admission_orgs, operation="deferred"), money_session(session_maker()) as db:
+            async with (
+                money_admission.admit(admission_orgs, operation=admission_operation),
+                money_session(session_maker()) as db,
+            ):
                 mark_money(db, "deferred", batch_size=len(pending))
                 with timing.phase("ledger"):
                     amounts = await ledger.close_holds_in_transaction(db, [
@@ -1344,7 +1372,12 @@ async def _finish_cancelled_call(
             # conditionally claims it: committed means refund, rolled back means a safe no-op.
             mk.call_id = None
             try:
-                async with session_maker() as cleanup_db:
+                # Upstream close already finished above. The lease covers only this balance session.
+                async with (
+                    money_admission.admit(
+                        money_admission.require_balance_orgs([mk.payer_org_id]), operation="release"),
+                    money_session(session_maker()) as cleanup_db,
+                ):
                     # The parent hold AND the overflow child's (`{call_ref}:overflow`, plan §4.3
                     # step 2): each release is a conditional claim, so a hold that never existed or
                     # was already closed is a safe no-op, and both are released exactly once.

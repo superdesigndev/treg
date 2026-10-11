@@ -591,7 +591,7 @@ hygiene (`pool_pre_ping`/`pool_recycle`/sizing) for non-SQLite URLs, and `verify
 no `TREG_SECRET_KEY` on a real DB (an ephemeral key would lose every stored secret on restart).
 
 `infra.money_timing.observe_money` measures the ordinary call's `reserve`, `close` and `deferred`
-application scopes with local monotonic timers. These cover optional settlement admission,
+application scopes with local monotonic timers. These cover optional money admission,
 pool acquisition and session cleanup,
 including rollback on failure; reserve also includes its post-commit balance reload. They are not
 pure row-lock durations or a census of all money writers: Hub, billing, direct ledger callers and
@@ -613,8 +613,14 @@ call ID, batch size, outcome and phase durations; no amount, body or exception m
 These observations remain best effort through the existing bounded analytics queue.
 
 `infra.money_admission.snapshot` adds bounded `money_admission_gauge` summaries by operation
-(`close`, `deferred`, `async`, `hub`) and mode (`disabled`, `redis`, `fallback`). Eligible calls
-record the same timing boundary when admission is disabled; pure releases bypass this observation.
+(`close`, `deferred`, `async`, `hub`, `reserve`, `release`) and mode (`disabled`, `redis`,
+`fallback`). Eligible calls record the same timing boundary when admission is disabled. An empty
+org list on `close`, `deferred`, `async`, or `hub` still skips the observation. `reserve` and
+`release` with an empty or invalid org raise `AdmissionRefused` before a session and do not record
+a fallback row. `fallback_*` counts, including `fallback_wait_timeout` on `reserve` and `release`,
+are degradation: the body still ran on the database path. A redis lease is the only mode that
+keeps same-org balance sessions from stacking on the pool.
+
 `money_admission_reporting.emit_snapshot` writes one local JSON record and queues one PostHog event
 per populated operation/mode, through the existing web minute timer and final partial window.
 Workers emit their accumulated window on command exit and attempt a bounded analytics drain;

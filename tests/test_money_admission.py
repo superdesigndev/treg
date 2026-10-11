@@ -87,6 +87,70 @@ async def test_empty_release_is_excluded_from_baseline(gate):
     assert admission.snapshot() == []
 
 
+@pytest.mark.parametrize("operation", ["reserve", "release"])
+@pytest.mark.parametrize("orgs", [[], [None], [0], [-3], [True], [7, None]])
+async def test_balance_ops_refuse_missing_identity_before_the_body(gate, operation, orgs):
+    entered = False
+    with pytest.raises(admission.AdmissionRefused, match="missing_identity") as caught:
+        async with admission.admit(orgs, operation=operation):
+            entered = True
+    assert not entered
+    assert not hasattr(caught.value, "status_code")
+    assert admission.snapshot() == []
+    with pytest.raises(admission.AdmissionRefused):
+        admission.require_balance_orgs(orgs)
+
+
+@pytest.mark.parametrize("operation", ["reserve", "release"])
+@pytest.mark.parametrize("reason", ["kv_not_configured", "kv_unavailable", "wait_timeout"])
+async def test_balance_ops_keep_existing_wait_and_kv_fallback(gate, monkeypatch, operation, reason):
+    settings, store = gate
+    if reason == "kv_not_configured":
+        monkeypatch.setattr(kv, "configured", lambda: False)
+    elif reason == "kv_unavailable":
+        store.unavailable = True
+    else:
+        settings.money_admission_wait_s = 0.02
+        store.values["money-admission:org:7"] = ("another-owner", time.monotonic() + 10)
+    entered = False
+    async with admission.admit([7], operation=operation):
+        entered = True
+        assert not admission._local_lock(7).locked()
+    assert entered
+    [row] = completed()
+    assert row["operation"] == operation
+    assert row["mode"] == "fallback" and row["fallback_" + reason] == 1
+    assert row["failed"] == 0
+
+
+async def test_reserve_and_release_share_one_org_lease(gate):
+    _, store = gate
+    entered, leave = asyncio.Event(), asyncio.Event()
+
+    async def holding():
+        async with admission.admit([7], operation="reserve"):
+            entered.set()
+            await leave.wait()
+
+    task = asyncio.create_task(holding())
+    await entered.wait()
+    release_entered = asyncio.Event()
+
+    async def releasing():
+        async with admission.admit([7], operation="release"):
+            release_entered.set()
+
+    waiter = asyncio.create_task(releasing())
+    await asyncio.sleep(0)
+    assert not release_entered.is_set()
+    async with admission.admit([8], operation="release"):
+        assert not release_entered.is_set()
+        assert set(store.values) == {"money-admission:org:7", "money-admission:org:8"}
+    leave.set()
+    await asyncio.gather(task, waiter)
+    assert release_entered.is_set() and not store.values
+
+
 async def test_same_org_waits_outside_scope_but_other_org_can_run(gate):
     _, store = gate
     entered, leave = asyncio.Event(), asyncio.Event()

@@ -2,7 +2,12 @@
 
 A lease reduces contention, never replaces a money lock or proves a transaction has stopped.
 Timeouts and store failures fall back to the original database path. Lease loss never cancels
-an in-flight transaction. Callers put the entire session (including rollback/close) inside admit.
+an in-flight transaction. Callers put the entire session (including rollback/close) inside admit,
+and do not call admit again inside that scope.
+
+`reserve` and `release` exist only for a session that will touch an org balance row. An empty or
+invalid org id on those operations refuses before the body runs, so the caller cannot open that
+session. Wait and key-value failures still enter the body; they are not an HTTP 429.
 """
 from __future__ import annotations
 
@@ -20,7 +25,9 @@ from ..config import get_settings
 from . import kv
 from .money_timing import PROCESS_INSTANCE
 
-_OPERATIONS = frozenset({"close", "deferred", "async", "hub"})
+_OPERATIONS = frozenset({"close", "deferred", "async", "hub", "reserve", "release"})
+# Sessions that update an org balance row. A missing org must not fall through into checkout.
+_BALANCE_OPS = frozenset({"reserve", "release"})
 _MODES = frozenset({"disabled", "redis", "fallback"})
 _REASONS = frozenset({"wait_timeout", "kv_unavailable", "kv_not_configured",
                       "lease_lost", "missing_identity", "gate_error"})
@@ -224,6 +231,31 @@ class _Gate:
             self.local.clear()
 
 
+class AdmissionRefused(Exception):
+    """Reserve or release refused before checkout: no positive org id.
+
+    Not an HTTP status. A wait timeout or an unavailable key-value store still runs the
+    original database path and must not be turned into a 429 here.
+    """
+
+
+def _invalid_org(org_id: object) -> bool:
+    return not isinstance(org_id, int) or isinstance(org_id, bool) or org_id <= 0
+
+
+def require_balance_orgs(org_ids: Iterable[int | None]) -> list[int]:
+    """Orgs whose balance row the next session will touch, or refuse with no session.
+
+    Empty, missing, boolean, and non-positive ids are the same failure: the caller must
+    not open a balance session under an empty admit.
+    """
+    raw = list(org_ids)
+    ids = [org_id for org_id in raw if isinstance(org_id, int) and not isinstance(org_id, bool) and org_id > 0]
+    if not raw or len(ids) != len(raw):
+        raise AdmissionRefused("missing_identity")
+    return sorted(set(ids))
+
+
 async def _release_safely(gate: _Gate) -> None:
     """Join bounded cleanup even under repeated cancellation, then propagate cancellation."""
     task = asyncio.create_task(gate.release())
@@ -241,8 +273,11 @@ async def _release_safely(gate: _Gate) -> None:
 @asynccontextmanager
 async def admit(org_ids: Iterable[int | None], *, operation: str) -> AsyncIterator[None]:
     raw = list(org_ids)
+    if operation in _BALANCE_OPS and (not raw or any(_invalid_org(org_id) for org_id in raw)):
+        # Do not yield. `async with admit(), session()` must not open the session.
+        raise AdmissionRefused("missing_identity")
     if not raw:
-        yield  # Pure releases do not take block locks; exclude them from the baseline too.
+        yield  # No payer to queue (a close/deferred/async/hub path that will not touch a balance row).
         return
     observation = _Observation(operation)
     gate: _Gate | None = None
