@@ -343,7 +343,8 @@ async def test_cancellation_cleanup_releases_both_holds_exactly_once(clients: As
     assert len(await _holds()) == 2
     mk = MarketplaceCall(tool=Tool(org_id=org_id, name=EP, owner="x", base_url="https://x", host="x"),
                          upstream="https://x", consumed=set(), endpoint_id=EP, provider="tikhub",
-                         tier="platform", estimate_micro=1_000, call_id="REF")
+                         tier="platform", estimate_micro=1_000, call_id="REF",
+                         payer_org_id=org_id, reserved_micro=1_000)
     await _finish_cancelled_call(None, mk, "REF")
     assert await _holds() == []
     releases = [e for e in await _rows(LedgerEntry) if e.kind == "release"]

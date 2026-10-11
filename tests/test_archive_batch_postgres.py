@@ -42,7 +42,8 @@ async def _batch(size: int, *, existing: bool = True):
         for i in range(size):
             call = await money.reserve(db, org.id, "test.archive-batch", 100,
                                        call_id=f"archive-batch-{i}")
-            items.append(DeferredSettle(call, True, 70, (org.id, f"key-{i:03}"), "", {}))
+            items.append(DeferredSettle(
+                call, True, 70, (org.id, f"key-{i:03}"), "", {}, payer_org_id=org.id))
         return org.id, items
 
 

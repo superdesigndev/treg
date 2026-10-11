@@ -86,8 +86,8 @@ async def test_deferred_release_and_settle_can_finish_with_a_competing_settlemen
     batched = await _reserve(org_id, "mixed-settle")
     ordinary = await _reserve(org_id, "ordinary-settle")
     pending = [
-        DeferredSettle(released, False, None, None, "not_billable", {}),
-        DeferredSettle(batched, True, 80, None, "", {}),
+        DeferredSettle(released, False, None, None, "not_billable", {}, payer_org_id=org_id),
+        DeferredSettle(batched, True, 80, None, "", {}, payer_org_id=org_id),
     ]
     async def batch():
         return await close_deferred(pending, charge=True)
@@ -256,9 +256,9 @@ async def test_deferred_failure_rolls_back_every_child_and_can_be_retried(postgr
     first = await _reserve(org_id, "rollback-first")
     second = await _reserve(org_id, "rollback-second")
     items = [
-        DeferredSettle(released, False, None, None, "not_billable", {}),
-        DeferredSettle(first, True, 80, (org_id, "rollback-first-key"), "", {}),
-        DeferredSettle(second, True, 50, (org_id, "rollback-second-key"), "", {}),
+        DeferredSettle(released, False, None, None, "not_billable", {}, payer_org_id=org_id),
+        DeferredSettle(first, True, 80, (org_id, "rollback-first-key"), "", {}, payer_org_id=org_id),
+        DeferredSettle(second, True, 50, (org_id, "rollback-second-key"), "", {}, payer_org_id=org_id),
     ]
     async with session_maker() as db:
         db.add_all([ArchiveKeyOrg(org_id=org_id, key_hash=key)
@@ -319,14 +319,14 @@ async def test_batches_with_opposite_org_orders_both_commit(postgres_money):
 
     async def first_batch():
         return await close_deferred([
-            DeferredSettle(second_release, False, None, None, "not_billable", {}),
-            DeferredSettle(first_charge, True, 80, None, "", {}),
+            DeferredSettle(second_release, False, None, None, "not_billable", {}, payer_org_id=second_org),
+            DeferredSettle(first_charge, True, 80, None, "", {}, payer_org_id=first_org),
         ], charge=True)
 
     async def second_batch():
         return await close_deferred([
-            DeferredSettle(first_release, False, None, None, "not_billable", {}),
-            DeferredSettle(second_charge, True, 50, None, "", {}),
+            DeferredSettle(first_release, False, None, None, "not_billable", {}, payer_org_id=first_org),
+            DeferredSettle(second_charge, True, 50, None, "", {}, payer_org_id=second_org),
         ], charge=True)
 
     results = await _contend_after_statement(
@@ -440,8 +440,8 @@ async def test_batch_waiting_for_an_ordinary_claim_does_not_keep_a_refund_lock(p
 
     async def batch():
         return await close_deferred([
-            DeferredSettle(refund, False, None, None, "not_billable", {}),
-            DeferredSettle(raced, True, 80, None, "", {}),
+            DeferredSettle(refund, False, None, None, "not_billable", {}, payer_org_id=org_id),
+            DeferredSettle(raced, True, 80, None, "", {}, payer_org_id=org_id),
         ], charge=True)
 
     results = await _contend_after_statement(postgres_money, ordinary, batch, "DELETE FROM HOLD ")
@@ -461,14 +461,14 @@ async def test_overlapping_batches_claim_holds_once_despite_opposite_input_order
 
     async def first_batch():
         return await close_deferred([
-            DeferredSettle(second, False, None, None, "not_billable", {}),
-            DeferredSettle(first, True, 70, None, "", {}),
+            DeferredSettle(second, False, None, None, "not_billable", {}, payer_org_id=org_id),
+            DeferredSettle(first, True, 70, None, "", {}, payer_org_id=org_id),
         ], charge=True)
 
     async def second_batch():
         return await close_deferred([
-            DeferredSettle(first, False, None, None, "not_billable", {}),
-            DeferredSettle(second, True, 80, None, "", {}),
+            DeferredSettle(first, False, None, None, "not_billable", {}, payer_org_id=org_id),
+            DeferredSettle(second, True, 80, None, "", {}, payer_org_id=org_id),
         ], charge=True)
 
     results = await _contend_after_statement(
@@ -504,8 +504,8 @@ async def test_batch_does_not_lock_a_newly_funded_block_after_updating_org(postg
 
     async def batch():
         return await close_deferred([
-            DeferredSettle(first, True, 80, None, "", {}),
-            DeferredSettle(second, True, 50, None, "", {}),
+            DeferredSettle(first, True, 80, None, "", {}, payer_org_id=org_id),
+            DeferredSettle(second, True, 50, None, "", {}, payer_org_id=org_id),
         ], charge=True)
 
     async def fund_between_block_lock_and_balance_write():
@@ -542,14 +542,14 @@ async def test_zero_cost_batches_record_archive_use_in_compatible_order(postgres
 
     async def first_batch():
         return await close_deferred([
-            DeferredSettle(holds[0], True, 0, (org_id, "z-key"), "", {}),
-            DeferredSettle(holds[1], True, 0, (org_id, "a-key"), "", {}),
+            DeferredSettle(holds[0], True, 0, (org_id, "z-key"), "", {}, payer_org_id=org_id),
+            DeferredSettle(holds[1], True, 0, (org_id, "a-key"), "", {}, payer_org_id=org_id),
         ], charge=True)
 
     async def second_batch():
         return await close_deferred([
-            DeferredSettle(holds[2], True, 0, (org_id, "a-key"), "", {}),
-            DeferredSettle(holds[3], True, 0, (org_id, "z-key"), "", {}),
+            DeferredSettle(holds[2], True, 0, (org_id, "a-key"), "", {}, payer_org_id=org_id),
+            DeferredSettle(holds[3], True, 0, (org_id, "z-key"), "", {}, payer_org_id=org_id),
         ], charge=True)
 
     results = await _contend_after_statement(
