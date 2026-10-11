@@ -508,7 +508,9 @@ maybe_overflow` runs a **child cycle** after the primary's settle released its h
 
 When the resolver already knows the account is out (the exhausted view) **and** a route is on, the
 ladder skips the direct attempt entirely (`MarketplaceCall.skip_direct`): no parent hold, no vendor
-402, straight to the child - the plan's tier 4b.
+402, straight to the child - the plan's tier 4b. That parent does not gain a `payer_org_id`.
+Cancellation requires the authenticated caller's org before the refund and releases the child
+hold with it.
 
 Influencers Club discovery/search and similar-creators routes, and Icypeas people search, have a
 verified flat Orthogonal price against our per-row direct price. They are admitted by an absolute

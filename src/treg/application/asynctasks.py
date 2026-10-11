@@ -417,19 +417,22 @@ async def _finish_terminal(snapshot: AsyncTaskRecord, outcome: str, document: ob
     terminal_verdict = verdict(snapshot.endpoint_id, status_code, body) if outcome == "success" else None
     # The snapshot only selects admission. _finish rechecks the locked row and remains the
     # authority for charging; a release inside an already-admitted success scope is not a second admit.
-    awaiting_usage = (require_usage and snapshot.settlement_basis["amount"]["kind"] == "usage"
-                      and settlement.usage_evidence(snapshot.settlement_basis, {"terminal": document}) is None)
+    # Missing usage skips admission only when a non-expired success or billed failure will
+    # keep the hold. A failure, and any already-expired terminal state, releases it.
+    usage_missing = (require_usage and snapshot.settlement_basis["amount"]["kind"] == "usage"
+                     and settlement.usage_evidence(
+                         snapshot.settlement_basis, {"terminal": document}) is None)
     expired = asynctasks.expired(snapshot.created_at, now)
+    retains_hold = (usage_missing and outcome in ("success", "billed_failure") and not expired)
     finish_args = dict(require_usage=require_usage, expected_attempt=expected_attempt,
                        terminal_hit=terminal_hit, terminal_verdict=terminal_verdict)
-    if awaiting_usage:
+    if retains_hold:
         # Task-row update only: the hold stays, and the balance row is not touched.
         result = await _finish(snapshot.call_id, outcome, document, now, **finish_args)
     elif outcome in ("success", "billed_failure") and not expired:
         result = await _finish_balance(
             snapshot.org_id, "async", snapshot.call_id, outcome, document, now, **finish_args)
     else:
-        # Failure, or an already-expired success that _finish will release in full.
         result = await _finish_balance(
             snapshot.org_id, "release", snapshot.call_id, outcome, document, now, **finish_args)
     expected = asynctasks.SETTLED if outcome in ("success", "billed_failure") else asynctasks.RELEASED

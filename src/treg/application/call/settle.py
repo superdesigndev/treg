@@ -1353,6 +1353,8 @@ async def _finish_cancelled_call(
     mk: MarketplaceCall | None,
     call_ref: str,
     response: UpstreamResponse | None = None,
+    *,
+    trusted_org_id: int | None = None,
 ) -> None:
     """Finish compensation before propagating cancellation from a call that may have reserved."""
     # A cancelled request cannot own this cleanup: another cancellation while it is returning the
@@ -1372,10 +1374,14 @@ async def _finish_cancelled_call(
             # conditionally claims it: committed means refund, rolled back means a safe no-op.
             mk.call_id = None
             try:
+                # A parent reserve already stored mk.payer_org_id. Overflow cancel passes
+                # the authenticated caller instead, including skip-direct, where the parent
+                # field stays empty. Do not copy that caller onto the parent.
+                release_org = trusted_org_id if trusted_org_id is not None else mk.payer_org_id
                 # Upstream close already finished above. The lease covers only this balance session.
                 async with (
                     money_admission.admit(
-                        money_admission.require_balance_orgs([mk.payer_org_id]), operation="release"),
+                        money_admission.require_balance_orgs([release_org]), operation="release"),
                     money_session(session_maker()) as cleanup_db,
                 ):
                     # The parent hold AND the overflow child's (`{call_ref}:overflow`, plan §4.3

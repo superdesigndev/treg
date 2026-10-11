@@ -286,13 +286,20 @@ Waiting for admission holds no database connection.
 
 The application supplies the already-known payer identity through `MarketplaceCall` and
 `DeferredSettle`, an asynchronous task snapshot, the Hub caller, or the org on a reserve.
+Skip-direct overflow does not reserve a parent and does not write `payer_org_id` on that
+parent. Before that child can be reserved, and again before overflow cancellation cleanup,
+the authenticated caller's org is required. That org admits the release of `{call_ref}` and
+`{call_ref}:overflow`. A missing caller refuses before checkout.
 The gate covers ordinary positive settlements (`close`), charged deferred batches (`deferred`),
 potentially billable asynchronous terminal settlement (`async`), the Hub payer's positive seller
 payment (`hub`), balance-row reserves (`reserve`), and balance-row release, refund, and cancel
 (`release`). A deferred batch that draws blocks keeps operation `deferred` and also leases every
 payer that same session refunds. A batch or close that only releases or refunds uses `release`.
 Async admission is conservative: the locked task row still decides whether and how much to charge,
-and a release discovered only after that lock stays inside the admit already taken. One admit wraps
+and a release discovered only after that lock stays inside the admit already taken. Missing usage
+skips admission only for a non-expired success or billed failure that keeps the hold. A failure,
+including one observed with `require_usage`, and any terminal state already past the window,
+admits as `release` before the session that returns the hold. One admit wraps
 the session; nothing inside it calls `admit` again. The lease ends after the session closes and
 before upstream work. A reserve loads the org for auto-top-up inside that session and schedules
 the refill only after the lease is released. Grants, top-ups, signup credit, referral payouts, and
@@ -373,10 +380,12 @@ For a tier-4 endpoint carrying `async`, a successful submission keeps its hold a
 `AsyncTaskRecord` whose `settlement_basis` freezes the whole price rule with the request it was
 applied to, so the settlement replays from the row alone. BYOK calls create neither hold nor task
 row. An authorized caller poll and the fallback worker share `_finish_terminal`: terminal 2xx
-evidence settles the original task once under its row lock. Caller success without required usage
-only learns result ownership and leaves the hold for a later observation; worker fallback retains
-its reserve-based settlement with a reconciliation alert. Settlement errors leave the provider
-response unchanged and cron retries. Only the winning finalizer archives terminal evidence.
+evidence settles the original task once under its row lock. An unexpired caller success or
+billed failure without required usage only learns result ownership and leaves the hold for a
+later observation. A failure, or a terminal state already past the window, releases the hold
+under admission. Worker fallback retains its reserve-based settlement with a reconciliation alert.
+Settlement errors leave the provider response unchanged and cron retries. Only the winning
+finalizer archives terminal evidence.
 For a successful task, the same transaction stores the terminal adapter hit verdict on the task;
 a confirmed terminal failure stores `false` when the endpoint has verified hit rules, while
 pending and timed-out tasks remain undecided. This counts failed attempts in routing's hit rate.
@@ -1072,7 +1081,8 @@ and `cost_source: "aggregator"` + `served_via` in the ledger `meta`, so `reconci
 accounting for the per-aggregator daily budget, not a balance. That budget is
 `TREG_OVERFLOW_DAILY_BUDGET_USD`: the code default is $20 per aggregator. A deployment may set a
 different value in its private operational configuration. Shadow mode places no hold and charges
-nothing.
+nothing. Skip-direct places no parent hold and leaves `payer_org_id` empty; cancellation of the
+child requires the authenticated caller and releases `{call_ref}:overflow` under that org.
 
 **The relay price is disclosed wherever a price is read.** `/call/` says `X-Treg-Served-Via:
 overflow:<aggregator>` with `X-Treg-Cost-Micro` the child's charge; the MCP `call` result (both

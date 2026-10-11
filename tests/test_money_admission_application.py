@@ -373,6 +373,91 @@ async def test_async_usage_wait_skips_admission_until_the_balance_row(money_db, 
         assert await ledger.balance_of(db, org_id) == 900
 
 
+def _usage_task(org_id: int, call_id: str, created) -> AsyncTaskRecord:
+    return AsyncTaskRecord(
+        call_id=call_id, org_id=org_id, provider="test", endpoint_id="test.admission",
+        reserved_micro=100, created_at=created, next_check_at=created,
+        settlement_basis={"amount": {"kind": "usage", "path": "usage.cost", "unit": "usd"},
+                          "reserve_micro": 100},
+    )
+
+
+async def test_usage_failure_admits_release_before_checkout(money_db, monkeypatch):
+    """require_usage does not exempt a failure that will return the hold."""
+    org_id = await _fund("async-usage-failure")
+    call_id = "async-usage-failure"
+    await _reserve(org_id, call_id)
+    now = utcnow_naive()
+    row = _usage_task(org_id, call_id, now)
+    async with session_maker() as db:
+        db.add(row)
+        await db.commit()
+    probe = AdmissionProbe(monkeypatch)
+    task = asyncio.create_task(task_app._finish_terminal(
+        row.model_copy(), "failure", {}, 200, b"{}", now, require_usage=True))
+    try:
+        await asyncio.wait_for(probe.requested.wait(), 5)
+        assert probe.calls == [("release", [org_id])]
+        assert probe.checkouts == 0
+        probe.allow.set()
+        assert await asyncio.wait_for(task, 5) == "released"
+        assert probe.connections_on_exit == [0]
+        assert len(probe.calls) == 1
+    finally:
+        probe.allow.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        probe.close()
+    async with session_maker() as db:
+        stored = await db.get(AsyncTaskRecord, call_id)
+        assert stored is not None and stored.status == "released"
+        assert await db.get(Hold, call_id) is None
+        assert await ledger.balance_of(db, org_id) == 1_000
+        kinds = (await db.execute(select(LedgerEntry.kind).where(
+            LedgerEntry.call_id == call_id))).scalars().all()
+        assert kinds.count("release") == 1
+
+
+@pytest.mark.parametrize("outcome", ["success", "failure"])
+async def test_expired_terminal_without_usage_admits_release(money_db, monkeypatch, outcome):
+    """An expired terminal state is a refund, not an awaiting-usage task-row update."""
+    org_id = await _fund(f"async-expired-{outcome}")
+    call_id = f"async-expired-{outcome}"
+    await _reserve(org_id, call_id)
+    now = utcnow_naive()
+    created = now - timedelta(hours=24)
+    row = _usage_task(org_id, call_id, created)
+    async with session_maker() as db:
+        db.add(row)
+        await db.commit()
+    probe = AdmissionProbe(monkeypatch)
+    task = asyncio.create_task(task_app._finish_terminal(
+        row.model_copy(), outcome, {}, 200, b"{}", now, require_usage=True))
+    try:
+        await asyncio.wait_for(probe.requested.wait(), 5)
+        assert probe.calls == [("release", [org_id])]
+        assert probe.checkouts == 0
+        probe.allow.set()
+        assert await asyncio.wait_for(task, 5) == "timed_out"
+        assert probe.connections_on_exit == [0]
+        assert len(probe.calls) == 1
+    finally:
+        probe.allow.set()
+        if not task.done():
+            task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        probe.close()
+    async with session_maker() as db:
+        stored = await db.get(AsyncTaskRecord, call_id)
+        assert stored is not None and stored.status == "timed_out"
+        assert await db.get(Hold, call_id) is None
+        assert await ledger.balance_of(db, org_id) == 1_000
+        kinds = (await db.execute(select(LedgerEntry.kind).where(
+            LedgerEntry.call_id == call_id))).scalars().all()
+        assert kinds.count("release") == 1
+
+
 async def test_async_failure_release_waits_before_checkout(money_db, monkeypatch):
     org_id = await _fund("async-failure")
     call_id = "async-failure"

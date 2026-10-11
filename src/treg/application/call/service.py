@@ -21,6 +21,7 @@ from ...client_identity import _norm_client
 from ...config import get_settings
 from ...domain.catalog import store as catalog_store
 from ...domain import provider_resources
+from ...infra import money_admission
 from ...infra.db import session_maker
 from ...models import Secret
 from ...sandbox_identity import visitor_name
@@ -175,16 +176,28 @@ def create_call_context(call_input: CallInput) -> CallContext:
     return CallContext(input=call_input, call_ref=uuid.uuid4().hex, meta=meta)
 
 
+def _required_caller_org(caller) -> int:
+    """Positive org of the authenticated caller, or refuse before a balance session.
+
+    Skip-direct never reserves a parent, so that call's `payer_org_id` stays empty.
+    Overflow cancellation has to name this caller. It must not copy the org onto the parent.
+    """
+    return money_admission.require_balance_orgs([caller.org_id])[0]
+
+
 async def _finish_cancelled_call(
     request: _ApplicationRequest,
     mk: MarketplaceCall | None,
     call_ref: str,
     response: UpstreamResponse | None = None,
+    *,
+    trusted_org_id: int | None = None,
 ) -> None:
     claim, request.state.idem_claim = request.state.idem_claim, None
     if mk is not None and mk.metered:
         request.context.finalization = FinalizationState.FINALIZING
-    await finish_cancelled_call(claim, mk, call_ref, response)
+    await finish_cancelled_call(
+        claim, mk, call_ref, response, trusted_org_id=trusted_org_id)
 
 
 async def _await_before_reserve(awaitable, request: _ApplicationRequest, call_ref: str):
@@ -1085,6 +1098,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         # attempt, no parent hold — straight to the child cycle (plan §4 ladder, tier 4b). The DB
         # phase ends here; the child places its own hold and the aggregator answers with none open.
         await db.commit()
+        # No parent hold exists yet. Require the authenticated caller before the child
+        # reserve, and keep that org off `mk.payer_org_id` — the parent was not reserved.
+        caller_org = _required_caller_org(caller)
         pending = _audit(503, charged_micro=0, refused_by="capacity",
                          error_response="treg: own account exhausted — trying overflow",
                          defer_analytics=True)
@@ -1096,7 +1112,7 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                 client=upstream_client, audit_client=_client_name(request), force_trigger="exhausted")
         except asyncio.CancelledError:
             _capture(pending)
-            await _finish_cancelled_call(request, mk, call_ref)
+            await _finish_cancelled_call(request, mk, call_ref, trusted_org_id=caller_org)
             raise
         if outcome is None or not outcome.served or outcome.response is None:
             _capture(pending)  # a refusal after all
@@ -1114,7 +1130,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                                         media_type=_response_header(response, "content-type"),
                                         charged_micro=charged, metered=True, call_ref=call_ref)
             except asyncio.CancelledError:
-                await _finish_cancelled_call(request, mk, call_ref, response)
+                await _finish_cancelled_call(
+                    request, mk, call_ref, response, trusted_org_id=caller_org)
                 raise
             request.state.idem_claim = None
         _set_response_header(response, "X-Treg-Cost-Micro", str(charged))
@@ -1617,7 +1634,11 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     client=upstream_client, audit_client=_client_name(request))
             except asyncio.CancelledError:
                 _capture(pending)
-                await _finish_cancelled_call(request, mk, call_ref, response)
+                # The child hold, if the parent one was already released, still belongs
+                # to this caller. Require that identity before the refund session.
+                await _finish_cancelled_call(
+                    request, mk, call_ref, response,
+                    trusted_org_id=_required_caller_org(caller))
                 raise
             except CallFailure as exc:  # the child's own reservation refusal
                 if exc.kind == "route_max_cost" and charged:
