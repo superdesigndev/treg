@@ -7,7 +7,7 @@ source:
   openapi: https://api.moltsets.com/openapi.json
   curated: '2026-09-16'
 pricing_url: https://moltsets.com/pricing
-limits: "$27 plan: enrichment 1,000 records/5h and 5,000/week; search 500/5h and 2,500/week; request limits are 5x the corresponding 5h record limits. Rolling windows are reported by get_account."
+limits: "Rolling 5h and weekly windows scale with the MoltSets plan. $27: enrichment 1,000 records/5h and 5,000/week; search 500/5h and 2,500/week. $97: 15x each (enrichment 15,000/5h and 75,000/week; search 7,500/5h and 37,500/week). Request limits are 5x the corresponding 5h record limits. Current windows are reported by get_account."
 expect: &found
   json_path: status
   equals: ok
