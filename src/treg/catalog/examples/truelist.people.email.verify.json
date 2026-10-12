@@ -1,0 +1,16 @@
+{
+  "emails": [
+    {
+      "address": "user@example.com",
+      "domain": "example.com",
+      "canonical": "user@example.com",
+      "mx_record": null,
+      "first_name": null,
+      "last_name": null,
+      "email_state": "ok",
+      "email_sub_state": "email_ok",
+      "verified_at": "2026-02-21T10:39:12.570Z",
+      "did_you_mean": null
+    }
+  ]
+}

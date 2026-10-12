@@ -45,6 +45,23 @@ async def test_spidercloud_key_uses_free_balance_probe(clients, monkeypatch):
     assert response.status_code == 200, response.text
 
 
+async def test_truelist_key_uses_free_account_probe(clients, monkeypatch):
+    def probe(request):
+        assert request.method == "GET"
+        assert request.url.path == "/me"
+        if request.headers["authorization"] != "Bearer own-key":
+            return httpx.Response(401, json={"error": "Unauthorized"})
+        return httpx.Response(200, json={"email": "team@company.com", "name": "Team Lead",
+                                         "uuid": "a3828d19-1234-5678-9abc-def012345678"})
+
+    async with AsyncClient(transport=httpx.MockTransport(probe)) as upstream:
+        monkeypatch.setattr(app.state, "http", upstream)
+        bad = await clients.post("/connections/token", json={"provider": "truelist", "token": "garbage"})
+        good = await clients.post("/connections/token", json={"provider": "truelist", "token": "own-key"})
+    assert bad.status_code == 422, bad.text
+    assert good.status_code == 200, good.text
+
+
 async def test_crawl4ai_key_uses_free_balance_probe(clients, monkeypatch):
     def probe(request):
         assert request.method == "GET"

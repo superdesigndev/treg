@@ -1,0 +1,14 @@
+{
+  "email": "team@company.com",
+  "name": "Team Lead",
+  "uuid": "a3828d19-1234-5678-9abc-def012345678",
+  "time_zone": "America/New_York",
+  "is_admin_role": true,
+  "token": "abc123",
+  "api_keys": [],
+  "account": {
+    "name": "Company Inc",
+    "payment_plan": "pro",
+    "users": []
+  }
+}

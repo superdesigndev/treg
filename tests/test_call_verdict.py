@@ -105,6 +105,13 @@ def _body(doc) -> bytes:
     ("bounceban.people.email.verify", {"result": "deliverable", "is_accept_all": True}, "valid"),
     ("bounceban.people.email.verify", {"status": "verifying", "result": None}, None),
     ("limadata.people.email.verify", {"result": "Risky", "is_catch_all": True}, "catch_all"),
+    ("truelist.people.email.verify", {"emails": [{"email_state": "ok", "email_sub_state": "email_ok"}]}, "valid"),
+    ("truelist.people.email.verify", {"emails": [{"email_state": "email_invalid", "email_sub_state": "failed_smtp_check"}]}, "invalid"),
+    ("truelist.people.email.verify", {"emails": [{"email_state": "accept_all", "email_sub_state": "email_ok"}]}, "catch_all"),
+    ("truelist.people.email.verify", {"emails": [{"email_state": "risky", "email_sub_state": "is_role"}]}, "risky"),
+    ("truelist.people.email.verify", {"emails": [{"email_state": "ok", "email_sub_state": "is_disposable"}]}, "risky"),
+    # Truelist `unknown` is uncharged and a routing miss, and still a verdict worth counting
+    ("truelist.people.email.verify", {"emails": [{"email_state": "unknown", "email_sub_state": "unknown_error"}]}, "unknown"),
     ("limadata.people.email.verify", {"result": "Invalid", "is_catch_all": True}, "invalid"),
     ("hunter.people.email.find", {"data": {"email": "a@x.io", "verification": {"status": "valid"}}}, "verified"),
     ("hunter.people.email.find", {"data": {"email": "a@x.io", "verification": {"status": "accept_all"}}}, "unverified"),
