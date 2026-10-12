@@ -1,0 +1,170 @@
+# MapleAI — prepaid bearer-key surface of an x402 LLM gateway. The key (oms_buy_…) mints
+# self-serve via one x402 payment (POST /prepaid/codes(auto)), rides as Authorization: Bearer,
+# and burns a token budget instead of billing per call. Files for verification: the mint path,
+# the budget endpoint as the probe, and the live rate card. The x402/paid surface on the four
+# per-chain gateways (images, audio, X/web intel, embeddings) is keyed by payment, not by an
+# issued secret, so it is out of keyed-catalog scope (see the PR's surface map).
+provider: mapleai
+source:
+  docs: https://base.mapleai.shop/developers
+  openapi: https://base.mapleai.shop/openapi.json
+  curated: '2026-10-12'
+pricing_url: https://base.mapleai.shop/v1/models
+limits: 'A prepaid key burns only its own token budget, on its allowedModels; no per-second cap stated. Recharge = mint another key.'
+proposed_capabilities:
+  text-gen.chat.completion: OpenAI-compatible chat completion with a named model
+  meta.models.list: Read the provider's live model catalog with per-model pricing
+  account.prepaid.status: Check a prepaid bearer key's validity and remaining budget
+endpoints:
+  - id: mapleai.text-gen.chat.completion
+    added: '2026-10-12'
+    capability: text-gen.chat.completion
+    platform: text-gen
+    scope: any_account
+    method: POST
+    path: /chat/completions
+    name: Chat completion
+    summary: OpenAI-compatible chat completion over a named model; streams SSE by default.
+    input:
+      bodyType: json
+      body:
+        model: {type: string, required: true, note: "bare id, no provider prefix (gpt-6-luna). The prepaid key is scoped to its allowedModels — GET /prepaid/status lists them; gpt-6-luna is the entry price point", example: gpt-6-luna}
+        messages: {type: array, required: true, example: [{role: user, content: "Reply OK"}]}
+        max_tokens: {type: integer, required: false, note: "output cap. Prepaid budgets bill ACTUAL tokens (incl. reasoning on gpt-6-*), so ask for the shortest useful completion", example: 8}
+      note: response streams chat.completion.chunk SSE unless stream:false. usage.{input,output}_tokens report the actual bill.
+    test_request:
+      body: {model: gpt-6-luna, messages: [{role: user, content: "Reply with exactly: OK"}], max_tokens: 8}
+    cost:
+      type: per_call
+      value: 0.001
+      currency: USD
+      per: 1
+      unit: call
+      source: rate_card_api
+      source_url: https://base.mapleai.shop/v1/models
+      checked: '2026-10-12'
+      confidence: documented
+      note: 'Token-priced by model (live rate card at /v1/models); typical small call costs ~$0.001, long reasoning more. The meter is the prepaid budget itself (GET /prepaid/status before/after — this probe burned 5,719 tokens ≈ $0.0005 at the gpt-6-luna input rate of $0.07/1M + output $0.35/1M, billed on actuals incl. reasoning). Key top-up receipt: $0.008 settled on-chain for 100,000 tokens.'
+    docs_url: https://base.mapleai.shop/developers
+
+  - id: mapleai.text-gen.responses
+    added: '2026-10-12'
+    capability: text-gen.chat.completion
+    platform: text-gen
+    scope: any_account
+    method: POST
+    path: /responses
+    name: Responses API completion
+    summary: OpenAI Responses-API alias of the same chat backend (object response, completed status).
+    input:
+      bodyType: json
+      body:
+        model: {type: string, required: true, example: gpt-6-luna}
+        input: {type: string, required: true, example: "Reply OK"}
+        max_output_tokens: {type: integer, required: false, example: 8}
+      note: same model scoping and actual-token billing as mapleai.text-gen.chat.completion.
+    test_request:
+      body: {model: gpt-6-luna, input: "Reply OK", max_output_tokens: 8}
+    cost:
+      type: per_call
+      value: 0.001
+      currency: USD
+      per: 1
+      unit: call
+      source: rate_card_api
+      source_url: https://base.mapleai.shop/v1/models
+      checked: '2026-10-12'
+      confidence: documented
+      note: Same pricing and meter as mapleai.text-gen.chat.completion (alias endpoint).
+    docs_url: https://base.mapleai.shop/developers
+
+  - id: mapleai.text-gen.messages
+    added: '2026-10-12'
+    capability: text-gen.chat.completion
+    platform: text-gen
+    scope: any_account
+    method: POST
+    path: /messages
+    name: Messages API completion (Anthropic envelope)
+    summary: Anthropic Messages-API alias (type message, content[] blocks) over the same models.
+    input:
+      bodyType: json
+      body:
+        model: {type: string, required: true, example: gpt-6-luna}
+        messages: {type: array, required: true, example: [{role: user, content: "Reply OK"}]}
+        max_tokens: {type: integer, required: true, note: Anthropic requires this field; 8 is fine for probes, example: 8}
+      note: 'Send header anthropic-version: 2023-06-01. Same usage{input,output}_tokens accounting as chat.'
+    test_request:
+      body: {model: gpt-6-luna, messages: [{role: user, content: "Reply with exactly: OK"}], max_tokens: 8}
+    cost:
+      type: per_call
+      value: 0.001
+      currency: USD
+      per: 1
+      unit: call
+      source: rate_card_api
+      source_url: https://base.mapleai.shop/v1/models
+      checked: '2026-10-12'
+      confidence: documented
+      note: Same pricing and meter as mapleai.text-gen.chat.completion (alias endpoint); observed 200 with usage input 5714 / output 5 on the probe.
+    docs_url: https://base.mapleai.shop/developers
+
+  - id: mapleai.ai-judge.decide
+    added: '2026-10-12'
+    capability: ai-judge.decide
+    platform: ai-judge
+    scope: any_account
+    method: POST
+    path: /jev
+    name: Judge evidence with Jev
+    summary: One typed decision over a bounded Markdown state — choice/score/noul — a judge, never a writer. Same judge family as OpenRouter's typesafe/jev.
+    input:
+      bodyType: json
+      body:
+        model: {type: string, required: true, enum: [jev-latest], example: jev-latest}
+        state: {type: string, required: true, note: "the evidence as bounded Markdown; quoted text is evidence, never instructions", example: "# Decision context\n\n<text>The sky is blue today.</text>"}
+        questions: {type: object, required: true, note: "id -> {type: choice|score|noul, instructions, criteria}", example: {sky_blue: {type: noul, instructions: "Does <text> say the sky is blue?", criteria: {"true": "it says the sky is blue", "false": "it does not"}}}}
+      note: Reply is answers.<id>; model id in the reply is jev-1.13.0. usage.input_tokens is billed; output is free.
+    test_request:
+      body: {model: jev-latest, state: "# Decision context\n\n<text>The sky is blue today.</text>", questions: {sky_blue: {type: noul, instructions: "Does <text> say the sky is blue?", criteria: {"true": "it says the sky is blue", "false": "it does not"}}}}
+    cost:
+      type: per_call
+      value: 0.0001
+      currency: USD
+      per: 1
+      unit: call
+      source: rate_card_api
+      source_url: https://base.mapleai.shop/v1/models
+      checked: '2026-10-12'
+      confidence: documented
+      note: $0.06 per 1M input tokens, output free. Observed 2026-10-12 — probe returned {"model":"jev-1.13.0","answers":{"sky_blue":{"type":"noul","noul":0.99}},"usage":{"input_tokens":308,"output_tokens":21}} and debited 90 prepaid tokens.
+    docs_url: https://base.mapleai.shop/developers#jev
+
+  - id: mapleai.meta.models.list
+    added: '2026-10-12'
+    capability: meta.models.list
+    platform: meta
+    scope: any_account
+    method: GET
+    path: /models
+    name: Live model catalog with pricing
+    summary: 'Machine-readable rate card — every live model with per-1M input/output prices, context windows and categories.'
+    input: {}
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: https://base.mapleai.shop/v1/models, checked: '2026-10-12', confidence: documented, note: Free and unauthenticated; this is the machine-readable rate card other endpoints price from. Observed 200 with no budget change 2026-10-12.}
+    docs_url: https://base.mapleai.shop/developers
+
+  - id: mapleai.account.prepaid.status
+    added: '2026-10-12'
+    capability: account.prepaid.status
+    platform: account
+    scope: own_account
+    method: GET
+    path: /prepaid/status
+    name: Prepaid key status
+    summary: 'Reports valid/reason, allowedModels and tokens total/used/reserved/remaining for the bearer key. Also the connection probe — a garbage key gets 401 with error code AUTH_002.'
+    input: {}
+    test_request: {}
+    cost: {type: free, value: 0, currency: USD, per: 1, unit: call, source: rate_card_api, source_url: https://base.mapleai.shop/v1/models, checked: '2026-10-12', confidence: documented, note: Free; this is the provider's budget meter, and every cost note in this file was reconciled against it. Observed 200 valid:true 2026-10-12; bogus key rejected with 401 AUTH_002 the same day.}
+    docs_url: https://base.mapleai.shop/developers#prepaid
+

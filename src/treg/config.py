@@ -278,6 +278,7 @@ class Settings(BaseSettings):
     platform_key_moz: str = ""          # base64 of "access_id:secret_key" (HTTP Basic)
     platform_key_seranking: str = ""
     platform_key_trykitt: str = ""  # x-api-key; credits.jobCredits reports USD
+    platform_key_mapleai: str = ""  # Authorization: Bearer prepaid key; a top-up mints an oms_buy_ token budget via x402
     platform_key_contactout: str = ""  # raw API token; injected into the token header
     platform_key_millionverifier: str = ""  # raw key; injected as ?api=…
     platform_key_bounceban: str = ""  # raw key in Authorization; prepaid verification credits
