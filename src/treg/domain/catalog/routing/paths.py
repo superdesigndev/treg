@@ -139,7 +139,7 @@ def linkedin_handle(v: Any) -> str | None:
     """`https://www.linkedin.com/in/patrickcollison/` → `patrickcollison` (hunter wants the handle)."""
     if not isinstance(v, str) or not v:
         return None
-    m = re.search(r"linkedin\.com/(?:in|company)/([^/?#]+)", v)
+    m = re.search(r"(?ai:linkedin\.com)/(?:in|company)/([^/?#]+)", v)
     return m.group(1) if m else (v if "/" not in v else None)
 
 
@@ -150,7 +150,7 @@ def linkedin_url(v: Any) -> str | None:
     if not isinstance(v, str) or not v:
         return None
     v = v.strip()
-    if v.startswith("http"):
+    if v.lower().startswith("http"):
         return v
     m = re.match(r"^((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com)(/.*)$", v, re.I)  # anchored: the HOST is linkedin, not a path that mentions it
     if m:
