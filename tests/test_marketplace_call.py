@@ -1114,9 +1114,14 @@ def test_aviato_conditional_prices_follow_live_balance_deltas():
 
 
 @pytest.mark.parametrize(("endpoint", "unit_micro", "body", "expected"), [
-    # bulk enrich settles from the rows it returned
-    ("aviato.companies.enrich.bulk", 150_000, b'{"companies": [{"id": "1"}, null]}', 150_000),
-    ("aviato.people.enrich.bulk", 70_000, b'[{"id": "1"}, null]', 70_000),
+    # bulk enrich settles from the rows Aviato marks lookupSuccessful; a failed row is that flag alone
+    ("aviato.companies.enrich.bulk", 150_000,
+     b'{"companies": [{"lookupSuccessful": true, "company": {"id": "1"}}, {"lookupSuccessful": false}]}',
+     150_000),
+    ("aviato.people.enrich.bulk", 70_000,
+     b'[{"lookupSuccessful": true, "person": {"id": "1"}}, {"lookupSuccessful": false}]', 70_000),
+    ("aviato.people.enrich.bulk", 50_000, b'[{"lookupSuccessful": false}, {"lookupSuccessful": false}]', 0),
+    ("aviato.people.enrich.bulk", 50_000, b'[{"person": {"id": "1"}}, null, "x"]', 0),
     # simple search releases its unbilled enrich rider
     ("aviato.people.search.simple", 0,
      b'{"items": [{"id":"1"},{"id":"2"},{"id":"3"},{"id":"4"},{"id":"5"}]}', 2_500),
@@ -1127,6 +1132,31 @@ def test_aviato_conditional_prices_follow_live_balance_deltas():
 def test_aviato_settles_from_counts_and_releases_unbilled_riders(endpoint, unit_micro, body, expected):
     mk = _mk("aviato", endpoint_id=endpoint, unit_micro=unit_micro)
     assert call_settle._observed_cost_micro(mk, body) == expected
+
+
+@pytest.mark.parametrize(("endpoint", "body", "upstream", "expected"), [
+    ("aviato.people.enrich.bulk", {"lookups": [{"email": "a@example.com"}, {"email": "b@example.com"}]},
+     [{"lookupSuccessful": False}, {"lookupSuccessful": False}], 0),
+    ("aviato.people.enrich.bulk", {"lookups": [{"email": "a@example.com"}, {"email": "b@example.com"}]},
+     [{"lookupSuccessful": True, "person": {"id": "p1"}}, {"lookupSuccessful": False}], 50_000),
+    ("aviato.companies.enrich.bulk", {"lookups": [{"website": "a.example"}, {"website": "b.example"}]},
+     {"companies": [{"lookupSuccessful": True, "company": {"id": "c1"}}, {"lookupSuccessful": False}]},
+     150_000),
+])
+async def test_aviato_bulk_failed_lookups_are_free(clients, monkeypatch, endpoint, body, upstream, expected):
+    """Aviato answers a failed bulk row as `{"lookupSuccessful": false}`, never null. Counting
+    non-null rows billed a 20-row all-miss batch as 20 successes."""
+    monkeypatch.setenv("TREG_PLATFORM_KEY_AVIATO", "PLATFORM-AVIATO")
+    monkeypatch.setenv("TREG_PLATFORM_PROVIDERS", "aviato")
+    get_settings.cache_clear()
+    monkeypatch.setattr(call_service, "relay", _fake_relay(200, json.dumps(upstream).encode()))
+    before = await _balance(clients)
+    response = await clients.post(f"/call/{endpoint}", json=body)
+    get_settings.cache_clear()
+    assert response.status_code == 200, response.text
+    assert response.json() == upstream, "the relay is faithful"
+    assert response.headers["x-treg-cost-micro"] == str(expected)
+    assert before - await _balance(clients) == expected
 
 
 def test_observed_cost_counts_resources_for_billed_oauth_reads():
