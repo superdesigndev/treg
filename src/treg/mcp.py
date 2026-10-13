@@ -478,9 +478,8 @@ def _bearer(ctx: Context) -> str:
     Returns "" when absent — every authenticated tool then fails closed with an instruction rather
     than a stack trace, because a missing token is the single most likely first-run problem.
     """
-    headers = ctx.headers or {}
-    raw = headers.get("authorization") or headers.get("Authorization") or ""
-    return raw.removeprefix("Bearer ").removeprefix("bearer ").strip()
+    from .infra.request_scope import bearer_token  # the rate limiter reads the same credential
+    return bearer_token(ctx.headers or {})
 
 
 def _without_purchase_pointers(body: Any) -> Any:
@@ -633,9 +632,10 @@ async def _internal_auth(token: str) -> dict[str, str]:
 async def _api(token: str, *, client_name: str = "mcp"):
     """An in-process client bound to treg's own ASGI app, carrying the caller's identity."""
     from .api import app  # deferred: bootstrap imports THIS module while assembling api:app
+    from .infra.request_scope import internal_app
 
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app),
+        transport=httpx.ASGITransport(app=internal_app(app, outer_token=token)),
         base_url=_INTERNAL_BASE,
         timeout=_TIMEOUT,
         # X-Treg-Client is attribution, not auth: without it every MCP-originated call lands

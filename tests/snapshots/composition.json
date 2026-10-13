@@ -24,6 +24,11 @@
   "middleware": [
     {
       "args": [],
+      "class": "treg.bootstrap_ratelimit.RateLimitMiddleware",
+      "kwargs": {}
+    },
+    {
+      "args": [],
       "class": "treg.mcp.NormalizeDirectoryMCPPath",
       "kwargs": {}
     },

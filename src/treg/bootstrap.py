@@ -26,6 +26,9 @@ from .application.call import route as routed_call
 from .application import arena, find_index
 from .application.onboard import first_run
 from . import bootstrap_handlers
+from .application.ratelimit import background as rate_limit_background
+from .application.ratelimit import blocklist_sync as rate_limit_blocklist_sync
+from .bootstrap_ratelimit import RateLimitMiddleware
 from .bootstrap_http import (
     _BodyDecodeMiddleware,
     _DevTitleMiddleware,
@@ -357,6 +360,16 @@ _CONTROL_ROUTE_KEYS: frozenset[RouteKey] = frozenset({
     ('/admin/errors', ('GET',), 'admin_errors'),
     ('/admin/health', ('GET',), 'admin_health'),
     ('/admin/kv', ('GET',), 'admin_kv'),
+    ('/admin/rate-limit/config', ('GET',), 'admin_rate_limit_config'),
+    ('/admin/rate-limit/config', ('PUT',), 'admin_rate_limit_config_write'),
+    ('/admin/rate-limit/config/revert-to-shadow', ('POST',), 'admin_rate_limit_revert_to_shadow'),
+    ('/admin/rate-limit/config/republish', ('POST',), 'admin_rate_limit_republish'),
+    ('/admin/rate-limit/status', ('GET',), 'admin_rate_limit_status'),
+    ('/admin/blocklist', ('GET',), 'admin_blocklist'),
+    ('/admin/blocklist/status', ('GET',), 'admin_blocklist_status'),
+    ('/admin/blocklist', ('POST',), 'admin_blocklist_block'),
+    ('/admin/blocklist/{entry_id}/unblock', ('POST',), 'admin_blocklist_unblock'),
+    ('/admin/blocklist/mode', ('POST',), 'admin_blocklist_mode'),
     ('/admin/users/{user_id}/superadmin', ('POST',), 'admin_set_superadmin'),
     ('/admin/users/{user_id}/suspend', ('POST',), 'admin_suspend_user'),
     ('/admin/users/{user_id}', ('DELETE',), 'admin_delete_user'),
@@ -689,6 +702,11 @@ def _lifespan(role: AppRole):
                 else None
             )
             gauge_task = asyncio.create_task(pool_gauge()) if analytics.enabled() else None
+            # Every role serves HTTP behind the limiter, so every role refreshes its policy. One
+            # capped first blocklist load; on failure the worker serves anyway (fail open) and the
+            # background loop retries. Health never waits on it.
+            await rate_limit_blocklist_sync.first_load()
+            rate_limit_task = asyncio.create_task(rate_limit_background.run())
             # Local transaction diagnostics run even when the analytics transport is disabled.
             trace_runner = start_money_trace(role=role)
             # The archive's refresh worker (docs/context/architecture/archive.md): serve mode only,
@@ -728,7 +746,7 @@ def _lifespan(role: AppRole):
             finally:
                 try:
                     workers = [task for task in (
-                        gauge_task, ads_task, archive_task, prune_task, find_task,
+                        gauge_task, ads_task, archive_task, prune_task, find_task, rate_limit_task,
                     ) if task is not None]
                     for task in workers:
                         task.cancel()
@@ -809,6 +827,9 @@ def create_app(role: AppRole = "all", *, archive_object_store=None) -> FastAPI:
             # Register the nested mount first so the /mcp parent does not consume it.
             app.mount("/mcp/v2", _mcp.directory_mcp_app)
         app.mount("/mcp", _mcp.mcp_app)
+
+    # Added last, so it is the outermost middleware: a refused request never reaches auth or a pool.
+    app.add_middleware(RateLimitMiddleware)
 
     startup_checks = list(ROLE_STARTUP_CHECKS[role])
     if _mcp is None and "treg.mcp.mcp_lifespan" in startup_checks:

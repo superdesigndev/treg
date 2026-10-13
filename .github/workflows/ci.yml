@@ -61,6 +61,15 @@ jobs:
       - name: Enforce import boundaries
         if: steps.docs.outputs.only != 'true'
         run: uv run --locked lint-imports
+      - name: Exactly one alembic head
+        if: steps.docs.outputs.only != 'true'
+        # Two branches that each add the next revision number would merge into two heads, and the
+        # deploy's `python -m treg upgrade` would refuse to choose. Every parent must also exist.
+        run: >-
+          uv run --locked python -c "from alembic.script import ScriptDirectory;
+          from treg.maintenance import _alembic_config;
+          s = ScriptDirectory.from_config(_alembic_config()); h = s.get_heads(); list(s.walk_revisions());
+          print('alembic heads:', h); assert len(h) == 1, h"
       - name: Validate the catalog
         if: steps.docs.outputs.only != 'true'
         # The whole catalog, not the slices the tests exercise: a catalog data PR is gated here.
@@ -134,6 +143,11 @@ jobs:
           tests/test_money_admission_postgres.py
           tests/test_money_admission_reporting.py
           tests/test_kv.py
+          tests/test_rate_limit_redis.py
+          tests/test_rate_limit_codex_review.py
+          tests/test_rate_limit_admin.py
+          tests/test_rate_limit_blocklist_sync.py
+          tests/test_alembic_single_head.py
           tests/test_kv_release_retry.py
           tests/test_kv_lease_diagnostics.py
           tests/test_money_trace.py

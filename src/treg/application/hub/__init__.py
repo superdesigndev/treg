@@ -233,7 +233,9 @@ async def run_check(db: AsyncSession, row: HubTool, *, maker_headers: dict[str, 
         from .health import verdict_from
         cases = row.check.get("cases") or [row.check]
         verdict: dict[str, Any] = {}
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://treg.internal",
+        from ...infra.request_scope import internal_app
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=internal_app(app)),
+                                     base_url="http://treg.internal",
                                      headers=headers, timeout=200.0) as client:
             for i, case in enumerate(cases):
                 r = await client.post(f"/call/{row.tool_id}@{row.version}", json=case.get("inputs", {}))

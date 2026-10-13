@@ -63,7 +63,8 @@ def test_unconfigured_reads_reuse_the_primary_without_an_extra_pool(load_databas
     assert db.read_session_maker is db.session_maker
     assert db._read_engine is db._engine
     assert "read" not in db.pool_snapshot()
-    assert len(set(db._engines)) == (1 if db._is_sqlite else 3)
+    # api, admin, background, ratelimit. A configured replica is the only thing that adds another.
+    assert len(set(db._engines)) == (1 if db._is_sqlite else 4)
 
 
 async def test_configured_reads_have_their_own_pool_and_budget(load_database):

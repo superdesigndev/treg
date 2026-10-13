@@ -314,6 +314,22 @@ allow_indirect_imports = true
 as_packages = true
 
 [[tool.importlinter.contracts]]
+name = "Rate-limit domain is a pure leaf: rules only, no I/O, no sibling domains"
+type = "forbidden"
+source_modules = ["treg.domain.ratelimit"]
+forbidden_modules = ["treg.api", "treg.routers", "treg.application", "treg.bootstrap", "treg.audit", "treg.models", "treg.infra", "treg.config", "treg.domain.identity", "treg.domain.governance", "treg.domain.connections", "treg.domain.tools", "treg.domain.catalog", "treg.domain.capacity", "treg.domain.money", "treg.domain.asynctasks", "treg.domain.hub", "fastapi", "starlette", "sqlmodel", "sqlalchemy", "redis", "httpx"]
+allow_indirect_imports = true
+as_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Rate-limit request path never touches the database"
+type = "forbidden"
+source_modules = ["treg.application.ratelimit.limiter", "treg.application.ratelimit.config_state", "treg.application.ratelimit.blocklist_state", "treg.application.ratelimit.signals", "treg.application.ratelimit.metrics", "treg.application.ratelimit.inflight", "treg.bootstrap_ratelimit"]
+forbidden_modules = ["treg.models", "treg.infra.db", "sqlalchemy", "sqlmodel"]
+allow_indirect_imports = true
+as_packages = false
+
+[[tool.importlinter.contracts]]
 name = "Capacity domain does not depend on outer layers"
 type = "forbidden"
 source_modules = ["treg.domain.capacity"]

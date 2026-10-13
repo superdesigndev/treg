@@ -20,6 +20,20 @@ async def test_redis_socket_budgets_allow_one_second():
         await store.aclose()
 
 
+async def test_the_rate_limiter_redis_client_keeps_its_own_short_timeout():
+    """Money's socket is one second. Limiter commands must not inherit it."""
+    store = kv.RedisStore('redis://127.0.0.1:1')
+    try:
+        money = store._client.connection_pool.make_connection()
+        limiter = store._rl_client.connection_pool.make_connection()
+        expected = get_settings().rate_limit_store_timeout_ms / 1000
+        assert money.socket_timeout == 1.0
+        assert limiter.socket_timeout == limiter.socket_connect_timeout == expected
+        assert expected <= 0.05
+    finally:
+        await store.aclose()
+
+
 @pytest.mark.parametrize('operation', ('take', 'ping'))
 @pytest.mark.parametrize('cancel', (False, True))
 async def test_optional_operations_keep_short_deadlines_and_propagate_cancellation(

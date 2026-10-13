@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PositiveInt, field_validator
+from pydantic import Field, PositiveInt, field_validator, model_validator
 from urllib.parse import urlsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -107,6 +107,19 @@ def _blocked_email_domains(raw: str) -> frozenset[str]:
     )
 
 
+def _rate_limit_defaults(s: "Settings"):
+    from .domain.ratelimit import RateLimitConfig
+
+    return RateLimitConfig.model_validate({
+        "mode": s.rate_limit_mode,
+        "global_concurrency": s.rate_limit_global_concurrency,
+        "global_paid_reserve": s.rate_limit_global_paid_reserve,
+        "anonymous_ip_concurrency": s.rate_limit_anonymous_ip_concurrency,
+        "concurrency_ttl_s": s.rate_limit_concurrency_ttl_s or (s.call_timeout_s + s.hold_grace_s),
+        "concurrency_retry_after_s": s.rate_limit_concurrency_retry_after_s,
+    })
+
+
 # How treg introduces itself to a provider: on every call on its shared key (the relay's rewrite 5)
 # and as the default of the clients it calls providers with, never a library's own default.
 TREG_USER_AGENT = "treg/1.0 (+https://treg.to)"
@@ -132,6 +145,110 @@ class Settings(BaseSettings):
     money_admission_org_ids: list[PositiveInt] = Field(default_factory=list)
     money_admission_wait_s: float = Field(default=5.0, gt=0, le=60)
     money_admission_lease_s: float = Field(default=15.0, ge=3, le=300)
+
+    # ---- request admission (application/ratelimit, docs/context/architecture/rate-limit.md) ----
+    # The policy fields below are DEFAULTS: a process uses them until it has read a valid
+    # `rl:config` from the shared store, which an admin writes through /admin/rate-limit/config
+    # without a redeploy. `enforce` is refused here on purpose: it needs an audited admin write.
+    # The blocklist's mode is not here: it lives on the `blocklistversion` row. An unset global ceiling is measured and refuses nothing; its
+    # figure comes from measured peak in-flight concurrency and p95 latency, never from this file.
+    # Off until the shared store's latency on the request path is measured; then shadow.
+    rate_limit_mode: str = "off"
+    rate_limit_global_concurrency: int | None = None
+    rate_limit_global_paid_reserve: int = 0
+    rate_limit_anonymous_ip_concurrency: int | None = None
+    # How many proxies append to X-Forwarded-For in front of this app. The client IP is the entry
+    # that many from the right: the one the nearest proxy appended, never one the client wrote.
+    # 0 = no proxy, use the TCP peer. A deployment with no proxy in front must set 0, or a client
+    # could choose its own IP.
+    rate_limit_proxy_hops: int = Field(default=1, ge=0, le=5)
+    # Must outlast the longest request; empty = call_timeout_s + hold_grace_s.
+    rate_limit_concurrency_ttl_s: int | None = None
+    rate_limit_concurrency_retry_after_s: int = 1
+    # Process mechanics, not policy: these stay env-only.
+    rate_limit_config_refresh_s: float = Field(default=15.0, ge=1, le=300)
+    # Past this without a fresh read of `rl:config`, the process drops to shadow and alerts.
+    rate_limit_config_max_age_s: float = Field(default=1800.0, ge=60, le=86_400)
+    # Each worker polls the single-row blocklist version this often, reloading entries on a change.
+    rate_limit_blocklist_refresh_s: float = Field(default=10.0, ge=10, le=300)
+    # At startup each worker makes ONE blocklist load attempt capped at this long, then serves:
+    # loaded if it succeeded, otherwise failing open with background retries.
+    rate_limit_blocklist_first_load_s: float = Field(default=5.0, ge=0.1, le=60)
+    # Every poll (version read and any reload) is abandoned past this.
+    rate_limit_blocklist_poll_timeout_s: float = Field(default=3.0, ge=0.1, le=60)
+    # A reload returning more active entries than this is refused whole (never truncated): the
+    # last good list stays and the process alerts. Generous on purpose.
+    rate_limit_blocklist_max_entries: int = Field(default=50_000, ge=1, le=10_000_000)
+    # statement_timeout and connect timeout on the dedicated `ratelimit` pool (Postgres only).
+    rate_limit_db_statement_timeout_ms: int = Field(default=2000, ge=100, le=30_000)
+    rate_limit_db_connect_timeout_s: float = Field(default=2.0, ge=0.1, le=30)
+    rate_limit_key_cache_ttl_s: float = Field(default=60.0, ge=1, le=3600)
+    rate_limit_key_cache_size: int = Field(default=10_000, ge=100, le=1_000_000)
+    rate_limit_store_cooldown_s: float = Field(default=1.0, ge=0, le=60)
+    # The limiter's budget per shared-store call. A slower answer is a miss: the ceiling falls back
+    # to the per-process one, a config or blocklist read keeps the last good copy.
+    rate_limit_store_timeout_ms: int = Field(default=30, ge=20, le=50)
+    rate_limit_log_max_per_window: int = Field(default=600, ge=0, le=100_000)
+    rate_limit_exempt_paths: str = "/health,/stripe/webhook,/billing/stripe/webhook"
+    # The per-process hard overload cap: an in-process semaphore, no shared store. When every permit
+    # is taken a request is refused at once with 503 `overload_cap`, never queued. Health checks and
+    # /admin/* are never counted. Off by default. The size is PROVISIONAL: measured busy-hour
+    # in-flight concurrency per process is already above it, so it must be set from the
+    # `inflight_gauge` data below before the flag is turned on.
+    overload_cap_enabled: bool = False
+    overload_cap_size: int = Field(default=40, ge=1, le=10_000)
+    # MCP streams (GET /mcp..., or any /mcp request accepting text/event-stream) stay open for
+    # minutes, so they never take a main permit: they have this separate small cap (same flag),
+    # refused as `overload_cap_stream`. Also provisional.
+    overload_cap_stream_size: int = Field(default=8, ge=1, le=10_000)
+    overload_cap_retry_after_s: int = Field(default=1, ge=1, le=60)
+    # Per-process telemetry for sizing the cap: requests in flight and DB pool connections checked
+    # out, sampled every second and emitted (log line + metric, tagged with the pid) every N seconds.
+    inflight_gauge_enabled: bool = True
+    inflight_gauge_emit_s: float = Field(default=10.0, ge=1, le=3600)
+    # A credential that authorizes the /admin/blocklist endpoints and nothing else: what an operator
+    # tool or agent is given instead of the super-admin token. Empty = only super-admins may write.
+    blocklist_admin_token: str = Field(default="", repr=False)
+    # Blocklist write guards (POST /admin/blocklist). Every entry expires: the TTL when none is
+    # given, and the longest allowed. Only orgs that have never paid and were created inside the
+    # new-org window may be blocked. The window, the per-call cap and the hourly call budget are
+    # PLACEHOLDERS, to be set from shadow data (surge signals), not from these numbers.
+    blocklist_default_ttl_s: int = Field(default=86_400, ge=60, le=30 * 86_400)
+    blocklist_max_ttl_s: int = Field(default=7 * 86_400, ge=60, le=30 * 86_400)
+    blocklist_new_org_max_age_s: int = Field(default=7 * 86_400, ge=60, le=365 * 86_400)
+    blocklist_max_entries_per_call: int = Field(default=50, ge=1, le=50)
+    blocklist_writes_per_hour: int = Field(default=30, ge=1, le=10_000)
+    # The write receipt: a Slack bot token and the channel (or user id) it posts to. Both empty =
+    # no receipt. Best-effort: a failed post is counted and logged, never undoes a write.
+    blocklist_receipt_slack_token: str = Field(default="", repr=False)
+    blocklist_receipt_slack_channel: str = ""
+    # Surge signals: record-only per-IP and per-org aggregates, flushed to `surgesignal`.
+    surge_signals_enabled: bool = True
+    surge_flush_s: float = Field(default=60.0, ge=10, le=3600)
+    surge_max_subjects: int = Field(default=5_000, ge=10, le=1_000_000)
+    surge_retention_days: int = Field(default=14, ge=1, le=365)
+
+    @field_validator("rate_limit_mode")
+    @classmethod
+    def _rate_limit_env_mode(cls, v: str) -> str:
+        if v not in ("off", "shadow"):
+            raise ValueError("rate_limit_mode from the environment must be off or shadow; "
+                             "enforce is set only through the audited admin endpoint")
+        return v
+
+    @model_validator(mode="after")
+    def _rate_limit_defaults_valid(self) -> "Settings":
+        self.rate_limit_defaults  # noqa: B018 - a bad default policy fails at boot
+        return self
+
+    @property
+    def rate_limit_defaults(self):
+        """The env policy as a validated `RateLimitConfig`."""
+        return _rate_limit_defaults(self)
+
+    @property
+    def rate_limit_exempt_path_set(self) -> frozenset[str]:
+        return frozenset(p.strip() for p in self.rate_limit_exempt_paths.split(",") if p.strip())
 
     # SQLite locally, Postgres on Render — same code path, just swap the URL.
     database_url: str = "sqlite+aiosqlite:///./treg.db"

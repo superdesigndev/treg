@@ -143,6 +143,13 @@ The table domain (`treg.domain.table`, [table](table.md)) is the same kind of le
 in, rows and columns out. Its contract forbids every outer layer, every sibling domain, and the web,
 database and settings libraries, so the converter stays testable on saved answers alone.
 
+The rate-limit domain (`treg.domain.ratelimit`, [rate-limit](rate-limit.md)) is a pure leaf too:
+the policy schema, the global ceiling and the blocklist payload contract, with no settings, models,
+infra, sibling domain, web, database or Redis import. A second contract keeps the request half of
+`treg.application.ratelimit` (`limiter`, `config_state`, `blocklist_state`, `signals`, `metrics`)
+and `treg.bootstrap_ratelimit` off `treg.models`, `treg.infra.db` and SQLAlchemy: the request path
+reads memory only; Postgres is touched by the background and admin modules.
+
 The capacity domain (`treg.domain.capacity`, plan step B) is a leaf like identity: it cannot import
 `treg.api`, `treg.routers`, `treg.application`, `treg.bootstrap`, `treg.audit`, FastAPI or Starlette.
 It reads config and writes only its own tables and ratestore keys, from worker-profile commands

@@ -99,7 +99,7 @@ agents then built against a constitution that was wrong.
 |---|---|---|
 | `routers/` | HTTP and MCP translation in, response shape out | business rules, query orchestration, money |
 | `application/` | use-case sequencing, transaction boundaries, compensation, cross-domain composition | empty wrappers around one-domain CRUD |
-| `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money`, `asynctasks`, `feedback`, `hub` (a maker's tool made of tools: the manifest, the reference language, the graph) | routers, application, concrete SDKs |
+| `domain/` | rules explainable and testable alone: `identity`, `governance`, `connections`, `tools`, `catalog`, `capacity`, `money`, `asynctasks`, `feedback`, `hub` (a maker's tool made of tools: the manifest, the reference language, the graph), `ratelimit` (request admission: the policy schema, the global ceiling, the blocklist contract) | routers, application, concrete SDKs |
 | `infra/` | DB engine and sessions, crypto, upstream relay and SSRF, ratestore, the shared key-value store, email, Stripe | decisions |
 
 - Domains do not import each other, with three sanctioned edges: `governance -> identity`,
@@ -122,6 +122,16 @@ agents then built against a constitution that was wrong.
   the auto-top-up fields; the call runtime may persist an OAuth token refresh into `secret`; audit
   writes `callrecord`, domains only read it (`application/evidence_retention.py` also updates it,
   blanking the two evidence columns past retention).
+- **Request admission** is the outermost middleware (`bootstrap_ratelimit.py`), before auth, any
+  session and money admission: an in-process overload cap (off by default), the blocklist (by the
+  one credential the route's auth honors, before any session; `log_only` by default), a small
+  per-IP bucket for a request whose credential is not resolved (the hop the nearest proxy appended,
+  never an entry the client wrote), and a global concurrency ceiling (`off` by default) that fails
+  open when the shared store cannot answer. Its policy and blocklist are written only by
+  `application/ratelimit/admin.py` and `blocklist_admin.py` to audited Postgres tables, which
+  serving processes poll in the background (Redis holds only lease counters and a version-guarded
+  policy cache nothing serves from); the request path reads memory only. The env cannot refuse
+  requests; that needs an audited admin write. See `docs/context/architecture/rate-limit.md`.
 - **Feedback handling.** This repo owns `FeedbackHandling` and `FeedbackHandlingEvent` models and
   migrations; the private admin service is their only runtime writer. Original reports remain
   owned by the feedback domain. See `docs/context/architecture/feedback.md`.

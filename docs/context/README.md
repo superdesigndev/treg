@@ -34,6 +34,7 @@ covers (frontmatter `sources:`). Regenerate this index with
 | [Money — prepaid balance, the ledger, Stripe, and the reports that check it](architecture/money.md) | shipped | tavily.yaml, tinyfish.yaml, test_tinyfish.py, __init__.py, … |
 | [Multi-tenancy — orgs, memberships, invites, per-org scoping](architecture/multi-tenancy.md) | shipped | access.py, 0042_pinned_read_scope.py, test_pinned_read_scope.py, models.py, … |
 | [The proxy — faithful credential-injecting relay + tool resolution](architecture/proxy-model.md) | shipped | relay.py, jsontext.py, ssrf.py, api.py, … |
+| [Request admission — blocklist, overload cap, global ceiling, surge signals (batch 1)](architecture/rate-limit.md) | built; blocklist log_only, global ceiling off, overload cap off by default | __init__.py, policy.py, __init__.py, limiter.py, … |
 | [Discovery experiment — a relevance judge behind catalog search, measured on what the caller does next; the job-first answer served to agents](architecture/search-experiment.md) | building | catalog_search.py, search_experiment.py, interleave.py, judge.py, … |
 | [Super-admin — cross-tenant read + control](architecture/super-admin.md) | shipped | api.py, admin.py, evidence_retention.py, access.py, … |
 | [The table layer — one call, answered as rows and columns (`/table/`)](architecture/table.md) | built, behind `table_enabled` (TREG_TABLE_ENABLED), off by default | __init__.py, table.py, table.py, call.py, … |

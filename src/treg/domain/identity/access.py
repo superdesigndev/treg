@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hmac
 from dataclasses import dataclass
+from datetime import timezone
 
 from fastapi import Cookie, Depends, Header, HTTPException, Request
 from sqlalchemy import update
@@ -12,8 +13,9 @@ from sqlmodel import select
 
 from ... import crypto
 from ...config import get_settings
+from ...infra import request_scope
 from ...infra.db import get_admin_session, get_session
-from ...models import ROLE_RANK, ApiKey, Membership, Org, User
+from ...models import ROLE_RANK, ApiKey, CreditBlock, Membership, Org, User
 from . import api_keys as managed_keys
 from . import session as sess
 
@@ -223,6 +225,9 @@ async def require_member(
         await _membership_and_key_by_token(x_treg_token, db)
         if x_treg_token else (None, None)
     )
+    # Whether the credential alone fixes the team (the request's X-Treg-Org cannot change it):
+    # the rate limiter then identifies the caller by the credential's hash and nothing else.
+    pinned = membership is not None
     if membership is not None:  # per-org token — the org is baked in
         user = await db.get(User, membership.user_id)
         org = await db.get(Org, membership.org_id)
@@ -258,6 +263,7 @@ async def require_member(
         # New Default keys are explicitly team-scoped, so their signed team is authoritative.
         # Older unmarked identity tokens retain the header-first behavior during migration.
         if (identity_claims or {}).get("scope") == sess.TEAM_SCOPE:
+            pinned = True
             if x_treg_org:
                 requested = await _resolve_org(x_treg_org, db)
                 claimed = await _resolve_org(claimed_org, db)
@@ -323,9 +329,53 @@ async def require_member(
         if not (request.url.path.startswith("/call/") or request.method in ("GET", "HEAD", "OPTIONS")):
             raise HTTPException(status_code=403, detail=(
                 "this is a public demo team — its token can only call tools and read"))
+    # Publish first: a blocked org's key is then cached, so its next request is refused by the
+    # middleware before any session opens.
+    if x_treg_token:
+        await _publish_rate_limit_caller(request, org, db, token=x_treg_token, pinned=pinned,
+                                         org_header=x_treg_org)
+    _refuse_blocked_org(request, org)
     await db.commit()
     managed_keys.touch(api_key)
     return Caller(membership=membership, user=user, org=org, api_key=api_key)
+
+
+async def _org_has_paid(db: AsyncSession, org_id: int) -> bool:
+    """Paid = the team has completed at least one Stripe top-up."""
+    row = (await db.execute(select(CreditBlock.id).where(
+        CreditBlock.org_id == org_id, CreditBlock.kind == "purchased",
+        CreditBlock.stripe_payment_intent.is_not(None),
+    ).limit(1))).first()
+    return row is not None
+
+
+def _refuse_blocked_org(request: Request, org: Org) -> None:
+    """The blocklist's after-auth check: the middleware put `check_org` in the scope slot; it
+    answers the 403 detail when this org is blocked and the blocklist enforces."""
+    slot = request.scope.get(request_scope.RATE_LIMIT)
+    check = slot.get("check_org") if isinstance(slot, dict) else None
+    detail = check(org.id) if callable(check) else None
+    if detail:
+        raise HTTPException(status_code=403, detail=detail,
+                            headers={"X-Treg-Block-Reason": detail["reason"]})
+
+
+async def _publish_rate_limit_caller(request: Request, org: Org, db: AsyncSession, *, token: str,
+                                     pinned: bool, org_header: str) -> None:
+    """Tell the rate-limit middleware which team the credential auth just accepted acts for, so
+    it can count that credential from its next request. The hash is of the credential auth
+    actually used, so a header auth ignores can never become part of the limiter's identity.
+    Only when the middleware asked (its key cache missed): one indexed read per key per cache
+    lifetime, inside the session auth already holds."""
+    slot = request.scope.get(request_scope.RATE_LIMIT)
+    if not isinstance(slot, dict) or not slot.get("want_caller"):
+        return
+    slot["caller"] = {
+        "key_hash": request_scope.key_hash(token), "pinned": pinned,
+        "org_header": "" if pinned else org_header,
+        "org_id": org.id, "org_slug": org.slug, "paid": await _org_has_paid(db, org.id),
+        "org_created_at": org.created_at.replace(tzinfo=timezone.utc).timestamp(),
+    }
 
 
 async def require_superadmin(
@@ -355,6 +405,20 @@ async def require_superadmin(
     if not x_treg_token and not treg_session:  # nothing presented → not authenticated
         raise HTTPException(status_code=401, detail="not authenticated")
     raise HTTPException(status_code=403, detail="super-admin required")
+
+
+async def require_blocklist_writer(
+    x_treg_token: str = Header(default=""),
+    treg_session: str = Cookie(default=""),
+    db: AsyncSession = Depends(get_admin_session),
+) -> str:
+    """The /admin/blocklist gate: the dedicated `blocklist_admin_token`, which opens nothing else,
+    or anything `require_superadmin` accepts."""
+    scoped = get_settings().blocklist_admin_token
+    if x_treg_token and scoped and hmac.compare_digest(x_treg_token, scoped):
+        await db.commit()
+        return "blocklist-token"
+    return await require_superadmin(x_treg_token, treg_session, db)
 
 
 def _role_at_least(role: str, minimum: str) -> bool:

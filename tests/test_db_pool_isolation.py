@@ -26,6 +26,7 @@ from treg.infra import db as infra_db
 SRC = pathlib.Path(infra_db.__file__).parent.parent   # src/treg/
 
 API, ADMIN, BACKGROUND = "session_maker", "admin_session_maker", "background_session_maker"
+RATELIMIT = "ratelimit_session_maker"
 
 # Every module that opens a session, and the pool(s) it is allowed to reach for. Modules with two
 # entries genuinely serve two classes of work and each is justified where it is imported.
@@ -69,6 +70,10 @@ EXPECTED_MAKERS: dict[str, set[str]] = {
     "domain/capacity/marks.py": {API}, "domain/capacity/routes_view.py": {API},
     "domain/capacity/view.py": {API},
     "domain/identity/api_keys.py": {BACKGROUND},
+    # The rate limiter's background work (policy and blocklist polls, surge-signal flush) has its own pool.
+    "application/ratelimit/config_sync.py": {RATELIMIT},  # the policy poll
+    "application/ratelimit/signals_flush.py": {RATELIMIT},
+    "application/ratelimit/blocklist_sync.py": {RATELIMIT},  # the blocklist version poll
     # `treg-worker` is its own process; it shares the API pool because nothing else is running in it.
     "worker.py": {API},
     # Runs only inside `treg-worker catalog stats`; same reasoning as `worker.py`.
@@ -126,11 +131,12 @@ def test_each_module_reaches_only_for_its_own_pools(module_file):
     assert _maker_names(_modules_opening_sessions()[module_file]) == EXPECTED_MAKERS[module_file]
 
 
-def test_the_three_pools_are_separate_engines_on_a_real_database():
+def test_the_primary_pools_are_separate_engines_on_a_real_database():
     """On Postgres each class of work gets its own connections; on sqlite there is no pool to
-    protect and file-level write locks cannot be shared, so all three alias one engine."""
-    engines = {infra_db._engine, infra_db._admin_engine, infra_db._background_engine}
-    assert len(engines) == (1 if infra_db._is_sqlite else 3)
+    protect and file-level write locks cannot be shared, so they alias one engine."""
+    engines = {infra_db._engine, infra_db._admin_engine, infra_db._background_engine,
+               infra_db._ratelimit_engine}
+    assert len(engines) == (1 if infra_db._is_sqlite else 4)
 
 
 def test_no_minor_pool_can_outgrow_its_slots():
@@ -138,6 +144,7 @@ def test_no_minor_pool_can_outgrow_its_slots():
     pools; the API keeps its overflow because refusing a real call is the cost this exists to avoid."""
     assert infra_db.POOL_SPECS["admin"]["max_overflow"] == 0
     assert infra_db.POOL_SPECS["background"]["max_overflow"] == 0
+    assert infra_db.POOL_SPECS["ratelimit"]["max_overflow"] == 0
     assert infra_db.POOL_SPECS["api"]["max_overflow"] > 0
 
 

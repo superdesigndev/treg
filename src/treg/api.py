@@ -51,6 +51,7 @@ from .models import (CallRecord, CapabilityPin, LedgerEntry, Membership, Org, Ru
                      Tool, ToolRequest, User)
 from .routers import activity as activity_routes
 from .routers import admin as admin_routes
+from .routers import admin_rate_limit as admin_rate_limit_routes
 from .routers import api_keys as api_key_routes
 
 from .routers import arena as arena_routes
@@ -870,6 +871,7 @@ router.routes.extend(connection_routes.health_router.routes)
 router.routes.extend(admin_routes.reads_router.routes)
 router.routes.extend(admin_routes.mutations_router.routes)
 router.routes.extend(admin_routes.reports_router.routes)
+router.routes.extend(admin_rate_limit_routes.router.routes)
 
 
 # ---- the proxy: call a tool without holding its credential; tier-4 metering ----------------

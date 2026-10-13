@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 import os
 from collections.abc import AsyncIterator
 from functools import cache
@@ -61,12 +62,15 @@ BACKGROUND_CONSUMERS: dict[str, int] = {
     "api_keys last used": 1,      # throttled best-effort managed-key display metadata
 }
 
-_PRIMARY_POOL_NAMES = ("api", "admin", "background")
+_PRIMARY_POOL_NAMES = ("api", "admin", "background", "ratelimit")
 POOL_SPECS: dict[str, dict[str, int]] = {
     "api":        {"pool_size": 5, "max_overflow": 10},
     "admin":      {"pool_size": 3, "max_overflow": 0},
     "background": {"pool_size": sum(BACKGROUND_CONSUMERS.values()), "max_overflow": 0},
     "read":       {"pool_size": 2, "max_overflow": 0},  # optional replica, a separate DB budget
+    # The rate limiter's background work, one task at a time: the policy and blocklist polls and
+    # the surge-signal flush. Never the request pool.
+    "ratelimit":  {"pool_size": 1, "max_overflow": 0},
 }
 
 # A pool of 0 or a negative overflow means UNLIMITED to SQLAlchemy, not "off" — `pool_size=0`
@@ -127,11 +131,13 @@ def connection_budget(workers: int | None = None) -> dict[str, int]:
 
 _budget = connection_budget()
 logging.getLogger("treg").info(
-    "db pools per process: api %d+%d, admin %d+%d, background %d+%d = %d; x%d workers = %d per "
+    "db pools per process: api %d+%d, admin %d+%d, background %d+%d, ratelimit %d+%d = %d; x%d "
+    "workers = %d per "
     "instance, %d at a rolling deploy; compare with the deployment database connection ceiling",
     POOL_SPECS["api"]["pool_size"], POOL_SPECS["api"]["max_overflow"],
     POOL_SPECS["admin"]["pool_size"], POOL_SPECS["admin"]["max_overflow"],
     POOL_SPECS["background"]["pool_size"], POOL_SPECS["background"]["max_overflow"],
+    POOL_SPECS["ratelimit"]["pool_size"], POOL_SPECS["ratelimit"]["max_overflow"],
     _budget["per_process"], _budget["workers"], _budget["per_instance"], _budget["deploy_peak"])
 
 
@@ -152,6 +158,13 @@ def _new_engine(name: str, url: str | None = None):
             pool_pre_ping=True, pool_recycle=300, pool_timeout=5,
             pool_size=spec["pool_size"], max_overflow=spec["max_overflow"],
         )
+    if name == "ratelimit" and not is_sqlite:
+        # Background polls and flushes only: a slow statement is abandoned, never waited on.
+        s = get_settings()
+        kwargs["connect_args"] = {
+            "server_settings": {"statement_timeout": str(s.rate_limit_db_statement_timeout_ms)},
+            "timeout": s.rate_limit_db_connect_timeout_s,  # asyncpg's connect timeout
+        }
     if name == "read" and not is_sqlite:
         # A guard against accidental writes, including when the URL points at a writable server.
         # Use a replica/read-only database role as the access boundary, not this session default.
@@ -174,13 +187,14 @@ def _new_engine(name: str, url: str | None = None):
 _engine = _new_engine("api")
 _admin_engine = _new_engine("admin")
 _background_engine = _new_engine("background")
+_ratelimit_engine = _new_engine("ratelimit")
 
 if _is_sqlite:
-    # No pool to protect, and file-level write locks it cannot share: three engines against one file
-    # would only manufacture "database is locked". Tests pin the routing, not the isolation.
-    _admin_engine = _background_engine = _engine
+    # No pool to protect, and file-level write locks it cannot share: several engines against one
+    # file would only manufacture "database is locked". Tests pin the routing, not the isolation.
+    _admin_engine = _background_engine = _ratelimit_engine = _engine
 
-_engines = (_engine, _admin_engine, _background_engine)
+_engines = (_engine, _admin_engine, _background_engine, _ratelimit_engine)
 _POOL_NAMES = _PRIMARY_POOL_NAMES
 _read_engine = _new_engine("read", _read_db_url) if _read_db_url else _engine
 if _read_db_url:
@@ -210,6 +224,42 @@ def pool_snapshot() -> dict[str, dict[str, int]]:
     return out
 
 
+_checkout_peaks: dict[str, int] = {}
+_checkout_peaks_installed = False
+
+
+def install_checkout_peaks() -> None:
+    """Track each pool's true checked-out maximum: on every checkout, read the pool's count. One
+    counter read per checkout, no I/O; installed once per process."""
+    global _checkout_peaks_installed
+    if _checkout_peaks_installed:
+        return
+    _checkout_peaks_installed = True
+    for name, engine in zip(_POOL_NAMES, _engines):
+        if engine.dialect.name == "sqlite":
+            continue
+        pool = engine.sync_engine.pool
+
+        def on_checkout(*_, _name=name, _pool=pool):
+            try:
+                n = int(_pool.checkedout())
+                if n > _checkout_peaks.get(_name, 0):
+                    _checkout_peaks[_name] = n
+            except Exception:  # noqa: BLE001 - telemetry must not fail a checkout
+                pass
+
+        event.listen(engine.sync_engine, "checkout", on_checkout)
+
+
+def take_checkout_peaks(snapshot: dict[str, dict[str, int]]) -> dict[str, int]:
+    """Each pool's highest checked-out count since the last call, then restart every window at the
+    current count, so a connection held across windows still shows."""
+    peaks = {name: max(_checkout_peaks.get(name, 0), row["checked_out"]) for name, row in snapshot.items()}
+    for name, row in snapshot.items():
+        _checkout_peaks[name] = row["checked_out"]
+    return peaks
+
+
 def fold_pool_peaks(peaks: dict[str, int], snapshot: dict[str, dict[str, int]]) -> dict[str, int]:
     """Keep the per-pool maximum of `checked_out` seen across samples (the gauge's whole job)."""
     for name, row in snapshot.items():
@@ -224,6 +274,9 @@ admin_session_maker = async_sessionmaker(_admin_engine, class_=AsyncSession, exp
 # The background pool: writers that run off the request path and that no caller is awaiting.
 background_session_maker = async_sessionmaker(
     _background_engine, class_=AsyncSession, expire_on_commit=False)
+# The rate limiter's background pool (POOL_SPECS["ratelimit"]).
+ratelimit_session_maker = async_sessionmaker(
+    _ratelimit_engine, class_=AsyncSession, expire_on_commit=False)
 # Explicitly opted-in reads only. An unset replica aliases the existing maker; a configured
 # replica failing to connect/query raises normally and must never silently load the primary.
 read_session_maker = (async_sessionmaker(_read_engine, class_=AsyncSession, expire_on_commit=False)
@@ -366,6 +419,14 @@ async def reset_db() -> None:
             _built_schema = await _schema_fingerprint(connection)
 
         await _stamp_test_schema(connection)
+        await _seed_rows(connection)
+
+
+async def _seed_rows(connection) -> None:
+    """Rows a migration inserts, which `create_all` and the per-test delete do not."""
+    from ..models import BlocklistVersion
+    await connection.execute(BlocklistVersion.__table__.insert().values(
+        id=1, version=0, mode="log_only", updated_at=datetime.now(timezone.utc).replace(tzinfo=None)))
 
 
 async def dispose_engine() -> None:

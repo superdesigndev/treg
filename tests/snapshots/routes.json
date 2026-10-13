@@ -2582,6 +2582,90 @@
       "GET",
       "HEAD"
     ],
+    "name": "admin_rate_limit_config",
+    "path": "/admin/rate-limit/config"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "PUT"
+    ],
+    "name": "admin_rate_limit_config_write",
+    "path": "/admin/rate-limit/config"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_rate_limit_revert_to_shadow",
+    "path": "/admin/rate-limit/config/revert-to-shadow"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_rate_limit_republish",
+    "path": "/admin/rate-limit/config/republish"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_rate_limit_status",
+    "path": "/admin/rate-limit/status"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_blocklist",
+    "path": "/admin/blocklist"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
+    "name": "admin_blocklist_status",
+    "path": "/admin/blocklist/status"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_blocklist_block",
+    "path": "/admin/blocklist"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_blocklist_unblock",
+    "path": "/admin/blocklist/{entry_id}/unblock"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "POST"
+    ],
+    "name": "admin_blocklist_mode",
+    "path": "/admin/blocklist/mode"
+  },
+  {
+    "kind": "APIRoute",
+    "methods": [
+      "GET",
+      "HEAD"
+    ],
     "name": "catalog_endpoint_access",
     "path": "/catalog/endpoints/{endpoint_id}/access"
   },
