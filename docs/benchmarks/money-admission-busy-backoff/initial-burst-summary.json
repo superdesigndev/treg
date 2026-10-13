@@ -1,0 +1,131 @@
+{
+  "source_sha256": "2edf9dc1c7f575f7d7e22b95686da9f2542d139b37722dc0032a2076b19f2525",
+  "results": [
+    {
+      "org_count": 1,
+      "processes": 4,
+      "lanes_per_process": 16,
+      "connection_peaks": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "inflight_acquire_peaks": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "tokens_per_org_per_process": [
+        [
+          1
+        ],
+        [
+          1
+        ],
+        [
+          1
+        ],
+        [
+          1
+        ]
+      ],
+      "cancelled": [
+        16,
+        16,
+        16,
+        16
+      ],
+      "waiting_after": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "active_after": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "org_count": 8,
+      "processes": 4,
+      "lanes_per_process": 16,
+      "connection_peaks": [
+        8,
+        8,
+        8,
+        8
+      ],
+      "inflight_acquire_peaks": [
+        8,
+        8,
+        8,
+        8
+      ],
+      "tokens_per_org_per_process": [
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ],
+        [
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1,
+          1
+        ]
+      ],
+      "cancelled": [
+        16,
+        16,
+        16,
+        16
+      ],
+      "waiting_after": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "active_after": [
+        0,
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}

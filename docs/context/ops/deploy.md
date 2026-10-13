@@ -19,6 +19,7 @@ sources:
   - src/treg/infra/db.py
   - src/treg/infra/money_admission.py
   - scripts/bench_money_admission.py
+  - scripts/bench_money_admission_contention.py
   - src/treg/email.py
   - src/treg/audit.py
   - scripts/dev-local.sh
@@ -287,6 +288,25 @@ synthetic evidence, not a production replay or a guarantee of deployed throughpu
 clients use separate Redis connections and local mutex maps within one event loop; this exercises
 Redis contention without a shared local mutex hiding it, but is not an operating-system
 multi-process load or failure test.
+
+`scripts/bench_money_admission_contention.py` starts its own temporary loopback Redis and spawned
+Python processes with independent event loops. It loads both admission and KV modules from the
+pinned Git baseline and compares its fixed polling with
+capped jitter candidates that retain the working tree's local org locks, over synthetic
+short/mixed held scopes and single/multiple-org contention. Pass `--baseline-ref` naming the
+local-lock version and `--output`
+for raw samples and summary metrics. `--variants local_fixed current` validates the current
+implementation; the default candidate sweep compares full (with a 3 ms floor), equal and
+decorrelated jitter. It reports worker/Redis CPU, attempts, throughput, event-loop lag, wait tails,
+per-process/lane progress and fallback counters, including attempts and CPU per completed scope.
+`--balanced-order` balances policy positions over complete rotation blocks; workload and jitter
+seeds and the actual run order are recorded. `--pressure` adds bounded synthetic Redis CPU work.
+`--lease-rtt-ms` injects cancellable delay around actual SET/EVAL calls inside the existing
+command deadlines; this is application-level latency, not a real network model.
+This is neither a CPU-quota simulation nor HTTP/PostgreSQL accounting throughput; use the
+integration tests for financial/session invariants. Less frequent polling can reduce attempts
+while increasing tail waits or skewing progress across processes. Assess these tradeoffs,
+including deadline fallbacks, rather than assuming backoff improves every metric.
 
 ## Safe local mode
 

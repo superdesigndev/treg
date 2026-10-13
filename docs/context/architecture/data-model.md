@@ -685,6 +685,11 @@ store result, a late renewal reply, and the gate's own validity timeout. A store
 before validity expires remains a KV error. Actual command failures remain in attempt diagnostics
 even when validity expires during failure cleanup. These scope counts reach the existing
 `money_admission_gauge` logs and analytics; expiry before a command sends no fictitious attempt.
+`lease_lost_late`, `lease_lost_not_owned` and `lease_lost_unavailable` split `lease_lost` by the
+first cause observed in the scope: confirmed validity ran out (including a late reply or loss found
+at release after validity), the store reported another or no owner, or renewal could not reach the
+store. They sum to `lease_lost`. `renew_recovered` counts renewals confirmed by the one retry after a
+failed first attempt; ownership is retained, and the failed attempt stays in `kv_lease_error`.
 
 `MoneyTraceRunner._emit` drains these buckets on its existing minute cadence and at shutdown,
 before its local sink closes. The existing bounded background log sink adds build/process/role

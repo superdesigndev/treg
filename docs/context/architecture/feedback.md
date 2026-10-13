@@ -201,7 +201,9 @@ claiming cross-process exclusion. Money admission falls back to database protect
 failure, whereas invitation budgets still fail closed. New tenants add narrow methods, not a
 generic get/set surface.
 Renewal returns `deadline_expired` when confirmed validity is exhausted; this is separate from
-store unavailability and from the command's own timeout budget.
+store unavailability and from the command's own timeout budget. A renewal confirmed only by its
+retry returns `recovered`, which keeps ownership exactly like `renewed`; the attempt gauge still
+records that attempt as a retried `renewed`.
 
 Lease failures retain fixed phase/type counts and client-observed maximum elapsed time in at most
 21 in-memory buckets. `kv.drain_lease_errors` hands these to the existing money diagnostic runner

@@ -42,7 +42,8 @@ _LEASE_OUTCOMES = {
 _LEASE_BUCKETS = (10, 50, 100, 200)
 
 AcquireResult = Literal["acquired", "busy", "unavailable"]
-RenewResult = Literal["renewed", "lost", "unavailable", "deadline_expired"]
+# `recovered`: renewed by the retry after a failed first attempt; ownership is as good as `renewed`.
+RenewResult = Literal["renewed", "recovered", "lost", "unavailable", "deadline_expired"]
 ReleaseResult = Literal["released", "lost", "not_owned", "unavailable"]
 _RENEW_LEASE = """
 if redis.call('get', KEYS[1]) == ARGV[1] then
@@ -192,7 +193,7 @@ class RedisStore:
                 async with attempt_timeout:
                     renewed = await self._client.eval(_RENEW_LEASE, 1, key, token, ttl_ms)
                 outcome = "renewed" if renewed else "lost"
-                return outcome
+                return "recovered" if renewed and attempt else outcome
             except Exception as exc:  # noqa: BLE001 - cancellation and ownership loss never retry
                 if isinstance(exc, TimeoutError) and attempt_timeout.expired() and validity_limited:
                     outcome = "deadline_expired"

@@ -82,7 +82,7 @@ async def test_one_second_socket_failure_leaves_time_for_retry(phase):
         return 1
 
     assert await _invoke_retry(_store_with(command), phase) == {
-        "renew": "renewed", "release": "released",
+        "renew": "recovered", "release": "released",
     }[phase]
     assert len(calls) == 2 and calls[0] == calls[1]
 
@@ -235,7 +235,7 @@ async def test_renew_reply_lost_after_pexpire_retries_only_the_existing_owner(lo
             raise redis_errors.TimeoutError("reply lost after PEXPIRE")
         return result
 
-    assert await _store_with(lost_reply).renew_lease(key, "owner", 3000) == "renewed"
+    assert await _store_with(lost_reply).renew_lease(key, "owner", 3000) == "recovered"
     assert len(calls) == 2 and calls[0] == calls[1]
     assert await real._client.get(key) == "owner"
     assert await real.acquire_lease(key, "competitor", 3000) == "busy"
@@ -360,13 +360,15 @@ async def test_one_transient_failure_is_retried_with_same_owner(error_type, phas
         return 1
 
     result = await _invoke_retry(_store_with(command), phase, "private-key", "private-token")
-    assert result == {"renew": "renewed", "release": "released"}[phase]
+    assert result == {"renew": "recovered", "release": "released"}[phase]
     assert len(calls) == 2
     assert calls[0] == calls[1]
     row, = kv.drain_lease_errors()
     assert row["phase"] == phase and row["count"] == 1
     timings = {row["outcome"]: row for row in kv.drain_lease_timings()}
-    assert timings[result]["retry_count"] == 1
+    # The attempt gauge keeps its fixed outcome; recovery is the retried `renewed` attempt.
+    success = {"renew": "renewed", "release": "released"}[phase]
+    assert timings[success]["retry_count"] == 1
     assert timings["unavailable"]["count"] == 1
 
 
@@ -561,3 +563,37 @@ async def test_retry_timing_is_per_attempt_and_drain_starts_a_new_window(monkeyp
     next_row, = kv.drain_lease_timings()
     assert next_row["count"] == 1 and next_row["retry_count"] == 0
     assert rows["not_owned"]["count"] == 1
+
+
+async def test_real_lease_set_at_the_admission_deadline_is_deleted_by_token(local_redis, monkeypatch):
+    from treg.infra import money_admission as admission
+
+    real, key = local_redis
+    org_id = uuid4().int % 10**9 + 1
+    org_key = f"money-admission:org:{org_id}"
+    applied = []
+    real_set = real._client.set
+
+    async def set_then_stall(name, value, **kwargs):
+        result = await real_set(name, value, **kwargs)
+        applied.append(value)
+        await asyncio.Event().wait()  # SET is durable in Redis; the reply misses the deadline.
+        return result
+
+    monkeypatch.setattr(real._client, "set", set_then_stall)
+    monkeypatch.setattr(admission, "get_settings", lambda: SimpleNamespace(
+        money_admission_enabled=True, money_admission_org_ids=[],
+        money_admission_wait_s=0.05, money_admission_lease_s=15))
+    monkeypatch.setattr(kv, "configured", lambda: True)
+    monkeypatch.setattr(kv, "store", lambda: real)
+    monkeypatch.setattr(admission, "_windows", {})
+    monkeypatch.setattr(admission, "_current", {})
+    try:
+        async with admission.admit([org_id], operation="reserve"):
+            assert await real._client.get(org_key) is None
+        assert len(applied) == 1
+        assert await real._client.exists(org_key) == 0
+        [row] = [r for r in admission.snapshot() if r["completed"]]
+        assert row["fallback_wait_timeout"] == 1 and row["kv_errors"] == 0
+    finally:
+        await real._client.delete(org_key)
