@@ -26,10 +26,9 @@ from ...infra.db import session_maker
 from ...models import Secret
 from ...sandbox_identity import visitor_name
 from ...domain.capacity import signatures as capacity_signatures
-from ...domain.capacity.fair_share import NO_SLOT, ShareBusy, fair_share
+from ...domain.capacity.fair_share import NO_SLOT, ShareBusy
 from ...domain.capacity.fair_share import RETRY_AFTER_S as RETRY_AFTER_SHARE_S
 from ...domain.capacity.view import view as capacity_view
-from ...infra.upstream.limiter import limiter as provider_limiter
 from ...infra.upstream.relay import identify_as_treg, relay, scope_shared_idempotency_key
 from .. import asynctasks as async_task_app
 from ...domain import asynctasks as asynctasks_rules
@@ -113,6 +112,7 @@ class _ApplicationRequest:
         )
         self.db = session_maker()
         self.lease: asyncio.Task | None = None
+        self.share_slot = NO_SLOT
 
 
 def _served_response(served: dict, body: bytes) -> UpstreamResponse:
@@ -156,15 +156,62 @@ def _identity_encoded(response: UpstreamResponse) -> bool:
 
 async def execute_call(context: CallContext, upstream_client: httpx.AsyncClient) -> UpstreamResponse:
     request = _ApplicationRequest(context)
+    response = None
     try:
-        return await _execute_call(request, upstream_client)
-    finally:
-        if request.lease is not None:
-            request.lease.cancel()
-        context.idempotency = request.state.idem_claim
-        context.audited = request.state.call_audited
-        context.cost_micro = request.state.call_cost_micro
-        await request.db.close()
+        try:
+            response = await _execute_call(request, upstream_client)
+        finally:
+            if request.lease is not None:
+                request.lease.cancel()
+            context.idempotency = request.state.idem_claim
+            context.audited = request.state.call_audited
+            context.cost_micro = request.state.call_cost_micro
+            await request.db.close()
+    except BaseException:
+        try:
+            if response is not None:
+                await response.close()
+        finally:
+            await request.share_slot.aclose()
+        raise
+    # Transfer only after application/session cleanup succeeds. Otherwise nobody receives the
+    # response and no consumer could close its live lease.
+    if request.share_slot is not NO_SLOT:
+        _share_until_closed(response, request.share_slot)
+    return response
+
+
+def _share_until_closed(response: UpstreamResponse, slot) -> None:
+    """A free response keeps its place through streaming, including disconnect and close-only use.
+
+    Lease uncertainty never terminates the stream. Closing upstream precedes owner cleanup, and
+    both complete once even when a consumer's cancellation interrupts its await of close().
+    """
+    from ...domain.capacity.shared import cleanup
+
+    original_close, original_stream = response.close, response.body_stream
+    closing = None
+
+    async def finish():
+        try:
+            await original_close()
+        finally:
+            await slot.aclose()
+
+    async def close():
+        nonlocal closing
+        if closing is None:
+            closing = cleanup(finish())
+        await asyncio.shield(closing)
+
+    async def stream():
+        try:
+            async for chunk in original_stream:
+                yield chunk
+        finally:
+            await close()
+
+    response.close, response.body_stream = close, stream()
 
 
 def create_call_context(call_input: CallInput) -> CallContext:
@@ -1233,17 +1280,14 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
             )
             if platform_tier:
                 # Burst smoothing, half one (plan §4.4): many callers share treg's key, so a call that
-                # would exceed the provider's published rate waits briefly (≤ 2 s, in-process, no DB —
+                # would exceed the provider's published rate waits briefly (≤ 2 s, no DB —
                 # the DB phase ended above) instead of being relayed into a 429 nobody can fix. Beyond
                 # the cap it proceeds as before; nothing is ever refused here.
-                # The account, when resolution left it open, is picked here and its token taken
-                # below with no await between: a burst arriving together spreads over the accounts.
-                keyslots.assign(mk)
-                rl = keyslots.rate_bucket(mk.provider, mk.endpoint_id, mk.key_slot)
-                if rl is not None:
-                    waited = await provider_limiter.acquire(*rl)
-                    if waited:
-                        smoothed.append(f"wait={waited}")
+                # Shared account selection and reservation are one Redis operation. Without a
+                # rate bucket, concurrency-only accounts are chosen atomically at their claim.
+                waited = await keyslots.smooth(mk)
+                if waited:
+                    smoothed.append(f"wait={waited}")
             # The archive's serve path (docs/context/architecture/archive.md): a fresh stored
             # answer replaces ONLY the network trip. Reserve already ran, settle/audit/cost header
             # run below unchanged — a cached hit is billed exactly like the live call it stands in
@@ -1301,6 +1345,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     cache_diagnostics["cache_lookup_ms"] = round(
                         (time.monotonic() - lookup_started) * 1000, 3)
             if served is not None:
+                if platform_tier:
+                    keyslots.assign(mk)  # No upstream claim; preserve the account telemetry shape.
                 body = served["body"]
                 served_hit = True
                 served_repeat = bool(served.get("repeat_for_org"))
@@ -1317,9 +1363,8 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
                     # calls in progress. Held until the answer is read, released on every path below.
                     try:
                         # Each of treg's accounts has its own places (`keyslots.capacity_key`).
-                        share_slot = await fair_share.acquire(
-                            keyslots.capacity_key(mk.provider, mk.key_slot), caller.org_id, cap,
-                            max_wait_s=wait_s)
+                        share_slot = await keyslots.acquire_share(mk, caller.org_id, cap, wait_s)
+                        request.share_slot = share_slot
                     except ShareBusy as busy:
                         raise GatewayFailed("share_busy", status_code=429, detail={
                             "error": "share_busy", "provider": mk.provider,
@@ -1458,7 +1503,9 @@ async def _execute_call(request: _ApplicationRequest, upstream_client: httpx.Asy
         except httpx.RequestError as exc:  # upstream down/timeout is a gateway fault, not treg's 500
             raise _gateway_request_failure(exc) from exc
         finally:
-            share_slot.release()
+            if not streaming_free_result:
+                await share_slot.aclose()
+                request.share_slot = NO_SLOT
     except asyncio.CancelledError:
         await _finish_cancelled_call(request, mk, call_ref, response)
         raise

@@ -13,9 +13,9 @@ The rule is max-min fairness on the places, and it never leaves a place empty wh
 3. A call that waited `max_wait_s` leaves the line with `ShareBusy`, so a routed job moves to
    its next provider and a direct call is refused (not charged) with a retry hint.
 
-In-process and DB-free on purpose, like the rate limiter (infra/upstream/limiter.py): it runs
-after the DB phase ended and before the relay. Exact for one server process; several processes
-each enforce `cap` on their own, so a multi-process deploy moves the counters to the shared store.
+DB-free: after the DB phase, configured Redis shares leases and the fair queue across processes.
+Without Redis, or when it cannot answer, the local gate below preserves availability. Active
+shared calls also count locally. Fallback and uncertain ownership do not promise a global cap.
 """
 
 from __future__ import annotations
@@ -23,6 +23,8 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
+
+from ...infra import kv
 
 DEFAULT_MAX_WAIT_S = 2.0
 RETRY_AFTER_S = 2
@@ -88,6 +90,13 @@ class Slot:
             gate, self._gate = self._gate, None
             gate._release(self._provider, self._team)
 
+    @property
+    def provider(self) -> str:
+        return self._provider
+
+    async def aclose(self) -> None:
+        self.release()
+
 
 NO_SLOT = Slot(None)
 
@@ -95,6 +104,7 @@ NO_SLOT = Slot(None)
 class FairShare:
     def __init__(self) -> None:
         self._pools: dict[str, _Pool] = {}
+        self._shared: dict = {}
 
     def queued(self, provider: str) -> int:
         """Calls in progress or waiting on `provider` beyond its places, 0 when it has room: how a
@@ -112,10 +122,18 @@ class FairShare:
         return pool
 
     async def acquire(self, provider: str, team: int, cap: int, *,
-                      max_wait_s: float = DEFAULT_MAX_WAIT_S) -> Slot:
+                      max_wait_s: float = DEFAULT_MAX_WAIT_S,
+                      alternatives: tuple[str, ...] = ()) -> Slot:
         """Take a place for `team` on `provider`, waiting at most `max_wait_s` (rule 3)."""
         if cap <= 0:
             return NO_SLOT
+        pools = [provider, *alternatives]
+        if kv.configured() and (store := kv.store().provider_capacity()) is not None:
+            from . import shared
+            return await shared.acquire(self, store, pools, team, cap, max_wait_s)
+        return await self._acquire_local(min(pools, key=self.queued), team, cap, max_wait_s=max_wait_s)
+
+    async def _acquire_local(self, provider: str, team: int, cap: int, *, max_wait_s: float) -> Slot:
         pool = self._pool(provider, cap)
         if pool.active < pool.cap and not pool.line:
             pool.take(team)
@@ -154,6 +172,11 @@ class FairShare:
 
     def reset(self) -> None:
         self._pools.clear()
+
+    async def aclose(self) -> None:
+        from . import shared
+        await shared.close(self)
+        self.reset()
 
 
 def _ms_since(t: float) -> int:

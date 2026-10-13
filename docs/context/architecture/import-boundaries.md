@@ -61,6 +61,8 @@ concrete client or an injected in-memory implementation. Call write allowlists i
 archive body PUT chain because it persists the paid response outside any DB transaction, and the
 post-relay provider-resource register/rename/tombstone calls because shared-key resource ownership
 must be established or advanced by the call that receives the provider's successful response.
+The allowlist also names `keyslots.smooth` and `keyslots.acquire_share`: expiring provider
+admission writes in KV after the DB phase, without any balance or ownership-table write.
 
 The separate `test-postgres` job runs its database-sensitive subset against Postgres 16, one
 database per xdist worker; it uses unbuffered Python output and a 15-minute job budget so a slow
@@ -68,6 +70,9 @@ test remains diagnosable. The
 subset includes agent attribution, managed API-key lifecycle and concurrency, credential health,
 local-run reporting and ads-conversion coverage so naive-UTC assumptions are exercised by asyncpg
 rather than hidden by SQLite's permissive adapter.
+The subset includes `test_provider_admission.py` against disposable Redis: independent processes,
+rate spacing, account isolation, max-min fairness, crash/expiry recovery, ambiguous replies,
+availability-first fallback, bounded polling, and real HTTP stream cancellation/lease loss.
 
 The required `gitleaks` job scans the complete history reachable from checked-out `HEAD` with
 `--log-opts="HEAD"`. On pull requests, checkout supplies the merge commit, so both the base and

@@ -6,7 +6,8 @@ survive: every key expires, and every caller treats "unavailable" as a safe answ
 uses `_TIMEOUT_S`; optional counters and health probes have their own shorter outer deadline.
 
 Review-invitation budgets fail closed; money admission leases report unavailability explicitly
-so the caller can retain PostgreSQL's original correctness path. New tenants add narrow methods,
+so the caller can retain PostgreSQL's original correctness path. Provider admission has its own
+bounded operations and falls back locally; see provider_store.py. New tenants add narrow methods,
 not a generic get/set surface. Local counters do not pretend to provide distributed leases.
 """
 from __future__ import annotations
@@ -19,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Literal, Protocol
 
 from ..config import get_settings
+from .provider_store import RedisProviderStore
 
 _TIMEOUT_S = 1.0
 # Optional work must not make a response wait for money's longer socket timeout.
@@ -59,6 +61,8 @@ return 0
 
 
 class Store(Protocol):
+    def provider_capacity(self) -> RedisProviderStore | None: ...
+
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         """Count one use of `key` inside a window that starts at its first use and lasts `ttl_s`.
         True while the window holds `limit` or fewer uses, False past it OR when the store cannot
@@ -81,6 +85,9 @@ class LocalStore:
 
     def __init__(self) -> None:
         self._windows: dict[str, tuple[float, int]] = {}
+
+    def provider_capacity(self) -> None:
+        return None
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         now = time.monotonic()
@@ -124,6 +131,10 @@ class RedisStore:
             url, socket_timeout=_TIMEOUT_S, socket_connect_timeout=_TIMEOUT_S,
             decode_responses=True,
         )
+        self._provider_capacity = RedisProviderStore(self._client, _OPTIONAL_TIMEOUT_S)
+
+    def provider_capacity(self) -> RedisProviderStore:
+        return self._provider_capacity
 
     async def take(self, key: str, limit: int, ttl_s: int) -> bool:
         try:

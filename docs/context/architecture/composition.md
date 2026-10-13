@@ -150,6 +150,11 @@ serve path adds single-user provisioning before Uvicorn starts. Raw ASGI operato
 upgrade command separately on every release. `verify_db()` only checks revision compatibility and the
 Fernet-key guard; the exact startup manifests are pinned to a read-only allowlist.
 
+Provider admission starts its per-account waiter/lease coordinator lazily when a platform call
+uses configured KV (`domain.capacity.shared`). Shutdown closes these coordinators with
+`fair_share.aclose` after the upstream HTTP client closes and before `kv.close`; it adds no
+startup admission work. See `ops/capacity.md` for fallback and lease-loss behavior.
+
 Every role lifespan calls `analytics.install_fault_handler` after the read-only DB verification. With no
 PostHog key it is a no-op; otherwise ERROR+ root logs and Uvicorn ASGI exception records feed the bounded
 analytics queue until the lifespan removes the handler in its outer `finally`. This is logging-only

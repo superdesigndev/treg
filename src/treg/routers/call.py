@@ -375,7 +375,13 @@ async def run_call_surface(rest: str, request: Request, caller: Caller, *, prefi
     request.state.call_context = context
     try:
         upstream = await execute_call(context, request.app.state.http)
-        return await finish(request, context, upstream, rest)
+        try:
+            return await finish(request, context, upstream, rest)
+        except BaseException:
+            # The application may have handed a live provider lease to this response. A failed
+            # adapter never starts its stream/background close, so close that ownership here.
+            await upstream.close()
+            raise
     except CallFailure as exc:
         raise _translate_call_failure(exc) from exc
     except PoolTimeoutError:

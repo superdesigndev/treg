@@ -447,11 +447,11 @@ the accounts or regenerating one's key changes nothing.
    reaches the provider again lands where the provider can recognise it. Adding or removing an
    account can move a key. The idempotency claim is no place to remember the account: a failed
    call deletes its claim, and that is exactly the retry that reaches the provider.
-3. Otherwise an account not out of capacity whose smoothing bucket would wait least; ties rotate
-   per provider. Rules 1 and 2 run during resolution (`pinned`); this one runs right before the
-   relay (`assign`), and the
-   chosen bucket's token is taken with no await between, so a burst that resolved together still
-   spreads over the accounts instead of all reading the same idle one.
+3. Otherwise an account not out of capacity, preferring a free concurrency place, then the least
+   smoothing wait; ties rotate locally per provider. Rules 1 and 2 run during resolution
+   (`pinned`); `keyslots.smooth` runs after the DB phase. Configured KV selects the account and
+   reserves its spacer atomically; concurrency-only accounts select with `acquire_share` after an
+   archive miss. The original synchronous `assign` and local spacer handle no-KV/fallback calls.
 
 A call on any account but the primary carries `account: <provider>/<label>` on its platform
 binding, and the relay injects that account's values or fails `injection_failed` when the account
@@ -531,9 +531,10 @@ refusal:
    differs from its provider's is its own bucket (`policy._ENDPOINT_RATE_LIMITS`, read through
    `view.rate_bucket`); it replaces the provider's limit for that route and does not draw from the
    provider's bucket. Each account other than the primary has its own allowance, so its own
-   bucket (`<key>#<label>`). In-process on purpose: a second replica
-   doubles the effective rate, and the `rate_pressure` alert (step C) is the answer to that, not a
-   shared counter on the request path.
+   bucket (`<key>#<label>`). Configured KV shares the pacing reservation across workers and Web
+   instances, using Redis TIME. Unavailable KV falls back locally. Soft overflow past the wait
+   budget still proceeds; this is never a hard rate quota. See `ops/capacity.md` for the shared
+   concurrency leases, stream lifetime, bounded command cost and availability-first limitations.
 2. **One bounded `retry-after` re-send** - on a tier-4 **429** classified `burst` with
    `retry-after ≤ 5 s` (`SMOOTHING_RETRY_MAX_S`), for a **body-less GET/HEAD only**: close the first
    response, sleep, send the identical `UpstreamRequest` once more on the same hold, settle on the

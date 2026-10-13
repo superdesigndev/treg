@@ -6,9 +6,10 @@ key. A call that would exceed the provider's published rate waits — briefly, b
 being relayed into a 429 the caller cannot fix. The hold is already placed, so the wait costs the
 org latency, never money; beyond `max_wait_ms` the call proceeds as today (no refusal here, ever).
 
-In-process and DB-free on purpose: this runs between "DB phase ended" and the relay, where the
-call must hold no connection. A second replica doubles the effective rate; the `rate_pressure`
-alert (step C) is the signal to tighten, not a shared counter on the request path.
+DB-free: configured KV reserves one shared pacing timestamp atomically, using Redis's clock.
+No KV or an unavailable store uses the local spacer. Neither mode is a hard rate cap: overflow
+past the wait budget still proceeds. Cancelled/lost-reply reservations expire without refunding
+an earlier place in the queue (which could collide with a later reservation).
 """
 
 from __future__ import annotations
@@ -16,6 +17,8 @@ from __future__ import annotations
 import asyncio
 import time
 from dataclasses import dataclass, field
+
+from .. import kv
 
 DEFAULT_MAX_WAIT_MS = 2_000
 
@@ -81,6 +84,32 @@ class Limiter:
         """Wait for a token, at most `max_wait_ms`; returns the milliseconds actually waited. A wait
         longer than the cap is NOT taken (the token is returned) — the call proceeds and the provider
         answers as it would have; `rate_pressure` is the alert for that."""
+        if limit <= 0 or window_s <= 0:
+            return 0
+        result = await self.acquire_choice([(provider, (provider, limit, window_s))], 0,
+                                           max_wait_ms=max_wait_ms)
+        if result is not None:
+            return result[1]
+        return await self.acquire_local(provider, limit, window_s, max_wait_ms=max_wait_ms)
+
+    async def acquire_choice(self, candidates: list[tuple[str, tuple[str, int, float] | None]],
+                             cap: int, *, max_wait_ms: int = DEFAULT_MAX_WAIT_MS) -> tuple[int, int] | None:
+        """Atomically choose an account and reserve its spacer. None asks for local fallback."""
+        if not kv.configured() or (store := kv.store().provider_capacity()) is None:
+            return None
+        rows = [(pool, bucket[0] if bucket else pool,
+                 bucket[2] * 1000 / bucket[1] if bucket and bucket[1] > 0 and bucket[2] > 0 else 0)
+                for pool, bucket in candidates]
+        result = await store.reserve_rate(rows, cap, max_wait_ms)
+        if result is None:
+            return None
+        index, waited = result
+        if waited:
+            await asyncio.sleep(waited / 1000)
+        return index, waited
+
+    async def acquire_local(self, provider: str, limit: int, window_s: float, *,
+                            max_wait_ms: int = DEFAULT_MAX_WAIT_MS) -> int:
         if limit <= 0 or window_s <= 0:
             return 0
         b = self.bucket(provider, limit, window_s)

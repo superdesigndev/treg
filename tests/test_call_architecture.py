@@ -21,6 +21,11 @@ from treg.domain.governance import usage as usage_policy
 _SRC = Path(__file__).parents[1] / "src" / "treg"
 
 _DATAPLANE_DERIVED_WRITES = {
+    # Provider pacing and fair-share leases live in expiring KV collections, outside DB sessions.
+    "provider_admission": (
+        (service._execute_call, "keyslots.smooth"),
+        (service._execute_call, "keyslots.acquire_share"),
+    ),
     # A best-effort external admission lease precedes the balance session.
     "money_admission_lease": (
         (reserve._platform_reserve, "money_admission.admit"),
@@ -108,6 +113,7 @@ _DATAPLANE_DERIVED_WRITES = {
     ),
 }
 _EXPECTED_DATAPLANE_WRITES = frozenset({
+    "provider_admission",
     "money_admission_lease",
     "archive_body_object",
     "auto_topup_task",
@@ -149,6 +155,7 @@ _DERIVED_WRITE_FILES = {
         "overflow_spend_ledger.release_reservation_in_transaction",
     },
     _SRC / "application" / "call" / "service.py": {
+        "keyslots.smooth", "keyslots.acquire_share",
         "archive.record",
         "async_task_app.observe_owned_poll",
         "async_task_app.remember_platform_resources",
@@ -163,6 +170,8 @@ _DERIVED_WRITE_FILES = {
     _SRC / "domain" / "money" / "__init__.py": {"reap_stale_holds", "release"},
 }
 _EXPECTED_DERIVED_WRITE_SITES = {
+    ("application/call/service.py", "_execute_call", "keyslots.smooth"),
+    ("application/call/service.py", "_execute_call", "keyslots.acquire_share"),
     ("application/call/reserve.py", "_platform_reserve", "money_admission.admit"),
     ("application/call/settle.py", "_platform_settle", "money_admission.admit"),
     ("application/call/settle.py", "_close", "money_admission.admit"),

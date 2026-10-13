@@ -17,7 +17,8 @@ A provider can sit behind several treg-owned accounts (`TREG_PLATFORM_ACCOUNTS`,
 The primary account's credentials are the deployment's own fields, so a call on it carries no
 account and smooths in the provider's own bucket: a provider with one account behaves as before.
 Capacity is per account: each further account has its own locks (`capacity_slot`); the sweep
-reads only the primary. Sync and I/O-free: resolution calls `pinned` while it holds its session.
+reads only the primary. Resolution's `pinned` is sync and I/O-free. Shared admission runs only
+after the DB phase, leaving round-robin tie rotation local.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ from ...config import PRIMARY_SLOT, get_settings, platform_setting_name
 from ...domain.capacity.fair_share import fair_share
 from ...domain.capacity.view import view as capacity_view
 from ...infra.upstream.limiter import limiter
+from ...infra import kv
 from .types import ResolutionFailed
 
 # Per provider, so one provider's calls never skew another's. Each process starts at a random
@@ -131,13 +133,54 @@ def assign(mk) -> None:
     spreads instead of every call reading the same idle account."""
     if mk.key_slot is not None:
         return
+    mk.key_slot = min(_candidates(mk),
+                      key=lambda slot: (fair_share.queued(capacity_key(mk.provider, slot)),
+                                        _wait_s(mk.provider, mk.endpoint_id, slot)))
+    _bind(mk)
+
+
+def _candidates(mk) -> list[str]:
+    if mk.key_slot is not None:
+        return [mk.key_slot]
     slots = [slot for slot in _labels(mk.provider) if not exhausted(mk.provider, mk.endpoint_id, slot)]
     slots = slots or _labels(mk.provider)
     start = next(_rotation.setdefault(mk.provider, itertools.count(random.randrange(1 << 16)))) % len(slots)
-    mk.key_slot = min(slots[start:] + slots[:start],
-                      key=lambda slot: (fair_share.queued(capacity_key(mk.provider, slot)),
-                                        _wait_s(mk.provider, mk.endpoint_id, slot)))
+    return slots[start:] + slots[:start]
+
+
+def _bind(mk) -> None:
     mk.tool.bindings = oauth_providers.platform_bindings(oauth_providers.get(mk.provider), mk.key_slot)
+
+
+async def smooth(mk) -> int:
+    """Shared selection and pacing. Concurrency-only pools choose when they claim a place."""
+    if kv.configured():
+        slots = _candidates(mk)
+        candidates = [(capacity_key(mk.provider, slot), rate_bucket(mk.provider, mk.endpoint_id, slot))
+                      for slot in slots]
+        cap = capacity_view.concurrency(mk.provider) if get_settings().fair_share_wait_s > 0 else 0
+        if any(bucket for _, bucket in candidates):
+            result = await limiter.acquire_choice(candidates, cap)
+            if result is not None:
+                index, waited = result
+                mk.key_slot = slots[index]
+                _bind(mk)
+                return waited
+        elif cap:
+            return 0  # No rate reservation to make; select+claim together after an archive miss.
+    assign(mk)
+    bucket = rate_bucket(mk.provider, mk.endpoint_id, mk.key_slot)
+    return await limiter.acquire_local(*bucket) if bucket else 0
+
+
+async def acquire_share(mk, team: int, cap: int, wait_s: float):
+    slots = _candidates(mk)
+    pools = [capacity_key(mk.provider, slot) for slot in slots]
+    place = await fair_share.acquire(pools[0], team, cap, max_wait_s=wait_s,
+                                     alternatives=tuple(pools[1:]))
+    mk.key_slot = slots[pools.index(place.provider)]
+    _bind(mk)
+    return place
 
 
 def rate_bucket(service: str, endpoint_id: str, slot: str | None) -> tuple[str, int, float] | None:

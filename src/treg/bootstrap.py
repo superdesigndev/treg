@@ -754,6 +754,8 @@ def _lifespan(role: AppRole):
                     await stop_money_trace(trace_runner)
                     await analytics.drain()
                     await app.state.http.aclose()
+                    from .domain.capacity.fair_share import fair_share
+                    await fair_share.aclose()
                     await kv.close()
                 finally:
                     try:

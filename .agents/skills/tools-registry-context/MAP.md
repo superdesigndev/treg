@@ -381,6 +381,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/domain/capacity/policy.py` | ops/capacity.md |
 | `src/treg/domain/capacity/routes.py` | ops/capacity.md |
 | `src/treg/domain/capacity/routes_view.py` | ops/capacity.md |
+| `src/treg/domain/capacity/shared.py` | ops/capacity.md |
 | `src/treg/domain/capacity/signatures.py` | ops/capacity.md |
 | `src/treg/domain/capacity/sweep.py` | ops/capacity.md |
 | `src/treg/domain/capacity/verify.py` | ops/capacity.md |
@@ -444,7 +445,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/infra/db.py` | architecture/data-model.md, architecture/multi-tenancy.md, ops/deploy.md |
 | `src/treg/infra/embed.py` | architecture/find.md |
 | `src/treg/infra/judge.py` | architecture/search-experiment.md |
-| `src/treg/infra/kv.py` | architecture/data-model.md, architecture/feedback.md |
+| `src/treg/infra/kv.py` | architecture/data-model.md, architecture/feedback.md, ops/capacity.md |
 | `src/treg/infra/llm.py` | interface/onboarding.md |
 | `src/treg/infra/money_admission.py` | architecture/data-model.md, architecture/money.md, ops/deploy.md |
 | `src/treg/infra/money_admission_reporting.py` | architecture/composition.md, architecture/data-model.md |
@@ -455,6 +456,7 @@ Regenerate via `scripts/build-map.py`.
 | `src/treg/infra/oauth_exchange.py` | architecture/auth-secrets.md, architecture/instagram-oauth.md, guides/expanding-a-category.md |
 | `src/treg/infra/oauth_refresh.py` | architecture/auth-secrets.md |
 | `src/treg/infra/object_store.py` | architecture/archive.md |
+| `src/treg/infra/provider_store.py` | ops/capacity.md |
 | `src/treg/infra/stripe.py` | architecture/money.md |
 | `src/treg/infra/turnstile.py` | architecture/multi-tenancy.md |
 | `src/treg/infra/upstream/__init__.py` | architecture/import-boundaries.md |
@@ -667,6 +669,7 @@ Regenerate via `scripts/build-map.py`.
 | `tests/test_pinned_read_scope.py` | architecture/multi-tenancy.md |
 | `tests/test_platform_accounts.py` | architecture/proxy-model.md |
 | `tests/test_postgres_reset.py` | architecture/data-model.md |
+| `tests/test_provider_admission.py` | ops/capacity.md |
 | `tests/test_redundant_index_migration.py` | architecture/data-model.md |
 | `tests/test_relay_content_length.py` | architecture/proxy-model.md |
 | `tests/test_released_cli_compat.py` | interface/cli.md |
@@ -729,6 +732,6 @@ Regenerate via `scripts/build-map.py`.
 | `interface/skill-openai-tool-justifications.md` | _(no source files — narrative/reference)_ |
 | `interface/skill.md` | `skill.md`, `SKILL.md`, `SKILL.md`, `SKILL.md`, `jev-memory.mjs`, `web.py`, `mcp_install.py`, `build_plugin.py`, `plugin.json`, `marketplace.json`, `plugin.json`, `plugin.json`, `package.json`, `cordis.patch.yml`, `index.js`, `plugin.json`, `minimax_plugin.py` |
 | `interface/web-arena.md` | `web_arena.py`, `web_arena_scores.py`, `web_arena.py`, `web_arena_quality.py`, `web_arena_publications.py`, `web_arena_calls.py`, `web_arena.py`, `models.py`, `0057_web_arena.py`, `0058_web_arena_call_stats.py`, `0059_web_arena_seed_start.py`, `0060_web_arena_seed_progress.py`, `config.py`, `bootstrap.py`, `worker.py`, `web-arena.html`, `arena.js`, `arena.css`, `test_web_arena.py`, `test_web_arena_calls.py` |
-| `ops/capacity.md` | `__init__.py`, `collectors.py`, `policy.py`, `sweep.py`, `view.py`, `routes.py`, `signatures.py`, `verify.py`, `marks.py`, `test_capacity_protect.py`, `limiter.py`, `overflow_spend.py`, `routes_view.py`, `overflow.py`, `0007_overflow_spend.py`, `test_capacity_overflow.py`, `test_capacity_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `test_capacity_smoothing.py`, `fair_share.py`, `test_capacity_fair_share.py`, `overflow_seed.json`, `__init__.py`, `orthogonal.py`, `monid.py`, `catalogs.py`, `0006_overflow_route.py`, `test_capacity_overflow_routes.py`, `test_influencersclub_overflow.py`, `worker.py`, `provider_balances.py`, `0005_capacity_policy_snapshot.py`, `test_capacity_know.py`, `test_capacity_collectors.py`, `test_financialdatasets.py`, `test_tinyfish.py` |
+| `ops/capacity.md` | `__init__.py`, `collectors.py`, `policy.py`, `sweep.py`, `view.py`, `routes.py`, `signatures.py`, `verify.py`, `marks.py`, `test_capacity_protect.py`, `limiter.py`, `overflow_spend.py`, `routes_view.py`, `overflow.py`, `0007_overflow_spend.py`, `test_capacity_overflow.py`, `test_capacity_overflow_spend.py`, `0008_org_platform_overflow_disabled.py`, `test_capacity_smoothing.py`, `fair_share.py`, `shared.py`, `provider_store.py`, `kv.py`, `test_provider_admission.py`, `test_capacity_fair_share.py`, `overflow_seed.json`, `__init__.py`, `orthogonal.py`, `monid.py`, `catalogs.py`, `0006_overflow_route.py`, `test_capacity_overflow_routes.py`, `test_influencersclub_overflow.py`, `worker.py`, `provider_balances.py`, `0005_capacity_policy_snapshot.py`, `test_capacity_know.py`, `test_capacity_collectors.py`, `test_financialdatasets.py`, `test_tinyfish.py` |
 | `ops/deploy.md` | `pyproject.toml`, `hatch_build.py`, `build-dashboard.sh`, `build-web.sh`, `frontend-e2e-server.sh`, `__main__.py`, `maintenance.py`, `env.py`, `0034_managed_api_keys.py`, `0035_default_key_generation.py`, `0036_activity_key_indexes.py`, `worker.py`, `selfhost.sh`, `config.py`, `db.py`, `money_admission.py`, `bench_money_admission.py`, `email.py`, `audit.py`, `dev-local.sh`, `render.example.yaml` |
 | `reference/glossary.md` | `2026-06-30-jason-tools-registry.md` |

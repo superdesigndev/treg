@@ -11,6 +11,9 @@ from treg.infra import kv, money_admission as admission
 
 
 class LeaseStore:
+    def provider_capacity(self):
+        return None  # This fake supplies money leases only; provider admission falls back locally.
+
     def __init__(self):
         self.values = {}
         self.calls = []

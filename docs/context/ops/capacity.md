@@ -22,6 +22,10 @@ sources:
   - src/treg/alembic/versions/0008_org_platform_overflow_disabled.py
   - tests/test_capacity_smoothing.py
   - src/treg/domain/capacity/fair_share.py
+  - src/treg/domain/capacity/shared.py
+  - src/treg/infra/provider_store.py
+  - src/treg/infra/kv.py
+  - tests/test_provider_admission.py
   - tests/test_capacity_fair_share.py
   - src/treg/domain/capacity/overflow_seed.json
   - src/treg/infra/upstream/aggregators/__init__.py
@@ -319,7 +323,7 @@ autocomplete limits are not published. As a provisional policy, `_RATE_LIMITS` r
 documented company-enrichment ceiling of 30 calls per minute for all Wiza platform calls because
 smoothing is not endpoint-aware. This spaces sequential platform calls by about two seconds, adding
 about 38 seconds of waiting across 20 one-row search pages; BYOK is unaffected. The bounded,
-process-local limiter reduces ordinary bursts but is not a strict quota gate: calls whose computed
+limiter reduces ordinary bursts but is not a strict quota gate: calls whose computed
 wait exceeds `DEFAULT_MAX_WAIT_MS` proceed. Relax the ceiling after real 429 evidence, or when
 smoothing becomes endpoint-aware.
 
@@ -328,7 +332,7 @@ smoothing becomes endpoint-aware.
 `policy._RATE_LIMITS` smooths Ocean.io platform calls at 30 requests per minute, half the
 documented self-serve minute allowance. Its separate 1,000-request daily allowance is reported by
 `collectors._oceanio` from the free `/v2/credits/balance` route; the smoother does not enforce a
-daily quota. Like other provider-wide smoothing, this bounded process-local wait is not a strict
+daily quota. Like other provider-wide smoothing, this bounded wait is not a strict
 quota gate. BYOK calls bypass it.
 
 ## Pieces (`src/treg/domain/capacity/`)
@@ -558,11 +562,17 @@ away from everyone.
 
 ## Protect, part two (step D′) — burst smoothing
 
-`infra/upstream/limiter.py` (per-provider spacer, ≤ 2 s wait, in-process, no DB) and one bounded
+`infra/upstream/limiter.py` (per-provider spacer, ≤ 2 s wait, no DB) and one bounded
 `retry-after` re-send for body-less GET/HEAD, documented in `architecture/proxy-model.md` § Burst
 smoothing. The provider's rate limit travels in the published latest state (`LatestState.rate_limit`,
 from `CapacityPolicy.rate_limit`), so the request path never reads
-the policy table. `rate_pressure` alerting is step C.
+the policy table. With `TREG_KV_URL`, `RedisProviderStore.reserve_rate` atomically selects an
+eligible account and reserves a timestamp using Redis TIME; the local round-robin only breaks
+ties. Endpoint overrides replace the provider bucket, and account labels partition both.
+This preserves soft overflow: a reservation beyond the wait budget is not taken and the call
+proceeds. Cancellation or an ambiguous reply may leave a pacing reservation until its timestamp
+expires; it is not refunded through later reservations. This is not a hard rate cap. No KV or an
+unavailable KV uses the original local spacer. `rate_pressure` alerting is step C.
 
 ## Protect, part three — fair share of a provider's concurrency
 
@@ -570,7 +580,7 @@ A provider that caps the calls in progress on one account (`_CONCURRENCY` in `po
 through `view.concurrency`) is shared by every team on treg's key. Without a gate it is first come,
 first served: one team's burst takes every place and other teams' calls are refused upstream.
 
-`domain/capacity/fair_share.py` applies max-min fairness on those places, in-process and DB-free,
+`domain/capacity/fair_share.py` applies max-min fairness on those places, DB-free,
 after the DB phase ended and around the relay (`application/call/service.py`, platform tier only):
 
 1. A free place with no one waiting is taken at once.
@@ -581,11 +591,38 @@ after the DB phase ended and around the relay (`application/call/service.py`, pl
    typed `share_busy` 429, not charged (the hold is released). A routed job reads it as a child
    error and asks its next provider; a direct call gets `retry_after_s`.
 
-The place is held until the answer is read (metered and owned-poll bodies), released in the relay
-block's `finally` on every path. A streamed free answer releases when the relay block ends, before
-the stream finishes. A wait shows in `X-Treg-Smoothed` as `share_wait=<ms>`. Own keys are never
-gated (non-negotiable 1). The counters are per process: exact for one server process; a
-multi-process deploy moves them to the shared store (`infra/kv.py`).
+With configured KV, `domain/capacity/shared.py` shares active calls and waiting teams across
+Web workers and instances. Redis scripts atomically claim, dispatch, renew and release unique
+owner tokens. A retry of an account-selection claim finds its original account. A stale token
+cannot delete a successor or recreate an expired lease. Concurrency-only accounts are selected
+with their claim; account ownership and idempotency pins still forbid switching accounts.
+
+The place is held until the upstream body is read. A streamed free answer transfers its place to
+`service._share_until_closed`, which closes upstream and releases once on completion, explicit
+close, stream error or disconnect. An adapter that fails before streaming closes its response.
+Cancellation also cleans up a possibly committed claim whose reply was lost. A wait shows in
+`X-Treg-Smoothed` as `share_wait=<ms>`. Own keys are never gated (non-negotiable 1).
+
+Admission is availability-first. Unavailable KV falls back to the local gate, whose active counts
+include this process's shared calls. Lost or uncertain renewals leave the relay running with local
+accounting; they never abort a stream or reacquire a token. Recovery applies to new calls, and old
+calls release only their original token. **There is no global concurrency guarantee during
+fallback, mixed local/shared modes, uncertain ownership, or inconsistent account/limit settings.**
+Expired leases bound orphan accounting, not work still running at an external provider. Async
+worker polls, archive refresh and capacity collectors remain outside these admission gates.
+
+`infra/provider_store.py` uses four expiring collections per configured provider/account, plus
+one expiring timestamp per rate bucket. No caller-supplied id, credential, or owner token becomes a
+Redis key. Active owners are bounded by the configured cap; the shared queue holds at most
+`MAX_WAITERS` (1024). Queue saturation waits out the normal budget and returns `share_busy`.
+Team counts and queue entries are pruned with their leases/deadlines. An uncontended call costs
+one EVAL for pacing (when declared), one for concurrency claim and one for release (when declared).
+Each active process/account batches renewals every `RENEW_S` (10 s) under `LEASE_MS` (30 s);
+queued callers share one check every `POLL_S` (250 ms), with an initial wake when a queue forms.
+No per-waiter busy poll or per-call heartbeat is used. Operations have the existing bounded KV
+deadline, a one-second failure cooldown suppresses repeated admission probes, and unknown claims
+still get one owner-safe cleanup attempt. Fixed, credential-free warnings report fallback and
+ownership loss. No SQL session is held during any of this work.
 
 ## Overflow, the child cycle (step E) — off by default
 

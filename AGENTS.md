@@ -129,7 +129,7 @@ agents then built against a constitution that was wrong.
   code (routes, login, OAuth consent, Stripe top-up), reads only membership, deny rules,
   credentials, catalog prices and balances, and writes only what `tests/test_call_architecture.py`
   allowlists (the ledger entries, idempotency claims, OAuth refresh, audit and telemetry, first-call
-  markers, tag budgets, capacity marks, overflow spend, the member's daily-cap slot, the per-team
+  markers, tag budgets, capacity marks and expiring provider admission, overflow spend, the member's daily-cap slot, the per-team
   archive-question marks, and durable provider-resource ownership). Extend the
   test's allowlist in the same PR as any new write, and expect the reviewer to ask why.
 - **The tool hub** (`application/hub/`, behind `TREG_HUB_ENABLED`) runs a maker's recipe as ordinary

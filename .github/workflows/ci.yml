@@ -136,6 +136,7 @@ jobs:
           tests/test_kv.py
           tests/test_kv_release_retry.py
           tests/test_kv_lease_diagnostics.py
+          tests/test_provider_admission.py
           tests/test_money_trace.py
           tests/test_money_trace_postgres.py
           tests/test_money_trace_runner.py
