@@ -490,8 +490,9 @@ adapters:
     # Truelist documents unknown as uncharged; as a miss it releases the hold and lets a routed
     # waterfall continue. accept_all is also uncharged upstream but is a catch-all answer.
     miss: "coalesce(emails[0].email_state, 'unknown') == 'unknown'"
-    # A disposable mailbox is reported as a sub-state; count it as risky, like peer verifiers.
-    verdict: "choose(emails[0].email_sub_state == 'is_disposable', 'risky', emails[0].email_state)"
+    # Live catch-alls arrive as risky with an accept_all sub-state; a disposable mailbox is also a
+    # sub-state and counts as risky, like peer verifiers.
+    verdict: "choose(emails[0].email_sub_state == 'accept_all', 'catch_all', choose(emails[0].email_sub_state == 'is_disposable', 'risky', emails[0].email_state))"
     verdicts: {ok: valid, email_invalid: invalid, accept_all: catch_all}
 
   # ---- people.enrich ------------------------------------------------------------------------

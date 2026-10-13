@@ -1,14 +1,36 @@
 {
-  "email": "team@company.com",
-  "name": "Team Lead",
-  "uuid": "a3828d19-1234-5678-9abc-def012345678",
+  "email": "user@example.com",
+  "name": "Example User",
+  "uuid": "00000000-0000-0000-0000-000000000000",
+  "errors": "[]",
+  "last_login_at": null,
   "time_zone": "America/New_York",
   "is_admin_role": true,
-  "token": "abc123",
-  "api_keys": [],
+  "token": "<redacted>",
+  "api_keys": [
+    {
+      "id": 1,
+      "active": true,
+      "name": "Example key",
+      "token": "<redacted>",
+      "last_used_at": "2026-01-01T00:00:00.000Z",
+      "created_at": "2026-01-01T00:00:00.000Z"
+    }
+  ],
   "account": {
-    "name": "Company Inc",
-    "payment_plan": "pro",
-    "users": []
+    "name": "Example Inc",
+    "errors": "[]",
+    "payment_plan": "payg_v7",
+    "users": [
+      {
+        "email": "user@example.com",
+        "name": "Example User",
+        "uuid": "00000000-0000-0000-0000-000000000000",
+        "errors": "[]",
+        "last_login_at": null,
+        "time_zone": "America/New_York",
+        "is_admin_role": true
+      }
+    ]
   }
 }

@@ -1781,7 +1781,7 @@ TRUELIST = OAuthProvider(
     summary="Verify email deliverability and flag catch-all, disposable and role addresses.",
     base_url="https://api.truelist.io",
     docs_url="https://truelist.io/docs/api",
-    # The spec documents HTTP 401 {"error": "Unauthorized"} for a bad key; not yet observed live.
+    # A bad key answers HTTP 401 {"error": "Could not find user via token"}.
     probe_path="/me",
 )
 

@@ -1,15 +1,15 @@
 {
   "emails": [
     {
-      "address": "user@example.com",
-      "domain": "example.com",
-      "canonical": "user@example.com",
-      "mx_record": null,
+      "address": "support@github.com",
+      "domain": "github.com",
       "first_name": null,
       "last_name": null,
-      "email_state": "ok",
-      "email_sub_state": "email_ok",
-      "verified_at": "2026-02-21T10:39:12.570Z",
+      "canonical": "support",
+      "mx_record": null,
+      "email_state": "unknown",
+      "email_sub_state": "timed_out",
+      "verified_at": "2026-10-13T00:06:50.745Z",
       "did_you_mean": null
     }
   ]

@@ -108,6 +108,7 @@ def _body(doc) -> bytes:
     ("truelist.people.email.verify", {"emails": [{"email_state": "ok", "email_sub_state": "email_ok"}]}, "valid"),
     ("truelist.people.email.verify", {"emails": [{"email_state": "email_invalid", "email_sub_state": "failed_smtp_check"}]}, "invalid"),
     ("truelist.people.email.verify", {"emails": [{"email_state": "accept_all", "email_sub_state": "email_ok"}]}, "catch_all"),
+    ("truelist.people.email.verify", {"emails": [{"email_state": "risky", "email_sub_state": "accept_all"}]}, "catch_all"),
     ("truelist.people.email.verify", {"emails": [{"email_state": "risky", "email_sub_state": "is_role"}]}, "risky"),
     ("truelist.people.email.verify", {"emails": [{"email_state": "ok", "email_sub_state": "is_disposable"}]}, "risky"),
     # Truelist `unknown` is uncharged and a routing miss, and still a verdict worth counting

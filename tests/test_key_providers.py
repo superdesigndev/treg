@@ -50,7 +50,7 @@ async def test_truelist_key_uses_free_account_probe(clients, monkeypatch):
         assert request.method == "GET"
         assert request.url.path == "/me"
         if request.headers["authorization"] != "Bearer own-key":
-            return httpx.Response(401, json={"error": "Unauthorized"})
+            return httpx.Response(401, json={"error": "Could not find user via token"})
         return httpx.Response(200, json={"email": "team@company.com", "name": "Team Lead",
                                          "uuid": "a3828d19-1234-5678-9abc-def012345678"})
 

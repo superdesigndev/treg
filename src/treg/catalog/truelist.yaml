@@ -3,13 +3,12 @@ source:
   docs: https://truelist.io/docs/api
   openapi: null # transcribed from Truelist's OpenAPI 3.1 document (info.version 1.0.0); no public spec URL confirmed
   curated: '2026-10-12'
-# UNVERIFIED — no credential available at curation time; nothing here has been called. Paths,
-# parameters and prices are transcribed from Truelist's OpenAPI document and pricing page. Do not
-# stamp `verified:` until a live run passes; the example responses are the OpenAPI document's own
-# examples, not captured answers.
+# Both rows live-verified; the example responses are captured answers (the account read with its
+# identifying fields replaced by placeholders). Prices are transcribed from the pricing page.
 #
 # Auth: `Authorization: Bearer <key>` on every route. GET /me is free and is the connection probe;
-# the spec documents HTTP 401 {"error": "Unauthorized"} for a missing or invalid key.
+# a bad key answers HTTP 401 {"error": "Could not find user via token"} (the spec says
+# {"error": "Unauthorized"}).
 # Rate limits (documented): 10 requests/second each on /api/v1/verify_inline, /api/v1/verify and /me.
 #
 # Excluded: POST /api/v1/verify (batch). It takes a JSON `emails` array and processes it in the
@@ -36,9 +35,9 @@ endpoints:
     input:
       queryParams:
         email: {type: string, required: true, format: email, note: "one email address to verify", example: "support@truelist.io"}
-      note: "POST with the address in the email query parameter and no body. Returns an emails array whose entry carries email_state (ok | email_invalid | risky | unknown | accept_all), email_sub_state (email_ok | is_disposable | is_role | unknown_error | failed_smtp_check), mx_record and did_you_mean. Unknown and accept_all results use no Truelist credit."
+      note: "POST with the address in the email query parameter and no body. Returns an emails array whose entry carries email_state (ok | email_invalid | risky | unknown | accept_all), email_sub_state (email_ok | is_disposable | is_role | unknown_error | failed_smtp_check | accept_all | timed_out), mx_record and did_you_mean. Live, a catch-all domain answers email_state risky with email_sub_state accept_all, and a mailbox that does not answer in time is unknown with timed_out. Unknown and accept_all results use no Truelist credit."
     test_request:
-      queryParams: {email: "support@truelist.io"}
+      queryParams: {email: "support@github.com"}
     cost:
       type: per_success
       value: 0.0014
@@ -49,7 +48,8 @@ endpoints:
       source_url: https://truelist.io/pricing
       checked: '2026-10-12'
       confidence: documented
-      note: "One prepaid credit per verified address at the highest published pack rate ($0.0014; larger packs fall to $0.0007). Truelist does not consume a credit for unknown or accept_all (catch-all) results; the routed adapter treats unknown as a free miss. Not reconciled against a live credit meter: hit and miss charges are unobserved."
+      note: "One prepaid credit per verified address at the highest published pack rate ($0.0014; larger packs fall to $0.0007). Truelist does not consume a credit for unknown or accept_all (catch-all) results; the routed adapter treats unknown as a free miss. Charge not observed via the API: GET /me carries no credit balance, so per-check consumption needs a dashboard check."
+    verified: '2026-10-12'
     added: '2026-10-12'
     example_response: examples/truelist.people.email.verify.json
     docs_url: https://truelist.io/docs/api
@@ -65,9 +65,10 @@ endpoints:
     name: "Check account and plan"
     summary: "Retrieve account details including name, email, UUID, time zone, role, API keys and plan"
     input:
-      note: "No parameters. Returns the user's email, name, uuid, time_zone, is_admin_role, token, api_keys and account (name, payment_plan, users). The documented response does not include a credit balance. Free; also the connection probe."
+      note: "No parameters. Returns the user's email, name, uuid, time_zone, is_admin_role, token, api_keys and account (name, payment_plan, users). The response carries no credit balance. Free; also the connection probe."
     test_request: {queryParams: {}}
     cost: {type: free, value: 0, currency: USD, unit: call, note: "Free account read; also the registry's connection probe"}
+    verified: '2026-10-12'
     added: '2026-10-12'
     example_response: examples/truelist.account.usage.json
     docs_url: https://truelist.io/docs/api
