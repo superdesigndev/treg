@@ -216,6 +216,10 @@ Notes:
     treg returns HTTP 202 with `_treg.outcome: pending`, its call reference and poll descriptor,
     `reserved_micro`, and `charged_micro: null`; do not retry or start another provider, because the
     existing task may still complete and charge.
+    Work-email hits must match the supplied employer domain and any echoed name fields;
+    contradictory results use bounded error fallback within the same cost ceiling. Only supplied
+    name fields constrain a hit; surname boundaries, aliases and nicknames are not inferred.
+
   - **A found contact is not a confirmed one.** An email or phone find returns the provider's best
     match; only `output.verified: true` means it checked the mailbox. When it is not, the answer
     carries `_treg.advice` naming the verify step (`treg.people.email.verify`, a fraction of a cent)
