@@ -29,6 +29,7 @@ contracts:
     filters: {}
     output:
       email: {type: str, required: true}
+      full_name: {type: str, note: "provider's complete name, without inferring a surname boundary"}
       confidence: {type: float, note: "0..1 — provider scales mapped; the original rides in raw"}
       first_name: {type: str}
       last_name: {type: str}

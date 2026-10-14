@@ -167,7 +167,7 @@ def rank(candidates: list[Candidate], *, prefer: list[str] | None = None, exclud
 
 
 def candidates_for(contract: Contract, endpoints: list[dict], adapters: dict[str, Adapter],
-                   identity: dict[str, Any]) -> tuple[list[tuple[dict, Adapter, tuple[str, ...]]], list[dict]]:
+                   identity: dict[str, Any], given: set[str] | None = None) -> tuple[list[tuple[dict, Adapter, tuple[str, ...]]], list[dict]]:
     """Endpoints of the capability whose VERIFIED adapter accepts the supplied identity."""
     out, dropped = [], []
     for ep in endpoints:
@@ -179,7 +179,12 @@ def candidates_for(contract: Contract, endpoints: list[dict], adapters: dict[str
         if not ad.verified:
             dropped.append({"endpoint_id": ep["id"], "why": f"adapter unverified: {ad.verify_note}"})
             continue
-        v = adapter_accepts(ad, identity)
+        # A full name has no unambiguous surname boundary. Prefer an email
+        # adapter's variant that uses the actual supplied fields before a
+        # variant that depends on guessed name parts.
+        supplied = (next((variant for variant in ad.accepts if all(k in given for k in variant)), None)
+                    if contract.capability == "people.email.find" and given else None)
+        v = supplied or adapter_accepts(ad, identity)
         if v is None:
             # Say what WOULD unlock it — an agent that also knows the LinkedIn URL can add it.
             wants = " | ".join("{" + ", ".join(a) + "}" for a in ad.accepts)

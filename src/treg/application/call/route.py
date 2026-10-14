@@ -45,6 +45,7 @@ from ...domain.catalog import stats as endpoint_stats
 from ...domain.catalog import store as catalog_store
 from ...domain.catalog.routing import paths as P
 from ...domain.catalog.routing.contracts import canonical_identity, declared_miss, declared_not_found, miss_status
+from ...domain.catalog.routing.email_identity import email_identity_mismatch
 from ...domain.catalog.routing.plan import (
     MAX_ERROR_FALLBACKS, Candidate, Plan, candidates_for, cost_at, ignored_filters, rank, unscoped,
 )
@@ -266,7 +267,8 @@ async def build_plan(ep: dict, identity_given: dict, caller, options: RouteOptio
             "message": f"{ep['id']} needs exactly one identity variant in the JSON body: "
                        + " | ".join("{" + ", ".join(v) + "}" for v in contract.identity),
             "variants": [list(v) for v in contract.identity]})
-    raw, dropped = candidates_for(contract, cat.for_capability(ep["capability"]), cat.adapters, identity)
+    raw, dropped = candidates_for(contract, cat.for_capability(ep["capability"]), cat.adapters, identity,
+                                  given={k for k, v in identity_given.items() if v not in (None, "")})
     scoped = []
     for e, ad, v in raw:
         if missing := unscoped(ad, contract, identity):
@@ -739,6 +741,18 @@ async def _run_routed(parent: CallContext, ep: dict, body_bytes: bytes, get_head
                 continue
             winner = (cand, doc if doc is not None else {}, {}, raw)
             break
+        # A nonempty address can still answer a different employer or person. Keep the
+        # child's raw evidence and charge untouched, but do not make it a route hit.
+        # Use the ordinary bounded error fallback; uncertainty is never a true miss.
+        mismatch = (email_identity_mismatch(given, core)
+                    if plan.contract.capability == "people.email.find" else None)
+        if mismatch:
+            errors += 1
+            tried.append(Attempt(cand.endpoint["id"], cand.endpoint["provider"], "error",
+                                 response.status, charged, mismatch, ignored=ignored))
+            if errors > MAX_ERROR_FALLBACKS or not plan.contract.idempotent:
+                break
+            continue
         # A HIT that answers thinly is not the end of the search. `min_results` lets the caller say
         # how many rows make an answer; below it the waterfall keeps going and the best result so
         # far is kept, so a weak first provider can still win if nothing better turns up. Without

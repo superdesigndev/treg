@@ -1613,7 +1613,7 @@ async def test_adapter_from_upstream_throws_after_child_200_waterfall_continues(
     monkeypatch.setattr(call_service, 'relay', _relay_by_provider({
         '*': [(200, {'data': None})] * 10,  # Other providers return miss-like response
         'tomba': list(tomba_answers),
-        'hunter': [(200, {'data': {'email': 'found@example.test', 'score': 80, 'verification': {'status': 'valid'}}})],
+        'hunter': [(200, {'data': {'email': 'found@example.com', 'score': 80, 'verification': {'status': 'valid'}}})],
     }, seen))
 
     r = await clients.post(f'/call/{ROUTED}', json={'full_name': 'Example Person', 'domain': 'example.com'})
@@ -1667,7 +1667,7 @@ async def test_adapter_throws_on_all_children_returns_structured_502_with_tried(
 
 @pytest.mark.parametrize(("error_code", "tomba_answers", "status", "outcome"), [
     # a semantic miss, not a caller fault: the waterfall continues and the parent does not 502
-    ("NO_MATCH", [(200, {'data': {'email': 'found@example.test', 'score': 99, 'verification': {'status': 'valid'}}})],
+    ("NO_MATCH", [(200, {'data': {'email': 'found@example.com', 'score': 99, 'verification': {'status': 'valid'}}})],
      200, "miss"),
     # the same 400 with another body is a rejected request: an error, never a clean miss
     ("INVALID_DATAPOINTS", [(200, {'data': None})], 502, "error"),

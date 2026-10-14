@@ -112,6 +112,7 @@ sources:
   - src/treg/domain/catalog/routing/__init__.py
   - src/treg/domain/catalog/routing/contracts.py
   - src/treg/domain/catalog/routing/paths.py
+  - src/treg/domain/catalog/routing/email_identity.py
   - src/treg/domain/catalog/routing/plan.py
   - src/treg/domain/catalog/routing/synthetic.py
   - src/treg/application/call/async_bridge.py
@@ -1966,6 +1967,17 @@ and the CLI so the three surfaces cannot disagree:
   after collapsing, search ranks a band of 4× the page (≤ 100) and cuts to `limit` AFTER grouping.
 
 ## Routing — first-party routed endpoints (`treg.<capability>`)
+
+For routed `people.email.find`, a nonempty address must also match an explicitly supplied
+company domain and any echoed requested name fields. Contradictions and invalid mailbox syntax
+are provider errors, with fixed reason codes and the existing bounded error fallback. They are
+never accepted by rewriting the address or treated as a genuine no-result. Ordinary `/call/vendor`
+relay and raw evidence stay unchanged; prior child costs still count against the route ceiling.
+Only caller-supplied name fields are identity constraints; a full name's guessed split is not
+proof of a surname boundary. When a provider echoes a whole name and the caller supplied only
+first/last fields, their concatenation supplies the comparison without guessing boundaries.
+Email adapters prefer a variant using supplied fields over derived ones. This does not infer
+aliases, nicknames or missing particles.
 
 The one place treg **models** an upstream API, and the explicit opt-in where the caller asks treg
 to choose (`docs/CAPABILITY-ROUTING-PLAN.md`). Everything else in the catalog stays verbatim relay.

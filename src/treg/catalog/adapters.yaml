@@ -73,16 +73,18 @@ adapters:
   findymail.search.name:
     accepts: [[full_name, domain], [first_name, last_name, domain]]
     in:  {full_name: body.name, domain: body.domain}
-    out: {email: contact.email, first_name: "split_first(contact.name)", last_name: "split_last(contact.name)"}
+    out: {email: contact.email, full_name: contact.name}
     miss: "contact.email == null"
   findymail.search.business-profile:
     accepts: [[linkedin_url]]
     in:  {linkedin_url: body.linkedin_url}
-    out: {email: contact.email, first_name: "split_first(contact.name)", last_name: "split_last(contact.name)"}
+    out: {email: contact.email, full_name: contact.name}
     miss: "contact.email == null"
   tomba.people.email.find:
-    accepts: [[full_name, domain], [first_name, last_name, domain]]
-    in:  {full_name: queryParams.full_name, domain: queryParams.domain}
+    # Preserve the caller's full surname instead of asking the provider to split it.
+    accepts: [[first_name, last_name, domain], [full_name, domain]]
+    in:  {full_name: queryParams.full_name, first_name: queryParams.first_name,
+          last_name: queryParams.last_name, domain: queryParams.domain}
     out: {email: data.email, confidence: "data.score / 100", first_name: data.first_name,
           last_name: data.last_name, verified: "data.verification.status == 'valid'"}
     miss: "data.email == null"
